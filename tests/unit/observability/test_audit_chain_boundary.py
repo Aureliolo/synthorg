@@ -256,3 +256,54 @@ class TestAuditChainSinkValidationFailure:
         # Callback fires with status="error" so chain-depth metrics
         # accurately track dropped events.
         assert callback_calls == [("error", 0, 0.0)]
+
+    def test_generic_emit_error_includes_audited_event(self) -> None:
+        """An unexpected signer error logs the dropped event name.
+
+        The generic ``except Exception`` arm must carry ``audited_event``
+        (like the validation / timeout arms) so the lost security event
+        name is recoverable on an unexpected signer / serialisation
+        failure.
+        """
+        from logging import LogRecord
+
+        from synthorg.observability.audit_chain.config import AuditChainConfig
+        from synthorg.observability.audit_chain.sink import AuditChainSink
+
+        class _BoomSigner:
+            async def sign(self, data: bytes) -> object:
+                msg = "signer boom"
+                raise RuntimeError(msg)
+
+        class _StubTimestampProvider:
+            async def get_timestamp(self, data: bytes) -> object:
+                msg = "should not be reached"
+                raise AssertionError(msg)
+
+        sink = AuditChainSink(
+            signer=_BoomSigner(),  # type: ignore[arg-type]
+            timestamp_provider=_StubTimestampProvider(),  # type: ignore[arg-type]
+            config=AuditChainConfig(),
+        )
+        record = LogRecord(
+            name="synthorg.test",
+            level=20,
+            pathname=__file__,
+            lineno=0,
+            msg="security.auth.login",
+            args=None,
+            exc_info=None,
+        )
+
+        with structlog.testing.capture_logs() as logs:
+            sink.emit(record)
+
+        emit_errors = [
+            log for log in logs if log.get("event") == "audit_chain.emit_error"
+        ]
+        assert len(emit_errors) == 1, (
+            f"expected one audit_chain.emit_error, got {len(emit_errors)}"
+        )
+        assert emit_errors[0]["audited_event"] == "security.auth.login"
+        assert emit_errors[0]["error_type"] == "RuntimeError"
+        assert emit_errors[0]["error"]

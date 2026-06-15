@@ -28,7 +28,7 @@ import hmac
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Final
+from typing import ClassVar, Final
 
 import httpx
 import rfc3161_client
@@ -79,16 +79,25 @@ class TsaError(
     Every subclass signals a specific failure mode so the audit
     chain's :class:`ResilientTimestampProvider` can tag the fallback
     log with a precise reason and operators can build alerts per
-    class.
+    class. ``is_retryable`` lets a caller branch on transient
+    (timeout / transport) vs deterministic (protocol / security)
+    failures without an ``isinstance`` ladder; it defaults to
+    ``False`` so only the explicitly transient subclasses opt in.
     """
+
+    is_retryable: ClassVar[bool] = False
 
 
 class TsaTimeoutError(TsaError):
     """TSA did not respond within the configured deadline."""
 
+    is_retryable: ClassVar[bool] = True
+
 
 class TsaTransportError(TsaError):
     """Network or HTTP transport failure (4xx/5xx, DNS, TLS)."""
+
+    is_retryable: ClassVar[bool] = True
 
 
 class TsaProtocolError(TsaError):
@@ -242,14 +251,7 @@ class TsaClient:
                 when ``trusted_roots`` was supplied to __init__).
         """
         digest = _DIGEST_FACTORY[self._hash_algorithm](data).digest()
-        request = (
-            TimestampRequestBuilder()
-            .data(data)
-            .hash_algorithm(_HASH_ALGORITHMS[self._hash_algorithm])
-            .nonce(nonce=True)
-            .cert_request(cert_request=True)
-            .build()
-        )
+        request = self._build_ts_request(data)
         request_nonce = int(request.nonce) if request.nonce is not None else 0
         logger.info(
             SECURITY_TIMESTAMP_REQUESTED,
@@ -258,18 +260,7 @@ class TsaClient:
             nonce=request_nonce,
         )
         raw_response = await self._post(request.as_bytes())
-        response = _decode_response(raw_response)
-        _check_pki_status(response, self._tsa_url)
-        tst_info = response.tst_info
-        _check_hash_binding(tst_info, digest, self._hash_algorithm, self._tsa_url)
-        _check_nonce(tst_info, request_nonce, self._tsa_url)
-        if self._trusted_roots:
-            _verify_signature(
-                response,
-                hashed_message=digest,
-                trusted_roots=self._trusted_roots,
-                tsa_url=self._tsa_url,
-            )
+        tst_info = self._decode_and_verify(raw_response, digest, request_nonce)
         timestamp = _gen_time_to_datetime(tst_info.gen_time)
         logger.info(
             SECURITY_TIMESTAMP_GRANTED,
@@ -285,6 +276,48 @@ class TsaClient:
             tsa_url=self._tsa_url,
             raw_response=raw_response,
         )
+
+    def _build_ts_request(self, data: bytes) -> rfc3161_client.TimeStampRequest:
+        """Build a nonce'd, cert-requesting RFC 3161 timestamp request.
+
+        Returns:
+            The DER-encodable timestamp request for *data*.
+        """
+        return (
+            TimestampRequestBuilder()
+            .data(data)
+            .hash_algorithm(_HASH_ALGORITHMS[self._hash_algorithm])
+            .nonce(nonce=True)
+            .cert_request(cert_request=True)
+            .build()
+        )
+
+    def _decode_and_verify(
+        self,
+        raw_response: bytes,
+        digest: bytes,
+        request_nonce: int,
+    ) -> rfc3161_client.TimeStampTokenInfo:
+        """Decode the TSA response and run every verification check.
+
+        Returns:
+            The verified ``TimeStampTokenInfo`` (PKI status granted,
+            hash + nonce bound, and CMS signature verified when
+            ``trusted_roots`` was supplied).
+        """
+        response = _decode_response(raw_response)
+        _check_pki_status(response, self._tsa_url)
+        tst_info = response.tst_info
+        _check_hash_binding(tst_info, digest, self._hash_algorithm, self._tsa_url)
+        _check_nonce(tst_info, request_nonce, self._tsa_url)
+        if self._trusted_roots:
+            _verify_signature(
+                response,
+                hashed_message=digest,
+                trusted_roots=self._trusted_roots,
+                tsa_url=self._tsa_url,
+            )
+        return tst_info
 
     async def aclose(self) -> None:
         """Close the caller-supplied httpx client, if any.
@@ -361,43 +394,7 @@ class TsaClient:
             )
             msg = f"TSA transport failure: {type(exc).__name__}"
             raise TsaTransportError(msg) from exc
-        # Any non-2xx is a transport-level failure. Treating 3xx as a
-        # success (and falling through to ASN.1 parsing) would accept
-        # redirect bodies / HTML error pages as TSA responses. RFC
-        # 3161 TSAs answer with a direct 200; we do not follow
-        # redirects (see ``follow_redirects=False`` above) so any
-        # non-200 signals a misconfigured endpoint or proxy.
-        if not 200 <= response.status_code < 300:  # noqa: PLR2004
-            logger.warning(
-                SECURITY_TIMESTAMP_TRANSPORT_ERROR,
-                tsa_url=self._tsa_url,
-                status_code=response.status_code,
-                reason_phrase=response.reason_phrase,
-            )
-            msg = f"TSA returned HTTP {response.status_code}: {response.reason_phrase}"
-            raise TsaTransportError(msg)
-        content_type = response.headers.get("Content-Type", "")
-        # Strict media-type equality: strip the parameters after
-        # ``;`` and case-normalise both sides. Substring matching
-        # would accept anything that merely contains the canonical
-        # name (e.g. ``application/timestamp-reply-extended``), so
-        # this guard tightens the wire-format check.
-        content_main = extract_media_type(content_type)
-        if content_main != _RESP_CONTENT_TYPE.lower():
-            logger.warning(
-                SECURITY_TIMESTAMP_PROTOCOL_ERROR,
-                tsa_url=self._tsa_url,
-                reason="unexpected_content_type",
-                content_type=content_type,
-                content_main=content_main,
-                expected=_RESP_CONTENT_TYPE,
-            )
-            msg = (
-                f"TSA returned unexpected Content-Type {content_type!r} "
-                f"(media type {content_main!r}); "
-                f"expected {_RESP_CONTENT_TYPE!r}"
-            )
-            raise TsaProtocolError(msg)
+        _validate_tsa_response(response, self._tsa_url)
         return response.content
 
 
@@ -465,6 +462,84 @@ def _check_pki_status(
     raise TsaProtocolError(msg)
 
 
+def _validate_tsa_response(response: httpx.Response, tsa_url: str) -> None:
+    """Validate the TSA HTTP status and Content-Type.
+
+    Any non-2xx is a transport-level failure: treating 3xx as success
+    (and falling through to ASN.1 parsing) would accept redirect bodies
+    / HTML error pages as TSA responses. RFC 3161 TSAs answer with a
+    direct 200 and we do not follow redirects, so any non-200 signals a
+    misconfigured endpoint or proxy. The Content-Type is matched by
+    strict media-type equality (parameters stripped, case-normalised);
+    substring matching would accept anything merely containing the
+    canonical name (e.g. ``application/timestamp-reply-extended``).
+
+    Raises:
+        TsaTransportError: On a non-2xx status.
+        TsaProtocolError: On an unexpected Content-Type.
+    """
+    if not 200 <= response.status_code < 300:  # noqa: PLR2004
+        logger.warning(
+            SECURITY_TIMESTAMP_TRANSPORT_ERROR,
+            tsa_url=tsa_url,
+            status_code=response.status_code,
+            reason_phrase=response.reason_phrase,
+        )
+        msg = f"TSA returned HTTP {response.status_code}: {response.reason_phrase}"
+        raise TsaTransportError(msg)
+    content_type = response.headers.get("Content-Type", "")
+    content_main = extract_media_type(content_type)
+    if content_main != _RESP_CONTENT_TYPE.lower():
+        logger.warning(
+            SECURITY_TIMESTAMP_PROTOCOL_ERROR,
+            tsa_url=tsa_url,
+            reason="unexpected_content_type",
+            content_type=content_type,
+            content_main=content_main,
+            expected=_RESP_CONTENT_TYPE,
+        )
+        msg = (
+            f"TSA returned unexpected Content-Type {content_type!r} "
+            f"(media type {content_main!r}); "
+            f"expected {_RESP_CONTENT_TYPE!r}"
+        )
+        raise TsaProtocolError(msg)
+
+
+def _check_hash_algorithm(
+    message_imprint: rfc3161_client.MessageImprint,
+    hash_algorithm: str,
+    tsa_url: str,
+) -> None:
+    """Verify the response MessageImprint hashAlgorithm matches the request.
+
+    The ``rfc3161_client`` exposes the decoded ``HashAlgorithm`` enum
+    value when it recognises the OID. A missing/unknown algorithm
+    attribute is treated as a mismatch: we cannot confirm the response
+    was stamped with the algorithm we asked for.
+
+    Raises:
+        TsaHashMismatchError: If the response algorithm OID differs from
+            the requested algorithm.
+    """
+    response_algorithm = getattr(message_imprint, "hash_algorithm", None)
+    expected_algorithm = _HASH_ALGORITHMS[hash_algorithm]
+    if response_algorithm != expected_algorithm:
+        logger.error(
+            SECURITY_TIMESTAMP_HASH_MISMATCH,
+            tsa_url=tsa_url,
+            reason="algorithm_mismatch",
+            expected_algorithm=hash_algorithm,
+            actual_algorithm=str(response_algorithm),
+        )
+        msg = (
+            "TSA response MessageImprint hashAlgorithm does not match "
+            f"request algorithm {hash_algorithm!r} "
+            "(possible on-path tampering or TSA misbehaviour)"
+        )
+        raise TsaHashMismatchError(msg)
+
+
 def _check_hash_binding(
     tst_info: rfc3161_client.TimeStampTokenInfo,
     expected_digest: bytes,
@@ -486,27 +561,7 @@ def _check_hash_binding(
             not match.
     """
     message_imprint = tst_info.message_imprint
-    # Algorithm (hashAlgorithm field) match -- the rfc3161_client
-    # exposes the decoded ``HashAlgorithm`` enum value when it
-    # recognises the OID. Missing/unknown algorithm attribute is
-    # treated as a mismatch because we cannot confirm the response
-    # was stamped with the algorithm we asked for.
-    response_algorithm = getattr(message_imprint, "hash_algorithm", None)
-    expected_algorithm = _HASH_ALGORITHMS[hash_algorithm]
-    if response_algorithm != expected_algorithm:
-        logger.error(
-            SECURITY_TIMESTAMP_HASH_MISMATCH,
-            tsa_url=tsa_url,
-            reason="algorithm_mismatch",
-            expected_algorithm=hash_algorithm,
-            actual_algorithm=str(response_algorithm),
-        )
-        msg = (
-            "TSA response MessageImprint hashAlgorithm does not match "
-            f"request algorithm {hash_algorithm!r} "
-            "(possible on-path tampering or TSA misbehaviour)"
-        )
-        raise TsaHashMismatchError(msg)
+    _check_hash_algorithm(message_imprint, hash_algorithm, tsa_url)
     actual = bytes(message_imprint.message)
     # Constant-time comparison avoids leaking digest-comparison
     # timing information to an on-path adversary. The digest itself

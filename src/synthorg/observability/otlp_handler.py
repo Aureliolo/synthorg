@@ -11,6 +11,7 @@ import logging
 import queue
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 from typing import TYPE_CHECKING, Final, override
@@ -66,6 +67,16 @@ _SEVERITY_MAP: dict[int, int] = {
 _DEFAULT_BATCH_SIZE: Final[int] = 100
 _DEFAULT_FLUSH_INTERVAL_SECONDS: Final[float] = 5.0
 _DEFAULT_TIMEOUT_SECONDS: Final[float] = 10.0
+_DEFAULT_MAX_RETRIES: Final[int] = 3
+
+# Bounded exponential backoff between export attempts (Pattern C/Sync):
+# delay(attempt) = min(base * factor**attempt, cap). The wait is
+# non-interruptible so that retries run to completion during shutdown.
+_RETRY_BACKOFF_BASE_SECONDS: Final[float] = 0.5
+_RETRY_BACKOFF_FACTOR: Final[int] = 2
+_RETRY_BACKOFF_CAP_SECONDS: Final[float] = 8.0
+_HTTP_CLIENT_ERROR_FLOOR: Final[int] = 400
+_HTTP_SERVER_ERROR_FLOOR: Final[int] = 500
 
 
 class OtlpHandler(logging.Handler):
@@ -87,6 +98,9 @@ class OtlpHandler(logging.Handler):
         batch_size: Number of records per export batch.
         flush_interval: Seconds between automatic flushes.
         timeout: HTTP request timeout in seconds.
+        max_retries: Number of retries on a transient export failure
+            (matching ``HttpBatchHandler``); a transient collector
+            hiccup would otherwise drop a whole batch permanently.
     """
 
     def __init__(  # noqa: PLR0913
@@ -98,6 +112,7 @@ class OtlpHandler(logging.Handler):
         batch_size: int = _DEFAULT_BATCH_SIZE,
         flush_interval: float = _DEFAULT_FLUSH_INTERVAL_SECONDS,
         timeout: float = _DEFAULT_TIMEOUT_SECONDS,
+        max_retries: int = _DEFAULT_MAX_RETRIES,
         _start_flusher: bool = True,
     ) -> None:
         super().__init__()
@@ -107,9 +122,13 @@ class OtlpHandler(logging.Handler):
         self._endpoint = endpoint
         self._protocol = protocol
         self._extra_headers = dict(headers)
+        if max_retries < 0:
+            msg = "max_retries must be greater than or equal to 0"
+            raise ValueError(msg)
         self._batch_size = batch_size
         self._flush_interval = flush_interval
         self._timeout = timeout
+        self._max_retries = max_retries
         self._queue: queue.SimpleQueue[logging.LogRecord] = queue.SimpleQueue()
         self._pending_count = 0
         self._pending_lock = threading.Lock()
@@ -246,8 +265,13 @@ class OtlpHandler(logging.Handler):
                 self._drain_and_flush()
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
+                with self._pending_lock:
+                    pending = self._pending_count
                 _internal_logger.error(
                     METRICS_OTLP_FLUSHER_ERROR,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    pending_records=pending,
                 )
 
     def _drain_and_flush(self) -> None:
@@ -267,8 +291,17 @@ class OtlpHandler(logging.Handler):
             if batch:
                 self._export_batch(batch)
 
-    def _export_batch(self, records: list[logging.LogRecord]) -> None:
-        """Export a batch of records as OTLP JSON log records."""
+    def _format_records(
+        self,
+        records: list[logging.LogRecord],
+    ) -> tuple[list[dict[str, object]], int]:
+        """Format records to OTLP dicts, counting per-record format drops.
+
+        Returns:
+            ``(log_records, format_drops)`` where ``format_drops`` is the
+            number of records that failed to format (already counted in
+            ``_dropped_count`` and routed through ``handleError``).
+        """
         log_records: list[dict[str, object]] = []
         format_drops = 0
         for record in records:
@@ -279,16 +312,17 @@ class OtlpHandler(logging.Handler):
                 self.handleError(record)
                 self._increment_dropped(1)
                 format_drops += 1
+        return log_records, format_drops
 
-        if not log_records:
-            # Pure-formatting failure: surface the drop count so
-            # the export-outcome callback reflects every lost
-            # record instead of silently zeroing the counter.
-            if format_drops:
-                self._invoke_export_callback("failure", format_drops)
-            return
+    def _build_otlp_request(
+        self,
+        log_records: list[dict[str, object]],
+    ) -> tuple[urllib.request.Request, str]:
+        """Wrap *log_records* in the OTLP resourceLogs envelope POST request.
 
-        # OTLP JSON format: wrap in resourceLogs envelope
+        Returns:
+            ``(request, url)`` for the ``/v1/logs`` HTTP/JSON endpoint.
+        """
         payload = {
             "resourceLogs": [
                 {
@@ -303,34 +337,35 @@ class OtlpHandler(logging.Handler):
             ],
         }
         body = json.dumps(payload).encode()
-
-        # Use /v1/logs path for OTLP HTTP JSON
         url = strip_trailing_slash(self._endpoint) + "/v1/logs"
         request = urllib.request.Request(url, data=body, method="POST")  # noqa: S310
         request.add_header("Content-Type", "application/json")
         for name, value in self._extra_headers.items():
             request.add_header(name, value)
+        return request, url
 
-        try:
-            with urllib.request.urlopen(  # noqa: S310
-                request,
-                timeout=self._timeout,
-            ):
-                pass
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            # urllib.error.HTTPError wraps a file pointer to the response
-            # body.  Close it explicitly to avoid leaking file descriptors.
-            if isinstance(exc, urllib.error.HTTPError):
-                exc.close()
+    def _export_batch(self, records: list[logging.LogRecord]) -> None:
+        """Export a batch of records as OTLP JSON log records."""
+        log_records, format_drops = self._format_records(records)
+        if not log_records:
+            # Pure-formatting failure: surface the drop count so the
+            # export-outcome callback reflects every lost record instead
+            # of silently zeroing the counter.
+            if format_drops:
+                self._invoke_export_callback("failure", format_drops)
+            return
+
+        request, url = self._build_otlp_request(log_records)
+        error = self._send_with_retries(request)
+        if error is not None:
             self._increment_dropped(len(log_records))
             with self._pending_lock:
                 total_dropped = self._dropped_count
             _internal_logger.warning(
                 METRICS_OTLP_EXPORT_FAILED,
                 url=url,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                error_type=type(error).__name__,
+                error=safe_error_description(error),
                 dropped_records=len(log_records),
                 total_dropped=total_dropped,
             )
@@ -344,16 +379,71 @@ class OtlpHandler(logging.Handler):
             return
         self._invoke_export_callback("success", format_drops)
 
+    def _backoff_delay(self, attempt: int) -> float:
+        """Bounded exponential backoff for retry *attempt* (0-indexed).
+
+        Returns:
+            Seconds to wait before the next attempt, capped at
+            ``_RETRY_BACKOFF_CAP_SECONDS``.
+        """
+        delay = _RETRY_BACKOFF_BASE_SECONDS * float(_RETRY_BACKOFF_FACTOR**attempt)
+        return min(delay, _RETRY_BACKOFF_CAP_SECONDS)
+
+    def _send_with_retries(
+        self,
+        request: urllib.request.Request,
+    ) -> Exception | None:
+        """POST *request*, retrying transient failures with backoff.
+
+        Mirrors ``HttpBatchHandler._send_with_retries`` (Pattern C/Sync):
+        this runs in a stdlib logging-handler daemon thread on
+        synchronous ``urllib.request``, so the async ``GeneralRetryHandler``
+        cannot be awaited here. 4xx client errors are non-retryable.
+
+        Returns:
+            ``None`` when the export succeeds, or the last ``Exception``
+            instance when every attempt failed.
+        """
+        last_error: Exception | None = None
+        for attempt in range(1 + self._max_retries):
+            try:
+                with urllib.request.urlopen(  # noqa: S310
+                    request,
+                    timeout=self._timeout,
+                ):
+                    pass
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                # HTTPError wraps a response FP -- close to avoid FD leak.
+                if isinstance(exc, urllib.error.HTTPError):
+                    exc.close()
+                    if _HTTP_CLIENT_ERROR_FLOOR <= exc.code < _HTTP_SERVER_ERROR_FLOOR:
+                        return exc
+                last_error = exc
+                if attempt < self._max_retries:
+                    # Bounded backoff before the next attempt. close()
+                    # budgets backoff_total into its join timeout, so a
+                    # single batch's retries run to completion rather than
+                    # being dropped mid-flight: shutdown is always set
+                    # during the final drain, so an interruptible wait here
+                    # would abandon the very records close() is exporting.
+                    time.sleep(self._backoff_delay(attempt))
+                    continue
+            else:
+                return None
+        return last_error
+
     def _invoke_export_callback(self, outcome: str, dropped: int) -> None:
         """Call the registered export callback, swallowing any errors.
 
         A callback failure must never break the export loop. Instead
         of re-raising, the exception is caught and emitted as a
-        structured :data:`METRICS_OTLP_CALLBACK_ERROR` warning via
-        the module's internal logger (with ``exc_info``), so operators
-        can see which sink went bad without losing subsequent export
-        outcomes. :class:`MemoryError` and :class:`RecursionError` are
-        propagated so the interpreter can react as usual.
+        structured :data:`METRICS_OTLP_CALLBACK_ERROR` warning (with a
+        redacted ``error`` description, never a traceback) via the
+        module's internal logger, so operators can see which sink went
+        bad without losing subsequent export outcomes.
+        :class:`MemoryError` and :class:`RecursionError` are propagated
+        so the interpreter can react as usual.
         """
         callback = self._export_callback
         if callback is None:
@@ -366,6 +456,8 @@ class OtlpHandler(logging.Handler):
                 METRICS_OTLP_CALLBACK_ERROR,
                 outcome=outcome,
                 dropped_records=dropped,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     @override
@@ -373,7 +465,14 @@ class OtlpHandler(logging.Handler):
         """Signal shutdown, flush remaining records, stop thread."""
         self._shutdown.set()
         self._batch_ready.set()
-        join_timeout = self._timeout * 2
+        # Worst case for an in-flight export: (1 + max_retries) attempts
+        # each up to ``timeout`` plus the bounded backoff between them.
+        # Since the backoff uses time.sleep and is non-interruptible, this
+        # is an upper bound.
+        backoff_total = sum(
+            self._backoff_delay(attempt) for attempt in range(self._max_retries)
+        )
+        join_timeout = (1 + self._max_retries) * self._timeout + backoff_total
         if self._flusher.is_alive():
             self._flusher.join(timeout=join_timeout)
             if self._flusher.is_alive():
@@ -417,6 +516,7 @@ def build_otlp_handler(
         batch_size=sink.otlp_batch_size,
         flush_interval=sink.otlp_export_interval_seconds,
         timeout=sink.otlp_timeout_seconds,
+        max_retries=sink.otlp_max_retries,
     )
     handler.setLevel(sink.level.value)
 

@@ -119,7 +119,7 @@
           "type": "timeseries",
           "id": 201,
           "title": "Task completion rate (per 5m, by outcome)",
-          "description": "synthorg_task_runs_total partitioned by bounded outcome (succeeded / failed / cancelled).",
+          "description": "synthorg_task_runs_total partitioned by bounded outcome (succeeded / failed / cancelled / rejected).",
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
@@ -634,11 +634,11 @@
           "type": "stat",
           "id": 704,
           "title": "App build info",
-          "description": "synthorg_app version label.",
+          "description": "synthorg_app_info version label (prometheus_client appends the _info suffix to Info metrics).",
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-              "expr": "synthorg_app",
+              "expr": "synthorg_app_info",
               "instant": true,
               "format": "table",
               "refId": "A"
@@ -772,13 +772,13 @@
         {
           "type": "timeseries",
           "id": 821,
-          "title": "Audit chain append rate by status",
-          "description": "synthorg_audit_chain_appends_total partitioned by status (signed / fallback / error). Sustained 'error' rate indicates a TSA / signing infrastructure outage.",
+          "title": "Audit chain signing-error rate",
+          "description": "rate(synthorg_audit_chain_appends_total{status=\"error\"}[5m]). A sustained non-zero rate indicates a TSA / signing infrastructure outage; the full by-status breakdown lives on the 'Audit & Security' row.",
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-              "expr": "sum by (status) (rate(synthorg_audit_chain_appends_total[5m]))",
-              "legendFormat": "{{status}}",
+              "expr": "sum(rate(synthorg_audit_chain_appends_total{status=\"error\"}[5m]))",
+              "legendFormat": "error",
               "refId": "A"
             }
           ],
@@ -816,6 +816,176 @@
           ],
           "fieldConfig": {"defaults": {"unit": "s"}},
           "gridPos": {"h": 8, "w": 8, "x": 16, "y": 67}
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "id": 900,
+      "title": "WebSocket Transport",
+      "collapsed": true,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 75},
+      "panels": [
+        {
+          "type": "stat",
+          "id": 901,
+          "title": "WebSocket active connections",
+          "description": "synthorg_ws_active_connections: currently-open WebSocket connections.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "synthorg_ws_active_connections",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "short"}},
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 76}
+        },
+        {
+          "type": "timeseries",
+          "id": 902,
+          "title": "WS revalidation outcomes (per 5m)",
+          "description": "sum by (outcome) (rate(synthorg_ws_revalidation_total[5m])). A sustained 'budget_exhausted' / 'fail' rate signals per-frame revalidation saturation; saturated peers are closed with 4011.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (outcome) (rate(synthorg_ws_revalidation_total[5m]))",
+              "legendFormat": "{{outcome}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}},
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 76}
+        },
+        {
+          "type": "timeseries",
+          "id": 903,
+          "title": "WS connection lifetime p95 by transport",
+          "description": "histogram_quantile(0.95, rate(synthorg_ws_connection_lifetime_seconds_bucket[5m])) split by transport. A collapsing p95 flags clients dropping shortly after auth.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "histogram_quantile(0.95, sum by (le, transport) (rate(synthorg_ws_connection_lifetime_seconds_bucket[5m])))",
+              "legendFormat": "{{transport}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}},
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 76}
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "id": 910,
+      "title": "Database Connection Pool",
+      "collapsed": true,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 84},
+      "panels": [
+        {
+          "type": "timeseries",
+          "id": 911,
+          "title": "PG pool size by backend",
+          "description": "synthorg_pg_pool_size: configured Postgres connection-pool size per backend.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "synthorg_pg_pool_size",
+              "legendFormat": "{{backend}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "short"}},
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 85}
+        },
+        {
+          "type": "timeseries",
+          "id": 912,
+          "title": "PG pool active connections by backend",
+          "description": "synthorg_pg_pool_active_connections: connections currently checked out. Approaching synthorg_pg_pool_size is the saturation precursor.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "synthorg_pg_pool_active_connections",
+              "legendFormat": "{{backend}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "short"}},
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 85}
+        },
+        {
+          "type": "timeseries",
+          "id": 913,
+          "title": "PG pool acquire p95 by backend",
+          "description": "histogram_quantile(0.95, rate(synthorg_pg_pool_acquire_duration_seconds_bucket[5m])) per backend. Rising acquire latency precedes pool exhaustion.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "histogram_quantile(0.95, sum by (le, backend) (rate(synthorg_pg_pool_acquire_duration_seconds_bucket[5m])))",
+              "legendFormat": "{{backend}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}},
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 85}
+        },
+        {
+          "type": "timeseries",
+          "id": 914,
+          "title": "PG pool exhaustion rate by backend",
+          "description": "sum by (backend) (rate(synthorg_pg_pool_exhausted_total[5m])). Any non-zero rate is a pool acquisition timeout (no connection available) and an alertable saturation signal.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (backend) (rate(synthorg_pg_pool_exhausted_total[5m]))",
+              "legendFormat": "{{backend}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}},
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 93}
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "id": 920,
+      "title": "Log Shipping & Queues",
+      "collapsed": true,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 101},
+      "panels": [
+        {
+          "type": "timeseries",
+          "id": 921,
+          "title": "Workspace push-queue events (per 5m, by outcome)",
+          "description": "sum by (outcome) (rate(synthorg_push_queue_events_total[5m])). 'enqueued' vs 'merged' tracks the merge+push pipeline; a growing gap means the queue is backing up.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (outcome) (rate(synthorg_push_queue_events_total[5m]))",
+              "legendFormat": "{{outcome}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 102}
+        },
+        {
+          "type": "timeseries",
+          "id": 922,
+          "title": "Log-shipping sink outcomes (per 5m)",
+          "description": "sum by (sink, outcome) (rate(synthorg_log_sink_events_total[5m])). A sustained 'failure' rate for an http / syslog sink means records are being dropped (misconfigured or unreachable endpoint).",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (sink, outcome) (rate(synthorg_log_sink_events_total[5m]))",
+              "legendFormat": "{{sink}} {{outcome}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 102}
         }
       ]
     }

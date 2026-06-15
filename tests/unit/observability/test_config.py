@@ -745,6 +745,25 @@ class TestSinkConfigOtlp:
         assert len(cfg.otlp_headers) == 1
         assert cfg.otlp_export_interval_seconds == 10.0
 
+    def test_custom_otlp_max_retries(self) -> None:
+        cfg = SinkConfig(
+            sink_type=SinkType.OTLP,
+            otlp_endpoint="http://localhost:4318",
+            otlp_max_retries=5,
+        )
+        assert cfg.otlp_max_retries == 5
+
+    def test_otlp_max_retries_default(self) -> None:
+        cfg = SinkConfig(
+            sink_type=SinkType.OTLP,
+            otlp_endpoint="http://localhost:4318",
+        )
+        assert cfg.otlp_max_retries == 3
+
+    def test_non_otlp_sink_rejects_custom_otlp_max_retries(self) -> None:
+        with pytest.raises(ValidationError, match="otlp_max_retries must be default"):
+            SinkConfig(sink_type=SinkType.CONSOLE, otlp_max_retries=5)
+
     def test_otlp_grpc_rejected_at_config_time(self) -> None:
         with pytest.raises(ValidationError, match="gRPC transport is not supported"):
             SinkConfig(

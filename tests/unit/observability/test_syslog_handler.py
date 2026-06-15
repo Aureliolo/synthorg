@@ -4,10 +4,11 @@ import json
 import logging
 import logging.handlers
 import socket
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import structlog
+import structlog.testing
 from structlog.stdlib import ProcessorFormatter
 from structlog.typing import Processor
 
@@ -18,9 +19,16 @@ from synthorg.observability.enums import (
     SyslogFacility,
     SyslogProtocol,
 )
+from synthorg.observability.errors import SinkConstructionError
+from synthorg.observability.events.metrics import (
+    METRICS_LOG_SINK_CALLBACK_ERROR,
+    METRICS_LOG_SINK_EXPORT_FAILED,
+)
 from synthorg.observability.syslog_handler import (
     FACILITY_MAP,
     PROTOCOL_MAP,
+    CountingSysLogHandler,
+    _suppress_sink_reentry,
     build_syslog_handler,
 )
 
@@ -188,14 +196,134 @@ class TestSyslogHandlerEmit:
         with pytest.raises(ValueError, match="non-empty syslog_host"):
             build_syslog_handler(sink, foreign_pre_chain=[])
 
-    def test_connection_failure_raises_runtime_error(self) -> None:
-        """TCP connection failure is wrapped in RuntimeError."""
+    def test_connection_failure_raises_sink_construction_error(self) -> None:
+        """TCP connection failure is wrapped in a typed SinkConstructionError."""
         sink = _syslog_sink(syslog_protocol=SyslogProtocol.TCP)
         with (
             patch(
                 "logging.handlers.SysLogHandler.__init__",
                 side_effect=OSError("Connection refused"),
             ),
-            pytest.raises(RuntimeError, match="Failed to connect"),
+            pytest.raises(SinkConstructionError, match="Failed to connect"),
         ):
             build_syslog_handler(sink, foreign_pre_chain=[])
+
+
+def _plain_record(msg: str = "hello") -> logging.LogRecord:
+    return logging.LogRecord(
+        name="test.logger",
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
+        msg=msg,
+        args=(),
+        exc_info=None,
+    )
+
+
+@pytest.mark.unit
+class TestSyslogExportCallback:
+    """The subclass counts drops and reports export outcomes."""
+
+    def _handler(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> CountingSysLogHandler:
+        handler = build_syslog_handler(_syslog_sink(), foreign_pre_chain=[])
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        handler_cleanup.append(handler)
+        return handler
+
+    def test_returns_counting_subclass(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        handler = self._handler(handler_cleanup)
+        assert isinstance(handler, CountingSysLogHandler)
+
+    def test_successful_emit_invokes_success_callback(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        handler = self._handler(handler_cleanup)
+        outcomes: list[tuple[str, int]] = []
+        handler.set_export_callback(lambda o, d: outcomes.append((o, d)))
+        handler.socket = MagicMock(spec=socket.socket)  # type: ignore[attr-defined]
+
+        handler.emit(_plain_record())
+
+        assert outcomes == [("success", 0)]
+
+    def test_failed_emit_counts_drop_and_invokes_failure_callback(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        handler = self._handler(handler_cleanup)
+        outcomes: list[tuple[str, int]] = []
+        handler.set_export_callback(lambda o, d: outcomes.append((o, d)))
+        mock_socket = MagicMock(spec=socket.socket)
+        mock_socket.sendto.side_effect = OSError("syslog down")
+        handler.socket = mock_socket  # type: ignore[attr-defined]
+
+        with structlog.testing.capture_logs() as logs:
+            handler.emit(_plain_record())
+
+        assert outcomes == [("failure", 1)]
+        assert handler._dropped_count == 1
+        drops = [
+            rec
+            for rec in logs
+            if rec.get("event") == METRICS_LOG_SINK_EXPORT_FAILED
+            and rec.get("sink") == "syslog"
+        ]
+        assert drops, "a failed syslog emit must log redacted drop context"
+        assert drops[0].get("error_type") == "OSError"
+        assert drops[0].get("error")
+
+    def test_emit_dropped_while_emitting_own_diagnostic(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        """A record routed back into the sink while it is emitting its
+        own failure diagnostic is dropped, breaking the synchronous
+        emit -> handleError -> emit recursion a syslog outage triggers."""
+        handler = self._handler(handler_cleanup)
+        mock_socket = MagicMock(spec=socket.socket)
+        handler.socket = mock_socket  # type: ignore[attr-defined]
+
+        with _suppress_sink_reentry():
+            handler.emit(_plain_record())
+
+        mock_socket.sendto.assert_not_called()
+
+    def test_set_export_callback_rejects_non_callable(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        handler = self._handler(handler_cleanup)
+        with pytest.raises(TypeError, match="callable or None"):
+            handler.set_export_callback(42)  # type: ignore[arg-type]
+
+    def test_invoke_export_callback_swallows_non_critical_exception(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        """A throwing callback is logged, not propagated, and never breaks emit."""
+        handler = self._handler(handler_cleanup)
+
+        def _boom(_outcome: str, _dropped: int) -> None:
+            msg = "callback boom"
+            raise RuntimeError(msg)
+
+        handler.set_export_callback(_boom)
+        with structlog.testing.capture_logs() as logs:
+            handler._invoke_export_callback("success", 0)
+
+        errors = [
+            rec
+            for rec in logs
+            if rec.get("event") == METRICS_LOG_SINK_CALLBACK_ERROR
+            and rec.get("sink") == "syslog"
+        ]
+        assert errors, "a throwing callback must log METRICS_LOG_SINK_CALLBACK_ERROR"
+        assert errors[0].get("error_type") == "RuntimeError"

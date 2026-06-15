@@ -25,11 +25,16 @@ from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
 from opentelemetry.trace import Tracer
 
 from synthorg.core.normalization import strip_trailing_slash
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.metrics import (
     METRICS_OTLP_EXPORT_FAILED,
     METRICS_OTLP_FLUSHER_STARTED,
     METRICS_OTLP_FLUSHER_STOPPED,
+)
+from synthorg.observability.events.tracing import (
+    TRACE_HANDLER_GLOBAL_PROVIDER_COLLISION,
+    TRACE_HANDLER_ORPHAN_SHUTDOWN_FAILED,
+    TRACE_HANDLER_SINGLETON_VIOLATION,
 )
 
 if TYPE_CHECKING:
@@ -71,7 +76,7 @@ class OtlpTraceHandler:
                 "shutdown() and _reset_for_testing() to rebuild."
             )
             logger.error(
-                "trace.handler.singleton_violation",
+                TRACE_HANDLER_SINGLETON_VIOLATION,
                 endpoint=config.endpoint,
                 service_name=config.service_name,
                 sampling_ratio=config.sampling_ratio,
@@ -116,7 +121,7 @@ class OtlpTraceHandler:
                 "that auto-initialises the global provider."
             )
             logger.error(
-                "trace.handler.global_provider_collision",
+                TRACE_HANDLER_GLOBAL_PROVIDER_COLLISION,
                 endpoint=config.endpoint,
                 service_name=config.service_name,
                 sampling_ratio=config.sampling_ratio,
@@ -128,9 +133,11 @@ class OtlpTraceHandler:
             # failing construction leaves no background resources.
             try:
                 self._provider.shutdown()
-            except Exception:  # noqa: BLE001 -- cleanup best-effort
+            except Exception as exc:  # noqa: BLE001 -- cleanup best-effort
                 logger.warning(
-                    "trace.handler.orphan_shutdown_failed",
+                    TRACE_HANDLER_ORPHAN_SHUTDOWN_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
             raise RuntimeError(msg)
         _HANDLER_INSTANCE = self

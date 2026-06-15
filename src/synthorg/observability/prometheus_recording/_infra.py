@@ -8,6 +8,8 @@ from synthorg.observability.prometheus_labels import (
     VALID_BUDGET_QUERY_TYPES,
     VALID_CACHE_NAMES,
     VALID_CACHE_OUTCOMES,
+    VALID_LOG_SINK_KINDS,
+    VALID_LOG_SINK_OUTCOMES,
     VALID_MCP_HANDLER_OUTCOMES,
     VALID_OTLP_KINDS,
     VALID_OTLP_OUTCOMES,
@@ -71,6 +73,27 @@ class _InfraRecordingMixin(_RecordingMetricsBase):
         self._otlp_export_batches.labels(kind=kind, outcome=outcome).inc()
         if dropped_records > 0:
             self._otlp_export_dropped.labels(kind=kind).inc(dropped_records)
+
+    def record_log_sink_export(
+        self,
+        *,
+        sink: str,
+        outcome: str,
+    ) -> None:
+        """Record a log-shipping sink export outcome.
+
+        Args:
+            sink: ``"http"`` or ``"syslog"`` (bounded by
+                :data:`VALID_LOG_SINK_KINDS`).
+            outcome: ``"success"`` or ``"failure"`` (bounded by
+                :data:`VALID_LOG_SINK_OUTCOMES`).
+
+        Raises:
+            ValueError: If *sink* or *outcome* are invalid.
+        """
+        require_label("log sink", sink, VALID_LOG_SINK_KINDS)
+        require_label("log sink outcome", outcome, VALID_LOG_SINK_OUTCOMES)
+        self._log_sink_events.labels(sink=sink, outcome=outcome).inc()
 
     def record_push_queue_event(self, *, outcome: str) -> None:
         """Increment the workspace push-queue event counter.

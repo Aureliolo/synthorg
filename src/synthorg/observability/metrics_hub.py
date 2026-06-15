@@ -75,9 +75,15 @@ def _active() -> PrometheusCollector | None:
         The registered ``PrometheusCollector``, or ``None`` when none is
         wired or the weakref target has been collected.
     """
-    if _collector_ref is None:
+    # Capture the module global once: a concurrent
+    # ``clear_active_collector()`` between an ``is None`` check and a
+    # second read would otherwise turn the slot to ``None`` and raise
+    # ``TypeError: 'NoneType' object is not callable``, which
+    # ``_safe_record`` deliberately re-raises into the business path.
+    ref = _collector_ref
+    if ref is None:
         return None
-    return _collector_ref()
+    return ref()
 
 
 def _safe_record(

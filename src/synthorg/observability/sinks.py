@@ -477,6 +477,8 @@ def build_handler(
         ValueError: If an HTTP sink has an empty ``http_url`` or a SYSLOG
             sink has an empty ``syslog_host`` (raised by the dedicated
             sub-builders).
+        SinkConstructionError: If a SYSLOG sink's OS-level socket
+            connection fails (raised by the syslog sub-builder).
     """
     effective_routing = routing if routing is not None else SINK_ROUTING
 

@@ -326,13 +326,10 @@ class AuditChainSink(logging.Handler):
         Non-security events are silently ignored.
 
         Re-entry from the sink's own signing thread is suppressed:
-        the signer, TSA client, and any helper they call log events
-        of their own (including ``security.timestamp.*``) that would
-        otherwise loop back into this handler through the logging
-        hierarchy and eventually deadlock on the single-worker
-        ``_SIGNING_EXECUTOR``. Records originating from a thread
-        named ``audit-sign`` are dropped here and handled by the
-        sibling handlers on the same logger.
+        the signer / TSA client log ``security.timestamp.*`` events that
+        would otherwise loop back here and deadlock the single-worker
+        ``_SIGNING_EXECUTOR``. Records from a thread named ``audit-sign``
+        are dropped here and handled by the sibling handlers.
 
         Args:
             record: Log record from the logging framework.
@@ -361,134 +358,146 @@ class AuditChainSink(logging.Handler):
             return
 
         try:
-            # Construct the typed model FIRST so an unrecognised key or
-            # malformed value fails at the boundary, not downstream
-            # during signing. The dump-then-dumps pipeline preserves
-            # byte stability: ``model_dump(exclude_none=True)`` produces
-            # the dict ``json.dumps(sort_keys=True)`` then sorts back
-            # into the same byte sequence the previous "build dict ->
-            # parse_typed inspector -> json.dumps" path emitted. The
-            # ``test_golden_json_byte_stable`` test pins this contract
-            # across the migration. Do NOT switch to
-            # ``model_dump_json``: it bypasses ``sort_keys`` and key
-            # ordering would become definition order, which would break
-            # the hash chain.
-            # Forensic fields (principal/resource/...) arrive INSIDE the
-            # structlog event_dict on ``record.msg`` -- a bare
-            # ``getattr(record, "principal")`` always misses them under the
-            # ``wrap_for_formatter`` bridge, which would sign an audit entry
-            # that records the event but not WHO performed it. Resolve from
-            # the event_dict first, falling back to record attributes for
-            # plain ``extra=``-style stdlib emissions.
-            event_dict = _extract_event_dict(record)
-            payload_model = AuditChainEventPayload(
-                event=msg,
-                level=record.levelname,
-                timestamp=record.created,
-                module=record.module,
-                tool_name=_optional_field(record, event_dict, "tool_name"),
-                expected_hash=_optional_field(record, event_dict, "expected_hash"),
-                actual_hash=_optional_field(record, event_dict, "actual_hash"),
-                correlation_id=_optional_field(record, event_dict, "correlation_id"),
-                principal=_optional_field(record, event_dict, "principal"),
-                resource=_optional_field(record, event_dict, "resource"),
-                action_type=_optional_field(record, event_dict, "action_type"),
-                error=_optional_field(record, event_dict, "error"),
-            )
-            payload = payload_model.model_dump(exclude_none=True)
-
-            data = json.dumps(
-                payload,
-                sort_keys=True,
-                ensure_ascii=True,
-                default=str,
-            ).encode("utf-8")
-
-            # Bridge async signing+timestamping into sync emit via a
-            # dedicated thread pool. Both steps run inside a single
-            # executor job so a concurrent emit() cannot interleave
-            # its sign() between our sign() and timestamp() -- that
-            # interleaving would let the TSA stamp a tail_hash that
-            # no longer reflects the state at which we signed, and
-            # break the binding-payload verification contract.
-            import asyncio  # noqa: PLC0415
-
-            future = _SIGNING_EXECUTOR.submit(
-                asyncio.run,
-                self._sign_and_timestamp(data),
-            )
-            signed, ts_result = future.result(timeout=self._signing_timeout_seconds)
-
-            with self._lock:
-                self._chain.append(
-                    event_data=data,
-                    signature=signed.signature,
-                    timestamp=ts_result.timestamp,
-                )
-                depth = len(self._chain.entries)
-            # The provider tells us its origin directly; we only
-            # record "signed" when a TSA actually signed the
-            # timestamp -- fallbacks from TSA failure and plain
-            # local-clock providers both report non-signed status
-            # so audit-chain append metrics accurately reflect how
-            # many events received a cryptographic timestamp.
-            status = "signed" if ts_result.source == "signed" else "fallback"
-            self._invoke_append_callback(
-                status,
-                depth,
-                ts_result.timestamp.timestamp(),
-            )
-
+            data = self._assemble_payload(msg, record)
+            self._sign_append_notify(data)
         except ValidationError as exc:
-            # Boundary validation rejected the assembled payload --
-            # do NOT fall through to the generic ``except Exception``
-            # below. The generic handler logs ``exc_info=True`` whose
-            # traceback may carry signer / TSA frame-locals on a
-            # different code path; here we already know the failure
-            # is a Pydantic validation error against
-            # ``AuditChainEventPayload`` so a structured log without a
-            # traceback is both safer and clearer for operators
-            # triaging audit-chain integrity drops. The Pydantic
-            # constructor surfaces the field locations via the
-            # ``error_count`` attached below; this event is the
-            # audit-chain side of the same incident, distinguishing
-            # schema-reject from signing-timeout from JSON-encode
-            # failure.
-            log_exception_redacted(
-                logger,
-                AUDIT_CHAIN_EMIT_VALIDATION_FAILED,
-                exc,
-                audited_event=msg,
-                error_count=len(exc.errors()),
-            )
-            self._invoke_append_callback("error", 0, 0.0)
+            self._on_validation_error(exc, msg)
         except concurrent.futures.TimeoutError:
-            # Distinguishing timeout from other emit failures lets the
-            # operator triage TSA / signer hangs separately from
-            # one-off serialization or callback failures. Use the
-            # non-audited prefix so this log can't recurse through
-            # ``emit()``. ``logger.error`` (not ``logger.exception``)
-            # is intentional: a TSA hang carries credential-bearing
-            # frame-locals in its traceback (signer key paths, TSA
-            # auth headers); the structured fields below are the only
-            # diagnostics that should reach any sink.
-            logger.error(
-                AUDIT_CHAIN_EMIT_TIMEOUT,
-                audited_event=msg,
-                timeout_seconds=self._signing_timeout_seconds,
-            )
-            self._invoke_append_callback("error", 0, 0.0)
+            self._on_timeout(msg)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            # Use a non-audited event prefix (``audit_chain.*``) so
-            # this error log can't loop back through ``emit()`` and
-            # recurse on the single-worker signing executor.
-            logger.error(
-                AUDIT_CHAIN_EMIT_ERROR,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            self._on_emit_error(exc, msg)
+
+    def _assemble_payload(self, msg: str, record: logging.LogRecord) -> bytes:
+        """Build the byte-stable signed payload for *record*.
+
+        Constructs the typed model FIRST so an unrecognised key or
+        malformed value fails at the boundary (``ValidationError``), not
+        downstream during signing. The dump-then-dumps pipeline preserves
+        byte stability: ``model_dump(exclude_none=True)`` then
+        ``json.dumps(sort_keys=True)`` reproduces the exact byte sequence
+        ``test_golden_json_byte_stable`` pins. Do NOT switch to
+        ``model_dump_json``: it bypasses ``sort_keys`` and key ordering
+        would become definition order, breaking the hash chain.
+
+        Forensic fields (principal/resource/...) arrive INSIDE the
+        structlog event_dict on ``record.msg``; a bare
+        ``getattr(record, "principal")`` misses them under the
+        ``wrap_for_formatter`` bridge, which would sign an entry that
+        records the event but not WHO performed it. Resolve from the
+        event_dict first, falling back to record attributes for plain
+        ``extra=``-style stdlib emissions.
+
+        Returns:
+            The UTF-8 JSON bytes to sign and append.
+        """
+        event_dict = _extract_event_dict(record)
+        payload_model = AuditChainEventPayload(
+            event=msg,
+            level=record.levelname,
+            timestamp=record.created,
+            module=record.module,
+            tool_name=_optional_field(record, event_dict, "tool_name"),
+            expected_hash=_optional_field(record, event_dict, "expected_hash"),
+            actual_hash=_optional_field(record, event_dict, "actual_hash"),
+            correlation_id=_optional_field(record, event_dict, "correlation_id"),
+            principal=_optional_field(record, event_dict, "principal"),
+            resource=_optional_field(record, event_dict, "resource"),
+            action_type=_optional_field(record, event_dict, "action_type"),
+            error=_optional_field(record, event_dict, "error"),
+        )
+        payload = payload_model.model_dump(exclude_none=True)
+        return json.dumps(
+            payload,
+            sort_keys=True,
+            ensure_ascii=True,
+            default=str,
+        ).encode("utf-8")
+
+    def _sign_append_notify(self, data: bytes) -> None:
+        """Sign + timestamp *data*, append to the chain, fire the callback.
+
+        Both steps run inside a single executor job so a concurrent
+        ``emit()`` cannot interleave its ``sign()`` between our
+        ``sign()`` and ``timestamp()`` -- that would let the TSA stamp a
+        tail_hash that no longer reflects the state at which we signed,
+        breaking the binding-payload verification contract.
+        """
+        import asyncio  # noqa: PLC0415
+
+        future = _SIGNING_EXECUTOR.submit(
+            asyncio.run,
+            self._sign_and_timestamp(data),
+        )
+        signed, ts_result = future.result(timeout=self._signing_timeout_seconds)
+
+        with self._lock:
+            self._chain.append(
+                event_data=data,
+                signature=signed.signature,
+                timestamp=ts_result.timestamp,
             )
-            self._invoke_append_callback("error", 0, 0.0)
+            depth = len(self._chain.entries)
+        # Only record "signed" when a TSA actually signed the timestamp;
+        # TSA-failure fallbacks and plain local-clock providers report
+        # non-signed status so append metrics reflect how many events
+        # received a cryptographic timestamp.
+        status = "signed" if ts_result.source == "signed" else "fallback"
+        self._invoke_append_callback(
+            status,
+            depth,
+            ts_result.timestamp.timestamp(),
+        )
+
+    def _on_validation_error(self, exc: ValidationError, msg: str) -> None:
+        """Log a boundary-validation reject without a traceback.
+
+        Routed through the explicit branch (not the generic ``except``)
+        because we already know the failure is a Pydantic validation
+        error against ``AuditChainEventPayload``: a structured log
+        without a traceback is both safer (no signer / TSA frame-locals)
+        and clearer for operators triaging audit-chain integrity drops.
+        """
+        log_exception_redacted(
+            logger,
+            AUDIT_CHAIN_EMIT_VALIDATION_FAILED,
+            exc,
+            audited_event=msg,
+            error_count=len(exc.errors()),
+        )
+        self._invoke_append_callback("error", 0, 0.0)
+
+    def _on_timeout(self, msg: str) -> None:
+        """Log a signer / TSA hang distinctly from other emit failures.
+
+        Uses the non-audited ``audit_chain.*`` prefix so the log cannot
+        recurse through ``emit()``. ``logger.error`` (not
+        ``logger.exception``) is intentional: a TSA hang carries
+        credential-bearing frame-locals in its traceback (signer key
+        paths, TSA auth headers); the structured fields below are the
+        only diagnostics that should reach any sink.
+        """
+        logger.error(
+            AUDIT_CHAIN_EMIT_TIMEOUT,
+            audited_event=msg,
+            timeout_seconds=self._signing_timeout_seconds,
+        )
+        self._invoke_append_callback("error", 0, 0.0)
+
+    def _on_emit_error(self, exc: Exception, msg: str) -> None:
+        """Log an unexpected signer / serialisation failure (redacted).
+
+        Uses the non-audited ``audit_chain.*`` prefix so this error log
+        cannot loop back through ``emit()`` and recurse on the
+        single-worker signing executor.
+        """
+        logger.error(
+            AUDIT_CHAIN_EMIT_ERROR,
+            audited_event=msg,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        self._invoke_append_callback("error", 0, 0.0)
 
     def _invoke_append_callback(
         self,

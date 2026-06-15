@@ -25,13 +25,13 @@ The endpoint is unauthenticated by default; put it behind your normal scrape-ACL
 
 The **Dashboard** column maps each metric to a row in the default Grafana overview dashboard (`monitoring/grafana/synthorg-overview.json`). Rows are collapsible; the only row expanded by default is `Health & SLO`. The dashboard exposes four filter variables (`$agent_id`, `$agent`, `$workflow_definition_id`, `$department`) that drill panels down per-entity; the two agent-named variables exist because `synthorg_tasks_total` uses `agent` while the per-agent cost metrics use `agent_id`. Default queries aggregate across the full set so the unfiltered view is always meaningful.
 
-Bounded-label values are enforced at record time in `src/synthorg/observability/prometheus_labels.py`; PromQL filters that reference values outside those allowlists will never match data. The four formerly-unbounded labels (`agent_id`, `agent`, `department`, `workflow_definition_id` on the metrics noted below) are validated against a registry-bound snapshot rebuilt on every Prometheus scrape; unknown values drop that one sample with a `metrics.scrape.failed` WARN log per unknown label per scrape. The log repeats on the next scrape if the value is still unknown.
+Bounded-label values are enforced at record time in `src/synthorg/observability/prometheus_labels.py`; PromQL filters that reference values outside those allowlists will never match data. The five registry-bound push-time labels (`agent_id`, `agent`, `department`, `workflow_definition_id`, `tool_name` on the metrics noted below) are validated against a registry-bound snapshot rebuilt on every Prometheus scrape; unknown values drop that one sample with a `metrics.scrape.failed` WARN log per unknown label per scrape. The log repeats on the next scrape if the value is still unknown.
 
 ### Info
 
 | Metric | Type | Labels | Description | Dashboard |
 |--------|------|--------|-------------|-----------|
-| `synthorg_app` | Info | `version` | Application build info. | `Client Health` |
+| `synthorg_app_info` | Info | `version` | Application build info. `prometheus_client` appends the `_info` suffix, so the scraped series is `synthorg_app_info` (not `synthorg_app`). | `Client Health` |
 
 ### Coordination (push-updated per multi-agent run)
 
@@ -117,6 +117,30 @@ Bounded-label values are enforced at record time in `src/synthorg/observability/
 | Metric | Type | Labels | Description | Dashboard |
 |--------|------|--------|-------------|-----------|
 | `synthorg_client_disconnects_total` | Counter | `transport`, `reason` | Client transport disconnections (`transport` bounded to `sse` / `websocket` / `mcp_stdio` / `mcp_http`; `reason` bounded to `client_initiated` / `transport_error` / `cancelled` / `timeout`). | `Client Health` |
+
+### WebSocket transport
+
+| Metric | Type | Labels | Description | Dashboard |
+|--------|------|--------|-------------|-----------|
+| `synthorg_ws_active_connections` | Gauge | (none) | Currently-open WebSocket connections. | `WebSocket Transport` |
+| `synthorg_ws_connection_lifetime_seconds` | Histogram | `transport` | WebSocket connection lifetime by transport (`transport` bounded to `websocket` / `sse`; buckets 1s-4h). A collapsing p95 flags clients dropping shortly after auth. | `WebSocket Transport` |
+| `synthorg_ws_revalidation_total` | Counter | `outcome` | Per-frame WS revalidation outcomes (`outcome` bounded to `pass` / `fail` / `budget_exhausted`). A sustained `budget_exhausted` rate is the revalidation-saturation signal (saturated peers close with 4011). | `WebSocket Transport` |
+
+### Database connection pool
+
+| Metric | Type | Labels | Description | Dashboard |
+|--------|------|--------|-------------|-----------|
+| `synthorg_pg_pool_size` | Gauge | `backend` | Configured Postgres pool size (`backend` bounded to `primary` / `replica`). | `Database Connection Pool` |
+| `synthorg_pg_pool_active_connections` | Gauge | `backend` | Connections currently checked out of the pool. Approaching `synthorg_pg_pool_size` is the saturation precursor. | `Database Connection Pool` |
+| `synthorg_pg_pool_acquire_duration_seconds` | Histogram | `backend` | Wall time spent waiting for a connection (buckets 1ms-5s). Rising acquire latency precedes exhaustion. | `Database Connection Pool` |
+| `synthorg_pg_pool_exhausted_total` | Counter | `backend` | Pool-acquisition timeouts (no connection available). Any non-zero rate is alertable. | `Database Connection Pool` |
+
+### Push queue + log shipping
+
+| Metric | Type | Labels | Description | Dashboard |
+|--------|------|--------|-------------|-----------|
+| `synthorg_push_queue_events_total` | Counter | `outcome` | Workspace merge+push queue events (`outcome` bounded to `enqueued` / `merged`). A growing gap between `enqueued` and `merged` means the queue is backing up. | `Log Shipping & Queues` |
+| `synthorg_log_sink_events_total` | Counter | `sink`, `outcome` | HTTP / syslog log-shipping sink export outcomes (`sink` bounded to `http` / `syslog`; `outcome` bounded to `success` / `failure`). A sustained `failure` rate means a misconfigured or unreachable shipping endpoint is dropping records. | `Log Shipping & Queues` |
 
 ### Escalation + identity + workflow
 
@@ -323,7 +347,7 @@ sum(rate(synthorg_client_disconnects_total{reason="transport_error"}[5m]))
 
 Import `monitoring/grafana/synthorg-overview.json` into any Grafana v10+ instance. The file is Grafana v10-compatible dashboard JSON (authored against the v11 editor, which emits a schema readable by v10) with a single `${DS_PROMETHEUS}` template variable bound to your Prometheus data source plus four filter variables: `$agent_id` (sourced from `synthorg_agent_cost_total`'s `agent_id` label, used by Cost & Budget + Audit & Security panels), `$agent` (sourced from `synthorg_tasks_total`'s `agent` label, used by the Tasks row's per-agent panel), `$workflow_definition_id`, and `$department`. The two agent-named variables exist because `synthorg_tasks_total` and `synthorg_agent_cost_total` use different label names (`agent` vs `agent_id`); panels filter on whichever variable matches their underlying metric.
 
-The dashboard organises over forty panels into ten collapsible rows. Only `Health & SLO` is expanded by default; expand the others as needed to keep the unfiltered view scannable.
+The dashboard organises over fifty panels into thirteen rows. Only `Health & SLO` is expanded by default; expand the others as needed to keep the unfiltered view scannable.
 
 | Row | Default | Panels |
 |-----|---------|--------|
@@ -336,7 +360,10 @@ The dashboard organises over forty panels into ten collapsible rows. Only `Healt
 | `Client Health` | collapsed | Client disconnects by transport+reason, API request rate by status class, OTLP export batches, OTLP dropped records, cache hit rate, app info |
 | `Decisions` | collapsed | Approval decisions/sec (`synthorg_approval_decisions_total`), escalation outcomes/sec (`synthorg_escalation_outcomes_total`), blueprint instantiations/sec (`synthorg_blueprint_instantiations_total`) |
 | `Configuration & MCP` | collapsed | Settings mutations/sec by namespace (`synthorg_settings_mutations_total`), MCP handler success rate (`synthorg_mcp_handler_outcomes_total`), MCP handler p95 latency by tool (`synthorg_mcp_handler_duration_seconds`) |
-| `Audit & Performance` | collapsed | Audit chain append rate by status (`synthorg_audit_chain_appends_total`), audit chain integrity over the last hour (`synthorg_audit_chain_verifications_total`), budget query p95 latency by query type (`synthorg_budget_query_duration_seconds`) |
+| `Audit & Performance` | collapsed | Audit chain signing-error rate (`synthorg_audit_chain_appends_total{status="error"}`), audit chain integrity over the last hour (`synthorg_audit_chain_verifications_total`), budget query p95 latency by query type (`synthorg_budget_query_duration_seconds`) |
+| `WebSocket Transport` | collapsed | Active connections (`synthorg_ws_active_connections`), revalidation outcomes (`synthorg_ws_revalidation_total`), connection lifetime p95 by transport (`synthorg_ws_connection_lifetime_seconds`) |
+| `Database Connection Pool` | collapsed | Pool size + active connections by backend (`synthorg_pg_pool_size` / `synthorg_pg_pool_active_connections`), acquire p95 (`synthorg_pg_pool_acquire_duration_seconds`), exhaustion rate (`synthorg_pg_pool_exhausted_total`) |
+| `Log Shipping & Queues` | collapsed | Workspace push-queue events (`synthorg_push_queue_events_total`), HTTP / syslog sink outcomes (`synthorg_log_sink_events_total`) |
 
 To install via the Grafana UI: `Dashboards → New → Import → Upload JSON file`. Via the provisioning API: `POST /api/dashboards/db` with `{"dashboard": <file>, "overwrite": true, "inputs": [...]}`.
 

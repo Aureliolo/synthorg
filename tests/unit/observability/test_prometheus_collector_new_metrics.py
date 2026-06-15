@@ -264,6 +264,25 @@ def test_record_otlp_export_rejects_unknown_kind() -> None:
         collector.record_otlp_export(kind="metrics", outcome="success")
 
 
+def test_record_log_sink_export_increments_outcome_counter() -> None:
+    collector = PrometheusCollector()
+    collector.record_log_sink_export(sink="http", outcome="success")
+    collector.record_log_sink_export(sink="syslog", outcome="failure")
+    parsed = _parse(collector)
+    events = {
+        (labels["sink"], labels["outcome"]): value
+        for labels, value in parsed["synthorg_log_sink_events"]
+    }
+    assert events[("http", "success")] == 1.0
+    assert events[("syslog", "failure")] == 1.0
+
+
+def test_record_log_sink_export_rejects_unknown_sink() -> None:
+    collector = PrometheusCollector()
+    with pytest.raises(ValueError, match="Unknown log sink"):
+        collector.record_log_sink_export(sink="kafka", outcome="success")
+
+
 # -- Metrics endpoint families present --------------------------------------
 
 

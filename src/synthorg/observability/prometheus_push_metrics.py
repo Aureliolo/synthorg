@@ -1,11 +1,12 @@
 """Prometheus metric families that are push-updated by call sites.
 
-Extracted from :mod:`synthorg.observability.prometheus_collector` to
-keep that module under the 800-line ceiling mandated by CLAUDE.md.
 The ``PushMetrics`` container instantiates every Counter / Histogram
 / Gauge that middleware, cost-recording, the audit sink, and the
 OTLP handler push data into, and exposes them as attributes so the
 collector can forward ``record_*`` calls with a single dot-access.
+Keeping the family construction here (separate from the pull-refresh
+logic in :mod:`synthorg.observability.prometheus_collector`) lets each
+file stay under the module-size ceiling mandated by CLAUDE.md.
 
 No business logic lives here -- the collector still owns the
 validation, cardinality guards, and public API.
@@ -255,6 +256,17 @@ class PushMetrics:
             registry=registry,
         )
 
+        # ``sink`` is bounded (``http`` / ``syslog``); ``outcome`` is
+        # ``success`` / ``failure``. A misconfigured shipping sink that
+        # drops records to stderr-only would otherwise be invisible;
+        # the failure series is the alertable saturation signal.
+        self.log_sink_events = PromCounter(
+            f"{prefix}_log_sink_events_total",
+            "Log-shipping sink export outcomes (http / syslog)",
+            ["sink", "outcome"],
+            registry=registry,
+        )
+
         # -- Workflow blueprint instantiation counter ----------------
         # Single neutral terminal counter so dashboards can compute
         # success rate as
@@ -289,7 +301,7 @@ class PushMetrics:
         # ``tool_duration`` histogram (which extends to 120s for
         # provider-bound tools). MCP handlers are service-boundary
         # calls, mostly sub-second; the bucket span below covers
-        # 1ms to 10s with seven sub-100ms buckets.
+        # 1ms to 10s with five sub-100ms buckets.
         self.mcp_handler_outcomes = PromCounter(
             f"{prefix}_mcp_handler_outcomes_total",
             "MCP handler invocations by tool and outcome",

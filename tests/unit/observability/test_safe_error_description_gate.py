@@ -63,7 +63,7 @@ def _scan_source(
     """Run the gate's ``_LoggerExceptionFinder`` against an inline source.
 
     Each hit is a ``(lineno, col_offset, rule_id)`` triple where
-    ``rule_id`` is one of ``error_str_exc`` / ``exc_info_true``;
+    ``rule_id`` is one of ``error_str_exc`` / ``exc_info_traceback``;
     callers that only need the line / column can ignore the third
     element.
     """
@@ -101,7 +101,7 @@ class TestExtendedGate:
 
     @pytest.mark.parametrize(
         "method",
-        ["exception", "warning", "error", "info", "debug"],
+        ["exception", "warning", "error", "info", "debug", "critical"],
     )
     def test_logger_method_str_exc_flagged(self, method: str) -> None:
         """Every severity method trips the gate on bare ``error=str(exc)``."""
@@ -274,7 +274,7 @@ class TestFStringBlindspot:
 
     @pytest.mark.parametrize(
         "method",
-        ["exception", "warning", "error", "info", "debug"],
+        ["exception", "warning", "error", "info", "debug", "critical"],
     )
     def test_fstring_implicit_exc_flagged(self, method: str) -> None:
         """Every severity trips on ``error=f"...{exc}..."`` (default conversion)."""
@@ -1041,22 +1041,23 @@ class TestExcInfoGate:
     leaks to the log sink, regardless of how the ``error=`` field is
     constructed.
 
-    The gate flags every ``exc_info=True`` literal kwarg on a logger
-    call. Per-line opt-out via
-    ``# lint-allow: exc-info -- <reason>`` (mandatory non-empty
+    The gate flags every traceback-attaching ``exc_info=`` kwarg on a
+    logger call: both the literal ``exc_info=True`` and the 3-tuple
+    ``exc_info=(type(exc), exc, exc.__traceback__)``. Per-line opt-out
+    via ``# lint-allow: exc-info -- <reason>`` (mandatory non-empty
     reason) covers genuine framework boundaries that already redact
     frame-locals downstream.
     """
 
     @pytest.mark.parametrize(
         "method",
-        ["exception", "warning", "error", "info", "debug"],
+        ["exception", "warning", "error", "info", "debug", "critical"],
     )
     def test_exc_info_true_flagged(self, method: str) -> None:
         """Every severity trips on ``exc_info=True`` literal.
 
         Asserts both presence and rule classification: the hit must
-        carry ``exc_info_true`` so a regression where the gate
+        carry ``exc_info_traceback`` so a regression where the gate
         absorbs the violation under the ``error_str_exc`` rule (or
         any other id) is caught here, not in production.
         """
@@ -1067,10 +1068,72 @@ class TestExcInfoGate:
         )
         assert hits, f"logger.{method}(..., exc_info=True) must be flagged"
         rule_ids = {rule_id for _, _, rule_id in hits}
-        assert "exc_info_true" in rule_ids, (
-            f"logger.{method}(..., exc_info=True) must trip the exc_info_true "
-            f"rule specifically; got rule_ids={rule_ids}"
+        assert "exc_info_traceback" in rule_ids, (
+            f"logger.{method}(..., exc_info=True) must trip the "
+            f"exc_info_traceback rule specifically; got rule_ids={rule_ids}"
         )
+
+    @pytest.mark.parametrize(
+        "method",
+        ["exception", "warning", "error", "info", "debug", "critical"],
+    )
+    def test_exc_info_traceback_tuple_flagged(self, method: str) -> None:
+        """The 3-tuple ``exc_info=(type(exc), exc, exc.__traceback__)`` trips.
+
+        This is the form that slipped past the original ``=True``-only
+        gate in ``background_tasks.py``. It attaches the same traceback
+        whose frame-locals can serialise a provider credential, so it
+        must trip the ``exc_info_traceback`` rule like the literal.
+        """
+        hits = _scan_source(
+            f"""
+            logger.{method}("E", exc_info=(type(exc), exc, exc.__traceback__))
+            """,
+        )
+        assert hits, f"logger.{method}(..., exc_info=(...)) must be flagged"
+        rule_ids = {rule_id for _, _, rule_id in hits}
+        assert "exc_info_traceback" in rule_ids, (
+            f"the exc_info 3-tuple must trip exc_info_traceback; got {rule_ids}"
+        )
+
+    def test_exc_info_empty_tuple_quiet(self) -> None:
+        """``exc_info=()`` carries no traceback; do not flag."""
+        hits = _scan_source(
+            """
+            logger.warning("E", exc_info=())
+            """,
+        )
+        assert not hits, "empty exc_info tuple attaches no traceback"
+
+    def test_exc_info_two_tuple_quiet(self) -> None:
+        """A 2-element tuple is not the ``(type, value, traceback)`` shape."""
+        hits = _scan_source(
+            """
+            logger.warning("E", exc_info=(type(exc), exc))
+            """,
+        )
+        assert not hits, "a 2-tuple is not a traceback-attaching exc_info"
+
+    def test_exc_info_three_tuple_none_traceback_quiet(self) -> None:
+        """``exc_info=(type(exc), exc, None)`` explicitly attaches no traceback."""
+        hits = _scan_source(
+            """
+            logger.warning("E", exc_info=(type(exc), exc, None))
+            """,
+        )
+        assert not hits, "a 3-tuple with None traceback carries no frame-locals"
+
+    def test_exc_info_tuple_allowlist_marker_not_flagged(self) -> None:
+        """The ``# lint-allow: exc-info`` escape covers the tuple form too."""
+        hits = _scan_source_e2e(
+            """
+logger.warning(
+    "E",
+    exc_info=(type(exc), exc, exc.__traceback__),  # lint-allow: exc-info -- boundary
+)
+""",
+        )
+        assert not hits, "allowlisted exc_info tuple with a reason must pass"
 
     def test_exc_info_false_quiet(self) -> None:
         """``exc_info=False`` is the explicit opt-out; do not flag."""
@@ -1127,7 +1190,7 @@ class TestExcInfoGate:
             """,
         )
         assert hits, "**{'exc_info': True} must be flagged like exc_info=True"
-        assert any(rule == "exc_info_true" for _, _, rule in hits)
+        assert any(rule == "exc_info_traceback" for _, _, rule in hits)
 
     def test_exc_info_dict_unpack_false_quiet(self) -> None:
         """``**{"exc_info": False}`` mirrors the literal-False opt-out."""
@@ -1154,7 +1217,7 @@ class TestExcInfoGate:
             """,
         )
         rule_ids = {rule_id for _, _, rule_id in hits}
-        assert rule_ids == {"error_str_exc", "exc_info_true"}, (
+        assert rule_ids == {"error_str_exc", "exc_info_traceback"}, (
             f"expected both rule IDs to fire on a dual-leak call; got {rule_ids}"
         )
 

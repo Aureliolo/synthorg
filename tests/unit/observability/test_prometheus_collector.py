@@ -1,11 +1,13 @@
 """Tests for the Prometheus metrics collector."""
 
+import asyncio
 from datetime import datetime
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, PropertyMock
 
 import pytest
+import structlog.testing
 from prometheus_client import generate_latest
 
 from synthorg.api.state import AppState
@@ -13,6 +15,7 @@ from synthorg.budget.state import BudgetStateSlice
 from synthorg.engine.state import EngineStateSlice
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability._prometheus_label_fetchers import fetch_tool_names
+from synthorg.observability.events.metrics import METRICS_SCRAPE_FAILED
 from synthorg.observability.prometheus_collector import PrometheusCollector
 from tests._shared import make_app_state
 
@@ -786,7 +789,7 @@ class TestPrometheusCollectorErrorPaths:
         # the prior allowlist instead of cancelling sibling fetchers.
         assert (await fetch_tool_names(state)) is None
 
-    def test_pg_pool_stats_failure_is_swallowed(self) -> None:
+    def test_pg_pool_stats_failure_logs_redacted_context(self) -> None:
         collector = PrometheusCollector()
         backend = MagicMock()
         backend.kind = "postgres"
@@ -795,8 +798,21 @@ class TestPrometheusCollectorErrorPaths:
         backend._pool = pool
         state = make_app_state(persistence=backend)
 
-        # A pool-stats failure logs and returns without raising.
-        collector._refresh_pg_pool_metrics(state)
+        # A pool-stats failure logs redacted context and returns
+        # without raising; an operator must be able to tell a DNS blip
+        # from a driver crash.
+        with structlog.testing.capture_logs() as logs:
+            collector._refresh_pg_pool_metrics(state)
+
+        scrape_failures = [
+            rec
+            for rec in logs
+            if rec.get("event") == METRICS_SCRAPE_FAILED
+            and rec.get("component") == "pg_pool_stats"
+        ]
+        assert scrape_failures, "pg_pool stats failure must log METRICS_SCRAPE_FAILED"
+        assert scrape_failures[0].get("error_type") == "RuntimeError"
+        assert scrape_failures[0].get("error")
 
     def test_budget_metrics_failure_clears_gauges(self) -> None:
         collector = PrometheusCollector()
@@ -819,3 +835,33 @@ class TestPrometheusCollectorErrorPaths:
 
         # A task-engine failure logs and returns without raising.
         await collector._refresh_task_metrics(state)
+
+
+@pytest.mark.unit
+class TestPrometheusCollectorRefreshLock:
+    """``refresh()`` serialises so overlapping scrapes never race the gauges."""
+
+    async def test_refresh_serialises_under_lock(self) -> None:
+        """Two concurrent ``refresh()`` calls do not interleave the body.
+
+        Without the per-instance lock, the second ``refresh`` would
+        enter the body while the first is suspended at an ``await``,
+        racing the gauge clear+repopulate steps. The lock makes
+        observed concurrency exactly one.
+        """
+        collector = PrometheusCollector()
+        active = 0
+        max_active = 0
+
+        async def _fake_refresh_all(_app_state: AppState) -> None:
+            nonlocal active, max_active
+            active += 1
+            max_active = max(max_active, active)
+            # Yield: if unserialised, the second refresh enters here too.
+            await asyncio.sleep(0)
+            active -= 1
+
+        collector._refresh_all = _fake_refresh_all  # type: ignore[method-assign,assignment]
+        state = make_app_state()
+        await asyncio.gather(collector.refresh(state), collector.refresh(state))
+        assert max_active == 1

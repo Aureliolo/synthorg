@@ -346,16 +346,18 @@ jobs:
     if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
     runs-on: ubuntu-latest
     # Healthy wall-clock per shard is ~2-3 min (114-120s observed on the
-    # un-stuck shards). The previous 15-min slack existed only because
-    # ``pytest-timeout method=signal`` could not kill an async hang and
-    # the job had to be reaped by GHA's job timeout. With
-    # ``timeout_method = "thread"`` in pyproject.toml the per-test
-    # timeout (30s) actually fires for blocked awaits, so a runaway
-    # shard now fails fast with a named test instead of burning 12+ min
-    # of compute. 5 min preserves a 2x cushion over the observed normal
-    # runtime; any later regression that legitimately needs more should
-    # land here with the duration data justifying it.
-    timeout-minutes: 5
+    # un-stuck shards). Two in-pytest timeouts bound a shard so a stuck
+    # or slow run FAILS (named) rather than being reaped as "cancelled":
+    # the per-test 30s ``timeout_method = "thread"`` (pyproject) kills a
+    # single blocked await, and ``--session-timeout`` (the run step
+    # below) fails the whole session if cumulative wall-clock creeps past
+    # its budget without any single test tripping the per-test timeout --
+    # the case that previously hit GHA's job timeout and surfaced as a
+    # confusing job cancellation. ``timeout-minutes`` here is only a
+    # backstop above the session timeout, for the rare case where pytest
+    # itself wedges (e.g. a collection hang) before the session timer can
+    # fire; it should never be the primary signal.
+    timeout-minutes: 9
     permissions:
       contents: read
     strategy:
@@ -428,6 +430,7 @@ jobs:
             -m unit \
             -n auto \
             --max-worker-restart=0 \
+            --session-timeout 420 \
             --splits 4 \
             --group ${{ matrix.shard }} \
             --durations-path .test_durations.unit \
@@ -602,6 +605,7 @@ jobs:
             -k "not [sqlite-" \
             -n auto \
             --max-worker-restart=0 \
+            --session-timeout 1500 \
             --splits 4 \
             --group ${{ matrix.shard }} \
             --durations-path .test_durations.integration \
@@ -734,6 +738,7 @@ jobs:
             -m e2e \
             -n auto \
             --max-worker-restart=0 \
+            --session-timeout 1500 \
             --cov=synthorg \
             --cov-report= \
             --cov-fail-under=0 \
@@ -840,6 +845,7 @@ jobs:
             -k "not postgres" \
             -n auto \
             --max-worker-restart=0 \
+            --session-timeout 720 \
             --cov=synthorg \
             --cov-report= \
             --cov-fail-under=0 \

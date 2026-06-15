@@ -20,9 +20,13 @@ import structlog.testing
 
 from synthorg.observability.events.metrics import METRICS_SCRAPE_FAILED
 from synthorg.observability.prometheus_labels import (
+    MCP_UNKNOWN_TOOL_LABEL,
     _LabelSnapshot,
     _reset_label_snapshot_for_tests,
+    _snapshot_lock_for_collector,
     is_known_agent_id,
+    normalize_mcp_tool_label,
+    register_mcp_tool_names,
     update_label_snapshot,
     validate_agent_id,
     validate_department,
@@ -170,3 +174,39 @@ def test_is_known_agent_id_after_seed() -> None:
     )
     assert is_known_agent_id("agent-1") is True
     assert is_known_agent_id("agent-2") is False
+
+
+@pytest.mark.unit
+def test_normalize_mcp_tool_label_fails_closed_in_bootstrap() -> None:
+    """An empty allowlist folds every tool name to the sentinel.
+
+    A raw caller-supplied tool string must not reach the Prometheus
+    label set before ``register_mcp_tool_names`` seeds the registry.
+    """
+    assert normalize_mcp_tool_label("synthorg_anything") == MCP_UNKNOWN_TOOL_LABEL
+
+
+@pytest.mark.unit
+def test_normalize_mcp_tool_label_passes_registered_name() -> None:
+    register_mcp_tool_names(frozenset({"synthorg_tasks_get"}))
+    assert normalize_mcp_tool_label("synthorg_tasks_get") == "synthorg_tasks_get"
+
+
+@pytest.mark.unit
+def test_normalize_mcp_tool_label_folds_unregistered_name() -> None:
+    register_mcp_tool_names(frozenset({"synthorg_tasks_get"}))
+    assert normalize_mcp_tool_label("synthorg_unknown") == MCP_UNKNOWN_TOOL_LABEL
+
+
+@pytest.mark.unit
+def test_reset_rebinds_snapshot_lock() -> None:
+    """The test-reset replaces the lock so a fresh loop never inherits one.
+
+    The lock is rebound (not just the snapshot) so per-test event-loop
+    teardown cannot leave the collector holding a lock bound to a
+    closed loop.
+    """
+    before = _snapshot_lock_for_collector()
+    _reset_label_snapshot_for_tests()
+    after = _snapshot_lock_for_collector()
+    assert before is not after

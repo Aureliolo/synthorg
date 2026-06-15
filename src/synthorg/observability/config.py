@@ -36,6 +36,7 @@ _DEFAULT_HTTP_MAX_RETRIES: Final[int] = 3
 _DEFAULT_OTLP_EXPORT_INTERVAL: Final[float] = 5.0
 _DEFAULT_OTLP_BATCH_SIZE: Final[int] = 100
 _DEFAULT_OTLP_TIMEOUT: Final[float] = 10.0
+_DEFAULT_OTLP_MAX_RETRIES: Final[int] = 3
 
 
 class RotationConfig(BaseModel):
@@ -207,6 +208,11 @@ class SinkConfig(BaseModel):
         default=_DEFAULT_OTLP_TIMEOUT,
         gt=0,
         description="HTTP request timeout in seconds for OTLP export",
+    )
+    otlp_max_retries: int = Field(
+        default=_DEFAULT_OTLP_MAX_RETRIES,
+        ge=0,
+        description="Retry count on a transient OTLP export failure",
     )
 
     @model_validator(mode="after")
@@ -474,6 +480,12 @@ class SinkConfig(BaseModel):
             msg = (
                 f"otlp_timeout_seconds must be default "
                 f"({_DEFAULT_OTLP_TIMEOUT}) for {sink_label} sinks"
+            )
+            raise ValueError(msg)
+        if self.otlp_max_retries != _DEFAULT_OTLP_MAX_RETRIES:
+            msg = (
+                f"otlp_max_retries must be default "
+                f"({_DEFAULT_OTLP_MAX_RETRIES}) for {sink_label} sinks"
             )
             raise ValueError(msg)
 

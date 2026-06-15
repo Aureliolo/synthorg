@@ -3,14 +3,17 @@
 import json
 import logging
 import queue
+import urllib.error
 from typing import override
 from unittest.mock import MagicMock, patch
 
 import pytest
+import structlog.testing
 from pydantic import JsonValue
 
 from synthorg.observability.config import SinkConfig
 from synthorg.observability.enums import OtlpProtocol, SinkType
+from synthorg.observability.events.metrics import METRICS_OTLP_FLUSHER_ERROR
 from synthorg.observability.otlp_handler import OtlpHandler, build_otlp_handler
 
 
@@ -103,6 +106,16 @@ class TestOtlpHandler:
         handler.close()
         assert handler._shutdown.is_set()
         assert not handler._flusher.is_alive()
+
+    def test_negative_max_retries_rejected(self) -> None:
+        """A negative ``max_retries`` would run zero attempts and report
+        an unsent batch as success; construction must reject it."""
+        with pytest.raises(ValueError, match="max_retries"):
+            OtlpHandler(
+                endpoint="http://localhost:4318",
+                max_retries=-1,
+                _start_flusher=False,
+            )
 
     def test_drain_collects_records(self) -> None:
         handler = _make_handler()
@@ -335,11 +348,84 @@ class TestOtlpHandlerInternalErrorPaths:
 
             # One iteration: drain raises, the except logs, and the
             # shutdown flag set above ends the loop.
-            handler._flush_loop()
+            with structlog.testing.capture_logs() as logs:
+                handler._flush_loop()
 
             assert calls["n"] == 1
+            flusher_errors = [
+                rec for rec in logs if rec.get("event") == METRICS_OTLP_FLUSHER_ERROR
+            ]
+            assert flusher_errors, "flusher drain failure must log redacted context"
+            assert flusher_errors[0].get("error_type") == "RuntimeError"
+            assert flusher_errors[0].get("error")
+            assert "pending_records" in flusher_errors[0]
             # Neutralise the raising drain so close()'s own drain is a
             # no-op rather than re-raising during teardown.
             handler._drain_and_flush = lambda: None  # type: ignore[method-assign]
+        finally:
+            handler.close()
+
+
+@pytest.mark.unit
+class TestOtlpExportRetry:
+    """OtlpHandler retries transient export failures (Pattern C/Sync)."""
+
+    @staticmethod
+    def _no_backoff(handler: OtlpHandler) -> None:
+        # Avoid real backoff sleeps in the retry loop.
+        handler._backoff_delay = lambda attempt: 0.0  # type: ignore[method-assign]
+
+    def test_export_retries_then_succeeds(self) -> None:
+        handler = _make_handler(batch_size=100, timeout=1.0)
+        self._no_backoff(handler)
+        try:
+            error = OSError("connection refused")
+            with patch(
+                "urllib.request.urlopen",
+                side_effect=[error, error, MagicMock()],
+            ) as mock_urlopen:
+                handler._export_batch([_make_record("retry")])
+            assert mock_urlopen.call_count == 3  # initial + 2 retries
+            with handler._pending_lock:
+                assert handler._dropped_count == 0
+        finally:
+            handler.close()
+
+    def test_export_exhausts_retries_and_drops(self) -> None:
+        handler = _make_handler(batch_size=100, timeout=1.0)
+        handler._max_retries = 1
+        self._no_backoff(handler)
+        outcomes: list[tuple[str, int]] = []
+        handler.set_export_callback(lambda o, d: outcomes.append((o, d)))
+        try:
+            with patch(
+                "urllib.request.urlopen",
+                side_effect=OSError("down"),
+            ) as mock_urlopen:
+                handler._export_batch([_make_record("boom")])
+            assert mock_urlopen.call_count == 2  # initial + 1 retry
+            with handler._pending_lock:
+                assert handler._dropped_count == 1
+            assert ("failure", 1) in outcomes
+        finally:
+            handler.close()
+
+    def test_export_4xx_not_retried(self) -> None:
+        handler = _make_handler(batch_size=100, timeout=1.0)
+        self._no_backoff(handler)
+        try:
+            http_error = urllib.error.HTTPError(
+                url="http://localhost:4318/v1/logs",
+                code=400,
+                msg="Bad Request",
+                hdrs=None,  # type: ignore[arg-type]
+                fp=None,
+            )
+            with patch(
+                "urllib.request.urlopen",
+                side_effect=http_error,
+            ) as mock_urlopen:
+                handler._export_batch([_make_record("bad")])
+            assert mock_urlopen.call_count == 1  # 4xx is non-retryable
         finally:
             handler.close()

@@ -55,6 +55,7 @@ class SinkConfigFactory(ModelFactory[SinkConfig]):
     otlp_export_interval_seconds = 5.0
     otlp_batch_size = 100
     otlp_timeout_seconds = 10.0
+    otlp_max_retries = 3
 
 
 class LogConfigFactory(ModelFactory[LogConfig]):

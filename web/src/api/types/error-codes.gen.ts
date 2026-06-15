@@ -138,6 +138,7 @@ export const ErrorCode = {
     NARRATIVE_GENERATION_ERROR: 8033,
     NARRATIVE_SOURCE_UNAVAILABLE: 8034,
     DELIVERABLE_RECEIPT_BUILD_ERROR: 8035,
+    SINK_CONSTRUCTION_ERROR: 8036,
 } as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
