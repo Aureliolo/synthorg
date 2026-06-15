@@ -3,6 +3,7 @@
 
 from synthorg.observability import get_logger
 from synthorg.observability.prometheus_labels import (
+    VALID_PROVIDER_CALL_TYPES,
     VALID_PROVIDER_ERROR_CLASSES,
     normalize_model_label,
     normalize_provider_label,
@@ -61,6 +62,33 @@ class _ProviderRecordingMixin(_RecordingMetricsBase):
             provider=provider_label,
             model=model_label,
         ).inc(cost)
+
+    def record_provider_call_duration(
+        self,
+        *,
+        provider: str,
+        model: str,
+        call_type: str,
+        duration_sec: float,
+    ) -> None:
+        """Observe a provider call's wall-clock duration.
+
+        Wired from :meth:`BaseCompletionProvider.complete` and ``stream``
+        so latency is captured for both call types (``complete`` recorded
+        only a span attribute before, and ``stream`` recorded nothing).
+        ``call_type`` is bounded to :data:`VALID_PROVIDER_CALL_TYPES`;
+        provider/model fold against the snapshot allowlist so a renamed
+        provider or garbage model id cannot inflate cardinality.
+        """
+        require_label("call_type", call_type, VALID_PROVIDER_CALL_TYPES)
+        require_non_negative(
+            "record_provider_call_duration: duration_sec", duration_sec
+        )
+        self._provider_call_duration.labels(
+            provider=normalize_provider_label(provider),
+            model=normalize_model_label(model),
+            call_type=call_type,
+        ).observe(duration_sec)
 
     def record_provider_error(
         self,

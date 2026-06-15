@@ -17,6 +17,7 @@ class _RecordingMetricsBase:
     _security_evaluations: PromCounter
     _provider_tokens: PromCounter
     _provider_cost: PromCounter
+    _provider_call_duration: Histogram
     _api_request_duration: Histogram
     _task_runs: PromCounter
     _task_duration: Histogram
@@ -39,6 +40,7 @@ class _RecordingMetricsBase:
     _workflow_execution_duration: Histogram
     _client_disconnects: PromCounter
     _approval_decisions: PromCounter
+    _autonomy_promotion_decisions: PromCounter
     _escalation_outcomes: PromCounter
     _push_queue_events: PromCounter
     _blueprint_instantiations: PromCounter

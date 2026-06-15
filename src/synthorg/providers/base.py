@@ -25,8 +25,12 @@ from synthorg.observability.events.provider import (
     PROVIDER_CALL_START,
     PROVIDER_CALL_SUCCESS,
     PROVIDER_STREAM_START,
+    PROVIDER_STREAM_USAGE_EXPECTED,
 )
-from synthorg.observability.metrics_hub import record_provider_error
+from synthorg.observability.metrics_hub import (
+    record_provider_call_duration,
+    record_provider_error,
+)
 from synthorg.observability.tracing.instrumentation import get_tracer
 
 from ._validation import validate_messages, validate_model
@@ -219,9 +223,21 @@ class BaseCompletionProvider(ABC):
                     model=model,
                     error_class=classify_provider_error(exc),
                 )
+                record_provider_call_duration(
+                    provider=provider_label,
+                    model=model,
+                    call_type="complete",
+                    duration_sec=latency_ms / _MILLISECONDS_PER_SECOND,
+                )
                 raise
             latency_ms = (self._clock.monotonic() - t_start) * _MILLISECONDS_PER_SECOND
             span.set_attribute("provider.latency_ms", latency_ms)
+            record_provider_call_duration(
+                provider=provider_label,
+                model=model,
+                call_type="complete",
+                duration_sec=latency_ms / _MILLISECONDS_PER_SECOND,
+            )
             if retry_info is not None:
                 span.set_attribute(
                     "provider.retry_count",
@@ -322,21 +338,67 @@ class BaseCompletionProvider(ABC):
                 config=config,
             )
 
-        try:
-            return await self._resilient_execute(_attempt)
-        except Exception as exc:
-            reraise_critical(exc)
-            # See the ``complete`` sibling handler; ``logger.error``
-            # + scrubbed fields instead of ``logger.exception``
-            # prevents traceback frame-locals from leaking provider
-            # credentials.
-            log_exception_redacted(logger, PROVIDER_CALL_ERROR, exc, model=model)
-            record_provider_error(
-                provider=self._provider_label(),
+        # Per-call child span mirroring ``complete``; covers the
+        # (retried) connection setup, the only part ``stream`` retries.
+        # Mid-stream consumption happens in the caller's scope, so the
+        # span measures time-to-first-iterator, not full stream length.
+        provider_label = self._provider_label()
+        span_attributes: dict[str, str | int] = {
+            "provider.name": provider_label,
+            "provider.model": model,
+            "provider.message_count": len(messages),
+            "provider.tool_count": len(tools) if tools else 0,
+        }
+        with _tracer.start_as_current_span(
+            "provider.stream",
+            attributes=span_attributes,
+            record_exception=False,
+            set_status_on_exception=False,
+        ) as span:
+            t_start = self._clock.monotonic()
+            try:
+                iterator = await self._resilient_execute(_attempt)
+            except Exception as exc:
+                reraise_critical(exc)
+                latency_ms = (
+                    self._clock.monotonic() - t_start
+                ) * _MILLISECONDS_PER_SECOND
+                # See the ``complete`` sibling handler; ``logger.error``
+                # + scrubbed fields instead of ``logger.exception``
+                # prevents traceback frame-locals from leaking provider
+                # credentials.
+                log_exception_redacted(
+                    logger, PROVIDER_CALL_ERROR, exc, model=model, latency_ms=latency_ms
+                )
+                span.set_attribute("exception.type", type(exc).__name__)
+                span.set_attribute("exception.message", safe_error_description(exc))
+                span.set_attribute("provider.latency_ms", latency_ms)
+                span.set_status(Status(StatusCode.ERROR))
+                record_provider_error(
+                    provider=provider_label,
+                    model=model,
+                    error_class=classify_provider_error(exc),
+                )
+                record_provider_call_duration(
+                    provider=provider_label,
+                    model=model,
+                    call_type="stream",
+                    duration_sec=latency_ms / _MILLISECONDS_PER_SECOND,
+                )
+                raise
+            latency_ms = (self._clock.monotonic() - t_start) * _MILLISECONDS_PER_SECOND
+            span.set_attribute("provider.latency_ms", latency_ms)
+            record_provider_call_duration(
+                provider=provider_label,
                 model=model,
-                error_class=classify_provider_error(exc),
+                call_type="stream",
+                duration_sec=latency_ms / _MILLISECONDS_PER_SECOND,
             )
-            raise
+        # Token counts surface only on the terminal USAGE chunk; emit a
+        # DEBUG marker so log-based monitoring can flag a driver that
+        # never yields one (the cost path then silently records nothing).
+        logger.debug(PROVIDER_STREAM_USAGE_EXPECTED, model=model)
+        return iterator
 
     async def get_model_capabilities(self, model: str) -> ModelCapabilities:
         """Validate model identifier, delegate to ``_do_get_model_capabilities``.

@@ -203,6 +203,30 @@ def record_security_audit_fill_ratio(*, ratio: float) -> None:
     collector.record_security_audit_fill_ratio(ratio=ratio)
 
 
+@_safe_record(METRICS_RECORD_FAILED, "record_provider_call_duration")
+def record_provider_call_duration(
+    *,
+    provider: str,
+    model: str,
+    call_type: str,
+    duration_sec: float,
+) -> None:
+    """Forward to :meth:`PrometheusCollector.record_provider_call_duration`.
+
+    No-op when no collector is registered so call sites can emit
+    metrics without a guard.
+    """
+    collector = _active()
+    if collector is None:
+        return
+    collector.record_provider_call_duration(
+        provider=provider,
+        model=model,
+        call_type=call_type,
+        duration_sec=duration_sec,
+    )
+
+
 @_safe_record(METRICS_RECORD_FAILED, "record_provider_error")
 def record_provider_error(
     *,
@@ -291,6 +315,15 @@ def record_approval_decision(*, outcome: str) -> None:
     if collector is None:
         return
     collector.record_approval_decision(outcome=outcome)
+
+
+@_safe_record(METRICS_RECORD_FAILED, "record_autonomy_promotion")
+def record_autonomy_promotion(*, outcome: str) -> None:
+    """Forward to :meth:`PrometheusCollector.record_autonomy_promotion`."""
+    collector = _active()
+    if collector is None:
+        return
+    collector.record_autonomy_promotion(outcome=outcome)
 
 
 @_safe_record(METRICS_RECORD_FAILED, "record_escalation_outcome")

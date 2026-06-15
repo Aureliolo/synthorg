@@ -26,6 +26,7 @@ __all__ = [
     "VALID_APPROVAL_OUTCOMES",
     "VALID_AUDIT_APPEND_STATUSES",
     "VALID_AUDIT_VERIFICATION_OUTCOMES",
+    "VALID_AUTONOMY_PROMOTION_OUTCOMES",
     "VALID_BLUEPRINT_OUTCOMES",
     "VALID_BUDGET_QUERY_TYPES",
     "VALID_CACHE_NAMES",
@@ -40,6 +41,7 @@ __all__ = [
     "VALID_OTLP_KINDS",
     "VALID_OTLP_OUTCOMES",
     "VALID_PG_BACKENDS",
+    "VALID_PROVIDER_CALL_TYPES",
     "VALID_PROVIDER_ERROR_CLASSES",
     "VALID_PUSH_QUEUE_OUTCOMES",
     "VALID_SETTINGS_NAMESPACES",
@@ -185,6 +187,10 @@ VALID_VERDICTS: Final[frozenset[str]] = frozenset(
     {"allow", "deny", "escalate", "output_scan"}
 )
 VALID_TOKEN_DIRECTIONS: Final[frozenset[str]] = frozenset({"input", "output"})
+VALID_PROVIDER_CALL_TYPES: Final[frozenset[str]] = frozenset({"complete", "stream"})
+VALID_AUTONOMY_PROMOTION_OUTCOMES: Final[frozenset[str]] = frozenset(
+    {"granted", "denied"}
+)
 VALID_TASK_OUTCOMES: Final[frozenset[str]] = frozenset(
     {"succeeded", "failed", "cancelled", "rejected"}
 )

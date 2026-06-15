@@ -405,6 +405,8 @@ class AuditChainSink(logging.Handler):
             resource=_optional_field(record, event_dict, "resource"),
             action_type=_optional_field(record, event_dict, "action_type"),
             error=_optional_field(record, event_dict, "error"),
+            verdict=_optional_field(record, event_dict, "verdict"),
+            model=_optional_field(record, event_dict, "model"),
         )
         payload = payload_model.model_dump(exclude_none=True)
         return json.dumps(

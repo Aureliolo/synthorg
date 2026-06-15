@@ -513,6 +513,63 @@ def test_record_provider_error_bounds_provider_and_model() -> None:
     )
 
 
+@pytest.mark.usefixtures("_seed_provider_names")
+def test_record_provider_call_duration_observes_histogram() -> None:
+    """Regression (audit 05): provider call latency is captured for both
+    call types (complete recorded only a span attribute before; stream
+    recorded nothing)."""
+    collector = PrometheusCollector()
+    collector.record_provider_call_duration(
+        provider="example-provider",
+        model="example-large-001",
+        call_type="complete",
+        duration_sec=1.5,
+    )
+    samples = _samples(collector, "synthorg_provider_call_duration_seconds")
+    assert any(
+        labels
+        == {
+            "provider": "example-provider",
+            "model": "example-large-001",
+            "call_type": "complete",
+        }
+        and value == 1.0
+        for labels, value in samples
+    )
+
+
+def test_record_provider_call_duration_rejects_unknown_call_type() -> None:
+    collector = PrometheusCollector()
+    with pytest.raises(ValueError, match="Unknown"):
+        collector.record_provider_call_duration(
+            provider="p",
+            model="m",
+            call_type="bogus",
+            duration_sec=0.0,
+        )
+
+
+# -- record_autonomy_promotion -----------------------------------------------
+
+
+@pytest.mark.parametrize("outcome", ["granted", "denied"])
+def test_record_autonomy_promotion_increments_counter(outcome: str) -> None:
+    """Regression (audit 05): the autonomy-promotion workflow's grant/deny
+    decisions are now counted, not only logged."""
+    collector = PrometheusCollector()
+    collector.record_autonomy_promotion(outcome=outcome)
+    samples = _samples(collector, "synthorg_autonomy_promotion_decisions")
+    assert any(
+        labels == {"outcome": outcome} and value == 1.0 for labels, value in samples
+    )
+
+
+def test_record_autonomy_promotion_rejects_unknown_outcome() -> None:
+    collector = PrometheusCollector()
+    with pytest.raises(ValueError, match="Unknown"):
+        collector.record_autonomy_promotion(outcome="maybe")
+
+
 # -- record_budget_query -----------------------------------------------------
 
 

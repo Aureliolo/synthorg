@@ -35,6 +35,7 @@ from synthorg.observability.events.security import (
     SECURITY_AUTONOMY_PROMOTION_GRANTED,
     SECURITY_AUTONOMY_PROMOTION_REQUESTED,
 )
+from synthorg.observability.metrics_hub import record_autonomy_promotion
 
 if TYPE_CHECKING:
     # Cycle breaker: ``security.autonomy.models`` pulls ``security/__init__``'s
@@ -196,6 +197,7 @@ class AutonomyWorkflow:
             requested_level=update.requested_level.value,
             reason="Autonomy level changes require human approval",
         )
+        record_autonomy_promotion(outcome="denied")
         return AutonomyUpdateResult(
             agent_id=key,
             current_level=current_level,  # type: ignore[arg-type]
@@ -300,6 +302,7 @@ class AutonomyWorkflow:
             granted_by_strategy=str(update.granted_by_strategy),
             approval_id=result_id,
         )
+        record_autonomy_promotion(outcome="granted")
         return AutonomyUpdateResult(
             agent_id=key,
             current_level=update.requested_level,
