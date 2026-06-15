@@ -200,6 +200,9 @@ class OAuthController(Controller):
 
         Raises:
             ValidationError: Raised on the corresponding failure path.
+            TokenExchangeFailedError: Propagated from the token-exchange step
+                with its own 502 + retryable metadata, rather than being
+                flattened to a non-retryable 422.
         """
         from synthorg.integrations.oauth.callback_handler import (  # noqa: PLC0415
             handle_oauth_callback,

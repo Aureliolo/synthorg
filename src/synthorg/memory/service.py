@@ -559,8 +559,10 @@ class MemoryService:
         :class:`CheckpointNotFoundError` here. The controller maps that
         to HTTP 404, keeping the contract identical across
         deploy / rollback / delete endpoints (all three surface 404 for
-        missing checkpoints and 409 for a ``QueryError`` such as
-        attempting to delete the currently-active checkpoint). Held
+        missing checkpoints). Active-checkpoint delete attempts raise a
+        typed ``CheckpointActiveConflictError`` (409), while transient
+        persistence ``QueryError`` faults propagate via the
+        internal-error path. Held
         under ``_embedder_state_lock`` so the repo-side "cannot delete
         the active checkpoint" rule is evaluated against the same
         active-checkpoint snapshot that a concurrent

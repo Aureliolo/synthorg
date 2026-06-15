@@ -1,7 +1,6 @@
 """Tests for RequestHumanApprovalTool."""
 
 from typing import cast
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -13,7 +12,7 @@ from synthorg.security.risk_map import (
     default_risk_classifier,
 )
 from synthorg.tools.approval_tool import RequestHumanApprovalTool
-from tests._shared import JsonDict
+from tests._shared import JsonDict, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -274,7 +273,7 @@ class TestRiskClassificationFailure:
     """Risk classifier exception handling."""
 
     async def test_classifier_exception_defaults_to_high(self) -> None:
-        classifier = MagicMock(spec=MapBackedRiskClassifier)
+        classifier = mock_of[MapBackedRiskClassifier]()
         classifier.classify.side_effect = ValueError("unexpected action")
 
         tool = RequestHumanApprovalTool(
@@ -293,7 +292,7 @@ class TestRiskClassificationFailure:
         assert result.metadata["risk_level"] == ApprovalRiskLevel.HIGH.value
 
     async def test_classifier_returns_low_risk(self) -> None:
-        classifier = MagicMock(spec=MapBackedRiskClassifier)
+        classifier = mock_of[MapBackedRiskClassifier]()
         classifier.classify.return_value = ApprovalRiskLevel.LOW
 
         tool = RequestHumanApprovalTool(

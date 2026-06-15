@@ -4,8 +4,7 @@
 Enforces the rule: each ``ErrorCode`` value maps to exactly one
 ``DomainError`` subclass, so a client branching on ``error_code`` can
 discriminate a single condition. Two structurally-unrelated classes
-declaring the same ``error_code`` is a contract bug (the audit's
-``112-duplicate-error-codes`` finding).
+declaring the same ``error_code`` is a contract bug.
 
 Two exemptions keep the rule honest:
 
@@ -272,7 +271,7 @@ def _index_file(path: Path, rel: str) -> tuple[list[_ClassEntry], str | None]:
 def _class_def_suppressed(node: ast.ClassDef, lines: list[str]) -> bool:
     """Return True iff any line of the class header carries the marker."""
     start = node.lineno
-    end = node.body[0].lineno if node.body else start
+    end = max(start, node.body[0].lineno - 1) if node.body else start
     for lineno in range(start, end + 1):
         if 1 <= lineno <= len(lines) and _line_has_trailing_marker(lines[lineno - 1]):
             return True

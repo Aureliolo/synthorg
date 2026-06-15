@@ -26,7 +26,7 @@ from synthorg.api.path_params import (
 )
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
-from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
+from synthorg.core.domain_errors import ConflictError, ValidationError
 from synthorg.core.types import (
     NotBlankStr,
 )
@@ -552,10 +552,10 @@ class ConnectionsController(Controller):
             ``ApiResponse[dict[str, str]]`` instance.
 
         Raises:
-            NotFoundError: When the connection does not exist (generic 404).
-            SecretRetrievalNotFoundError: When the secret backend fails;
-                deliberately presented as the same uniform 404 so the error
-                cannot enumerate which connections exist.
+            SecretRetrievalNotFoundError: For a missing connection, an unset
+                field, or a secret-backend failure. Every reveal miss surfaces
+                through one deliberate uniform 404 (``RESOURCE_NOT_FOUND``) so
+                the error cannot enumerate which connections exist.
         """
         catalog = require_service(
             state["app_state"].slice(IntegrationsStateSlice).connection_catalog,
@@ -570,7 +570,7 @@ class ConnectionsController(Controller):
                 field=field,
                 reason="connection_not_found",
             )
-            raise NotFoundError(_REVEAL_GENERIC_ERROR) from exc
+            raise SecretRetrievalNotFoundError(_REVEAL_GENERIC_ERROR) from exc
         except SecretRetrievalError as exc:
             # Secret backend failures are operational errors, not a
             # "not found" condition -- log at ERROR level so they
@@ -607,7 +607,7 @@ class ConnectionsController(Controller):
                 field=field,
                 reason="field_not_set",
             )
-            raise NotFoundError(_REVEAL_GENERIC_ERROR)
+            raise SecretRetrievalNotFoundError(_REVEAL_GENERIC_ERROR)
         logger.info(
             SECURITY_CONNECTION_SECRET_REVEALED,
             connection=name,

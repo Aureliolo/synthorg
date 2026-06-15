@@ -193,7 +193,15 @@ class EncryptedSecretBackend:
                 of the newly written secret.
         """
         new_id = str(uuid4())
-        await self._rotate_store_new(old_id, new_id, new_value)
+        try:
+            await self._rotate_store_new(old_id, new_id, new_value)
+        except asyncio.CancelledError:
+            # Cancellation delivered as the new secret is written can still
+            # commit new_id before unwinding; roll it back with the same
+            # shielded best-effort delete as the delete-old phase below.
+            with contextlib.suppress(SecretStorageError):
+                await asyncio.shield(self.delete(new_id))
+            raise
         try:
             await self._rotate_delete_old(old_id, new_id)
         except asyncio.CancelledError:
