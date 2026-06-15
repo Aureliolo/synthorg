@@ -25,6 +25,7 @@ from synthorg.observability.events.conflict import (
 logger = get_logger(__name__)
 
 _APPROVAL_ACTION_TYPE: str = "conflict.escalation"
+_APPROVAL_SUBMIT_TIMEOUT_SECONDS: float = 10.0
 
 
 async def route_conflict_to_approval_store(
@@ -59,9 +60,21 @@ async def route_conflict_to_approval_store(
         },
     )
     try:
-        await approval_store.add(item)
+        await asyncio.wait_for(
+            approval_store.add(item),
+            timeout=_APPROVAL_SUBMIT_TIMEOUT_SECONDS,
+        )
     except asyncio.CancelledError:
         raise
+    except TimeoutError:
+        logger.warning(
+            CONFLICT_ESCALATION_APPROVAL_FAILED,
+            escalation_id=str(escalation.id),
+            conflict_id=str(conflict.id),
+            note="approval_store_add_timeout",
+            timeout_seconds=_APPROVAL_SUBMIT_TIMEOUT_SECONDS,
+        )
+        return
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(

@@ -1,7 +1,6 @@
 """MultiAgentCoordinator enforces the max_delegation_rounds ceiling."""
 
 from datetime import date
-from uuid import uuid4
 
 import pytest
 
@@ -23,7 +22,7 @@ pytestmark = pytest.mark.unit
 
 def _identity() -> AgentIdentity:
     return AgentIdentity(
-        id=uuid4(),
+        id=as_uuid("agent-1"),
         name="Test Agent",
         role="Developer",
         department="Engineering",

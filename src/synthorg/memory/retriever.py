@@ -76,11 +76,15 @@ class ContextInjectionStrategy:
             shared_store: Optional shared knowledge store.
             token_estimator: Optional custom token estimator.
             memory_filter: Optional filter applied after ranking,
-                before formatting.  When ``None`` and
-                ``config.non_inferable_only`` is ``True``, a
-                ``TagBasedMemoryFilter`` is auto-created.  When ``None``
-                and ``non_inferable_only`` is ``False``, all ranked
-                memories are injected (backward-compatible).
+                before formatting.  When ``None``, the filter is
+                resolved by :func:`build_memory_filter` from
+                ``config.memory_filter_strategy``: ``"off"`` defers to
+                ``config.non_inferable_only`` (auto-creating a
+                ``TagBasedMemoryFilter`` only when it is ``True``, else
+                no filtering), ``"tag_based"`` always installs a
+                ``TagBasedMemoryFilter``, and ``"passthrough"`` injects
+                every ranked memory unchanged.  An explicit instance
+                overrides this strategy-based resolution.
             hierarchical_retriever: Optional hierarchical retriever
                 (used when ``config.retriever == "hierarchical"``).
             reranker: Optional query-specific re-ranker (used when

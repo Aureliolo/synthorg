@@ -192,8 +192,9 @@ class WaveDispatcher:
             by_id = {str(a.task.id): a for a in group.assignments}
             ordered_ids = await strategy.select_subtasks(tuple(by_id), None)
             ordered = tuple(by_id[i] for i in ordered_ids if i in by_id)
+            ordered_set = set(ordered_ids)
             missing = tuple(
-                a for a in group.assignments if str(a.task.id) not in set(ordered_ids)
+                a for a in group.assignments if str(a.task.id) not in ordered_set
             )
             reordered.append(
                 group.model_copy(update={"assignments": ordered + missing})

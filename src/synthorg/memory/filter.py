@@ -115,6 +115,12 @@ class PassthroughMemoryFilter:
     deliberately disabled".
     """
 
+    def __init__(self) -> None:
+        logger.debug(
+            MEMORY_FILTER_INIT,
+            strategy=self.strategy_name,
+        )
+
     def filter_for_injection(
         self,
         memories: tuple[ScoredMemory, ...],

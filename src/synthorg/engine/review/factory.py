@@ -10,7 +10,7 @@ pool and a pool strategy are supplied; absent either, it degrades to
 internal-only so a misconfigured boot can never brick the review path.
 """
 
-from typing import Literal
+from typing import Literal, assert_never
 
 from synthorg.client.protocols import ClientInterface, ClientPoolStrategy
 from synthorg.engine.review.pipeline import ReviewPipeline
@@ -47,12 +47,14 @@ def build_review_pipeline(
         strategy.
     """
     stages: list[ReviewStage] = []
-    if strategy == "client_then_internal" and client_pool and pool_strategy is not None:
-        stages.append(ClientReviewStage(pool=client_pool, strategy=pool_strategy))
-        client_stage_active = True
-    else:
+    if strategy == "internal_only":
         client_stage_active = False
-        if strategy == "client_then_internal":
+    elif strategy == "client_then_internal":
+        if client_pool and pool_strategy is not None:
+            stages.append(ClientReviewStage(pool=client_pool, strategy=pool_strategy))
+            client_stage_active = True
+        else:
+            client_stage_active = False
             logger.warning(
                 REVIEW_PIPELINE_BUILT,
                 strategy=strategy,
@@ -60,6 +62,8 @@ def build_review_pipeline(
                 has_pool=bool(client_pool),
                 has_pool_strategy=pool_strategy is not None,
             )
+    else:  # pragma: no cover
+        assert_never(strategy)
     stages.append(InternalReviewStage())
     pipeline = ReviewPipeline(stages=tuple(stages))
     logger.info(

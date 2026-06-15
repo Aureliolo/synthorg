@@ -200,6 +200,13 @@ def _build_composite(
         child_type = str(spec.selector_type)
         if child_type == "composite":
             msg = "composite source selectors must not nest a composite"
+            logger.warning(
+                HR_TRAINING_CONFIG_INVALID,
+                field="composite_sub_selectors",
+                expected="child_selector_type_not_composite",
+                value_type=type(spec.selector_type).__name__,
+                value_repr=repr(spec.selector_type),
+            )
             raise ValueError(msg)
         weights.append(spec.weight)
         selectors.append(

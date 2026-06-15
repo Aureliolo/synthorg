@@ -77,6 +77,9 @@ class HashingTextEmbedder:
     """
 
     def __init__(self, *, dims: int = _HASH_DIMS) -> None:
+        if dims < 1:
+            msg = "dims must be >= 1"
+            raise ValueError(msg)
         self._dims = dims
 
     def embed(self, text: str) -> tuple[float, ...]:
@@ -129,7 +132,7 @@ class SentenceTransformerEmbedder:
             The model's normalised embedding vector.
         """
         vector = self._model.encode(text, normalize_embeddings=True)
-        return tuple(float(component) for component in vector)
+        return tuple(vector.tolist())
 
 
 def _build_hashing(**_kwargs: object) -> TextEmbedder:

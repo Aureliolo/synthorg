@@ -1,7 +1,6 @@
 """Orchestrator strategy is injected into and applied by the WaveDispatcher."""
 
 from datetime import date
-from uuid import uuid4
 
 import pytest
 
@@ -22,9 +21,9 @@ from tests._shared import as_uuid
 pytestmark = pytest.mark.unit
 
 
-def _identity() -> AgentIdentity:
+def _identity(label: str) -> AgentIdentity:
     return AgentIdentity(
-        id=uuid4(),
+        id=as_uuid(label),
         name="Agent",
         role="Developer",
         department="Engineering",
@@ -35,7 +34,7 @@ def _identity() -> AgentIdentity:
 
 def _assignment(task_id: str) -> AgentAssignment:
     return AgentAssignment(
-        identity=_identity(),
+        identity=_identity(f"agent-{task_id}"),
         task=Task(
             id=as_uuid(task_id),
             title=f"Task {task_id}",

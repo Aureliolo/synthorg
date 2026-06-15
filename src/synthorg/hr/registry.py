@@ -298,9 +298,7 @@ class AgentRegistryService:
             The ids of the currently ACTIVE agents.
         """
         return tuple(
-            str(a.id)
-            for a in tuple(self._agents.values())
-            if a.status == AgentStatus.ACTIVE
+            str(a.id) for a in self._agents.values() if a.status == AgentStatus.ACTIVE
         )
 
     async def list_by_department(

@@ -23,7 +23,7 @@ def _app_state(section: CoordinationSectionConfig) -> AppState:
         config=SimpleNamespace(coordination=section),
         slice=lambda _slice_type: SimpleNamespace(budget_enforcer=None),
     )
-    return cast(AppState, fake)
+    return cast("AppState", fake)
 
 
 def _replan_hook(chain: object) -> object:
