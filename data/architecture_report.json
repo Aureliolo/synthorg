@@ -686,8 +686,8 @@
     },
     "src/synthorg/memory/retriever.py": {
       "cap": 500,
-      "loc": 462,
-      "ratio": 0.924,
+      "loc": 466,
+      "ratio": 0.932,
       "tier": "code"
     },
     "src/synthorg/memory/self_editing.py": {
@@ -1405,7 +1405,7 @@
     },
     "synthorg.hr.registry:AgentRegistryService": {
       "lcom4": 2,
-      "loc": 651
+      "loc": 649
     },
     "synthorg.hr.scaling.service:ScalingService": {
       "lcom4": 1,
