@@ -901,12 +901,17 @@ class MultiAgentCoordinator:
 
         logger.info(COORDINATION_PHASE_STARTED, phase=phase_name)
         try:
+            # Built once per coordinate() run (dispatch is a single phase),
+            # then reused by the dispatcher across all its waves. Kept
+            # per-run rather than cached on the coordinator so a stateful
+            # magentic_dynamic strategy never leaks state between runs.
+            orchestrator_strategy = create_orchestrator_strategy(
+                context.config.orchestrator_strategy,
+            )
             dispatcher = select_dispatcher(
                 topology,
                 clock=self._clock,
-                orchestrator_strategy=create_orchestrator_strategy(
-                    context.config.orchestrator_strategy,
-                ),
+                orchestrator_strategy=orchestrator_strategy,
             )
             project_id = context.task.project
             repo_root = await self._resolve_repo_root(project_id)

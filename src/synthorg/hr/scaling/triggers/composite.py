@@ -32,6 +32,12 @@ class CompositeScalingTrigger:
     async def should_trigger(self) -> bool:
         """Trigger if any child trigger fires.
 
+        OR semantics: the first firing child short-circuits, so a
+        ``should_trigger`` that also consumes state (a signal-threshold
+        crossing) on a later child is intentionally left unpolled this
+        cycle and surfaces on the next poll. That defers a simultaneous
+        second crossing by one cycle rather than dropping it.
+
         Returns:
             ``True`` when the predicate holds, ``False`` otherwise.
         """

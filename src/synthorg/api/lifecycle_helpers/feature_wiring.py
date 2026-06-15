@@ -479,13 +479,24 @@ async def _wire_signals_service(
 
     registry = app_state.slice(HrStateSlice).agent_registry
     agent_ids_provider = registry.active_agent_ids if registry is not None else tuple
-    signals_service = build_signals_service(
-        performance_tracker=performance_tracker,
-        agent_ids_provider=agent_ids_provider,
-        approval_store=effective_approval_store,
-        scaling_service=app_state.slice(HrStateSlice).scaling_service,
-    )
-    app_state.wire(MetaStateSlice, signals_service=signals_service)
+    try:
+        signals_service = build_signals_service(
+            performance_tracker=performance_tracker,
+            agent_ids_provider=agent_ids_provider,
+            approval_store=effective_approval_store,
+            scaling_service=app_state.slice(HrStateSlice).scaling_service,
+        )
+        app_state.wire(MetaStateSlice, signals_service=signals_service)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_APP_STARTUP,
+            service="signals",
+            note="signals wiring failed; MCP handlers and /meta/chat will 503",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return
     logger.info(API_APP_STARTUP, service="signals", note="wired")
 
 

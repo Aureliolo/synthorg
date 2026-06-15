@@ -52,6 +52,14 @@ def build_review_pipeline(
         client_stage_active = True
     else:
         client_stage_active = False
+        if strategy == "client_then_internal":
+            logger.warning(
+                REVIEW_PIPELINE_BUILT,
+                strategy=strategy,
+                note="client stage requested but degraded to internal-only",
+                has_pool=bool(client_pool),
+                has_pool_strategy=pool_strategy is not None,
+            )
     stages.append(InternalReviewStage())
     pipeline = ReviewPipeline(stages=tuple(stages))
     logger.info(

@@ -146,8 +146,8 @@
     },
     "src/synthorg/api/lifecycle_helpers/feature_wiring.py": {
       "cap": 600,
-      "loc": 530,
-      "ratio": 0.883,
+      "loc": 541,
+      "ratio": 0.902,
       "tier": "orchestrator"
     },
     "src/synthorg/api/services/org_mutations.py": {
@@ -1261,7 +1261,7 @@
     "synthorg.meta.mcp.registry": 30,
     "synthorg.meta.mcp.tool_builder": 22,
     "synthorg.meta.models": 64,
-    "synthorg.observability": 1546,
+    "synthorg.observability": 1544,
     "synthorg.observability.background_tasks": 20,
     "synthorg.observability.events.api": 165,
     "synthorg.observability.events.chief_of_staff": 29,
@@ -1361,7 +1361,7 @@
     },
     "synthorg.engine.coordination.service:MultiAgentCoordinator": {
       "lcom4": 1,
-      "loc": 709
+      "loc": 710
     },
     "synthorg.engine.hybrid_loop:HybridLoop": {
       "lcom4": 1,

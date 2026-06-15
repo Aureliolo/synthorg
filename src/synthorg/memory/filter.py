@@ -1,3 +1,4 @@
+# module-kind: code
 """Memory filter strategies for non-inferable principle enforcement.
 
 Filters scored memories before injection into agent prompts.  The

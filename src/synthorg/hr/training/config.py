@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Training mode configuration.
 
 Frozen Pydantic configuration model with safe defaults for all

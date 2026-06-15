@@ -390,6 +390,19 @@ class TestEmbeddingSimilarityDetector:
         response = json.dumps({"position": {"recommendation": "ship it"}})
         assert detector.detect(response) is False
 
+    def test_two_empty_positions_not_conflicting(self) -> None:
+        """Two identity-only positions both embed to zero; not a conflict."""
+        detector = EmbeddingSimilarityDetector(embedder=HashingTextEmbedder())
+        response = json.dumps(
+            {
+                "positions": [
+                    {"agent_id": "agent-1", "role": "engineer"},
+                    {"agent_id": "agent-2", "role": "designer"},
+                ]
+            }
+        )
+        assert detector.detect(response) is False
+
     def test_non_json_not_conflicting(self) -> None:
         """A response with no positions cannot conflict."""
         detector = EmbeddingSimilarityDetector(embedder=HashingTextEmbedder())

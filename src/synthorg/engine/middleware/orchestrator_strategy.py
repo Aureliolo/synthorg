@@ -1,3 +1,4 @@
+# module-kind: code
 """Orchestrator strategy protocol and implementations.
 
 Defines the ``OrchestratorStrategy`` protocol for subtask selection
@@ -5,6 +6,9 @@ within the centralized ``WaveDispatcher``.  Two implementations:
 
 1. ``NaiveDispatchStrategy`` -- dispatches all subtasks (default)
 2. ``MagenticDynamicSelectStrategy`` -- prioritizes stalled subtasks
+
+Selection is logged once by the ``StrategyRegistry`` it routes through,
+so this module keeps no logger of its own.
 """
 
 import re
@@ -13,9 +17,6 @@ from typing import Protocol, runtime_checkable
 from synthorg.core.registry.strategy import StrategyRegistry
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.middleware.models import ProgressLedger
-from synthorg.observability import get_logger
-
-logger = get_logger(__name__)
 
 
 @runtime_checkable

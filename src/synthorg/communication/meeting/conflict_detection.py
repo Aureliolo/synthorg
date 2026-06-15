@@ -346,6 +346,13 @@ class EmbeddingSimilarityDetector:
         threshold = self.similarity_threshold
         for i in range(len(vectors)):
             for j in range(i + 1, len(vectors)):
+                # Two degenerate (empty) positions both embed to the zero
+                # vector and vacuously agree, so never flag them as a
+                # conflict. A single missing embedding still reads as a
+                # conflict (cosine 0.0 < threshold) so a dropped position
+                # surfaces for review.
+                if not any(vectors[i]) and not any(vectors[j]):
+                    continue
                 if cosine_similarity(vectors[i], vectors[j]) < threshold:
                     return True
         return False
