@@ -1,5 +1,7 @@
 """Best-effort gating of the _wire_signals_service startup helper."""
 
+from typing import cast
+
 import pytest
 
 from synthorg.api.lifecycle_helpers.feature_wiring import _wire_signals_service
@@ -15,11 +17,14 @@ pytestmark = pytest.mark.unit
 
 
 def _approval_store() -> ApprovalStoreProtocol:
-    return mock_of[ApprovalStoreProtocol]()
+    return cast(ApprovalStoreProtocol, mock_of[ApprovalStoreProtocol]())
 
 
 def _registry() -> AgentRegistryService:
-    return mock_of[AgentRegistryService](active_agent_ids=lambda: ())
+    return cast(
+        AgentRegistryService,
+        mock_of[AgentRegistryService](active_agent_ids=lambda: ()),
+    )
 
 
 def _signals_of(app_state: object) -> object:

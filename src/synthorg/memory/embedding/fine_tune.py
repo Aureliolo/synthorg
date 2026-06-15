@@ -269,7 +269,7 @@ def _import_sentence_transformers() -> ModuleType:
         FineTuneDependencyError: If the related operation fails.
     """
     try:
-        import sentence_transformers  # type: ignore[import-not-found]  # noqa: PLC0415
+        import sentence_transformers  # noqa: PLC0415
     except ImportError as exc:
         msg = (
             "sentence-transformers is required for fine-tuning. "

@@ -1,5 +1,6 @@
 """Tests for build_signals_service and the optional scaling domain."""
 
+from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -18,17 +19,20 @@ pytestmark = pytest.mark.unit
 
 
 def _tracker() -> PerformanceTracker:
-    return mock_of[PerformanceTracker]()
+    return cast(PerformanceTracker, mock_of[PerformanceTracker]())
 
 
 def _approval_store() -> ApprovalStoreProtocol:
-    return mock_of[ApprovalStoreProtocol]()
+    return cast(ApprovalStoreProtocol, mock_of[ApprovalStoreProtocol]())
 
 
 def _scaling_service() -> ScalingService:
-    return mock_of[ScalingService](
-        get_recent_decisions=MagicMock(return_value=()),
-        get_recent_actions=MagicMock(return_value=()),
+    return cast(
+        ScalingService,
+        mock_of[ScalingService](
+            get_recent_decisions=MagicMock(return_value=()),
+            get_recent_actions=MagicMock(return_value=()),
+        ),
     )
 
 
