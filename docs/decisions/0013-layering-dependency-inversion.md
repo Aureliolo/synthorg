@@ -65,10 +65,10 @@ move.
 
 The declarative `.importlinter` contracts gained targeted forbidden edges (not
 a blanket `*->api`): business-logic packages may no longer import the moved
-`api` modules, and `api.controllers` may not import `persistence._shared` /
-`sqlite` / `postgres` / constraint-token / jsonb-capability internals
-(protocol-level persistence imports stay legal). The new leaves are pinned in
-the `test_cold_import.py` smoke test.
+`api` modules, and `api.controllers` (and `api.auth.controllers`) may not
+import `persistence._shared` / `sqlite` / `postgres` / constraint-token /
+jsonb-capability internals (protocol-level persistence imports stay legal). The
+new leaves are pinned in the `test_cold_import.py` smoke test.
 
 ### 3. Controller-to-service boundary + DTOs
 

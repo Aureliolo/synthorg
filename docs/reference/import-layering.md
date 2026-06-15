@@ -50,11 +50,12 @@ aspirational layering. The current contracts are:
   so business logic names them from `core` and never reaches up into the
   HTTP layer. See [ADR-0013](../decisions/0013-layering-dependency-inversion.md).
 - **controllers-no-persistence-internals** -- `synthorg.api.controllers`
-  does not import `persistence._shared`, `persistence.sqlite`,
-  `persistence.postgres`, `persistence.constraint_tokens`, or
-  `persistence.jsonb_capability`. Controllers reach persistence through a
-  service or the repository protocols; backend internals, raw-SQL helpers,
-  and constraint-token strings stay behind the boundary. See
+  and `synthorg.api.auth.controllers` do not import `persistence._shared`,
+  `persistence.sqlite`, `persistence.postgres`,
+  `persistence.constraint_tokens`, or `persistence.jsonb_capability`.
+  Controllers reach persistence through a service or the repository
+  protocols; backend internals, raw-SQL helpers, and constraint-token
+  strings stay behind the boundary. See
   [ADR-0013](../decisions/0013-layering-dependency-inversion.md).
 
 ### Why direct-only, and the ignore lists

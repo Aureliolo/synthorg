@@ -125,10 +125,13 @@ class TestSetup:
     ) -> None:
         """A losing racer on the single-CEO guard sees 'already completed'.
 
-        The CEO pre-check is forced to observe zero CEOs (the racing window),
-        but ``save`` then hits the single-CEO partial-unique index. The guard
-        maps it to the uniform setup-complete conflict via the typed
-        ``SingleCeoConstraintError`` rather than leaking the persistence token.
+        ``count_by_role`` is monkeypatched to return 0 for any role,
+        simulating the racing window where the incumbent CEO is not yet
+        visible to the pre-check. ``save`` then trips the fake's single-CEO
+        guard (which mirrors the real ``idx_single_ceo`` partial-unique index
+        by raising ``ConstraintViolationError`` with
+        ``constraint=IDX_SINGLE_CEO``). The guard maps it to the uniform
+        setup-complete 409 rather than leaking the persistence token.
         """
         import uuid
         from datetime import UTC, datetime
@@ -169,9 +172,10 @@ class TestSetup:
     ) -> None:
         """A losing racer on the username-unique guard sees 'already completed'.
 
-        The CEO pre-check passes (no CEO yet), but ``save`` raises the
+        An OBSERVER (not a CEO) is seeded under the target username, so the
+        CEO pre-check passes (no CEO yet) but ``save`` raises the
         username-unique constraint, which the guard maps to the uniform
-        setup-complete conflict via the typed ``DuplicateUsernameError``.
+        setup-complete 409 via the typed ``DuplicateUsernameError``.
         """
         import uuid
         from datetime import UTC, datetime
@@ -201,6 +205,40 @@ class TestSetup:
         assert response.status_code == 409
         assert "Setup already completed" in response.text
 
+    async def test_setup_race_last_ceo_constraint_returns_409(
+        self,
+        bare_client: LoopAsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Every recognised user-constraint token maps to 'already completed'.
+
+        The last-CEO trigger cannot fire on a bootstrap INSERT, but the guard
+        must treat every recognised user-constraint token uniformly: ``save``
+        raising ``LAST_CEO_TRIGGER`` is mapped to the setup-complete 409 by
+        ``raise_for_user_constraint`` rather than surfacing the typed
+        ``LastCeoConstraintError`` default message.
+        """
+        from synthorg.core.persistence_errors import ConstraintViolationError
+        from synthorg.persistence.constraint_tokens import LAST_CEO_TRIGGER
+
+        app_state = bare_client.app.state["app_state"]
+        backend = cast(FakePersistenceBackend, persistence_of(app_state))
+        users_repo = backend._users
+        users_repo._users.clear()
+
+        async def _raise_last_ceo(entity: object) -> None:
+            msg = "last ceo"
+            raise ConstraintViolationError(msg, constraint=LAST_CEO_TRIGGER)
+
+        monkeypatch.setattr(users_repo, "save", _raise_last_ceo)
+
+        response = await bare_client.post(
+            "/api/v1/auth/setup",
+            json={"username": "newadmin", "password": "super-secure-password-12"},
+        )
+        assert response.status_code == 409
+        assert "Setup already completed" in response.text
+
     async def test_setup_unrelated_constraint_not_masked(
         self,
         bare_client: LoopAsyncClient,
@@ -208,9 +246,10 @@ class TestSetup:
     ) -> None:
         """An unrelated constraint propagates, not masked as setup-complete.
 
-        The race guard only remaps the single-CEO / username conflicts; any
-        other constraint must surface its own contract instead of a misleading
-        'already completed' response.
+        The race guard only remaps recognised user-constraint conflicts; any
+        other constraint is re-raised as the original ``ConstraintViolationError``
+        and surfaces via the persistence-integrity handler (400) instead of a
+        misleading 'already completed' response.
         """
         from synthorg.core.persistence_errors import ConstraintViolationError
 
@@ -229,8 +268,8 @@ class TestSetup:
             "/api/v1/auth/setup",
             json={"username": "newadmin", "password": "super-secure-password-12"},
         )
+        assert response.status_code == 400
         assert "Setup already completed" not in response.text
-        assert response.status_code >= 400
 
 
 @pytest.mark.unit
