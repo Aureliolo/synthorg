@@ -23,9 +23,6 @@ RECEIPT_REDTEAM_UNAVAILABLE: Final[str] = (
 RECEIPT_CASSETTE_UNAVAILABLE: Final[str] = (
     "deliverable_receipts.receipt.cassette_unavailable"
 )
-RECEIPT_MIXED_CURRENCY_COST: Final[str] = (
-    "deliverable_receipts.receipt.mixed_currency_cost"
-)
 
 # -- Capture sinks --------------------------------------------------------
 

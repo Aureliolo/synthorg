@@ -237,6 +237,73 @@ def test_non_target_call_silent(tmp_path: Path) -> None:
     assert _scan(source, tmp_path) == []
 
 
+# ── Augmented-assignment accumulation form ─────────────────────────
+
+
+def test_augassign_currency_accumulation_without_guard_flagged(
+    tmp_path: Path,
+) -> None:
+    """``totals[k] += r.cost`` without a guard is a violation."""
+    source = (
+        "def f(records):\n"
+        "    totals = {}\n"
+        "    for r in records:\n"
+        "        totals[r.agent_id] = totals.get(r.agent_id, 0.0) + r.cost\n"
+        "        totals[r.agent_id] += r.cost\n"
+    )
+    issues = _scan(source, tmp_path)
+    assert any("x.py:5" in i for i in issues)
+
+
+def test_augassign_guarded_accumulation_clears(tmp_path: Path) -> None:
+    """A preceding ``assert_currencies_match`` clears the ``+=`` loop."""
+    source = (
+        "from synthorg.budget.currency import assert_currencies_match\n"
+        "def f(records):\n"
+        "    assert_currencies_match(r.currency for r in records)\n"
+        "    totals = {}\n"
+        "    for r in records:\n"
+        "        totals[r.agent_id] = totals.get(r.agent_id, 0.0)\n"
+        "        totals[r.agent_id] += r.cost\n"
+    )
+    assert _scan(source, tmp_path) == []
+
+
+def test_augassign_non_currency_field_silent(tmp_path: Path) -> None:
+    """``counts[k] += r.input_tokens`` is not currency accumulation."""
+    source = (
+        "def f(records):\n"
+        "    counts = {}\n"
+        "    for r in records:\n"
+        "        counts[r.agent_id] = 0\n"
+        "        counts[r.agent_id] += r.input_tokens\n"
+    )
+    assert _scan(source, tmp_path) == []
+
+
+def test_augassign_subtraction_silent(tmp_path: Path) -> None:
+    """``balance -= r.cost`` is not summation and is not flagged."""
+    source = (
+        "def f(records):\n"
+        "    balance = 0.0\n"
+        "    for r in records:\n"
+        "        balance -= r.cost\n"
+    )
+    assert _scan(source, tmp_path) == []
+
+
+def test_augassign_suppression_marker_clears(tmp_path: Path) -> None:
+    """A trailing suppression marker clears the ``+=`` violation."""
+    source = (
+        "def f(records):\n"
+        "    total = 0.0\n"
+        "    for r in records:\n"
+        "        total += r.cost  "
+        "# lint-allow: currency-aggregation -- single-currency by construction\n"
+    )
+    assert _scan(source, tmp_path) == []
+
+
 # ── Suppression marker ─────────────────────────────────────────────
 
 

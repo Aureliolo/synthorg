@@ -15,9 +15,13 @@ Detected aggregations:
 * ``statistics.mean(...)`` / ``statistics.fmean(...)``
 * ``fsum``, ``mean``, ``fmean`` when imported by name (e.g.
   ``from math import fsum``).
+* ``x += <var>.<field>`` accumulation loops (e.g.
+  ``cost_by_agent[k] += r.cost``) where ``<field>`` is a guarded name.
 
-The first argument must be a generator / list / set comprehension whose
-``elt`` is an attribute access ending in one of the guarded field names.
+For the call forms, the first argument must be a generator / list / set
+comprehension whose ``elt`` is an attribute access ending in one of the
+guarded field names.  For the ``+=`` form, the right-hand side must
+contain an attribute access ending in a guarded field name.
 
 Per-line opt-out: append ``# lint-allow: currency-aggregation -- <reason>``
 to the aggregation line.  The justification after ``--`` is required and
@@ -157,6 +161,23 @@ def _comp_aggregates_currency_field(arg: ast.expr) -> bool:
     )
 
 
+def _augassign_aggregates_currency_field(node: ast.AugAssign) -> bool:
+    """``True`` when *node* is ``x += <expr>`` summing a guarded attribute.
+
+    Catches the accumulation form ``cost_by_agent[k] += r.cost`` that the
+    comprehension-based detection misses.  Only ``+=`` counts; other
+    augmented operators (``-=``, ``*=`` ...) are not currency summation.
+    The value expression is walked so wrapped forms (``+= r.cost * w``,
+    ``+= abs(r.amount)``) are still caught.
+    """
+    if not isinstance(node.op, ast.Add):
+        return False
+    return any(
+        isinstance(sub, ast.Attribute) and sub.attr in _GUARDED_FIELDS
+        for sub in ast.walk(node.value)
+    )
+
+
 def _is_guard_call(node: ast.Call) -> bool:
     """``True`` when *node* invokes one of the same-currency guards."""
     func = node.func
@@ -287,10 +308,23 @@ def _scope_has_preceding_guard(
     target_source: str | None = None
     if target.args:
         target_source = _comp_iter_source(target.args[0])
+    return _scope_has_preceding_guard_at(scope, target_pos, target_source)
+
+
+def _scope_has_preceding_guard_at(
+    scope: ast.AST,
+    target_pos: tuple[int, int],
+    target_source: str | None,
+) -> bool:
+    """Position-based core of :func:`_scope_has_preceding_guard`.
+
+    Shared by the ``Call`` aggregator path and the ``AugAssign``
+    accumulation path; the latter has no comprehension source, so it
+    passes ``target_source=None`` and is cleared by any preceding guard
+    in the same scope.
+    """
     for sub in _walk_current_scope(scope):
         if not isinstance(sub, ast.Call):
-            continue
-        if sub is target:
             continue
         if not _is_guard_call(sub):
             continue
@@ -313,13 +347,13 @@ def _build_parent_map(tree: ast.AST) -> dict[int, ast.AST]:
     return parents
 
 
-def _is_call_suppressed(node: ast.Call, lines: list[str]) -> bool:
+def _is_call_suppressed(node: ast.stmt | ast.expr, lines: list[str]) -> bool:
     """``True`` when *node*'s span carries a trailing suppression marker.
 
-    Accepts the marker on the line preceding the call OR any line spanned
-    by it (start through ``end_lineno``) so multi-line ``sum(...)``
-    blocks can carry the marker on a line that fits within the
-    88-character budget.
+    Accepts the marker on the line preceding the node OR any line spanned
+    by it (start through ``end_lineno``) so multi-line ``sum(...)`` calls
+    and ``x += ...`` accumulations can carry the marker on a line that
+    fits within the 88-character budget.
     """
     end_line = getattr(node, "end_lineno", None) or node.lineno
     for ln in range(node.lineno - 1, end_line + 1):
@@ -353,18 +387,29 @@ def _scan_file(file_path: Path, rel: str) -> list[str]:
 
     issues: list[str] = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        if not _is_target_call(node) or not node.args:
-            continue
-        if not _comp_aggregates_currency_field(node.args[0]):
-            continue
-        if _is_call_suppressed(node, lines):
-            continue
-        scope = _enclosing_scope(node, parents)
-        if scope is not None and _scope_has_preceding_guard(scope, node):
-            continue
-        issues.append(f"{rel}:{node.lineno}: {_VIOLATION_DETAIL}")
+        if isinstance(node, ast.Call):
+            if not _is_target_call(node) or not node.args:
+                continue
+            if not _comp_aggregates_currency_field(node.args[0]):
+                continue
+            if _is_call_suppressed(node, lines):
+                continue
+            scope = _enclosing_scope(node, parents)
+            if scope is not None and _scope_has_preceding_guard(scope, node):
+                continue
+            issues.append(f"{rel}:{node.lineno}: {_VIOLATION_DETAIL}")
+        elif isinstance(node, ast.AugAssign):
+            if not _augassign_aggregates_currency_field(node):
+                continue
+            if _is_call_suppressed(node, lines):
+                continue
+            scope = _enclosing_scope(node, parents)
+            target_pos = (node.lineno, node.col_offset)
+            if scope is not None and _scope_has_preceding_guard_at(
+                scope, target_pos, None
+            ):
+                continue
+            issues.append(f"{rel}:{node.lineno}: {_VIOLATION_DETAIL}")
     return issues
 
 
