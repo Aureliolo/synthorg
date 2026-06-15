@@ -96,8 +96,11 @@ class ConsolidationResult(BaseModel):
             callers that only need a single representative id.
         archived_count: Number of entries archived.
         consolidated_count: Derived from ``len(removed_ids)``.
-        mode_assignments: Per-entry archival mode assignments (set by
-            strategy, empty for strategies that don't classify density).
+        mode_assignments: Per-entry archival mode assignments. Set by
+            mode-classifying strategies (density-routing and single-mode)
+            so the service routes each archived entry to its cold-store
+            mode; empty for plain strategies, whose archives default to
+            ``EXTRACTIVE``.
         archival_index: Maps original memory IDs to archival store IDs
             (built by service after archival completes).
     """

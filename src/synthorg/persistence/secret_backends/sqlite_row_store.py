@@ -83,7 +83,7 @@ class SqliteSecretRowStore(SecretRowStore):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to store secret {secret_id}"
+            msg = "Failed to store secret"
             raise SecretStorageError(msg) from exc
 
     @override
@@ -116,7 +116,7 @@ class SqliteSecretRowStore(SecretRowStore):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to retrieve secret {secret_id}"
+            msg = "Failed to retrieve secret"
             raise SecretRetrievalError(msg) from exc
 
         if row is None:
@@ -153,7 +153,7 @@ class SqliteSecretRowStore(SecretRowStore):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = f"Failed to delete secret {secret_id}"
+            msg = "Failed to delete secret"
             raise SecretStorageError(msg) from exc
         else:
             return deleted

@@ -1,9 +1,8 @@
 """Parity + completeness tests for the auth-type descriptor table.
 
-Pins the descriptor map against the pre-refactor per-auth-type dispatch
-tables (owned fields, api-key support, ToS requirement, discovery-header
-style) and asserts the import-time completeness guard covers every
-:class:`AuthType`.
+Pins the descriptor map's per-auth-type values (owned fields, api-key
+support, ToS requirement, discovery-header style) and asserts the
+import-time completeness guard covers every :class:`AuthType`.
 """
 
 import pytest
@@ -14,8 +13,7 @@ from synthorg.providers._auth_type_descriptor import (
 )
 from synthorg.providers.enums import AuthType
 
-# The exact tables that lived in providers/management/_helpers.py before
-# the descriptor collapse.
+# The owned credential fields each AuthType must expose.
 _EXPECTED_OWNED: dict[AuthType, tuple[str, ...]] = {
     AuthType.API_KEY: ("api_key",),
     AuthType.OAUTH: (

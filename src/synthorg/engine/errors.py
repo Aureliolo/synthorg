@@ -118,13 +118,8 @@ class ProjectNotFoundError(EngineError):
     error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
     default_message: ClassVar[str] = "Project not found"
 
-    def __init__(
-        self,
-        message: str | None = None,
-        *,
-        project_id: NotBlankStr | None = None,
-    ) -> None:
-        super().__init__(message or self.default_message)
+    def __init__(self, *, project_id: NotBlankStr | None = None) -> None:
+        super().__init__(self.default_message)
         self.project_id: NotBlankStr | None = project_id
 
 

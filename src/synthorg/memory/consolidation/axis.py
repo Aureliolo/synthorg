@@ -78,9 +78,13 @@ class OpResult:
             ``LLMSynthesisOp`` this excludes entries the prompt cap
             dropped (they survive for the next pass) and entries whose
             best-effort delete failed.
-        mode_assignments: Per-entry archival-mode assignments; non-empty
-            only for the density-routing op (other ops leave
-            ``ConsolidationResult.mode_assignments`` empty).
+        mode_assignments: Per-entry archival-mode assignment, one per
+            successfully-removed original. Populated by every
+            mode-classifying op -- the density-routing op and the
+            single-mode extractive/abstractive ops -- so the archival
+            store routes each entry to its cold-store mode; plain ops
+            (e.g. concatenation) leave it empty and those archives
+            default to ``EXTRACTIVE``.
     """
 
     summary_id: NotBlankStr

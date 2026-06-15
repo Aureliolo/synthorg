@@ -343,6 +343,7 @@ async def test_extractive_preservation_op_factory_golden() -> None:
     )
 
     assert result.removed_ids == ("e0", "e1", "e2")
+    assert tuple(a.original_id for a in result.mode_assignments) == ("e0", "e1", "e2")
     assert all(a.mode is ArchivalMode.EXTRACTIVE for a in result.mode_assignments)
     _agent, req = backend.stored[0]
     assert req.metadata.tags == ("consolidated", "mode:extractive")
@@ -379,6 +380,7 @@ async def test_abstractive_summarization_op_factory_golden() -> None:
     )
 
     assert result.removed_ids == ("a0", "a1", "a2")
+    assert tuple(a.original_id for a in result.mode_assignments) == ("a0", "a1", "a2")
     assert all(a.mode is ArchivalMode.ABSTRACTIVE for a in result.mode_assignments)
     _agent, req = backend.stored[0]
     assert req.metadata.tags == ("consolidated", "mode:abstractive")
