@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Memory retrieval pipeline configuration.
 
 Frozen Pydantic config for the retrieval pipeline -- weights,

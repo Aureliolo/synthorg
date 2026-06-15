@@ -27,8 +27,10 @@ subsequent GETs surface the terminal state.
 import asyncio
 from datetime import UTC, datetime, timedelta
 
-from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.communication.conflict_resolution._approval_routing import (
+    route_conflict_to_approval_store,
+)
 from synthorg.communication.conflict_resolution._escalation_builders import (
     build_escalation_notification,
     cancelled_resolution,
@@ -50,16 +52,13 @@ from synthorg.communication.conflict_resolution.models import (
     ConflictResolution,
     DissentRecord,
 )
-from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import NotBlankStr
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.conflict import (
     CONFLICT_ESCALATED,
     CONFLICT_ESCALATION_APPROVAL_FAILED,
-    CONFLICT_ESCALATION_APPROVAL_ROUTED,
     CONFLICT_ESCALATION_CANCELLED,
     CONFLICT_ESCALATION_NOTIFY_FAILED,
     CONFLICT_ESCALATION_QUEUED,
@@ -69,8 +68,6 @@ from synthorg.observability.events.conflict import (
 from synthorg.observability.metrics_hub import record_escalation_outcome
 
 logger = get_logger(__name__)
-
-_APPROVAL_ACTION_TYPE: str = "conflict.escalation"
 
 # Upper bound on background notification dispatch so a slow / hung
 # notifier sink cannot leak tasks across thousands of escalations.
@@ -234,7 +231,9 @@ class HumanEscalationResolver:
             # slow / failing approval store cannot consume the operator's
             # decision-wait budget or break the escalation contract.
             approval_task = asyncio.create_task(
-                self._route_to_approval_store(escalation, conflict),
+                route_conflict_to_approval_store(
+                    self._approval_store, escalation, conflict
+                ),
                 name=f"escalation-approval[{escalation.id!s}]",
             )
             self._approval_tasks.add(approval_task)
@@ -336,55 +335,6 @@ class HumanEscalationResolver:
                 note="notification_dispatch_failed",
             )
             record_escalation_outcome(outcome="notify_failed")
-
-    async def _route_to_approval_store(
-        self,
-        escalation: Escalation,
-        conflict: Conflict,
-    ) -> None:
-        """Mirror the conflict into the generic approval queue.
-
-        Best-effort: a failure is logged but never propagates (the
-        escalation-queue row remains the authoritative record).
-
-        Raises:
-            asyncio.CancelledError: Propagated so shutdown can reap the
-                background task cleanly.
-        """
-        if self._approval_store is None:
-            return
-        item = ApprovalItem(
-            action_type=NotBlankStr(_APPROVAL_ACTION_TYPE),
-            title=NotBlankStr(f"Conflict escalation: {conflict.subject}"),
-            description=NotBlankStr(conflict.subject),
-            requested_by=NotBlankStr("system:conflict-resolution"),
-            risk_level=ApprovalRiskLevel.HIGH,
-            created_at=escalation.created_at,
-            metadata={
-                "escalation_id": str(escalation.id),
-                "conflict_id": str(conflict.id),
-            },
-        )
-        try:
-            await self._approval_store.add(item)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                CONFLICT_ESCALATION_APPROVAL_FAILED,
-                escalation_id=str(escalation.id),
-                conflict_id=str(conflict.id),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return
-        logger.info(
-            CONFLICT_ESCALATION_APPROVAL_ROUTED,
-            escalation_id=str(escalation.id),
-            conflict_id=str(conflict.id),
-            approval_id=str(item.id),
-        )
 
     async def _handle_timeout_cleanup(
         self,

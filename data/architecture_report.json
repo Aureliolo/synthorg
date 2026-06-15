@@ -236,8 +236,8 @@
     },
     "src/synthorg/communication/conflict_resolution/human_strategy.py": {
       "cap": 500,
-      "loc": 521,
-      "ratio": 1.042,
+      "loc": 475,
+      "ratio": 0.95,
       "tier": "code"
     },
     "src/synthorg/communication/event_stream/stream.py": {
@@ -682,12 +682,6 @@
       "cap": 500,
       "loc": 481,
       "ratio": 0.962,
-      "tier": "code"
-    },
-    "src/synthorg/memory/retrieval_config.py": {
-      "cap": 500,
-      "loc": 532,
-      "ratio": 1.064,
       "tier": "code"
     },
     "src/synthorg/memory/retriever.py": {
@@ -1191,7 +1185,7 @@
     "synthorg.api.state": 225,
     "synthorg.api.state_slices": 32,
     "synthorg.approval.enums": 69,
-    "synthorg.approval.protocol": 44,
+    "synthorg.approval.protocol": 45,
     "synthorg.approval.state": 21,
     "synthorg.budget.call_category": 43,
     "synthorg.budget.config": 28,
@@ -1216,7 +1210,7 @@
     "synthorg.core.autonomy_enums": 36,
     "synthorg.core.boundary": 27,
     "synthorg.core.clock": 162,
-    "synthorg.core.critical_errors": 511,
+    "synthorg.core.critical_errors": 512,
     "synthorg.core.domain_errors": 203,
     "synthorg.core.effective_autonomy": 22,
     "synthorg.core.error_taxonomy": 60,
@@ -1267,7 +1261,7 @@
     "synthorg.meta.mcp.registry": 30,
     "synthorg.meta.mcp.tool_builder": 22,
     "synthorg.meta.models": 64,
-    "synthorg.observability": 1545,
+    "synthorg.observability": 1546,
     "synthorg.observability.background_tasks": 20,
     "synthorg.observability.events.api": 165,
     "synthorg.observability.events.chief_of_staff": 29,
