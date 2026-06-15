@@ -937,7 +937,8 @@
       "protocol_exports": [],
       "settings_namespace": null,
       "state_slice_fields": [
-        "backend"
+        "backend",
+        "persistence_expected"
       ]
     },
     {
@@ -1213,6 +1214,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-15T21:36:46.376105Z",
+  "generated_at": "2026-06-15T22:24:28.583660Z",
   "schema_version": 1
 }
