@@ -14,6 +14,7 @@ from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.metrics import METRICS_SCRAPE_FAILED
 from synthorg.organization.state import OrganizationStateSlice
 from synthorg.persistence.state import PersistenceStateSlice
+from synthorg.providers.state import ProvidersStateSlice
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -117,6 +118,34 @@ async def fetch_departments(app_state: AppState) -> frozenset[str] | None:
         )
         return None
     return frozenset(str(r.name) for r in records)
+
+
+def fetch_provider_names(app_state: AppState) -> frozenset[str] | None:
+    """Pull the registered provider-name set from the provider registry.
+
+    Same return contract as :func:`fetch_tool_names`: empty frozenset
+    when the registry is not wired, the real set on success, ``None``
+    on exception so the merge step preserves the previous allowlist.
+    The registry is a frozen ``MappingProxyType`` so the read cannot
+    raise meaningfully today; wrapped for symmetry with the async
+    registry fetchers and so a future async exposure path stays safe.
+
+    Returns:
+        ``frozenset()`` when the registry is not wired, the live
+        frozenset of registered provider-name strings on success, or
+        ``None`` on a fetch exception.
+    """
+    try:
+        registry = app_state.slice(ProvidersStateSlice).registry
+        if registry is None:
+            return frozenset()
+        return frozenset(registry.list_providers())
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        log_exception_redacted(
+            logger, METRICS_SCRAPE_FAILED, exc, component="provider_registry"
+        )
+        return None
 
 
 async def fetch_tool_names(app_state: AppState) -> frozenset[str] | None:

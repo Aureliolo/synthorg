@@ -34,6 +34,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability._prometheus_label_fetchers import (
     agent_ids_from_agents,
     fetch_departments,
+    fetch_provider_names,
     fetch_tool_names,
     fetch_workflow_definitions,
 )
@@ -347,6 +348,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         suppress the unrelated allowlists.
         """
         agent_ids = agent_ids_from_agents(agents)
+        provider_names = fetch_provider_names(app_state)
         async with asyncio.TaskGroup() as tg:
             wf_task = tg.create_task(fetch_workflow_definitions(app_state))
             dept_task = tg.create_task(fetch_departments(app_state))
@@ -356,6 +358,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             wf_ids=wf_task.result(),
             dept_ids=dept_task.result(),
             tool_names=tool_task.result(),
+            provider_names=provider_names,
         )
 
     @staticmethod
@@ -365,6 +368,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         wf_ids: frozenset[str] | None,
         dept_ids: frozenset[str] | None,
         tool_names: frozenset[str] | None,
+        provider_names: frozenset[str] | None,
     ) -> None:
         """Merge with the previous snapshot and atomically rebind.
 
@@ -394,12 +398,16 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             merged_tool_names = (
                 tool_names if tool_names is not None else previous.tool_names
             )
+            merged_providers = (
+                provider_names if provider_names is not None else previous.providers
+            )
             update_label_snapshot(
                 _LabelSnapshot(
                     agent_ids=merged_agent_ids,
                     workflow_definition_ids=merged_workflow_ids,
                     departments=merged_departments,
                     tool_names=merged_tool_names,
+                    providers=merged_providers,
                     agent_ids_seeded=previous.agent_ids_seeded
                     or (agent_ids is not None),
                     workflow_definition_ids_seeded=(
@@ -409,6 +417,8 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
                     or (dept_ids is not None),
                     tool_names_seeded=previous.tool_names_seeded
                     or (tool_names is not None),
+                    providers_seeded=previous.providers_seeded
+                    or (provider_names is not None),
                 ),
             )
 
