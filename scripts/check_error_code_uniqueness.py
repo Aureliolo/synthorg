@@ -164,11 +164,11 @@ def _resolve_base(
         if head not in alias_map:
             return None
         module, original = alias_map[head]
-        if original is None:
-            if len(attrs) == 1:
-                return (module, attrs[0])
-            return (module + "." + ".".join(attrs[:-1]), attrs[-1])
-        return None
+        if original is not None:
+            module = f"{module}.{original}"
+        if len(attrs) == 1:
+            return (module, attrs[0])
+        return (module + "." + ".".join(attrs[:-1]), attrs[-1])
     return None
 
 

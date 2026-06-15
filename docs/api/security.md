@@ -43,7 +43,7 @@ Security subsystem: rule engine, trust strategies, autonomy levels, output scann
 
 ::: synthorg.security.rules.engine
 
-::: synthorg.security.rules.risk_classifier
+::: synthorg.security.risk_map
 
 ## Trust
 

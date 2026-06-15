@@ -133,6 +133,27 @@ def test_inheritance_alias_allowed(tmp_path: Path) -> None:
     assert _MODULE._scan_tree(project_root, src_root) == []
 
 
+def test_inheritance_via_aliased_module_import_allowed(tmp_path: Path) -> None:
+    """A base referenced through an aliased module import resolves correctly.
+
+    ``from synthorg.core import domain_errors`` then inheriting from
+    ``domain_errors.NotFoundError`` must resolve the ancestor so that
+    re-declaring its code stays an allowed inheritance alias rather than
+    reading as two unrelated classes sharing one specific code.
+    """
+    project_root, src_root = _make_project(
+        tmp_path,
+        {
+            "src/synthorg/a/errors.py": (
+                "from synthorg.core import domain_errors\n"
+                "class WidgetNotFoundError(domain_errors.NotFoundError):\n"
+                "    error_code = ErrorCode.RESOURCE_NOT_FOUND\n"
+            ),
+        },
+    )
+    assert _MODULE._scan_tree(project_root, src_root) == []
+
+
 def test_shareable_code_allowed(tmp_path: Path) -> None:
     """A generic category fallback may be carried by unrelated classes."""
     project_root, src_root = _make_project(
