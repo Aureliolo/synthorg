@@ -61,6 +61,24 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Push-updated metric families aliased from ``PushMetrics`` onto private
+# ``self._<name>`` attributes (declared on ``_RecordingMetricsBase``) so
+# the recording mixins reach them via their original access pattern.
+_PUSH_ALIASED_METRICS: tuple[str, ...] = (
+    "provider_tokens", "provider_cost", "api_request_duration", "task_runs",
+    "task_duration", "tool_invocations", "tool_duration", "audit_chain_appends",
+    "audit_chain_depth", "audit_chain_last_append_ts", "otlp_export_batches",
+    "otlp_export_dropped", "log_sink_events", "escalation_queue_depth",
+    "security_audit_log_fill_ratio", "agent_identity_changes",
+    "workflow_execution_duration", "provider_errors", "cache_operations",
+    "api_error_classification", "client_disconnects", "approval_decisions",
+    "escalation_outcomes", "push_queue_events", "blueprint_instantiations",
+    "settings_mutations", "mcp_handler_outcomes", "mcp_handler_duration",
+    "budget_query_duration", "audit_chain_verifications", "ws_connection_lifetime",
+    "ws_revalidation_outcomes", "ws_active_connections", "pg_pool_size",
+    "pg_pool_active_connections", "pg_pool_acquire_duration", "pg_pool_exhausted",
+)  # fmt: skip
+
 
 class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
     """Collects business metrics from SynthOrg services for Prometheus.
@@ -164,48 +182,13 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             registry=self.registry,
         )
 
-        # Push-updated metric families live in their own helper so
-        # this module stays under the 800-line ceiling. The
-        # attributes below alias into ``_push`` to preserve the
-        # original public access pattern.
+        # Push-updated metric families live in their own helper so this
+        # module stays under its tier cap. Each is aliased onto a private
+        # ``self._<name>`` attribute (declared on ``_RecordingMetricsBase``)
+        # so the recording mixins keep their original access pattern.
         self._push = PushMetrics(registry=self.registry, prefix=prefix)
-        self._provider_tokens = self._push.provider_tokens
-        self._provider_cost = self._push.provider_cost
-        self._api_request_duration = self._push.api_request_duration
-        self._task_runs = self._push.task_runs
-        self._task_duration = self._push.task_duration
-        self._tool_invocations = self._push.tool_invocations
-        self._tool_duration = self._push.tool_duration
-        self._audit_chain_appends = self._push.audit_chain_appends
-        self._audit_chain_depth = self._push.audit_chain_depth
-        self._audit_chain_last_append_ts = self._push.audit_chain_last_append_ts
-        self._otlp_export_batches = self._push.otlp_export_batches
-        self._otlp_export_dropped = self._push.otlp_export_dropped
-        self._log_sink_events = self._push.log_sink_events
-        self._escalation_queue_depth = self._push.escalation_queue_depth
-        self._security_audit_log_fill_ratio = self._push.security_audit_log_fill_ratio
-        self._agent_identity_changes = self._push.agent_identity_changes
-        self._workflow_execution_duration = self._push.workflow_execution_duration
-        self._provider_errors = self._push.provider_errors
-        self._cache_operations = self._push.cache_operations
-        self._api_error_classification = self._push.api_error_classification
-        self._client_disconnects = self._push.client_disconnects
-        self._approval_decisions = self._push.approval_decisions
-        self._escalation_outcomes = self._push.escalation_outcomes
-        self._push_queue_events = self._push.push_queue_events
-        self._blueprint_instantiations = self._push.blueprint_instantiations
-        self._settings_mutations = self._push.settings_mutations
-        self._mcp_handler_outcomes = self._push.mcp_handler_outcomes
-        self._mcp_handler_duration = self._push.mcp_handler_duration
-        self._budget_query_duration = self._push.budget_query_duration
-        self._audit_chain_verifications = self._push.audit_chain_verifications
-        self._ws_connection_lifetime = self._push.ws_connection_lifetime
-        self._ws_revalidation_outcomes = self._push.ws_revalidation_outcomes
-        self._ws_active_connections = self._push.ws_active_connections
-        self._pg_pool_size = self._push.pg_pool_size
-        self._pg_pool_active_connections = self._push.pg_pool_active_connections
-        self._pg_pool_acquire_duration = self._push.pg_pool_acquire_duration
-        self._pg_pool_exhausted = self._push.pg_pool_exhausted
+        for _alias in _PUSH_ALIASED_METRICS:
+            setattr(self, f"_{_alias}", getattr(self._push, _alias))
 
         # Serialises the whole ``refresh()`` body. The gauge
         # ``.clear()`` + repopulate steps are not individually locked,
@@ -228,46 +211,62 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         Args:
             app_state: The application state containing service references.
         """
+        # Lock ordering: ``_refresh_lock`` is always acquired BEFORE the
+        # module-level ``_snapshot_lock`` (taken inside
+        # ``_merge_and_update_snapshot``). No code path acquires
+        # ``_snapshot_lock`` first and then calls ``refresh()``, so this
+        # nesting cannot deadlock.
         async with self._refresh_lock:
             await self._refresh_all(app_state)
 
+    async def _fetch_cost_snapshots(
+        self,
+        app_state: AppState,
+        utc_midnight: datetime,
+    ) -> tuple[float | None, float | None, float | None]:
+        """Fetch total / daily / billing-period cost once for this scrape.
+
+        Returns:
+            ``(total_cost, daily_cost, billing_cost)``; any element is
+            ``None`` when the cost tracker is absent or the fetch failed
+            (logged as a redacted ``METRICS_SCRAPE_FAILED`` warning).
+        """
+        if app_state.slice(BudgetStateSlice).cost_tracker is None:
+            return None, None, None
+        try:
+            tracker = cost_tracker_of(app_state)
+            total_cost = await tracker.get_total_cost()
+            daily_cost = await tracker.get_total_cost(start=utc_midnight)
+            reset_day = (
+                tracker.budget_config.reset_day
+                if tracker.budget_config is not None
+                else 1
+            )
+            period_start = billing_period_start(reset_day, now=utc_midnight)
+            billing_cost = await tracker.get_total_cost(start=period_start)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                METRICS_SCRAPE_FAILED,
+                component="cost_tracker",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return None, None, None
+        return total_cost, daily_cost, billing_cost
+
     async def _refresh_all(self, app_state: AppState) -> None:
         """Refresh every gauge once. Caller holds ``_refresh_lock``."""
-        # Fetch cost snapshots once and share across metrics.
-        total_cost: float | None = None
-        daily_cost: float | None = None
-        billing_cost: float | None = None
         utc_midnight = datetime.now(UTC).replace(
             hour=0,
             minute=0,
             second=0,
             microsecond=0,
         )
-        if app_state.slice(BudgetStateSlice).cost_tracker is not None:
-            try:
-                total_cost = await cost_tracker_of(app_state).get_total_cost()
-                daily_cost = await cost_tracker_of(app_state).get_total_cost(
-                    start=utc_midnight,
-                )
-                tracker = cost_tracker_of(app_state)
-                reset_day = (
-                    tracker.budget_config.reset_day
-                    if tracker.budget_config is not None
-                    else 1
-                )
-                period_start = billing_period_start(
-                    reset_day,
-                    now=utc_midnight,
-                )
-                billing_cost = await tracker.get_total_cost(
-                    start=period_start,
-                )
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                logger.warning(
-                    METRICS_SCRAPE_FAILED,
-                    component="cost_tracker",
-                )
+        total_cost, daily_cost, billing_cost = await self._fetch_cost_snapshots(
+            app_state,
+            utc_midnight,
+        )
         self._refresh_cost_gauge(total_cost)
         self._refresh_budget_metrics(app_state, billing_cost)
         self._refresh_daily_budget_metric(app_state, daily_cost, utc_midnight)
@@ -456,6 +455,8 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             logger.warning(
                 METRICS_SCRAPE_FAILED,
                 component="budget",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     def _refresh_daily_budget_metric(
@@ -517,6 +518,8 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             logger.warning(
                 METRICS_SCRAPE_FAILED,
                 component="daily_budget",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     async def _refresh_agent_metrics(
@@ -564,6 +567,8 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             logger.warning(
                 METRICS_SCRAPE_FAILED,
                 component="agent_registry",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
         # Successful fetch: clear stale labels first, then re-set.
@@ -645,6 +650,8 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             logger.warning(
                 METRICS_SCRAPE_FAILED,
                 component="agent_cost",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     async def _refresh_task_metrics(self, app_state: AppState) -> None:
@@ -703,4 +710,6 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             logger.warning(
                 METRICS_SCRAPE_FAILED,
                 component="task_engine",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )

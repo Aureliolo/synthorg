@@ -786,16 +786,34 @@
       "ratio": 0.836,
       "tier": "code"
     },
+    "src/synthorg/observability/audit_chain/sink.py": {
+      "cap": 500,
+      "loc": 428,
+      "ratio": 0.856,
+      "tier": "code"
+    },
+    "src/synthorg/observability/audit_chain/tsa_client.py": {
+      "cap": 700,
+      "loc": 586,
+      "ratio": 0.837,
+      "tier": "adapter"
+    },
+    "src/synthorg/observability/otlp_handler.py": {
+      "cap": 500,
+      "loc": 430,
+      "ratio": 0.86,
+      "tier": "code"
+    },
     "src/synthorg/observability/prometheus_collector.py": {
       "cap": 600,
-      "loc": 585,
-      "ratio": 0.975,
+      "loc": 597,
+      "ratio": 0.995,
       "tier": "service"
     },
     "src/synthorg/observability/prometheus_labels.py": {
       "cap": 500,
-      "loc": 430,
-      "ratio": 0.86,
+      "loc": 453,
+      "ratio": 0.906,
       "tier": "code"
     },
     "src/synthorg/observability/sink_config_builder.py": {
@@ -806,8 +824,8 @@
     },
     "src/synthorg/observability/sinks.py": {
       "cap": 500,
-      "loc": 424,
-      "ratio": 0.848,
+      "loc": 426,
+      "ratio": 0.852,
       "tier": "code"
     },
     "src/synthorg/organization/services.py": {
@@ -1210,10 +1228,10 @@
     "synthorg.core.autonomy_enums": 36,
     "synthorg.core.boundary": 27,
     "synthorg.core.clock": 162,
-    "synthorg.core.critical_errors": 512,
-    "synthorg.core.domain_errors": 203,
+    "synthorg.core.critical_errors": 513,
+    "synthorg.core.domain_errors": 204,
     "synthorg.core.effective_autonomy": 22,
-    "synthorg.core.error_taxonomy": 60,
+    "synthorg.core.error_taxonomy": 61,
     "synthorg.core.memory_enums": 48,
     "synthorg.core.normalization": 82,
     "synthorg.core.persistence_errors": 194,
@@ -1261,7 +1279,7 @@
     "synthorg.meta.mcp.registry": 30,
     "synthorg.meta.mcp.tool_builder": 22,
     "synthorg.meta.models": 64,
-    "synthorg.observability": 1544,
+    "synthorg.observability": 1546,
     "synthorg.observability.background_tasks": 20,
     "synthorg.observability.events.api": 165,
     "synthorg.observability.events.chief_of_staff": 29,
@@ -1433,7 +1451,7 @@
     },
     "synthorg.observability.prometheus_collector:PrometheusCollector": {
       "lcom4": 1,
-      "loc": 532
+      "loc": 530
     },
     "synthorg.persistence.postgres._backend_accessors:_PostgresBackendRepositoryAccessors": {
       "lcom4": 1,

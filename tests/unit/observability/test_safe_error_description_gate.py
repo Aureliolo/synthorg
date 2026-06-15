@@ -1105,6 +1105,24 @@ class TestExcInfoGate:
         )
         assert not hits, "empty exc_info tuple attaches no traceback"
 
+    def test_exc_info_two_tuple_quiet(self) -> None:
+        """A 2-element tuple is not the ``(type, value, traceback)`` shape."""
+        hits = _scan_source(
+            """
+            logger.warning("E", exc_info=(type(exc), exc))
+            """,
+        )
+        assert not hits, "a 2-tuple is not a traceback-attaching exc_info"
+
+    def test_exc_info_three_tuple_none_traceback_quiet(self) -> None:
+        """``exc_info=(type(exc), exc, None)`` explicitly attaches no traceback."""
+        hits = _scan_source(
+            """
+            logger.warning("E", exc_info=(type(exc), exc, None))
+            """,
+        )
+        assert not hits, "a 3-tuple with None traceback carries no frame-locals"
+
     def test_exc_info_tuple_allowlist_marker_not_flagged(self) -> None:
         """The ``# lint-allow: exc-info`` escape covers the tuple form too."""
         hits = _scan_source_e2e(

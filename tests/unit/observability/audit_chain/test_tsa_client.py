@@ -144,3 +144,17 @@ async def test_injected_http_client_not_closed_by_aclose() -> None:
         assert not shared.is_closed
     finally:
         await shared.aclose()
+
+
+# -- Retryability classification ---------------------------------------------
+
+
+def test_transient_tsa_errors_are_retryable() -> None:
+    """Timeout / transport failures are transient and marked retryable."""
+    assert TsaTimeoutError.is_retryable is True
+    assert TsaTransportError.is_retryable is True
+
+
+def test_deterministic_tsa_errors_are_not_retryable() -> None:
+    """Protocol / security failures are deterministic; retrying cannot help."""
+    assert TsaProtocolError.is_retryable is False

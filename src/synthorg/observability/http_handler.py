@@ -8,6 +8,7 @@ Uses ``urllib.request`` (stdlib) to avoid external dependencies.
 import logging
 import queue
 import threading
+import time
 import urllib.error
 import urllib.request
 from typing import TYPE_CHECKING, Final, override
@@ -40,6 +41,13 @@ _DEFAULT_BATCH_SIZE: Final[int] = 100
 _DEFAULT_FLUSH_INTERVAL_SECONDS: Final[float] = 5.0
 _DEFAULT_TIMEOUT_SECONDS: Final[float] = 10.0
 _DEFAULT_MAX_RETRIES: Final[int] = 3
+
+# Bounded exponential backoff between send attempts (Pattern C/Sync):
+# delay(attempt) = min(base * factor**attempt, cap). The wait is done on
+# the shutdown event so close() interrupts an in-flight backoff.
+_RETRY_BACKOFF_BASE_SECONDS: Final[float] = 0.5
+_RETRY_BACKOFF_FACTOR: Final[int] = 2
+_RETRY_BACKOFF_CAP_SECONDS: Final[float] = 8.0
 
 
 class HttpBatchHandler(logging.Handler):
@@ -246,6 +254,16 @@ class HttpBatchHandler(logging.Handler):
             return
         self._invoke_export_callback("success", format_drops)
 
+    def _backoff_delay(self, attempt: int) -> float:
+        """Bounded exponential backoff for retry *attempt* (0-indexed).
+
+        Returns:
+            Seconds to wait before the next attempt, capped at
+            ``_RETRY_BACKOFF_CAP_SECONDS``.
+        """
+        delay = _RETRY_BACKOFF_BASE_SECONDS * float(_RETRY_BACKOFF_FACTOR**attempt)
+        return min(delay, _RETRY_BACKOFF_CAP_SECONDS)
+
     def _send_with_retries(
         self,
         request: urllib.request.Request,
@@ -278,6 +296,13 @@ class HttpBatchHandler(logging.Handler):
                         return exc
                 last_error = exc
                 if attempt < self._max_retries:
+                    # Bounded backoff before the next attempt. close()
+                    # budgets backoff_total into its join timeout, so a
+                    # single batch's retries run to completion rather than
+                    # being dropped mid-flight: shutdown is always set
+                    # during the final drain, so an interruptible wait here
+                    # would abandon the very logs close() is trying to ship.
+                    time.sleep(self._backoff_delay(attempt))
                     continue
             else:
                 return None
@@ -288,9 +313,14 @@ class HttpBatchHandler(logging.Handler):
         """Signal shutdown, flush remaining records, stop thread."""
         self._shutdown.set()
         self._batch_ready.set()  # Wake the flusher
-        # Allow enough time for in-flight retries to finish:
-        # worst case is (1 + max_retries) * timeout per batch.
-        join_timeout = (1 + self._max_retries) * self._timeout
+        # Allow enough time for in-flight retries to finish: worst case is
+        # (1 + max_retries) attempts each up to ``timeout`` plus the
+        # bounded backoff between them. The shutdown event set above
+        # interrupts an in-flight backoff, so this is an upper bound.
+        backoff_total = sum(
+            self._backoff_delay(attempt) for attempt in range(self._max_retries)
+        )
+        join_timeout = (1 + self._max_retries) * self._timeout + backoff_total
         self._flusher.join(timeout=join_timeout)
         # Only drain from the calling thread if the flusher has exited.
         # If join() timed out the flusher may still be in _drain_and_flush,

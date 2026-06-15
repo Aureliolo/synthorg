@@ -1,13 +1,13 @@
 """WebSocket lifetime + Postgres pool recording methods.
 
-Split out of :mod:`synthorg.observability.prometheus_recording` so the
-main module stays under the 800-line ceiling mandated by ``CLAUDE.md``.
 The :class:`StreamRecordingMixin` is composed onto
-:class:`PrometheusCollector` alongside the original ``RecordingMixin``;
-the attributes it touches (``self._ws_connection_lifetime``, etc.) are
+:class:`PrometheusCollector` alongside ``RecordingMixin``; the
+attributes it touches (``self._ws_connection_lifetime``, etc.) are
 created by the collector's ``__init__`` and the public API surface for
-callers (``collector.record_ws_*`` / ``collector.record_pg_pool_*``)
-is unchanged.
+callers is ``collector.record_ws_*`` / ``collector.record_pg_pool_*``.
+Holding these stream-recording methods in their own mixin (separate
+from the core ``RecordingMixin``) keeps each file under the
+module-size ceiling mandated by ``CLAUDE.md``.
 """
 
 from typing import TYPE_CHECKING

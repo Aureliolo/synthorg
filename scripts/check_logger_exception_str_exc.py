@@ -113,7 +113,7 @@ import re
 import sys
 import tokenize
 from pathlib import Path
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, Final, override
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -450,6 +450,11 @@ _RULE_STR_EXC = "error_str_exc"
 _RULE_EXC_INFO = "exc_info_traceback"
 _RULE_LOGGER_EXCEPTION = "logger_exception_call"
 
+# ``exc_info`` accepts the ``(type, value, traceback)`` 3-tuple; the
+# traceback is the third element (index 2).
+_EXC_INFO_TUPLE_LEN: Final[int] = 3
+_EXC_INFO_TRACEBACK_INDEX: Final[int] = 2
+
 
 class _LoggerExceptionFinder(ast.NodeVisitor):
     """Locate logger-call leak sites covered by either rule.
@@ -763,8 +768,12 @@ def _find_unallowlisted_exc_info_traceback(
     Two shapes attach a traceback whose frame-locals can serialise an
     in-scope credential: the literal ``exc_info=True`` and the explicit
     3-tuple ``exc_info=(type(exc), exc, exc.__traceback__)``. Both are
-    flagged. ``exc_info=False`` (the opt-out), a runtime ``exc_info=var``
-    expression, and an empty ``exc_info=()`` carry no traceback and pass.
+    flagged. The match is precise: only a 3-element tuple (the
+    ``(type, value, traceback)`` shape ``exc_info`` accepts) counts, and
+    a 3-tuple whose third element is a literal ``None`` is the explicit
+    no-traceback form, so it passes. ``exc_info=False`` (the opt-out), a
+    runtime ``exc_info=var`` expression, an empty ``exc_info=()``, and a
+    1/2-element tuple carry no traceback and pass.
 
     Returns ``None`` when no such kwarg is present, or when every match
     sits on a line in ``allowlist_lines``. The lineno returned is the
@@ -776,13 +785,30 @@ def _find_unallowlisted_exc_info_traceback(
     for kw in keywords:
         for value in _exc_info_kwarg_values(kw):
             is_true_literal = isinstance(value, ast.Constant) and value.value is True
-            is_traceback_tuple = isinstance(value, ast.Tuple) and bool(value.elts)
+            is_traceback_tuple = _is_traceback_tuple(value)
             if not (is_true_literal or is_traceback_tuple):
                 continue
             if value.lineno in allowlist_lines:
                 continue
             return value.lineno
     return None
+
+
+def _is_traceback_tuple(value: ast.expr) -> bool:
+    """Return ``True`` for a traceback-attaching ``exc_info`` 3-tuple.
+
+    Matches the ``(type, value, traceback)`` shape ``exc_info`` accepts.
+    A 3-tuple whose third element is a literal ``None`` is the explicit
+    no-traceback form and returns ``False``; so do tuples of any other
+    length and the empty tuple.
+    """
+    if not isinstance(value, ast.Tuple) or len(value.elts) != _EXC_INFO_TUPLE_LEN:
+        return False
+    traceback_elt = value.elts[_EXC_INFO_TRACEBACK_INDEX]
+    is_none_literal = (
+        isinstance(traceback_elt, ast.Constant) and traceback_elt.value is None
+    )
+    return not is_none_literal
 
 
 def _is_str_exc_call(node: ast.AST) -> bool:

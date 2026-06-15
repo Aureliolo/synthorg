@@ -198,6 +198,7 @@ class ErrorCode(IntEnum):
     NARRATIVE_GENERATION_ERROR = 8033
     NARRATIVE_SOURCE_UNAVAILABLE = 8034
     DELIVERABLE_RECEIPT_BUILD_ERROR = 8035
+    SINK_CONSTRUCTION_ERROR = 8036
 
 
 # Error-code band for the NOT_FOUND category (3xxx).  Per-domain

@@ -33,6 +33,7 @@ __all__ = [
     "VALID_ESCALATION_OUTCOMES",
     "VALID_IDENTITY_CHANGE_TYPES",
     "VALID_LOG_SINK_KINDS",
+    "VALID_LOG_SINK_OUTCOMES",
     "VALID_MCP_HANDLER_OUTCOMES",
     "VALID_OTLP_KINDS",
     "VALID_OTLP_OUTCOMES",
@@ -193,6 +194,7 @@ VALID_AUDIT_APPEND_STATUSES: Final[frozenset[str]] = frozenset(
 VALID_OTLP_KINDS: Final[frozenset[str]] = frozenset({"logs", "traces"})
 VALID_OTLP_OUTCOMES: Final[frozenset[str]] = frozenset({"success", "failure"})
 VALID_LOG_SINK_KINDS: Final[frozenset[str]] = frozenset({"http", "syslog"})
+VALID_LOG_SINK_OUTCOMES: Final[frozenset[str]] = frozenset({"success", "failure"})
 VALID_IDENTITY_CHANGE_TYPES: Final[frozenset[str]] = frozenset(
     {"created", "updated", "rolled_back", "archived"}
 )
@@ -463,6 +465,11 @@ def _reset_label_snapshot_for_tests() -> None:
     Rebinds ``_snapshot_lock`` as well so the next test acquires a
     fresh lock on its own event loop rather than one left bound to the
     previous test's torn-down loop.
+
+    Must be called only when no coroutine is inside the lock (i.e. from
+    synchronous fixture setup/teardown, never mid-flight with live
+    tasks): rebinding while a holder is active would let a new waiter
+    acquire the fresh lock and bypass mutual exclusion.
     """
     global _snapshot, _snapshot_lock  # noqa: PLW0603
     _snapshot = _INITIAL_SNAPSHOT

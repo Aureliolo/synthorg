@@ -9,6 +9,8 @@ between an ``is None`` check and a second read would otherwise call
 """
 
 import dis
+import gc
+from collections.abc import Iterator
 
 import pytest
 
@@ -17,8 +19,15 @@ from synthorg.observability.prometheus_collector import PrometheusCollector
 
 
 @pytest.fixture(autouse=True)
-def _clear_active_collector() -> None:
-    """Drop any process-active collector before each test."""
+def _clear_active_collector() -> Iterator[None]:
+    """Drop any process-active collector before AND after each test.
+
+    Clearing after the test too keeps a collector set by one test from
+    leaking into the next test (or another file's worker) when the test
+    body fails before its own cleanup.
+    """
+    metrics_hub.clear_active_collector()
+    yield
     metrics_hub.clear_active_collector()
 
 
@@ -57,4 +66,19 @@ def test_active_returns_none_after_clear() -> None:
     collector = PrometheusCollector()
     metrics_hub.set_active_collector(collector)
     metrics_hub.clear_active_collector()
+    assert metrics_hub._active() is None
+
+
+@pytest.mark.unit
+def test_active_returns_none_after_collector_gc() -> None:
+    """A dead weakref target resolves to None without raising.
+
+    The collector is held only by the module weakref; once the local
+    strong reference is dropped and GC runs, ``_collector_ref()`` returns
+    ``None`` and ``_active`` must surface that cleanly.
+    """
+    collector = PrometheusCollector()
+    metrics_hub.set_active_collector(collector)
+    del collector
+    gc.collect()
     assert metrics_hub._active() is None

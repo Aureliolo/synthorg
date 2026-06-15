@@ -1,12 +1,13 @@
 """AuditChainVerifier -- verify hash chain and EvidencePackage signatures."""
 
+from collections.abc import Sequence
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
-from synthorg.observability.audit_chain.chain import HashChain
+from synthorg.observability.audit_chain.chain import ChainEntry, HashChain
 from synthorg.observability.audit_chain.protocol import AuditChainSigner
 from synthorg.observability.events.security import (
     SECURITY_AUDIT_CHAIN_BREAK_DETECTED,
@@ -126,47 +127,85 @@ class AuditChainVerifier:
                 entries_checked=0,
             )
 
-        # Check hash continuity.
         if not chain.verify_integrity():
-            # Find the first break.
-            expected_prev = chain.initial_hash
-            for entry in entries:
-                if entry.previous_hash != expected_prev:
-                    logger.error(
-                        SECURITY_AUDIT_CHAIN_BREAK_DETECTED,
-                        position=entry.position,
-                        expected=expected_prev,
-                        actual=entry.previous_hash,
-                    )
-                    return ChainVerificationResult(
-                        valid=False,
-                        entries_checked=entry.position,
-                        first_break_position=entry.position,
-                    )
-                expected_prev = HashChain._link_hash(  # noqa: SLF001
-                    expected_prev,
-                    entry.event_hash,
-                    entry.signature,
-                    entry.timestamp,
+            return self._find_hash_continuity_break(chain)
+
+        signature_break = await self._verify_entry_signatures(entries)
+        if signature_break is not None:
+            return signature_break
+
+        logger.debug(
+            SECURITY_AUDIT_CHAIN_VERIFY_COMPLETE,
+            entries_checked=len(entries),
+            valid=True,
+        )
+
+        return ChainVerificationResult(
+            valid=True,
+            entries_checked=len(entries),
+        )
+
+    def _find_hash_continuity_break(
+        self,
+        chain: HashChain,
+    ) -> ChainVerificationResult:
+        """Locate the first hash-continuity break in a chain.
+
+        Called only when ``verify_integrity`` already reported a break;
+        replays the link hashes to pin the offending position (or a tail
+        hash mismatch when no entry's ``previous_hash`` diverges).
+
+        Returns:
+            A broken ``ChainVerificationResult`` whose
+            ``first_break_position`` is the offending entry, or the tail
+            position when only the final hash is corrupt.
+        """
+        entries = chain.entries
+        expected_prev = chain.initial_hash
+        for entry in entries:
+            if entry.previous_hash != expected_prev:
+                logger.error(
+                    SECURITY_AUDIT_CHAIN_BREAK_DETECTED,
+                    position=entry.position,
+                    expected=expected_prev,
+                    actual=entry.previous_hash,
                 )
-
-            # No entry mismatch found but verify_integrity returned
-            # False -- tail hash corruption.
-            tail_pos = entries[-1].position + 1
-            logger.error(
-                SECURITY_AUDIT_CHAIN_BREAK_DETECTED,
-                position=tail_pos,
-                expected=expected_prev,
-                actual=chain.tail_hash,
-                reason="tail_hash_mismatch",
-            )
-            return ChainVerificationResult(
-                valid=False,
-                entries_checked=len(entries),
-                first_break_position=tail_pos,
+                return ChainVerificationResult(
+                    valid=False,
+                    entries_checked=entry.position,
+                    first_break_position=entry.position,
+                )
+            expected_prev = HashChain._link_hash(  # noqa: SLF001
+                expected_prev,
+                entry.event_hash,
+                entry.signature,
+                entry.timestamp,
             )
 
-        # Verify each entry's signature against its canonical payload.
+        tail_pos = entries[-1].position + 1
+        logger.error(
+            SECURITY_AUDIT_CHAIN_BREAK_DETECTED,
+            position=tail_pos,
+            expected=expected_prev,
+            actual=chain.tail_hash,
+            reason="tail_hash_mismatch",
+        )
+        return ChainVerificationResult(
+            valid=False,
+            entries_checked=len(entries),
+            first_break_position=tail_pos,
+        )
+
+    async def _verify_entry_signatures(
+        self,
+        entries: Sequence[ChainEntry],
+    ) -> ChainVerificationResult | None:
+        """Verify each entry's signature against its canonical payload.
+
+        Returns:
+            A broken ``ChainVerificationResult`` at the first invalid
+            signature, or ``None`` when every signature verifies.
+        """
         for entry in entries:
             sig_valid = await self._signer.verify(
                 entry.canonical_payload,
@@ -183,17 +222,7 @@ class AuditChainVerifier:
                     entries_checked=entry.position,
                     first_break_position=entry.position,
                 )
-
-        logger.debug(
-            SECURITY_AUDIT_CHAIN_VERIFY_COMPLETE,
-            entries_checked=len(entries),
-            valid=True,
-        )
-
-        return ChainVerificationResult(
-            valid=True,
-            entries_checked=len(entries),
-        )
+        return None
 
     async def verify_evidence_package(self, pkg: object) -> bool:
         """Verify that an EvidencePackage has sufficient valid signatures.

@@ -443,14 +443,14 @@ domain-scoped module under `src/synthorg/observability/events/`.
 Import by name from the domain module; never use a string literal in
 a `logger.*(...)` call.
 
-Domains currently exposing constants (non-exhaustive; see
-`src/synthorg/observability/events/__init__.py` for the live list):
+Domains currently exposing constants (non-exhaustive; each `.py`
+file in `src/synthorg/observability/events/` is one domain module):
 `api`, `tool`, `workflow_execution`, `approval_gate`, `hr`,
 `workers`, `meeting`, `engine`, `escalation`, `settings`,
-`memory`, `persistence`, `mcp`, `telemetry`, `classification`,
-`verification`, `rollout`, `chief_of_staff`, `analytics`,
-`integrations`, `a2a`, `budget`, `coordination`, `security`,
-`red_team`, `audit_chain`.
+`memory`, `persistence`, `mcp`, `metrics`, `tracing`, `telemetry`,
+`classification`, `verification`, `rollout`, `chief_of_staff`,
+`analytics`, `integrations`, `a2a`, `budget`, `coordination`,
+`security`, `red_team`, `audit_chain`.
 
 The `security` domain is special: every constant whose value starts
 with `security.` (or `tool.registry.integrity.`) is signed and

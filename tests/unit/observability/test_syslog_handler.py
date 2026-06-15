@@ -19,7 +19,11 @@ from synthorg.observability.enums import (
     SyslogFacility,
     SyslogProtocol,
 )
-from synthorg.observability.events.metrics import METRICS_LOG_SINK_EXPORT_FAILED
+from synthorg.observability.errors import SinkConstructionError
+from synthorg.observability.events.metrics import (
+    METRICS_LOG_SINK_CALLBACK_ERROR,
+    METRICS_LOG_SINK_EXPORT_FAILED,
+)
 from synthorg.observability.syslog_handler import (
     FACILITY_MAP,
     PROTOCOL_MAP,
@@ -191,15 +195,15 @@ class TestSyslogHandlerEmit:
         with pytest.raises(ValueError, match="non-empty syslog_host"):
             build_syslog_handler(sink, foreign_pre_chain=[])
 
-    def test_connection_failure_raises_runtime_error(self) -> None:
-        """TCP connection failure is wrapped in RuntimeError."""
+    def test_connection_failure_raises_sink_construction_error(self) -> None:
+        """TCP connection failure is wrapped in a typed SinkConstructionError."""
         sink = _syslog_sink(syslog_protocol=SyslogProtocol.TCP)
         with (
             patch(
                 "logging.handlers.SysLogHandler.__init__",
                 side_effect=OSError("Connection refused"),
             ),
-            pytest.raises(RuntimeError, match="Failed to connect"),
+            pytest.raises(SinkConstructionError, match="Failed to connect"),
         ):
             build_syslog_handler(sink, foreign_pre_chain=[])
 
@@ -243,7 +247,7 @@ class TestSyslogExportCallback:
         handler = self._handler(handler_cleanup)
         outcomes: list[tuple[str, int]] = []
         handler.set_export_callback(lambda o, d: outcomes.append((o, d)))
-        handler.socket = MagicMock()  # type: ignore[attr-defined] -- UDP sendto succeeds
+        handler.socket = MagicMock(spec=socket.socket)  # type: ignore[attr-defined]
 
         handler.emit(_plain_record())
 
@@ -256,7 +260,7 @@ class TestSyslogExportCallback:
         handler = self._handler(handler_cleanup)
         outcomes: list[tuple[str, int]] = []
         handler.set_export_callback(lambda o, d: outcomes.append((o, d)))
-        mock_socket = MagicMock()
+        mock_socket = MagicMock(spec=socket.socket)
         mock_socket.sendto.side_effect = OSError("syslog down")
         handler.socket = mock_socket  # type: ignore[attr-defined]
 
@@ -282,3 +286,27 @@ class TestSyslogExportCallback:
         handler = self._handler(handler_cleanup)
         with pytest.raises(TypeError, match="callable or None"):
             handler.set_export_callback(42)  # type: ignore[arg-type]
+
+    def test_invoke_export_callback_swallows_non_critical_exception(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        """A throwing callback is logged, not propagated, and never breaks emit."""
+        handler = self._handler(handler_cleanup)
+
+        def _boom(_outcome: str, _dropped: int) -> None:
+            msg = "callback boom"
+            raise RuntimeError(msg)
+
+        handler.set_export_callback(_boom)
+        with structlog.testing.capture_logs() as logs:
+            handler._invoke_export_callback("success", 0)
+
+        errors = [
+            rec
+            for rec in logs
+            if rec.get("event") == METRICS_LOG_SINK_CALLBACK_ERROR
+            and rec.get("sink") == "syslog"
+        ]
+        assert errors, "a throwing callback must log METRICS_LOG_SINK_CALLBACK_ERROR"
+        assert errors[0].get("error_type") == "RuntimeError"

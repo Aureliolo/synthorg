@@ -19,6 +19,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.config import SinkConfig
 from synthorg.observability.enums import SyslogFacility, SyslogProtocol
+from synthorg.observability.errors import SinkConstructionError
 from synthorg.observability.events.metrics import (
     METRICS_LOG_SINK_CALLBACK_ERROR,
     METRICS_LOG_SINK_EXPORT_FAILED,
@@ -178,9 +179,11 @@ def build_syslog_handler(
         A configured ``SysLogHandler`` with JSON formatting.
 
     Raises:
-        ValueError: If ``sink.syslog_host`` is absent or blank.
-        RuntimeError: If the OS-level socket connection to the syslog
-            endpoint fails.
+        ValueError: If ``sink.syslog_host`` is absent or blank (a
+            user-correctable invalid config the sink-test endpoint
+            surfaces as ``valid=False``).
+        SinkConstructionError: If the OS-level socket connection to the
+            syslog endpoint fails.
     """
     if not sink.syslog_host or not sink.syslog_host.strip():
         msg = "SYSLOG sink requires a non-empty syslog_host"
@@ -200,7 +203,7 @@ def build_syslog_handler(
             f"{sink.syslog_host}:{sink.syslog_port} "
             f"({sink.syslog_protocol.value.upper()}): {safe_error_description(exc)}"
         )
-        raise RuntimeError(msg) from exc
+        raise SinkConstructionError(msg) from exc
     # UDP: disable NUL terminator (datagrams are self-framing, NUL
     # corrupts JSON parsers).  TCP: keep NUL (the traditional syslog-
     # over-TCP message delimiter that receivers expect).

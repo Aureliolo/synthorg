@@ -3,15 +3,27 @@
 import json
 import logging
 import threading
+import urllib.request
 from typing import override
 from unittest.mock import MagicMock, patch
 
 import pytest
+import structlog.testing
 from structlog.stdlib import ProcessorFormatter
 
 from synthorg.observability.config import SinkConfig
 from synthorg.observability.enums import LogLevel, SinkType
+from synthorg.observability.events.metrics import METRICS_LOG_SINK_CALLBACK_ERROR
 from synthorg.observability.http_handler import HttpBatchHandler, build_http_handler
+
+
+class _RaisingFormatter(logging.Formatter):
+    """Formatter whose format() always raises (forces a format-drop)."""
+
+    @override
+    def format(self, record: logging.LogRecord) -> str:
+        msg = "format boom"
+        raise RuntimeError(msg)
 
 
 def _make_record(msg: str = "test message") -> logging.LogRecord:
@@ -319,3 +331,90 @@ class TestHttpExportCallback:
         handler_cleanup.append(handler)
         with pytest.raises(TypeError, match="callable or None"):
             handler.set_export_callback(42)  # type: ignore[arg-type]
+
+    def test_pure_format_failure_invokes_failure_callback_with_drop_count(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        """A batch where every record fails to format reports the drop count."""
+        handler = _make_handler(batch_size=100)
+        handler.setFormatter(_RaisingFormatter())
+        handler_cleanup.append(handler)
+        outcomes: list[tuple[str, int]] = []
+        handler.set_export_callback(lambda o, d: outcomes.append((o, d)))
+
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            handler._post_batch([_make_record("a"), _make_record("b")])
+
+        assert mock_urlopen.call_count == 0  # nothing formatted, no POST
+        assert outcomes == [("failure", 2)]
+
+    def test_invoke_export_callback_swallows_non_critical_exception(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        """A throwing callback is logged, not propagated."""
+        handler = _make_handler()
+        handler_cleanup.append(handler)
+
+        def _boom(_outcome: str, _dropped: int) -> None:
+            msg = "callback boom"
+            raise RuntimeError(msg)
+
+        handler.set_export_callback(_boom)
+        with structlog.testing.capture_logs() as logs:
+            handler._invoke_export_callback("success", 0)
+
+        errors = [
+            rec
+            for rec in logs
+            if rec.get("event") == METRICS_LOG_SINK_CALLBACK_ERROR
+            and rec.get("sink") == "http"
+        ]
+        assert errors, "a throwing callback must log METRICS_LOG_SINK_CALLBACK_ERROR"
+        assert errors[0].get("error_type") == "RuntimeError"
+
+
+@pytest.mark.unit
+class TestHttpBackoff:
+    """Inter-attempt backoff is bounded exponential (Pattern C/Sync)."""
+
+    def test_backoff_delay_is_bounded_exponential(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        handler = _make_handler()
+        handler_cleanup.append(handler)
+        # base 0.5, factor 2, cap 8.0: 0.5, 1, 2, 4, 8, then capped.
+        delays = [handler._backoff_delay(attempt) for attempt in range(6)]
+        assert delays == [0.5, 1.0, 2.0, 4.0, 8.0, 8.0]
+
+    def test_retries_complete_during_shutdown_drain(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        """Retries run to completion even with shutdown set.
+
+        ``close()`` sets ``_shutdown`` before its final drain, so an
+        interruptible backoff would abandon the very logs close() is
+        trying to ship. A single batch's retries must complete (bounded
+        by close()'s join timeout).
+        """
+        handler = _make_handler(batch_size=100, max_retries=2)
+        handler_cleanup.append(handler)
+        handler._backoff_delay = lambda attempt: 0.0  # type: ignore[method-assign]
+        handler._shutdown.set()
+        with patch(
+            "urllib.request.urlopen",
+            side_effect=OSError("refused"),
+        ) as mock_urlopen:
+            error = handler._send_with_retries(
+                urllib.request.Request(
+                    "https://logs.example.com",
+                    data=b"[]",
+                    method="POST",
+                ),
+            )
+        # Initial attempt + 2 retries despite shutdown being set.
+        assert mock_urlopen.call_count == 3
+        assert isinstance(error, OSError)
