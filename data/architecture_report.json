@@ -146,8 +146,8 @@
     },
     "src/synthorg/api/lifecycle_helpers/feature_wiring.py": {
       "cap": 600,
-      "loc": 485,
-      "ratio": 0.808,
+      "loc": 530,
+      "ratio": 0.883,
       "tier": "orchestrator"
     },
     "src/synthorg/api/services/org_mutations.py": {
@@ -236,8 +236,8 @@
     },
     "src/synthorg/communication/conflict_resolution/human_strategy.py": {
       "cap": 500,
-      "loc": 444,
-      "ratio": 0.888,
+      "loc": 521,
+      "ratio": 1.042,
       "tier": "code"
     },
     "src/synthorg/communication/event_stream/stream.py": {
@@ -272,8 +272,8 @@
     },
     "src/synthorg/config/schema.py": {
       "cap": 500,
-      "loc": 490,
-      "ratio": 0.98,
+      "loc": 496,
+      "ratio": 0.992,
       "tier": "code"
     },
     "src/synthorg/coordination/ceremony_policy/policy_resolver.py": {
@@ -368,8 +368,8 @@
     },
     "src/synthorg/engine/errors.py": {
       "cap": 500,
-      "loc": 498,
-      "ratio": 0.996,
+      "loc": 493,
+      "ratio": 0.986,
       "tier": "code"
     },
     "src/synthorg/engine/evolution/factory.py": {
@@ -584,8 +584,8 @@
     },
     "src/synthorg/hr/scaling/service.py": {
       "cap": 600,
-      "loc": 523,
-      "ratio": 0.872,
+      "loc": 538,
+      "ratio": 0.897,
       "tier": "service"
     },
     "src/synthorg/hr/training/models.py": {
@@ -686,14 +686,14 @@
     },
     "src/synthorg/memory/retrieval_config.py": {
       "cap": 500,
-      "loc": 498,
-      "ratio": 0.996,
+      "loc": 532,
+      "ratio": 1.064,
       "tier": "code"
     },
     "src/synthorg/memory/retriever.py": {
       "cap": 500,
-      "loc": 459,
-      "ratio": 0.918,
+      "loc": 462,
+      "ratio": 0.924,
       "tier": "code"
     },
     "src/synthorg/memory/self_editing.py": {
@@ -1100,8 +1100,8 @@
     },
     "src/synthorg/settings/resolver.py": {
       "cap": 1100,
-      "loc": 1045,
-      "ratio": 0.95,
+      "loc": 1059,
+      "ratio": 0.963,
       "tier": "complex_service"
     },
     "src/synthorg/settings/service.py": {
@@ -1190,8 +1190,8 @@
     "synthorg.api.rate_limits": 67,
     "synthorg.api.state": 225,
     "synthorg.api.state_slices": 32,
-    "synthorg.approval.enums": 68,
-    "synthorg.approval.protocol": 42,
+    "synthorg.approval.enums": 69,
+    "synthorg.approval.protocol": 44,
     "synthorg.approval.state": 21,
     "synthorg.budget.call_category": 43,
     "synthorg.budget.config": 28,
@@ -1210,7 +1210,7 @@
     "synthorg.communication.state": 22,
     "synthorg.config.schema": 45,
     "synthorg.core.agent": 155,
-    "synthorg.core.approval": 35,
+    "synthorg.core.approval": 36,
     "synthorg.core.auth.models": 36,
     "synthorg.core.auth.roles": 29,
     "synthorg.core.autonomy_enums": 36,
@@ -1227,7 +1227,7 @@
     "synthorg.core.registry": 27,
     "synthorg.core.task": 95,
     "synthorg.core.task_enums": 87,
-    "synthorg.core.types": 1077,
+    "synthorg.core.types": 1078,
     "synthorg.engine.context": 39,
     "synthorg.engine.decomposition.models": 27,
     "synthorg.engine.errors": 83,
@@ -1241,11 +1241,11 @@
     "synthorg.execution.turn": 29,
     "synthorg.hr.enums": 34,
     "synthorg.hr.performance.models": 50,
-    "synthorg.hr.performance.tracker": 26,
+    "synthorg.hr.performance.tracker": 27,
     "synthorg.hr.registry": 40,
-    "synthorg.hr.scaling.models": 21,
+    "synthorg.hr.scaling.models": 22,
     "synthorg.hr.seniority": 53,
-    "synthorg.hr.state": 35,
+    "synthorg.hr.state": 36,
     "synthorg.hr.training.models": 23,
     "synthorg.integrations.connections.catalog": 23,
     "synthorg.integrations.connections.models": 57,
@@ -1267,7 +1267,7 @@
     "synthorg.meta.mcp.registry": 30,
     "synthorg.meta.mcp.tool_builder": 22,
     "synthorg.meta.models": 64,
-    "synthorg.observability": 1543,
+    "synthorg.observability": 1545,
     "synthorg.observability.background_tasks": 20,
     "synthorg.observability.events.api": 165,
     "synthorg.observability.events.chief_of_staff": 29,
@@ -1367,7 +1367,7 @@
     },
     "synthorg.engine.coordination.service:MultiAgentCoordinator": {
       "lcom4": 1,
-      "loc": 672
+      "loc": 709
     },
     "synthorg.engine.hybrid_loop:HybridLoop": {
       "lcom4": 1,
@@ -1411,11 +1411,11 @@
     },
     "synthorg.hr.registry:AgentRegistryService": {
       "lcom4": 2,
-      "loc": 635
+      "loc": 651
     },
     "synthorg.hr.scaling.service:ScalingService": {
       "lcom4": 1,
-      "loc": 447
+      "loc": 460
     },
     "synthorg.hr.training.service:TrainingService": {
       "lcom4": 1,
@@ -1431,7 +1431,7 @@
     },
     "synthorg.memory.service:MemoryService": {
       "lcom4": 5,
-      "loc": 645
+      "loc": 647
     },
     "synthorg.meta.chief_of_staff.group_chat:GroupChatService": {
       "lcom4": 1,
@@ -1475,7 +1475,7 @@
     },
     "synthorg.settings.resolver:ConfigResolver": {
       "lcom4": 1,
-      "loc": 980
+      "loc": 994
     },
     "synthorg.settings.service:SettingsService": {
       "lcom4": 1,
