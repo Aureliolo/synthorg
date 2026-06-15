@@ -14,8 +14,12 @@ from synthorg.budget.coordination_collector import CoordinationMetricsCollector
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.client.state import client_simulation_state_of, has_simulation_runtime
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.middleware_config import CoordinationMiddlewareConfig
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.coordination.factory import build_coordinator
+from synthorg.engine.middleware._defaults import register_coordination_defaults
+from synthorg.engine.middleware.factory import build_coordination_middleware_chain
+from synthorg.engine.middleware.replan_factory import create_replan_hook
 from synthorg.engine.pipeline.factory import build_work_pipeline
 from synthorg.engine.routing.scorer import AgentTaskScorer, RoutingScorerConfig
 from synthorg.engine.state import task_engine_of
@@ -39,6 +43,9 @@ from synthorg.workers.execution_service import WorkerExecutionService
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
     from synthorg.engine.coordination.service import MultiAgentCoordinator
+    from synthorg.engine.middleware.coordination_protocol import (
+        CoordinationMiddlewareChain,
+    )
     from synthorg.engine.pipeline.protocol import WorkPipeline
     from synthorg.providers.protocol import CompletionProvider
 
@@ -177,6 +184,40 @@ async def _resolve_coordinator_dependencies(
     )
 
 
+def _build_coordination_chain(
+    app_state: AppState,
+) -> CoordinationMiddlewareChain | None:
+    """Build the coordination middleware chain, or ``None`` when disabled.
+
+    Gated on ``coordination.enable_coordination_middleware`` (off by
+    default, so wiring the pipeline in preserves current behaviour
+    exactly). When enabled, registers the default middleware factories,
+    builds the configured replan hook via the ``replan_strategy``
+    discriminator (``noop`` is the safe default), and composes the
+    default coordination chain. The shared :class:`BudgetEnforcer` on the
+    budget slice (``None`` on a persistence-less boot) gates an affordable
+    magentic replan.
+
+    Returns:
+        The composed :class:`CoordinationMiddlewareChain`, or ``None``
+        when the pipeline is disabled.
+    """
+    coord_section = app_state.config.coordination
+    if not coord_section.enable_coordination_middleware:
+        return None
+    register_coordination_defaults()
+    replan_hook = create_replan_hook(
+        coord_section.replan_strategy,
+        max_stall_count=coord_section.max_stall_count,
+        max_reset_count=coord_section.max_reset_count,
+        budget_enforcer=app_state.slice(BudgetStateSlice).budget_enforcer,
+    )
+    return build_coordination_middleware_chain(
+        CoordinationMiddlewareConfig(),
+        deps={"replan_hook": replan_hook},
+    )
+
+
 async def _build_runtime_coordinator(
     app_state: AppState,
     engine: AgentEngine,
@@ -236,6 +277,7 @@ async def _build_runtime_coordinator(
         routing_scorer_config=routing_scorer_config,
         coordination_metrics_collector=coordination_metrics_collector,
         scorer=scorer,
+        coordination_chain=_build_coordination_chain(app_state),
     )
     logger.info(
         API_APP_STARTUP,

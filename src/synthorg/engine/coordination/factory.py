@@ -45,6 +45,9 @@ if TYPE_CHECKING:
     )
     from synthorg.config.agent_schema import TaskAssignmentConfig
     from synthorg.engine.agent_engine import AgentEngine
+    from synthorg.engine.middleware.coordination_protocol import (
+        CoordinationMiddlewareChain,
+    )
     from synthorg.engine.shutdown import ShutdownManager
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.engine.workspace.project_workspace_service import (
@@ -225,6 +228,7 @@ def build_coordinator(  # noqa: PLR0913
     routing_scorer_config: RoutingScorerConfig | None = None,
     coordination_metrics_collector: CoordinationMetricsCollector | None = None,
     scorer: AgentTaskScorer | None = None,
+    coordination_chain: CoordinationMiddlewareChain | None = None,
 ) -> MultiAgentCoordinator:
     """Build a fully wired :class:`MultiAgentCoordinator`.
 
@@ -281,6 +285,9 @@ def build_coordinator(  # noqa: PLR0913
             use one instance. ``None`` builds one from
             *routing_scorer_config* / *task_assignment_config* as
             before.
+        coordination_chain: Optional coordination middleware pipeline to
+            run around the coordinate() phases. ``None`` (the default)
+            disables middleware entirely, preserving current behaviour.
 
     Returns:
         A fully constructed ``MultiAgentCoordinator``.
@@ -321,6 +328,7 @@ def build_coordinator(  # noqa: PLR0913
         performance_tracker=performance_tracker,
         default_topology_provider=_topology_provider,
         coordination_metrics_collector=coordination_metrics_collector,
+        coordination_chain=coordination_chain,
     )
 
     logger.debug(

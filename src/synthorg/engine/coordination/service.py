@@ -38,10 +38,20 @@ from synthorg.engine.coordination.parent_rollup import (
 from synthorg.engine.decomposition.models import (
     DecompositionResult,
 )
-from synthorg.engine.errors import CoordinationPhaseError
+from synthorg.engine.errors import (
+    CoordinationPhaseError,
+    DelegationRoundLimitError,
+)
+from synthorg.engine.middleware.orchestrator_strategy import (
+    create_orchestrator_strategy,
+)
 from synthorg.engine.parallel_protocol import ParallelExecutorProtocol
 from synthorg.engine.routing.models import RoutingResult
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.async_task import (
+    DELEGATION_ROUND_HARD_LIMIT,
+    DELEGATION_ROUND_SOFT_LIMIT,
+)
 from synthorg.observability.events.coordination import (
     COORDINATION_CLEANUP_FAILED,
     COORDINATION_COMPLETED,
@@ -188,6 +198,39 @@ class MultiAgentCoordinator:
         # historical default) when no provider is supplied.
         self._default_topology_provider = default_topology_provider
 
+    def _enforce_delegation_rounds(self, context: CoordinationContext) -> None:
+        """Guard against runaway recursive delegation before coordinating.
+
+        The parent task's ``delegation_chain`` depth is the number of
+        delegation hops that led to this coordination. A soft warning is
+        emitted once that depth reaches ``max_delegation_rounds``; the run
+        hard-aborts once it reaches twice the cap. Complements the per-
+        delegation ``loop_prevention`` depth guard with a coordination-
+        side ceiling.
+
+        Raises:
+            DelegationRoundLimitError: When the delegation depth reaches
+                twice the configured soft cap.
+        """
+        rounds = len(context.task.delegation_chain)
+        soft_limit = context.config.max_delegation_rounds
+        if rounds >= soft_limit * 2:
+            logger.warning(
+                DELEGATION_ROUND_HARD_LIMIT,
+                parent_task_id=str(context.task.id),
+                delegation_rounds=rounds,
+                soft_limit=soft_limit,
+                hard_limit=soft_limit * 2,
+            )
+            raise DelegationRoundLimitError(rounds, soft_limit)
+        if rounds >= soft_limit:
+            logger.warning(
+                DELEGATION_ROUND_SOFT_LIMIT,
+                parent_task_id=str(context.task.id),
+                delegation_rounds=rounds,
+                soft_limit=soft_limit,
+            )
+
     async def coordinate(
         self,
         context: CoordinationContext,
@@ -223,6 +266,8 @@ class MultiAgentCoordinator:
             parent_task_id=str(task.id),
             agent_count=len(context.available_agents),
         )
+
+        self._enforce_delegation_rounds(context)
 
         # Build coordination middleware context if chain is wired.
         mw_chain = self._coordination_chain
@@ -856,7 +901,13 @@ class MultiAgentCoordinator:
 
         logger.info(COORDINATION_PHASE_STARTED, phase=phase_name)
         try:
-            dispatcher = select_dispatcher(topology, clock=self._clock)
+            dispatcher = select_dispatcher(
+                topology,
+                clock=self._clock,
+                orchestrator_strategy=create_orchestrator_strategy(
+                    context.config.orchestrator_strategy,
+                ),
+            )
             project_id = context.task.project
             repo_root = await self._resolve_repo_root(project_id)
             return await dispatcher.dispatch(

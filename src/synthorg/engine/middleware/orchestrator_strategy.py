@@ -10,6 +10,7 @@ within the centralized ``WaveDispatcher``.  Two implementations:
 import re
 from typing import Protocol, runtime_checkable
 
+from synthorg.core.registry.strategy import StrategyRegistry
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.middleware.models import ProgressLedger
 from synthorg.observability import get_logger
@@ -109,3 +110,31 @@ class MagenticDynamicSelectStrategy:
         remaining = [s for s in subtask_ids if s not in prioritized]
 
         return (*prioritized, *remaining)
+
+
+_ORCHESTRATOR_REGISTRY: StrategyRegistry[OrchestratorStrategy] = StrategyRegistry(
+    {
+        "naive": NaiveDispatchStrategy,
+        "magentic_dynamic": MagenticDynamicSelectStrategy,
+    },
+    kind="orchestrator_strategy",
+)
+
+
+def create_orchestrator_strategy(strategy: str) -> OrchestratorStrategy:
+    """Build the subtask-selection strategy for centralized dispatch.
+
+    Args:
+        strategy: The ``orchestrator_strategy`` discriminator resolved
+            from ``CoordinationConfig``. ``naive`` is the safe default
+            (no reordering); ``magentic_dynamic`` prioritises blocked
+            subtasks when a progress ledger is present.
+
+    Returns:
+        The selected :class:`OrchestratorStrategy`.
+
+    Raises:
+        StrategyFactoryNotFoundError: When *strategy* is not a known
+            discriminator.
+    """
+    return _ORCHESTRATOR_REGISTRY.build(strategy)

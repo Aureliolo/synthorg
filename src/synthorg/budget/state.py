@@ -12,6 +12,7 @@ from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
 from synthorg.api.state_slices import AppStateSliceMixin
+from synthorg.budget.affordability import BudgetAffordabilityChecker
 from synthorg.budget.automated_reports import AutomatedReportService
 from synthorg.budget.benchmark_protocol import (
     BenchmarkScoreProvider,
@@ -35,6 +36,7 @@ class BudgetStateSlice(BaseFeatureStateSlice):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     cost_tracker: CostTracker | None = None
+    budget_enforcer: BudgetAffordabilityChecker | None = None
     cost_forecaster: CostForecaster | None = None
     cost_forecast_repo: CostForecastRepository | None = None
     forecast_service: BudgetForecastService | None = None

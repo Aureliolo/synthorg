@@ -277,6 +277,86 @@ _r.register(
     )
 )
 
+# ── Multi-agent middleware pipeline + strategy seams ────────────
+# The coordination middleware chain is off by default so wiring it in
+# preserves current behaviour exactly; an operator opts in per company.
+# ``replan_strategy`` / ``orchestrator_strategy`` are no-op-by-default
+# discriminators selected at coordinator build (replan) / dispatch
+# (orchestrator).
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="enable_coordination_middleware",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Build and run the coordination middleware pipeline"
+            " (task/progress ledgers, plan-review gate, replan hook)."
+            " Off by default so the wired pipeline changes no behaviour"
+            " until an operator opts in. Applied on the next coordinator"
+            " rebuild."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="replan_strategy",
+        type=SettingType.ENUM,
+        default="noop",
+        enum_values=("noop", "magentic"),
+        description=(
+            "Replan hook the coordination middleware pipeline runs."
+            " 'noop' (default) never replans; 'magentic' triggers"
+            " stall-driven replans up to max_stall_count / max_reset_count."
+            " Applied on the next coordinator rebuild."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="orchestrator_strategy",
+        type=SettingType.ENUM,
+        default="naive",
+        enum_values=("naive", "magentic_dynamic"),
+        description=(
+            "Subtask-selection strategy for the centralized wave"
+            " dispatcher. 'naive' (default) dispatches all subtasks in"
+            " order; 'magentic_dynamic' prioritises blocked subtasks when"
+            " a progress ledger is present. Resolved per run."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="max_delegation_rounds",
+        type=SettingType.INTEGER,
+        default="3",
+        description=(
+            "Soft cap on delegation rounds (the parent task's delegation"
+            " chain depth) the coordinator tolerates. A warning is emitted"
+            " at this limit; coordination hard-aborts at 2x. Resolved per"
+            " run so a runtime change applies to the next coordination."
+        ),
+        group="Concurrency",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=20,
+    )
+)
+
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,

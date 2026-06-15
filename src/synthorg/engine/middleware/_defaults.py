@@ -113,3 +113,16 @@ def register_default_middleware() -> None:
         agent_count=len(_AGENT_DEFAULTS) + len(_AGENT_OPT_IN),
         coordination_count=len(_COORDINATION_DEFAULTS),
     )
+
+
+def register_coordination_defaults() -> None:
+    """Register only the coordination middleware factories.
+
+    The coordination middleware pipeline is the sole registry consumer
+    wired in production, so the coordinator assembly registers just these
+    factories rather than the whole default set (which would also pull
+    the agent-side factories). Idempotent via the registry's
+    register-once semantics.
+    """
+    for name, coord_factory in _COORDINATION_DEFAULTS:
+        register_coordination_middleware(name, coord_factory)
