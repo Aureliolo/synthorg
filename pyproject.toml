@@ -533,6 +533,10 @@ module = "litellm.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = "sentence_transformers.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = "jsonschema.*"
 ignore_missing_imports = true
 

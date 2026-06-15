@@ -27,6 +27,8 @@ subsequent GETs surface the terminal state.
 import asyncio
 from datetime import UTC, datetime, timedelta
 
+from synthorg.approval.enums import ApprovalRiskLevel
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.communication.conflict_resolution._escalation_builders import (
     build_escalation_notification,
     cancelled_resolution,
@@ -48,12 +50,16 @@ from synthorg.communication.conflict_resolution.models import (
     ConflictResolution,
     DissentRecord,
 )
+from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.conflict import (
     CONFLICT_ESCALATED,
+    CONFLICT_ESCALATION_APPROVAL_FAILED,
+    CONFLICT_ESCALATION_APPROVAL_ROUTED,
     CONFLICT_ESCALATION_CANCELLED,
     CONFLICT_ESCALATION_NOTIFY_FAILED,
     CONFLICT_ESCALATION_QUEUED,
@@ -63,6 +69,8 @@ from synthorg.observability.events.conflict import (
 from synthorg.observability.metrics_hub import record_escalation_outcome
 
 logger = get_logger(__name__)
+
+_APPROVAL_ACTION_TYPE: str = "conflict.escalation"
 
 # Upper bound on background notification dispatch so a slow / hung
 # notifier sink cannot leak tasks across thousands of escalations.
@@ -110,16 +118,24 @@ class HumanEscalationResolver:
             it through the resolver wiring).
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 -- keyword-only collaborator DI
         self,
         *,
         store: EscalationQueueStore | None = None,
         processor: DecisionProcessor | None = None,
         registry: PendingFuturesRegistry | None = None,
         notifier: NotificationDispatcher | None = None,
+        approval_store: ApprovalStoreProtocol | None = None,
         timeout_seconds: int | None = None,
     ) -> None:
-        """Initialise the resolver with its dependencies."""
+        """Initialise the resolver with its dependencies.
+
+        When *approval_store* is supplied the resolver also submits the
+        conflict to the generic approval queue in parallel with the
+        escalation-specific row, so the conflict surfaces on the unified
+        approval surface. The injected store is the discriminator: ``None``
+        (the default) keeps the original escalation-queue-only behaviour.
+        """
         # Local imports keep the optional-dep defaults lightweight.
         from synthorg.communication.conflict_resolution.escalation.in_memory_store import (  # noqa: E501, PLC0415
             InMemoryEscalationStore,
@@ -134,11 +150,15 @@ class HumanEscalationResolver:
         )
         self._registry: PendingFuturesRegistry = registry or PendingFuturesRegistry()
         self._notifier: NotificationDispatcher | None = notifier
+        self._approval_store = approval_store
         self._timeout_seconds = timeout_seconds
         # Strong refs to in-flight notification tasks so they aren't
         # garbage-collected mid-dispatch (RUF006).  Entries are removed
         # via ``add_done_callback`` once the task completes.
         self._notify_tasks: set[asyncio.Task[None]] = set()
+        # Strong refs to in-flight approval-store submission tasks (same
+        # GC-protection rationale as ``_notify_tasks``).
+        self._approval_tasks: set[asyncio.Task[None]] = set()
 
     async def resolve(self, conflict: Conflict) -> ConflictResolution:
         """Create an escalation, notify operators, and await a decision.
@@ -203,6 +223,26 @@ class HumanEscalationResolver:
                 log_task_exceptions(
                     logger,
                     CONFLICT_ESCALATION_NOTIFY_FAILED,
+                    escalation_id=str(escalation.id),
+                    conflict_id=str(conflict.id),
+                ),
+            )
+
+        if self._approval_store is not None:
+            # Parallel submission: mirror the conflict into the generic
+            # approval queue on a fire-and-forget background task so a
+            # slow / failing approval store cannot consume the operator's
+            # decision-wait budget or break the escalation contract.
+            approval_task = asyncio.create_task(
+                self._route_to_approval_store(escalation, conflict),
+                name=f"escalation-approval[{escalation.id!s}]",
+            )
+            self._approval_tasks.add(approval_task)
+            approval_task.add_done_callback(self._approval_tasks.discard)
+            approval_task.add_done_callback(
+                log_task_exceptions(
+                    logger,
+                    CONFLICT_ESCALATION_APPROVAL_FAILED,
                     escalation_id=str(escalation.id),
                     conflict_id=str(conflict.id),
                 ),
@@ -296,6 +336,55 @@ class HumanEscalationResolver:
                 note="notification_dispatch_failed",
             )
             record_escalation_outcome(outcome="notify_failed")
+
+    async def _route_to_approval_store(
+        self,
+        escalation: Escalation,
+        conflict: Conflict,
+    ) -> None:
+        """Mirror the conflict into the generic approval queue.
+
+        Best-effort: a failure is logged but never propagates (the
+        escalation-queue row remains the authoritative record).
+
+        Raises:
+            asyncio.CancelledError: Propagated so shutdown can reap the
+                background task cleanly.
+        """
+        if self._approval_store is None:
+            return
+        item = ApprovalItem(
+            action_type=NotBlankStr(_APPROVAL_ACTION_TYPE),
+            title=NotBlankStr(f"Conflict escalation: {conflict.subject}"),
+            description=NotBlankStr(conflict.subject),
+            requested_by=NotBlankStr("system:conflict-resolution"),
+            risk_level=ApprovalRiskLevel.HIGH,
+            created_at=escalation.created_at,
+            metadata={
+                "escalation_id": str(escalation.id),
+                "conflict_id": str(conflict.id),
+            },
+        )
+        try:
+            await self._approval_store.add(item)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                CONFLICT_ESCALATION_APPROVAL_FAILED,
+                escalation_id=str(escalation.id),
+                conflict_id=str(conflict.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return
+        logger.info(
+            CONFLICT_ESCALATION_APPROVAL_ROUTED,
+            escalation_id=str(escalation.id),
+            conflict_id=str(conflict.id),
+            approval_id=str(item.id),
+        )
 
     async def _handle_timeout_cleanup(
         self,

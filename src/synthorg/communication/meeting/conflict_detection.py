@@ -13,12 +13,14 @@ Strategies include:
 
 import re
 
+from synthorg.communication.meeting.embedder import (
+    TextEmbedder,
+    cosine_similarity,
+)
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.observability import get_logger
 from synthorg.observability.events.strategy import (
     STRATEGY_CONFLICT_PARSE_FAILED,
-    STRATEGY_DETECTOR_FALLBACK,
-    STRATEGY_DETECTOR_UNAVAILABLE,
 )
 
 CONFLICT_PARSE_FAILED = STRATEGY_CONFLICT_PARSE_FAILED
@@ -271,86 +273,112 @@ class LlmJudgeDetector:
         return _extract_json_object(text)
 
 
+def _position_texts(response_content: str) -> tuple[str, ...]:
+    """Extract one comparable text per agent position from the response.
+
+    Parses the JSON ``positions`` / ``position`` payload and renders each
+    position's substantive (non-identity) fields into a stable text so
+    divergent stances embed to divergent vectors.
+
+    Returns:
+        One text per position; empty when no positions are present.
+    """
+    parsed = _extract_json_object(response_content)
+    if parsed is None:
+        return ()
+    raw = parsed.get("positions")
+    positions: list[dict[str, object]]
+    if isinstance(raw, list):
+        positions = [p for p in raw if isinstance(p, dict)]
+    else:
+        single = parsed.get("position")
+        positions = [single] if isinstance(single, dict) else []
+    texts: list[str] = []
+    for position in positions:
+        parts = [
+            f"{key}: {value}"
+            for key, value in sorted(position.items())
+            if key not in _IDENTITY_KEYS
+        ]
+        texts.append(" ".join(parts))
+    return tuple(texts)
+
+
 class EmbeddingSimilarityDetector:
-    """Embedding-based similarity detection (not yet available).
+    """Embedding-based similarity detection over agent positions.
 
-    Raises ``NotImplementedError`` when ``detect()`` is called because
-    embedding infrastructure is not yet available.  Call sites that
-    need graceful degradation (e.g. :class:`HybridDetector`) catch the
-    error and fall back to keyword detection.
+    Extracts the agent positions from the conflict-check response, embeds
+    each via the injected :class:`TextEmbedder`, and flags a conflict
+    when any pair of positions is dissimilar enough (cosine similarity
+    below ``similarity_threshold``) that downstream discussion is
+    worthwhile.
 
-    Once embedding infrastructure is available, this will:
-    - Extract position texts from response
-    - Compute embedding vectors for each position
-    - Calculate pairwise cosine similarity
-    - Return True if any pair has similarity below threshold
+    Args:
+        embedder: The text-embedding backend.
+        similarity_threshold: Cosine similarity below which two positions
+            are treated as conflicting.
     """
 
     def __init__(
         self,
         *,
+        embedder: TextEmbedder,
         similarity_threshold: float = _DEFAULT_SIMILARITY_THRESHOLD,
     ) -> None:
-        """Initialize with similarity threshold.
-
-        Args:
-            similarity_threshold: Cosine similarity threshold below which
-                positions are considered conflicting.
-        """
+        self._embedder = embedder
         self.similarity_threshold = similarity_threshold
 
-    def detect(self, response_content: str) -> bool:  # noqa: ARG002 -- protocol stub raises before use
-        """Detect conflicts via embedding similarity.
+    def detect(self, response_content: str) -> bool:
+        """Detect conflicts via pairwise embedding similarity.
 
-        Raises:
-            NotImplementedError: Embedding infrastructure is not yet
-                available.  Call sites that need graceful degradation
-                (e.g. :class:`HybridDetector`) should catch this.
+        Args:
+            response_content: The conflict-check response (JSON positions).
+
+        Returns:
+            ``True`` when at least one pair of positions is dissimilar
+            below the threshold; ``False`` when fewer than two positions
+            are present or all pairs agree.
         """
-        msg = (
-            "Embedding infrastructure unavailable: "
-            "EmbeddingSimilarityDetector cannot be used"
-        )
-        logger.warning(
-            STRATEGY_DETECTOR_UNAVAILABLE,
-            detector="EmbeddingSimilarityDetector",
-            reason=msg,
-        )
-        raise NotImplementedError(msg)
+        texts = _position_texts(response_content)
+        if len(texts) < _MIN_POSITIONS_FOR_CONFLICT:
+            return False
+        vectors = [self._embedder.embed(text) for text in texts]
+        threshold = self.similarity_threshold
+        for i in range(len(vectors)):
+            for j in range(i + 1, len(vectors)):
+                if cosine_similarity(vectors[i], vectors[j]) < threshold:
+                    return True
+        return False
 
 
 class HybridDetector:
-    """Embedding first, keyword fallback for ambiguous zone.
+    """Embedding first, keyword fallback.
 
-    Uses EmbeddingSimilarityDetector with a wide band (0.3-0.7).
-    If similarity is in the ambiguous zone, falls back to
-    KeywordConflictDetector for final verdict.
+    Consults the embedding detector first; when it finds no conflict the
+    keyword detector provides a deterministic second opinion (so an
+    explicit ``CONFLICTS: YES`` marker is honoured even when the
+    positions embed closely).
 
-    This allows deterministic fallback when embeddings are uncertain.
+    Args:
+        embedder: The text-embedding backend for the embedding leg.
+        similarity_threshold: Cosine similarity threshold for the
+            embedding leg.
     """
 
     def __init__(
         self,
         *,
+        embedder: TextEmbedder,
         similarity_threshold: float = _DEFAULT_SIMILARITY_THRESHOLD,
     ) -> None:
-        """Initialize with similarity threshold.
-
-        Args:
-            similarity_threshold: Cosine similarity threshold (default
-                ``_DEFAULT_SIMILARITY_THRESHOLD``).
-        """
         self.embedding_detector = EmbeddingSimilarityDetector(
+            embedder=embedder,
             similarity_threshold=similarity_threshold,
         )
         self.keyword_detector = KeywordConflictDetector()
 
     def detect(self, response_content: str) -> bool:
-        """Detect conflicts using embedding + keyword fallback.
-
-        Consults the embedding detector first.  If it detects a
-        conflict the method returns ``True`` immediately.  Otherwise
-        falls back to keyword detection.
+        """Detect conflicts using embedding first, then keyword.
 
         Args:
             response_content: The conflict-check response.
@@ -358,15 +386,8 @@ class HybridDetector:
         Returns:
             True if conflicts detected via either strategy.
         """
-        try:
-            if self.embedding_detector.detect(response_content):
-                return True
-        except NotImplementedError:
-            logger.warning(
-                STRATEGY_DETECTOR_FALLBACK,
-                detector="HybridDetector",
-                reason="embedding detector unavailable, falling back to keyword",
-            )
+        if self.embedding_detector.detect(response_content):
+            return True
         return self.keyword_detector.detect(response_content)
 
 

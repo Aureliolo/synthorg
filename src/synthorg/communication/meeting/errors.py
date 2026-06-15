@@ -19,6 +19,15 @@ class MeetingProtocolNotFoundError(MeetingError):
     """Requested meeting protocol type is not registered."""
 
 
+class MeetingEmbedderUnavailableError(MeetingError):
+    """The selected text-embedding backend could not be constructed.
+
+    Raised when the ``sentence_transformer`` embedder strategy is
+    selected but the optional ``sentence-transformers`` extra is not
+    installed.
+    """
+
+
 class MeetingParticipantError(MeetingError):
     """Invalid participant configuration (e.g. empty list, leader in participants)."""
 

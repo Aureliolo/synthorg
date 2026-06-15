@@ -80,3 +80,7 @@ CONFLICT_STRATEGY_ERROR: Final[str] = "conflict.strategy.error"
 
 # Escalation notification (fire-and-forget)
 CONFLICT_ESCALATION_NOTIFY_FAILED: Final[str] = "conflict.escalation.notify.failed"
+
+# Escalation approval-store routing (fire-and-forget, parallel surface)
+CONFLICT_ESCALATION_APPROVAL_ROUTED: Final[str] = "conflict.escalation.approval.routed"
+CONFLICT_ESCALATION_APPROVAL_FAILED: Final[str] = "conflict.escalation.approval.failed"
