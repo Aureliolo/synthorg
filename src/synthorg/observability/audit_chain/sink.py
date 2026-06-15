@@ -485,6 +485,7 @@ class AuditChainSink(logging.Handler):
             # recurse on the single-worker signing executor.
             logger.error(
                 AUDIT_CHAIN_EMIT_ERROR,
+                audited_event=msg,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

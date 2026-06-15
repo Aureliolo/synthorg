@@ -7,10 +7,12 @@ from typing import override
 from unittest.mock import MagicMock, patch
 
 import pytest
+import structlog.testing
 from pydantic import JsonValue
 
 from synthorg.observability.config import SinkConfig
 from synthorg.observability.enums import OtlpProtocol, SinkType
+from synthorg.observability.events.metrics import METRICS_OTLP_FLUSHER_ERROR
 from synthorg.observability.otlp_handler import OtlpHandler, build_otlp_handler
 
 
@@ -335,9 +337,17 @@ class TestOtlpHandlerInternalErrorPaths:
 
             # One iteration: drain raises, the except logs, and the
             # shutdown flag set above ends the loop.
-            handler._flush_loop()
+            with structlog.testing.capture_logs() as logs:
+                handler._flush_loop()
 
             assert calls["n"] == 1
+            flusher_errors = [
+                rec for rec in logs if rec.get("event") == METRICS_OTLP_FLUSHER_ERROR
+            ]
+            assert flusher_errors, "flusher drain failure must log redacted context"
+            assert flusher_errors[0].get("error_type") == "RuntimeError"
+            assert flusher_errors[0].get("error")
+            assert "pending_records" in flusher_errors[0]
             # Neutralise the raising drain so close()'s own drain is a
             # no-op rather than re-raising during teardown.
             handler._drain_and_flush = lambda: None  # type: ignore[method-assign]

@@ -246,8 +246,13 @@ class OtlpHandler(logging.Handler):
                 self._drain_and_flush()
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
+                with self._pending_lock:
+                    pending = self._pending_count
                 _internal_logger.error(
                     METRICS_OTLP_FLUSHER_ERROR,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    pending_records=pending,
                 )
 
     def _drain_and_flush(self) -> None:
@@ -349,11 +354,12 @@ class OtlpHandler(logging.Handler):
 
         A callback failure must never break the export loop. Instead
         of re-raising, the exception is caught and emitted as a
-        structured :data:`METRICS_OTLP_CALLBACK_ERROR` warning via
-        the module's internal logger (with ``exc_info``), so operators
-        can see which sink went bad without losing subsequent export
-        outcomes. :class:`MemoryError` and :class:`RecursionError` are
-        propagated so the interpreter can react as usual.
+        structured :data:`METRICS_OTLP_CALLBACK_ERROR` warning (with a
+        redacted ``error`` description, never a traceback) via the
+        module's internal logger, so operators can see which sink went
+        bad without losing subsequent export outcomes.
+        :class:`MemoryError` and :class:`RecursionError` are propagated
+        so the interpreter can react as usual.
         """
         callback = self._export_callback
         if callback is None:
@@ -366,6 +372,8 @@ class OtlpHandler(logging.Handler):
                 METRICS_OTLP_CALLBACK_ERROR,
                 outcome=outcome,
                 dropped_records=dropped,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     @override

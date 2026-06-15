@@ -2,9 +2,9 @@
 """Pre-commit gate: forbid ``logger.<method>(..., error=str(exc))`` sites.
 
 The pattern ``logger.<method>(EVENT, ..., error=str(exc))`` -- on any
-severity (``exception``, ``warning``, ``error``, ``info``, ``debug``)
--- is a known secret-exfiltration vector on credential-handling code
-paths:
+severity (``exception``, ``critical``, ``warning``, ``error``,
+``info``, ``debug``) -- is a known secret-exfiltration vector on
+credential-handling code paths:
 
 * ``logger.exception`` attaches a full Python traceback; structlog
   serialises frame-local variables into the event, so any in-scope
@@ -58,8 +58,8 @@ is wrapped:
 Specifically, we flag a call when *all* of the following hold:
 
 1. The callee is an ``Attribute`` whose terminal attribute is one of
-   ``exception`` / ``warning`` / ``error`` / ``info`` / ``debug``
-   (i.e. ``<anything>.<method>(...)``).
+   ``exception`` / ``critical`` / ``warning`` / ``error`` / ``info`` /
+   ``debug`` (i.e. ``<anything>.<method>(...)``).
 2. The receiver is either a bare ``Name`` whose identifier contains
    ``logger``, *or* an ``Attribute`` whose terminal attribute contains
    ``logger`` (the typical ``self._logger`` / ``self.audit_logger``
@@ -122,7 +122,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SRC_ROOT = _REPO_ROOT / "src"
 
 _LOGGER_METHODS: frozenset[str] = frozenset(
-    {"exception", "warning", "error", "info", "debug"},
+    {"exception", "critical", "warning", "error", "info", "debug"},
 )
 """Which ``<receiver>.<method>(...)`` names are covered by this gate.
 
@@ -447,7 +447,7 @@ def _is_logger_receiver(value: ast.expr) -> bool:
 
 
 _RULE_STR_EXC = "error_str_exc"
-_RULE_EXC_INFO = "exc_info_true"
+_RULE_EXC_INFO = "exc_info_traceback"
 _RULE_LOGGER_EXCEPTION = "logger_exception_call"
 
 
@@ -459,7 +459,9 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
     * ``error_str_exc``: ``error=`` value subtree contains
       ``str(<exc_like>)`` or an exception-interpolating
       ``FormattedValue``.
-    * ``exc_info_true``: ``exc_info=True`` literal kwarg with no
+    * ``exc_info_traceback``: a traceback-attaching ``exc_info=``
+      kwarg (the literal ``exc_info=True`` or the 3-tuple
+      ``exc_info=(type(exc), exc, exc.__traceback__)``) with no
       ``# lint-allow: exc-info -- <reason>`` marker on the same
       physical line as the ``exc_info=`` keyword value.
 
@@ -683,7 +685,7 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
                 self.hits.append(
                     (node.lineno, node.col_offset, _RULE_STR_EXC),
                 )
-            exc_info_lineno = _find_unallowlisted_exc_info_true(
+            exc_info_lineno = _find_unallowlisted_exc_info_traceback(
                 node.keywords,
                 self.exc_info_allowlist_lines,
             )
@@ -752,24 +754,30 @@ def _exc_info_kwarg_values(kw: ast.keyword) -> tuple[ast.expr, ...]:
     return ()
 
 
-def _find_unallowlisted_exc_info_true(
+def _find_unallowlisted_exc_info_traceback(
     keywords: Iterable[ast.keyword],
     allowlist_lines: frozenset[int],
 ) -> int | None:
-    """Return the lineno of an unallowlisted ``exc_info=True`` kwarg, if any.
+    """Return the lineno of an unallowlisted traceback-attaching ``exc_info``.
 
-    Returns ``None`` when no ``exc_info=True`` literal kwarg is
-    present, or when every such kwarg sits on a line in
-    ``allowlist_lines``. The lineno returned is the
-    ``ast.keyword.value.lineno`` so callers can render the violation
-    pointing at the offending keyword, not at the call's opening
-    paren. Both direct ``exc_info=`` and dict-unpack
-    ``**{"exc_info": True}`` shapes are covered via
-    :func:`_exc_info_kwarg_values`.
+    Two shapes attach a traceback whose frame-locals can serialise an
+    in-scope credential: the literal ``exc_info=True`` and the explicit
+    3-tuple ``exc_info=(type(exc), exc, exc.__traceback__)``. Both are
+    flagged. ``exc_info=False`` (the opt-out), a runtime ``exc_info=var``
+    expression, and an empty ``exc_info=()`` carry no traceback and pass.
+
+    Returns ``None`` when no such kwarg is present, or when every match
+    sits on a line in ``allowlist_lines``. The lineno returned is the
+    ``ast.keyword.value.lineno`` so callers render the violation
+    pointing at the offending keyword, not the call's opening paren.
+    Both direct ``exc_info=`` and dict-unpack ``**{"exc_info": ...}``
+    shapes are covered via :func:`_exc_info_kwarg_values`.
     """
     for kw in keywords:
         for value in _exc_info_kwarg_values(kw):
-            if not isinstance(value, ast.Constant) or value.value is not True:
+            is_true_literal = isinstance(value, ast.Constant) and value.value is True
+            is_traceback_tuple = isinstance(value, ast.Tuple) and bool(value.elts)
+            if not (is_true_literal or is_traceback_tuple):
                 continue
             if value.lineno in allowlist_lines:
                 continue
@@ -949,7 +957,10 @@ def _rel(path: Path) -> str:
 
 _RULE_MESSAGES: dict[str, str] = {
     _RULE_STR_EXC: "logger.<method>(..., error=str(exc)) site",
-    _RULE_EXC_INFO: "logger.<method>(..., exc_info=True) site",
+    _RULE_EXC_INFO: (
+        "logger.<method>(..., exc_info=True | exc_info=(...)) site"
+        " -- attaches a traceback whose frame-locals can leak credentials"
+    ),
     _RULE_LOGGER_EXCEPTION: (
         "logger.exception(...) call -- attaches traceback whose"
         " frame-locals can leak credentials"
@@ -1017,7 +1028,8 @@ def _report(violations: list[str]) -> int:
         "\n"
         "\nAdd: from synthorg.observability import safe_error_description"
         "\n"
-        "\nFor exc_info=True: drop it (the redacted error= field"
+        "\nFor exc_info=True (or exc_info=(type(exc), exc,"
+        " exc.__traceback__)): drop it (the redacted error= field"
         " carries the type taxonomy operators need for triage), or"
         " for genuine framework boundaries that already redact"
         " frame-locals downstream, opt out per-line with:"

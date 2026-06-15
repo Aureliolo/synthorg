@@ -255,6 +255,17 @@ class PushMetrics:
             registry=registry,
         )
 
+        # ``sink`` is bounded (``http`` / ``syslog``); ``outcome`` is
+        # ``success`` / ``failure``. A misconfigured shipping sink that
+        # drops records to stderr-only would otherwise be invisible;
+        # the failure series is the alertable saturation signal.
+        self.log_sink_events = PromCounter(
+            f"{prefix}_log_sink_events_total",
+            "Log-shipping sink export outcomes (http / syslog)",
+            ["sink", "outcome"],
+            registry=registry,
+        )
+
         # -- Workflow blueprint instantiation counter ----------------
         # Single neutral terminal counter so dashboards can compute
         # success rate as

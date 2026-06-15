@@ -22,6 +22,15 @@ METRICS_OTLP_FLUSHER_ERROR: Final[str] = "metrics.otlp.flusher_error"
 METRICS_OTLP_CALLBACK_ERROR: Final[str] = "metrics.otlp.callback_error"
 METRICS_OTLP_INVALID_CALLBACK: Final[str] = "metrics.otlp.invalid_callback"
 
+# Log-shipping sink (HTTP / syslog) export events
+METRICS_LOG_SINK_EXPORT_FAILED: Final[str] = "metrics.log_sink.export_failed"
+METRICS_LOG_SINK_FLUSHER_ERROR: Final[str] = "metrics.log_sink.flusher_error"
+METRICS_LOG_SINK_CALLBACK_ERROR: Final[str] = "metrics.log_sink.callback_error"
+METRICS_LOG_SINK_INVALID_CALLBACK: Final[str] = "metrics.log_sink.invalid_callback"
+
+# Prometheus startup-wiring skipped because no collector was built
+METRICS_PROMETHEUS_WIRING_SKIPPED: Final[str] = "metrics.prometheus.wiring_skipped"
+
 # Prometheus collector lifecycle
 METRICS_COLLECTOR_ACTIVATED: Final[str] = "metrics.collector.activated"
 METRICS_COLLECTOR_DEACTIVATED: Final[str] = "metrics.collector.deactivated"

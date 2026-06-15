@@ -32,6 +32,7 @@ __all__ = [
     "VALID_DISCONNECT_TRANSPORTS",
     "VALID_ESCALATION_OUTCOMES",
     "VALID_IDENTITY_CHANGE_TYPES",
+    "VALID_LOG_SINK_KINDS",
     "VALID_MCP_HANDLER_OUTCOMES",
     "VALID_OTLP_KINDS",
     "VALID_OTLP_OUTCOMES",
@@ -191,6 +192,7 @@ VALID_AUDIT_APPEND_STATUSES: Final[frozenset[str]] = frozenset(
 )
 VALID_OTLP_KINDS: Final[frozenset[str]] = frozenset({"logs", "traces"})
 VALID_OTLP_OUTCOMES: Final[frozenset[str]] = frozenset({"success", "failure"})
+VALID_LOG_SINK_KINDS: Final[frozenset[str]] = frozenset({"http", "syslog"})
 VALID_IDENTITY_CHANGE_TYPES: Final[frozenset[str]] = frozenset(
     {"created", "updated", "rolled_back", "archived"}
 )
@@ -431,7 +433,11 @@ _snapshot: _LabelSnapshot = _INITIAL_SNAPSHOT
 # lock: they read the module global once into a local before consulting
 # its fields, so a concurrent ``update_label_snapshot()`` either lands
 # before or after the local capture, never producing a torn read.
-_snapshot_lock: Final[asyncio.Lock] = asyncio.Lock()
+#
+# Not ``Final``: ``_reset_label_snapshot_for_tests`` rebinds it so a
+# per-test event loop (the unit harness tears one down per test) never
+# inherits a lock bound to a closed loop from an earlier test.
+_snapshot_lock: asyncio.Lock = asyncio.Lock()
 
 
 def update_label_snapshot(snapshot: _LabelSnapshot) -> None:
@@ -452,9 +458,15 @@ def update_label_snapshot(snapshot: _LabelSnapshot) -> None:
 
 
 def _reset_label_snapshot_for_tests() -> None:
-    """Reset to bootstrap mode. Only call from test fixtures."""
-    global _snapshot  # noqa: PLW0603
+    """Reset to bootstrap mode. Only call from test fixtures.
+
+    Rebinds ``_snapshot_lock`` as well so the next test acquires a
+    fresh lock on its own event loop rather than one left bound to the
+    previous test's torn-down loop.
+    """
+    global _snapshot, _snapshot_lock  # noqa: PLW0603
     _snapshot = _INITIAL_SNAPSHOT
+    _snapshot_lock = asyncio.Lock()
 
 
 def _snapshot_for_collector() -> _LabelSnapshot:
@@ -467,6 +479,17 @@ def _snapshot_for_collector() -> _LabelSnapshot:
     ``validate_*`` / ``is_known_agent_id`` helpers.
     """
     return _snapshot
+
+
+def _snapshot_lock_for_collector() -> asyncio.Lock:
+    """Return the live snapshot lock for ``PrometheusCollector``.
+
+    Accessed through a function (not a value import) so that a
+    ``_reset_label_snapshot_for_tests`` rebind reaches the collector:
+    a ``from ... import _snapshot_lock`` would freeze the collector on
+    the import-time lock and miss the per-test reset.
+    """
+    return _snapshot_lock
 
 
 def validate_agent_id(value: str) -> None:
@@ -552,16 +575,18 @@ def _reset_mcp_tool_names_for_tests() -> None:
 def normalize_mcp_tool_label(value: str) -> str:
     """Return *value* if registered, else :data:`MCP_UNKNOWN_TOOL_LABEL`.
 
-    Bootstrap pass-through: when the allowlist is empty (the
-    invoker has not called :func:`register_mcp_tool_names` yet) the
-    raw value is returned. The MCP invoker registers the snapshot
-    at construction time before any request can fire, so the
-    bootstrap window is closed in practice; the pass-through exists
-    for tests that exercise the recording function in isolation.
+    Fails closed, matching :func:`validate_agent_id`: an empty
+    allowlist (the invoker has not called
+    :func:`register_mcp_tool_names` yet) folds every value to the
+    sentinel rather than passing it through. A raw caller-supplied
+    tool string reaching the Prometheus label set before the registry
+    seeds is the exact cardinality exposure this allowlist exists to
+    prevent; the invoker seeds at construction time, so a real metric
+    sample is folded to the sentinel only inside that closed bootstrap
+    window.
     """
-    if not _mcp_tool_names:
-        return value
-    if value in _mcp_tool_names:
+    snapshot = _mcp_tool_names
+    if value in snapshot:
         return value
     return MCP_UNKNOWN_TOOL_LABEL
 

@@ -30,6 +30,7 @@ class _RecordingMetricsBase:
     _audit_chain_last_append_ts: Gauge
     _otlp_export_batches: PromCounter
     _otlp_export_dropped: PromCounter
+    _log_sink_events: PromCounter
     _coordination_efficiency: Gauge
     _coordination_overhead_percent: Gauge
     _escalation_queue_depth: Gauge

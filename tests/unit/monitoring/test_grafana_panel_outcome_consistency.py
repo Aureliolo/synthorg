@@ -130,3 +130,63 @@ class TestGrafanaPanelOutcomeConsistency:
                     f"panel for {metric!r} mentions outcomes {sorted(stale)} "
                     f"that are not in the live allowlist {sorted(allowlist)}"
                 )
+
+
+class TestGrafanaDashboardCorrectness:
+    """Pins the dashboard correctness and metric-visibility invariants."""
+
+    @staticmethod
+    def _panels() -> list[JsonDict]:
+        dashboard = json.loads(_DASHBOARD_PATH.read_text(encoding="utf-8"))
+        return _iter_panels(dashboard)
+
+    @staticmethod
+    def _all_exprs(panels: list[JsonDict]) -> str:
+        return " ".join(
+            target.get("expr") or ""
+            for panel in panels
+            for target in panel.get("targets", []) or []
+        )
+
+    def test_app_info_metric_used_not_bare(self) -> None:
+        """No panel queries the bare ``synthorg_app`` series.
+
+        ``prometheus_client`` appends ``_info`` to Info metrics, so the
+        real series is ``synthorg_app_info``; a bare ``synthorg_app``
+        target is a permanent 'No data'.
+        """
+        for panel in self._panels():
+            for target in panel.get("targets", []) or []:
+                expr = target.get("expr") or ""
+                assert not re.search(r"\bsynthorg_app\b", expr), (
+                    f"panel id={panel.get('id')} queries bare synthorg_app; "
+                    "use synthorg_app_info"
+                )
+        assert "synthorg_app_info" in self._all_exprs(self._panels())
+
+    def test_audit_append_panels_are_differentiated(self) -> None:
+        """Panels 601 and 821 must not run the identical query."""
+        panels = {p.get("id"): p for p in self._panels()}
+        assert 601 in panels and 821 in panels  # noqa: PT018
+        expr_601 = panels[601]["targets"][0]["expr"]
+        expr_821 = panels[821]["targets"][0]["expr"]
+        assert expr_601 != expr_821, (
+            "panels 601 and 821 run the identical audit-append query; "
+            "differentiate or remove one"
+        )
+
+    def test_previously_invisible_metric_families_are_charted(self) -> None:
+        """The emitted-but-invisible families now have at least one panel."""
+        exprs = self._all_exprs(self._panels())
+        for metric in (
+            "synthorg_ws_connection_lifetime_seconds",
+            "synthorg_ws_revalidation_total",
+            "synthorg_ws_active_connections",
+            "synthorg_pg_pool_size",
+            "synthorg_pg_pool_active_connections",
+            "synthorg_pg_pool_acquire_duration_seconds",
+            "synthorg_pg_pool_exhausted_total",
+            "synthorg_push_queue_events_total",
+            "synthorg_log_sink_events_total",
+        ):
+            assert metric in exprs, f"{metric} has no Grafana panel"

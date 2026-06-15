@@ -33,6 +33,7 @@ from synthorg.observability.prometheus_collector import PrometheusCollector
 from synthorg.observability.prometheus_labels import (
     _LabelSnapshot,
     is_known_agent_id,
+    register_mcp_tool_names,
     update_label_snapshot,
 )
 from synthorg.organization.state import OrganizationStateSlice
@@ -320,6 +321,7 @@ def test_record_mcp_handler_outcome_increments_counter_and_observes_histogram() 
     from synthorg.observability.events.mcp import MCP_HANDLER_OUTCOME
 
     collector = PrometheusCollector()
+    register_mcp_tool_names(frozenset({"synthorg_messages_get"}))
     with structlog.testing.capture_logs() as logs:
         collector.record_mcp_handler_outcome(
             tool="synthorg_messages_get",
@@ -373,6 +375,7 @@ def test_record_mcp_handler_outcome_rejects_unknown_outcome() -> None:
 def test_record_mcp_handler_outcome_records_all_error_outcomes(outcome: str) -> None:
     """Every bounded MCP error outcome flows through counter + histogram."""
     collector = PrometheusCollector()
+    register_mcp_tool_names(frozenset({"synthorg_tasks_get"}))
     collector.record_mcp_handler_outcome(
         tool="synthorg_tasks_get",
         outcome=outcome,

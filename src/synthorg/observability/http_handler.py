@@ -7,19 +7,34 @@ Uses ``urllib.request`` (stdlib) to avoid external dependencies.
 
 import logging
 import queue
-import sys
 import threading
 import urllib.error
 import urllib.request
-from typing import Final, override
+from typing import TYPE_CHECKING, Final, override
 
 import structlog
 from structlog.stdlib import ProcessorFormatter
 from structlog.typing import Processor
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.observability import get_logger
 from synthorg.observability.config import SinkConfig
+from synthorg.observability.events.metrics import (
+    METRICS_LOG_SINK_CALLBACK_ERROR,
+    METRICS_LOG_SINK_EXPORT_FAILED,
+    METRICS_LOG_SINK_FLUSHER_ERROR,
+    METRICS_LOG_SINK_INVALID_CALLBACK,
+)
 from synthorg.observability.redaction import safe_error_description
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    # Stays TYPE_CHECKING: a runtime alias would let ``set_export_callback``
+    # accept a non-callable before its own TypeError guard can fire.
+    ExportCallback = Callable[[str, int], None]
+
+_internal_logger = get_logger(__name__)
 
 _DEFAULT_BATCH_SIZE: Final[int] = 100
 _DEFAULT_FLUSH_INTERVAL_SECONDS: Final[float] = 5.0
@@ -64,6 +79,7 @@ class HttpBatchHandler(logging.Handler):
         self._pending_count = 0
         self._pending_lock = threading.Lock()
         self._dropped_count = 0
+        self._export_callback: ExportCallback | None = None
         self._shutdown = threading.Event()
         self._batch_ready = threading.Event()
         self._flusher = threading.Thread(
@@ -72,6 +88,59 @@ class HttpBatchHandler(logging.Handler):
             name="log-http-flusher",
         )
         self._flusher.start()
+
+    def set_export_callback(self, callback: ExportCallback | None) -> None:
+        """Register a callback invoked after every export batch.
+
+        Passed ``(outcome, dropped_records)`` where ``outcome`` is
+        ``"success"`` or ``"failure"`` and ``dropped_records`` is the
+        number of records the batch failed to deliver (0 on success).
+        Used by startup wiring to push
+        :meth:`PrometheusCollector.record_log_sink_export` without
+        coupling the handler to AppState.
+
+        Thread safety: invoked from the flusher thread; the callback
+        must be safe to call concurrently with ``emit``.
+
+        Raises:
+            TypeError: When ``callback`` is not callable (and not
+                ``None``). Failing fast avoids surfacing the mistake
+                only when the flusher thread eventually calls it.
+        """
+        candidate: object = callback
+        if candidate is not None and not callable(candidate):
+            _internal_logger.warning(
+                METRICS_LOG_SINK_INVALID_CALLBACK,
+                sink="http",
+                provided_type=type(callback).__name__,
+            )
+            msg = "export callback must be callable or None"
+            raise TypeError(msg)
+        self._export_callback = callback
+
+    def _invoke_export_callback(self, outcome: str, dropped: int) -> None:
+        """Call the registered export callback, swallowing callback errors.
+
+        A callback failure must never break the export loop; it is
+        caught and emitted as a structured warning (with a redacted
+        ``error`` description, never a traceback). :class:`MemoryError`
+        and :class:`RecursionError` propagate.
+        """
+        callback = self._export_callback
+        if callback is None:
+            return
+        try:
+            callback(outcome, dropped)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            _internal_logger.warning(
+                METRICS_LOG_SINK_CALLBACK_ERROR,
+                sink="http",
+                outcome=outcome,
+                dropped_records=dropped,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     @override
     def emit(self, record: logging.LogRecord) -> None:
@@ -82,7 +151,8 @@ class HttpBatchHandler(logging.Handler):
                 self._pending_count += 1
                 if self._pending_count >= self._batch_size:
                     self._batch_ready.set()
-        except Exception:  # noqa: BLE001 -- logging handler emit boundary
+        except Exception as exc:  # noqa: BLE001 -- logging handler emit boundary
+            reraise_critical(exc)
             self.handleError(record)
 
     def _flush_loop(self) -> None:
@@ -97,10 +167,14 @@ class HttpBatchHandler(logging.Handler):
                 self._drain_and_flush()
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
-                print(  # noqa: T201
-                    f"ERROR: log-http-flusher encountered unexpected error: {safe_error_description(exc)}",  # noqa: E501
-                    file=sys.stderr,
-                    flush=True,
+                with self._pending_lock:
+                    pending = self._pending_count
+                _internal_logger.error(
+                    METRICS_LOG_SINK_FLUSHER_ERROR,
+                    sink="http",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    pending_records=pending,
                 )
 
     def _drain_and_flush(self) -> None:
@@ -126,6 +200,7 @@ class HttpBatchHandler(logging.Handler):
     def _post_batch(self, records: list[logging.LogRecord]) -> None:
         """POST a batch of records as a JSON array with retries."""
         entries: list[str] = []
+        format_drops = 0
         for record in records:
             try:
                 entries.append(self.format(record))
@@ -133,8 +208,13 @@ class HttpBatchHandler(logging.Handler):
                 self.handleError(record)
                 with self._pending_lock:
                     self._dropped_count += 1
+                format_drops += 1
 
         if not entries:
+            # Pure-formatting failure: still surface the drop so the
+            # export-outcome callback reflects every lost record.
+            if format_drops:
+                self._invoke_export_callback("failure", format_drops)
             return
 
         body = f"[{','.join(entries)}]".encode()
@@ -151,15 +231,20 @@ class HttpBatchHandler(logging.Handler):
         if error is not None:
             with self._pending_lock:
                 self._dropped_count += len(entries)
-            print(  # noqa: T201
-                f"WARNING: HTTP log shipping failed after "
-                f"{1 + self._max_retries} attempts to {self._url}: "
-                f"{safe_error_description(error)} "
-                f"(dropped {len(entries)} records, "
-                f"total dropped: {self._dropped_count})",
-                file=sys.stderr,
-                flush=True,
+                total_dropped = self._dropped_count
+            _internal_logger.warning(
+                METRICS_LOG_SINK_EXPORT_FAILED,
+                sink="http",
+                url=self._url,
+                attempts=1 + self._max_retries,
+                error_type=type(error).__name__,
+                error=safe_error_description(error),
+                dropped_records=len(entries),
+                total_dropped=total_dropped,
             )
+            self._invoke_export_callback("failure", format_drops + len(entries))
+            return
+        self._invoke_export_callback("success", format_drops)
 
     def _send_with_retries(
         self,

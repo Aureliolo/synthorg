@@ -1171,23 +1171,27 @@ def _reset_a2a_card_cache() -> Iterator[None]:
 
 @pytest.fixture(autouse=True)
 def _reset_prometheus_label_snapshot() -> Iterator[None]:
-    """Reset ``prometheus_labels._snapshot`` before every test.
+    """Reset ``prometheus_labels`` registries before every test.
 
-    The snapshot is seeded by ``PrometheusCollector.refresh()`` and
-    consulted by every metric ``record_*`` call to validate label
-    cardinality. Without this reset, a refresh in observability tests
-    leaves the snapshot non-empty for unrelated engine / api tests
-    that import the metrics path, surfacing as spurious
-    ``validate_*`` passes that should have failed closed during
+    The label snapshot is seeded by ``PrometheusCollector.refresh()``
+    and the MCP tool-name allowlist by ``register_mcp_tool_names``;
+    both are consulted by every metric ``record_*`` call to validate
+    label cardinality. Without this reset, a seed in observability
+    tests leaves a registry non-empty for unrelated engine / api tests
+    that import the metrics path, surfacing as spurious ``validate_*``
+    / ``normalize_*`` passes that should have failed closed during
     bootstrap.
     """
     from synthorg.observability.prometheus_labels import (
         _reset_label_snapshot_for_tests,
+        _reset_mcp_tool_names_for_tests,
     )
 
     _reset_label_snapshot_for_tests()
+    _reset_mcp_tool_names_for_tests()
     yield
     _reset_label_snapshot_for_tests()
+    _reset_mcp_tool_names_for_tests()
 
 
 _TEMPLATE_DB: Path | None = None

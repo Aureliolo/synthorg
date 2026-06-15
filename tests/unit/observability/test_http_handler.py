@@ -277,3 +277,45 @@ class TestBuildHttpHandler:
         object.__setattr__(sink, "http_url", "")
         with pytest.raises(ValueError, match="non-empty http_url"):
             build_http_handler(sink, foreign_pre_chain=[])
+
+
+@pytest.mark.unit
+class TestHttpExportCallback:
+    """The export-outcome callback drives the Prometheus drop counter."""
+
+    def test_success_invokes_callback(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        handler = _make_handler(batch_size=100)
+        outcomes: list[tuple[str, int]] = []
+        handler.set_export_callback(lambda o, d: outcomes.append((o, d)))
+
+        with patch("urllib.request.urlopen"):
+            handler.emit(_make_record("ok"))
+            handler.close()
+
+        assert ("success", 0) in outcomes
+
+    def test_failure_invokes_callback_with_drop_count(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        handler = _make_handler(batch_size=100, max_retries=0)
+        outcomes: list[tuple[str, int]] = []
+        handler.set_export_callback(lambda o, d: outcomes.append((o, d)))
+
+        with patch("urllib.request.urlopen", side_effect=OSError("refused")):
+            handler.emit(_make_record("boom"))
+            handler.close()
+
+        assert ("failure", 1) in outcomes
+
+    def test_set_export_callback_rejects_non_callable(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        handler = _make_handler()
+        handler_cleanup.append(handler)
+        with pytest.raises(TypeError, match="callable or None"):
+            handler.set_export_callback(42)  # type: ignore[arg-type]

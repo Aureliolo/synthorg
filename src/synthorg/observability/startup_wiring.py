@@ -17,17 +17,21 @@ or swap out the running trace handler.
 
 import logging
 import os
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.audit_chain.sink import AuditChainSink
+from synthorg.observability.events.metrics import METRICS_PROMETHEUS_WIRING_SKIPPED
 from synthorg.observability.events.tracing import (
     TRACE_CONFIG_INVALID_SAMPLING_RATIO,
     TRACE_HANDLER_INITIALIZED,
 )
+from synthorg.observability.http_handler import HttpBatchHandler
 from synthorg.observability.metrics_hub import set_active_collector
 from synthorg.observability.otlp_handler import OtlpHandler
 from synthorg.observability.state import ObservabilityStateSlice
+from synthorg.observability.syslog_handler import CountingSysLogHandler
 from synthorg.observability.tracing import (
     DisabledTraceConfig,
     OtlpHttpTraceConfig,
@@ -122,11 +126,21 @@ def _wire_prometheus_sinks(collector: PrometheusCollector) -> None:
             timestamp_unix=timestamp_unix,
         )
 
+    def _make_log_sink_callback(sink: str) -> Callable[[str, int], None]:
+        def _callback(outcome: str, _dropped: int) -> None:
+            collector.record_log_sink_export(sink=sink, outcome=outcome)
+
+        return _callback
+
     for handler in _iter_logging_handlers():
         if isinstance(handler, OtlpHandler):
             handler.set_export_callback(_otlp_callback)
         elif isinstance(handler, AuditChainSink):
             handler.set_append_callback(_audit_callback)
+        elif isinstance(handler, HttpBatchHandler):
+            handler.set_export_callback(_make_log_sink_callback("http"))
+        elif isinstance(handler, CountingSysLogHandler):
+            handler.set_export_callback(_make_log_sink_callback("syslog"))
 
 
 def wire_observability_callbacks(app_state: AppState) -> None:
@@ -156,3 +170,10 @@ def wire_observability_callbacks(app_state: AppState) -> None:
     if collector is not None:
         set_active_collector(collector)
         _wire_prometheus_sinks(collector)
+    else:
+        # No collector: OTLP / audit-chain / log-sink export-outcome
+        # hooks are left unwired and their metrics silently never
+        # record. Surface it so an operator missing the
+        # ``synthorg_*_export_*`` series knows wiring was skipped
+        # rather than the exporters being idle.
+        logger.warning(METRICS_PROMETHEUS_WIRING_SKIPPED)

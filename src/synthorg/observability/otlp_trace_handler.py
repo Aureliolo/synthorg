@@ -25,7 +25,7 @@ from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
 from opentelemetry.trace import Tracer
 
 from synthorg.core.normalization import strip_trailing_slash
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.metrics import (
     METRICS_OTLP_EXPORT_FAILED,
     METRICS_OTLP_FLUSHER_STARTED,
@@ -128,9 +128,11 @@ class OtlpTraceHandler:
             # failing construction leaves no background resources.
             try:
                 self._provider.shutdown()
-            except Exception:  # noqa: BLE001 -- cleanup best-effort
+            except Exception as exc:  # noqa: BLE001 -- cleanup best-effort
                 logger.warning(
                     "trace.handler.orphan_shutdown_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
             raise RuntimeError(msg)
         _HANDLER_INSTANCE = self

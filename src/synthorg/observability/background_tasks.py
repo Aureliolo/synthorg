@@ -21,7 +21,7 @@ from collections.abc import Callable, Coroutine, Mapping
 from types import MappingProxyType
 from typing import Any, Final
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.async_task import (
     BACKGROUND_TASKS_DRAIN_TIMEOUT,
 )
@@ -48,7 +48,8 @@ class BackgroundTaskRegistry:
 
         On exception inside ``self._notify``, the done-callback logs
         :const:`synthorg.observability.events.notification.NOTIFICATION_SEND_FAILED`
-        at ERROR with ``exc_info`` and the context passed to ``spawn``.
+        at ERROR with a redacted ``error`` description and the context
+        passed to ``spawn``.
 
     Args:
         owner: Short identifier for the subsystem that owns this
@@ -128,7 +129,7 @@ class BackgroundTaskRegistry:
                     owner=owner,
                     intent_event=event,
                     error_type=type(exc).__name__,
-                    exc_info=(type(exc), exc, exc.__traceback__),
+                    error=safe_error_description(exc),
                     **context,
                 )
                 # Done-callbacks usually run while the loop is alive, but
@@ -152,7 +153,7 @@ class BackgroundTaskRegistry:
                 owner=owner,
                 intent_event=event,
                 error_type=type(exc).__name__,
-                exc_info=(type(exc), exc, exc.__traceback__),
+                error=safe_error_description(exc),
                 **context,
             )
 
@@ -226,8 +227,9 @@ def log_task_exceptions(  # type: ignore[explicit-any]  # structlog proxy; see l
     * Escalates ``MemoryError``/``RecursionError`` to CRITICAL + the
       event-loop exception handler (re-raising from a done-callback
       would be swallowed by asyncio).
-    * Logs everything else at WARNING with ``exc_info`` + the task's
-      name so operators can identify which long-lived worker died.
+    * Logs everything else at WARNING with a redacted ``error``
+      description + the task's name so operators can identify which
+      long-lived worker died.
 
     Args:
         logger_: Structlog logger for the owning subsystem.
@@ -253,7 +255,7 @@ def log_task_exceptions(  # type: ignore[explicit-any]  # structlog proxy; see l
                 event,
                 task_name=task.get_name(),
                 error_type=type(exc).__name__,
-                exc_info=(type(exc), exc, exc.__traceback__),
+                error=safe_error_description(exc),
                 **frozen_context,
             )
             # A done-callback can fire after the owning loop has
@@ -276,7 +278,7 @@ def log_task_exceptions(  # type: ignore[explicit-any]  # structlog proxy; see l
             event,
             task_name=task.get_name(),
             error_type=type(exc).__name__,
-            exc_info=(type(exc), exc, exc.__traceback__),
+            error=safe_error_description(exc),
             **frozen_context,
         )
 

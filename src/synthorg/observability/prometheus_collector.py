@@ -30,7 +30,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.state import EngineStateSlice, task_engine_of
 from synthorg.hr.state import HrStateSlice, agent_registry_of
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability._prometheus_label_fetchers import (
     agent_ids_from_agents,
     fetch_departments,
@@ -45,7 +45,7 @@ from synthorg.observability.events.metrics import (
 from synthorg.observability.prometheus_labels import (
     _LabelSnapshot,
     _snapshot_for_collector,
-    _snapshot_lock,
+    _snapshot_lock_for_collector,
     is_known_agent_id,
     update_label_snapshot,
 )
@@ -181,6 +181,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         self._audit_chain_last_append_ts = self._push.audit_chain_last_append_ts
         self._otlp_export_batches = self._push.otlp_export_batches
         self._otlp_export_dropped = self._push.otlp_export_dropped
+        self._log_sink_events = self._push.log_sink_events
         self._escalation_queue_depth = self._push.escalation_queue_depth
         self._security_audit_log_fill_ratio = self._push.security_audit_log_fill_ratio
         self._agent_identity_changes = self._push.agent_identity_changes
@@ -206,17 +207,32 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         self._pg_pool_acquire_duration = self._push.pg_pool_acquire_duration
         self._pg_pool_exhausted = self._push.pg_pool_exhausted
 
+        # Serialises the whole ``refresh()`` body. The gauge
+        # ``.clear()`` + repopulate steps are not individually locked,
+        # so two overlapping ``/metrics`` scrapes would otherwise race
+        # and emit transiently-zeroed gauges. Per-instance (not the
+        # module-level snapshot lock) because the gauges live on this
+        # collector's private registry.
+        self._refresh_lock = asyncio.Lock()
+
         logger.debug(METRICS_COLLECTOR_INITIALIZED, prefix=prefix)
 
     async def refresh(self, app_state: AppState) -> None:
         """Refresh all gauge values from AppState services.
 
         Each service query is wrapped individually so a failure in one
-        does not prevent other metrics from updating.
+        does not prevent other metrics from updating. The whole body
+        runs under ``_refresh_lock`` so overlapping ``/metrics`` scrapes
+        serialise instead of racing on the gauge clear+repopulate steps.
 
         Args:
             app_state: The application state containing service references.
         """
+        async with self._refresh_lock:
+            await self._refresh_all(app_state)
+
+    async def _refresh_all(self, app_state: AppState) -> None:
+        """Refresh every gauge once. Caller holds ``_refresh_lock``."""
         # Fetch cost snapshots once and share across metrics.
         total_cost: float | None = None
         daily_cost: float | None = None
@@ -290,10 +306,20 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         if pool is None:
             return
         try:
+            # ``psycopg_pool`` ``get_stats()`` returns a copied counters
+            # dict under a brief internal lock; it does no I/O and is
+            # O(1), so calling it synchronously from this async path does
+            # not stall the event loop. Kept inline (rather than
+            # ``asyncio.to_thread``) to avoid a thread hop per scrape.
             stats = pool.get_stats()
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            logger.warning(METRICS_SCRAPE_FAILED, component="pg_pool_stats")
+            logger.warning(
+                METRICS_SCRAPE_FAILED,
+                component="pg_pool_stats",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             return
         size = stats.get("pool_size")
         available = stats.get("pool_available")
@@ -353,7 +379,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         lock so a slow registry call does not block other refresh
         work; only this tiny merge-and-rebind step is serialized.
         """
-        async with _snapshot_lock:
+        async with _snapshot_lock_for_collector():
             previous = _snapshot_for_collector()
             # Carry the previous snapshot's value forward for any
             # source that failed; only a successful fetch overwrites.
