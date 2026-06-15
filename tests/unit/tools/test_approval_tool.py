@@ -7,7 +7,11 @@ import pytest
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.approval.enums import ApprovalRiskLevel
-from synthorg.security.timeout.risk_tier_classifier import DefaultRiskTierClassifier
+from synthorg.observability.events.timeout import TIMEOUT_UNKNOWN_ACTION_TYPE
+from synthorg.security.risk_map import (
+    MapBackedRiskClassifier,
+    default_risk_classifier,
+)
 from synthorg.tools.approval_tool import RequestHumanApprovalTool
 from tests._shared import JsonDict
 
@@ -34,7 +38,7 @@ def tool_with_classifier(
 ) -> RequestHumanApprovalTool:
     return RequestHumanApprovalTool(
         approval_store=approval_store,
-        risk_classifier=DefaultRiskTierClassifier(),
+        risk_classifier=default_risk_classifier(miss_event=TIMEOUT_UNKNOWN_ACTION_TYPE),
         agent_id="agent-1",
         task_id="task-1",
     )
@@ -270,7 +274,7 @@ class TestRiskClassificationFailure:
     """Risk classifier exception handling."""
 
     async def test_classifier_exception_defaults_to_high(self) -> None:
-        classifier = MagicMock(spec=DefaultRiskTierClassifier)
+        classifier = MagicMock(spec=MapBackedRiskClassifier)
         classifier.classify.side_effect = ValueError("unexpected action")
 
         tool = RequestHumanApprovalTool(
@@ -289,7 +293,7 @@ class TestRiskClassificationFailure:
         assert result.metadata["risk_level"] == ApprovalRiskLevel.HIGH.value
 
     async def test_classifier_returns_low_risk(self) -> None:
-        classifier = MagicMock(spec=DefaultRiskTierClassifier)
+        classifier = MagicMock(spec=MapBackedRiskClassifier)
         classifier.classify.return_value = ApprovalRiskLevel.LOW
 
         tool = RequestHumanApprovalTool(

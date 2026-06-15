@@ -67,14 +67,15 @@ def _make_service(
 
     cfg = config or SecurityConfig()
 
+    from synthorg.observability.events.security import SECURITY_RISK_FALLBACK
     from synthorg.security.audit import AuditLog
     from synthorg.security.output_scanner import OutputScanner
+    from synthorg.security.risk_map import default_risk_classifier
     from synthorg.security.rules.engine import RuleEngine
-    from synthorg.security.rules.risk_classifier import RiskClassifier
 
     real_rule_engine = RuleEngine(
         rules=(),
-        risk_classifier=RiskClassifier(),
+        risk_classifier=default_risk_classifier(miss_event=SECURITY_RISK_FALLBACK),
         config=cfg.rule_engine,
     )
 

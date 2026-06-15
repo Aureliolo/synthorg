@@ -42,6 +42,7 @@ from synthorg.integrations.errors import (
     DuplicateConnectionError,
     InvalidConnectionAuthError,
     SecretRetrievalError,
+    SecretRetrievalNotFoundError,
 )
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.observability import (
@@ -551,7 +552,10 @@ class ConnectionsController(Controller):
             ``ApiResponse[dict[str, str]]`` instance.
 
         Raises:
-            NotFoundError: Raised on the corresponding failure path.
+            NotFoundError: When the connection does not exist (generic 404).
+            SecretRetrievalNotFoundError: When the secret backend fails;
+                deliberately presented as the same uniform 404 so the error
+                cannot enumerate which connections exist.
         """
         catalog = require_service(
             state["app_state"].slice(IntegrationsStateSlice).connection_catalog,
@@ -589,7 +593,11 @@ class ConnectionsController(Controller):
                 field=field,
                 reason="secret_retrieval_failed",
             )
-            raise NotFoundError(_REVEAL_GENERIC_ERROR) from exc
+            # Uniform 404 (typed): identical wire shape to the missing-
+            # connection branch above, so the secret-backend error code
+            # cannot enumerate which connections exist. The typed class
+            # records this intentional 502 -> 404 / non-retryable override.
+            raise SecretRetrievalNotFoundError(_REVEAL_GENERIC_ERROR) from exc
 
         value = credentials.get(field)
         if value is None:

@@ -196,6 +196,34 @@ Enforced at pre-push by
 Per-line opt-out:
 `# lint-allow: controller-domain-response -- <reason>`.
 
+### Controller error re-mapping
+
+Class metadata is the single source of truth for the wire contract; a
+controller MUST NOT catch a domain error and re-raise it with a
+different HTTP status or `error_code`. Doing so drops the originating
+error's `retryable` signal and its discriminating code (see
+[ADR-0014](../decisions/0014-error-contract-consolidation.md)).
+
+- **Business-rule vs transient-backend.** When one call site can fail
+  for a business reason or a transient backend reason, raise a distinct
+  typed error for the business case so the contract reflects the cause.
+  The checkpoint service raises `CheckpointActiveConflictError` (409,
+  non-retryable) when rejecting a delete/deploy of the *active*
+  checkpoint, while a transient `QueryError` (500, retryable) flows to
+  `handle_persistence_error` untouched. Controllers must not collapse
+  the transient `QueryError` into the 409.
+- **Let retryable upstream failures propagate.** `oauth.py` does not
+  catch `TokenExchangeFailedError`; its 502 + retryable metadata
+  propagates so the client learns the upstream token endpoint failed and
+  may retry.
+- **Intentional uniform-404 (security override).**
+  `connections.reveal_secret` raises `SecretRetrievalNotFoundError`
+  (404, `RESOURCE_NOT_FOUND`) for both "connection absent" and "secret
+  absent". Returning the same 404 either way prevents a caller from
+  enumerating which connection names exist by probing secret-reveal
+  error codes. This uniform-404 is deliberate; do not "fix" it into a
+  more specific code, which would re-introduce the enumeration leak.
+
 Each handler:
 
 1. Calls `_log_error(request, exc, status=...)` for structured logging
@@ -251,6 +279,40 @@ gate also accepts a frozen baseline file
 violations a rollout has not yet reached. The baseline shrinks
 monotonically: any entry that no longer maps to a real violation is
 reported as drift, so the file cannot harbour stale rows.
+
+## Error-code uniqueness gate
+
+Each `ErrorCode` maps to exactly one `DomainError` subclass, so a client
+branching on `error_code` can always tell two conditions apart. The one
+exception is an **inheritance alias**: a subclass that deliberately keeps
+an ancestor's code (for example `ProviderModelNotFoundError`, which
+subclasses `ModelNotFoundError` and inherits `MODEL_NOT_FOUND` 3011, and
+the `NotFoundError` subclasses that share `RESOURCE_NOT_FOUND` 3000 as
+the fallback). Two *unrelated* classes declaring the same code is a
+violation.
+
+`scripts/check_error_code_uniqueness.py` enforces this at pre-push and in
+CI. For each concrete `DomainError` subclass it collects the
+`(class, error_code, bases)` triple by AST across `**/errors.py`,
+`core/domain_errors.py`, and `core/persistence_errors.py`, groups by
+code, and fails a group unless its members share a common `DomainError`
+ancestor declaring that code, or the code is one of the shareable generic
+codes (`INTERNAL_ERROR`, `VALIDATION_ERROR`, `RESOURCE_NOT_FOUND`,
+`RESOURCE_CONFLICT`, `RECORD_NOT_FOUND`, ...). The gate is AST-only (no
+import), uses git-ls-files discovery with a `Path.rglob` fallback, and
+ships with zero offenders.
+
+Per-line opt-out (reserved for documented twin classes that legitimately
+share a code, e.g. a persistence-layer mirror of a domain error):
+
+```python
+class PersistenceVersionConflictError(QueryError):  # lint-allow: error-code-uniqueness -- twin of domain VersionConflictError
+    ...
+```
+
+The justification after `--` is mandatory. See
+[ADR-0014](../decisions/0014-error-contract-consolidation.md) for the
+rationale and the four duplicate-code pairs this gate locked down.
 
 ## Error-code constants - frontend integration (MANDATORY)
 

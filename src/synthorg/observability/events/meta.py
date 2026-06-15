@@ -41,7 +41,6 @@ META_PROPOSAL_APPROVED: Final[str] = "meta.proposal.approved"
 META_PROPOSAL_REJECTED: Final[str] = "meta.proposal.rejected"
 META_PROPOSAL_SUBMITTED: Final[str] = "meta.proposal.submitted"
 META_PROPOSAL_LISTED: Final[str] = "meta.proposal.listed"
-META_PROPOSAL_UNKNOWN_ALTITUDE: Final[str] = "meta.proposal.unknown_altitude"
 
 # -- Rollout events -----------------------------------------------------
 

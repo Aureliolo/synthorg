@@ -22,6 +22,7 @@ from synthorg.core.boundary import parse_typed
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.effective_autonomy import EffectiveAutonomy
+from synthorg.core.normalization import strip_trailing_slash
 from synthorg.core.resilience_config import RateLimiterConfig
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import Connection
@@ -235,7 +236,7 @@ class ExternalApiTool(BaseTool):
             raise ExternalApiEgressBlockedError(msg)
         base_host = extract_hostname(conn.base_url)
         if args.path:
-            resolved = conn.base_url.rstrip("/") + "/" + args.path.lstrip("/")
+            resolved = strip_trailing_slash(conn.base_url) + "/" + args.path.lstrip("/")
         else:
             resolved = args.url
         if _has_dot_segment(resolved):

@@ -82,8 +82,7 @@ _ALLOWLIST: Final[frozenset[str]] = frozenset(
         # Dynamic-key secret backends (the env var name is the secret id).
         "persistence/secret_backends/env_var.py",
         "persistence/secret_backends/factory.py",
-        "persistence/secret_backends/encrypted_postgres.py",
-        "persistence/secret_backends/encrypted_sqlite.py",
+        "persistence/secret_backends/encrypted.py",
         # Tool sidecar entry points that read their own process args/env.
         "tools/browser/_executor.py",
         "tools/desktop/_executor.py",

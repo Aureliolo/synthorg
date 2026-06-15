@@ -30,7 +30,9 @@ class ExternalApiArgumentError(ExternalApiError):
     default_message: ClassVar[str] = "External API tool arguments invalid"
 
 
-class ExternalApiConnectionNotFoundError(ExternalApiError):
+class ExternalApiConnectionNotFoundError(
+    ExternalApiError
+):  # lint-allow: error-code-uniqueness -- twin of ConnectionNotFoundError
     """Named connection is absent from the connection catalog."""
 
     status_code: ClassVar[int] = 404

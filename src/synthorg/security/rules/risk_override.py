@@ -20,7 +20,7 @@ from synthorg.observability.events.security import (
     SECURITY_RISK_OVERRIDE_EXPIRED,
     SECURITY_RISK_OVERRIDE_REVOKED,
 )
-from synthorg.security.rules.risk_classifier import RiskClassifier
+from synthorg.security.risk_map import MapBackedRiskClassifier
 
 logger = get_logger(__name__)
 
@@ -133,7 +133,7 @@ class SecOpsRiskClassifier:
     def __init__(
         self,
         *,
-        base: RiskClassifier,
+        base: MapBackedRiskClassifier,
         overrides: tuple[RiskTierOverride, ...] = (),
     ) -> None:
         self._base = base

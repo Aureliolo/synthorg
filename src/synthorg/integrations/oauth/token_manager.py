@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.iso_datetime import parse_iso_assume_utc
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import (
     AuthMethod,
@@ -235,7 +236,7 @@ class OAuthTokenManager:
             if not isinstance(expiry_raw, str) or not expiry_raw.strip():
                 continue
             try:
-                expiry = datetime.fromisoformat(expiry_raw.strip())
+                expiry = parse_iso_assume_utc(expiry_raw.strip())
             except TypeError, ValueError:
                 logger.warning(
                     OAUTH_TOKEN_REFRESH_FAILED,
@@ -244,10 +245,6 @@ class OAuthTokenManager:
                     value=expiry_raw,
                 )
                 continue
-            # Coerce naive datetimes to UTC so the comparison below
-            # cannot raise with a mixed tz/non-tz operands.
-            if expiry.tzinfo is None:
-                expiry = expiry.replace(tzinfo=UTC)
 
             try:
                 is_expired = expiry <= now

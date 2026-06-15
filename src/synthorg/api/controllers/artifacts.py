@@ -24,8 +24,6 @@ from synthorg.api.ws_models import WsEventType
 from synthorg.core.artifact import Artifact, ArtifactType
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
-    ArtifactRejectedTooLargeError,
-    ArtifactStorageRejectedFullError,
     NotFoundError,
     ValidationError,
 )
@@ -426,8 +424,8 @@ class ArtifactController(Controller):
             Updated artifact metadata with size_bytes set.
 
         Raises:
-            ArtifactRejectedTooLargeError: Raised on the corresponding failure path.
-            ArtifactStorageRejectedFullError: Raised on the corresponding failure path.
+            ArtifactTooLargeError: Raised on the corresponding failure path.
+            ArtifactStorageFullError: Raised on the corresponding failure path.
             Exception: Raised on the corresponding failure path.
         """
         service = _service(state)
@@ -457,7 +455,11 @@ class ArtifactController(Controller):
                 error=safe_error_description(exc),
                 note="artifact_too_large",
             )
-            raise ArtifactRejectedTooLargeError from exc
+            # Re-raise with the generic public message: the persistence
+            # detail (artifact id + byte sizes) stays in the log and the
+            # exception chain and must not reach the client on the 413 body.
+            msg = "Artifact content is too large"
+            raise ArtifactTooLargeError(msg) from exc
         except ArtifactStorageFullError as exc:
             logger.warning(
                 PERSISTENCE_ARTIFACT_STORE_FAILED,
@@ -466,7 +468,8 @@ class ArtifactController(Controller):
                 error=safe_error_description(exc),
                 note="artifact_storage_full",
             )
-            raise ArtifactStorageRejectedFullError from exc
+            msg = "Artifact storage is full"
+            raise ArtifactStorageFullError(msg) from exc
         except Exception as exc:
             reraise_critical(exc)
             # Catch-all so any other backend / storage failure leaves an

@@ -125,9 +125,10 @@ class TestAssembleBlocks:
         bullet_text = [
             item for b in blocks if isinstance(b, BulletListBlock) for item in b.items
         ]
-        # _run() defaults to the system currency (USD); the cost must
-        # render with a unit, never as a bare number.
-        assert any("cost 1.50 USD" in t for t in bullet_text)
+        # _run() defaults to the system currency (USD); the cost renders
+        # via the canonical ``format_cost`` helper (symbol + amount),
+        # never as a bare number.
+        assert any("cost $1.50" in t for t in bullet_text)
 
     def test_malicious_source_url_coerced_end_to_end(self) -> None:
         # A javascript: or protocol-relative citation that flows through

@@ -267,19 +267,6 @@ class FeatureNotImplementedError(DomainError):
     status_code: ClassVar[int] = 501
 
 
-class ArtifactRejectedTooLargeError(DomainError):
-    """Raised when an artifact upload exceeds the configured size limit (413).
-
-    Distinct from :class:`synthorg.core.persistence_errors.ArtifactTooLargeError`,
-    which fires when a storage backend rejects an oversized object.
-    """
-
-    default_message: ClassVar[str] = "Artifact content is too large"
-    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
-    error_code: ClassVar[ErrorCode] = ErrorCode.ARTIFACT_TOO_LARGE
-    status_code: ClassVar[int] = 413
-
-
 class ProviderTierCoverageInsufficientError(ValidationError):
     """Raised when configured providers expose no models during setup (422).
 
@@ -314,21 +301,6 @@ class AgentRuntimeNotConfiguredError(ConflictError):
         "submitting tasks; the company is running in empty mode."
     )
     error_code: ClassVar[ErrorCode] = ErrorCode.AGENT_RUNTIME_NOT_CONFIGURED
-
-
-class ArtifactStorageRejectedFullError(DomainError):
-    """Raised when the artifact-storage subsystem reports it is full (507).
-
-    Distinct from
-    :class:`synthorg.core.persistence_errors.ArtifactStorageFullError`,
-    which is the persistence-layer signal; this is the API-boundary
-    rejection raised when the controller observes the same condition.
-    """
-
-    default_message: ClassVar[str] = "Artifact storage is full"
-    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
-    error_code: ClassVar[ErrorCode] = ErrorCode.ARTIFACT_STORAGE_FULL
-    status_code: ClassVar[int] = 507
 
 
 class ArtifactPersistenceNoStorageError(DomainError):
@@ -412,6 +384,20 @@ class CheckpointOperationConflictError(ConflictError):
 
     default_message: ClassVar[str] = "Checkpoint operation conflict"
     error_code: ClassVar[ErrorCode] = ErrorCode.CHECKPOINT_OPERATION_CONFLICT
+
+
+class CheckpointActiveConflictError(CheckpointOperationConflictError):
+    """Raised when an operation is rejected because the checkpoint is active (409).
+
+    The service raises this explicitly for the business rule "cannot
+    delete the currently-active checkpoint", so a transient backend
+    ``QueryError`` during the same operation keeps its 500 + retryable
+    metadata instead of being flattened to a 409 state-conflict.
+    Inherits ``CHECKPOINT_OPERATION_CONFLICT`` (the client-facing
+    condition is unchanged); the subclass names the precise rule.
+    """
+
+    default_message: ClassVar[str] = "Cannot delete the active checkpoint"
 
 
 class FineTuneRunActiveError(ConflictError):

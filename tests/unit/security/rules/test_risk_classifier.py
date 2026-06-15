@@ -1,10 +1,32 @@
-"""Tests for the risk classifier."""
+"""Tests for the risk classifier (rules-baseline binding)."""
+
+from collections.abc import Mapping
 
 import pytest
 
 from synthorg.approval.enums import ApprovalRiskLevel
+from synthorg.observability.events.security import SECURITY_RISK_FALLBACK
 from synthorg.security.autonomy.enums import ActionType
-from synthorg.security.rules.risk_classifier import RiskClassifier
+from synthorg.security.risk_map import (
+    MapBackedRiskClassifier,
+    default_risk_classifier,
+)
+
+
+def _baseline_classifier(
+    custom_risk_map: Mapping[str, ApprovalRiskLevel] | None = None,
+) -> MapBackedRiskClassifier:
+    """Build the rules-baseline classifier under test.
+
+    Returns:
+        A ``MapBackedRiskClassifier`` over the default map with the
+        rules-side miss event.
+    """
+    return default_risk_classifier(
+        miss_event=SECURITY_RISK_FALLBACK,
+        custom_map=custom_risk_map,
+    )
+
 
 # ── CRITICAL risk level ──────────────────────────────────────────────
 
@@ -22,7 +44,7 @@ class TestRiskClassifierCritical:
         ],
     )
     def test_critical_risk(self, action_type: str) -> None:
-        classifier = RiskClassifier()
+        classifier = _baseline_classifier()
         assert classifier.classify(action_type) == ApprovalRiskLevel.CRITICAL
 
 
@@ -45,7 +67,7 @@ class TestRiskClassifierHigh:
         ],
     )
     def test_high_risk(self, action_type: str) -> None:
-        classifier = RiskClassifier()
+        classifier = _baseline_classifier()
         assert classifier.classify(action_type) == ApprovalRiskLevel.HIGH
 
 
@@ -70,7 +92,7 @@ class TestRiskClassifierMedium:
         ],
     )
     def test_medium_risk(self, action_type: str) -> None:
-        classifier = RiskClassifier()
+        classifier = _baseline_classifier()
         assert classifier.classify(action_type) == ApprovalRiskLevel.MEDIUM
 
 
@@ -96,7 +118,7 @@ class TestRiskClassifierLow:
         ],
     )
     def test_low_risk(self, action_type: str) -> None:
-        classifier = RiskClassifier()
+        classifier = _baseline_classifier()
         assert classifier.classify(action_type) == ApprovalRiskLevel.LOW
 
 
@@ -126,7 +148,7 @@ class TestRiskClassifierUnknownDefaults:
         self,
         action_type: str,
     ) -> None:
-        classifier = RiskClassifier()
+        classifier = _baseline_classifier()
         assert classifier.classify(action_type) == ApprovalRiskLevel.HIGH
 
 
@@ -139,7 +161,7 @@ class TestRiskClassifierCustomMap:
 
     def test_custom_override_existing(self) -> None:
         """Custom map can override a built-in mapping."""
-        classifier = RiskClassifier(
+        classifier = _baseline_classifier(
             custom_risk_map={
                 ActionType.CODE_READ: ApprovalRiskLevel.HIGH,
             },
@@ -148,7 +170,7 @@ class TestRiskClassifierCustomMap:
 
     def test_custom_adds_new_action_type(self) -> None:
         """Custom map can add new action types not in defaults."""
-        classifier = RiskClassifier(
+        classifier = _baseline_classifier(
             custom_risk_map={
                 "custom:special": ApprovalRiskLevel.CRITICAL,
             },
@@ -157,7 +179,7 @@ class TestRiskClassifierCustomMap:
 
     def test_custom_map_preserves_unaffected_defaults(self) -> None:
         """Custom map only affects specified keys; others remain."""
-        classifier = RiskClassifier(
+        classifier = _baseline_classifier(
             custom_risk_map={
                 "custom:new": ApprovalRiskLevel.LOW,
             },
@@ -171,7 +193,7 @@ class TestRiskClassifierCustomMap:
 
     def test_none_custom_map_uses_defaults(self) -> None:
         """Passing None for custom_risk_map uses defaults only."""
-        classifier = RiskClassifier(custom_risk_map=None)
+        classifier = _baseline_classifier(custom_risk_map=None)
         assert classifier.classify(ActionType.CODE_READ) == ApprovalRiskLevel.LOW
 
 
@@ -184,7 +206,7 @@ class TestRiskClassifierCompleteness:
 
     def test_all_action_types_are_mapped(self) -> None:
         """Every ActionType enum member has an explicit risk mapping."""
-        classifier = RiskClassifier()
+        classifier = _baseline_classifier()
         for action_type in ActionType:
             # Verify the action type is in the explicit map
             # (not just falling back to HIGH).

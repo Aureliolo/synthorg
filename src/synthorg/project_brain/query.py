@@ -14,9 +14,9 @@ mappings it delegates to:
 """
 
 import re
-from datetime import datetime
 from pathlib import Path
 
+from synthorg.core.iso_datetime import parse_git_log_timestamp
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workspace._git_subprocess import run_git_subprocess
 from synthorg.memory.models import MemoryEntry
@@ -182,11 +182,8 @@ def _parse_history_line(line: str) -> BrainEntryVersion | None:
     if len(parts) != _HISTORY_FIELDS_PER_LINE:
         return None
     sha, committed_at_iso, summary = parts
-    try:
-        committed_at = datetime.fromisoformat(committed_at_iso)
-    except ValueError:
-        return None
-    if committed_at.tzinfo is None:
+    committed_at = parse_git_log_timestamp(committed_at_iso)
+    if committed_at is None:
         return None
     match = _REVISION_RE.search(summary)
     if match is None:

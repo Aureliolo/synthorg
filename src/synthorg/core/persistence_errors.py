@@ -133,7 +133,9 @@ class ConstraintViolationError(QueryError):
         self.constraint: str = stripped or self.UNKNOWN_CONSTRAINT
 
 
-class PersistenceVersionConflictError(QueryError):
+class PersistenceVersionConflictError(
+    QueryError
+):  # lint-allow: error-code-uniqueness -- twin of domain VersionConflictError
     """Raised when an optimistic concurrency version check fails.
 
     Non-retryable at this layer: the caller must re-read, re-apply

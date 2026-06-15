@@ -58,6 +58,8 @@ from synthorg.core.error_taxonomy import (
     category_type_uri,
 )
 from synthorg.core.persistence_errors import (
+    ArtifactStorageFullError,
+    ArtifactTooLargeError,
     ConstraintViolationError,
     DuplicateRecordError,
     JsonbQueryUnsupportedError,
@@ -966,6 +968,11 @@ _HANDLER_ENTRIES: tuple[tuple[type[Exception], object], ...] = (
     # is a client-facing 422, not an internal 500: register it above the
     # generic ``PersistenceError`` 500 handler so its narrower mapping wins.
     (JsonbQueryUnsupportedError, handle_domain_error),
+    # Artifact size / capacity rejections carry their own 413 / 507 status
+    # ClassVars; register them above the generic ``PersistenceError`` 500
+    # handler so ``handle_domain_error`` reads the narrower status + code.
+    (ArtifactTooLargeError, handle_domain_error),
+    (ArtifactStorageFullError, handle_domain_error),
     (PersistenceError, handle_persistence_error),
     (NotAuthorizedException, handle_not_authorized),
     (PermissionDeniedException, handle_permission_denied),

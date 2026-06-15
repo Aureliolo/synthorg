@@ -277,8 +277,8 @@ if _missing_actions:
 class DefaultRiskScorer:
     """Default risk scorer using a static action-type-to-score map.
 
-    Mirrors the ``RiskClassifier`` risk level mapping but provides
-    multi-dimensional ``RiskScore`` values instead of a single
+    Mirrors the ``MapBackedRiskClassifier`` risk level mapping but
+    provides multi-dimensional ``RiskScore`` values instead of a single
     ``ApprovalRiskLevel`` tier.
 
     Args:
@@ -309,7 +309,7 @@ class DefaultRiskScorer:
         """Score the given action type.
 
         Falls back to a high-risk default for unknown action types
-        (fail-safe, matching ``RiskClassifier.classify`` behavior).
+        (fail-safe, matching ``MapBackedRiskClassifier.classify`` behavior).
 
         Args:
             action_type: The ``category:action`` string.

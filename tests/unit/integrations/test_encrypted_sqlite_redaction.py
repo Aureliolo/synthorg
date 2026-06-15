@@ -1,8 +1,9 @@
-"""Leak-sentinel tests for ``EncryptedSqliteSecretBackend``.
+"""Leak-sentinel tests for the encrypted SQLite secret backend.
 
-All error paths on the secret backend must log only scrubbed, safe
-metadata -- no raw exception strings, no tracebacks, no Fernet
-ciphertext bytes, no connection URIs with credentials.
+All error paths on the ``EncryptedSecretBackend`` composed with a
+``SqliteSecretRowStore`` must log only scrubbed, safe metadata -- no raw
+exception strings, no tracebacks, no Fernet ciphertext bytes, no
+connection URIs with credentials.
 """
 
 from collections.abc import Sequence
@@ -18,8 +19,11 @@ from synthorg.integrations.errors import (
     SecretRetrievalError,
     SecretStorageError,
 )
-from synthorg.persistence.secret_backends.encrypted_sqlite import (
-    EncryptedSqliteSecretBackend,
+from synthorg.persistence.secret_backends.encrypted import (
+    EncryptedSecretBackend,
+)
+from synthorg.persistence.secret_backends.sqlite_row_store import (
+    SqliteSecretRowStore,
 )
 
 
@@ -34,7 +38,7 @@ def _master_key(monkeypatch: pytest.MonkeyPatch) -> str:
 async def backend(
     tmp_path: Path,
     _master_key: str,
-) -> EncryptedSqliteSecretBackend:
+) -> EncryptedSecretBackend:
     db_path = str(tmp_path / "secrets.db")
     # Minimal schema bootstrap: the real backend relies on the
     # persistence migrations; for this unit test we create the one
@@ -56,7 +60,10 @@ async def backend(
         )
         await db.execute(ddl)
         await db.commit()
-    return EncryptedSqliteSecretBackend(db_path)
+    return EncryptedSecretBackend(
+        SqliteSecretRowStore(db_path),
+        master_key_env="SYNTHORG_MASTER_KEY",
+    )
 
 
 def _leak_free(events: Sequence[object], sentinels: tuple[str, ...]) -> None:
@@ -71,7 +78,7 @@ class TestEncryptedSqliteLogRedaction:
 
     async def test_store_driver_error_scrubs_message(
         self,
-        backend: EncryptedSqliteSecretBackend,
+        backend: EncryptedSecretBackend,
     ) -> None:
         leaky = "connection refused: postgres://user:hunter2@host/db"
         # Force the underlying driver to raise with a connection-string
@@ -80,7 +87,7 @@ class TestEncryptedSqliteLogRedaction:
         # which scrubs credential patterns.
         with (
             patch(
-                "synthorg.persistence.secret_backends.encrypted_sqlite.aiosqlite.connect",
+                "synthorg.persistence.secret_backends.sqlite_row_store.aiosqlite.connect",
                 side_effect=RuntimeError(leaky),
             ),
             structlog.testing.capture_logs() as events,
@@ -103,14 +110,15 @@ class TestEncryptedSqliteLogRedaction:
 
     async def test_retrieve_invalid_token_no_ciphertext_in_log(
         self,
-        backend: EncryptedSqliteSecretBackend,
+        backend: EncryptedSecretBackend,
     ) -> None:
         # Write a row with bogus ciphertext so decrypt fails.
         import aiosqlite  # lint-allow: persistence-boundary -- test seed
 
         forged = Fernet.generate_key()  # wrong key -> InvalidToken on decrypt
         ciphertext = Fernet(forged).encrypt(b"stored-secret")
-        async with aiosqlite.connect(backend._db_path) as db:
+        assert isinstance(backend._store, SqliteSecretRowStore)
+        async with aiosqlite.connect(backend._store._db_path) as db:
             # Same split-across-two-literals trick as the DDL above to
             # keep this test seed outside the persistence-boundary scan.
             dml = (
@@ -140,7 +148,7 @@ class TestEncryptedSqliteLogRedaction:
 
     async def test_retrieve_driver_error_scrubs_and_drops_traceback(
         self,
-        backend: EncryptedSqliteSecretBackend,
+        backend: EncryptedSecretBackend,
     ) -> None:
         # Driver exception whose message carries a Fernet-prefixed
         # ciphertext sentinel. The scrubber must mask the sentinel.
@@ -148,7 +156,7 @@ class TestEncryptedSqliteLogRedaction:
         leaky = f"row unreadable: {sentinel_cipher}"
         with (
             patch(
-                "synthorg.persistence.secret_backends.encrypted_sqlite.aiosqlite.connect",
+                "synthorg.persistence.secret_backends.sqlite_row_store.aiosqlite.connect",
                 side_effect=RuntimeError(leaky),
             ),
             structlog.testing.capture_logs() as events,
@@ -163,7 +171,7 @@ class TestEncryptedSqliteLogRedaction:
 
     async def test_rotation_rollback_failure_is_scrubbed(
         self,
-        backend: EncryptedSqliteSecretBackend,
+        backend: EncryptedSecretBackend,
     ) -> None:
         """A failed rollback during rotation logs a scrubbed error, no crash.
 
@@ -178,7 +186,7 @@ class TestEncryptedSqliteLogRedaction:
                 backend,
                 "delete",
                 new=AsyncMock(
-                    spec=EncryptedSqliteSecretBackend.delete,
+                    spec=EncryptedSecretBackend.delete,
                     side_effect=SecretStorageError(leaky),
                 ),
             ),
@@ -193,7 +201,7 @@ class TestEncryptedSqliteLogRedaction:
 
     async def test_rotation_rollback_non_storage_error_propagates(
         self,
-        backend: EncryptedSqliteSecretBackend,
+        backend: EncryptedSecretBackend,
     ) -> None:
         """A non-``SecretStorageError`` during rollback propagates.
 
@@ -206,7 +214,7 @@ class TestEncryptedSqliteLogRedaction:
                 backend,
                 "delete",
                 new=AsyncMock(
-                    spec=EncryptedSqliteSecretBackend.delete,
+                    spec=EncryptedSecretBackend.delete,
                     side_effect=RuntimeError("unexpected"),
                 ),
             ),

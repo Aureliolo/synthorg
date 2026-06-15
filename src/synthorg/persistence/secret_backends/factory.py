@@ -16,17 +16,20 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
     SECRET_BACKEND_UNAVAILABLE,
 )
-from synthorg.persistence.secret_backends.encrypted_postgres import (
-    EncryptedPostgresSecretBackend,
-)
-from synthorg.persistence.secret_backends.encrypted_sqlite import (
-    EncryptedSqliteSecretBackend,
+from synthorg.persistence.secret_backends.encrypted import (
+    EncryptedSecretBackend,
 )
 from synthorg.persistence.secret_backends.env_var import (
     EnvVarSecretBackend,
 )
+from synthorg.persistence.secret_backends.postgres_row_store import (
+    PostgresSecretRowStore,
+)
 from synthorg.persistence.secret_backends.protocol import (
     SecretBackend,
+)
+from synthorg.persistence.secret_backends.sqlite_row_store import (
+    SqliteSecretRowStore,
 )
 
 logger = get_logger(__name__)
@@ -259,9 +262,9 @@ def _build_encrypted_sqlite(
         )
         msg = "db_path is required for encrypted_sqlite secret backend"
         raise ValueError(msg)
-    return EncryptedSqliteSecretBackend(
-        db_path=db_path,
-        config=config.encrypted_sqlite,
+    return EncryptedSecretBackend(
+        SqliteSecretRowStore(db_path),
+        master_key_env=config.encrypted_sqlite.master_key_env,
     )
 
 
@@ -287,9 +290,9 @@ def _build_encrypted_postgres(
         )
         msg = "pg_pool is required for encrypted_postgres secret backend"
         raise ValueError(msg)
-    return EncryptedPostgresSecretBackend(
-        pool=pg_pool,
-        config=config.encrypted_postgres,
+    return EncryptedSecretBackend(
+        PostgresSecretRowStore(pg_pool),
+        master_key_env=config.encrypted_postgres.master_key_env,
     )
 
 

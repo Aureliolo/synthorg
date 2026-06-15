@@ -1,7 +1,7 @@
 """Orchestrator strategy protocol and implementations.
 
 Defines the ``OrchestratorStrategy`` protocol for subtask selection
-within the ``CentralizedDispatcher``.  Two implementations:
+within the centralized ``WaveDispatcher``.  Two implementations:
 
 1. ``NaiveDispatchStrategy`` -- dispatches all subtasks (default)
 2. ``MagenticDynamicSelectStrategy`` -- prioritizes stalled subtasks
@@ -21,7 +21,7 @@ logger = get_logger(__name__)
 class OrchestratorStrategy(Protocol):
     """Protocol for subtask selection within centralized dispatch.
 
-    Lives inside ``CentralizedDispatcher``, not as a separate
+    Lives inside the centralized ``WaveDispatcher``, not as a separate
     topology.  Controls wave composition based on progress signals.
     """
 

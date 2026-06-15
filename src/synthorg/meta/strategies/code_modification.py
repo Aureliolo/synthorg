@@ -12,7 +12,7 @@ from typing import Final
 from uuid import uuid4
 
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.budget.currency import format_cost
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -404,7 +404,7 @@ class CodeModificationStrategy:
             f"- Quality: {perf.avg_quality_score}/10\n"
             f"- Success rate: {perf.avg_success_rate:.1%}\n"
             f"- Agent count: {perf.agent_count}\n"
-            f"- Budget spend: {budget.total_spend:.2f} {DEFAULT_CURRENCY}\n"
+            f"- Budget spend: {format_cost(budget.total_spend)}\n"
             f"- Coordination ratio: {budget.coordination_ratio:.1%}\n"
             f"\n"
             f"Allowed modification paths: {fenced_allowed_paths}\n"

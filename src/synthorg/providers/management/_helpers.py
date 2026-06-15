@@ -17,6 +17,10 @@ from synthorg.observability.events.provider import (
     PROVIDER_LITELLM_MODELS_LOADED,
     PROVIDER_UPDATE_AUTH_TYPE_UNEXPECTED,
 )
+from synthorg.providers._auth_type_descriptor import (
+    AUTH_TYPE_DESCRIPTORS,
+    DiscoveryAuthStyle,
+)
 from synthorg.providers.enums import AuthType
 from synthorg.providers.management.dtos import (
     CreateProviderRequest,
@@ -104,27 +108,6 @@ _UPDATE_SECRET_FIELDS: frozenset[str] = frozenset(
 )
 
 
-# Fields owned by each auth type.  When switching auth types, fields
-# not owned by the new type are cleared.
-_AUTH_OWNED_FIELDS: Final[MappingProxyType[AuthType, tuple[str, ...]]] = (
-    MappingProxyType(
-        {
-            AuthType.API_KEY: ("api_key",),
-            AuthType.OAUTH: (
-                "api_key",
-                "oauth_client_secret",
-                "oauth_token_url",
-                "oauth_client_id",
-                "oauth_scope",
-            ),
-            AuthType.CUSTOM_HEADER: ("custom_header_name", "custom_header_value"),
-            AuthType.SUBSCRIPTION: ("subscription_token", "tos_accepted_at"),
-            AuthType.NONE: (),
-        }
-    )
-)
-
-
 def apply_update(
     existing: ProviderConfig,
     request: UpdateProviderRequest,
@@ -162,12 +145,16 @@ def apply_update(
                 _unwrap_secret(value) if field in _UPDATE_SECRET_FIELDS else value
             )
 
-    # auth_type change: clear all fields NOT owned by the new auth type
+    # auth_type change: clear all fields NOT owned by the new auth type.
+    # ``.get`` (not subscript) tolerates a non-AuthType value that slipped
+    # past request validation: keep stays empty so every credential field
+    # clears, and the defensive isinstance guard below logs + rejects it.
     if request.auth_type is not None:
         updates["auth_type"] = request.auth_type
-        keep = set(_AUTH_OWNED_FIELDS.get(request.auth_type, ()))
-        for fields in _AUTH_OWNED_FIELDS.values():
-            for f in fields:
+        new_descriptor = AUTH_TYPE_DESCRIPTORS.get(request.auth_type)
+        keep = set(new_descriptor.owned_fields) if new_descriptor is not None else set()
+        for descriptor in AUTH_TYPE_DESCRIPTORS.values():
+            for f in descriptor.owned_fields:
                 if f not in keep:
                     updates[f] = None
 
@@ -204,8 +191,10 @@ def _apply_credential_updates(
     the request DTO; unwrap to the raw string before storing on
     ``ProviderConfig`` (which keeps these as plain ``NotBlankStr``).
     """
+    descriptor = AUTH_TYPE_DESCRIPTORS[final_auth_type]
+
     # api_key: only set/clear when the resulting auth type supports it
-    if final_auth_type in (AuthType.API_KEY, AuthType.OAUTH):
+    if descriptor.supports_api_key:
         if request.api_key is not None:
             updates["api_key"] = _unwrap_secret(request.api_key)
         elif request.clear_api_key:
@@ -213,8 +202,9 @@ def _apply_credential_updates(
     else:
         updates["api_key"] = None
 
-    # subscription_token: only set/clear when auth type is SUBSCRIPTION
-    if final_auth_type == AuthType.SUBSCRIPTION:
+    # subscription_token + tos_accepted_at: only the subscription-style
+    # auth type (the one mandating ToS) owns these fields.
+    if descriptor.requires_tos:
         if request.subscription_token is not None:
             updates["subscription_token"] = _unwrap_secret(request.subscription_token)
         elif request.clear_subscription_token:
@@ -264,17 +254,18 @@ def build_discovery_headers(
     Returns:
         Auth headers dict, or ``None``.
     """
-    if config.auth_type == AuthType.API_KEY and config.api_key:
+    style = AUTH_TYPE_DESCRIPTORS[config.auth_type].discovery_style
+    if style is DiscoveryAuthStyle.BEARER_API_KEY and config.api_key:
         return {"Authorization": f"Bearer {config.api_key}"}
     if (
-        config.auth_type == AuthType.CUSTOM_HEADER
+        style is DiscoveryAuthStyle.CUSTOM_HEADER
         and config.custom_header_name
         and config.custom_header_value
     ):
         return {config.custom_header_name: config.custom_header_value}
-    if config.auth_type == AuthType.SUBSCRIPTION and config.subscription_token:
+    if style is DiscoveryAuthStyle.BEARER_SUBSCRIPTION and config.subscription_token:
         return {"Authorization": f"Bearer {config.subscription_token}"}
-    if config.auth_type == AuthType.OAUTH:
+    if style is DiscoveryAuthStyle.OAUTH_UNSUPPORTED:
         logger.debug(
             PROVIDER_DISCOVERY_FAILED,
             reason="oauth_discovery_unsupported",

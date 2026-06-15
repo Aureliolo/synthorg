@@ -303,20 +303,19 @@ class ProviderNotFoundError(ProviderError):
     error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
 
 
-class ProviderModelNotFoundError(ProviderError):
-    """A model identifier does not exist on the provider.
+class ProviderModelNotFoundError(ModelNotFoundError):
+    """A model identifier does not exist on the provider's stored config.
 
-    404 Not Found: distinct from ``ProviderNotFoundError`` (the whole
-    provider is missing) and from ``ProviderValidationError`` (the
-    request shape is wrong).  Lets the API controller route missing-
-    model errors to HTTP 404 without parsing free-form validation
-    text.
+    The management-service raise site for "model not found", distinct
+    from ``ProviderNotFoundError`` (the whole provider is missing) and
+    ``ProviderValidationError`` (the request shape is wrong).
+
+    Inherits :class:`ModelNotFoundError` so both the management path
+    (this class) and the driver upstream-404 path (the parent) carry the
+    single ``MODEL_NOT_FOUND`` wire code: clients branch on one code
+    regardless of raise site, and the inheritance makes the alias
+    explicit for the error-code-uniqueness gate.
     """
-
-    is_retryable = False
-    status_code: ClassVar[int] = 404
-    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_NOT_FOUND
-    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
 
 
 class ProviderValidationError(ProviderError):

@@ -6,6 +6,11 @@ import pytest
 
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
+from synthorg.observability.events.timeout import TIMEOUT_UNKNOWN_ACTION_TYPE
+from synthorg.security.risk_map import (
+    MapBackedRiskClassifier,
+    default_risk_classifier,
+)
 from synthorg.security.timeout.config import EscalationStep, TierConfig
 from synthorg.security.timeout.enums import TimeoutActionType
 from synthorg.security.timeout.policies import (
@@ -14,8 +19,16 @@ from synthorg.security.timeout.policies import (
     TieredTimeoutPolicy,
     WaitForeverPolicy,
 )
-from synthorg.security.timeout.risk_tier_classifier import DefaultRiskTierClassifier
 from tests._shared import as_uuid
+
+
+def _classifier() -> MapBackedRiskClassifier:
+    """Build the tiered-timeout default classifier for policy tests.
+
+    Returns:
+        A ``MapBackedRiskClassifier`` over the default map.
+    """
+    return default_risk_classifier(miss_event=TIMEOUT_UNKNOWN_ACTION_TYPE)
 
 
 def _make_item(
@@ -98,7 +111,7 @@ class TestTieredTimeoutPolicy:
         }
         policy = TieredTimeoutPolicy(
             tiers=tiers,
-            classifier=DefaultRiskTierClassifier(),
+            classifier=_classifier(),
         )
         item = _make_item(action_type="code:write")  # MEDIUM risk
         result = await policy.determine_action(item, 1800.0)  # 30 min
@@ -111,7 +124,7 @@ class TestTieredTimeoutPolicy:
         }
         policy = TieredTimeoutPolicy(
             tiers=tiers,
-            classifier=DefaultRiskTierClassifier(),
+            classifier=_classifier(),
         )
         item = _make_item(action_type="code:write")  # MEDIUM risk
         result = await policy.determine_action(item, 3601.0)  # > 60 min
@@ -126,7 +139,7 @@ class TestTieredTimeoutPolicy:
         }
         policy = TieredTimeoutPolicy(
             tiers=tiers,
-            classifier=DefaultRiskTierClassifier(),
+            classifier=_classifier(),
         )
         item = _make_item(action_type="code:read")  # LOW risk
         result = await policy.determine_action(item, 30000.0)  # > 480 min
@@ -136,7 +149,7 @@ class TestTieredTimeoutPolicy:
     async def test_no_tier_config_waits(self) -> None:
         policy = TieredTimeoutPolicy(
             tiers={},
-            classifier=DefaultRiskTierClassifier(),
+            classifier=_classifier(),
         )
         item = _make_item()
         result = await policy.determine_action(item, 999999.0)
@@ -152,7 +165,7 @@ class TestTieredTimeoutPolicy:
         }
         policy = TieredTimeoutPolicy(
             tiers=tiers,
-            classifier=DefaultRiskTierClassifier(),
+            classifier=_classifier(),
         )
         item = _make_item(action_type="deploy:staging")  # HIGH risk
         result = await policy.determine_action(item, 3601.0)
@@ -168,7 +181,7 @@ class TestTieredTimeoutPolicy:
         }
         policy = TieredTimeoutPolicy(
             tiers=tiers,
-            classifier=DefaultRiskTierClassifier(),
+            classifier=_classifier(),
         )
         item = _make_item(action_type="deploy:production")  # CRITICAL risk
         result = await policy.determine_action(item, 3601.0)
@@ -186,7 +199,7 @@ class TestTieredTimeoutPolicy:
         }
         policy = TieredTimeoutPolicy(
             tiers=tiers,
-            classifier=DefaultRiskTierClassifier(),
+            classifier=_classifier(),
         )
         item = _make_item(action_type="deploy:staging")
         result = await policy.determine_action(item, 601.0)  # > 10 min

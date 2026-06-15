@@ -32,6 +32,10 @@ from synthorg.meta._model_enums import (
     ProposalStatus,
     RolloutStrategyType,
 )
+from synthorg.meta._proposal_altitude_descriptor import (
+    ALTITUDE_PAYLOAD_FIELDS,
+    PROPOSAL_ALTITUDE_DESCRIPTORS,
+)
 from synthorg.meta.toolsmith.models import ToolBlueprint
 
 
@@ -138,58 +142,29 @@ class ImprovementProposal(BaseModel):
     def _validate_changes_match_altitude(self) -> Self:
         """Ensure only the declared altitude carries changes.
 
+        Drives off :data:`PROPOSAL_ALTITUDE_DESCRIPTORS`: the altitude's
+        declared payload field must be populated and every other payload
+        field must be empty. A new altitude without a descriptor fails at
+        import (the descriptor module's completeness guard), not here.
+
         Returns:
             ``Self`` instance.
 
         Raises:
             ValueError: Raised on the corresponding failure path.
         """
-        other_code = self.code_changes
-        tools = self.tool_changes
-        if self.altitude == ProposalAltitude.CONFIG_TUNING and (
-            not self.config_changes
-            or self.architecture_changes
-            or self.prompt_changes
-            or other_code
-            or tools
-        ):
-            msg = "config_tuning proposals must contain only config_changes"
-            raise ValueError(msg)
-        if self.altitude == ProposalAltitude.ARCHITECTURE and (
-            not self.architecture_changes
-            or self.config_changes
-            or self.prompt_changes
-            or other_code
-            or tools
-        ):
-            msg = "architecture proposals must contain only architecture_changes"
-            raise ValueError(msg)
-        if self.altitude == ProposalAltitude.PROMPT_TUNING and (
-            not self.prompt_changes
-            or self.config_changes
-            or self.architecture_changes
-            or other_code
-            or tools
-        ):
-            msg = "prompt_tuning proposals must contain only prompt_changes"
-            raise ValueError(msg)
-        if self.altitude == ProposalAltitude.CODE_MODIFICATION and (
-            not self.code_changes
-            or self.config_changes
-            or self.architecture_changes
-            or self.prompt_changes
-            or tools
-        ):
-            msg = "code_modification proposals must contain only code_changes"
-            raise ValueError(msg)
-        if self.altitude == ProposalAltitude.TOOL_CREATION and (
-            not self.tool_changes
-            or self.config_changes
-            or self.architecture_changes
-            or self.prompt_changes
-            or other_code
-        ):
-            msg = "tool_creation proposals must contain only tool_changes"
+        descriptor = PROPOSAL_ALTITUDE_DESCRIPTORS[self.altitude]
+        declared = getattr(self, descriptor.payload_field)
+        others_present = any(
+            getattr(self, field)
+            for field in ALTITUDE_PAYLOAD_FIELDS
+            if field != descriptor.payload_field
+        )
+        if not declared or others_present:
+            msg = (
+                f"{self.altitude.value} proposals must contain only "
+                f"{descriptor.payload_field}"
+            )
             raise ValueError(msg)
         return self
 

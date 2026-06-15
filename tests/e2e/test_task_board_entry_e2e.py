@@ -258,7 +258,7 @@ async def test_board_filing_unknown_project_is_swallowed_by_background_task(
     """An unknown project surfaces as a swallowed pipeline failure.
 
     The spine's projects-phase rejects an unknown project with
-    ``WorkProjectNotFoundError``. The controller's background
+    ``ProjectNotFoundError``. The controller's background
     coroutine catches non-rejection failures, logs ERROR, and does
     not propagate (the HTTP 202 was already returned to the caller).
     No task is created.

@@ -9,20 +9,19 @@ under the ``"sqlite"`` discriminator.
 import asyncio
 import shutil
 from pathlib import Path
+from typing import ClassVar, override
 
 from synthorg.backup.errors import ComponentBackupError
-from synthorg.backup.models import BackupComponent
+from synthorg.backup.handlers._base_persistence import (
+    BasePersistenceComponentHandler,
+)
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
     safe_error_description,
 )
-from synthorg.observability.events.backup import (
-    BACKUP_COMPONENT_COMPLETED,
-    BACKUP_COMPONENT_FAILED,
-    BACKUP_COMPONENT_STARTED,
-)
+from synthorg.observability.events.backup import BACKUP_COMPONENT_FAILED
 from synthorg.persistence.sqlite.backup_utils import (
     IntegrityCheckError,
     integrity_check,
@@ -34,7 +33,7 @@ logger = get_logger(__name__)
 _DB_FILENAME = "synthorg.db"
 
 
-class SQLitePersistenceComponentHandler:
+class SQLitePersistenceComponentHandler(BasePersistenceComponentHandler):
     """Back up and restore the SQLite persistence database.
 
     Uses ``VACUUM INTO`` for consistent, point-in-time copies
@@ -44,19 +43,31 @@ class SQLitePersistenceComponentHandler:
         db_path: Path to the live SQLite database file.
     """
 
+    _filename: ClassVar[str] = _DB_FILENAME
+
     def __init__(self, db_path: Path) -> None:
         self._db_path = db_path
 
-    @property
-    def component(self) -> BackupComponent:
-        """Return the component this handler manages."""
-        return BackupComponent.PERSISTENCE
+    @override
+    def _started_log_fields(self) -> dict[str, object]:
+        """Return the live DB path for the STARTED log event."""
+        return {"db_path": str(self._db_path)}
 
-    async def backup(self, target_dir: Path) -> int:
-        """Create a VACUUM INTO copy of the database.
+    @override
+    def _missing_source_message(self, source_file: Path) -> str:
+        """Describe a missing backup database file.
+
+        Returns:
+            A human-readable "backup not found" message.
+        """
+        return f"Backup database not found: {source_file}"
+
+    @override
+    async def _do_backup(self, target_file: Path) -> int:
+        """Create a ``VACUUM INTO`` copy of the database.
 
         Args:
-            target_dir: Directory to write the backup database into.
+            target_file: Path to write the backup database into.
 
         Returns:
             Size of the backup file in bytes.
@@ -64,14 +75,8 @@ class SQLitePersistenceComponentHandler:
         Raises:
             ComponentBackupError: If the backup operation fails.
         """
-        logger.info(
-            BACKUP_COMPONENT_STARTED,
-            component=self.component.value,
-            db_path=str(self._db_path),
-        )
-        target_file = target_dir / _DB_FILENAME
         try:
-            size = await asyncio.to_thread(
+            return await asyncio.to_thread(
                 self._vacuum_into,
                 str(self._db_path),
                 str(target_file),
@@ -83,14 +88,9 @@ class SQLitePersistenceComponentHandler:
             )
             msg = f"Failed to back up persistence DB: {safe_error_description(exc)}"
             raise ComponentBackupError(msg) from exc
-        logger.info(
-            BACKUP_COMPONENT_COMPLETED,
-            component=self.component.value,
-            size_bytes=size,
-        )
-        return size
 
-    async def restore(self, source_dir: Path) -> None:
+    @override
+    async def _do_restore(self, source_file: Path) -> None:
         """Restore the database from a backup copy.
 
         Copies backup into place and validates with
@@ -100,23 +100,12 @@ class SQLitePersistenceComponentHandler:
         WAL replay corruption.
 
         Args:
-            source_dir: Directory containing the backup database.
+            source_file: The backup database to restore from.
 
         Raises:
             ComponentBackupError: If restore fails.
         """
-        source_file = source_dir / _DB_FILENAME
-        if not source_file.exists():
-            logger.warning(
-                BACKUP_COMPONENT_FAILED,
-                component=self.component.value,
-                error=f"Backup database not found: {source_file}",
-            )
-            msg = f"Backup database not found: {source_file}"
-            raise ComponentBackupError(msg)
-
         bak_path = self._db_path.with_suffix(".db.bak")
-
         try:
             await asyncio.to_thread(
                 self._atomic_swap, self._db_path, source_file, bak_path
@@ -134,7 +123,8 @@ class SQLitePersistenceComponentHandler:
             msg = f"Failed to restore persistence DB: {safe_error_description(exc)}"
             raise ComponentBackupError(msg) from exc
 
-    async def validate_source(self, source_dir: Path) -> bool:
+    @override
+    async def _do_validate(self, source_file: Path) -> bool:
         """Validate that the backup database passes integrity check.
 
         Returns ``False`` when the integrity check itself reports
@@ -145,7 +135,7 @@ class SQLitePersistenceComponentHandler:
         is corrupt".
 
         Args:
-            source_dir: Directory containing the backup database.
+            source_file: The backup database to validate.
 
         Returns:
             ``True`` if the database passed integrity check.
@@ -154,9 +144,6 @@ class SQLitePersistenceComponentHandler:
             ComponentBackupError: If the integrity check could not be
                 run (I/O error, driver error, permission denied, etc.).
         """
-        source_file = source_dir / _DB_FILENAME
-        if not source_file.exists():
-            return False
         try:
             return await asyncio.to_thread(
                 self._check_integrity,

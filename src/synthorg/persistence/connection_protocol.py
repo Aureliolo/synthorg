@@ -102,7 +102,7 @@ class ConnectionRepository(
 class ConnectionSecretRepository(Protocol):
     """Low-level CRUD for encrypted secret blobs.
 
-    Used by ``EncryptedSqliteSecretBackend``; other backends
+    Used by ``SqliteSecretRowStore``; other backends
     manage their own storage.
     """
 

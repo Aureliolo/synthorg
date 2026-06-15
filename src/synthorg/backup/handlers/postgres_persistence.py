@@ -8,20 +8,18 @@ under the ``"postgres"`` discriminator.
 """
 
 from pathlib import Path
-from typing import Final
+from typing import ClassVar, Final, override
 
 from synthorg.backup.errors import ComponentBackupError
-from synthorg.backup.models import BackupComponent
+from synthorg.backup.handlers._base_persistence import (
+    BasePersistenceComponentHandler,
+)
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
     safe_error_description,
 )
-from synthorg.observability.events.backup import (
-    BACKUP_COMPONENT_COMPLETED,
-    BACKUP_COMPONENT_FAILED,
-    BACKUP_COMPONENT_STARTED,
-)
+from synthorg.observability.events.backup import BACKUP_COMPONENT_FAILED
 from synthorg.persistence.config import PostgresConfig
 from synthorg.persistence.postgres.backup_utils import (
     PgToolFailedError,
@@ -36,7 +34,7 @@ logger = get_logger(__name__)
 _DUMP_FILENAME: Final[str] = "synthorg.pgdump"
 
 
-class PostgresPersistenceComponentHandler:
+class PostgresPersistenceComponentHandler(BasePersistenceComponentHandler):
     """Back up and restore a Postgres persistence database.
 
     Args:
@@ -46,19 +44,31 @@ class PostgresPersistenceComponentHandler:
             injected via ``PGPASSWORD`` so it never appears on argv.
     """
 
+    _filename: ClassVar[str] = _DUMP_FILENAME
+
     def __init__(self, config: PostgresConfig) -> None:
         self._config = config
 
-    @property
-    def component(self) -> BackupComponent:
-        """Return the component this handler manages."""
-        return BackupComponent.PERSISTENCE
+    @override
+    def _started_log_fields(self) -> dict[str, object]:
+        """Return database/host identity for the STARTED log event."""
+        return {"database": self._config.database, "host": self._config.host}
 
-    async def backup(self, target_dir: Path) -> int:
-        """Run ``pg_dump -Fc`` into ``target_dir/synthorg.pgdump``.
+    @override
+    def _missing_source_message(self, source_file: Path) -> str:
+        """Describe a missing Postgres dump file.
+
+        Returns:
+            A human-readable "dump not found" message.
+        """
+        return f"Postgres dump not found: {source_file}"
+
+    @override
+    async def _do_backup(self, target_file: Path) -> int:
+        """Run ``pg_dump -Fc`` into *target_file*.
 
         Args:
-            target_dir: Directory to write the dump file into.
+            target_file: Path to write the dump file into.
 
         Returns:
             Size of the dump file in bytes.
@@ -66,15 +76,8 @@ class PostgresPersistenceComponentHandler:
         Raises:
             ComponentBackupError: ``pg_dump`` is unavailable or failed.
         """
-        logger.info(
-            BACKUP_COMPONENT_STARTED,
-            component=self.component.value,
-            database=self._config.database,
-            host=self._config.host,
-        )
-        target_file = target_dir / _DUMP_FILENAME
         try:
-            size = await pg_dump_to_file(self._config, target_file)
+            return await pg_dump_to_file(self._config, target_file)
         except (PgToolUnavailableError, PgToolFailedError) as exc:
             log_exception_redacted(
                 logger, BACKUP_COMPONENT_FAILED, exc, component=self.component.value
@@ -90,35 +93,21 @@ class PostgresPersistenceComponentHandler:
             )
             msg = "pg_dump timed out"
             raise ComponentBackupError(msg) from exc
-        logger.info(
-            BACKUP_COMPONENT_COMPLETED,
-            component=self.component.value,
-            size_bytes=size,
-        )
-        return size
 
-    async def restore(self, source_dir: Path) -> None:
-        """Restore the database from ``source_dir/synthorg.pgdump``.
+    @override
+    async def _do_restore(self, source_file: Path) -> None:
+        """Restore the database from *source_file*.
 
         Uses ``pg_restore --clean --if-exists --single-transaction`` so
         a partial failure leaves the database unchanged.
 
         Args:
-            source_dir: Directory containing the backup dump.
+            source_file: The backup dump to restore from.
 
         Raises:
-            ComponentBackupError: Dump file missing, ``pg_restore``
-                unavailable, or restore failed.
+            ComponentBackupError: ``pg_restore`` unavailable or restore
+                failed.
         """
-        source_file = source_dir / _DUMP_FILENAME
-        if not source_file.exists():
-            logger.warning(
-                BACKUP_COMPONENT_FAILED,
-                component=self.component.value,
-                error=f"Postgres dump not found: {source_file}",
-            )
-            msg = f"Postgres dump not found: {source_file}"
-            raise ComponentBackupError(msg)
         try:
             await pg_restore_from_file(self._config, source_file)
         except (PgToolUnavailableError, PgToolFailedError) as exc:
@@ -137,26 +126,23 @@ class PostgresPersistenceComponentHandler:
             msg = "pg_restore timed out"
             raise ComponentBackupError(msg) from exc
 
-    async def validate_source(self, source_dir: Path) -> bool:
-        """Validate that *source_dir* contains a readable dump.
+    @override
+    async def _do_validate(self, source_file: Path) -> bool:
+        """Validate that *source_file* is a readable dump.
 
         Reads the dump's TOC via ``pg_restore --list``. Returns ``True``
         when the listing succeeds and contains at least one entry.
 
         Args:
-            source_dir: Directory to validate.
+            source_file: The backup dump to validate.
 
         Returns:
-            ``True`` if the dump is structurally readable, ``False`` if
-            the dump file is missing or empty.
+            ``True`` if the dump is structurally readable.
 
         Raises:
             ComponentBackupError: ``pg_restore`` is unavailable or the
                 listing itself failed (distinct from "dump is missing").
         """
-        source_file = source_dir / _DUMP_FILENAME
-        if not source_file.exists():
-            return False
         try:
             entry_count = await pg_restore_list(source_file)
         except (PgToolUnavailableError, PgToolFailedError) as exc:

@@ -7,6 +7,7 @@ call. Its output, :class:`ReducedRun`, is the trustworthy spine the
 assembler renders and the synthesiser narrates around.
 """
 
+from synthorg.budget.currency import format_cost
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.narrative.constants import (
     DECISION_TEXT_MAX,
@@ -147,7 +148,7 @@ def _outcomes(
     return (
         _clip(f"Final status: {inputs.final_status.value}"),
         _clip(f"{inputs.total_turns} turns across {agent_count} agent(s)"),
-        _clip(f"Total cost: {inputs.total_cost:.2f} {inputs.currency}"),
+        _clip(f"Total cost: {format_cost(inputs.total_cost, inputs.currency)}"),
         _clip(
             f"{decision_count} decision(s) recorded, "
             f"{open_count} open item(s) remaining"

@@ -1,26 +1,25 @@
-"""Risk-tier-classifier factory (REWORK #9 + RFC#2).
+"""Risk-tier-classifier factory.
 
 Maps :class:`RiskClassifierType` to a concrete
 :class:`RiskTierClassifier` via the ``StrEnum``-keyed
-:class:`~synthorg.core.registry.StrategyRegistry`. ``DEFAULT`` is
-byte-identical with the pre-plugin ``DefaultRiskTierClassifier()``;
-non-default kinds whose required dependency is absent raise
+:class:`~synthorg.core.registry.StrategyRegistry`. ``DEFAULT`` builds
+the ``MapBackedRiskClassifier`` over the default risk map; non-default
+kinds whose required dependency is absent raise
 :class:`RiskClassifierConfigError` at construction (fail fast).
 """
 
 from synthorg.core.registry import StrategyRegistry
-from synthorg.security.timeout.errors import RiskClassifierConfigError
-from synthorg.security.timeout.operator_configurable import (
-    OperatorConfigurableRiskClassifier,
+from synthorg.observability.events.timeout import TIMEOUT_UNKNOWN_ACTION_TYPE
+from synthorg.security.risk_map import (
+    MapBackedRiskClassifier,
+    default_risk_classifier,
 )
+from synthorg.security.timeout.errors import RiskClassifierConfigError
 from synthorg.security.timeout.protocol import RiskTierClassifier
 from synthorg.security.timeout.risk_classifier_config import (
     RiskClassifierConfig,
     RiskClassifierDeps,
     RiskClassifierType,
-)
-from synthorg.security.timeout.risk_tier_classifier import (
-    DefaultRiskTierClassifier,
 )
 from synthorg.security.timeout.time_based_elevation import (
     TimeBasedRiskElevationClassifier,
@@ -34,12 +33,13 @@ def _build_default(
     config: RiskClassifierConfig,
     _deps: RiskClassifierDeps,
 ) -> RiskTierClassifier:
-    """Build the DEFAULT classifier (byte-identical with the static one).
+    """Build the DEFAULT classifier (merge of custom overrides over the base).
 
     Returns:
-        A ``DefaultRiskTierClassifier`` over the configured custom map.
+        A ``MapBackedRiskClassifier`` over the configured custom map.
     """
-    return DefaultRiskTierClassifier(
+    return default_risk_classifier(
+        miss_event=TIMEOUT_UNKNOWN_ACTION_TYPE,
         custom_map=dict(config.custom_map) or None,
     )
 
@@ -48,9 +48,11 @@ def _base_or_default(deps: RiskClassifierDeps) -> RiskTierClassifier:
     """Return the wrappers' base classifier, or a fresh default.
 
     Returns:
-        ``deps.base`` when set, otherwise a new ``DefaultRiskTierClassifier``.
+        ``deps.base`` when set, otherwise a new default classifier.
     """
-    return deps.base if deps.base is not None else DefaultRiskTierClassifier()
+    if deps.base is not None:
+        return deps.base
+    return default_risk_classifier(miss_event=TIMEOUT_UNKNOWN_ACTION_TYPE)
 
 
 def _build_workload_adaptive(
@@ -85,10 +87,13 @@ def _build_operator_configurable(
     """Build the OPERATOR_CONFIGURABLE classifier from the operator map.
 
     Returns:
-        An ``OperatorConfigurableRiskClassifier``.
+        A ``MapBackedRiskClassifier`` whose whole map is the operator's
+        taxonomy (no default base; replace semantics).
     """
-    return OperatorConfigurableRiskClassifier(
-        operator_map=config.operator_map,
+    return MapBackedRiskClassifier(
+        base_map=None,
+        custom_map=config.operator_map,
+        miss_event=TIMEOUT_UNKNOWN_ACTION_TYPE,
     )
 
 

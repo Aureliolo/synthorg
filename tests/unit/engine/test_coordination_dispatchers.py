@@ -7,13 +7,9 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.core.task_enums import CoordinationTopology, TaskStructure
-from synthorg.engine.coordination.centralized_dispatcher import CentralizedDispatcher
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.context_dependent_dispatcher import (
     ContextDependentDispatcher,
-)
-from synthorg.engine.coordination.decentralized_dispatcher import (
-    DecentralizedDispatcher,
 )
 from synthorg.engine.coordination.dispatcher_factory import select_dispatcher
 from synthorg.engine.coordination.dispatcher_types import (
@@ -21,6 +17,7 @@ from synthorg.engine.coordination.dispatcher_types import (
     TopologyDispatcher,
 )
 from synthorg.engine.coordination.sas_dispatcher import SasDispatcher
+from synthorg.engine.coordination.wave_dispatcher import WaveDispatcher
 from synthorg.engine.workspace.models import (
     MergeResult,
     Workspace,
@@ -37,6 +34,16 @@ if TYPE_CHECKING:
     from synthorg.engine.parallel_models import ParallelExecutionResult
 
 # ── Helpers ─────────────────────────────────────────────────────
+
+
+def _centralized() -> WaveDispatcher:
+    """Build the centralized wave dispatcher (best-effort isolation)."""
+    return WaveDispatcher(isolation_required=False, topology_label="centralized")
+
+
+def _decentralized() -> WaveDispatcher:
+    """Build the decentralized wave dispatcher (mandatory isolation)."""
+    return WaveDispatcher(isolation_required=True, topology_label="decentralized")
 
 
 def _mock_executor(
@@ -85,8 +92,8 @@ class TestSelectDispatcher:
         ("topology", "expected_type"),
         [
             (CoordinationTopology.SAS, SasDispatcher),
-            (CoordinationTopology.CENTRALIZED, CentralizedDispatcher),
-            (CoordinationTopology.DECENTRALIZED, DecentralizedDispatcher),
+            (CoordinationTopology.CENTRALIZED, WaveDispatcher),
+            (CoordinationTopology.DECENTRALIZED, WaveDispatcher),
             (CoordinationTopology.CONTEXT_DEPENDENT, ContextDependentDispatcher),
         ],
     )
@@ -98,6 +105,24 @@ class TestSelectDispatcher:
         """Factory returns correct dispatcher type."""
         dispatcher = select_dispatcher(topology)
         assert isinstance(dispatcher, expected_type)
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        ("topology", "isolation_required"),
+        [
+            (CoordinationTopology.CENTRALIZED, False),
+            (CoordinationTopology.DECENTRALIZED, True),
+        ],
+    )
+    def test_wave_dispatcher_isolation_flag(
+        self,
+        topology: CoordinationTopology,
+        isolation_required: bool,
+    ) -> None:
+        """Centralized is best-effort isolation; decentralized is mandatory."""
+        dispatcher = select_dispatcher(topology)
+        assert isinstance(dispatcher, WaveDispatcher)
+        assert dispatcher._isolation_required is isolation_required
 
     @pytest.mark.unit
     def test_auto_topology_raises(self) -> None:
@@ -243,7 +268,7 @@ class TestCentralizedDispatcher:
             ]
         )
 
-        dispatcher = CentralizedDispatcher()
+        dispatcher = _centralized()
         result = await dispatcher.dispatch(
             decomposition_result=decomp,
             routing_result=routing,
@@ -272,7 +297,7 @@ class TestCentralizedDispatcher:
             ]
         )
 
-        dispatcher = CentralizedDispatcher()
+        dispatcher = _centralized()
         result = await dispatcher.dispatch(
             decomposition_result=decomp,
             routing_result=routing,
@@ -299,7 +324,7 @@ class TestCentralizedDispatcher:
             ]
         )
 
-        dispatcher = CentralizedDispatcher()
+        dispatcher = _centralized()
         result = await dispatcher.dispatch(
             decomposition_result=decomp,
             routing_result=routing,
@@ -332,7 +357,7 @@ class TestCentralizedDispatcher:
         executor = AsyncMock()
         executor.execute_group.side_effect = RuntimeError("boom")
 
-        dispatcher = CentralizedDispatcher()
+        dispatcher = _centralized()
         result = await dispatcher.dispatch(
             decomposition_result=decomp,
             routing_result=routing,
@@ -360,7 +385,7 @@ class TestDecentralizedDispatcher:
         decomp = make_decomposition((sub_a,))
         routing = make_routing([("sub-a", "alice")])
 
-        dispatcher = DecentralizedDispatcher()
+        dispatcher = _decentralized()
         with pytest.raises(CoordinationError, match="workspace isolation"):
             await dispatcher.dispatch(
                 decomposition_result=decomp,
@@ -379,7 +404,7 @@ class TestDecentralizedDispatcher:
         decomp = make_decomposition((sub_a,))
         routing = make_routing([("sub-a", "alice")])
 
-        dispatcher = DecentralizedDispatcher()
+        dispatcher = _decentralized()
         with pytest.raises(CoordinationError, match="workspace isolation"):
             await dispatcher.dispatch(
                 decomposition_result=decomp,
@@ -437,7 +462,7 @@ class TestDecentralizedDispatcher:
             ]
         )
 
-        dispatcher = DecentralizedDispatcher()
+        dispatcher = _decentralized()
         result = await dispatcher.dispatch(
             decomposition_result=decomp,
             routing_result=routing,
@@ -562,7 +587,7 @@ class TestCentralizedWorkspaceFailure:
 
         executor = _mock_executor()
 
-        dispatcher = CentralizedDispatcher()
+        dispatcher = _centralized()
         result = await dispatcher.dispatch(
             decomposition_result=decomp,
             routing_result=routing,
@@ -690,7 +715,7 @@ class TestDecentralizedWorkspaceSetupFailure:
 
         executor = _mock_executor()
 
-        dispatcher = DecentralizedDispatcher()
+        dispatcher = _decentralized()
         result = await dispatcher.dispatch(
             decomposition_result=decomp,
             routing_result=routing,
@@ -800,7 +825,7 @@ class TestMergeGating:
             [make_exec_result("wave-0", [("sub-a", agent_id)], all_succeed=False)]
         )
 
-        dispatcher = CentralizedDispatcher()
+        dispatcher = _centralized()
         result = await dispatcher.dispatch(
             decomposition_result=decomp,
             routing_result=routing,

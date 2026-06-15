@@ -6,7 +6,6 @@ Request DTOs define write-operation payloads (separate from domain
 models because they omit server-generated fields).
 """
 
-from datetime import datetime
 from typing import Literal, Self
 
 from pydantic import (
@@ -25,7 +24,10 @@ from synthorg.core.artifact import ArtifactType
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
-from synthorg.core.validation import is_valid_action_type
+from synthorg.core.validation import (
+    is_valid_action_type,
+    validate_iso8601_deadline,
+)
 from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.persistence.flight_recorder_protocol import FlightRecorderFrame
 
@@ -380,15 +382,7 @@ class CreateProjectRequest(BaseModel):
         Raises:
             ValueError: Raised on the corresponding failure path.
         """
-        if self.deadline is not None:
-            if not self.deadline.strip():
-                msg = "deadline must not be whitespace-only"
-                raise ValueError(msg)
-            try:
-                datetime.fromisoformat(self.deadline)
-            except ValueError as exc:
-                msg = f"deadline must be a valid ISO 8601 string, got {self.deadline!r}"
-                raise ValueError(msg) from exc
+        validate_iso8601_deadline(self.deadline)
         if len(self.team) != len(set(self.team)):
             seen: dict[str, int] = {}
             for member in self.team:

@@ -11,9 +11,10 @@ exact store + delete failure semantics:
   build content extractively or abstractively, store with the
   ``mode:<...>`` tag, delete with ``if not deleted: continue`` and
   emit one :class:`ArchivalModeAssignment` per deleted original.
-- :class:`ExtractivePreservationOp` / :class:`AbstractiveSummarizationOp`
-  -- standalone pluggable ops (new surface enabled by the split) that
-  wrap the existing preserver / summarizer with the DualMode-lineage
+- :class:`SingleModeOp` -- one archival-mode op parameterised by a
+  content builder, bound to the extractive or abstractive mode via
+  :func:`extractive_preservation_op` / :func:`abstractive_summarization_op`,
+  wrapping the existing preserver / summarizer with the DualMode-lineage
   ``if not deleted: continue`` delete rule.
 
 ``LLMSynthesisOp`` lives in
@@ -22,6 +23,7 @@ exact store + delete failure semantics:
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Final
 
 from synthorg.core.memory_enums import MemoryCategory
@@ -292,26 +294,33 @@ class DensityRoutingOp(_PlainPrepareMixin):
         return _DUAL_MODE_SEPARATOR.join(parts)
 
 
-class ExtractivePreservationOp(_PlainPrepareMixin):
-    """Standalone extractive op (new pluggable surface).
+class SingleModeOp(_PlainPrepareMixin):
+    """One archival-mode consolidation op parameterised by content builder.
 
-    Stores the joined :class:`ExtractivePreserver` output tagged
-    ``("consolidated", "mode:extractive")`` and deletes with the
-    DualMode-lineage ``if not deleted: continue`` rule.
+    The store(tag ``mode:<mode>``) / ``_delete_dual_mode(mode=...)``
+    pipeline lives once; the mode-specific content builder (*produce*)
+    is data. The extractive and abstractive ops are two bindings of
+    this class via :func:`extractive_preservation_op` /
+    :func:`abstractive_summarization_op`.
 
     Args:
         backend: Memory backend.
-        extractor: Extractive preserver instance.
+        mode: Archival mode stamped on the stored tag and the dual-mode
+            delete bookkeeping.
+        produce: Mode-specific content builder mapping the removed
+            entries to the joined summary content.
     """
 
     def __init__(
         self,
         *,
         backend: MemoryBackend,
-        extractor: ExtractivePreserver,
+        mode: ArchivalMode,
+        produce: Callable[[Sequence[MemoryEntry]], Awaitable[str]],
     ) -> None:
         self._backend = backend
-        self._extractor = extractor
+        self._mode = mode
+        self._produce = produce
 
     async def consolidate(
         self,
@@ -319,20 +328,18 @@ class ExtractivePreservationOp(_PlainPrepareMixin):
         *,
         context: ConsolidationContext,
     ) -> OpResult:
-        """Extract + store + delete.
+        """Build content + store + delete.
 
         Returns:
             Result of type ``OpResult``.
         """
-        content = _DUAL_MODE_SEPARATOR.join(
-            self._extractor.extract(e.content) for e in group.to_remove
-        )
+        content = await self._produce(group.to_remove)
         store_request = MemoryStoreRequest(
             category=group.category,
             content=content,
             metadata=MemoryMetadata(
                 source="consolidation",
-                tags=("consolidated", f"mode:{ArchivalMode.EXTRACTIVE.value}"),
+                tags=("consolidated", f"mode:{self._mode.value}"),
             ),
         )
         new_id = await self._backend.store(context.agent_id, store_request)
@@ -341,7 +348,7 @@ class ExtractivePreservationOp(_PlainPrepareMixin):
             context.agent_id,
             group.category,
             group.to_remove,
-            mode=ArchivalMode.EXTRACTIVE,
+            mode=self._mode,
         )
         return OpResult(
             summary_id=new_id,
@@ -350,65 +357,48 @@ class ExtractivePreservationOp(_PlainPrepareMixin):
         )
 
 
-class AbstractiveSummarizationOp(_PlainPrepareMixin):
-    """Standalone abstractive op (new pluggable surface).
+def extractive_preservation_op(
+    *,
+    backend: MemoryBackend,
+    extractor: ExtractivePreserver,
+) -> SingleModeOp:
+    """Build the extractive-preservation op (synchronous extract per entry).
 
-    Stores the joined :class:`AbstractiveSummarizer` output (parallel
-    per-entry fan-out via ``asyncio.TaskGroup``) tagged
-    ``("consolidated", "mode:abstractive")`` and deletes with the
-    DualMode-lineage ``if not deleted: continue`` rule.
-
-    Args:
-        backend: Memory backend.
-        summarizer: Abstractive summarizer instance.
+    Returns:
+        A :class:`SingleModeOp` bound to ``EXTRACTIVE`` mode.
     """
 
-    def __init__(
-        self,
-        *,
-        backend: MemoryBackend,
-        summarizer: AbstractiveSummarizer,
-    ) -> None:
-        self._backend = backend
-        self._summarizer = summarizer
+    async def produce(entries: Sequence[MemoryEntry]) -> str:
+        return _DUAL_MODE_SEPARATOR.join(extractor.extract(e.content) for e in entries)
 
-    async def consolidate(
-        self,
-        group: SelectionGroup,
-        *,
-        context: ConsolidationContext,
-    ) -> OpResult:
-        """Summarise + store + delete.
+    return SingleModeOp(
+        backend=backend,
+        mode=ArchivalMode.EXTRACTIVE,
+        produce=produce,
+    )
 
-        Returns:
-            Result of type ``OpResult``.
-        """
+
+def abstractive_summarization_op(
+    *,
+    backend: MemoryBackend,
+    summarizer: AbstractiveSummarizer,
+) -> SingleModeOp:
+    """Build the abstractive-summarization op (TaskGroup fan-out of summarize).
+
+    Returns:
+        A :class:`SingleModeOp` bound to ``ABSTRACTIVE`` mode.
+    """
+
+    async def produce(entries: Sequence[MemoryEntry]) -> str:
         async with asyncio.TaskGroup() as tg:
             tasks = [
-                tg.create_task(
-                    self._summarizer.summarize(e.content, agent_id=e.agent_id)
-                )
-                for e in group.to_remove
+                tg.create_task(summarizer.summarize(e.content, agent_id=e.agent_id))
+                for e in entries
             ]
-        content = _DUAL_MODE_SEPARATOR.join(t.result() for t in tasks)
-        store_request = MemoryStoreRequest(
-            category=group.category,
-            content=content,
-            metadata=MemoryMetadata(
-                source="consolidation",
-                tags=("consolidated", f"mode:{ArchivalMode.ABSTRACTIVE.value}"),
-            ),
-        )
-        new_id = await self._backend.store(context.agent_id, store_request)
-        removed_ids, assignments = await _delete_dual_mode(
-            self._backend,
-            context.agent_id,
-            group.category,
-            group.to_remove,
-            mode=ArchivalMode.ABSTRACTIVE,
-        )
-        return OpResult(
-            summary_id=new_id,
-            removed_ids=tuple(removed_ids),
-            mode_assignments=tuple(assignments),
-        )
+        return _DUAL_MODE_SEPARATOR.join(t.result() for t in tasks)
+
+    return SingleModeOp(
+        backend=backend,
+        mode=ArchivalMode.ABSTRACTIVE,
+        produce=produce,
+    )

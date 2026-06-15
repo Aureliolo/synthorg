@@ -23,6 +23,7 @@ from synthorg.meta.models import (
     RolloutResult,
 )
 from synthorg.meta.protocol import ProposalApplier, RegressionDetector
+from synthorg.meta.rollout._observation import validate_window_and_interval
 from synthorg.meta.rollout.ab_comparator import ABTestComparator
 from synthorg.meta.rollout.ab_models import (
     ABTestComparison,
@@ -343,17 +344,8 @@ class ABTestRollout:
         observation_hours = float(proposal.observation_window_hours)
         # Fast-fail on non-positive windows / intervals so callers see a
         # clear misconfiguration error instead of a silent zero-tick
-        # INCONCLUSIVE result. Matches the guard in
-        # ``_observation.observe_until_verdict``.
-        if observation_hours <= 0.0:
-            msg = f"observation_window_hours must be positive; got {observation_hours}"
-            raise ValueError(msg)
-        if self._check_interval_hours <= 0.0:
-            msg = (
-                "check_interval_hours must be positive so elapsed advances "
-                f"each tick; got {self._check_interval_hours}"
-            )
-            raise ValueError(msg)
+        # INCONCLUSIVE result.
+        validate_window_and_interval(observation_hours, self._check_interval_hours)
         elapsed = 0.0
         last_comparison: ABTestComparison | None = None
         while elapsed < observation_hours:

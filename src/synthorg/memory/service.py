@@ -37,6 +37,7 @@ from typing import ClassVar, Literal
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
+    CheckpointActiveConflictError,
     ConflictError,
     NotFoundError,
     ValidationError,
@@ -63,6 +64,7 @@ from synthorg.observability import (
 )
 from synthorg.observability.events.memory import (
     MEMORY_CHECKPOINT_BACKUP_UNAVAILABLE,
+    MEMORY_CHECKPOINT_DELETE_FAILED,
     MEMORY_CHECKPOINT_DEPLOY_FAILED,
     MEMORY_CHECKPOINT_DEPLOYED,
     MEMORY_CHECKPOINT_NOT_FOUND,
@@ -566,8 +568,9 @@ class MemoryService:
 
         Raises:
             CheckpointNotFoundError: If the id does not exist.
-            QueryError: On unrecoverable persistence faults (including
-                the domain rule "cannot delete the active checkpoint").
+            CheckpointActiveConflictError: If the id is the currently-active
+                checkpoint (business rule rejection, 409).
+            QueryError: On unrecoverable persistence faults.
         """
         checkpoints = self._require_checkpoints()
         async with self._embedder_state_lock:
@@ -580,6 +583,20 @@ class MemoryService:
                 )
                 msg = f"Checkpoint {checkpoint_id} not found"
                 raise CheckpointNotFoundError(msg)
+            # Reject the active checkpoint explicitly so this business-rule
+            # 409 is distinct from a transient backend QueryError (500).
+            # Evaluated under the same lock as the active-checkpoint
+            # snapshot a concurrent get_active_embedder would observe.
+            active = await checkpoints.get_active_checkpoint()
+            if active is not None and str(active.id) == str(checkpoint_id):
+                logger.warning(
+                    MEMORY_CHECKPOINT_DELETE_FAILED,
+                    checkpoint_id=checkpoint_id,
+                    operation="delete",
+                    reason="active_checkpoint",
+                )
+                msg = "Cannot delete the active checkpoint"
+                raise CheckpointActiveConflictError(msg)
             deleted = await checkpoints.delete(checkpoint_id)
             if not deleted:
                 # Lost a race with a concurrent cross-process delete

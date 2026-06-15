@@ -6,12 +6,15 @@ import pytest
 
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
+from synthorg.observability.events.timeout import TIMEOUT_UNKNOWN_ACTION_TYPE
+from synthorg.security.risk_map import (
+    MapBackedRiskClassifier,
+    default_risk_classifier,
+    elevate_one_tier,
+)
 from synthorg.security.timeout.config import TieredTimeoutConfig
 from synthorg.security.timeout.errors import RiskClassifierConfigError
 from synthorg.security.timeout.factory import create_timeout_policy
-from synthorg.security.timeout.operator_configurable import (
-    OperatorConfigurableRiskClassifier,
-)
 from synthorg.security.timeout.policies import TieredTimeoutPolicy
 from synthorg.security.timeout.risk_classifier_config import (
     RiskClassifierConfig,
@@ -21,10 +24,6 @@ from synthorg.security.timeout.risk_classifier_config import (
 from synthorg.security.timeout.risk_classifier_factory import (
     build_risk_tier_classifier,
 )
-from synthorg.security.timeout.risk_tier_classifier import (
-    DefaultRiskTierClassifier,
-    elevate_one_tier,
-)
 from synthorg.security.timeout.time_based_elevation import (
     TimeBasedRiskElevationClassifier,
 )
@@ -32,6 +31,31 @@ from synthorg.security.timeout.workload_adaptive import (
     WorkloadAdaptiveRiskClassifier,
 )
 from tests._shared import FakeClock
+
+
+def _default_classifier() -> MapBackedRiskClassifier:
+    """Build the timeout default classifier (factory's DEFAULT binding).
+
+    Returns:
+        A ``MapBackedRiskClassifier`` over the default map.
+    """
+    return default_risk_classifier(miss_event=TIMEOUT_UNKNOWN_ACTION_TYPE)
+
+
+def _operator_classifier(
+    operator_map: dict[str, ApprovalRiskLevel],
+) -> MapBackedRiskClassifier:
+    """Build the operator-configurable classifier (replace semantics).
+
+    Returns:
+        A ``MapBackedRiskClassifier`` whose whole map is *operator_map*.
+    """
+    return MapBackedRiskClassifier(
+        base_map=None,
+        custom_map=operator_map,
+        miss_event=TIMEOUT_UNKNOWN_ACTION_TYPE,
+    )
+
 
 pytestmark = pytest.mark.unit
 
@@ -57,7 +81,7 @@ class TestElevateOneTier:
 class TestWorkloadAdaptive:
     def test_below_threshold_passthrough(self) -> None:
         clf = WorkloadAdaptiveRiskClassifier(
-            base=DefaultRiskTierClassifier(),
+            base=_default_classifier(),
             inflight_probe=lambda: 3,
             threshold=10,
         )
@@ -66,7 +90,7 @@ class TestWorkloadAdaptive:
 
     def test_at_threshold_elevates_one_tier(self) -> None:
         clf = WorkloadAdaptiveRiskClassifier(
-            base=DefaultRiskTierClassifier(),
+            base=_default_classifier(),
             inflight_probe=lambda: 10,
             threshold=10,
         )
@@ -74,7 +98,7 @@ class TestWorkloadAdaptive:
 
     def test_critical_stays_critical_under_load(self) -> None:
         clf = WorkloadAdaptiveRiskClassifier(
-            base=DefaultRiskTierClassifier(),
+            base=_default_classifier(),
             inflight_probe=lambda: 999,
             threshold=10,
         )
@@ -83,19 +107,19 @@ class TestWorkloadAdaptive:
 
 class TestOperatorConfigurable:
     def test_mapped_action_returns_configured_tier(self) -> None:
-        clf = OperatorConfigurableRiskClassifier(
+        clf = _operator_classifier(
             operator_map={"custom:thing": ApprovalRiskLevel.MEDIUM},
         )
         assert clf.classify("custom:thing") == ApprovalRiskLevel.MEDIUM
 
     def test_unknown_action_fails_safe_to_high(self) -> None:
-        clf = OperatorConfigurableRiskClassifier(operator_map={})
+        clf = _operator_classifier(operator_map={})
         # D19: an operator taxonomy gap must never silently downgrade.
         assert clf.classify("unknown:action") == ApprovalRiskLevel.HIGH
 
     def test_caller_map_mutation_does_not_leak(self) -> None:
         live = {"a:b": ApprovalRiskLevel.LOW}
-        clf = OperatorConfigurableRiskClassifier(operator_map=live)
+        clf = _operator_classifier(operator_map=live)
         live["a:b"] = ApprovalRiskLevel.CRITICAL
         assert clf.classify("a:b") == ApprovalRiskLevel.LOW
 
@@ -111,7 +135,7 @@ class TestTimeBasedElevation:
         now: datetime,
     ) -> TimeBasedRiskElevationClassifier:
         return TimeBasedRiskElevationClassifier(
-            base=DefaultRiskTierClassifier(),
+            base=_default_classifier(),
             off_hours_start_hour=start,
             off_hours_end_hour=end,
             weekend_elevation=weekend,
@@ -149,7 +173,7 @@ class TestFactory:
             RiskClassifierConfig(),
             RiskClassifierDeps(),
         )
-        baseline = DefaultRiskTierClassifier()
+        baseline = _default_classifier()
         for action in ("code:read", "deploy:production", "unknown:x"):
             assert built.classify(action) == baseline.classify(action)
 
@@ -220,7 +244,7 @@ class TestTieredPolicyIntegration:
     def test_default_tiered_config_byte_identical(self) -> None:
         policy = create_timeout_policy(TieredTimeoutConfig())
         assert isinstance(policy, TieredTimeoutPolicy)
-        baseline = DefaultRiskTierClassifier()
+        baseline = _default_classifier()
         assert policy._classifier.classify("code:read") == baseline.classify(
             "code:read"
         )

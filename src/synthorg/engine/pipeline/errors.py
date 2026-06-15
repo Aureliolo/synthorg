@@ -31,15 +31,6 @@ class WorkIntakeRejectedError(WorkPipelineError):
     status_code: ClassVar[int] = 422
 
 
-class WorkProjectNotFoundError(WorkPipelineError):
-    """Raised when the work item's project cannot be resolved (404)."""
-
-    default_message: ClassVar[str] = "Work item project not found"
-    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
-    error_code: ClassVar[ErrorCode] = ErrorCode.PROJECT_NOT_FOUND
-    status_code: ClassVar[int] = 404
-
-
 class WorkRoutingUndecidableError(WorkPipelineError):
     """Raised when the spine cannot route the work to an executor (500).
 

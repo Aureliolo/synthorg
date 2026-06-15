@@ -23,6 +23,7 @@ from synthorg.observability.events.backup import (
     BACKUP_RETENTION_FAILED,
     BACKUP_RETENTION_PRUNED,
 )
+from synthorg.persistence._shared import parse_iso_utc
 
 logger = get_logger(__name__)
 
@@ -110,7 +111,7 @@ class RetentionManager:
         if index >= self._config.max_count:
             return True
         try:
-            backup_time = datetime.fromisoformat(manifest.timestamp)
+            backup_time = parse_iso_utc(manifest.timestamp)
             if now - backup_time > max_age:
                 return True
         except ValueError:

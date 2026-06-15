@@ -11,8 +11,8 @@ subsystem.
 from collections.abc import Callable
 
 from synthorg.approval.enums import ApprovalRiskLevel
+from synthorg.security.risk_map import elevate_one_tier
 from synthorg.security.timeout.protocol import RiskTierClassifier
-from synthorg.security.timeout.risk_tier_classifier import elevate_one_tier
 
 
 class WorkloadAdaptiveRiskClassifier:

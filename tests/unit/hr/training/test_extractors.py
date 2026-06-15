@@ -7,11 +7,8 @@ import pytest
 
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.hr.seniority import SeniorityLevel
-from synthorg.hr.training.extractors.procedural import (
-    ProceduralMemoryExtractor,
-)
-from synthorg.hr.training.extractors.semantic import (
-    SemanticMemoryExtractor,
+from synthorg.hr.training.extractors.memory_backed import (
+    MemoryBackedExtractor,
 )
 from synthorg.hr.training.extractors.tool_patterns import (
     ToolPatternExtractor,
@@ -68,7 +65,11 @@ class TestProceduralMemoryExtractor:
     """ProceduralMemoryExtractor tests."""
 
     def test_content_type(self) -> None:
-        extractor = ProceduralMemoryExtractor(backend=AsyncMock(spec=MemoryBackend))
+        extractor = MemoryBackedExtractor(
+            backend=AsyncMock(spec=MemoryBackend),
+            memory_category=MemoryCategory.PROCEDURAL,
+            content_type=ContentType.PROCEDURAL,
+        )
         assert extractor.content_type == ContentType.PROCEDURAL
 
     async def test_extracts_procedural_memories(self) -> None:
@@ -79,7 +80,11 @@ class TestProceduralMemoryExtractor:
         backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve.return_value = entries
 
-        extractor = ProceduralMemoryExtractor(backend=backend)
+        extractor = MemoryBackedExtractor(
+            backend=backend,
+            memory_category=MemoryCategory.PROCEDURAL,
+            content_type=ContentType.PROCEDURAL,
+        )
         items = await extractor.extract(
             source_agent_ids=("senior-1",),
             new_agent_role="engineer",
@@ -97,7 +102,11 @@ class TestProceduralMemoryExtractor:
             (_make_memory_entry(agent_id="s2", content="B"),),
         ]
 
-        extractor = ProceduralMemoryExtractor(backend=backend)
+        extractor = MemoryBackedExtractor(
+            backend=backend,
+            memory_category=MemoryCategory.PROCEDURAL,
+            content_type=ContentType.PROCEDURAL,
+        )
         items = await extractor.extract(
             source_agent_ids=("s1", "s2"),
             new_agent_role="engineer",
@@ -106,7 +115,11 @@ class TestProceduralMemoryExtractor:
         assert len(items) == 2
 
     async def test_returns_empty_for_no_agents(self) -> None:
-        extractor = ProceduralMemoryExtractor(backend=AsyncMock(spec=MemoryBackend))
+        extractor = MemoryBackedExtractor(
+            backend=AsyncMock(spec=MemoryBackend),
+            memory_category=MemoryCategory.PROCEDURAL,
+            content_type=ContentType.PROCEDURAL,
+        )
         items = await extractor.extract(
             source_agent_ids=(),
             new_agent_role="engineer",
@@ -118,7 +131,11 @@ class TestProceduralMemoryExtractor:
         backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve.return_value = ()
 
-        extractor = ProceduralMemoryExtractor(backend=backend)
+        extractor = MemoryBackedExtractor(
+            backend=backend,
+            memory_category=MemoryCategory.PROCEDURAL,
+            content_type=ContentType.PROCEDURAL,
+        )
         items = await extractor.extract(
             source_agent_ids=("senior-1",),
             new_agent_role="engineer",
@@ -135,7 +152,11 @@ class TestSemanticMemoryExtractor:
     """SemanticMemoryExtractor tests."""
 
     def test_content_type(self) -> None:
-        extractor = SemanticMemoryExtractor(backend=AsyncMock(spec=MemoryBackend))
+        extractor = MemoryBackedExtractor(
+            backend=AsyncMock(spec=MemoryBackend),
+            memory_category=MemoryCategory.SEMANTIC,
+            content_type=ContentType.SEMANTIC,
+        )
         assert extractor.content_type == ContentType.SEMANTIC
 
     async def test_extracts_semantic_memories(self) -> None:
@@ -149,7 +170,11 @@ class TestSemanticMemoryExtractor:
         backend = AsyncMock(spec=MemoryBackend)
         backend.retrieve.return_value = entries
 
-        extractor = SemanticMemoryExtractor(backend=backend)
+        extractor = MemoryBackedExtractor(
+            backend=backend,
+            memory_category=MemoryCategory.SEMANTIC,
+            content_type=ContentType.SEMANTIC,
+        )
         items = await extractor.extract(
             source_agent_ids=("senior-1",),
             new_agent_role="engineer",

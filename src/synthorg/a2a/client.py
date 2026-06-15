@@ -19,6 +19,7 @@ from synthorg.a2a.models import (
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+from synthorg.core.normalization import strip_trailing_slash
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.a2a import (
@@ -260,7 +261,7 @@ class A2AClient:
                 headers[header_name] = api_key
         # mTLS: no auth header needed -- rely on client certificates
 
-        url = f"{str(base_url).rstrip('/')}/api/v1/a2a"
+        url = f"{strip_trailing_slash(str(base_url))}/api/v1/a2a"
         response = await self._send_request(
             url,
             rpc_req,

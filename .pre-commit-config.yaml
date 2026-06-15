@@ -686,6 +686,19 @@ repos:
         # the machine.
         stages: [pre-push]
 
+      - id: error-code-uniqueness
+        name: error-code-uniqueness gate (one ErrorCode per DomainError subclass)
+        entry: uv run python scripts/check_error_code_uniqueness.py
+        language: system
+        # Trigger on any change to a src/synthorg error class, the gate
+        # script, or this config so a PR that duplicates an ErrorCode (or
+        # weakens the gate) cannot bypass the check. Full-tree AST walk
+        # resolves cross-module inheritance, so it cannot be filtered to
+        # changed files only.
+        files: ^(src/synthorg/.*\.py|scripts/check_error_code_uniqueness\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
       - id: no-controller-response-for-domain-errors
         name: no-controller-response-for-domain-errors gate (raise typed errors, never build local Response envelopes)
         entry: uv run python scripts/check_no_controller_response_for_domain_errors.py

@@ -16,10 +16,8 @@ from synthorg.client.models import ClientRequest, RequestStatus, TaskRequirement
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.config.schema import RootConfig
 from synthorg.core.task_enums import TaskStatus
-from synthorg.engine.pipeline.errors import (
-    WorkIntakeRejectedError,
-    WorkProjectNotFoundError,
-)
+from synthorg.engine.errors import ProjectNotFoundError
+from synthorg.engine.pipeline.errors import WorkIntakeRejectedError
 from synthorg.engine.pipeline.models import (
     ExecutionPath,
     RoutingVerdict,
@@ -144,7 +142,7 @@ async def test_intake_rejection_cancels_request() -> None:
 
 
 async def test_pipeline_error_cancels_request() -> None:
-    adapter = _StubAdapter(error=WorkProjectNotFoundError("missing project"))
+    adapter = _StubAdapter(error=ProjectNotFoundError(project_id="ghost"))
     app_state, sim_state = await _state(adapter, seeded=_request())
 
     await process_intake_pipeline(

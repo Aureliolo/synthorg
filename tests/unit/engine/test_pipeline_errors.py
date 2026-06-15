@@ -8,7 +8,6 @@ from synthorg.engine.pipeline.errors import (
     WorkIntakeRejectedError,
     WorkPipelineError,
     WorkPipelineTeamPathUnavailableError,
-    WorkProjectNotFoundError,
     WorkRoutingUndecidableError,
 )
 
@@ -20,7 +19,6 @@ class TestWorkPipelineErrors:
         for exc in (
             WorkPipelineError,
             WorkIntakeRejectedError,
-            WorkProjectNotFoundError,
             WorkRoutingUndecidableError,
             WorkPipelineTeamPathUnavailableError,
         ):
@@ -35,12 +33,6 @@ class TestWorkPipelineErrors:
                 422,
                 ErrorCategory.VALIDATION,
                 ErrorCode.VALIDATION_ERROR,
-            ),
-            (
-                WorkProjectNotFoundError,
-                404,
-                ErrorCategory.NOT_FOUND,
-                ErrorCode.PROJECT_NOT_FOUND,
             ),
             (
                 WorkRoutingUndecidableError,

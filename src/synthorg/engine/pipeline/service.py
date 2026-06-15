@@ -22,12 +22,12 @@ from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.coordination.models import CoordinationContext
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.decomposition.models import SubtaskDefinition
+from synthorg.engine.errors import ProjectNotFoundError
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.pipeline.errors import (
     WorkIntakeRejectedError,
     WorkPipelineError,
     WorkPipelineTeamPathUnavailableError,
-    WorkProjectNotFoundError,
     WorkRoutingUndecidableError,
 )
 from synthorg.engine.pipeline.models import (
@@ -161,7 +161,7 @@ class DefaultWorkPipeline:
         Raises:
             WorkIntakeRejectedError: If intake rejects the request or
                 does not persist a task.
-            WorkProjectNotFoundError: If ``work_item.project`` does not
+            ProjectNotFoundError: If ``work_item.project`` does not
                 resolve.
             WorkRoutingUndecidableError: If no viable execution path or
                 solo agent can be selected.
@@ -425,13 +425,12 @@ class DefaultWorkPipeline:
         """Bind the work to its project context (existence check).
 
         Raises:
-            WorkProjectNotFoundError: If the project referenced by
+            ProjectNotFoundError: If the project referenced by
                 ``work_item.project`` is not in the project repository.
         """
         project = await self._project_repository.get(work_item.project)
         if project is None:
-            msg = f"project {work_item.project!r} not found"
-            raise WorkProjectNotFoundError(msg)
+            raise ProjectNotFoundError(project_id=work_item.project)
 
     async def _decompose(
         self,

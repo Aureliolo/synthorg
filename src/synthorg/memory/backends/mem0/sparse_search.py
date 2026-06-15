@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.iso_datetime import parse_iso_assume_utc
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.backends.mem0.mappers import coerce_confidence
@@ -304,7 +305,7 @@ def _parse_created_at(
         )
         return _epoch
     try:
-        parsed = datetime.fromisoformat(created_str)
+        return parse_iso_assume_utc(created_str)
     except ValueError, TypeError:
         logger.info(
             MEMORY_SPARSE_POINT_FIELD_DEFAULTED,
@@ -314,10 +315,6 @@ def _parse_created_at(
             default="1970-01-01T00:00:00+00:00",
         )
         return _epoch
-    # Ensure aware datetime (assume UTC for naive).
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=UTC)
-    return parsed
 
 
 def _point_to_entry(point: ScoredPoint, agent_id: NotBlankStr) -> MemoryEntry:

@@ -1,7 +1,7 @@
 """SQLite-backed encrypted-secret blob repository.
 
 Persists raw encrypted byte payloads in the ``connection_secrets``
-table for the ``EncryptedSqliteSecretBackend``.  This layer NEVER
+table for the ``SqliteSecretRowStore``.  This layer NEVER
 encrypts or decrypts -- callers pass already-encrypted bytes in and
 receive the same bytes back unchanged.
 """

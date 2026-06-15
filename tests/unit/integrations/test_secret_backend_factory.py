@@ -13,11 +13,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from synthorg.integrations.config import SecretBackendConfig
-from synthorg.persistence.secret_backends.encrypted_postgres import (
-    EncryptedPostgresSecretBackend,
-)
-from synthorg.persistence.secret_backends.encrypted_sqlite import (
-    EncryptedSqliteSecretBackend,
+from synthorg.persistence.secret_backends.encrypted import (
+    EncryptedSecretBackend,
 )
 from synthorg.persistence.secret_backends.env_var import (
     EnvVarSecretBackend,
@@ -25,6 +22,12 @@ from synthorg.persistence.secret_backends.env_var import (
 from synthorg.persistence.secret_backends.factory import (
     create_secret_backend,
     resolve_secret_backend_config,
+)
+from synthorg.persistence.secret_backends.postgres_row_store import (
+    PostgresSecretRowStore,
+)
+from synthorg.persistence.secret_backends.sqlite_row_store import (
+    SqliteSecretRowStore,
 )
 
 
@@ -62,7 +65,8 @@ class TestFactoryRouting:
         config = SecretBackendConfig(backend_type="encrypted_sqlite")
         db_path = str(tmp_path / "secrets.db")
         backend = create_secret_backend(config, db_path=db_path)
-        assert isinstance(backend, EncryptedSqliteSecretBackend)
+        assert isinstance(backend, EncryptedSecretBackend)
+        assert isinstance(backend._store, SqliteSecretRowStore)
         assert backend.backend_name == "encrypted_sqlite"
 
     def test_encrypted_postgres_constructed_when_key_present(
@@ -75,7 +79,8 @@ class TestFactoryRouting:
         config = SecretBackendConfig(backend_type="encrypted_postgres")
         pool = MagicMock()
         backend = create_secret_backend(config, pg_pool=pool)
-        assert isinstance(backend, EncryptedPostgresSecretBackend)
+        assert isinstance(backend, EncryptedSecretBackend)
+        assert isinstance(backend._store, PostgresSecretRowStore)
         assert backend.backend_name == "encrypted_postgres"
 
 
@@ -90,7 +95,10 @@ class TestEncryptedPostgresKeyLoading:
         monkeypatch.delenv("SYNTHORG_MASTER_KEY", raising=False)
         pool = MagicMock()
         with pytest.raises(MasterKeyError, match="SYNTHORG_MASTER_KEY is not set"):
-            EncryptedPostgresSecretBackend(pool=pool)
+            EncryptedSecretBackend(
+                PostgresSecretRowStore(pool),
+                master_key_env="SYNTHORG_MASTER_KEY",
+            )
 
     def test_invalid_master_key_raises(
         self,
@@ -101,7 +109,10 @@ class TestEncryptedPostgresKeyLoading:
         monkeypatch.setenv("SYNTHORG_MASTER_KEY", "not-a-valid-fernet-key")
         pool = MagicMock()
         with pytest.raises(MasterKeyError, match="Invalid Fernet key"):
-            EncryptedPostgresSecretBackend(pool=pool)
+            EncryptedSecretBackend(
+                PostgresSecretRowStore(pool),
+                master_key_env="SYNTHORG_MASTER_KEY",
+            )
 
 
 @pytest.mark.unit
