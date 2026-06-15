@@ -67,6 +67,24 @@ ATTEMPTS="${RETRY_CMD_ATTEMPTS:-5}"
 DELAY="${RETRY_CMD_BASE_DELAY:-15}"
 MAX_DELAY="${RETRY_CMD_MAX_DELAY:-120}"
 
+# Fail fast on a non-numeric tunable. Without ``-e``, a non-numeric value
+# makes the ``[ "$attempt" -ge "$ATTEMPTS" ]`` exhaustion test error out
+# (rc 2, treated as false), so a failing command would loop until the job
+# timeout instead of bubbling its exit code. ATTEMPTS must be >= 1; the
+# delays may be 0 (the zero-backoff self-test seam).
+if ! [[ "$ATTEMPTS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "::error::retry_cmd.sh: RETRY_CMD_ATTEMPTS must be a positive integer (got '$ATTEMPTS')" >&2
+  exit 2
+fi
+if ! [[ "$DELAY" =~ ^[0-9]+$ ]]; then
+  echo "::error::retry_cmd.sh: RETRY_CMD_BASE_DELAY must be a non-negative integer (got '$DELAY')" >&2
+  exit 2
+fi
+if ! [[ "$MAX_DELAY" =~ ^[0-9]+$ ]]; then
+  echo "::error::retry_cmd.sh: RETRY_CMD_MAX_DELAY must be a non-negative integer (got '$MAX_DELAY')" >&2
+  exit 2
+fi
+
 attempt=0
 while :; do
   attempt=$((attempt + 1))

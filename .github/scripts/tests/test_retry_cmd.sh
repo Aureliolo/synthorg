@@ -98,6 +98,20 @@ else
   printf '%s\n' "$out" | tail -n 3 >&2 || true
 fi
 
+# --- 6. non-numeric tunable: rejected up front with exit 2 --------------
+# A malformed RETRY_CMD_ATTEMPTS must fail fast (exit 2) rather than reach
+# the loop, where the broken `-ge` test would never trip exhaustion and the
+# command would retry until the job timeout.
+rc=0
+out="$(RETRY_CMD_ATTEMPTS=abc RETRY_CMD_BASE_DELAY=0 \
+  bash "$HELPER" "selftest-badattempts" bash -c 'exit 1' 2>&1)" || rc=$?
+if [ "$rc" -eq 2 ] && grep -q 'RETRY_CMD_ATTEMPTS must be a positive integer' <<<"$out"; then
+  pass "retry_cmd rejects a non-numeric RETRY_CMD_ATTEMPTS with exit 2"
+else
+  fail "retry_cmd did not reject a non-numeric attempts value (rc=${rc}, expected 2)"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   printf '\nretry_cmd self-test FAILED\n' >&2
   exit 1

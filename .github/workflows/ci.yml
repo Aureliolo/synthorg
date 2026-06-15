@@ -905,8 +905,10 @@ jobs:
   # ── Python: Test Coverage Aggregate ──
   # The single, airtight 80% gate. Runs only when all four test arms
   # succeed (default needs semantics, no if: always()), so coverage is
-  # never computed on partial data. Codecov stays best-effort and is
-  # never the gate; ``coverage report --fail-under=80`` is.
+  # never computed on partial data. Coverage policy is enforced by
+  # ``coverage report --fail-under=80``; the Codecov uploads run a
+  # fail-closed retry ladder that fails the job once a persistent
+  # external/OIDC outage exhausts the retries.
   test-coverage-aggregate:
     name: Test Coverage Aggregate
     needs: [changes, test-unit, test-integration, test-e2e, test-conformance-sqlite]
