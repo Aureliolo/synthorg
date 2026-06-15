@@ -298,7 +298,7 @@ def _check_documents(
     )
 
 
-_FINE_TUNE_SIDECAR_HEALTH_URL: Final[str] = "http://fine-tune:15002/healthz"
+_FINE_TUNE_SIDECAR_HEALTH_HOST: Final[str] = "fine-tune"
 _FINE_TUNE_SIDECAR_HEALTH_TIMEOUT_S: Final[float] = 1.5
 _HTTP_STATUS_OK_MIN: Final[int] = 200
 _HTTP_STATUS_OK_MAX_EXCLUSIVE: Final[int] = 300
@@ -317,14 +317,29 @@ def _check_fine_tune_sidecar_health() -> bool:
     locally.  Any error (DNS miss, refused connection, non-200, timeout)
     is swallowed so the caller falls back to the in-process import.
 
+    The probe port is resolved from ``SYNTHORG_FINE_TUNE_HEALTH_PORT``
+    via the same :func:`resolve_health_port` the sidecar uses to bind, so
+    an operator override is honoured. A malformed override means the
+    sidecar itself never bound, so the probe correctly reports failure.
+
     Returns:
         ``True`` or ``False`` reflecting the condition.
     """
     import urllib.error  # noqa: PLC0415
     import urllib.request  # noqa: PLC0415
 
+    from synthorg.memory.embedding.fine_tune_runner import (  # noqa: PLC0415
+        resolve_health_port,
+    )
+
     try:
-        req = urllib.request.Request(_FINE_TUNE_SIDECAR_HEALTH_URL)
+        port = resolve_health_port()
+    except ValueError:
+        return False
+    url = f"http://{_FINE_TUNE_SIDECAR_HEALTH_HOST}:{port}/healthz"
+
+    try:
+        req = urllib.request.Request(url)
         with urllib.request.urlopen(  # noqa: S310
             req,
             timeout=_FINE_TUNE_SIDECAR_HEALTH_TIMEOUT_S,

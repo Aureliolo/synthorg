@@ -434,6 +434,62 @@ class TestCheckFineTuneSidecarHealth:
         monkeypatch.setattr(urllib.request, "urlopen", raise_runtime)
         assert _check_fine_tune_sidecar_health() is False
 
+    def test_uses_configured_health_port(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The probe URL honours ``SYNTHORG_FINE_TUNE_HEALTH_PORT``.
+
+        Regression: the probe previously hardcoded port 15002, so an
+        operator override made it a false negative on every Docker
+        install that rebinds the sidecar health port.
+        """
+        import urllib.request
+
+        from synthorg.api.controllers.memory._preflight import (
+            _check_fine_tune_sidecar_health,
+        )
+
+        monkeypatch.setenv("SYNTHORG_FINE_TUNE_HEALTH_PORT", "23456")
+        captured: dict[str, str] = {}
+
+        def fake_urlopen(
+            req: urllib.request.Request,
+            *_args: object,
+            **_kwargs: object,
+        ) -> _FakeHttpResponse:
+            captured["url"] = req.full_url
+            return _FakeHttpResponse(status=200)
+
+        monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+        assert _check_fine_tune_sidecar_health() is True
+        assert captured["url"] == "http://fine-tune:23456/healthz"
+
+    def test_returns_false_on_malformed_health_port(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A malformed port override makes the probe report failure.
+
+        The sidecar itself would have refused to bind the bad port, so a
+        successful probe is impossible; the resolver raises ``ValueError``
+        and the helper returns ``False`` without attempting a request.
+        """
+        import urllib.request
+
+        from synthorg.api.controllers.memory._preflight import (
+            _check_fine_tune_sidecar_health,
+        )
+
+        monkeypatch.setenv("SYNTHORG_FINE_TUNE_HEALTH_PORT", "not-a-port")
+
+        def fail_urlopen(*_args: object, **_kwargs: object) -> object:
+            msg = "urlopen must not be called with an unresolved port"
+            raise AssertionError(msg)
+
+        monkeypatch.setattr(urllib.request, "urlopen", fail_urlopen)
+        assert _check_fine_tune_sidecar_health() is False
+
     def test_reraises_memory_error(
         self,
         monkeypatch: pytest.MonkeyPatch,
