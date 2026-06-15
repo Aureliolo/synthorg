@@ -118,6 +118,120 @@ class TestSetup:
         )
         assert response.status_code == 400
 
+    async def test_setup_race_single_ceo_returns_409(
+        self,
+        bare_client: LoopAsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A losing racer on the single-CEO guard sees 'already completed'.
+
+        The CEO pre-check is forced to observe zero CEOs (the racing window),
+        but ``save`` then hits the single-CEO partial-unique index. The guard
+        maps it to the uniform setup-complete conflict via the typed
+        ``SingleCeoConstraintError`` rather than leaking the persistence token.
+        """
+        import uuid
+        from datetime import UTC, datetime
+
+        from synthorg.core.auth.models import User
+
+        app_state = bare_client.app.state["app_state"]
+        backend = cast(FakePersistenceBackend, persistence_of(app_state))
+        users_repo = backend._users
+        users_repo._users.clear()
+        now = datetime.now(UTC)
+        users_repo.seed(
+            User(
+                id=str(uuid.uuid4()),
+                username="incumbent-ceo",
+                password_hash="x",
+                role=HumanRole.CEO,
+                must_change_password=False,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+
+        async def _no_ceos(role: HumanRole) -> int:
+            return 0
+
+        monkeypatch.setattr(users_repo, "count_by_role", _no_ceos)
+
+        response = await bare_client.post(
+            "/api/v1/auth/setup",
+            json={"username": "newadmin", "password": "super-secure-password-12"},
+        )
+        assert response.status_code == 409
+        assert "Setup already completed" in response.text
+
+    async def test_setup_race_duplicate_username_returns_409(
+        self, bare_client: LoopAsyncClient
+    ) -> None:
+        """A losing racer on the username-unique guard sees 'already completed'.
+
+        The CEO pre-check passes (no CEO yet), but ``save`` raises the
+        username-unique constraint, which the guard maps to the uniform
+        setup-complete conflict via the typed ``DuplicateUsernameError``.
+        """
+        import uuid
+        from datetime import UTC, datetime
+
+        from synthorg.core.auth.models import User
+
+        app_state = bare_client.app.state["app_state"]
+        backend = cast(FakePersistenceBackend, persistence_of(app_state))
+        backend._users._users.clear()
+        now = datetime.now(UTC)
+        backend._users.seed(
+            User(
+                id=str(uuid.uuid4()),
+                username="taken",
+                password_hash="x",
+                role=HumanRole.OBSERVER,
+                must_change_password=False,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+
+        response = await bare_client.post(
+            "/api/v1/auth/setup",
+            json={"username": "taken", "password": "super-secure-password-12"},
+        )
+        assert response.status_code == 409
+        assert "Setup already completed" in response.text
+
+    async def test_setup_unrelated_constraint_not_masked(
+        self,
+        bare_client: LoopAsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """An unrelated constraint propagates, not masked as setup-complete.
+
+        The race guard only remaps the single-CEO / username conflicts; any
+        other constraint must surface its own contract instead of a misleading
+        'already completed' response.
+        """
+        from synthorg.core.persistence_errors import ConstraintViolationError
+
+        app_state = bare_client.app.state["app_state"]
+        backend = cast(FakePersistenceBackend, persistence_of(app_state))
+        users_repo = backend._users
+        users_repo._users.clear()
+
+        async def _raise_unrelated(entity: object) -> None:
+            msg = "unrelated"
+            raise ConstraintViolationError(msg, constraint="SOME_OTHER_CONSTRAINT")
+
+        monkeypatch.setattr(users_repo, "save", _raise_unrelated)
+
+        response = await bare_client.post(
+            "/api/v1/auth/setup",
+            json={"username": "newadmin", "password": "super-secure-password-12"},
+        )
+        assert "Setup already completed" not in response.text
+        assert response.status_code >= 400
+
 
 @pytest.mark.unit
 class TestLogin:

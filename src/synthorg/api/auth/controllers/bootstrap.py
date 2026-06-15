@@ -24,6 +24,11 @@ from synthorg.api.auth.controller_helpers import (
 from synthorg.api.auth.controllers._shared import _AUTH_RATE_LIMIT
 from synthorg.api.auth.service import AuthService
 from synthorg.api.auth.system_user import SYSTEM_USERNAME
+from synthorg.api.auth.user_constraints import (
+    DuplicateUsernameError,
+    SingleCeoConstraintError,
+    raise_for_user_constraint,
+)
 from synthorg.api.dto import ApiResponse
 from synthorg.core.auth.models import User
 from synthorg.core.auth.roles import HumanRole
@@ -34,10 +39,6 @@ from synthorg.observability.events.security import (
     SECURITY_AUTH_FAILED,
     SECURITY_AUTH_SETUP_COMPLETE,
     SECURITY_SESSION_LIMIT_ENFORCED,
-)
-from synthorg.persistence.constraint_tokens import (
-    IDX_SINGLE_CEO,
-    USERS_USERNAME_UNIQUE,
 )
 from synthorg.persistence.state import persistence_of
 
@@ -122,15 +123,16 @@ class AuthBootstrapController(Controller):
         try:
             await persistence.users.save(user)
         except ConstraintViolationError as exc:
-            if exc.constraint in (IDX_SINGLE_CEO, USERS_USERNAME_UNIQUE):
+            try:
+                raise_for_user_constraint(exc)
+            except (SingleCeoConstraintError, DuplicateUsernameError) as conflict:
                 logger.warning(
                     SECURITY_AUTH_FAILED,
                     reason="setup_race_detected",
                     constraint=exc.constraint,
                 )
                 msg = "Setup already completed"
-                raise ConflictError(msg) from exc
-            raise
+                raise ConflictError(msg) from conflict
 
         token, expires_in, session_id = auth_service.create_token(user)
 
