@@ -101,7 +101,7 @@ class TestExtendedGate:
 
     @pytest.mark.parametrize(
         "method",
-        ["exception", "warning", "error", "info", "debug"],
+        ["exception", "warning", "error", "info", "debug", "critical"],
     )
     def test_logger_method_str_exc_flagged(self, method: str) -> None:
         """Every severity method trips the gate on bare ``error=str(exc)``."""
@@ -274,7 +274,7 @@ class TestFStringBlindspot:
 
     @pytest.mark.parametrize(
         "method",
-        ["exception", "warning", "error", "info", "debug"],
+        ["exception", "warning", "error", "info", "debug", "critical"],
     )
     def test_fstring_implicit_exc_flagged(self, method: str) -> None:
         """Every severity trips on ``error=f"...{exc}..."`` (default conversion)."""
@@ -1051,7 +1051,7 @@ class TestExcInfoGate:
 
     @pytest.mark.parametrize(
         "method",
-        ["exception", "warning", "error", "info", "debug"],
+        ["exception", "warning", "error", "info", "debug", "critical"],
     )
     def test_exc_info_true_flagged(self, method: str) -> None:
         """Every severity trips on ``exc_info=True`` literal.

@@ -49,7 +49,7 @@ Two distinct sub-cases share this section because both are inline-by-necessity f
 
 **When**: code runs inside a stdlib `logging.Handler` worker thread using synchronous `urllib.request`. There is no event loop available; `await GeneralRetryHandler.run(...)` would either deadlock or panic.
 
-**How**: a tight synchronous loop with bounded exponential backoff. The backoff sleep is done on the handler's shutdown `threading.Event` (`_shutdown.wait(delay)`) so `close()` interrupts an in-flight backoff instead of blocking the join. Bootstrap-tier code keeps its own retry primitive because the async helper is unreachable from this execution context.
+**How**: a tight synchronous loop with bounded exponential backoff. The backoff sleep is done using `time.sleep(delay)` so that retries run to completion during shutdown rather than being dropped mid-flight. Bootstrap-tier code keeps its own retry primitive because the async helper is unreachable from this execution context.
 
 **Sites**:
 

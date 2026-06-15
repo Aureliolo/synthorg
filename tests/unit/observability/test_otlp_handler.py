@@ -107,6 +107,16 @@ class TestOtlpHandler:
         assert handler._shutdown.is_set()
         assert not handler._flusher.is_alive()
 
+    def test_negative_max_retries_rejected(self) -> None:
+        """A negative ``max_retries`` would run zero attempts and report
+        an unsent batch as success; construction must reject it."""
+        with pytest.raises(ValueError, match="max_retries"):
+            OtlpHandler(
+                endpoint="http://localhost:4318",
+                max_retries=-1,
+                _start_flusher=False,
+            )
+
     def test_drain_collects_records(self) -> None:
         handler = _make_handler()
         try:

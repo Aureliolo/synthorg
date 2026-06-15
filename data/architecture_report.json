@@ -800,8 +800,8 @@
     },
     "src/synthorg/observability/otlp_handler.py": {
       "cap": 500,
-      "loc": 430,
-      "ratio": 0.86,
+      "loc": 433,
+      "ratio": 0.866,
       "tier": "code"
     },
     "src/synthorg/observability/prometheus_collector.py": {

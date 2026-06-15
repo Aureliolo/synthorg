@@ -8,6 +8,8 @@ import logging.handlers
 import socket
 import sys
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from types import MappingProxyType
 from typing import TYPE_CHECKING, override
 
@@ -35,6 +37,27 @@ if TYPE_CHECKING:
     ExportCallback = Callable[[str, int], None]
 
 _internal_logger = get_logger(__name__)
+
+# A diagnostic logged from this sink's own failure path propagates back
+# through the root logger into the same sink. Syslog ``emit`` is
+# synchronous, so that re-entry would recurse emit -> handleError ->
+# emit until the stack overflows under a syslog-endpoint outage. The
+# thread-local guard makes the sink drop any record produced while it is
+# already emitting one of its own diagnostics; the diagnostic still
+# reaches non-sink handlers (stderr / file) unaffected.
+_reentry_guard = threading.local()
+
+
+@contextmanager
+def _suppress_sink_reentry() -> Iterator[None]:
+    """Mark the current thread as emitting a sink diagnostic."""
+    previous = getattr(_reentry_guard, "active", False)
+    _reentry_guard.active = True
+    try:
+        yield
+    finally:
+        _reentry_guard.active = previous
+
 
 FACILITY_MAP: MappingProxyType[SyslogFacility, int] = MappingProxyType(
     {
@@ -128,18 +151,26 @@ class CountingSysLogHandler(logging.handlers.SysLogHandler):
             callback(outcome, dropped)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            _internal_logger.warning(
-                METRICS_LOG_SINK_CALLBACK_ERROR,
-                sink="syslog",
-                outcome=outcome,
-                dropped_records=dropped,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
+            with _suppress_sink_reentry():
+                _internal_logger.warning(
+                    METRICS_LOG_SINK_CALLBACK_ERROR,
+                    sink="syslog",
+                    outcome=outcome,
+                    dropped_records=dropped,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
 
     @override
     def emit(self, record: logging.LogRecord) -> None:
-        """Send *record* and report the success/failure outcome."""
+        """Send *record* and report the success/failure outcome.
+
+        A record produced while this sink is emitting one of its own
+        diagnostics is dropped: routing it back through the sink would
+        recurse emit -> handleError -> emit under a syslog outage.
+        """
+        if getattr(_reentry_guard, "active", False):
+            return
         self._emit_state.failed = False
         super().emit(record)
         failed = getattr(self._emit_state, "failed", False)
@@ -156,13 +187,14 @@ class CountingSysLogHandler(logging.handlers.SysLogHandler):
             self._dropped_count += 1
             total_dropped = self._dropped_count
         exc = sys.exc_info()[1]
-        _internal_logger.warning(
-            METRICS_LOG_SINK_EXPORT_FAILED,
-            sink="syslog",
-            error_type=type(exc).__name__ if exc is not None else "unknown",
-            error=safe_error_description(exc) if exc is not None else "unknown",
-            total_dropped=total_dropped,
-        )
+        with _suppress_sink_reentry():
+            _internal_logger.warning(
+                METRICS_LOG_SINK_EXPORT_FAILED,
+                sink="syslog",
+                error_type=type(exc).__name__ if exc is not None else "unknown",
+                error=safe_error_description(exc) if exc is not None else "unknown",
+                total_dropped=total_dropped,
+            )
 
 
 def build_syslog_handler(

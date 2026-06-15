@@ -43,11 +43,18 @@ _DEFAULT_TIMEOUT_SECONDS: Final[float] = 10.0
 _DEFAULT_MAX_RETRIES: Final[int] = 3
 
 # Bounded exponential backoff between send attempts (Pattern C/Sync):
-# delay(attempt) = min(base * factor**attempt, cap). The wait is done on
-# the shutdown event so close() interrupts an in-flight backoff.
+# delay(attempt) = min(base * factor**attempt, cap). The wait is
+# non-interruptible so that retries run to completion during shutdown.
 _RETRY_BACKOFF_BASE_SECONDS: Final[float] = 0.5
 _RETRY_BACKOFF_FACTOR: Final[int] = 2
 _RETRY_BACKOFF_CAP_SECONDS: Final[float] = 8.0
+
+# Naming the flusher thread lets emit() drop records produced from the
+# handler's own export-failure logging: that diagnostic propagates back
+# through the root logger into this sink, and requeuing it would feed an
+# unbounded loop under a sustained collector outage. Every record whose
+# origin is this thread is dropped before it can re-enter the queue.
+_FLUSHER_THREAD_NAME = "log-http-flusher"
 
 
 class HttpBatchHandler(logging.Handler):
@@ -77,6 +84,9 @@ class HttpBatchHandler(logging.Handler):
         max_retries: int = _DEFAULT_MAX_RETRIES,
     ) -> None:
         super().__init__()
+        if max_retries < 0:
+            msg = "max_retries must be greater than or equal to 0"
+            raise ValueError(msg)
         self._url = url
         self._extra_headers = dict(headers)
         self._batch_size = batch_size
@@ -93,7 +103,7 @@ class HttpBatchHandler(logging.Handler):
         self._flusher = threading.Thread(
             target=self._flush_loop,
             daemon=True,
-            name="log-http-flusher",
+            name=_FLUSHER_THREAD_NAME,
         )
         self._flusher.start()
 
@@ -152,7 +162,15 @@ class HttpBatchHandler(logging.Handler):
 
     @override
     def emit(self, record: logging.LogRecord) -> None:
-        """Queue a record for batched shipping."""
+        """Queue a record for batched shipping.
+
+        Records produced from the handler's own flusher thread are
+        dropped to prevent a feedback loop: when the flusher logs an
+        export failure, routing that log back through this handler would
+        requeue it, growing the queue without bound under outage.
+        """
+        if threading.current_thread().name == _FLUSHER_THREAD_NAME:
+            return
         try:
             self._queue.put_nowait(record)
             with self._pending_lock:
@@ -315,8 +333,8 @@ class HttpBatchHandler(logging.Handler):
         self._batch_ready.set()  # Wake the flusher
         # Allow enough time for in-flight retries to finish: worst case is
         # (1 + max_retries) attempts each up to ``timeout`` plus the
-        # bounded backoff between them. The shutdown event set above
-        # interrupts an in-flight backoff, so this is an upper bound.
+        # bounded backoff between them. Since the backoff uses time.sleep
+        # and is non-interruptible, this is an upper bound.
         backoff_total = sum(
             self._backoff_delay(attempt) for attempt in range(self._max_retries)
         )

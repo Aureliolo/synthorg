@@ -81,6 +81,39 @@ class TestHttpBatchHandler:
             assert handler._queue.qsize() >= 1
             handler.close()  # Close inside patch to avoid real network calls
 
+    def test_negative_max_retries_rejected(self) -> None:
+        """A negative ``max_retries`` would run zero send attempts and
+        report an unsent batch as success; construction must reject it."""
+        with pytest.raises(ValueError, match="max_retries"):
+            HttpBatchHandler(url="https://logs.example.com/ingest", max_retries=-1)
+
+    def test_emit_from_flusher_thread_is_dropped(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        """A record produced from the flusher thread (the handler's own
+        export-failure diagnostic) is dropped rather than requeued, so a
+        sustained collector outage cannot feed an unbounded loop."""
+        handler = _make_handler()
+        handler_cleanup.append(handler)
+
+        captured: dict[str, int] = {}
+
+        def _emit_on_flusher_thread() -> None:
+            handler.emit(_make_record("self-generated diagnostic"))
+            captured["qsize"] = handler._queue.qsize()
+            captured["pending"] = handler._pending_count
+
+        worker = threading.Thread(
+            target=_emit_on_flusher_thread,
+            name="log-http-flusher",
+        )
+        worker.start()
+        worker.join()
+
+        assert captured["qsize"] == 0
+        assert captured["pending"] == 0
+
     def test_batch_flushed_on_batch_size(
         self,
         handler_cleanup: list[logging.Handler],
@@ -177,6 +210,7 @@ class TestHttpBatchHandler:
         handler_cleanup: list[logging.Handler],
     ) -> None:
         handler = _make_handler(batch_size=100, max_retries=2)
+        handler._backoff_delay = lambda attempt: 0.0  # type: ignore[method-assign]
 
         error = OSError("connection refused")
         with patch(
@@ -194,6 +228,7 @@ class TestHttpBatchHandler:
         handler_cleanup: list[logging.Handler],
     ) -> None:
         handler = _make_handler(batch_size=100, max_retries=1)
+        handler._backoff_delay = lambda attempt: 0.0  # type: ignore[method-assign]
 
         error = OSError("connection refused")
         with patch(

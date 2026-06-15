@@ -7,8 +7,6 @@ the export-outcome series knows wiring was skipped, not idle).
 
 import logging
 from types import SimpleNamespace
-from typing import cast
-from unittest.mock import MagicMock
 
 import pytest
 import structlog.testing
@@ -26,6 +24,7 @@ from synthorg.observability.startup_wiring import (
     wire_observability_callbacks,
 )
 from synthorg.observability.syslog_handler import build_syslog_handler
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -93,11 +92,11 @@ def test_wire_observability_callbacks_warns_when_collector_absent() -> None:
         trace_handler=object(),  # non-None: skips trace-handler build
         prometheus_collector=None,
     )
-    app_state = MagicMock(spec=AppState)
+    app_state = mock_of[AppState]()
     app_state.slice.return_value = slice_stub
 
     with structlog.testing.capture_logs() as logs:
-        wire_observability_callbacks(cast(AppState, app_state))
+        wire_observability_callbacks(app_state)
 
     assert any(
         rec.get("event") == METRICS_PROMETHEUS_WIRING_SKIPPED

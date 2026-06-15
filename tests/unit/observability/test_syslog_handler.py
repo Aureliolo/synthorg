@@ -28,6 +28,7 @@ from synthorg.observability.syslog_handler import (
     FACILITY_MAP,
     PROTOCOL_MAP,
     CountingSysLogHandler,
+    _suppress_sink_reentry,
     build_syslog_handler,
 )
 
@@ -278,6 +279,22 @@ class TestSyslogExportCallback:
         assert drops, "a failed syslog emit must log redacted drop context"
         assert drops[0].get("error_type") == "OSError"
         assert drops[0].get("error")
+
+    def test_emit_dropped_while_emitting_own_diagnostic(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        """A record routed back into the sink while it is emitting its
+        own failure diagnostic is dropped, breaking the synchronous
+        emit -> handleError -> emit recursion a syslog outage triggers."""
+        handler = self._handler(handler_cleanup)
+        mock_socket = MagicMock(spec=socket.socket)
+        handler.socket = mock_socket  # type: ignore[attr-defined]
+
+        with _suppress_sink_reentry():
+            handler.emit(_plain_record())
+
+        mock_socket.sendto.assert_not_called()
 
     def test_set_export_callback_rejects_non_callable(
         self,

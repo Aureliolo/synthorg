@@ -70,8 +70,8 @@ _DEFAULT_TIMEOUT_SECONDS: Final[float] = 10.0
 _DEFAULT_MAX_RETRIES: Final[int] = 3
 
 # Bounded exponential backoff between export attempts (Pattern C/Sync):
-# delay(attempt) = min(base * factor**attempt, cap). The wait is done on
-# the shutdown event so close() interrupts an in-flight backoff.
+# delay(attempt) = min(base * factor**attempt, cap). The wait is
+# non-interruptible so that retries run to completion during shutdown.
 _RETRY_BACKOFF_BASE_SECONDS: Final[float] = 0.5
 _RETRY_BACKOFF_FACTOR: Final[int] = 2
 _RETRY_BACKOFF_CAP_SECONDS: Final[float] = 8.0
@@ -122,6 +122,9 @@ class OtlpHandler(logging.Handler):
         self._endpoint = endpoint
         self._protocol = protocol
         self._extra_headers = dict(headers)
+        if max_retries < 0:
+            msg = "max_retries must be greater than or equal to 0"
+            raise ValueError(msg)
         self._batch_size = batch_size
         self._flush_interval = flush_interval
         self._timeout = timeout
@@ -464,7 +467,8 @@ class OtlpHandler(logging.Handler):
         self._batch_ready.set()
         # Worst case for an in-flight export: (1 + max_retries) attempts
         # each up to ``timeout`` plus the bounded backoff between them.
-        # The shutdown event set above interrupts an in-flight backoff.
+        # Since the backoff uses time.sleep and is non-interruptible, this
+        # is an upper bound.
         backoff_total = sum(
             self._backoff_delay(attempt) for attempt in range(self._max_retries)
         )
