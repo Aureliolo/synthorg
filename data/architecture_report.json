@@ -368,8 +368,8 @@
     },
     "src/synthorg/engine/errors.py": {
       "cap": 500,
-      "loc": 507,
-      "ratio": 1.014,
+      "loc": 498,
+      "ratio": 0.996,
       "tier": "code"
     },
     "src/synthorg/engine/evolution/factory.py": {
@@ -1215,7 +1215,7 @@
     "synthorg.core.auth.roles": 29,
     "synthorg.core.autonomy_enums": 36,
     "synthorg.core.boundary": 27,
-    "synthorg.core.clock": 161,
+    "synthorg.core.clock": 162,
     "synthorg.core.critical_errors": 511,
     "synthorg.core.domain_errors": 203,
     "synthorg.core.effective_autonomy": 22,

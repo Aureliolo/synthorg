@@ -342,6 +342,14 @@ def _git_tracked_python_files(
             env=env,
         )
     except subprocess.CalledProcessError, FileNotFoundError:
+        # git unavailable / not a repo: scan every .py on disk instead of
+        # the tracked set. Announce it so a wider scan (untracked / generated
+        # files) is not mistaken for the normal tracked-only run.
+        print(
+            f"check_error_code_uniqueness: git ls-files unavailable for "
+            f"{rel_root!r}; falling back to rglob (scans untracked files too).",
+            file=sys.stderr,
+        )
         return [
             (p, p.relative_to(project_root).as_posix())
             for p in sorted(abs_root.rglob("*.py"))
@@ -364,24 +372,28 @@ def _scan_tree(project_root: Path, scan_root: Path) -> list[str]:
         all_entries.extend(entries)
 
     ancestors = _compute_ancestors(all_entries)
+    # Group ALL code-bearing classes (including suppressed ones) so a
+    # suppressed parent still counts as an ancestor candidate for the
+    # alias check below; only non-suppressed members are ever reported.
     by_code: dict[str, list[_ClassEntry]] = {}
     for entry in all_entries:
-        if entry.code is None or entry.suppressed:
+        if entry.code is None:
             continue
         by_code.setdefault(entry.code, []).append(entry)
 
     messages = sorted(parse_errors)
-    for code, members in sorted(by_code.items()):
-        if len(members) < _MIN_DUPLICATE_GROUP or code in SHAREABLE_CODES:
+    for code, group in sorted(by_code.items()):
+        reportable = [m for m in group if not m.suppressed]
+        if len(reportable) < _MIN_DUPLICATE_GROUP or code in SHAREABLE_CODES:
             continue
-        if _group_is_aliased(members, ancestors):
+        if _group_is_aliased(group, ancestors):
             continue
         locations = ", ".join(
             f"{m.rel}:{m.lineno} ({m.name})"
-            for m in sorted(members, key=lambda m: m.key)
+            for m in sorted(reportable, key=lambda m: m.key)
         )
         messages.append(
-            f"ErrorCode.{code} is declared by {len(members)} unrelated classes: "
+            f"ErrorCode.{code} is declared by {len(reportable)} unrelated classes: "
             f"{locations}. Each distinct condition needs its own ErrorCode, or "
             "merge the classes (inheritance alias). If this code is a generic "
             "category fallback, add it to SHAREABLE_CODES; otherwise add "

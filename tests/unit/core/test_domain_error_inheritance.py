@@ -57,10 +57,9 @@ from synthorg.tools.errors import ToolError
 
 pytestmark = pytest.mark.unit
 
-# Every base error class flagged by audit-34 plus the memory family the
-# bundle pulled in (FineTuneError in the issue is the memory hierarchy
-# in practice).  Each MUST inherit from ``DomainError`` so the
-# prefix-vs-category validator runs on its subclasses.
+# Every domain-error hierarchy base class. Each MUST inherit from
+# ``DomainError`` so the prefix-vs-category validator runs on its
+# subclasses at class-definition time.
 DOMAIN_ERROR_BASES: tuple[type[BaseException], ...] = (
     BudgetExhaustedError,
     MixedCurrencyAggregationError,

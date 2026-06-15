@@ -420,10 +420,10 @@ _MIN_LLM_GROUP_THRESHOLD: Final[int] = 3
 class LLMConsolidationConfig(BaseModel):
     """Configuration for the LLM-based consolidation strategy.
 
-    Encapsulates all tuning knobs previously passed as loose kwargs to
-    ``LLMConsolidationStrategy.__init__`` and module-level constants.
-    Aligns with the frozen Pydantic config convention used by sibling
-    strategies (``DualModeConfig``, ``RetentionConfig``).
+    Encapsulates the LLM synthesis tuning knobs (group/density
+    thresholds, prompt caps, retry budget). Aligns with the frozen
+    Pydantic config convention used by sibling configs
+    (``DualModeConfig``, ``RetentionConfig``).
 
     Attributes:
         group_threshold: Minimum category group size for consolidation.

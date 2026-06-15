@@ -1,10 +1,10 @@
 """Memory consolidation -- axis split (selector + op), retention, archival.
 
 Re-exports the public API so consumers can import from
-``synthorg.memory.consolidation`` directly. The pre-split monolithic
-``Simple`` / ``DualMode`` / ``LLM`` strategy classes were removed in
-the ADR-0005 axis split; build a composite via
-:func:`build_consolidation_strategy` instead.
+``synthorg.memory.consolidation`` directly. Assemble a strategy by
+composing a selector with one or more ops via
+:func:`build_consolidation_strategy`; that builder is the only public
+construction path (ADR-0005).
 """
 
 from synthorg.memory.consolidation.abstractive import AbstractiveSummarizer

@@ -15,6 +15,8 @@ If the env var is not set, a ``MasterKeyError`` is raised with
 instructions for generating a key.
 """
 
+import asyncio
+import contextlib
 import os
 from uuid import uuid4
 
@@ -187,10 +189,20 @@ class EncryptedSecretBackend:
 
         Raises:
             SecretRotationError: If rotation cannot complete cleanly.
+            asyncio.CancelledError: Re-raised after a best-effort rollback
+                of the newly written secret.
         """
         new_id = str(uuid4())
         await self._rotate_store_new(old_id, new_id, new_value)
-        await self._rotate_delete_old(old_id, new_id)
+        try:
+            await self._rotate_delete_old(old_id, new_id)
+        except asyncio.CancelledError:
+            # Cancellation after new_id is written but before old_id is
+            # deleted would orphan new_id. Best-effort shielded rollback so
+            # a cancelled rotation never leaves an unreferenced secret.
+            with contextlib.suppress(SecretStorageError):
+                await asyncio.shield(self.delete(new_id))
+            raise
         logger.info(SECRET_ROTATED, old_id=old_id, new_id=new_id)
         return new_id
 
@@ -207,7 +219,7 @@ class EncryptedSecretBackend:
         """
         try:
             await self.store(new_id, new_value)
-        except (SecretStorageError, MasterKeyError) as exc:
+        except SecretStorageError as exc:
             logger.warning(
                 SECRET_BACKEND_UNAVAILABLE,
                 old_id=old_id,

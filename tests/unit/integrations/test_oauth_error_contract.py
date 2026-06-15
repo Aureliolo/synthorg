@@ -1,11 +1,11 @@
-"""Pins the OAuth callback error contract (audit finding 147).
+"""Pins the OAuth callback error contract.
 
-The ``/oauth/callback`` controller no longer flattens
+The ``/oauth/callback`` controller does not flatten
 :class:`TokenExchangeFailedError` to a 422 ``ValidationError``: a
 token-endpoint failure is transient, so its own 502 + retryable
 metadata must reach the central RFC 9457 handler. This test locks the
-class metadata so a future revert of the controller change (or a
-weakening of the class) fails the suite immediately.
+class metadata so a future weakening of that contract fails the suite
+immediately.
 """
 
 import pytest

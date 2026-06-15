@@ -294,10 +294,8 @@ def set_error_docs_base_url(value: str) -> None:
             " (host required, no userinfo / query / fragment)"
         )
         raise ValueError(msg)
-    # Inlined rather than using core.normalization.strip_trailing_slash:
-    # this taxonomy is a foundational leaf imported by the whole error
-    # hierarchy, and the helper would pull core.normalization ->
-    # observability (structlog) into it.
+    # Inlined (not core.normalization.strip_trailing_slash): this leaf is
+    # imported by the whole error hierarchy and must not pull in observability.
     normalised = candidate.rstrip("/")
     global _ERROR_DOCS_BASE  # noqa: PLW0603 -- single-writer startup hook; tests reset via the same setter
     _ERROR_DOCS_BASE = normalised

@@ -105,6 +105,7 @@ class PostgresSecretRowStore(SecretRowStore):
                     "rotated_at = NOW()",
                     (secret_id, ciphertext),
                 )
+                await conn.commit()
         except psycopg.Error as exc:
             # Demote to ``warning`` + scrubbed description so the
             # driver's ciphertext-bearing locals do not end up in
@@ -169,6 +170,7 @@ class PostgresSecretRowStore(SecretRowStore):
                     (secret_id,),
                 )
                 deleted = cur.rowcount > 0
+                await conn.commit()
         except psycopg.Error as exc:
             logger.warning(
                 SECRET_DELETE_FAILED,

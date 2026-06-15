@@ -78,7 +78,7 @@ _CONCAT_FALLBACK_TAG: NotBlankStr = "concat-fallback"
 
 
 class LLMSynthesisOp:
-    """LLM synthesis op -- ``LLMConsolidationStrategy`` per-group logic.
+    """LLM synthesis op -- per-group LLM consolidation logic.
 
     Args:
         backend: Memory backend for storing summaries + reading

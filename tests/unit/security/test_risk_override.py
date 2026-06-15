@@ -15,6 +15,7 @@ from synthorg.security.rules.risk_override import (
     RiskTierOverride,
     SecOpsRiskClassifier,
 )
+from tests._shared import FakeClock
 
 pytestmark = pytest.mark.unit
 
@@ -65,7 +66,7 @@ class TestRiskTierOverrideModel:
         assert ovr.action_type == "code:write"
         assert ovr.original_tier == ApprovalRiskLevel.MEDIUM
         assert ovr.override_tier == ApprovalRiskLevel.LOW
-        assert ovr.is_active is True
+        assert ovr.is_active(_NOW) is True
 
     def test_frozen(self) -> None:
         ovr = _make_override()
@@ -94,14 +95,14 @@ class TestRiskTierOverrideModel:
             created_at=_NOW - timedelta(hours=2),
             expires_at=_NOW - timedelta(hours=1),
         )
-        assert ovr.is_active is False
+        assert ovr.is_active(_NOW) is False
 
     def test_revoked_override_not_active(self) -> None:
         ovr = _make_override(
             revoked_at=_NOW,
             revoked_by="admin-1",
         )
-        assert ovr.is_active is False
+        assert ovr.is_active(_NOW) is False
 
 
 class TestSecOpsRiskClassifier:
@@ -165,7 +166,7 @@ class TestSecOpsRiskClassifier:
         classifier = SecOpsRiskClassifier(base=base, overrides=(ovr,))
         revoked = classifier.revoke_override("ovr-1")
         assert revoked is not None
-        assert revoked.is_active is False
+        assert revoked.is_active(_NOW) is False
         # After revocation, falls back to base
         result = classifier.classify("code:write")
         assert result == ApprovalRiskLevel.MEDIUM
@@ -191,6 +192,33 @@ class TestSecOpsRiskClassifier:
         result = classifier.active_overrides()
         assert len(result) == 1
         assert result[0].id == "ovr-active"
+
+    def test_override_expiry_driven_by_injected_clock(self) -> None:
+        base = _baseline()
+        start = datetime(2026, 1, 1, tzinfo=UTC)
+        clock = FakeClock(start=start)
+        ovr = RiskTierOverride(
+            id="ovr-clock",
+            action_type="code:write",
+            original_tier=ApprovalRiskLevel.MEDIUM,
+            override_tier=ApprovalRiskLevel.LOW,
+            reason="clock-seam test",
+            created_by="user-1",
+            created_at=start,
+            expires_at=start + timedelta(hours=1),
+        )
+        classifier = SecOpsRiskClassifier(
+            base=base,
+            overrides=(ovr,),
+            clock=clock,
+        )
+        # Before expiry the override applies.
+        assert classifier.classify("code:write") == ApprovalRiskLevel.LOW
+        assert len(classifier.active_overrides()) == 1
+        # Advancing past expiry drops it without touching wall-clock.
+        clock.advance(timedelta(hours=2).total_seconds())
+        assert classifier.classify("code:write") == ApprovalRiskLevel.MEDIUM
+        assert classifier.active_overrides() == ()
 
     def test_multiple_overrides_last_active_wins(self) -> None:
         base = _baseline()

@@ -1,10 +1,10 @@
 """Entry selectors for the consolidation axis split (ADR-0005).
 
-One selector covers all three pre-split strategies: they shared an
+One selector serves every consolidation strategy: they share an
 identical selection rule (group by category, drop groups below
 ``group_threshold``, keep the highest-relevance entry with most-recent
 ``created_at`` as the tiebreak). Density classification is *not*
-selection -- in DualMode it routes the op, so it lives in
+selection -- it routes the density-routing op, so it lives in
 ``DensityRoutingOp``, not here.
 """
 
@@ -22,9 +22,8 @@ _DEFAULT_GROUP_THRESHOLD: Final[int] = 3
 class HighestRelevanceSelector:
     """Keep the highest-relevance entry per category group.
 
-    Reproduces the ``_select_entries`` + grouping logic that was
-    duplicated verbatim across ``SimpleConsolidationStrategy``,
-    ``LLMConsolidationStrategy`` and ``DualModeConsolidationStrategy``.
+    Owns the shared category-grouping + highest-relevance selection
+    rule used by every consolidation strategy.
 
     Args:
         group_threshold: Minimum group size to trigger consolidation

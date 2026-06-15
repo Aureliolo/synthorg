@@ -5,6 +5,7 @@ collected, error taxonomy, and orchestration alert thresholds.
 """
 
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
@@ -59,16 +60,20 @@ class DetectorVariant(StrEnum):
 # checks and LLM semantic variants can operate on the full task
 # tree.  Attempting to configure an incompatible (variant, scope)
 # pair is a misconfiguration and is rejected at construction time.
-_VARIANT_SCOPES: dict[DetectorVariant, frozenset[DetectionScope]] = {
-    DetectorVariant.HEURISTIC: frozenset({DetectionScope.SAME_TASK}),
-    DetectorVariant.BEHAVIOR_CHECK: frozenset({DetectionScope.SAME_TASK}),
-    DetectorVariant.PROTOCOL_CHECK: frozenset(
-        {DetectionScope.SAME_TASK, DetectionScope.TASK_TREE},
-    ),
-    DetectorVariant.LLM_SEMANTIC: frozenset(
-        {DetectionScope.SAME_TASK, DetectionScope.TASK_TREE},
-    ),
-}
+_VARIANT_SCOPES: MappingProxyType[DetectorVariant, frozenset[DetectionScope]] = (
+    MappingProxyType(
+        {
+            DetectorVariant.HEURISTIC: frozenset({DetectionScope.SAME_TASK}),
+            DetectorVariant.BEHAVIOR_CHECK: frozenset({DetectionScope.SAME_TASK}),
+            DetectorVariant.PROTOCOL_CHECK: frozenset(
+                {DetectionScope.SAME_TASK, DetectionScope.TASK_TREE},
+            ),
+            DetectorVariant.LLM_SEMANTIC: frozenset(
+                {DetectionScope.SAME_TASK, DetectionScope.TASK_TREE},
+            ),
+        }
+    )
+)
 
 
 class DetectorCategoryConfig(BaseModel):

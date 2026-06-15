@@ -55,6 +55,14 @@ This page is the developer-oriented reference for the problem-type URIs and the 
 | 2005 | `IMMUTABLE_FIELD_MISMATCH` | A restore/rollback would change an immutable field (e.g. agent id/name/department) |
 | 2006 | `CHECKPOINT_ROLLBACK_UNAVAILABLE` | Fine-tune checkpoint rollback target is missing or unusable |
 | 2007 | `CHECKPOINT_ROLLBACK_CORRUPT` | Fine-tune checkpoint rollback backup data is corrupt |
+| 2008 | `RUN_HARD_CEILING_TOO_LOW` | Approved run hard-ceiling below the minimum |
+| 2009 | `LIVING_DOC_VALIDATION_ERROR` | Living-doc payload failed validation |
+| 2010 | `KNOWLEDGE_VALIDATION_ERROR` | Knowledge-source payload failed validation |
+| 2011 | `RESEARCH_VALIDATION_ERROR` | Research request failed validation |
+| 2012 | `BRAIN_ENTRY_VALIDATION_ERROR` | Project-brain entry failed validation |
+| 2013 | `STEERING_KIND_INVALID` | Steering directive kind not recognised |
+| 2014 | `STEERING_DIRECTIVE_FIELD_BLANK` | Steering directive required field blank |
+| 2015 | `STEERING_TASK_PROJECT_MISMATCH` | Steering task does not belong to the project |
 
 ## Not Found (3xxx)
 
@@ -80,6 +88,13 @@ The NotFound hierarchy is rooted at `NotFoundError`. Each resource has a dedicat
 | 3015 | `BACKUP_NOT_FOUND` | Backup archive |
 | 3016 | `MEMORY_ENTRY_NOT_FOUND` | Agent memory entry |
 | 3017 | `CONVERSATION_NOT_FOUND` | Conversation record |
+| 3018 | `LIVING_DOC_NOT_FOUND` | Living document |
+| 3019 | `KNOWLEDGE_SOURCE_NOT_FOUND` | Knowledge source |
+| 3020 | `RESEARCH_RUN_NOT_FOUND` | Research run record |
+| 3021 | `CHARTER_NOT_FOUND` | Company charter |
+| 3022 | `BRAIN_ENTRY_NOT_FOUND` | Project-brain entry |
+| 3023 | `DELIVERABLE_RECEIPT_NOT_FOUND` | Deliverable receipt |
+| 3024 | `API_KEY_NOT_FOUND` | API key |
 
 All share the same `type` URI; the numeric code is the discriminator.
 
@@ -106,6 +121,9 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 4016 | `PROJECT_WORKSPACE_NOT_PROVISIONED` | Project workspace required but never provisioned by the git backend |
 | 4017 | `LIVING_DOC_VERSION_CONFLICT` | Living-doc write lost an optimistic-concurrency race |
 | 4018 | `ENVIRONMENT_BACKEND_UNAVAILABLE` | Declaration needs a sandbox backend that is not active (e.g. devcontainer on the subprocess backend) |
+| 4019 | `CHARTER_ALREADY_DECIDED` | Late decision on an already-decided charter |
+| 4020 | `CHARTER_NOT_EDITABLE` | Charter cannot be edited in its current state |
+| 4021 | `BRAIN_ENTRY_REVISION_CONFLICT` | Project-brain entry optimistic-concurrency clash |
 
 ## Rate Limit (5xxx)
 
@@ -124,6 +142,10 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 6002 | `RISK_BUDGET_EXHAUSTED` | Per-risk-tier budget exceeded |
 | 6003 | `PROJECT_BUDGET_EXHAUSTED` | Project-scoped budget hard stop |
 | 6004 | `QUOTA_EXHAUSTED` | Metered feature quota reached |
+| 6005 | `COST_FORECAST_APPROVAL_REQUIRED` | Run blocked pending cost-forecast approval |
+| 6006 | `RUN_HARD_CEILING_EXCEEDED` | Per-brief hard ceiling exceeded |
+| 6007 | `COST_FORECAST_REJECTED` | Cost forecast was rejected |
+| 6008 | `RESEARCH_BUDGET_EXCEEDED` | Research budget exhausted |
 
 ## Provider / Integration (7xxx)
 
@@ -140,6 +162,7 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 7008 | `OAUTH_ERROR` | OAuth exchange failed |
 | 7009 | `WEBHOOK_ERROR` | Webhook receive/replay failure |
 | 7010 | `CONVERSATIONAL_PROPOSE_RESPONSE_INVALID` | Chief-of-Staff proposer returned an invalid response |
+| 7011 | `CHARTER_INTERVIEW_RESPONSE_INVALID` | Charter interview agent returned an invalid response |
 
 ## Internal (8xxx)
 
@@ -171,6 +194,16 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 8023 | `ENVIRONMENT_ERROR` | Generic reproducible-environment failure |
 | 8024 | `ENVIRONMENT_PROVISION_FAILED` | Environment setup/provisioning failed |
 | 8025 | `ENVIRONMENT_DOCKER_BUILD_FAILED` | Devcontainer image build failed |
+| 8026 | `RESEARCH_RUN_ERROR` | Research run failed |
+| 8027 | `RESEARCH_RETRIEVAL_ERROR` | Research retrieval failed |
+| 8028 | `RESEARCH_SYNTHESIS_ERROR` | Research synthesis failed |
+| 8029 | `RESEARCH_UNAVAILABLE` | Research subsystem unavailable |
+| 8030 | `FEATURE_DEPENDENCY_ERROR` | Required feature dependency unavailable |
+| 8031 | `BRAIN_INDEX_ERROR` | Project-brain index operation failed |
+| 8032 | `BRAIN_COMMIT_ERROR` | Project-brain commit to workspace failed |
+| 8033 | `NARRATIVE_GENERATION_ERROR` | Narrative generation failed |
+| 8034 | `NARRATIVE_SOURCE_UNAVAILABLE` | Narrative source data unavailable |
+| 8035 | `DELIVERABLE_RECEIPT_BUILD_ERROR` | Deliverable receipt build failed |
 
 ## Content negotiation
 
@@ -293,9 +326,10 @@ violation.
 
 `scripts/check_error_code_uniqueness.py` enforces this at pre-push and in
 CI. For each concrete `DomainError` subclass it collects the
-`(class, error_code, bases)` triple by AST across `**/errors.py`,
-`core/domain_errors.py`, and `core/persistence_errors.py`, groups by
-code, and fails a group unless its members share a common `DomainError`
+`(class, error_code, bases)` triple by AST across every `*.py` file
+under `src/synthorg/` (subclasses can live in any module, not only
+`errors.py`), groups by code, and fails a group unless its members
+share a common `DomainError`
 ancestor declaring that code, or the code is one of the shareable generic
 codes (`INTERNAL_ERROR`, `VALIDATION_ERROR`, `RESOURCE_NOT_FOUND`,
 `RESOURCE_CONFLICT`, `RECORD_NOT_FOUND`, ...). The gate is AST-only (no

@@ -36,6 +36,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | `check_domain_error_hierarchy.py` | push | `src/synthorg/` | full | no | `domain_error_hierarchy_baseline.txt` | keep |
 | `check_dto_types_ts_in_sync.py` | commit+push | `api/` + `core/` + `*.gen.ts` | full | no | none | keep |
 | `check_dual_backend_test_parity.py` | push | persistence protocols + conformance | full | no | `dual_backend_parity_baseline.txt` | keep |
+| `check_error_code_uniqueness.py` | push | `src/synthorg/**/*.py` | full | no | none | add |
 | `check_error_codes_ts_in_sync.py` | commit+push | `error_taxonomy.py` + `error-codes.gen.ts` | full | no | none | keep |
 | `check_feature_index_freshness.py` | push | `src/synthorg/` + `data/*.json` | full | no | none | keep |
 | `check_feature_manifest.py` | push | `src/synthorg/` | full | no | none | keep |

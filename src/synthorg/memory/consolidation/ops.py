@@ -1,21 +1,20 @@
 """Non-LLM consolidation ops for the axis split (ADR-0005).
 
-Each op owns its backend and reproduces one pre-split strategy's
-exact store + delete failure semantics:
+Each op owns its backend; the three differ deliberately in their
+store + delete failure semantics:
 
-- :class:`ConcatenationOp` -- Simple's truncated-bullet summary;
-  delete result ignored, every original appended to ``removed_ids``
-  (no ``try/except``, no bool check).
-- :class:`DensityRoutingOp` -- DualMode's ``_process_group``:
-  classify the *full* group (kept + to_remove) by majority vote,
-  build content extractively or abstractively, store with the
-  ``mode:<...>`` tag, delete with ``if not deleted: continue`` and
-  emit one :class:`ArchivalModeAssignment` per deleted original.
+- :class:`ConcatenationOp` -- truncated-bullet summary; delete result
+  ignored, every original appended to ``removed_ids`` (no
+  ``try/except``, no bool check).
+- :class:`DensityRoutingOp` -- classify the *full* group
+  (kept + to_remove) by majority vote, build content extractively or
+  abstractively, store with the ``mode:<...>`` tag, delete with
+  ``if not deleted: continue`` and emit one
+  :class:`ArchivalModeAssignment` per deleted original.
 - :class:`SingleModeOp` -- one archival-mode op parameterised by a
   content builder, bound to the extractive or abstractive mode via
   :func:`extractive_preservation_op` / :func:`abstractive_summarization_op`,
-  wrapping the existing preserver / summarizer with the DualMode-lineage
-  ``if not deleted: continue`` delete rule.
+  applying the ``if not deleted: continue`` delete rule.
 
 ``LLMSynthesisOp`` lives in
 :mod:`synthorg.memory.consolidation.llm_op` (its synthesis + prompt
@@ -71,12 +70,11 @@ class _PlainPrepareMixin:
 
 
 class ConcatenationOp(_PlainPrepareMixin):
-    """Simple strategy's operation: truncated-bullet concatenation.
+    """Truncated-bullet concatenation op.
 
-    Store + delete semantics reproduce ``SimpleConsolidationStrategy``
-    exactly: the summary is stored with the lone ``"consolidated"``
-    tag, then every entry is deleted with the backend result ignored
-    (no ``try/except``, no bool check) and unconditionally appended to
+    The summary is stored with the lone ``"consolidated"`` tag, then
+    every entry is deleted with the backend result ignored (no
+    ``try/except``, no bool check) and unconditionally appended to
     ``removed_ids``.
 
     Args:
@@ -119,7 +117,7 @@ class ConcatenationOp(_PlainPrepareMixin):
         category: MemoryCategory,
         entries: tuple[MemoryEntry, ...],
     ) -> str:
-        """Reproduce ``SimpleConsolidationStrategy._build_summary``.
+        """Build a truncated-bullet summary for *entries*.
 
         Returns:
             Result of type ``str``.
@@ -143,11 +141,11 @@ async def _delete_dual_mode(
     *,
     mode: ArchivalMode | None,
 ) -> tuple[list[NotBlankStr], list[ArchivalModeAssignment]]:
-    """DualMode delete rule: ``if not deleted: continue``.
+    """Density-routing delete rule: ``if not deleted: continue``.
 
     Returns the successfully-deleted ids and (when ``mode`` is given)
-    one :class:`ArchivalModeAssignment` per deleted original, matching
-    ``DualModeConsolidationStrategy._process_group`` byte-for-byte.
+    one :class:`ArchivalModeAssignment` per deleted original; an entry
+    whose delete returns ``False`` is skipped, not recorded.
 
     Returns:
         Tuple ``(list[NotBlankStr], list[ArchivalModeAssignment])``.
@@ -174,14 +172,12 @@ async def _delete_dual_mode(
 
 
 class DensityRoutingOp(_PlainPrepareMixin):
-    """DualMode's operation: density-routed extractive/abstractive.
+    """Density-routed extractive/abstractive consolidation op.
 
-    Reproduces ``DualModeConsolidationStrategy._process_group`` /
-    ``_build_content`` / ``_determine_group_mode`` exactly: classify
-    the *full* group (kept + to_remove) by majority vote (strict
-    ``>`` so a 50/50 split is ABSTRACTIVE), build the consolidated
-    content with the routed mode, store it tagged
-    ``("consolidated", "mode:<mode>")``, then delete with the
+    Classifies the *full* group (kept + to_remove) by majority vote
+    (strict ``>`` so a 50/50 split is ABSTRACTIVE), builds the
+    consolidated content with the routed mode, stores it tagged
+    ``("consolidated", "mode:<mode>")``, then deletes with the
     ``if not deleted: continue`` rule.
 
     Args:
@@ -210,7 +206,7 @@ class DensityRoutingOp(_PlainPrepareMixin):
         *,
         context: ConsolidationContext,
     ) -> OpResult:
-        """Classify -> route -> store -> delete (DualMode semantics).
+        """Classify -> route -> store -> delete one group.
 
         Returns:
             Result of type ``OpResult``.
@@ -272,7 +268,7 @@ class DensityRoutingOp(_PlainPrepareMixin):
         entries: tuple[MemoryEntry, ...],
         mode: ArchivalMode,
     ) -> str:
-        """Reproduce ``DualModeConsolidationStrategy._build_content``.
+        """Build consolidated content for *entries* under the given mode.
 
         Returns:
             Result of type ``str``.

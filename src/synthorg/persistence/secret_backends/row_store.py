@@ -25,8 +25,11 @@ from synthorg.core.types import NotBlankStr
 class SecretRowStore(Protocol):
     """Persist opaque ciphertext rows keyed by secret id.
 
-    Implementations own a single connection / pool so secret material
-    stays isolated from the main application data plane.
+    The SQLite implementation opens a dedicated per-call connection to
+    its own database file; the Postgres implementation shares the main
+    application connection pool and routes secret I/O through
+    parameterised statements on the dedicated ``connection_secrets``
+    table. Ciphertext is the only payload either ever handles.
     """
 
     @property

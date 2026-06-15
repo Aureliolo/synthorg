@@ -86,16 +86,14 @@ class ConsolidationResult(BaseModel):
         summary_ids: IDs of summary entries created during the run.
             Strategies that produce a single summary populate a
             one-element tuple; strategies that produce per-group
-            summaries (e.g. ``LLMConsolidationStrategy``) populate one
-            entry per group so callers see every summary, not just the
-            last one.  Callers that previously passed a scalar
-            ``summary_id=`` keyword (now a derived ``@computed_field``)
-            will hit a hard ``ValidationError`` because the model uses
+            summaries (e.g. the LLM synthesis op) populate one entry per
+            group so callers see every summary, not just the last one.
+            ``summary_id`` is a derived ``@computed_field``, not an input;
+            passing it as a keyword raises ``ValidationError`` under
             ``extra='forbid'`` -- no silent data loss.
         summary_id: Derived from ``summary_ids[-1]`` when any summary
-            was produced, otherwise ``None``.  Kept as a
-            ``@computed_field`` so callers that only need a single
-            representative id keep working.
+            was produced, otherwise ``None``.  A ``@computed_field`` for
+            callers that only need a single representative id.
         archived_count: Number of entries archived.
         consolidated_count: Derived from ``len(removed_ids)``.
         mode_assignments: Per-entry archival mode assignments (set by
@@ -194,8 +192,8 @@ class ConsolidationResult(BaseModel):
         """Representative summary id (last one produced, or ``None``).
 
         Derived from ``summary_ids``.  Callers that need every summary
-        (e.g. multi-category ``LLMConsolidationStrategy`` runs) should
-        read ``summary_ids`` directly.
+        (e.g. multi-category LLM synthesis runs) should read
+        ``summary_ids`` directly.
 
         Exposed as a plain ``@property`` (not ``@computed_field``) so
         it is NOT emitted by ``model_dump()``.  Otherwise the serialized

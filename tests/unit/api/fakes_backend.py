@@ -7,6 +7,7 @@ the 800-line budget.  Imports point directly at the extracted modules
 
 import contextlib
 from contextlib import AbstractAsyncContextManager
+from datetime import UTC, datetime
 from typing import Literal, override
 from unittest.mock import AsyncMock, Mock
 
@@ -126,7 +127,8 @@ class FakeRiskOverrideRepository:
         limit: int = 100,
     ) -> tuple[RiskTierOverride, ...]:
         limit = validate_pagination_args(limit, offset=0, event="fake.list_active")
-        active = [o for o in self._overrides.values() if o.is_active]
+        now = datetime.now(tz=UTC)
+        active = [o for o in self._overrides.values() if o.is_active(now)]
         active.sort(key=lambda o: o.created_at, reverse=True)
         return tuple(active[:limit])
 

@@ -96,9 +96,9 @@ code (an inheritance alias, e.g. a `NotFoundError` subclass that stays
 
 `scripts/check_error_code_uniqueness.py` (pre-push + CI) is the enforcement gate.
 For each concrete `DomainError` subclass it collects the
-`(class, error_code, bases)` triple by AST across `**/errors.py`,
-`core/domain_errors.py`, and
-`core/persistence_errors.py`, groups by code, and fails a group unless its
+`(class, error_code, bases)` triple by AST across every `*.py` file under
+`src/synthorg/` (subclasses can live in any module, not only `errors.py`),
+groups by code, and fails a group unless its
 members share a common `DomainError` ancestor declaring that code (the
 inheritance-alias case) or the code is one of the shareable generic codes
 (`INTERNAL_ERROR`, `VALIDATION_ERROR`, `RESOURCE_NOT_FOUND`, ...). The per-line

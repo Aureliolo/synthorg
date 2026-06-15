@@ -582,9 +582,14 @@ Each phase produces a `CoordinationPhaseResult` (success/failure + duration).
 | Dispatcher | Topology | Workspace Isolation | Wave Strategy |
 |-----------|----------|-------------------|---------------|
 | `SasDispatcher` | SAS | Never | Sequential waves from DAG |
-| `CentralizedDispatcher` | Centralised | Optional (config-driven) | DAG waves, post-execution merge |
-| `DecentralizedDispatcher` | Decentralised | Mandatory (raises if unavailable) | DAG waves, post-execution merge |
+| `WaveDispatcher` (`isolation_required=False`) | Centralised | Optional (config-driven) | DAG waves, post-execution merge |
+| `WaveDispatcher` (`isolation_required=True`) | Decentralised | Mandatory (raises if unavailable) | DAG waves, post-execution merge |
 | `ContextDependentDispatcher` | Context-dependent | Per-wave (multi-subtask waves only) | DAG waves, per-wave merge/teardown |
+
+A single `WaveDispatcher` serves both the centralised and decentralised
+topologies; the `isolation_required` constructor flag (set by the factory from
+the resolved `CoordinationTopology`) controls whether workspace isolation is
+optional or mandatory.
 
 The `select_dispatcher` factory maps a resolved `CoordinationTopology` to the
 appropriate dispatcher; `AUTO` must be resolved before dispatch.
