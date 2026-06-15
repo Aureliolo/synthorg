@@ -15,6 +15,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
 import { VersionHistorySection } from '@/components/version-rollback/VersionHistorySection'
 import { createVersionHistoryClient } from '@/api/endpoints/version-history'
+import { getWorkflow, rollbackWorkflow } from '@/api/endpoints/workflows'
 import { ROUTES } from '@/router/routes'
 
 export default function WorkflowVersionsPage() {
@@ -27,6 +28,18 @@ export default function WorkflowVersionsPage() {
       id
         ? createVersionHistoryClient<Record<string, unknown>>(
             `/workflows/${encodeURIComponent(id)}`,
+            // Workflow rollback needs the live definition revision for
+            // optimistic concurrency. Read it just before posting so the
+            // guard uses the freshest value; a concurrent edit between
+            // the read and the rollback surfaces as a 409 the dialog
+            // shows rather than silently clobbering.
+            async (input) => {
+              const defn = await getWorkflow(id)
+              return rollbackWorkflow(id, {
+                target_version: input.targetVersion,
+                expected_revision: defn.revision,
+              })
+            },
           )
         : null,
     [id],

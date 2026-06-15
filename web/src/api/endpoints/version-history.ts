@@ -8,12 +8,17 @@
  * * ``GET /<base>/versions`` -- cursor-paginated list
  * * ``GET /<base>/versions/{n}`` -- single version
  * * ``GET /<base>/versions/diff?from_version=&to_version=`` -- diff
- * * ``POST /<base>/versions/rollback`` -- (only on domains that
- *   support it; agent identity is the only one today).
  *
- * This factory yields a typed client over any of those paths.  The
- * snapshot shape is left generic so each domain can supply its own
- * payload type.
+ * Rollback is NOT uniform: the two rollback-capable domains diverge in
+ * URL, request body, and return entity (agent identity posts
+ * ``{target_version, reason?}`` to ``/<base>/versions/rollback`` and
+ * returns ``AgentIdentity``; workflows post ``{target_version,
+ * expected_revision}`` to ``/<base>/rollback`` and return
+ * ``WorkflowDefinition``).  So the rollback action is supplied per
+ * domain by the caller rather than synthesised from ``basePath``.
+ *
+ * This factory yields a typed client over the read paths.  The snapshot
+ * shape is left generic so each domain can supply its own payload type.
  */
 import {
   apiClient,
@@ -48,10 +53,26 @@ export interface VersionDiffResponse {
   readonly entries: readonly VersionDiffEntry[]
 }
 
-export interface RollbackRequest {
-  readonly to_version: number
+/**
+ * Domain-agnostic rollback input collected by the shared
+ * ``RollbackConfirmDialog``. Each domain's ``rollback`` function maps
+ * this onto its own wire body (agent identity -> ``{target_version,
+ * reason}``; workflow -> ``{target_version, expected_revision}``).
+ */
+export interface RollbackInput {
+  /** Snapshot version number to restore the entity to. */
+  readonly targetVersion: number
+  /** Operator-supplied justification recorded in the audit trail. */
   readonly reason: string
 }
+
+/**
+ * Per-domain rollback action. Resolves to the plain restored entity
+ * (``AgentIdentity`` / ``WorkflowDefinition``); the shared dialog
+ * discards the value, so it is typed ``unknown`` here. Callers that
+ * need the entity should use the domain endpoint helper directly.
+ */
+export type RollbackFn = (input: RollbackInput) => Promise<unknown>
 
 /**
  * Read-only contract: every domain that exposes version history
@@ -69,35 +90,33 @@ export interface ReadOnlyVersionHistoryClient<T> {
 
 /**
  * Rollback-capable contract: extends the read-only surface with
- * ``rollback``.  Backed today only by the agent-identity domain;
+ * ``rollback``.  Backed by the agent-identity and workflow domains;
  * other domains return a ``ReadOnlyVersionHistoryClient`` so the
  * type system surfaces the missing capability instead of letting
  * call sites hit a runtime 404 / 405.
  */
 export interface VersionHistoryClient<T> extends ReadOnlyVersionHistoryClient<T> {
-  rollback: (data: RollbackRequest) => Promise<VersionSnapshot<T>>
+  rollback: RollbackFn
 }
 
 /**
- * Build a rollback-capable version-history client.  ``basePath`` is
- * the absolute controller path: ``"/agents/example-agent"`` for the
- * agent-identity domain.  Trailing slashes are not added.  Only
- * domains whose backend exposes a rollback endpoint should use this
- * factory; every other domain should use
- * :func:`createReadOnlyVersionHistoryClient`.
+ * Build a rollback-capable version-history client.  ``basePath`` is the
+ * absolute read path: ``"/agents/example-agent"`` for the agent-identity
+ * domain, ``"/workflows/wf-1"`` for the workflow domain.  Trailing
+ * slashes are not added.  ``rollback`` is the domain-specific rollback
+ * action (it owns its own URL, request body, and return entity, which
+ * the agent-identity and workflow backends define differently); supply
+ * it via :func:`agents.rollbackAgentIdentity` /
+ * :func:`workflows.rollbackWorkflow`.  Domains with no rollback endpoint
+ * use :func:`createReadOnlyVersionHistoryClient`.
  */
 export function createVersionHistoryClient<T>(
   basePath: string,
+  rollback: RollbackFn,
 ): VersionHistoryClient<T> {
   return {
     ...createReadOnlyVersionHistoryClient<T>(basePath),
-    async rollback(data: RollbackRequest): Promise<VersionSnapshot<T>> {
-      const response = await apiClient.post<ApiResponse<VersionSnapshot<T>>>(
-        `${basePath}/versions/rollback`,
-        data,
-      )
-      return unwrap(response)
-    },
+    rollback,
   }
 }
 

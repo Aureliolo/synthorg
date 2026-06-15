@@ -1,5 +1,10 @@
 import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
-import type { ActiveAgentSummary, AgentHealthResponse } from '../types'
+import type {
+  ActiveAgentSummary,
+  AgentHealthResponse,
+  AgentIdentity,
+  RollbackAgentIdentityRequest,
+} from '../types'
 import type {
   AgentActivityEvent,
   AgentPerformanceSummary,
@@ -70,6 +75,25 @@ export async function getAgentHistory(agentId: string): Promise<readonly CareerE
 export async function getAgentHealth(agentId: string): Promise<AgentHealthResponse> {
   const response = await apiClient.get<ApiResponse<AgentHealthResponse>>(
     `/agents/${encodeURIComponent(agentId)}/health`,
+  )
+  return unwrap(response)
+}
+
+/**
+ * Roll an agent identity back to a prior snapshot version.
+ *
+ * Posts to the agent-identity rollback route (``POST
+ * /agents/{id}/versions/rollback``) and returns the freshly-restored
+ * ``AgentIdentity`` (a new version N+1 whose content matches the
+ * target). The backend audits the rollback under ``reason``.
+ */
+export async function rollbackAgentIdentity(
+  agentId: string,
+  data: RollbackAgentIdentityRequest,
+): Promise<AgentIdentity> {
+  const response = await apiClient.post<ApiResponse<AgentIdentity>>(
+    `/agents/${encodeURIComponent(agentId)}/versions/rollback`,
+    data,
   )
   return unwrap(response)
 }

@@ -49,8 +49,10 @@ function RollbackReasonBody({
  * earlier snapshot.  Surfaces a required reason field; the backend
  * audits the rollback under the supplied reason.
  *
- * Generic over the snapshot payload type; the only constraint is
- * that ``client.rollback`` resolves to a ``VersionSnapshot``.
+ * Generic over the snapshot payload type. The dialog collects only a
+ * target version and a reason; the client's per-domain ``rollback``
+ * function maps that onto its own wire body and the dialog discards the
+ * returned entity (it just toasts success).
  */
 export function RollbackConfirmDialog<T>({
   client,
@@ -67,7 +69,7 @@ export function RollbackConfirmDialog<T>({
   // function body can rely on it without a non-null assertion.
   const submitRollback = async (version: number): Promise<boolean> => {
     try {
-      await client.rollback({ to_version: version, reason: reason.trim() })
+      await client.rollback({ targetVersion: version, reason: reason.trim() })
       useToastStore.getState().add({
         variant: 'success',
         title: `Rolled back to v${version}`,
