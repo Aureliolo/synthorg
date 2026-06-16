@@ -419,7 +419,7 @@ async def test_publish_claim_bounded_by_timeout(
         if c.args and c.args[0] == WORKERS_TASK_QUEUE_PUBLISH_TIMEOUT
     ]
     assert len(matched) == 1
-    assert matched[0].kwargs["task_id"] == "task-slow"
+    assert matched[0].kwargs["subject"].endswith("task-slow")
     assert matched[0].kwargs["error_type"] == "TimeoutError"
 
 
