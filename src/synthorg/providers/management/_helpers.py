@@ -408,8 +408,13 @@ def models_from_litellm(
         )
         return ()
 
+    from synthorg.providers.drivers.litellm_model_info import (  # noqa: PLC0415
+        extract_model_metadata,
+    )
+    from synthorg.providers.family_parser import get_family_parser  # noqa: PLC0415
     from synthorg.providers.presets import MODEL_VERSION_FILTERS  # noqa: PLC0415
 
+    parser = get_family_parser()
     version_filter = MODEL_VERSION_FILTERS.get(litellm_provider)
     seen: dict[str, ProviderModelConfig] = {}
 
@@ -425,6 +430,16 @@ def models_from_litellm(
         if parsed is None:
             continue
         base_name, config = parsed
+        config = config.model_copy(
+            update={
+                "metadata": extract_model_metadata(
+                    info,
+                    litellm_provider=litellm_provider,
+                    model_id=config.id,
+                    parser=parser,
+                ),
+            },
+        )
         existing = seen.get(base_name)
         if existing is not None and len(existing.id) <= len(config.id):
             continue

@@ -19,6 +19,29 @@ class TestModelRequirement:
         assert req.priority == "balanced"
         assert req.min_context == 0
         assert req.capabilities == ()
+        assert req.requires_tools is False
+        assert req.requires_vision is False
+        assert req.requires_reasoning is False
+        assert req.family is None
+        assert req.model_pattern is None
+
+    def test_capability_and_family_fields(self) -> None:
+        req = ModelRequirement(
+            requires_tools=True,
+            requires_vision=True,
+            requires_reasoning=True,
+            family="example-large",
+            model_pattern="example-*",
+        )
+        assert req.requires_tools is True
+        assert req.requires_vision is True
+        assert req.requires_reasoning is True
+        assert req.family == "example-large"
+        assert req.model_pattern == "example-*"
+
+    def test_blank_family_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            ModelRequirement(family="   ")
 
     def test_frozen(self) -> None:
         req = ModelRequirement()
@@ -88,6 +111,20 @@ class TestParseModelRequirement:
             }
         )
         assert req.capabilities == ("reasoning", "tool_use")
+
+    def test_dict_with_capability_requirements(self) -> None:
+        req = parse_model_requirement(
+            {
+                "requires_vision": True,
+                "requires_tools": True,
+                "family": "example-large",
+                "model_pattern": "example-*",
+            }
+        )
+        assert req.requires_vision is True
+        assert req.requires_tools is True
+        assert req.family == "example-large"
+        assert req.model_pattern == "example-*"
 
 
 @pytest.mark.unit

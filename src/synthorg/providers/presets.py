@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Pre-defined provider presets for common LLM backends.
 
 Presets provide sensible defaults for popular providers so users
@@ -36,9 +37,11 @@ import re
 from types import MappingProxyType
 from typing import Final
 
+from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.providers._preset_audit import audit_presets
 from synthorg.providers.enums import AuthType
+from synthorg.providers.family_parser import FamilyRule
 from synthorg.providers.preset_models import (
     CloudPreset,
     LocalPreset,
@@ -47,6 +50,7 @@ from synthorg.providers.preset_models import (
 from synthorg.providers.preset_softlist import build_soft_presets
 
 __all__ = [
+    "MODEL_FAMILY_RULES",
     "MODEL_VERSION_FILTERS",
     "PROVIDER_PRESETS",
     "CloudPreset",
@@ -80,6 +84,15 @@ _ANTHROPIC = CloudPreset(
             cost_per_1k_input=0.003,
             cost_per_1k_output=0.015,
             max_context=200_000,
+            metadata=ModelMetadata(
+                supports_tools=True,
+                supports_vision=True,
+                supports_reasoning=True,
+                max_output_tokens=64_000,
+                family="claude-sonnet",
+                generation=4.6,
+                metadata_source="preset",
+            ),
         ),
         ProviderModelConfig(
             id="claude-haiku-4-5-20251001",
@@ -87,6 +100,14 @@ _ANTHROPIC = CloudPreset(
             cost_per_1k_input=0.0008,
             cost_per_1k_output=0.004,
             max_context=200_000,
+            metadata=ModelMetadata(
+                supports_tools=True,
+                supports_vision=True,
+                max_output_tokens=32_000,
+                family="claude-haiku",
+                generation=4.5,
+                metadata_source="preset",
+            ),
         ),
     ),
 )
@@ -106,6 +127,14 @@ _OPENAI = CloudPreset(
             cost_per_1k_input=0.002,
             cost_per_1k_output=0.008,
             max_context=1_047_576,
+            metadata=ModelMetadata(
+                supports_tools=True,
+                supports_vision=True,
+                max_output_tokens=32_768,
+                family="gpt",
+                generation=4.1,
+                metadata_source="preset",
+            ),
         ),
         ProviderModelConfig(
             id="gpt-4.1-mini",
@@ -113,6 +142,14 @@ _OPENAI = CloudPreset(
             cost_per_1k_input=0.0004,
             cost_per_1k_output=0.0016,
             max_context=1_047_576,
+            metadata=ModelMetadata(
+                supports_tools=True,
+                supports_vision=True,
+                max_output_tokens=32_768,
+                family="gpt-mini",
+                generation=4.1,
+                metadata_source="preset",
+            ),
         ),
         ProviderModelConfig(
             id="o3",
@@ -120,6 +157,15 @@ _OPENAI = CloudPreset(
             cost_per_1k_input=0.002,
             cost_per_1k_output=0.008,
             max_context=200_000,
+            metadata=ModelMetadata(
+                supports_tools=True,
+                supports_vision=True,
+                supports_reasoning=True,
+                max_output_tokens=100_000,
+                family="o",
+                generation=3.0,
+                metadata_source="preset",
+            ),
         ),
     ),
 )
@@ -139,6 +185,15 @@ _GEMINI = CloudPreset(
             cost_per_1k_input=0.00125,
             cost_per_1k_output=0.01,
             max_context=1_048_576,
+            metadata=ModelMetadata(
+                supports_tools=True,
+                supports_vision=True,
+                supports_reasoning=True,
+                max_output_tokens=65_536,
+                family="gemini-pro",
+                generation=2.5,
+                metadata_source="preset",
+            ),
         ),
         ProviderModelConfig(
             id="gemini-2.5-flash",
@@ -146,6 +201,14 @@ _GEMINI = CloudPreset(
             cost_per_1k_input=0.00015,
             cost_per_1k_output=0.0006,
             max_context=1_048_576,
+            metadata=ModelMetadata(
+                supports_tools=True,
+                supports_vision=True,
+                max_output_tokens=65_536,
+                family="gemini-flash",
+                generation=2.5,
+                metadata_source="preset",
+            ),
         ),
     ),
 )
@@ -158,7 +221,37 @@ _MISTRAL = CloudPreset(
     litellm_provider="mistral",
     auth_type=AuthType.API_KEY,
     supported_auth_types=(AuthType.API_KEY,),
-    default_models=(),
+    default_models=(
+        ProviderModelConfig(
+            id="mistral-large-2411",
+            alias="mistral-large",
+            cost_per_1k_input=0.002,
+            cost_per_1k_output=0.006,
+            max_context=128_000,
+            metadata=ModelMetadata(
+                supports_tools=True,
+                max_output_tokens=8_192,
+                family="mistral-large",
+                generation=2.0,
+                metadata_source="preset",
+            ),
+        ),
+        ProviderModelConfig(
+            id="mistral-small-2503",
+            alias="mistral-small",
+            cost_per_1k_input=0.0002,
+            cost_per_1k_output=0.0006,
+            max_context=128_000,
+            metadata=ModelMetadata(
+                supports_tools=True,
+                supports_vision=True,
+                max_output_tokens=8_192,
+                family="mistral-small",
+                generation=3.0,
+                metadata_source="preset",
+            ),
+        ),
+    ),
 )
 
 _MOONSHOT = CloudPreset(
@@ -169,7 +262,36 @@ _MOONSHOT = CloudPreset(
     litellm_provider="moonshot",
     auth_type=AuthType.API_KEY,
     supported_auth_types=(AuthType.API_KEY,),
-    default_models=(),
+    default_models=(
+        ProviderModelConfig(
+            id="kimi-k2-0905-preview",
+            alias="kimi-k2",
+            cost_per_1k_input=0.0006,
+            cost_per_1k_output=0.0025,
+            max_context=256_000,
+            metadata=ModelMetadata(
+                supports_tools=True,
+                max_output_tokens=16_384,
+                family="kimi",
+                generation=2.0,
+                metadata_source="preset",
+            ),
+        ),
+        ProviderModelConfig(
+            id="moonshot-v1-128k",
+            alias="moonshot-128k",
+            cost_per_1k_input=0.0012,
+            cost_per_1k_output=0.0012,
+            max_context=128_000,
+            metadata=ModelMetadata(
+                supports_tools=True,
+                max_output_tokens=8_192,
+                family="moonshot",
+                generation=1.0,
+                metadata_source="preset",
+            ),
+        ),
+    ),
 )
 
 _NVIDIA_NIM = CloudPreset(
@@ -191,7 +313,37 @@ _GROQ = CloudPreset(
     litellm_provider="groq",
     auth_type=AuthType.API_KEY,
     supported_auth_types=(AuthType.API_KEY,),
-    default_models=(),
+    default_models=(
+        ProviderModelConfig(
+            id="llama-3.3-70b-versatile",
+            alias="groq-llama",
+            cost_per_1k_input=0.00059,
+            cost_per_1k_output=0.00079,
+            max_context=128_000,
+            metadata=ModelMetadata(
+                supports_tools=True,
+                max_output_tokens=32_768,
+                family="llama",
+                generation=3.3,
+                metadata_source="preset",
+            ),
+        ),
+        ProviderModelConfig(
+            id="openai/gpt-oss-120b",
+            alias="groq-gpt-oss",
+            cost_per_1k_input=0.00015,
+            cost_per_1k_output=0.00075,
+            max_context=131_072,
+            metadata=ModelMetadata(
+                supports_tools=True,
+                supports_reasoning=True,
+                max_output_tokens=32_768,
+                family="gpt-oss",
+                generation=1.0,
+                metadata_source="preset",
+            ),
+        ),
+    ),
 )
 
 _DEEPSEEK = CloudPreset(
@@ -202,7 +354,37 @@ _DEEPSEEK = CloudPreset(
     litellm_provider="deepseek",
     auth_type=AuthType.API_KEY,
     supported_auth_types=(AuthType.API_KEY,),
-    default_models=(),
+    default_models=(
+        ProviderModelConfig(
+            id="deepseek-chat",
+            alias="deepseek-chat",
+            cost_per_1k_input=0.00027,
+            cost_per_1k_output=0.0011,
+            max_context=128_000,
+            metadata=ModelMetadata(
+                supports_tools=True,
+                max_output_tokens=8_192,
+                family="deepseek-chat",
+                generation=3.0,
+                metadata_source="preset",
+            ),
+        ),
+        ProviderModelConfig(
+            id="deepseek-reasoner",
+            alias="deepseek-reasoner",
+            cost_per_1k_input=0.00055,
+            cost_per_1k_output=0.00219,
+            max_context=128_000,
+            metadata=ModelMetadata(
+                supports_tools=True,
+                supports_reasoning=True,
+                max_output_tokens=65_536,
+                family="deepseek-reasoner",
+                generation=1.0,
+                metadata_source="preset",
+            ),
+        ),
+    ),
 )
 
 _FIREWORKS = CloudPreset(
@@ -269,7 +451,46 @@ _OLLAMA_CLOUD = CloudPreset(
     # entering an API key alone.
     default_base_url="https://ollama.com",
     requires_base_url=False,
-    default_models=(),
+    default_models=(
+        ProviderModelConfig(
+            id="gpt-oss:120b",
+            alias="oss-120b",
+            max_context=131_072,
+            metadata=ModelMetadata(
+                supports_tools=True,
+                supports_reasoning=True,
+                max_output_tokens=32_768,
+                family="gpt-oss",
+                generation=1.0,
+                metadata_source="preset",
+            ),
+        ),
+        ProviderModelConfig(
+            id="deepseek-v3.1:671b",
+            alias="deepseek-v3",
+            max_context=160_000,
+            metadata=ModelMetadata(
+                supports_tools=True,
+                supports_reasoning=True,
+                max_output_tokens=32_768,
+                family="deepseek-v",
+                generation=3.1,
+                metadata_source="preset",
+            ),
+        ),
+        ProviderModelConfig(
+            id="qwen3-coder:480b",
+            alias="qwen3-coder",
+            max_context=256_000,
+            metadata=ModelMetadata(
+                supports_tools=True,
+                max_output_tokens=32_768,
+                family="qwen-coder",
+                generation=3.0,
+                metadata_source="preset",
+            ),
+        ),
+    ),
 )
 
 # ── Self-hosted / local ────────────────────────────────────────
@@ -336,7 +557,53 @@ _OPENROUTER = CloudPreset(
     auth_type=AuthType.API_KEY,
     supported_auth_types=(AuthType.API_KEY,),
     default_base_url="https://openrouter.ai/api/v1",
-    default_models=(),
+    default_models=(
+        ProviderModelConfig(
+            id="anthropic/claude-sonnet-4.5",
+            alias="or-sonnet",
+            cost_per_1k_input=0.003,
+            cost_per_1k_output=0.015,
+            max_context=200_000,
+            metadata=ModelMetadata(
+                supports_tools=True,
+                supports_vision=True,
+                supports_reasoning=True,
+                max_output_tokens=64_000,
+                family="claude-sonnet",
+                generation=4.5,
+                metadata_source="preset",
+            ),
+        ),
+        ProviderModelConfig(
+            id="openai/gpt-4.1",
+            alias="or-gpt",
+            cost_per_1k_input=0.002,
+            cost_per_1k_output=0.008,
+            max_context=1_047_576,
+            metadata=ModelMetadata(
+                supports_tools=True,
+                supports_vision=True,
+                max_output_tokens=32_768,
+                family="gpt",
+                generation=4.1,
+                metadata_source="preset",
+            ),
+        ),
+        ProviderModelConfig(
+            id="deepseek/deepseek-chat",
+            alias="or-deepseek",
+            cost_per_1k_input=0.00027,
+            cost_per_1k_output=0.0011,
+            max_context=128_000,
+            metadata=ModelMetadata(
+                supports_tools=True,
+                max_output_tokens=8_192,
+                family="deepseek-chat",
+                generation=3.0,
+                metadata_source="preset",
+            ),
+        ),
+    ),
 )
 
 _SAMBANOVA = CloudPreset(
@@ -369,7 +636,39 @@ _XAI = CloudPreset(
     litellm_provider="xai",
     auth_type=AuthType.API_KEY,
     supported_auth_types=(AuthType.API_KEY,),
-    default_models=(),
+    default_models=(
+        ProviderModelConfig(
+            id="grok-4",
+            alias="grok-4",
+            cost_per_1k_input=0.003,
+            cost_per_1k_output=0.015,
+            max_context=256_000,
+            metadata=ModelMetadata(
+                supports_tools=True,
+                supports_vision=True,
+                supports_reasoning=True,
+                max_output_tokens=64_000,
+                family="grok",
+                generation=4.0,
+                metadata_source="preset",
+            ),
+        ),
+        ProviderModelConfig(
+            id="grok-3-mini",
+            alias="grok-3-mini",
+            cost_per_1k_input=0.0003,
+            cost_per_1k_output=0.0005,
+            max_context=131_072,
+            metadata=ModelMetadata(
+                supports_tools=True,
+                supports_reasoning=True,
+                max_output_tokens=32_768,
+                family="grok-mini",
+                generation=3.0,
+                metadata_source="preset",
+            ),
+        ),
+    ),
 )
 
 
@@ -542,5 +841,79 @@ def default_models_for(
 MODEL_VERSION_FILTERS: Final[MappingProxyType[str, re.Pattern[str]]] = MappingProxyType(
     {
         "anthropic": re.compile(r"^claude-(opus|sonnet|haiku)-4-[56789]"),
+        "openai": re.compile(r"^(gpt-[45]|o[34])"),
+        "xai": re.compile(r"^grok-[34]"),
     }
+)
+
+
+# ── Model family / generation parsing rules ──────────────────
+# Per-provider capturing rules consumed by ``RegexFamilyParser`` to split
+# a model id into a stable ``family`` label and a sortable ``generation``.
+# Each rule's ``capture`` exposes named groups ``gen`` (the version token)
+# plus any of ``family`` / ``date`` / a variant group referenced by
+# ``family_template``.  Providers absent here fall back to the parser's
+# generic heuristic.  Vendor names are allowed in this module per CLAUDE.md.
+
+MODEL_FAMILY_RULES: Final[MappingProxyType[str, tuple[FamilyRule, ...]]] = (
+    MappingProxyType(
+        {
+            "anthropic": (
+                FamilyRule(
+                    capture=re.compile(
+                        r"^(?P<family>claude-(?:opus|sonnet|haiku))-"
+                        r"(?P<gen>\d+(?:-\d+)?)$",
+                    ),
+                    family_template="{family}",
+                ),
+            ),
+            "openai": (
+                FamilyRule(
+                    capture=re.compile(
+                        r"^gpt-(?P<gen>\d+(?:\.\d+)?)(?P<variant>-mini|-nano)?$",
+                    ),
+                    family_template="gpt{variant}",
+                ),
+                FamilyRule(
+                    capture=re.compile(r"^o(?P<gen>\d+)(?P<variant>-mini|-pro)?$"),
+                    family_template="o{variant}",
+                ),
+            ),
+            "gemini": (
+                FamilyRule(
+                    capture=re.compile(
+                        r"^gemini-(?P<gen>\d+(?:\.\d+)?)-"
+                        r"(?P<variant>pro|flash-lite|flash)$",
+                    ),
+                    family_template="gemini-{variant}",
+                ),
+            ),
+            "mistral": (
+                FamilyRule(
+                    capture=re.compile(
+                        r"^mistral-(?P<variant>large|medium|small)-(?P<gen>\d+)$",
+                    ),
+                    family_template="mistral-{variant}",
+                ),
+            ),
+            "xai": (
+                FamilyRule(
+                    capture=re.compile(
+                        r"^grok-(?P<gen>\d+)(?P<variant>-mini|-fast|-vision)?$",
+                    ),
+                    family_template="grok{variant}",
+                ),
+            ),
+            "moonshot": (
+                FamilyRule(
+                    capture=re.compile(r"^kimi-k(?P<gen>\d+)"),
+                    family_template="kimi",
+                ),
+                FamilyRule(
+                    capture=re.compile(r"^moonshot-v(?P<gen>\d+)"),
+                    family_template="moonshot",
+                ),
+            ),
+        }
+    )
 )

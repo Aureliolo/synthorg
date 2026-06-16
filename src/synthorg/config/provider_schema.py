@@ -10,6 +10,7 @@ from typing import ClassVar, Self
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.budget.quota import DegradationConfig, SubscriptionConfig
+from synthorg.config.model_metadata import ModelMetadata
 from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
@@ -73,6 +74,10 @@ class ProviderModelConfig(BaseModel):
     local_params: LocalModelParams | None = Field(
         default=None,
         description="Per-model launch parameters for local providers",
+    )
+    metadata: ModelMetadata = Field(
+        default_factory=ModelMetadata,
+        description="Capability and family/generation metadata (enriched at ingest)",
     )
 
 

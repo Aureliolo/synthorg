@@ -15,7 +15,7 @@ from synthorg.core.normalization import (
     normalize_ascii_lowercase,
     normalize_ascii_lowercase_or_default,
 )
-from synthorg.core.types import ModelTier
+from synthorg.core.types import ModelTier, NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
     TEMPLATE_MODEL_REQUIREMENT_INVALID,
@@ -48,6 +48,13 @@ class ModelRequirement(BaseModel):
         tier: Cost/capability tier (large = most capable, small = cheapest).
         priority: Optimization axis when multiple models match a tier.
         min_context: Minimum context window in tokens (0 = no minimum).
+        requires_tools: Hard-require function/tool-calling support.
+        requires_vision: Hard-require image-input support.
+        requires_reasoning: Hard-require extended-reasoning support.
+        family: Resolve to the newest configured model in this family
+            (e.g. ``"claude-sonnet"``); pins a concrete id at match time.
+        model_pattern: Resolve to the newest configured model whose id
+            matches this glob (e.g. ``"gpt-4*"``); pins a concrete id.
         capabilities: Future-use capability tags (e.g. ``"reasoning"``).
     """
 
@@ -62,6 +69,26 @@ class ModelRequirement(BaseModel):
         default=0,
         ge=0,
         description="Minimum context window in tokens",
+    )
+    requires_tools: bool = Field(
+        default=False,
+        description="Hard-require function/tool-calling support",
+    )
+    requires_vision: bool = Field(
+        default=False,
+        description="Hard-require image-input support",
+    )
+    requires_reasoning: bool = Field(
+        default=False,
+        description="Hard-require extended-reasoning support",
+    )
+    family: NotBlankStr | None = Field(
+        default=None,
+        description="Resolve to the newest configured model in this family",
+    )
+    model_pattern: NotBlankStr | None = Field(
+        default=None,
+        description="Resolve to the newest configured model id matching this glob",
     )
     capabilities: tuple[str, ...] = Field(
         default=(),

@@ -4,10 +4,13 @@ Runs identically against the SQLite and Postgres backends via the
 shared ``backend`` fixture in ``conftest.py``.
 """
 
+import json
 from datetime import UTC, datetime
 
 import pytest
 
+from synthorg.config.model_metadata import ModelMetadata
+from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.settings_protocol import SettingRow
@@ -47,6 +50,46 @@ class TestSettingsGetSet:
         assert datetime.fromisoformat(result.updated_at) == datetime(
             2026, 4, 10, 12, tzinfo=UTC
         )
+
+    async def test_provider_config_metadata_blob_round_trip(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        # Provider configs persist as a JSON blob in the settings table;
+        # the nested model metadata must survive the round trip.
+        config = ProviderConfig(
+            litellm_provider="test-provider",
+            models=(
+                ProviderModelConfig(
+                    id="example-large-001",
+                    metadata=ModelMetadata(
+                        supports_vision=True,
+                        family="example-large",
+                        generation=2.0,
+                        metadata_source="litellm",
+                    ),
+                ),
+            ),
+        )
+        blob = json.dumps({"test": config.model_dump(mode="json")})
+        await backend.settings.save(
+            SettingRow(
+                namespace=NotBlankStr("providers"),
+                key=NotBlankStr("configs"),
+                value=blob,
+                updated_at=_ts(2026, 4, 11),
+            ),
+        )
+        result = await backend.settings.get(
+            (NotBlankStr("providers"), NotBlankStr("configs")),
+        )
+        assert result is not None
+        restored = ProviderConfig.model_validate(json.loads(result.value)["test"])
+        meta = restored.models[0].metadata
+        assert meta.supports_vision is True
+        assert meta.family == "example-large"
+        assert meta.generation == 2.0
+        assert meta.metadata_source == "litellm"
 
     async def test_set_upserts_existing_key(
         self,

@@ -71,7 +71,7 @@ from synthorg.providers.drivers.litellm_kwargs import (
     _apply_completion_config,
 )
 from synthorg.providers.drivers.litellm_model_info import (
-    coerce_max_output_tokens,
+    extract_model_metadata,
     get_litellm_model_info,
 )
 from synthorg.providers.drivers.litellm_tool_accumulator import (
@@ -80,6 +80,7 @@ from synthorg.providers.drivers.litellm_tool_accumulator import (
     emit_pending_tool_calls,
 )
 from synthorg.providers.enums import AuthType, StreamEventType
+from synthorg.providers.family_parser import get_family_parser
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
@@ -393,21 +394,18 @@ class LiteLLMDriver(BaseCompletionProvider):
         """
         litellm_model = f"{self._routing_key}/{model_config.id}"
         info = get_litellm_model_info(litellm_model)
+        metadata = extract_model_metadata(
+            info,
+            litellm_provider=self._routing_key,
+            model_id=model_config.id,
+            parser=get_family_parser(),
+        )
 
         fallback = self._config.defaults.fallback_max_output_tokens
-        raw_max_output = (
-            info.get("max_output_tokens", 0) or info.get("max_tokens", 0) or fallback
-        )
-        max_output = coerce_max_output_tokens(
-            raw_max_output,
-            fallback=fallback,
-            litellm_model=litellm_model,
-        )
+        max_output = metadata.max_output_tokens or fallback
         streaming_raw = info.get("supports_native_streaming")
         supports_streaming = True if streaming_raw is None else bool(streaming_raw)
-        supports_tools = bool(
-            info.get("supports_function_calling", False),
-        )
+        supports_tools = metadata.supports_tools
 
         return ModelCapabilities(
             model_id=model_config.id,
@@ -415,9 +413,7 @@ class LiteLLMDriver(BaseCompletionProvider):
             max_context_tokens=model_config.max_context,
             max_output_tokens=min(max_output, model_config.max_context),
             supports_tools=supports_tools,
-            supports_vision=bool(
-                info.get("supports_vision", False),
-            ),
+            supports_vision=metadata.supports_vision,
             supports_streaming=supports_streaming,
             supports_streaming_tool_calls=supports_tools and supports_streaming,
             supports_system_messages=bool(
