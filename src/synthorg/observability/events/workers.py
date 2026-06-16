@@ -91,6 +91,7 @@ WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED: Final[str] = (
     "workers.task_queue.unsubscribe_failed"
 )
 WORKERS_TASK_QUEUE_DRAIN_FAILED: Final[str] = "workers.task_queue.drain_failed"
+WORKERS_TASK_QUEUE_PUBLISH_TIMEOUT: Final[str] = "workers.task_queue.publish_timeout"
 WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED: Final[str] = (
     "workers.task_queue.ack_malformed_failed"
 )

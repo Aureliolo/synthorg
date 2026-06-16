@@ -27,6 +27,7 @@ from synthorg.core.company import CompanyConfig
 from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
 from synthorg.engine.coordination.section_config import CoordinationSectionConfig
 from synthorg.engine.evolution.config import EvolutionConfig
+from synthorg.engine.stagnation.models import StagnationDetectionConfig
 from synthorg.engine.strategy.models import StrategyConfig
 from synthorg.engine.workflow.config import WorkflowConfig
 from synthorg.hr.performance.config import PerformanceConfig
@@ -113,6 +114,11 @@ class RootConfigFactory(ModelFactory[RootConfig]):
     # EvolutionConfig whose nested ShadowEvaluationConfig fails its cross-field
     # validator.
     evolution = EvolutionConfig()
+    # Pinned to the valid default: polyfactory generates the nested
+    # StagnationConfig's window_size and min_tool_turns independently and
+    # intermittently produces min_tool_turns > window_size, which the model's
+    # cross-field validator rejects.
+    stagnation = StagnationDetectionConfig()
     coordination = CoordinationSectionConfig()
     strategy = StrategyConfig()
     backup = BackupConfig()

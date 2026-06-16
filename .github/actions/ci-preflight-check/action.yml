@@ -57,6 +57,33 @@ runs:
           "autorelease: pending"
         )
 
+        # Ride a transient enumeration failure (5xx, brief outage, and
+        # crucially the GitHub per-installation SECONDARY RATE LIMIT) through
+        # bounded exponential backoff before conceding a check is inconclusive.
+        # The preflight treats an un-enumerable check as a gap, which REOPENS
+        # the tracking issue; a single `sleep 1` retry is far too short to
+        # outlast a rate-limit window, so an API-rate-limit storm (the same one
+        # that bursts the Docker attestation jobs) was misreported here as a
+        # config "regression" and flapped the tracker open. 5 attempts with
+        # 2->4->8->16s backoff (~30s) outlasts a secondary-limit window while
+        # staying well inside the job's 5-minute timeout. Retries on the
+        # PIPELINE exit status only: a successful-but-empty enumeration (a fork
+        # with no labels) yields `[]` at exit 0 and is NOT retried.
+        gh_api_list() {
+          local path="$1" filter="$2" out backoff=2 attempt
+          for attempt in 1 2 3 4 5; do
+            if out=$(gh api "$path" --paginate --jq "$filter" 2>/dev/null | jq -s 'add // []'); then
+              printf '%s' "$out"
+              return 0
+            fi
+            if [ "$attempt" -lt 5 ]; then
+              sleep "$backoff"
+              backoff=$((backoff * 2))
+            fi
+          done
+          return 1
+        }
+
         # `gaps_found` only flips for *blocking* checks (envs missing,
         # labels missing). Branch protection is informational -- it can
         # never be queried by the workflow's default token, so it is
@@ -64,23 +91,20 @@ runs:
         gaps_found=false
 
         # ── Environments ──────────────────────────────────────────
-        # Single-shot retry to absorb transient API hiccups; on a hard
-        # failure (e.g. token can't read environments) we degrade to a
-        # skipped check rather than flagging every env as missing.
-        # The `sleep 1` between attempts gives a transient rate-limit
-        # or brief outage a moment to clear before re-firing.
+        # On a hard failure (e.g. token can't read environments) we degrade to
+        # a skipped check rather than flagging every env as missing. The
+        # `gh_api_list` helper rides transient failures (incl. the secondary
+        # rate limit) through bounded backoff before conceding.
         declare -A env_exists
         envs_block=""
         envs_status="OK"
         envs_skipped=false
-        # Paginate via `--paginate` so a repo with more than 30
+        # Paginate (inside the helper) so a repo with more than 30
         # environments enumerates fully. Realistically this repo has
         # 7, but a fork that has added custom environments should not
         # see false-positive "missing" entries because we only saw
         # the first page.
-        if existing_envs_json=$(gh api "repos/$GH_REPO/environments" --paginate --jq '[.environments[]?.name]' 2>/dev/null \
-            | jq -s 'add // []' \
-            || (sleep 1 && gh api "repos/$GH_REPO/environments" --paginate --jq '[.environments[]?.name]' | jq -s 'add // []')); then
+        if existing_envs_json=$(gh_api_list "repos/$GH_REPO/environments" '[.environments[]?.name]'); then
           missing_envs=()
           for env in "${EXPECTED_ENVS[@]}"; do
             if jq -e --arg n "$env" 'index($n) != null' <<<"$existing_envs_json" >/dev/null; then
@@ -128,8 +152,7 @@ runs:
         # every label regardless of total count.
         labels_block=""
         labels_status="OK"
-        if existing_labels_json=$(gh api "repos/$GH_REPO/labels" --paginate --jq '[.[].name]' 2>/dev/null \
-            | jq -s 'add // []'); then
+        if existing_labels_json=$(gh_api_list "repos/$GH_REPO/labels" '[.[].name]'); then
           missing_labels=()
           for label in "${EXPECTED_LABELS[@]}"; do
             if ! jq -e --arg n "$label" 'index($n) != null' <<<"$existing_labels_json" >/dev/null; then

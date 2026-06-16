@@ -1196,8 +1196,8 @@
     },
     "src/synthorg/workers/claim.py": {
       "cap": 700,
-      "loc": 667,
-      "ratio": 0.953,
+      "loc": 698,
+      "ratio": 0.997,
       "tier": "adapter"
     },
     "src/synthorg/workers/worker.py": {

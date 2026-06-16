@@ -116,6 +116,33 @@ def test_unrelated_classes_same_specific_code_flagged(tmp_path: Path) -> None:
     assert any("WIDGET_NOT_FOUND" in m for m in messages), messages
 
 
+def test_tab_declared_class_is_not_skipped(tmp_path: Path) -> None:
+    """A class declared with a tab after the keyword is still scanned.
+
+    The no-class fast-path keys on the ``class`` keyword plus whitespace;
+    Python allows that whitespace to be a tab, so a ``class``-tab-declared
+    duplicate must still be flagged rather than silently bypassed by the
+    parse-skip optimisation.
+    """
+    project_root, src_root = _make_project(
+        tmp_path,
+        {
+            "src/synthorg/a/errors.py": (
+                "from synthorg.core.domain_errors import NotFoundError\n"
+                "class\tWidgetNotFoundError(NotFoundError):\n"
+                "    error_code = ErrorCode.WIDGET_NOT_FOUND\n"
+            ),
+            "src/synthorg/b/errors.py": (
+                "from synthorg.core.domain_errors import NotFoundError\n"
+                "class\tGadgetNotFoundError(NotFoundError):\n"
+                "    error_code = ErrorCode.WIDGET_NOT_FOUND\n"
+            ),
+        },
+    )
+    messages = _MODULE._scan_tree(project_root, src_root)
+    assert any("WIDGET_NOT_FOUND" in m for m in messages), messages
+
+
 def test_inheritance_alias_allowed(tmp_path: Path) -> None:
     """A subclass re-declaring an ancestor's code is an allowed alias."""
     project_root, src_root = _make_project(

@@ -35,6 +35,7 @@ from synthorg.observability.events.workers import (
     WORKERS_TASK_QUEUE_CLAIM_PARSE_FAILED,
     WORKERS_TASK_QUEUE_CONNECT_FAILED,
     WORKERS_TASK_QUEUE_DRAIN_FAILED,
+    WORKERS_TASK_QUEUE_PUBLISH_TIMEOUT,
     WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED,
 )
 from synthorg.workers.config import QueueConfig
@@ -77,6 +78,14 @@ within a bounded window must mark the queue unrestartable rather than
 hang forever. 10 seconds covers the routine ``client.drain()`` ack
 flush; a longer wait usually means the NATS server is unreachable and
 the operator should treat the queue as poisoned.
+"""
+
+_PUBLISH_TIMEOUT_SECONDS: Final[float] = 10.0
+"""Hard deadline on a JetStream publish's PubAck round-trip.
+
+``js.publish`` is otherwise unbounded, so a stalled broker would block
+forever; every other broker round-trip here is already bounded. Matches
+the stop-drain deadline.
 """
 
 
@@ -461,7 +470,7 @@ class JetStreamTaskQueue:
             raise BusStreamError(msg)
         subject = f"{self._queue_config.ready_subject_prefix}.{claim.task_id}"
         payload = claim.model_dump_json().encode("utf-8")
-        await self._js.publish(subject, payload)
+        await self._publish_bounded(subject, payload)
 
     async def publish_dead(self, claim: TaskClaim) -> None:
         """Republish a claim to the dead-letter subject.
@@ -489,7 +498,34 @@ class JetStreamTaskQueue:
             raise BusStreamError(msg)
         subject = f"{self._queue_config.dead_subject_prefix}.{claim.task_id}"
         payload = claim.model_dump_json().encode("utf-8")
-        await self._js.publish(subject, payload)
+        await self._publish_bounded(subject, payload)
+
+    async def _publish_bounded(self, subject: str, payload: bytes) -> None:
+        """Publish to JetStream, bounding the PubAck round-trip.
+
+        ``wait_for`` keeps the ``js.publish`` call shape, so duck-typed test
+        doubles are unaffected. The subject embeds the task id for the log.
+
+        Raises:
+            BusStreamError: When the publish exceeds the deadline.
+        """
+        if self._js is None:
+            msg = "Task queue is not running"
+            raise BusStreamError(msg)
+        try:
+            await asyncio.wait_for(
+                self._js.publish(subject, payload),
+                timeout=_PUBLISH_TIMEOUT_SECONDS,
+            )
+        except TimeoutError as exc:
+            logger.warning(
+                WORKERS_TASK_QUEUE_PUBLISH_TIMEOUT,
+                subject=subject,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = f"JetStream publish to {subject} exceeded {_PUBLISH_TIMEOUT_SECONDS}s"
+            raise BusStreamError(msg, context={"subject": subject}) from exc
 
     async def core_publish(self, subject: str, payload: bytes) -> None:
         """Publish on the core NATS connection (NOT JetStream).
