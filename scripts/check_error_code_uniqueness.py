@@ -272,8 +272,9 @@ def _index_file(path: Path, rel: str) -> tuple[list[_ClassEntry], str | None]:
     # Skipping the parse for those (the majority of utility / constant
     # modules) avoids the gate's now-dominant cost. The substring can only
     # over-include (a ``class`` in a comment / string -> a harmless parse),
-    # never under-include: every real ``ClassDef`` carries the keyword.
-    if "class " not in text:
+    # never under-include: every real ``ClassDef`` carries the keyword
+    # followed by whitespace, which Python allows to be a space OR a tab.
+    if "class " not in text and "class\t" not in text:
         return [], None
     try:
         tree = ast.parse(text, filename=str(path))
