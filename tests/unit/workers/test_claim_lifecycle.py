@@ -26,6 +26,7 @@ from synthorg.communication.config import NatsConfig
 from synthorg.observability.events.workers import (
     WORKERS_QUEUE_NOT_RUNNING,
     WORKERS_QUEUE_START_REJECTED,
+    WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED,
 )
 from synthorg.workers.claim import (
     _MAX_CLAIM_PAYLOAD_BYTES,
@@ -475,6 +476,9 @@ async def test_stop_unsubscribe_timeout_logs_and_continues(
 
     assert queue._sub is None
     spy.warning.assert_called_once()
+    # Assert the telemetry EVENT too, not just the error type: a regression
+    # that swapped the event constant would otherwise pass.
+    assert spy.warning.call_args.args[0] == WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED
     assert spy.warning.call_args.kwargs["error_type"] == "TimeoutError"
 
 

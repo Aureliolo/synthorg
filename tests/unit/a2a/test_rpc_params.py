@@ -61,17 +61,30 @@ class TestA2AMessageSendParams:
 
     @pytest.mark.unit
     def test_method_is_literal(self) -> None:
-        """A non-matching method literal is rejected."""
+        """A non-matching method literal is rejected.
+
+        Includes a valid ``message_id`` so the failure is the method
+        literal, not the now-required idempotency key.
+        """
         with pytest.raises(ValidationError):
             A2AMessageSendParams.model_validate(
-                {"method": "tasks/get", "message": {"role": "user", "parts": []}},
+                {
+                    "method": "tasks/get",
+                    "message": {
+                        "role": "user",
+                        "parts": [{"type": "text", "text": "hi"}],
+                    },
+                    "message_id": _MESSAGE_ID,
+                },
             )
 
     @pytest.mark.unit
     def test_message_required(self) -> None:
-        """Missing message field is rejected."""
+        """Missing message field is rejected (with a valid message_id)."""
         with pytest.raises(ValidationError):
-            A2AMessageSendParams.model_validate({"method": "message/send"})
+            A2AMessageSendParams.model_validate(
+                {"method": "message/send", "message_id": _MESSAGE_ID},
+            )
 
     @pytest.mark.unit
     def test_message_must_have_parts(self) -> None:
@@ -81,6 +94,7 @@ class TestA2AMessageSendParams:
                 {
                     "method": "message/send",
                     "message": {"role": "user", "parts": []},
+                    "message_id": _MESSAGE_ID,
                 },
             )
 
@@ -95,6 +109,7 @@ class TestA2AMessageSendParams:
                         "role": "user",
                         "parts": [{"type": "text", "text": "hi"}],
                     },
+                    "message_id": _MESSAGE_ID,
                     "id": "stowaway",
                 },
             )

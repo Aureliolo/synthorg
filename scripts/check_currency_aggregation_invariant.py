@@ -244,6 +244,49 @@ def _guard_call_iter_source(node: ast.Call) -> str | None:
     return _comp_iter_source(node.args[0])
 
 
+def _attribute_root_name(attr: ast.Attribute) -> str | None:
+    """Leftmost ``Name`` of an attribute chain (``r.detail.cost`` -> ``r``)."""
+    node: ast.expr = attr.value
+    while isinstance(node, ast.Attribute):
+        node = node.value
+    return node.id if isinstance(node, ast.Name) else None
+
+
+def _augassign_iter_source(
+    node: ast.AugAssign,
+    parents: dict[int, ast.AST],
+) -> str | None:
+    """Source collection accumulated by *node*, or ``None`` if undeterminable.
+
+    Resolves ``total += r.cost`` to the iter source of the enclosing
+    ``for r in <source>`` loop so a preceding guard only clears the check
+    when it guards that SAME collection -- a guard over an unrelated
+    collection must not clear an accumulation of a different one. Returns
+    ``None`` (caller falls back to scope-only matching, the conservative
+    behaviour) when the accumulated variable or its binding loop cannot be
+    canonicalised, so this never adds a false positive.
+    """
+    root_names = {
+        _attribute_root_name(sub)
+        for sub in ast.walk(node.value)
+        if isinstance(sub, ast.Attribute) and sub.attr in _GUARDED_FIELDS
+    }
+    root_names.discard(None)
+    if len(root_names) != 1:
+        return None
+    (var_name,) = root_names
+    current: ast.AST | None = parents.get(id(node))
+    while current is not None:
+        if (
+            isinstance(current, ast.For)
+            and isinstance(current.target, ast.Name)
+            and current.target.id == var_name
+        ):
+            return _expr_source_id(current.iter)
+        current = parents.get(id(current))
+    return None
+
+
 def _enclosing_scope(node: ast.AST, parents: dict[int, ast.AST]) -> ast.AST | None:
     """Return the nearest enclosing FunctionDef / AsyncFunctionDef / Module."""
     current: ast.AST | None = parents.get(id(node))
@@ -319,9 +362,10 @@ def _scope_has_preceding_guard_at(
     """Position-based core of :func:`_scope_has_preceding_guard`.
 
     Shared by the ``Call`` aggregator path and the ``AugAssign``
-    accumulation path; the latter has no comprehension source, so it
-    passes ``target_source=None`` and is cleared by any preceding guard
-    in the same scope.
+    accumulation path. Both resolve a ``target_source`` when they can (the
+    comprehension iter, resp. the enclosing ``for`` loop's iter); an
+    unresolved source (``None``) falls back to scope-only matching, cleared
+    by any preceding guard in the scope.
     """
     for sub in _walk_current_scope(scope):
         if not isinstance(sub, ast.Call):
@@ -405,8 +449,9 @@ def _scan_file(file_path: Path, rel: str) -> list[str]:
                 continue
             scope = _enclosing_scope(node, parents)
             target_pos = (node.lineno, node.col_offset)
+            aug_source = _augassign_iter_source(node, parents)
             if scope is not None and _scope_has_preceding_guard_at(
-                scope, target_pos, None
+                scope, target_pos, aug_source
             ):
                 continue
             issues.append(f"{rel}:{node.lineno}: {_VIOLATION_DETAIL}")

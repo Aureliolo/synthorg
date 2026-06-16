@@ -378,8 +378,17 @@ class CostTracker(CostTrackerSummaryMixin):
         # and skips re-billing. Best-effort and fail-open: a write
         # failure logs but does not roll back the increment (the
         # in-memory LRU still guards same-process duplicates), mirroring
-        # the aggregate path's best-effort contract.
-        await self._mark_durable_claim_billed(cost_record)
+        # the aggregate path's best-effort contract. The reservation is
+        # still held here, so a cancellation crossing this await must
+        # release it -- otherwise the claim_id stays pinned and a retry
+        # is falsely deduped (``except Exception`` would miss
+        # CancelledError, so catch BaseException).
+        try:
+            await self._mark_durable_claim_billed(cost_record)
+        except BaseException:
+            async with self._get_lock():
+                self._inflight_claims.discard(cost_record.claim_id)
+            raise
 
         async with self._get_lock():
             # Promote the reservation to a finalised LRU entry under

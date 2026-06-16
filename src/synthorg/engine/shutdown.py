@@ -103,6 +103,15 @@ class ShutdownStrategy(Protocol):
         """Signal that a graceful shutdown has been requested."""
         ...
 
+    def clear_shutdown(self) -> None:
+        """Clear the shutdown flag so a reused strategy accepts work again.
+
+        Called when an app lifespan re-enters on a reused instance (shared
+        test app, in-place restart): without it the flag set by a prior
+        shutdown stays latched and the drain gate rejects every new task.
+        """
+        ...
+
     def is_shutting_down(self) -> bool:
         """Return ``True`` when shutdown has been requested."""
         ...
@@ -161,6 +170,10 @@ class CooperativeTimeoutStrategy:
     def request_shutdown(self) -> None:
         """Signal that a graceful shutdown has been requested."""
         self._shutdown_event.set()
+
+    def clear_shutdown(self) -> None:
+        """Reopen the drain gate for a reused strategy (lifespan re-entry)."""
+        self._shutdown_event.clear()
 
     def is_shutting_down(self) -> bool:
         """Return ``True`` when shutdown has been requested."""
@@ -563,6 +576,17 @@ class ShutdownManager:
         :meth:`initiate_shutdown` from the on-shutdown hook.
         """
         self._strategy.request_shutdown()
+
+    def reset(self) -> None:
+        """Reopen the drain gate so a reused manager accepts work again.
+
+        A reused :class:`AppState` (shared-app tests, in-place restart)
+        keeps this manager across lifespans; the strategy's shutdown flag,
+        once set by a prior shutdown, otherwise stays latched and
+        :meth:`register_task` rejects every task on the next lifespan.
+        Called at lifespan startup before any task can register.
+        """
+        self._strategy.clear_shutdown()
 
     async def initiate_shutdown(self) -> ShutdownResult:
         """Invoke the strategy's shutdown sequence.

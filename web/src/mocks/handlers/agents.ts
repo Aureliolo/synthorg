@@ -11,6 +11,10 @@ import type {
   rollbackAgentIdentity,
   setAutonomy,
 } from '@/api/endpoints/agents'
+import type {
+  VersionHistoryClient,
+  VersionSnapshot,
+} from '@/api/endpoints/version-history'
 import type { AgentHealthResponse, AgentIdentity, AgentIdentityDiff } from '@/api/types'
 import type { AgentConfig, AgentPerformanceSummary } from '@/api/types/agents'
 import type { AutonomyLevel } from '@/api/types/enums'
@@ -243,14 +247,11 @@ export const agentsHandlers = [
     ),
   ),
   http.get('/api/v1/agents/:agentId/versions', () =>
-    HttpResponse.json({
-      data: [],
-      error: null,
-      error_detail: null,
-      success: true,
-      pagination: { limit: 200, next_cursor: null, has_more: false },
-      degraded_sources: [],
-    }),
+    HttpResponse.json(
+      paginatedFor<VersionHistoryClient<Record<string, unknown>>['list']>(
+        emptyPage<VersionSnapshot<Record<string, unknown>>>(),
+      ),
+    ),
   ),
   http.get('/api/v1/agents/:agentId/versions/diff', ({ params, request }) => {
     const url = new URL(request.url)

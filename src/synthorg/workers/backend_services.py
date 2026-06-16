@@ -108,6 +108,11 @@ class DistributedBackendServices:
         cannot interleave with this fan-out.
         """
         async with self._lifecycle_lock:
+            if self.is_running:
+                # Already fully started: a second start() queued behind the
+                # lock would re-call each component's non-idempotent start()
+                # and duplicate subscribers/pruners. Make start() idempotent.
+                return
             started: list[tuple[str, _LifecycleComponent]] = []
             failed_component = "<unknown>"
             try:

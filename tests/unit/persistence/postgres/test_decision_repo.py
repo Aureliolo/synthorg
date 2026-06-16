@@ -75,6 +75,26 @@ class _RaisingPool:
         yield _RaisingConnection()
 
 
+class _NoIOPool:
+    """Pool whose ``connection()`` fails the test if ever entered.
+
+    Pagination validation must reject BEFORE any I/O, so a correctly
+    guarded ``query()`` never opens a connection. Used by the
+    invalid-pagination test so its ``QueryError`` can only come from the
+    pre-I/O guard, never from a transport error.
+    """
+
+    def __init__(self) -> None:
+        self.connection_calls = 0
+
+    @asynccontextmanager
+    async def connection(self) -> AsyncIterator[object]:
+        self.connection_calls += 1
+        msg = "connection() entered: pagination guard must reject before I/O"
+        raise AssertionError(msg)
+        yield  # pragma: no cover - unreachable; satisfies the generator type
+
+
 def _repo() -> PostgresDecisionRepository:
     pool = mock_of[AsyncConnectionPool](connection=_RaisingPool().connection)
     return PostgresDecisionRepository(pool)
@@ -105,5 +125,11 @@ async def test_purge_before_translates_psycopg_error() -> None:
     [(0, 0), (-1, 0), (1, -1)],
 )
 async def test_query_rejects_invalid_pagination(limit: int, offset: int) -> None:
+    no_io = _NoIOPool()
+    repo = PostgresDecisionRepository(
+        mock_of[AsyncConnectionPool](connection=no_io.connection),
+    )
     with pytest.raises(QueryError):
-        await _repo().query(DecisionFilterSpec(), limit=limit, offset=offset)
+        await repo.query(DecisionFilterSpec(), limit=limit, offset=offset)
+    # The guard must reject before any connection is opened.
+    assert no_io.connection_calls == 0

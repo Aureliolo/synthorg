@@ -404,13 +404,13 @@ async def generate_training_data(  # noqa: PLR0913
     Generate synthetic query-document pairs from source documents.
     No manual annotation required.
 
-    When no ``llm_provider`` is available, generates simple
-    extractive queries from chunk content.
+    Always generates simple extractive queries from chunk content.
 
     Args:
         source_dir: Directory containing org documents.
         output_dir: Directory to write training data.
-        llm_provider: Optional LLM provider for generation.
+        llm_provider: Reserved for a future LLM-backed query path; currently
+            unused -- passing it does not change the generated output.
         validation_split: Fraction held out for evaluation.
         progress_callback: Called with progress 0.0-1.0.
         cancellation: Checked between documents.

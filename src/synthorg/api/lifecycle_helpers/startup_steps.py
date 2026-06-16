@@ -142,8 +142,8 @@ async def install_runtime_services(
     # boots (test fixtures, dev apps with no DB) skip wiring.
     _try_wire_cost_dial(app_state)
     # Attach durable metric repos to the performance tracker now that the
-    # backend is connected (audit 103: a restart otherwise discards all
-    # recorded task/collaboration performance metrics).
+    # backend is connected; a restart otherwise discards all recorded
+    # task/collaboration performance metrics.
     _try_wire_performance_persistence(app_state)
     # Seed the measured benchmark-score repo from the committed artifact
     # (idempotent; measured arm only) now the cost-dial repo is wired.

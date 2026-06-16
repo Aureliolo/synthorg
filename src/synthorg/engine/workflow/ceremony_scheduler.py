@@ -618,6 +618,12 @@ class CeremonyScheduler:
         fired_one_shot = await self._fire_ceremonies(one_shot, sprint)
 
         async with self._lock:
+            # A concurrent deactivate/activate may have switched the active
+            # sprint during the unlocked fire above. Mutating counters or
+            # saving under a stale ``sprint.id`` would corrupt the now-active
+            # sprint's persisted state, so re-confirm identity first.
+            if self._active_sprint is None or self._active_sprint.id != sprint.id:
+                return transitioned
             for name in fired_per_task:
                 if name in self._completion_counters:
                     self._completion_counters[name] = 0
@@ -720,17 +726,22 @@ class CeremonyScheduler:
 
     # -- One-shot ceremonies -------------------------------------------
 
-    @staticmethod
-    def _select_sprint_start_ceremonies(config: SprintConfig) -> list[str]:
-        """Names of ceremonies configured with the sprint_start trigger.
+    def _select_sprint_start_ceremonies(self, config: SprintConfig) -> list[str]:
+        """Names of sprint_start ceremonies not yet fired this sprint.
+
+        Excludes names already in ``_fired_once_triggers`` (restored by
+        ``_hydrate_state_from_repo`` on a restart) so re-activating an
+        in-progress sprint does not re-fire one-shot sprint-start
+        ceremonies that already ran.
 
         Returns:
-            The sprint-start ceremony names (pure; no I/O).
+            The eligible sprint-start ceremony names (pure; no I/O).
         """
         return [
             ceremony.name
             for ceremony in config.ceremonies
             if _get_trigger(ceremony) == TRIGGER_SPRINT_START
+            and ceremony.name not in self._fired_once_triggers
         ]
 
     def _select_one_shot_ceremonies(

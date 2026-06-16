@@ -169,9 +169,14 @@ class BrownfieldSourceResolver:
             raise BrownfieldSourceUnavailableError(msg)
         validation = await validate_clone_url_host(source_ref, self._network_policy)
         if isinstance(validation, str):
+            # Log only host + scheme: the full ``source_ref`` can carry
+            # sensitive query/fragment tokens (``?token=...``) that the
+            # embedded-credential guard above does not strip.
+            rejected = urlsplit(source_ref)
             logger.warning(
                 BROWNFIELD_IMPORT_REJECTED,
-                source_ref=source_ref,
+                host=rejected.hostname or "<none>",
+                scheme=rejected.scheme or "<none>",
                 reason="host_blocked_or_unresolvable",
             )
             raise BrownfieldSourceUnavailableError(validation)

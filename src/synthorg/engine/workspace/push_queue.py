@@ -106,9 +106,19 @@ class PushQueueCoordinator:
         self._closing = False
 
     async def start(self) -> None:
-        """Start the background queue worker (idempotent)."""
+        """Start the background queue worker (idempotent).
+
+        Restarts when no worker is live OR a ``stop()`` is mid-drain
+        (``_closing`` set, the old worker still exiting on its sentinel).
+        Without the ``_closing`` arm a ``start()`` that interleaves a drain
+        would see the draining worker as not-done and return a silent
+        no-op, leaving the coordinator stopped with no worker. The fresh
+        worker takes the new queue; ``stop()``'s reset is guarded by
+        ``self._worker is worker`` so it cannot clobber it, and the old
+        worker drains its own captured queue to the sentinel independently.
+        """
         async with self._lifecycle_lock:
-            if self._worker is None or self._worker.done():
+            if self._worker is None or self._worker.done() or self._closing:
                 self._queue = asyncio.Queue()
                 self._closing = False
                 self._worker = asyncio.create_task(self._worker_loop())

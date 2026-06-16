@@ -9,6 +9,7 @@ duplicate. ``has_seen`` is the pre-increment existence check.
 """
 
 import contextlib
+import math
 from datetime import datetime, timedelta
 
 import psycopg
@@ -82,6 +83,13 @@ class PostgresProjectCostClaimSeenRepository:
         Raises:
             QueryError: If the database query fails.
         """
+        # Reject non-finite / non-positive TTLs before the timedelta: a
+        # negative or zero value yields ``expires_at <= seen_at`` (the row's
+        # CHECK rejects it post-round-trip) and a non-finite value overflows
+        # the datetime arithmetic. Fail fast with a typed error.
+        if not math.isfinite(ttl_seconds) or ttl_seconds <= 0:
+            msg = f"ttl_seconds must be finite and positive, got {ttl_seconds!r}"
+            raise QueryError(msg)
         seen_at = normalize_utc(now)
         expires_at = seen_at + timedelta(seconds=ttl_seconds)
         try:

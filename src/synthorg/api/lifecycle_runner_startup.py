@@ -128,6 +128,13 @@ async def _run_startup(  # noqa: PLR0913
             wire fails in provider-present mode.
     """
     logger.info(API_APP_STARTUP, version=__version__)
+    # A reused AppState (shared-app tests, in-place restart) carries the
+    # prior lifespan's shutdown flags: the cooperative ShutdownManager's
+    # drain gate stays closed (register_task would reject every task) and
+    # the shutdown Event stays set. Clear both at lifespan entry, before
+    # any task can register, so a restarted app accepts work again.
+    app_state.shutdown_manager.reset()
+    app_state.shutdown_requested.clear()
     await _safe_startup(
         persistence,
         message_bus,

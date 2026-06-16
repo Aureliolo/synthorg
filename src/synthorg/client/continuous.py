@@ -35,6 +35,7 @@ from synthorg.client.runner import SimulationRunner
 from synthorg.observability import get_logger
 from synthorg.observability.events.client import (
     CONTINUOUS_MODE_DISABLED,
+    CONTINUOUS_MODE_START_REJECTED,
     CONTINUOUS_MODE_STARTED,
     CONTINUOUS_MODE_STOPPED,
 )
@@ -131,7 +132,7 @@ class ContinuousMode:
         # find ``_running=False``, never observing the conflict.
         async with self._lifecycle_lock:
             if self._running:
-                logger.warning(CONTINUOUS_MODE_STARTED, reason="already_running")
+                logger.warning(CONTINUOUS_MODE_START_REJECTED, reason="already_running")
                 msg = "ContinuousMode is already running"
                 raise RuntimeError(msg)
             self._running = True

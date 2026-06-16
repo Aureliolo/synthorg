@@ -603,21 +603,18 @@ def _send_params(
     )
 
 
-class _SingleSlotIdempotencyRepo:
-    """Single-slot in-memory ``IdempotencyRepository`` for handler tests.
+class _KeyedIdempotencyRepo:
+    """Per-``(scope, key)`` in-memory ``IdempotencyRepository`` for tests.
 
-    Models FRESH -> (callback) -> COMPLETED for one ``(scope, key)`` at a
-    time, which is all the gateway handler exercises: a fresh app-state
-    per test gives a fresh service, and the dedup test replays the same
-    key against the same instance so the second claim returns the cached
-    body.
+    Models FRESH -> (callback) -> COMPLETED independently per ``(scope,
+    key)`` pair. Keying by the pair (rather than a single global slot) is
+    what lets the dedup test prove the gateway derives the idempotency key
+    correctly: a mis-keyed claim would land in a different slot and replay
+    FRESH instead of the cached body.
     """
 
     def __init__(self) -> None:
-        from synthorg.persistence.idempotency_protocol import IdempotencyOutcome
-
-        self._outcome = IdempotencyOutcome.FRESH
-        self._cached: str | None = None
+        self._completed: dict[tuple[object, object], str] = {}
 
     async def claim(
         self, *, scope: object, key: object, ttl_seconds: int, now: object
@@ -625,15 +622,16 @@ class _SingleSlotIdempotencyRepo:
         from synthorg.core.types import NotBlankStr
         from synthorg.persistence.idempotency_protocol import IdempotencyOutcome
 
-        del scope, key, ttl_seconds, now
-        if self._outcome is IdempotencyOutcome.FRESH:
+        del ttl_seconds, now
+        cached = self._completed.get((scope, key))
+        if cached is None:
             return IdempotencyClaim(
                 outcome=IdempotencyOutcome.FRESH,
                 claim_token=NotBlankStr("tok"),
             )
         return IdempotencyClaim(
-            outcome=self._outcome,
-            cached_response=self._cached,
+            outcome=IdempotencyOutcome.COMPLETED,
+            cached_response=cached,
         )
 
     async def complete(
@@ -645,11 +643,8 @@ class _SingleSlotIdempotencyRepo:
         response_hash: str,
         claim_token: object,
     ) -> bool:
-        from synthorg.persistence.idempotency_protocol import IdempotencyOutcome
-
-        del scope, key, response_hash, claim_token
-        self._cached = response_body
-        self._outcome = IdempotencyOutcome.COMPLETED
+        del response_hash, claim_token
+        self._completed[(scope, key)] = response_body
         return True
 
     async def fail(self, *, scope: object, key: object, claim_token: object) -> bool:
@@ -676,7 +671,7 @@ def _app_state_with_engine(task_engine: object) -> AppState:
         task_engine=task_engine,
         slices={
             ApiCoreStateSlice: {
-                "idempotency_service": IdempotencyService(_SingleSlotIdempotencyRepo()),
+                "idempotency_service": IdempotencyService(_KeyedIdempotencyRepo()),
             },
         },
     )

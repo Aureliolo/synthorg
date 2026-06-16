@@ -89,6 +89,11 @@ logger = get_logger(__name__)
 # would let a client burn arbitrary CPU on a single request.
 MAX_BATCH_SNAPSHOTS_LOOKUP: Final[int] = 1024
 
+# Bound the best-effort durable metric write: without it a hung backend
+# stalls the save indefinitely and the fail-open WARNING below never
+# fires, so the metric is neither persisted nor reported as lost.
+_PERSIST_TIMEOUT_SECONDS: Final[float] = 5.0
+
 
 def _coerce_finite_weights(
     raw: Iterable[tuple[str, float]],
@@ -427,7 +432,8 @@ class PerformanceTracker:
         if repo is None:
             return
         try:
-            await repo.save(record)  # type: ignore[arg-type]
+            async with asyncio.timeout(_PERSIST_TIMEOUT_SECONDS):
+                await repo.save(record)  # type: ignore[arg-type]
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(

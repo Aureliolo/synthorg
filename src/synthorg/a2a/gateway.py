@@ -77,6 +77,7 @@ from synthorg.observability.events.a2a import (
     A2A_JSONRPC_INVALID_PARAMS,
     A2A_JSONRPC_METHOD_NOT_FOUND,
     A2A_JSONRPC_PARSE_ERROR,
+    A2A_MESSAGE_SEND_IDEMPOTENCY_REJECTED,
     A2A_TASK_CANCELLED,
     A2A_TASK_CREATED,
 )
@@ -941,7 +942,7 @@ async def _handle_message_send(
     )
     if outcome.timed_out:
         logger.warning(
-            A2A_JSONRPC_INVALID_PARAMS,
+            A2A_MESSAGE_SEND_IDEMPOTENCY_REJECTED,
             reason="message_send_in_flight",
             message_id=str(params.message_id),
             peer_name=peer_name,
@@ -954,7 +955,7 @@ async def _handle_message_send(
     cached = outcome.result
     if not isinstance(cached, dict):
         logger.error(
-            A2A_JSONRPC_INVALID_PARAMS,
+            A2A_MESSAGE_SEND_IDEMPOTENCY_REJECTED,
             reason="idempotency_cache_corrupt",
             message_id=str(params.message_id),
             peer_name=peer_name,

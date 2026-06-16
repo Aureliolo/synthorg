@@ -77,11 +77,12 @@ export function RollbackConfirmDialog<T>({
       })
       return true
     } catch (err) {
-      log.warn('rollback_failed', { error: sanitizeForLog(getErrorMessage(err)) })
+      const message = getErrorMessage(err)
+      log.warn('rollback_failed', { error: sanitizeForLog(message) })
       useToastStore.getState().add({
         variant: 'error',
         title: 'Rollback failed',
-        description: getErrorMessage(err),
+        description: message,
       })
       return false
     } finally {

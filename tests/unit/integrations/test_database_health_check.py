@@ -47,6 +47,29 @@ async def listening_port() -> AsyncIterator[int]:
         yield port
 
 
+@pytest.fixture
+async def refused_port() -> int:
+    """An ephemeral loopback port with nothing listening on it.
+
+    Binds port 0 to claim a free port, then closes the server so a connect
+    deterministically refuses. Avoids the environment-dependent assumption
+    that a hardcoded port (e.g. 1) is always closed.
+    """
+
+    async def _noop(
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+    ) -> None:  # pragma: no cover - server is closed before any connect
+        del reader
+        writer.close()
+
+    server = await asyncio.start_server(_noop, host="127.0.0.1", port=0)
+    port = server.sockets[0].getsockname()[1]
+    server.close()
+    await server.wait_closed()
+    return port
+
+
 @pytest.mark.unit
 class TestDatabaseHealthCheck:
     def test_uses_injected_clock(self) -> None:
@@ -61,11 +84,14 @@ class TestDatabaseHealthCheck:
         assert report.status == ConnectionStatus.HEALTHY
         assert report.error_detail is None
 
-    async def test_unreachable_endpoint_is_unhealthy(self) -> None:
-        # Port 1 on loopback refuses connections, so the probe fails
-        # fast with a connection error rather than a false HEALTHY.
+    async def test_unreachable_endpoint_is_unhealthy(self, refused_port: int) -> None:
+        # A claimed-then-closed ephemeral port refuses connections
+        # deterministically, so the probe fails fast with a connection
+        # error rather than a false HEALTHY (no env-dependent hardcoded port).
         check = DatabaseHealthCheck()
-        report = await check.check(_connection(host="127.0.0.1", port="1"))
+        report = await check.check(
+            _connection(host="127.0.0.1", port=str(refused_port)),
+        )
         assert report.status == ConnectionStatus.UNHEALTHY
         assert report.error_detail is not None
 

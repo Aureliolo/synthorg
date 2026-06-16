@@ -25,6 +25,10 @@ SIMULATION_RUN_UPDATE_REJECTED: Final[str] = "simulation.run.update_rejected"
 SIMULATION_ROUND_COMPLETED: Final[str] = "simulation.round.completed"
 CONTINUOUS_MODE_DISABLED: Final[str] = "continuous.mode.disabled"
 CONTINUOUS_MODE_STARTED: Final[str] = "continuous.mode.started"
+# Rejected start attempt (already running) -- kept distinct from
+# CONTINUOUS_MODE_STARTED so a refused duplicate start does not inflate
+# successful-start counts on dashboards.
+CONTINUOUS_MODE_START_REJECTED: Final[str] = "continuous.mode.start_rejected"
 CONTINUOUS_MODE_STOPPED: Final[str] = "continuous.mode.stopped"
 CLIENT_FEEDBACK_SINK_FAILED: Final[str] = "client.feedback.sink_failed"
 

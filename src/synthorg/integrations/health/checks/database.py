@@ -129,8 +129,11 @@ class DatabaseHealthCheck:
             OSError: If the TCP connection cannot be established.
             TimeoutError: If the connection attempt exceeds the budget.
         """
+        # Bound the whole socket lifecycle, not just the connect: a stalled
+        # close/wait_closed outside the timeout would block the health check
+        # indefinitely despite the connect guard.
         async with asyncio.timeout(_TCP_TIMEOUT_SECONDS):
             _, writer = await asyncio.open_connection(host, port)
-        writer.close()
-        with contextlib.suppress(OSError):
-            await writer.wait_closed()
+            writer.close()
+            with contextlib.suppress(OSError):
+                await writer.wait_closed()
