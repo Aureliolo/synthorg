@@ -117,6 +117,10 @@ async function rollbackImpl(
 ): Promise<void> {
   const defn = get().definition
   if (!defn) return
+  // In-store re-entrancy guard: a second rollback while one is in flight
+  // would read a stale ``defn.revision`` (TOCTOU) and earn a spurious 409.
+  // The UI disables Restore via ``saving``, but the store is the authority.
+  if (get().saving) return
   set({ saving: true, error: null })
   try {
     const updated = await rollbackWorkflow(defn.id, {
@@ -140,9 +144,12 @@ async function rollbackImpl(
       undoStack: [],
       redoStack: [],
       validationResult: null,
+      validating: false,
     }))
     await get().loadVersions()
-    set({ saving: false })
+    // Clear ``error`` too: a failed ``loadVersions`` refresh sets ``error``,
+    // which would otherwise contradict the success toast fired below.
+    set({ saving: false, error: null })
     useToastStore.getState().add({
       variant: 'success',
       title: `Workflow restored to version ${targetVersion}`,

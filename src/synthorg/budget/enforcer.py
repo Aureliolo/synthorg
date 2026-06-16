@@ -439,6 +439,12 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             )
 
         if self._quota_tracker is None:
+            logger.error(
+                QUOTA_DEGRADATION_RESOLUTION_FAILED,
+                provider=provider_name,
+                degradation_action=deg_config.strategy.value,
+                reason="quota_tracker_not_configured",
+            )
             msg = "Degradation strategy requires quota_tracker but none is configured"
             raise RuntimeError(msg)
 
@@ -458,14 +464,15 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             raise
         except Exception as exc:
             reraise_critical(exc)
+            error_desc = safe_error_description(exc)
             logger.warning(
                 QUOTA_DEGRADATION_RESOLUTION_FAILED,
                 provider=provider_name,
                 degradation_action=deg_config.strategy.value,
                 error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                error=error_desc,
             )
-            msg = f"Degradation resolution failed for provider {provider_name!r}: {safe_error_description(exc)}"  # noqa: E501
+            msg = f"Degradation resolution failed for provider {provider_name!r}: {error_desc}"  # noqa: E501
             raise QuotaExhaustedError(
                 msg,
                 provider_name=provider_name,
@@ -632,6 +639,8 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             reraise_critical(exc)
             logger.warning(
                 BUDGET_NOTIFICATION_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     async def resolve_model(

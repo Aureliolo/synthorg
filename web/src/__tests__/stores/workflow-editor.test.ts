@@ -431,5 +431,51 @@ describe('workflow-editor composed store', () => {
         .toasts.find((t) => t.variant === 'success')
       expect(success?.title).toContain('restored to version 2')
     })
+
+    it('ignores a rollback while one is already in flight', async () => {
+      useWorkflowEditorStore.setState({
+        definition: buildWorkflow({ id: 'wf-1', name: 'wf' }),
+        saving: true,
+      })
+      let posted = false
+      server.use(
+        http.post('/api/v1/workflows/:id/rollback', () => {
+          posted = true
+          return HttpResponse.json(
+            apiError('should not be called'),
+            { status: 500 },
+          )
+        }),
+      )
+
+      await useWorkflowEditorStore.getState().rollback(2)
+
+      // The in-store guard short-circuits before any network call, so the
+      // first rollback's ``saving`` state is left untouched.
+      expect(posted).toBe(false)
+      expect(useWorkflowEditorStore.getState().saving).toBe(true)
+    })
+
+    it('clears stale error when the post-rollback refresh fails', async () => {
+      useWorkflowEditorStore.setState({
+        definition: buildWorkflow({ id: 'wf-1', name: 'wf' }),
+      })
+      server.use(
+        http.get('/api/v1/workflows/:id/versions', () =>
+          HttpResponse.json(apiError('refresh boom'), { status: 500 }),
+        ),
+      )
+
+      await useWorkflowEditorStore.getState().rollback(2)
+
+      // The rollback itself succeeded; a failing version-list refresh must
+      // not leave a stale error contradicting the success toast.
+      expect(useWorkflowEditorStore.getState().error).toBeNull()
+      expect(useWorkflowEditorStore.getState().saving).toBe(false)
+      const success = useToastStore
+        .getState()
+        .toasts.find((t) => t.variant === 'success')
+      expect(success).toBeDefined()
+    })
   })
 })

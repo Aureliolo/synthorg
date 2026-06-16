@@ -5,6 +5,9 @@ import { useWorkflowEditorCallbacks } from '@/pages/workflow-editor/useWorkflowE
 import { useWorkflowEditorStore } from '@/stores/workflow-editor'
 import { useToastStore } from '@/stores/toast'
 
+// ``useWorkflowEditorCallbacks`` calls ``useNavigate`` internally, so the
+// hook must render inside a router context; ``MemoryRouter`` supplies it.
+
 function buildArgs(
   validate: () => Promise<void>,
 ): Parameters<typeof useWorkflowEditorCallbacks>[0] {
@@ -73,5 +76,38 @@ describe('useWorkflowEditorCallbacks handleValidate', () => {
     const success = toasts.find((t) => t.variant === 'success')
     expect(success).toBeDefined()
     expect(success?.title).toContain('valid')
+  })
+
+  it('emits a warning toast when validation finds errors', async () => {
+    const validate = vi.fn(() => {
+      useWorkflowEditorStore.setState({
+        validationResult: {
+          valid: false,
+          errors: [
+            {
+              code: 'task_missing_title',
+              edge_id: null,
+              message: 'Task node missing title',
+              node_id: 'n1',
+            },
+          ],
+        },
+        error: null,
+      })
+      return Promise.resolve()
+    })
+    const { result } = renderHook(
+      () => useWorkflowEditorCallbacks(buildArgs(validate)),
+      { wrapper: MemoryRouter },
+    )
+
+    await act(async () => {
+      await result.current.handleValidate()
+    })
+
+    const toasts = useToastStore.getState().toasts
+    const warning = toasts.find((t) => t.variant === 'warning')
+    expect(warning).toBeDefined()
+    expect(warning?.title).toContain('1 error')
   })
 })
