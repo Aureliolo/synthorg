@@ -7,15 +7,17 @@
  *
  * * ``GET /<base>/versions`` -- cursor-paginated list
  * * ``GET /<base>/versions/{n}`` -- single version
- * * ``GET /<base>/versions/diff?from_version=&to_version=`` -- diff
  *
- * Rollback is NOT uniform: the two rollback-capable domains diverge in
- * URL, request body, and return entity (agent identity posts
- * ``{target_version, reason?}`` to ``/<base>/versions/rollback`` and
- * returns ``AgentIdentity``; workflows post ``{target_version,
- * expected_revision}`` to ``/<base>/rollback`` and return
- * ``WorkflowDefinition``).  So the rollback action is supplied per
- * domain by the caller rather than synthesised from ``basePath``.
+ * Neither rollback NOR diff is uniform.  Only the agent-identity and
+ * workflow domains expose a diff, and they diverge in BOTH URL and
+ * response shape: agent identity serves ``AgentIdentityDiff``
+ * (``field_changes``) at ``/<base>/versions/diff``, while workflows
+ * serve ``WorkflowDiff`` (``node_changes`` / ``edge_changes`` /
+ * ``metadata_changes``) at ``/<base>/diff``.  So -- like rollback --
+ * the diff action is supplied per domain by the caller (it normalises
+ * its own backend shape into :type:`VersionDiffResponse`); domains with
+ * no diff endpoint (role, budget config, evaluation config, company)
+ * omit it and gate the affordance off via ``diffSupported={false}``.
  *
  * This factory yields a typed client over the read paths.  The snapshot
  * shape is left generic so each domain can supply its own payload type.
@@ -75,6 +77,19 @@ export interface RollbackInput {
 export type RollbackFn = (input: RollbackInput) => Promise<unknown>
 
 /**
+ * Per-domain diff action. Each domain calls its own diff endpoint (the
+ * URL differs: ``/<base>/versions/diff`` for agent identity,
+ * ``/<base>/diff`` for workflows) and normalises the backend's bespoke
+ * change shape into the shared :type:`VersionDiffResponse`. Supplied by
+ * the caller via :func:`agents.diffAgentIdentityVersions` /
+ * :func:`workflows.diffWorkflowVersions`.
+ */
+export type DiffFn = (
+  fromVersion: number,
+  toVersion: number,
+) => Promise<VersionDiffResponse>
+
+/**
  * Read-only contract: every domain that exposes version history
  * supports list / get / diff.  The type does not promise rollback;
  * use :class:`VersionHistoryClient` (the rollback-capable subtype)
@@ -113,9 +128,10 @@ export interface VersionHistoryClient<T> extends ReadOnlyVersionHistoryClient<T>
 export function createVersionHistoryClient<T>(
   basePath: string,
   rollback: RollbackFn,
+  diff?: DiffFn,
 ): VersionHistoryClient<T> {
   return {
-    ...createReadOnlyVersionHistoryClient<T>(basePath),
+    ...createReadOnlyVersionHistoryClient<T>(basePath, diff),
     rollback,
   }
 }
@@ -128,6 +144,7 @@ export function createVersionHistoryClient<T>(
  */
 function createReadOnlyVersionHistoryClient<T>(
   basePath: string,
+  diff?: DiffFn,
 ): ReadOnlyVersionHistoryClient<T> {
   return {
     async list(
@@ -149,13 +166,14 @@ function createReadOnlyVersionHistoryClient<T>(
       return unwrap(response)
     },
 
-    async diff(from: number, to: number): Promise<VersionDiffResponse> {
-      const response = await apiClient.get<ApiResponse<VersionDiffResponse>>(
-        `${basePath}/versions/diff`,
-        { params: { from_version: from, to_version: to } },
-      )
-      return unwrap(response)
-    },
+    // Domains that expose a diff supply a normalising ``DiffFn``; the
+    // others fail loudly if a mis-wired page calls diff without setting
+    // ``diffSupported={false}`` (a silent 404 / shape crash is worse).
+    diff:
+      diff ??
+      ((): Promise<VersionDiffResponse> => {
+        throw new Error(`version diff is not supported for ${basePath}`)
+      }),
   }
 }
 

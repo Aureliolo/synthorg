@@ -12,11 +12,13 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.ontology import (
     ONTOLOGY_DRIFT_STORE_DESERIALIZE_FAILED,
+    ONTOLOGY_DRIFT_STORE_FAILED,
     ONTOLOGY_DRIFT_STORE_WRITE_FAILED,
 )
 from synthorg.ontology.models import AgentDrift, DriftAction, DriftReport
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT, format_iso_utc
+from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.ontology_protocol import DriftReportFilterSpec
 from synthorg.persistence.sqlite._shared import WriteContext
 
@@ -136,6 +138,9 @@ class SQLiteOntologyDriftReportRepository:
             Drift reports in descending insertion order.
         """
         _ = filter_spec
+        limit = validate_pagination_args(
+            limit, offset, event=ONTOLOGY_DRIFT_STORE_FAILED
+        )
         async with self._db.execute(
             "SELECT entity_name, divergence_score, canonical_version, "
             "recommendation, divergent_agents "

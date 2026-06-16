@@ -133,9 +133,12 @@ class BrownfieldSourceResolver:
                 URL-embedded credentials, or a blocked / unresolvable host.
         """
         if not is_allowed_clone_scheme(source_ref):
+            # Log only the scheme, never the full ``source_ref``: a
+            # disallowed scheme can still carry embedded credentials
+            # (``ftp://user:pass@host/repo``) which must not reach logs.
             logger.warning(
                 BROWNFIELD_IMPORT_REJECTED,
-                source_ref=source_ref,
+                scheme=urlsplit(source_ref).scheme or "<none>",
                 reason="disallowed_scheme",
             )
             msg = (

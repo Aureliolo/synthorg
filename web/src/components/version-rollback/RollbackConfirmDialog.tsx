@@ -5,6 +5,7 @@ import { InputField } from '@/components/ui/input-field'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 import type { VersionHistoryClient } from '@/api/endpoints/version-history'
 
 const log = createLogger('rollback-confirm')
@@ -76,7 +77,7 @@ export function RollbackConfirmDialog<T>({
       })
       return true
     } catch (err) {
-      log.warn('Rollback failed:', getErrorMessage(err))
+      log.warn('rollback_failed', { error: sanitizeForLog(getErrorMessage(err)) })
       useToastStore.getState().add({
         variant: 'error',
         title: 'Rollback failed',
@@ -105,7 +106,9 @@ export function RollbackConfirmDialog<T>({
     try {
       onSuccess?.()
     } catch (err) {
-      log.warn('Rollback onSuccess callback failed:', getErrorMessage(err))
+      log.warn('rollback_on_success_callback_failed', {
+        error: sanitizeForLog(getErrorMessage(err)),
+      })
     }
     setReason('')
     onClose()

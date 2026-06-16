@@ -212,8 +212,9 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 8033 | `NARRATIVE_GENERATION_ERROR` | Narrative generation failed |
 | 8034 | `NARRATIVE_SOURCE_UNAVAILABLE` | Narrative source data unavailable |
 | 8035 | `DELIVERABLE_RECEIPT_BUILD_ERROR` | Deliverable receipt build failed |
-| 8036 | `SUBWORKFLOW_CYCLE_ERROR` | Subworkflow reference graph contains a cycle |
-| 8037 | `SUBWORKFLOW_DEPTH_EXCEEDED_ERROR` | Runtime subworkflow nesting exceeded the configured limit |
+| 8036 | `SINK_CONSTRUCTION_ERROR` | Observability sink construction failed |
+| 8037 | `SUBWORKFLOW_CYCLE_ERROR` | Subworkflow reference graph contains a cycle |
+| 8038 | `SUBWORKFLOW_DEPTH_EXCEEDED_ERROR` | Runtime subworkflow nesting exceeded the configured limit |
 
 ## Content negotiation
 

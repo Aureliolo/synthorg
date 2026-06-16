@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react'
 
-import { rollbackAgentIdentity } from '@/api/endpoints/agents'
+import { diffAgentIdentityVersions, rollbackAgentIdentity } from '@/api/endpoints/agents'
 import { createVersionHistoryClient } from '@/api/endpoints/version-history'
 import { useAgentDetailData } from '@/hooks/useAgentDetailData'
 import {
@@ -41,6 +41,7 @@ export function useAgentDetailPageController(
                 target_version: input.targetVersion,
                 reason: input.reason,
               }),
+            (from, to) => diffAgentIdentityVersions(resolvedAgentId, from, to),
           )
         : null,
     [resolvedAgentId],

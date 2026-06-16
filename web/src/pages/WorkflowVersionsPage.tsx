@@ -15,7 +15,11 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
 import { VersionHistorySection } from '@/components/version-rollback/VersionHistorySection'
 import { createVersionHistoryClient } from '@/api/endpoints/version-history'
-import { getWorkflow, rollbackWorkflow } from '@/api/endpoints/workflows'
+import {
+  diffWorkflowVersions,
+  getWorkflow,
+  rollbackWorkflow,
+} from '@/api/endpoints/workflows'
 import { ROUTES } from '@/router/routes'
 
 export default function WorkflowVersionsPage() {
@@ -40,6 +44,7 @@ export default function WorkflowVersionsPage() {
                 expected_revision: defn.revision,
               })
             },
+            (from, to) => diffWorkflowVersions(id, from, to),
           )
         : null,
     [id],

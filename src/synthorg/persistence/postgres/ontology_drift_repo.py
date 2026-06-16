@@ -11,11 +11,13 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.ontology import (
     ONTOLOGY_DRIFT_STORE_DESERIALIZE_FAILED,
+    ONTOLOGY_DRIFT_STORE_FAILED,
     ONTOLOGY_DRIFT_STORE_WRITE_FAILED,
 )
 from synthorg.ontology.models import AgentDrift, DriftAction, DriftReport
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.ontology_protocol import DriftReportFilterSpec
 
 
@@ -109,9 +111,12 @@ class PostgresOntologyDriftReportRepository:
                         agents_json,
                     ),
                 )
-        except Exception:
-            logger.error(
+                await conn.commit()
+        except Exception as exc:
+            log_exception_redacted(
+                logger,
                 ONTOLOGY_DRIFT_STORE_WRITE_FAILED,
+                exc,
                 entity_name=event.entity_name,
             )
             raise
@@ -138,6 +143,9 @@ class PostgresOntologyDriftReportRepository:
             Drift reports in descending insertion order.
         """
         _ = filter_spec
+        limit = validate_pagination_args(
+            limit, offset, event=ONTOLOGY_DRIFT_STORE_FAILED
+        )
         dict_row = self._dict_row
         async with (
             self._pool.connection() as conn,
@@ -178,10 +186,14 @@ class PostgresOntologyDriftReportRepository:
                     "DELETE FROM drift_reports WHERE created_at < %s",
                     (threshold,),
                 )
-                return cur.rowcount
-        except Exception:
-            logger.error(
+                deleted = cur.rowcount
+                await conn.commit()
+                return deleted
+        except Exception as exc:
+            log_exception_redacted(
+                logger,
                 ONTOLOGY_DRIFT_STORE_WRITE_FAILED,
+                exc,
                 entity_name="<purge_before>",
             )
             raise

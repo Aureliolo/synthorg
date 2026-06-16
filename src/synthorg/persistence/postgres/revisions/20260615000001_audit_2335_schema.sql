@@ -1,6 +1,6 @@
 -- depends: 20260614000002_task_requested_by_user_id
 
--- Restart-safe project-cost-claim dedup (audit 133).
+-- Restart-safe project-cost-claim dedup.
 --
 -- Durable backstop against double-billing: CostTracker dedups accepted
 -- CostRecord.claim_id values in an in-memory LRU, but that LRU is empty
@@ -18,7 +18,7 @@ CREATE TABLE project_cost_claim_seen (
 CREATE INDEX idx_project_cost_claim_seen_expires_at
 ON project_cost_claim_seen (expires_at);
 
--- Backend parity (audit 61): SQLite's subworkflows.updated_at carries an
+-- Backend parity: SQLite's subworkflows.updated_at carries an
 -- epoch sentinel DEFAULT; mirror it on Postgres so an INSERT that omits
 -- updated_at behaves identically across backends instead of failing the
 -- NOT NULL constraint.

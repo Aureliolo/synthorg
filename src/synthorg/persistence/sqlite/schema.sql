@@ -1895,7 +1895,7 @@ CREATE TABLE seen_claims (
 );
 CREATE INDEX idx_seen_claims_expires_at ON seen_claims (expires_at);
 
--- Restart-safe project-cost-claim dedup (audit 133): durable backstop so a
+-- Restart-safe project-cost-claim dedup: durable backstop so a
 -- JetStream redelivery after a process restart cannot double-bill a project
 -- cost aggregate.  CostTracker consults this before a durable increment.
 CREATE TABLE project_cost_claim_seen (

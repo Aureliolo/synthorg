@@ -58,6 +58,7 @@ function getInitialState() {
     companyResponse: null,
     companyLoading: false,
     companyError: null,
+    companyErrorCode: null,
 
     agents: [],
     agentsLoading: false,
@@ -71,9 +72,12 @@ function getInitialState() {
     presetsLoading: false,
     presetsError: null,
     probeResults: {},
+    probeErrors: {},
+    probeGlobalError: null,
     probing: false,
     providersLoading: false,
     providersError: null,
+    providersWarning: null,
 
     themeSettings: { ...DEFAULT_THEME },
 

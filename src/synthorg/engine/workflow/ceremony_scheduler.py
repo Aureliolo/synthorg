@@ -41,7 +41,11 @@ from synthorg.engine.workflow.strategy_migration import (
     StrategyMigrationInfo,
     detect_strategy_migration,
 )
-from synthorg.observability import get_logger, log_exception_redacted
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.workflow import (
     SPRINT_AUTO_TRANSITION,
     SPRINT_CEREMONY_BUDGET_SNAPSHOT_FAILED,
@@ -172,6 +176,7 @@ class CeremonyScheduler:
             logger.warning(
                 SPRINT_CEREMONY_BUDGET_SNAPSHOT_FAILED,
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return (0.0, 0.0)
 
@@ -347,6 +352,7 @@ class CeremonyScheduler:
                 sprint_id=sprint_id,
                 note="state_repo_get_failed",
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return
         if record is None:
@@ -370,6 +376,7 @@ class CeremonyScheduler:
                 sprint_id=sprint_id,
                 note="state_repo_payload_decode_failed",
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return
 
@@ -442,6 +449,7 @@ class CeremonyScheduler:
                 sprint_id=sprint_id,
                 note="state_repo_save_failed",
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 
@@ -524,6 +532,7 @@ class CeremonyScheduler:
                     sprint_id=sprint_id,
                     note="state_repo_delete_failed",
                     error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
         self._active_sprint = None
@@ -595,6 +604,11 @@ class CeremonyScheduler:
             # no I/O); fire them after releasing it.
             per_task = self._select_per_task_ceremonies(sprint)
             one_shot = self._select_one_shot_ceremonies(context)
+            # Optimistically mark the one-shots as fired WHILE the lock is
+            # held so a concurrent on_task_completed cannot re-select the
+            # same one-shot during the unlocked fire below (double-fire).
+            # Fires that do not succeed are rolled back under the lock after.
+            self._fired_once_triggers.update(one_shot)
             transitioned = self._check_auto_transition(sprint, context)
 
         # Fire OUTSIDE the lock so the AI-backed meeting chain does not
@@ -607,7 +621,12 @@ class CeremonyScheduler:
             for name in fired_per_task:
                 if name in self._completion_counters:
                     self._completion_counters[name] = 0
-            self._fired_once_triggers.update(fired_one_shot)
+            # Roll back the optimistic one-shot marks for ceremonies that
+            # did not fire so they stay eligible on the next completion;
+            # the successful ones keep their mark.
+            self._fired_once_triggers.difference_update(
+                set(one_shot) - set(fired_one_shot)
+            )
             await self._save_state_unlocked(sprint.id)
         return transitioned
 

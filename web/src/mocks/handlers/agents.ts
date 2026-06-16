@@ -11,10 +11,10 @@ import type {
   rollbackAgentIdentity,
   setAutonomy,
 } from '@/api/endpoints/agents'
-import type { AgentHealthResponse, AgentIdentity } from '@/api/types'
+import type { AgentHealthResponse, AgentIdentity, AgentIdentityDiff } from '@/api/types'
 import type { AgentConfig, AgentPerformanceSummary } from '@/api/types/agents'
 import type { AutonomyLevel } from '@/api/types/enums'
-import { apiError, emptyPage, paginatedFor, successFor } from './helpers'
+import { apiError, apiSuccess, emptyPage, paginatedFor, successFor } from './helpers'
 
 const ALLOWED_AUTONOMY_LEVELS: readonly AutonomyLevel[] = [
   'full',
@@ -242,4 +242,26 @@ export const agentsHandlers = [
       ),
     ),
   ),
+  http.get('/api/v1/agents/:agentId/versions', () =>
+    HttpResponse.json({
+      data: [],
+      error: null,
+      error_detail: null,
+      success: true,
+      pagination: { limit: 200, next_cursor: null, has_more: false },
+      degraded_sources: [],
+    }),
+  ),
+  http.get('/api/v1/agents/:agentId/versions/diff', ({ params, request }) => {
+    const url = new URL(request.url)
+    return HttpResponse.json(
+      apiSuccess<AgentIdentityDiff>({
+        agent_id: String(params['agentId']),
+        from_version: Number(url.searchParams.get('from_version') ?? 1),
+        to_version: Number(url.searchParams.get('to_version') ?? 2),
+        field_changes: [],
+        summary: '',
+      }),
+    )
+  }),
 ]

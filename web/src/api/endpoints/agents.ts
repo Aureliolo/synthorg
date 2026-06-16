@@ -1,8 +1,10 @@
 import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
+import type { VersionDiffResponse } from './version-history'
 import type {
   ActiveAgentSummary,
   AgentHealthResponse,
   AgentIdentity,
+  AgentIdentityDiff,
   RollbackAgentIdentityRequest,
 } from '../types'
 import type {
@@ -96,4 +98,34 @@ export async function rollbackAgentIdentity(
     data,
   )
   return unwrap(response)
+}
+
+/**
+ * Diff two agent-identity versions, normalised for the shared diff
+ * drawer.
+ *
+ * Calls ``GET /agents/{id}/versions/diff`` (returns
+ * ``AgentIdentityDiff`` with ``field_changes``) and flattens each field
+ * change into the cross-domain ``VersionDiffResponse`` shape
+ * (``entries[].{path, before, after}``) the drawer renders.
+ */
+export async function diffAgentIdentityVersions(
+  agentId: string,
+  fromVersion: number,
+  toVersion: number,
+): Promise<VersionDiffResponse> {
+  const response = await apiClient.get<ApiResponse<AgentIdentityDiff>>(
+    `/agents/${encodeURIComponent(agentId)}/versions/diff`,
+    { params: { from_version: fromVersion, to_version: toVersion } },
+  )
+  const diff = unwrap(response)
+  return {
+    from_version: diff.from_version,
+    to_version: diff.to_version,
+    entries: diff.field_changes.map((change) => ({
+      path: change.field_path,
+      before: change.old_value,
+      after: change.new_value,
+    })),
+  }
 }

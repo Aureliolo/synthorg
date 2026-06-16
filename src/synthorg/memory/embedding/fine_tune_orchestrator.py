@@ -230,23 +230,24 @@ class FineTuneOrchestrator:
                 self._cancellation.cancel()
                 logger.info(MEMORY_FINE_TUNE_CANCELLED)
             task = self._current_task
-            # Hold the lifecycle lock across the drain so a racing
-            # start()/resume() cannot observe ``is_running`` flip to
-            # False and spawn a second overlapping generation before the
-            # cancellation resolves. The pipeline task never acquires
-            # this lock, so awaiting it here cannot deadlock.
-            if task is not None and not task.done():
-                try:
-                    async with asyncio.timeout(_CANCEL_TIMEOUT_SEC):
-                        await asyncio.shield(task)
-                except TimeoutError:
-                    logger.warning(
-                        MEMORY_FINE_TUNE_CANCELLED,
-                        note="cancel timed out waiting for task",
-                    )
-                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                    reraise_critical(exc)
-                    # Task failed/cancelled -- already logged by _on_task_done
+        # Drain OUTSIDE the lifecycle lock. While the task is not yet
+        # done ``is_running`` stays True, so a racing start()/resume()
+        # still rejects with FineTuneRunActiveError -- there is no window
+        # where the lock would need to be held. Holding it across the
+        # (up to 30s) drain would needlessly block every concurrent
+        # lifecycle call for the whole timeout.
+        if task is not None and not task.done():
+            try:
+                async with asyncio.timeout(_CANCEL_TIMEOUT_SEC):
+                    await asyncio.shield(task)
+            except TimeoutError:
+                logger.warning(
+                    MEMORY_FINE_TUNE_CANCELLED,
+                    note="cancel timed out waiting for task",
+                )
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                # Task failed/cancelled -- already logged by _on_task_done
 
     async def recover_interrupted(self) -> int:
         """Mark interrupted runs as FAILED on startup.

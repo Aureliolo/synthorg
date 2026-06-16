@@ -1,6 +1,6 @@
 -- depends: 20260614000002_task_requested_by_user_id
 
--- Restart-safe project-cost-claim dedup (audit 133).
+-- Restart-safe project-cost-claim dedup.
 --
 -- Durable backstop against double-billing: CostTracker dedups accepted
 -- CostRecord.claim_id values in an in-memory LRU, but that LRU is empty
@@ -19,7 +19,7 @@ CREATE TABLE project_cost_claim_seen (
 CREATE INDEX idx_project_cost_claim_seen_expires_at
 ON project_cost_claim_seen (expires_at);
 
--- Backend parity (audit 61): widen approvals.source to match the Postgres
+-- Backend parity: widen approvals.source to match the Postgres
 -- domain so a persistent-SQLite ApprovalStore can hold conversational-
 -- interface rows ('conversational_intake' / 'conversational_invite').
 -- SQLite cannot ALTER a column CHECK in place, so rebuild the table.

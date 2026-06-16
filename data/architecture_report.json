@@ -806,14 +806,14 @@
     },
     "src/synthorg/observability/prometheus_collector.py": {
       "cap": 600,
-      "loc": 609,
-      "ratio": 1.015,
+      "loc": 594,
+      "ratio": 0.99,
       "tier": "service"
     },
     "src/synthorg/observability/prometheus_labels.py": {
       "cap": 500,
-      "loc": 501,
-      "ratio": 1.002,
+      "loc": 499,
+      "ratio": 0.998,
       "tier": "code"
     },
     "src/synthorg/observability/sink_config_builder.py": {
@@ -1306,7 +1306,7 @@
     "synthorg.persistence._generics": 183,
     "synthorg.persistence._shared": 144,
     "synthorg.persistence._shared.datetime_marshaller": 24,
-    "synthorg.persistence._shared.pagination": 64,
+    "synthorg.persistence._shared.pagination": 66,
     "synthorg.persistence.ontology_protocol": 20,
     "synthorg.persistence.protocol": 41,
     "synthorg.persistence.sqlite._shared": 74,
@@ -1395,7 +1395,7 @@
     },
     "synthorg.engine.workflow.ceremony_scheduler:CeremonyScheduler": {
       "lcom4": 1,
-      "loc": 699
+      "loc": 707
     },
     "synthorg.engine.workspace.git_worktree:PlannerWorktreeStrategy": {
       "lcom4": 2,
