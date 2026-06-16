@@ -11,8 +11,10 @@ from typing import ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.budget.call_analytics_config import CallAnalyticsConfig
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 from synthorg.budget.model_tier import TierName
+from synthorg.budget.quota import SubscriptionConfig
 from synthorg.budget.risk_config import RiskBudgetConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.settings.enums import SettingNamespace
@@ -394,6 +396,17 @@ class BudgetConfig(BaseModel):
     risk_budget: RiskBudgetConfig = Field(
         default_factory=RiskBudgetConfig,
         description="Cumulative risk-unit action budget configuration",
+    )
+    subscriptions: Mapping[str, SubscriptionConfig] = Field(
+        default_factory=dict,
+        description=(
+            "Per-provider subscription / quota configuration consumed by the "
+            "quota tracker. Providers without an entry are quota-unbounded."
+        ),
+    )
+    call_analytics: CallAnalyticsConfig = Field(
+        default_factory=CallAnalyticsConfig,
+        description="Per-call analytics aggregation + retry-rate alert config",
     )
     pte_tracking_enabled: bool = Field(
         default=False,

@@ -66,6 +66,7 @@ from synthorg.workers._coordinator_assembly import (
 )
 from synthorg.workers._engine_assembly import (
     _build_external_api_runtime,
+    _build_mcp_bridge_tools,
     _build_tool_registry,
     _build_vision_gate_or_none,
     _construct_agent_engine,
@@ -247,10 +248,11 @@ async def build_runtime_services(
     red_team_seed = build_red_team_tool_seed(
         config=app_state.config.security.red_team,
     )
+    mcp_bridge_tools = await _build_mcp_bridge_tools(app_state)
     tool_registry, tool_count, sandbox_backends = await _build_tool_registry(
         app_state,
         workspace_root,
-        extra_tools=red_team_seed.extra_tools,
+        extra_tools=(*red_team_seed.extra_tools, *mcp_bridge_tools),
     )
     coordination_metrics_collector = _construct_coordination_collector(app_state)
     external_api_runtime = await _build_external_api_runtime(app_state)

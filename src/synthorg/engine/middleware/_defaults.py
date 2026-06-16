@@ -27,7 +27,6 @@ from synthorg.engine.middleware.coordination_constraints import (
     TaskLedgerMiddleware,
 )
 from synthorg.engine.middleware.disclosure import DisclosureMiddleware
-from synthorg.engine.middleware.policy_gate import PolicyGateMiddleware
 from synthorg.engine.middleware.registry import (
     AgentMiddlewareFactory,
     CoordinationMiddlewareFactory,
@@ -59,7 +58,6 @@ _AGENT_DEFAULTS: tuple[tuple[str, AgentMiddlewareFactory], ...] = (
     ("authority_deference", AuthorityDeferenceGuard),
     ("sanitize_message", SanitizeMessageMiddleware),
     ("security_interceptor", SecurityInterceptorMiddleware),
-    ("policy_gate", PolicyGateMiddleware),
     ("approval_gate", ApprovalGateMiddleware),
     ("assumption_violation", AssumptionViolationMiddleware),
     ("classification", ClassificationMiddleware),

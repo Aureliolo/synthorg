@@ -11,6 +11,8 @@ service is already wired) and never poison startup (the broad-except
 funnels through :func:`reraise_critical` then logs and swallows).
 """
 
+from typing import TYPE_CHECKING
+
 from synthorg.api._benchmark_wiring import (
     build_benchmark_score_repo,
     select_benchmark_provider,
@@ -22,7 +24,146 @@ from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
 from synthorg.providers.registry import ProviderRegistry
 
+if TYPE_CHECKING:
+    from synthorg.budget.config import BudgetConfig
+    from synthorg.budget.enforcer import BudgetEnforcer
+    from synthorg.budget.forecast_history import CostTrackerHistoryLookup
+    from synthorg.budget.pareto_assignments import AgentRegistryAssignmentLookup
+    from synthorg.budget.tracker import CostTracker
+    from synthorg.engine.intervention import SteeringSupersessionProposer
+
 logger = get_logger(__name__)
+
+
+def _build_cost_forecast_repo(
+    app_state: AppState,
+    budget_config: BudgetConfig,
+) -> CostForecastRepository:
+    """Build the per-backend cost-forecast repository.
+
+    Returns:
+        The SQLite or Postgres cost-forecast repository for the backend.
+    """
+    from synthorg.persistence.backend_dispatch import (  # noqa: PLC0415
+        build_for_backend,
+    )
+    from synthorg.persistence.db_handle import (  # noqa: PLC0415
+        postgres_pool,
+        sqlite_connection,
+    )
+    from synthorg.persistence.sqlite.cost_forecast_repo import (  # noqa: PLC0415
+        SQLiteCostForecastRepository,
+    )
+    from synthorg.persistence.state import persistence_of  # noqa: PLC0415
+
+    persistence = persistence_of(app_state)
+
+    def _sqlite() -> CostForecastRepository:
+        return SQLiteCostForecastRepository(
+            sqlite_connection(persistence),
+            write_context=persistence.write_context,
+            currency_getter=lambda: budget_config.currency,
+        )
+
+    def _postgres() -> CostForecastRepository:
+        from synthorg.persistence.postgres.cost_forecast_repo import (  # noqa: PLC0415
+            PostgresCostForecastRepository,
+        )
+
+        return PostgresCostForecastRepository(
+            postgres_pool(persistence),
+            currency_getter=lambda: budget_config.currency,
+        )
+
+    return build_for_backend(persistence, sqlite=_sqlite, postgres=_postgres)
+
+
+def _build_pareto_inputs(
+    app_state: AppState,
+) -> tuple[
+    AgentRegistryAssignmentLookup | None,
+    CostTrackerHistoryLookup | None,
+    CostTracker | None,
+]:
+    """Resolve the live roster + spend lookups for the Pareto frontier.
+
+    Sources the frontier and the forecaster's history from the live roster
+    and observed spend so they render real downgrade candidates / warm
+    forecasts instead of empty defaults. Also attaches the durable
+    project-cost write + restart-safe dedup repos onto the cost tracker now
+    that persistence is connected (the tracker is built at the synchronous
+    construction phase before a backend exists; the dedup guard makes the
+    increment idempotent across a JetStream redelivery after a restart). A
+    registry/tracker absent at wiring time leaves both lookups ``None``
+    (cold-start forecaster, empty-frontier analyzer) rather than poisoning
+    startup.
+
+    Returns:
+        ``(assignment_lookup, history_lookup, cost_tracker)``.
+    """
+    from synthorg.budget.forecast_history import (  # noqa: PLC0415
+        CostTrackerHistoryLookup,
+    )
+    from synthorg.budget.pareto_assignments import (  # noqa: PLC0415
+        AgentRegistryAssignmentLookup,
+    )
+    from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
+    from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
+    from synthorg.persistence.state import persistence_of  # noqa: PLC0415
+
+    persistence = persistence_of(app_state)
+    registry = app_state.slice(HrStateSlice).agent_registry
+    cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
+    if cost_tracker is not None:
+        cost_tracker.attach_durable_repos(
+            project_cost_repo=persistence.project_cost_aggregates,
+            claim_seen_repo=persistence.project_cost_claim_seen,
+        )
+    if registry is None or cost_tracker is None:
+        return None, None, cost_tracker
+    assignment_lookup = AgentRegistryAssignmentLookup(
+        registry=registry,
+        cost_tracker=cost_tracker,
+        clock=app_state.clock.now,
+    )
+    history_lookup = CostTrackerHistoryLookup(
+        registry=registry,
+        cost_tracker=cost_tracker,
+        clock=app_state.clock.now,
+    )
+    return assignment_lookup, history_lookup, cost_tracker
+
+
+def _build_budget_enforcer(
+    app_state: AppState,
+    budget_config: BudgetConfig,
+    cost_tracker: CostTracker | None,
+) -> BudgetEnforcer | None:
+    """Build the shared budget enforcer the replan gate consults.
+
+    Needs the live cost tracker; a persistence-less / tracker-absent boot
+    leaves it ``None`` and the magentic replan hook skips the affordability
+    check.
+
+    Returns:
+        The wired ``BudgetEnforcer`` or ``None`` when no cost tracker.
+    """
+    from synthorg.budget.enforcer import BudgetEnforcer  # noqa: PLC0415
+    from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
+    from synthorg.notifications.state import (  # noqa: PLC0415
+        NotificationsStateSlice,
+    )
+
+    if cost_tracker is None:
+        return None
+    budget_slice = app_state.slice(BudgetStateSlice)
+    return BudgetEnforcer(
+        budget_config=budget_config,
+        cost_tracker=cost_tracker,
+        quota_tracker=budget_slice.quota_tracker,
+        risk_tracker=budget_slice.risk_tracker,
+        notification_dispatcher=app_state.slice(NotificationsStateSlice).dispatcher,
+    )
 
 
 def _wire_cost_dial_services(app_state: AppState) -> None:
@@ -44,44 +185,9 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
     from synthorg.budget.model_tier import ModelTierMap  # noqa: PLC0415
     from synthorg.budget.pareto import ParetoAnalyzer  # noqa: PLC0415
     from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
-    from synthorg.persistence.backend_dispatch import (  # noqa: PLC0415
-        build_for_backend,
-    )
-    from synthorg.persistence.db_handle import (  # noqa: PLC0415
-        postgres_pool,
-        sqlite_connection,
-    )
-    from synthorg.persistence.sqlite.cost_forecast_repo import (  # noqa: PLC0415
-        SQLiteCostForecastRepository,
-    )
-    from synthorg.persistence.state import persistence_of  # noqa: PLC0415
 
     budget_config = BudgetConfig()
-    persistence = persistence_of(app_state)
-
-    def _build_sqlite_forecast_repo() -> CostForecastRepository:
-        return SQLiteCostForecastRepository(
-            sqlite_connection(persistence),
-            write_context=persistence.write_context,
-            currency_getter=lambda: budget_config.currency,
-        )
-
-    def _build_postgres_forecast_repo() -> CostForecastRepository:
-        from synthorg.persistence.postgres.cost_forecast_repo import (  # noqa: PLC0415
-            PostgresCostForecastRepository,
-        )
-
-        return PostgresCostForecastRepository(
-            postgres_pool(persistence),
-            currency_getter=lambda: budget_config.currency,
-        )
-
-    forecast_repo: CostForecastRepository = build_for_backend(
-        persistence,
-        sqlite=_build_sqlite_forecast_repo,
-        postgres=_build_postgres_forecast_repo,
-    )
-
+    forecast_repo = _build_cost_forecast_repo(app_state, budget_config)
     benchmark_score_repo = build_benchmark_score_repo(app_state)
     model_tier_map = ModelTierMap(overrides=budget_config.model_tier_overrides)
     benchmark_provider = select_benchmark_provider(
@@ -89,44 +195,7 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
         repo=benchmark_score_repo,
         tier_map=model_tier_map,
     )
-    from synthorg.budget.forecast_history import (  # noqa: PLC0415
-        CostTrackerHistoryLookup,
-    )
-    from synthorg.budget.pareto_assignments import (  # noqa: PLC0415
-        AgentRegistryAssignmentLookup,
-    )
-    from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
-
-    # Source the Pareto frontier AND the forecaster's history from the live
-    # roster + observed spend so they render real downgrade candidates / warm
-    # forecasts instead of the empty defaults. Defensive None-guard: a
-    # registry/tracker absent at wiring time leaves both on their empty
-    # defaults (cold-start forecaster, empty-frontier analyzer) rather than
-    # poisoning startup.
-    registry = app_state.slice(HrStateSlice).agent_registry
-    cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
-    # Attach the durable project-cost write + restart-safe dedup repos now
-    # that persistence is connected (the tracker is built at the synchronous
-    # construction phase before a backend exists). The dedup guard makes the
-    # increment idempotent across a JetStream redelivery after a restart.
-    if cost_tracker is not None:
-        cost_tracker.attach_durable_repos(
-            project_cost_repo=persistence.project_cost_aggregates,
-            claim_seen_repo=persistence.project_cost_claim_seen,
-        )
-    assignment_lookup = None
-    history_lookup = None
-    if registry is not None and cost_tracker is not None:
-        assignment_lookup = AgentRegistryAssignmentLookup(
-            registry=registry,
-            cost_tracker=cost_tracker,
-            clock=app_state.clock.now,
-        )
-        history_lookup = CostTrackerHistoryLookup(
-            registry=registry,
-            cost_tracker=cost_tracker,
-            clock=app_state.clock.now,
-        )
+    assignment_lookup, history_lookup, cost_tracker = _build_pareto_inputs(app_state)
     forecaster = CostForecaster(
         budget_config=budget_config,
         history_lookup=history_lookup,
@@ -144,17 +213,7 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
         budget_config=budget_config,
         clock=app_state.clock.now,
     )
-    # Build the shared budget enforcer the coordination replan gate
-    # consults for affordability. Needs the live cost tracker; a
-    # persistence-less / tracker-absent boot leaves it None and the
-    # magentic replan hook simply skips the affordability check.
-    from synthorg.budget.enforcer import BudgetEnforcer  # noqa: PLC0415
-
-    budget_enforcer = (
-        BudgetEnforcer(budget_config=budget_config, cost_tracker=cost_tracker)
-        if cost_tracker is not None
-        else None
-    )
+    budget_enforcer = _build_budget_enforcer(app_state, budget_config, cost_tracker)
     app_state.wire(
         BudgetStateSlice,
         budget_config=budget_config,
@@ -316,10 +375,7 @@ async def _wire_steering_service(
     poisoning startup.
     """
     from synthorg.engine.cockpit.state import CockpitStateSlice  # noqa: PLC0415
-    from synthorg.engine.intervention import (  # noqa: PLC0415
-        SteeringService,
-        build_supersession_proposer,
-    )
+    from synthorg.engine.intervention import SteeringService  # noqa: PLC0415
     from synthorg.engine.state import (  # noqa: PLC0415
         EngineStateSlice,
         task_engine_of,
@@ -329,11 +385,6 @@ async def _wire_steering_service(
         persistence_of,
     )
     from synthorg.project_brain.state import ProjectBrainStateSlice  # noqa: PLC0415
-    from synthorg.settings.state import (  # noqa: PLC0415
-        SettingsStateSlice,
-        config_resolver_of,
-        settings_service_of,
-    )
 
     if app_state.slice(CockpitStateSlice).steering_service is not None:
         return
@@ -344,6 +395,45 @@ async def _wire_steering_service(
         or app_state.slice(EngineStateSlice).task_engine is None
     ):
         return
+    proposer = await _build_steering_proposer(
+        app_state, provider_registry=provider_registry
+    )
+    app_state.wire(
+        CockpitStateSlice,
+        steering_service=SteeringService(
+            brain_service=brain_service,
+            brain_repo=persistence_of(app_state).project_brain,
+            task_engine=task_engine_of(app_state),
+            proposer=proposer,
+            notifier=app_state.slice(CockpitStateSlice).steering_notifier,
+            clock=app_state.clock,
+        ),
+    )
+    logger.info(API_APP_STARTUP, service="steering", note="wired")
+
+
+async def _build_steering_proposer(
+    app_state: AppState,
+    *,
+    provider_registry: ProviderRegistry | None,
+) -> SteeringSupersessionProposer:
+    """Build the supersession proposer from cockpit.steering_proposer_* config.
+
+    The proposer is LLM-backed only when the feature flag, a provider, and a
+    model id are all present; otherwise it degrades to the no-op proposer.
+
+    Returns:
+        The selected ``SteeringSupersessionProposer``.
+    """
+    from synthorg.engine.intervention import (  # noqa: PLC0415
+        build_supersession_proposer,
+    )
+    from synthorg.settings.state import (  # noqa: PLC0415
+        SettingsStateSlice,
+        config_resolver_of,
+        settings_service_of,
+    )
+
     enabled = False
     model: str | None = None
     provider = None
@@ -366,20 +456,7 @@ async def _wire_steering_service(
             provider = provider_registry.get(configured)
         elif names:
             provider = provider_registry.get(names[0])
-    app_state.wire(
-        CockpitStateSlice,
-        steering_service=SteeringService(
-            brain_service=brain_service,
-            brain_repo=persistence_of(app_state).project_brain,
-            task_engine=task_engine_of(app_state),
-            proposer=build_supersession_proposer(
-                provider, model=model, enabled=enabled
-            ),
-            notifier=app_state.slice(CockpitStateSlice).steering_notifier,
-            clock=app_state.clock,
-        ),
-    )
-    logger.info(API_APP_STARTUP, service="steering", note="wired")
+    return build_supersession_proposer(provider, model=model, enabled=enabled)
 
 
 def _wire_environment_service(app_state: AppState) -> None:

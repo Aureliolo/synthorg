@@ -96,6 +96,12 @@ FEATURE: FeatureModule = FeatureManifest(
         ),
     ),
     lifecycle_hooks=(),
-    ghost_wired_symbols=(),
+    ghost_wired_symbols=(
+        "build_signals_service",
+        "AnalyticsService",
+        "ReportsService",
+        "OrgInflectionMonitor",
+        "build_analytics_collector",
+    ),
     depends_on=(),
 )

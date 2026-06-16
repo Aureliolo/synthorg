@@ -13,6 +13,7 @@ REST controllers; the domain controllers live in their own features.
 from collections.abc import Mapping
 
 from synthorg._core.features import FeatureManifest, FeatureModule
+from synthorg.infrastructure._construction import wire_construction
 from synthorg.infrastructure.state import FacadesStateSlice
 from synthorg.meta.mcp.domains.infrastructure import INFRASTRUCTURE_TOOLS
 from synthorg.meta.mcp.feature_descriptors import mcp_descriptor
@@ -35,6 +36,7 @@ FEATURE: FeatureModule = FeatureManifest(
     name="facades",
     settings_namespace=None,
     state_slice=FacadesStateSlice,
+    construction_wirer=wire_construction,
     controllers=(),
     mcp_handlers=(
         mcp_descriptor(
@@ -44,6 +46,9 @@ FEATURE: FeatureModule = FeatureManifest(
         ),
     ),
     lifecycle_hooks=(),
-    ghost_wired_symbols=(),
+    ghost_wired_symbols=(
+        "QualityFacadeService",
+        "ReviewFacadeService",
+    ),
     depends_on=(),
 )

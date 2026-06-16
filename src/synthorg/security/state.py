@@ -17,6 +17,7 @@ from synthorg.security.audit import AuditLog
 from synthorg.security.autonomy.protocol import (
     AutonomyChangeStrategy,
 )
+from synthorg.security.policy_engine.protocol import PolicyEngine
 from synthorg.security.redteam.protocol import RedTeamReportRepository
 from synthorg.security.trust.service import TrustService
 
@@ -30,6 +31,7 @@ class SecurityStateSlice(BaseFeatureStateSlice):
     trust_service: TrustService | None = None
     autonomy_change_strategy: AutonomyChangeStrategy | None = None
     red_team_reports: RedTeamReportRepository | None = None
+    policy_engine: PolicyEngine | None = None
 
 
 def audit_log_of(app_state: AppStateSliceMixin) -> AuditLog:

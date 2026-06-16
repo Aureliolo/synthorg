@@ -73,6 +73,12 @@ FEATURE: FeatureModule = FeatureManifest(
     lifecycle_hooks=(),
     construction_wirer=wire_construction,
     ghost_wired_symbols=(
+        "EvaluationVersionService",
+        "SubworkflowService",
+        "build_evolution_service",
+        "InMemoryErrorTaxonomyStore",
+        "PerformanceTrackerSink",
+        "NotificationDispatcherSink",
         "AgentEngine",
         "IntakeEngine",
         "DirectIntake",

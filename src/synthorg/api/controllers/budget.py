@@ -24,6 +24,7 @@ from synthorg.api.pagination import (
 )
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.state import AppState
+from synthorg.budget.call_analytics_models import AnalyticsAggregation
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY, assert_currencies_match
@@ -380,6 +381,54 @@ class BudgetController(Controller):
             period_summary=period,
             currency=currency,
         )
+
+    @get("/call-analytics")
+    async def get_call_analytics(
+        self,
+        state: State,
+        agent_id: Annotated[
+            str | None,
+            QueryParameter(
+                max_length=QUERY_MAX_LENGTH,
+                description="Filter to calls emitted by this agent.",
+            ),
+        ] = None,
+        task_id: Annotated[
+            str | None,
+            QueryParameter(
+                max_length=QUERY_MAX_LENGTH,
+                description="Filter to calls emitted under this task.",
+            ),
+        ] = None,
+        provider: Annotated[
+            NotBlankStr | None,
+            QueryParameter(
+                max_length=QUERY_MAX_LENGTH,
+                description="Filter to calls served by this provider.",
+            ),
+        ] = None,
+    ) -> ApiResponse[AnalyticsAggregation]:
+        """Return aggregated per-call analytics over cost records.
+
+        Args:
+            state: Application state.
+            agent_id: Filter by agent.
+            task_id: Filter by task.
+            provider: Filter by provider name.
+
+        Returns:
+            Aggregated per-call analytics envelope.
+        """
+        app_state: AppState = state.app_state
+        aggregation = await require_service(
+            app_state.slice(BudgetStateSlice).call_analytics_service,
+            "Call Analytics Service",
+        ).get_aggregation(
+            agent_id=agent_id,
+            task_id=task_id,
+            provider=provider,
+        )
+        return ApiResponse(data=aggregation)
 
     @get("/agents/{agent_id:str}")
     async def get_agent_spending(

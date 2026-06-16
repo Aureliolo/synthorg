@@ -1029,6 +1029,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/budget/call-analytics": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetCallAnalytics */
+        readonly get: operations["ApiV1BudgetCallAnalyticsGetCallAnalytics"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/budget/config": {
         readonly parameters: {
             readonly query?: never;
@@ -5425,7 +5442,6 @@ export type components = {
              *       "authority_deference",
              *       "sanitize_message",
              *       "security_interceptor",
-             *       "policy_gate",
              *       "approval_gate",
              *       "assumption_violation",
              *       "classification",
@@ -5516,6 +5532,33 @@ export type components = {
             readonly parallelizable_fraction: number;
             /** @description Team size at 90% of max speedup */
             readonly recommended_team_size: number;
+        };
+        /** AnalyticsAggregation */
+        readonly AnalyticsAggregation: {
+            /** @description Mean latency in ms, or None when no latency data. */
+            readonly avg_latency_ms: number | null;
+            /** @description Per finish-reason call counts, sorted alphabetically by reason string. */
+            readonly by_finish_reason: readonly (readonly [
+                string,
+                number
+            ])[];
+            /** @description Calls with cache_hit=True. */
+            readonly cache_hit_count: number;
+            /** @description Fraction of cache-reporting calls that were cache hits, or None when no records carry cache hit data. */
+            readonly cache_hit_rate: number | null;
+            /** @description Calls with success=False. */
+            readonly failure_count: number;
+            readonly orchestration_ratio: components["schemas"]["OrchestrationRatio"];
+            /** @description 95th-percentile latency in ms, or None when no latency data. */
+            readonly p95_latency_ms: number | null;
+            /** @description Calls with at least one retry. */
+            readonly retry_count: number;
+            /** @description Fraction of calls with at least one retry. */
+            readonly retry_rate: number;
+            /** @description Calls with success=True. */
+            readonly success_count: number;
+            /** @description Total LLM calls recorded. */
+            readonly total_calls: number;
         };
         /** AnonymizedOutcomeEvent */
         readonly AnonymizedOutcomeEvent: {
@@ -5654,6 +5697,19 @@ export type components = {
         /** ApiResponse[AgentSpending] */
         readonly ApiResponse_AgentSpending_: {
             readonly data: components["schemas"]["AgentSpending"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[AnalyticsAggregation] */
+        readonly ApiResponse_AnalyticsAggregation_: {
+            readonly data: components["schemas"]["AnalyticsAggregation"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /**
@@ -8040,6 +8096,7 @@ export type components = {
              * @enum {string}
              */
             readonly benchmark_provider: "stub" | "measured";
+            readonly call_analytics: components["schemas"]["CallAnalyticsConfig"];
             /**
              * @description ISO 4217 currency code stamped onto every new cost record and used for display formatting. SynthOrg does not convert provider costs -- provider token prices are reported in the provider-native currency (see ``DEFAULT_CURRENCY``) and changing this setting relabels the code stamped onto subsequent records without translating any numeric values. Historical rows retain the code that was active when they were written.
              * @default USD
@@ -8110,6 +8167,10 @@ export type components = {
              * @default 0
              */
             readonly run_hard_ceiling: number;
+            /** @description Per-provider subscription / quota configuration consumed by the quota tracker. Providers without an entry are quota-unbounded. */
+            readonly subscriptions: {
+                readonly [key: string]: components["schemas"]["SubscriptionConfig"];
+            };
             /**
              * @description Monthly budget limit
              * @default 100
@@ -8152,6 +8213,19 @@ export type components = {
              * @default []
              */
             readonly records: readonly components["schemas"]["LlmCalibrationRecord"][];
+        };
+        /**
+         * CallAnalyticsConfig
+         * @description Per-call analytics aggregation + retry-rate alert config
+         */
+        readonly CallAnalyticsConfig: {
+            /**
+             * @description Whether analytics collection and alerting is active.
+             * @default true
+             */
+            readonly enabled: boolean;
+            readonly orchestration_alerts: components["schemas"]["OrchestrationAlertThresholds"];
+            readonly retry_alerts: components["schemas"]["RetryAlertConfig"];
         };
         /** CancelEscalationRequest */
         readonly CancelEscalationRequest: {
@@ -11558,6 +11632,53 @@ export type components = {
             readonly entry_kind: "open_question";
         };
         /**
+         * OrchestrationAlertLevel
+         * @description Alert levels for orchestration overhead ratio.
+         *
+         *     Separate from :class:`~synthorg.budget.enums.BudgetAlertLevel`
+         *     because the metric and thresholds are fundamentally different.
+         * @enum {string}
+         */
+        readonly OrchestrationAlertLevel: "normal" | "info" | "warning" | "critical";
+        /**
+         * OrchestrationAlertThresholds
+         * @description Thresholds for orchestration ratio alerting.
+         */
+        readonly OrchestrationAlertThresholds: {
+            /**
+             * @description Ratio threshold for CRITICAL alert
+             * @default 0.7
+             */
+            readonly critical: number;
+            /**
+             * @description Ratio threshold for INFO alert
+             * @default 0.3
+             */
+            readonly info: number;
+            /**
+             * @description Ratio threshold for WARNING alert
+             * @default 0.5
+             */
+            readonly warn: number;
+        };
+        /**
+         * OrchestrationRatio
+         * @description Token-based orchestration overhead ratio.
+         */
+        readonly OrchestrationRatio: {
+            readonly alert_level: components["schemas"]["OrchestrationAlertLevel"];
+            /** @description Coordination tokens */
+            readonly coordination_tokens: number;
+            /** @description Productive tokens */
+            readonly productive_tokens: number;
+            /** @description Orchestration ratio */
+            readonly ratio: number;
+            /** @description System tokens */
+            readonly system_tokens: number;
+            /** @description Total tokens */
+            readonly total_tokens: number;
+        };
+        /**
          * OrgRole
          * @description Permission-level role for org configuration access.
          *
@@ -13438,6 +13559,19 @@ export type components = {
             readonly provider_name: string;
         };
         /**
+         * ProviderCostModel
+         * @description How a provider charges for usage.
+         *
+         *     Members:
+         *         PER_TOKEN: Standard pay-as-you-go; cost computed from
+         *             cost_per_1k_input/output.
+         *         SUBSCRIPTION: Monthly flat fee; individual calls are pre-paid.
+         *         LOCAL: Zero monetary cost; only hardware constraints.
+         * @default per_token
+         * @enum {string}
+         */
+        readonly ProviderCostModel: "per_token" | "subscription" | "local";
+        /**
          * ProviderHealthStatus
          * @description Provider health status derived from recent error rate.
          * @enum {string}
@@ -13598,6 +13732,26 @@ export type components = {
             /** @description Override score */
             readonly score: number;
         };
+        /** QuotaLimit */
+        readonly QuotaLimit: {
+            /**
+             * @description Maximum requests in the window (0 = unlimited)
+             * @default 0
+             */
+            readonly max_requests: number;
+            /**
+             * @description Maximum tokens in the window (0 = unlimited)
+             * @default 0
+             */
+            readonly max_tokens: number;
+            readonly window: components["schemas"]["QuotaWindow"];
+        };
+        /**
+         * QuotaWindow
+         * @description Time window for quota enforcement.
+         * @enum {string}
+         */
+        readonly QuotaWindow: "per_minute" | "per_hour" | "per_day" | "per_month";
         /** RaiseCeilingRequest */
         readonly RaiseCeilingRequest: {
             /** @description Accumulated cost at the moment of parking, supplied by the operator UI. The endpoint rejects ceilings that would re-halt the run immediately on resume with a typed RunHardCeilingTooLowError (richer than a generic 422), so the cross-field check stays in the handler rather than a model validator that would shadow that typed error */
@@ -14081,6 +14235,17 @@ export type components = {
             readonly feedback?: string | null;
             /** @description Clarification response (INFO_REQUEST only) */
             readonly response?: string | null;
+        };
+        /**
+         * RetryAlertConfig
+         * @description Configuration for retry rate alerting.
+         */
+        readonly RetryAlertConfig: {
+            /**
+             * @description Fraction of calls with at least one retry that triggers a warning alert.
+             * @default 0.1
+             */
+            readonly warn_rate: number;
         };
         /**
          * ReviewRequirements
@@ -14951,6 +15116,27 @@ export type components = {
         readonly SubmitDecisionRequest: {
             /** @description Operator decision payload */
             readonly decision: components["schemas"]["WinnerDecision"] | components["schemas"]["RejectDecision"];
+        };
+        /** SubscriptionConfig */
+        readonly SubscriptionConfig: {
+            readonly cost_model: components["schemas"]["ProviderCostModel"];
+            /** @description Free-text hardware constraints for local models */
+            readonly hardware_limits: string | null;
+            /**
+             * @description Fixed monthly subscription fee in the configured currency
+             * @default 0
+             */
+            readonly monthly_cost: number;
+            /**
+             * @description Subscription plan name
+             * @default pay_as_you_go
+             */
+            readonly plan_name: string;
+            /**
+             * @description Rate/token/request limits per time window
+             * @default []
+             */
+            readonly quotas: readonly components["schemas"]["QuotaLimit"][];
         };
         /** SubworkflowSummary */
         readonly SubworkflowSummary: {
@@ -18987,6 +19173,39 @@ export interface operations {
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1BudgetCallAnalyticsGetCallAnalytics: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Filter to calls emitted by this agent. */
+                readonly agent_id?: string | null;
+                /** @description Filter to calls served by this provider. */
+                readonly provider?: string | null;
+                /** @description Filter to calls emitted under this task. */
+                readonly task_id?: string | null;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_AnalyticsAggregation_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

@@ -39,6 +39,7 @@ from synthorg.integrations.oauth.token_manager import (
 from synthorg.integrations.tunnel.mcp_service import TunnelService
 from synthorg.integrations.tunnel.protocol import TunnelProvider
 from synthorg.integrations.webhooks.service import WebhookService
+from synthorg.tools.mcp.factory import MCPToolFactory
 
 if TYPE_CHECKING:
     # api.state_slices imports this feature slice; a runtime import here cycles.
@@ -60,6 +61,7 @@ class IntegrationsStateSlice(BaseFeatureStateSlice):
     tunnel_service: TunnelService | None = None
     mcp_catalog_service: CatalogService | None = None
     mcp_installations_repo: McpInstallationRepository | None = None
+    mcp_bridge_factory: MCPToolFactory | None = None
     health_prober_service: HealthProberService | None = None
 
 

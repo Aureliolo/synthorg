@@ -37,6 +37,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "build_red_team_agent_identity",
         "build_vision_verifier_gate",
         "DeliverableReviewInputBuilder",
+        "build_policy_engine",
     ),
     depends_on=(),
 )

@@ -179,7 +179,7 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
         report_service = AutomatedReportService(
             report_generator=report_generator,
             cost_tracker=cost_tracker,
-            risk_tracker=None,
+            risk_tracker=app_state.slice(BudgetStateSlice).risk_tracker,
             performance_tracker=performance_tracker,
         )
         app_state.wire(BudgetStateSlice, report_service=report_service)

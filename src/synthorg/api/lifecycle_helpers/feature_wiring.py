@@ -9,8 +9,11 @@ missing collaborator leaves its controllers to 503 rather than poisoning
 startup. ``wire_features_on_startup`` runs them in dependency order.
 """
 
+from typing import TYPE_CHECKING
+
 from synthorg.api._app_wiring import _wire_steering_service
 from synthorg.api.app_builders import build_chief_of_staff_chat
+from synthorg.api.lifecycle_helpers.charter_wiring import _wire_charter_engine
 from synthorg.api.lifecycle_helpers.conversational_wiring import (
     wire_chief_of_staff_proposer,
     wire_conversational_actor,
@@ -22,6 +25,12 @@ from synthorg.api.lifecycle_helpers.deliverable_receipt_wiring import (
 from synthorg.api.lifecycle_helpers.finetune_wiring import (
     _wire_fine_tune_orchestrator,
 )
+from synthorg.api.lifecycle_helpers.meta_wiring import (
+    _wire_analytics_collector,
+    _wire_analytics_service,
+    _wire_org_inflection_monitor,
+    _wire_reports_service,
+)
 from synthorg.api.lifecycle_helpers.narrative_wiring import wire_run_narrator
 from synthorg.api.state import AppState
 from synthorg.approval.protocol import ApprovalStoreProtocol
@@ -29,10 +38,13 @@ from synthorg.budget.tracker import CostTracker
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
-from synthorg.observability.events.charter import CHARTER_SUBSTRATE_UNAVAILABLE
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.project_brain.factory import ProjectBrainRuntime
 from synthorg.providers.registry import ProviderRegistry
+
+if TYPE_CHECKING:
+    from synthorg.research.config import ResearchConfig
+    from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 
@@ -228,10 +240,8 @@ async def _wire_research_engine(
     provider_registry: ProviderRegistry | None,
 ) -> None:
     """Wire the research subsystem behind research.enabled + research.model."""
-    from synthorg.knowledge.state import KnowledgeStateSlice  # noqa: PLC0415
     from synthorg.persistence.state import (  # noqa: PLC0415
         PersistenceStateSlice,
-        persistence_of,
     )
     from synthorg.research.state import ResearchStateSlice  # noqa: PLC0415
     from synthorg.settings.state import (  # noqa: PLC0415
@@ -250,82 +260,11 @@ async def _wire_research_engine(
         return
     runtime_settings = settings_service_of(app_state)
     try:
-        from synthorg.budget.state import cost_tracker_of  # noqa: PLC0415
-        from synthorg.research.config import ResearchConfig  # noqa: PLC0415
-        from synthorg.research.factory import build_research_service  # noqa: PLC0415
-        from synthorg.research.tool_factory import (  # noqa: PLC0415
-            build_research_tool_factory,
+        await _build_and_wire_research(
+            app_state,
+            provider_registry=provider_registry,
+            runtime_settings=runtime_settings,
         )
-
-        enabled = (
-            await runtime_settings.get("research", "enabled")
-        ).value.strip().lower() == "true"
-        model = (await runtime_settings.get("research", "model")).value.strip()
-        if not enabled or not model:
-            logger.info(
-                API_APP_STARTUP,
-                service="research_engine",
-                note="research disabled or model unset; wiring skipped",
-            )
-            return
-        provider_names = provider_registry.list_providers()
-        if not provider_names:
-            return
-        provider_name = (
-            await runtime_settings.get("research", "provider")
-        ).value.strip()
-        provider = (
-            provider_registry.get(provider_name)
-            if provider_name and provider_name in provider_registry
-            else provider_registry.get(provider_names[0])
-        )
-        config = ResearchConfig(
-            enabled=True,
-            query_planner=(
-                await runtime_settings.get("research", "query_planner")
-            ).value.strip(),  # type: ignore[arg-type]
-            credibility_triage=(
-                await runtime_settings.get("research", "credibility_triage")
-            ).value.strip(),  # type: ignore[arg-type]
-            deduplicator=(
-                await runtime_settings.get("research", "deduplicator")
-            ).value.strip(),  # type: ignore[arg-type]
-            synthesizer=(
-                await runtime_settings.get("research", "synthesizer")
-            ).value.strip(),  # type: ignore[arg-type]
-            triage_batch_size=int(
-                (await runtime_settings.get("research", "triage_batch_size")).value
-            ),
-            hybrid_prefilter_factor=float(
-                (
-                    await runtime_settings.get("research", "hybrid_prefilter_factor")
-                ).value
-            ),
-            dedup_similarity_threshold=float(
-                (
-                    await runtime_settings.get("research", "dedup_similarity_threshold")
-                ).value
-            ),
-            per_query_limit=int(
-                (await runtime_settings.get("research", "per_query_limit")).value
-            ),
-        )
-        service = build_research_service(
-            runs_repo=persistence_of(app_state).research_runs,
-            provider=provider,
-            model=model,
-            config=config,
-            knowledge_service=app_state.slice(KnowledgeStateSlice).service,
-            clock=app_state.clock,
-            cost_tracker=cost_tracker_of(app_state),
-        )
-        tool_factory = build_research_tool_factory(
-            service=service, clock=app_state.clock
-        )
-        app_state.swap_slice(
-            ResearchStateSlice(service=service, tool_factory=tool_factory)
-        )
-        logger.info(API_APP_STARTUP, service="research_engine", note="wired")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
@@ -337,112 +276,95 @@ async def _wire_research_engine(
         )
 
 
-async def _wire_charter_engine(
+async def _build_research_config(runtime_settings: SettingsService) -> ResearchConfig:
+    """Assemble the ``ResearchConfig`` from the research settings namespace.
+
+    Returns:
+        The strategy-discriminator + tuning ``ResearchConfig``.
+    """
+    from synthorg.research.config import ResearchConfig  # noqa: PLC0415
+
+    return ResearchConfig(
+        enabled=True,
+        query_planner=(
+            await runtime_settings.get("research", "query_planner")
+        ).value.strip(),  # type: ignore[arg-type]
+        credibility_triage=(
+            await runtime_settings.get("research", "credibility_triage")
+        ).value.strip(),  # type: ignore[arg-type]
+        deduplicator=(
+            await runtime_settings.get("research", "deduplicator")
+        ).value.strip(),  # type: ignore[arg-type]
+        synthesizer=(
+            await runtime_settings.get("research", "synthesizer")
+        ).value.strip(),  # type: ignore[arg-type]
+        triage_batch_size=int(
+            (await runtime_settings.get("research", "triage_batch_size")).value
+        ),
+        hybrid_prefilter_factor=float(
+            (await runtime_settings.get("research", "hybrid_prefilter_factor")).value
+        ),
+        dedup_similarity_threshold=float(
+            (await runtime_settings.get("research", "dedup_similarity_threshold")).value
+        ),
+        per_query_limit=int(
+            (await runtime_settings.get("research", "per_query_limit")).value
+        ),
+    )
+
+
+async def _build_and_wire_research(
     app_state: AppState,
     *,
-    provider_registry: ProviderRegistry | None,
-    persistence: PersistenceBackend | None,
-    cost_tracker: CostTracker | None,
+    provider_registry: ProviderRegistry,
+    runtime_settings: SettingsService,
 ) -> None:
-    """Wire the deep CEO-interview charter engine behind a provider + persistence."""
-    from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
-    from synthorg.engine.state import (  # noqa: PLC0415
-        EngineStateSlice,
-        work_pipeline_of,
+    """Build the research service from config and swap it onto the slice.
+
+    No-op (logs + returns) when research is disabled, no model is set, or no
+    provider is configured.
+    """
+    from synthorg.budget.state import cost_tracker_of  # noqa: PLC0415
+    from synthorg.knowledge.state import KnowledgeStateSlice  # noqa: PLC0415
+    from synthorg.persistence.state import persistence_of  # noqa: PLC0415
+    from synthorg.research.factory import build_research_service  # noqa: PLC0415
+    from synthorg.research.state import ResearchStateSlice  # noqa: PLC0415
+    from synthorg.research.tool_factory import (  # noqa: PLC0415
+        build_research_tool_factory,
     )
-    from synthorg.meta.charter.state import CharterStateSlice  # noqa: PLC0415
-    from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
-    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
-    if app_state.slice(CharterStateSlice).interview_service is not None:
+    enabled = (
+        await runtime_settings.get("research", "enabled")
+    ).value.strip().lower() == "true"
+    model = (await runtime_settings.get("research", "model")).value.strip()
+    if not enabled or not model:
+        logger.info(
+            API_APP_STARTUP,
+            service="research_engine",
+            note="research disabled or model unset; wiring skipped",
+        )
         return
-    if (
-        provider_registry is None
-        or persistence is None
-        or app_state.slice(PersistenceStateSlice).backend is None
-    ):
+    provider_names = provider_registry.list_providers()
+    if not provider_names:
         return
-    try:
-        from synthorg.meta.charter.dispatch import CharterDispatcher  # noqa: PLC0415
-        from synthorg.meta.charter.factory import (  # noqa: PLC0415
-            build_charter_interview_strategy,
-        )
-        from synthorg.meta.charter.service import (  # noqa: PLC0415
-            CharterInterviewService,
-        )
-        from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
-        from synthorg.persistence.charter_factory import (  # noqa: PLC0415
-            build_charter_repository,
-        )
-        from synthorg.persistence.conversational_factory import (  # noqa: PLC0415
-            build_conversational_repositories,
-        )
-
-        si_config = await load_self_improvement_config(
-            app_state.slice(SettingsStateSlice).settings_service,
-        )
-        charter_config = si_config.charter
-        if not charter_config.interview_enabled:
-            return
-        charter_repo = build_charter_repository(persistence)
-        conv_repos = build_conversational_repositories(persistence)
-        available = provider_registry.list_providers()
-        if charter_repo is None or conv_repos is None or not available:
-            logger.warning(
-                CHARTER_SUBSTRATE_UNAVAILABLE,
-                note="charter interview enabled but stores/provider unavailable",
-            )
-            return
-        provider = provider_registry.get(available[0])
-        strategy = build_charter_interview_strategy(
-            charter_config,
-            provider=provider,
-            cost_tracker=cost_tracker,
-        )
-        interview_service = CharterInterviewService(
-            strategy=strategy,
-            config=charter_config,
-            conversation_repo=conv_repos.conversation_repo,
-            turn_repo=conv_repos.turn_repo,
-            charter_repo=charter_repo,
-        )
-        app_state.swap_slice(CharterStateSlice(interview_service=interview_service))
-        budget_slice = app_state.slice(BudgetStateSlice)
-        forecast_repo = budget_slice.cost_forecast_repo
-        budget_config = budget_slice.budget_config
-        if (
-            app_state.slice(EngineStateSlice).work_pipeline is None
-            or forecast_repo is None
-            or budget_config is None
-        ):
-            logger.warning(
-                CHARTER_SUBSTRATE_UNAVAILABLE,
-                note="charter dispatcher deps absent; approve will 503",
-            )
-            return
-        resolved_budget = budget_config
-        dispatcher = CharterDispatcher(
-            charter_repo=charter_repo,
-            forecast_repo=forecast_repo,
-            project_repo=persistence.projects,
-            work_pipeline=work_pipeline_of(app_state),
-            conversation_repo=conv_repos.conversation_repo,
-            budget_currency=lambda: resolved_budget.currency,
-        )
-        app_state.swap_slice(
-            CharterStateSlice(
-                interview_service=interview_service, dispatcher=dispatcher
-            )
-        )
-        logger.info(API_APP_STARTUP, service="charter_engine", note="wired")
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        logger.warning(
-            CHARTER_SUBSTRATE_UNAVAILABLE,
-            note="charter wiring raised; charter endpoints stay unavailable",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
+    provider_name = (await runtime_settings.get("research", "provider")).value.strip()
+    provider = (
+        provider_registry.get(provider_name)
+        if provider_name and provider_name in provider_registry
+        else provider_registry.get(provider_names[0])
+    )
+    service = build_research_service(
+        runs_repo=persistence_of(app_state).research_runs,
+        provider=provider,
+        model=model,
+        config=await _build_research_config(runtime_settings),
+        knowledge_service=app_state.slice(KnowledgeStateSlice).service,
+        clock=app_state.clock,
+        cost_tracker=cost_tracker_of(app_state),
+    )
+    tool_factory = build_research_tool_factory(service=service, clock=app_state.clock)
+    app_state.swap_slice(ResearchStateSlice(service=service, tool_factory=tool_factory))
+    logger.info(API_APP_STARTUP, service="research_engine", note="wired")
 
 
 async def _wire_signals_service(
@@ -477,16 +399,24 @@ async def _wire_signals_service(
             note="performance tracker absent; signals wiring skipped",
         )
         return
+    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
     from synthorg.meta.signals.factory import build_signals_service  # noqa: PLC0415
 
     registry = app_state.slice(HrStateSlice).agent_registry
     agent_ids_provider = registry.active_agent_ids if registry is not None else tuple
+    # The evolution-outcome store is intentionally left unwired: its only
+    # producer is the self-improvement cycle (SelfImprovementService), which
+    # is out of scope here, so wiring a read-only store with no writer would
+    # be a ghost. The aggregator degrades to an empty evolution summary until
+    # that producer ships. The error-taxonomy store IS wired -- it has a live
+    # producer (the classification sinks).
     try:
         signals_service = build_signals_service(
             performance_tracker=performance_tracker,
             agent_ids_provider=agent_ids_provider,
             approval_store=effective_approval_store,
             scaling_service=app_state.slice(HrStateSlice).scaling_service,
+            error_store=app_state.slice(EngineStateSlice).error_taxonomy_store,
         )
         app_state.wire(MetaStateSlice, signals_service=signals_service)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
@@ -553,14 +483,11 @@ async def wire_features_on_startup(
         persistence=persistence,
         cost_tracker=cost_tracker,
     )
-    await _wire_signals_service(
-        app_state,
-        effective_approval_store=effective_approval_store,
-    )
-    await _wire_chief_of_staff_chat(
+    await _wire_meta_features(
         app_state,
         provider_registry=provider_registry,
         cost_tracker=cost_tracker,
+        effective_approval_store=effective_approval_store,
     )
     await wire_run_narrator(
         app_state,
@@ -581,3 +508,31 @@ async def wire_features_on_startup(
         cost_tracker=cost_tracker,
     )
     await wire_conversational_actor(app_state)
+
+
+async def _wire_meta_features(
+    app_state: AppState,
+    *,
+    provider_registry: ProviderRegistry | None,
+    cost_tracker: CostTracker | None,
+    effective_approval_store: ApprovalStoreProtocol,
+) -> None:
+    """Wire the signals facade, its read-views, and chief-of-staff chat.
+
+    Ordered: signals first (the analytics / reports / inflection views layer
+    on top of it), then the cross-deployment collector role and the
+    chief-of-staff chat backend.
+    """
+    await _wire_signals_service(
+        app_state,
+        effective_approval_store=effective_approval_store,
+    )
+    await _wire_analytics_service(app_state)
+    await _wire_reports_service(app_state)
+    await _wire_org_inflection_monitor(app_state)
+    await _wire_analytics_collector(app_state)
+    await _wire_chief_of_staff_chat(
+        app_state,
+        provider_registry=provider_registry,
+        cost_tracker=cost_tracker,
+    )

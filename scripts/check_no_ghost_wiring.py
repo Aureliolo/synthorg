@@ -69,6 +69,10 @@ RUNTIME_PREFIXES: Final[tuple[str, ...]] = (
     "src/synthorg/budget/",
     "src/synthorg/security/",
     "src/synthorg/meta/",
+    # infrastructure/ holds the read / MCP facade family; its services are
+    # constructed at boot by the facades feature construction_wirer
+    # (infrastructure/_construction.py) via run_construction_wiring.
+    "src/synthorg/infrastructure/",
     "src/synthorg/client/",
     "src/synthorg/settings/",
     # tools/ is reached at boot via the

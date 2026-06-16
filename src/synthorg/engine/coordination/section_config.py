@@ -8,6 +8,7 @@ from typing import ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.budget.coordination_config import ErrorTaxonomyConfig
 from synthorg.core.task_enums import CoordinationTopology
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination.config import CoordinationConfig
@@ -174,6 +175,14 @@ class CoordinationSectionConfig(BaseModel):
         ge=1,
         le=20,
         description="Soft cap on delegation rounds; hard abort at 2x",
+    )
+    error_taxonomy: ErrorTaxonomyConfig = Field(
+        default_factory=ErrorTaxonomyConfig,
+        description=(
+            "Multi-agent error-taxonomy classification + sink config. Off by "
+            "default; when enabled the post-execution pipeline classifies "
+            "coordination errors and feeds the aggregation store + sinks."
+        ),
     )
 
     @model_validator(mode="before")

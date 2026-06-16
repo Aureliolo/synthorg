@@ -212,12 +212,9 @@ _r.register(
         default="10000",
         description=(
             "Maximum delegation records retained in the in-memory store before"
-            " FIFO eviction. NOTE: DelegationRecordStore is constructed by the"
-            " caller of create_app (not inside create_app itself), so this"
-            " setting is surfaced for completeness but is not yet threaded into"
-            " the default construction path. Until that wiring lands a change"
-            " requires rebuilding the store with the desired max_records and"
-            " restarting the process."
+            " FIFO eviction. Resolved at construction (env > code default) and"
+            " passed as the store's max_records; restart-required because the"
+            " bounded deque maxlen is fixed at construction."
         ),
         group="Delegation",
         level=SettingLevel.ADVANCED,
@@ -235,12 +232,9 @@ _r.register(
         default="256",
         description=(
             "Maximum events buffered per subscriber queue before backpressure"
-            " kicks in. NOTE: EventStreamHub is constructed inside create_app"
-            " before the ConfigResolver is available, and asyncio.Queue is"
-            " created at subscribe time with a fixed maxsize -- changing the"
-            " value on an existing hub would only affect new subscribers."
-            " Until runtime wiring lands a change requires a process restart"
-            " with the default overridden at EventStreamHub construction."
+            " kicks in. Resolved at construction (env > code default) and passed"
+            " as the EventStreamHub's max_queue_size; restart-required because"
+            " per-subscriber asyncio.Queue maxsize is fixed at construction."
         ),
         group="Event Stream",
         level=SettingLevel.ADVANCED,

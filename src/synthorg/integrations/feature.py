@@ -99,6 +99,6 @@ FEATURE: FeatureModule = FeatureManifest(
     ),
     lifecycle_hooks=(),
     construction_wirer=wire_construction,
-    ghost_wired_symbols=(),
+    ghost_wired_symbols=("MCPToolFactory",),
     depends_on=(),
 )

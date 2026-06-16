@@ -17,6 +17,7 @@ from synthorg.meta.analytics.service import AnalyticsService
 from synthorg.meta.chief_of_staff.actor import ConversationalActor
 from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
 from synthorg.meta.chief_of_staff.group_chat import GroupChatService
+from synthorg.meta.chief_of_staff.monitor import OrgInflectionMonitor
 from synthorg.meta.chief_of_staff.propose import (
     ChiefOfStaffProposer,
 )
@@ -47,6 +48,7 @@ class MetaStateSlice(BaseFeatureStateSlice):
     analytics_service: AnalyticsService | None = None
     chief_of_staff_proposer: ChiefOfStaffProposer | None = None
     chief_of_staff_chat: ChiefOfStaffChat | None = None
+    org_inflection_monitor: OrgInflectionMonitor | None = None
     conversational_proposal_repo: ConversationalProposalRepository | None = None
     conversation_invite_repo: ConversationInviteRepository | None = None
     conversation_participant_repo: ConversationParticipantRepository | None = None

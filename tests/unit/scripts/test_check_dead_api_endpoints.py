@@ -790,16 +790,13 @@ def test_frontend_multi_segment_base_token(tmp_path: Path) -> None:
 
 
 def test_a2a_well_known_root_mount(tmp_path: Path) -> None:
-    """``WellKnownAgentCardController`` is mounted at the app root, not under
-    the ``/api/v1`` prefix; the ``/.well-known/...`` path stays verbatim."""
-    repo = _make_fake_repo(
-        tmp_path,
-        app_body=(
-            "if effective_config.a2a.enabled:\n"
-            "    from synthorg.a2a.well_known import WellKnownAgentCardController\n"
-        ),
-    )
-    # Lay out the synthetic A2A module.
+    """``WellKnownAgentCardController`` is discovered via its feature manifest
+    and mounted at the app root, not under the ``/api/v1`` prefix; the
+    ``/.well-known/...`` path stays verbatim."""
+    repo = _make_fake_repo(tmp_path)
+    # Lay out the synthetic A2A module plus its feature manifest. The backend
+    # walker discovers root-mounted controllers via the manifest's
+    # ``ControllerRegistration(..., mount="root")`` call, not the app.py imports.
     a2a_dir = repo / "src" / "synthorg" / "a2a"
     a2a_dir.mkdir(parents=True)
     (a2a_dir / "__init__.py").write_text("", encoding="utf-8")
@@ -809,6 +806,16 @@ def test_a2a_well_known_root_mount(tmp_path: Path) -> None:
         "    path = '/.well-known'\n"
         "    @get('/agent-card.json')\n"
         "    async def get_card(self): ...\n",
+        encoding="utf-8",
+    )
+    (a2a_dir / "feature.py").write_text(
+        "from synthorg._core.features import ControllerRegistration\n"
+        "from synthorg.a2a.well_known import WellKnownAgentCardController\n"
+        "FEATURE = (\n"
+        "    ControllerRegistration(\n"
+        "        controller=WellKnownAgentCardController, mount='root'\n"
+        "    ),\n"
+        ")\n",
         encoding="utf-8",
     )
     routes = _MODULE.collect_backend_routes(repo)  # type: ignore[attr-defined]

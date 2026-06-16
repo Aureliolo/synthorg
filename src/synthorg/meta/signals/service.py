@@ -110,6 +110,18 @@ class SignalsService:
         self._snapshot_builder = snapshot_builder
         self._approval_store = approval_store
 
+    @property
+    def snapshot_builder(self) -> SnapshotBuilder:
+        """The composite snapshot builder backing this facade.
+
+        Exposed so a sibling consumer (the org-inflection monitor) shares
+        the same aggregator wiring rather than rebuilding a parallel one.
+
+        Returns:
+            The shared snapshot builder.
+        """
+        return self._snapshot_builder
+
     # ── Snapshot + per-domain reads ──────────────────────────────────
 
     async def get_org_snapshot(

@@ -54,6 +54,9 @@ from synthorg.workers._agent_engine_collaborators import (
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
+    from synthorg.budget.coordination_config import ErrorTaxonomyConfig
+    from synthorg.engine.classification.protocol import ClassificationSink
+    from synthorg.engine.evolution.service import EvolutionService
     from synthorg.engine.routing_policy.router import StakesRouter
     from synthorg.providers.protocol import CompletionProvider
     from synthorg.providers.registry import ProviderRegistry
@@ -260,6 +263,192 @@ def _build_stakes_router_or_none(
     )
 
 
+async def _build_mcp_bridge_tools(app_state: AppState) -> tuple[BaseTool, ...]:
+    """Bridge configured external MCP servers into the boot tool registry.
+
+    Merges catalog installations onto the YAML ``mcp`` config, connects to
+    every enabled server via :class:`MCPToolFactory`, and returns the
+    discovered tools so ``_build_tool_registry`` can expose them to agents.
+    No servers configured -> no-op (empty tuple). The factory is parked on
+    the integrations slice so the shutdown runner can close its sessions.
+    Best-effort: an unreachable server degrades to no bridge tools rather
+    than poisoning boot.
+
+    Returns:
+        The bridged external-MCP tools, or ``()`` when none are configured.
+    """
+    from synthorg.integrations.mcp_catalog.install import (  # noqa: PLC0415
+        merge_installed_servers,
+    )
+    from synthorg.integrations.state import IntegrationsStateSlice  # noqa: PLC0415
+    from synthorg.tools.mcp.factory import MCPToolFactory  # noqa: PLC0415
+
+    base = app_state.config.mcp
+    integrations = app_state.slice(IntegrationsStateSlice)
+    existing_factory = integrations.mcp_bridge_factory
+    if existing_factory is not None:
+        # build_runtime_services re-runs this on post_setup_reinit; close the
+        # prior factory's sessions before reconnecting so they do not leak,
+        # and clear the slice so a no-servers reinit leaves nothing wired.
+        try:
+            await existing_factory.shutdown()
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                API_APP_STARTUP,
+                service="mcp_bridge",
+                note="failed to close prior MCP bridge factory before rebuild",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+        app_state.wire(IntegrationsStateSlice, mcp_bridge_factory=None)
+    repo = integrations.mcp_installations_repo
+    catalog = integrations.mcp_catalog_service
+    merged = base
+    if repo is not None and catalog is not None:
+        installations = await repo.list_items(limit=10_000)
+        if installations:
+            entries_by_id = {entry.id: entry for entry in await catalog.browse()}
+            merged = merge_installed_servers(base, installations, entries_by_id)
+    if not merged.servers:
+        return ()
+    factory: MCPToolFactory | None = None
+    try:
+        factory = MCPToolFactory(merged)
+        tools = await factory.create_tools()
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        # A factory that opened sessions before failing must release them;
+        # shutdown() is self-guarding (per-client try/except + clear), so
+        # only a critical propagates here, which is the correct behaviour.
+        if factory is not None:
+            await factory.shutdown()
+        logger.warning(
+            API_APP_STARTUP,
+            service="mcp_bridge",
+            note="external MCP bridge wiring failed; no bridge tools exposed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return ()
+    app_state.wire(IntegrationsStateSlice, mcp_bridge_factory=factory)
+    logger.info(
+        API_APP_STARTUP,
+        service="mcp_bridge",
+        note="wired",
+        tool_count=len(tools),
+    )
+    return tools
+
+
+def _build_classification(
+    app_state: AppState,
+) -> tuple[ErrorTaxonomyConfig | None, tuple[ClassificationSink, ...]]:
+    """Build the post-execution error-taxonomy config + classification sinks.
+
+    Off by default: when ``coordination.error_taxonomy.enabled`` is False the
+    config is ``None`` and the sink tuple empty, so the post-execution pipeline
+    skips classification entirely (no behaviour change). When enabled the shared
+    taxonomy store (the signals aggregator's reader) plus the performance and
+    notification sinks are fed by every classified execution.
+
+    Returns:
+        A ``(error_taxonomy_config_or_none, sinks)`` pair.
+    """
+    from synthorg.engine.classification.sinks import (  # noqa: PLC0415
+        NotificationDispatcherSink,
+        PerformanceTrackerSink,
+    )
+    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
+    from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
+    from synthorg.notifications.state import (  # noqa: PLC0415
+        NotificationsStateSlice,
+    )
+
+    config = app_state.config.coordination.error_taxonomy
+    if not config.enabled:
+        return None, ()
+    sinks: list[ClassificationSink] = []
+    # The taxonomy store plays a dual role: it is both a classification sink
+    # (write side, appended here) and the signals aggregator's reader. The
+    # reference is captured once at engine construction; the slice field is set
+    # once in engine/_construction.py and never replaced, so this shared object
+    # stays valid for the engine's lifetime (no dangling-reference window).
+    store = app_state.slice(EngineStateSlice).error_taxonomy_store
+    if store is not None:
+        sinks.append(store)
+    tracker = app_state.slice(HrStateSlice).performance_tracker
+    if tracker is not None:
+        sinks.append(PerformanceTrackerSink(tracker))
+    dispatcher = app_state.slice(NotificationsStateSlice).dispatcher
+    if dispatcher is not None:
+        sinks.append(NotificationDispatcherSink(dispatcher))
+    return config, tuple(sinks)
+
+
+def _build_evolution_service_or_none(
+    app_state: AppState,
+    provider: CompletionProvider,
+) -> EvolutionService | None:
+    """Build the agent self-evolution service when enabled at boot.
+
+    Off by default (``evolution.enabled``). Gated on a connected persistence
+    backend exposing the identity-version repo plus the agent registry and
+    performance tracker; a missing dependency leaves the service ``None`` so
+    the post-execution evolution trigger is a no-op. A factory failure (e.g.
+    shadow-evaluation enabled without a runner) degrades to ``None`` rather
+    than poisoning the boot engine.
+
+    Returns:
+        The wired evolution service, or ``None`` when disabled / unavailable.
+    """
+    config = app_state.config.evolution
+    if not config.enabled:
+        return None
+    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
+    from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
+    from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
+
+    persistence = app_state.slice(PersistenceStateSlice).backend
+    if (
+        persistence is None
+        or not getattr(persistence, "is_connected", False)
+        or not hasattr(persistence, "identity_versions")
+    ):
+        return None
+    registry = app_state.slice(HrStateSlice).agent_registry
+    tracker = app_state.slice(HrStateSlice).performance_tracker
+    if registry is None or tracker is None:
+        return None
+    from synthorg.engine.evolution.factory import (  # noqa: PLC0415
+        build_evolution_service,
+    )
+    from synthorg.versioning import VersioningService  # noqa: PLC0415
+
+    try:
+        service = build_evolution_service(
+            config,
+            registry=registry,
+            versioning=VersioningService(persistence.identity_versions),
+            tracker=tracker,
+            memory_backend=app_state.slice(MemoryStateSlice).backend,
+            provider=provider,
+        )
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_APP_STARTUP,
+            service="evolution",
+            note="evolution service wiring failed; trigger stays a no-op",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None
+    app_state.wire(EngineStateSlice, evolution_service=service)
+    logger.info(API_APP_STARTUP, service="evolution", note="wired")
+    return service
+
+
 def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
     app_state: AppState,
     provider: CompletionProvider,
@@ -282,8 +471,13 @@ def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
         The boot ``AgentEngine`` shared by the worker execution service
         and the coordinator.
     """
+    error_taxonomy_config, classification_sinks = _build_classification(app_state)
     return AgentEngine(
         coordination_metrics_collector=coordination_metrics_collector,
+        error_taxonomy_config=error_taxonomy_config,
+        classification_sinks=classification_sinks,
+        evolution_service=_build_evolution_service_or_none(app_state, provider),
+        policy_engine=app_state.slice(SecurityStateSlice).policy_engine,
         provider=provider,
         provider_registry=registry,
         tool_registry=tool_registry,

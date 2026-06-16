@@ -568,6 +568,14 @@ export const NETWORK_MODE_VALUES = [
 ] as const
 export type NetworkMode = (typeof NETWORK_MODE_VALUES)[number]
 
+export const ORCHESTRATION_ALERT_LEVEL_VALUES = [
+    'normal',
+    'info',
+    'warning',
+    'critical',
+] as const
+export type OrchestrationAlertLevel = (typeof ORCHESTRATION_ALERT_LEVEL_VALUES)[number]
+
 export const ORG_ROLE_VALUES = [
     'owner',
     'department_admin',
@@ -615,6 +623,13 @@ export const PROPOSAL_ALTITUDE_VALUES = [
 ] as const
 export type ProposalAltitude = (typeof PROPOSAL_ALTITUDE_VALUES)[number]
 
+export const PROVIDER_COST_MODEL_VALUES = [
+    'per_token',
+    'subscription',
+    'local',
+] as const
+export type ProviderCostModel = (typeof PROVIDER_COST_MODEL_VALUES)[number]
+
 export const PROVIDER_HEALTH_STATUS_VALUES = [
     'up',
     'degraded',
@@ -622,6 +637,14 @@ export const PROVIDER_HEALTH_STATUS_VALUES = [
     'unknown',
 ] as const
 export type ProviderHealthStatus = (typeof PROVIDER_HEALTH_STATUS_VALUES)[number]
+
+export const QUOTA_WINDOW_VALUES = [
+    'per_minute',
+    'per_hour',
+    'per_day',
+    'per_month',
+] as const
+export type QuotaWindow = (typeof QUOTA_WINDOW_VALUES)[number]
 
 export const READINESS_OUTCOME_VALUES = [
     'ok',

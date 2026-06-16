@@ -1,19 +1,71 @@
 """Direct unit tests for the quality facade services."""
 
+from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import cast
 from uuid import uuid4
 
 import pytest
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.quality.mcp_services import (
     EvaluationVersionService,
     QualityFacadeService,
     ReviewFacadeService,
 )
+from synthorg.hr.performance.models import TaskMetricRecord
 
 pytestmark = pytest.mark.unit
+
+_NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+
+
+def _record(
+    *,
+    agent_id: str,
+    quality_score: float | None,
+    completed_at: datetime = _NOW,
+) -> TaskMetricRecord:
+    """Build a scored task-metric record for the quality facade tests.
+
+    Returns:
+        The constructed task-metric record.
+    """
+    return TaskMetricRecord(
+        agent_id=NotBlankStr(agent_id),
+        task_id=NotBlankStr(f"task-{agent_id}-{completed_at.isoformat()}"),
+        task_type=TaskType.DEVELOPMENT,
+        completed_at=completed_at,
+        is_success=True,
+        duration_seconds=10.0,
+        cost=0.01,
+        currency="EUR",
+        turns_used=2,
+        tokens_used=150,
+        quality_score=quality_score,
+        complexity=Complexity.SIMPLE,
+    )
+
+
+class _FakeTracker:
+    """Minimal tracker exposing only ``get_task_metrics`` for the facade."""
+
+    def __init__(self, records: tuple[TaskMetricRecord, ...]) -> None:
+        self._records = records
+
+    def get_task_metrics(
+        self,
+        *,
+        agent_id: NotBlankStr | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> tuple[TaskMetricRecord, ...]:
+        if agent_id is None:
+            return self._records
+        return tuple(r for r in self._records if r.agent_id == agent_id)
 
 
 # ── QualityFacadeService ──────────────────────────────────────────
@@ -34,6 +86,46 @@ class TestQualityFacadeService:
         service = QualityFacadeService(tracker=SimpleNamespace())  # type: ignore[arg-type]
         with pytest.raises(CapabilityNotSupportedError):
             await service.list_scores()
+
+    async def test_get_summary_aggregates_real_data(self) -> None:
+        tracker = _FakeTracker(
+            (
+                _record(agent_id="a", quality_score=8.0),
+                _record(agent_id="a", quality_score=6.0),
+                _record(agent_id="b", quality_score=10.0),
+                _record(agent_id="b", quality_score=None),
+            )
+        )
+        service = QualityFacadeService(tracker=tracker)  # type: ignore[arg-type]
+        summary = await service.get_summary()
+        assert summary["agent_count"] == 2
+        assert summary["scored_task_count"] == 3
+        assert summary["overall_quality_score"] == pytest.approx(8.0)
+        agent_rows = cast(Sequence[Mapping[str, object]], summary["agents"])
+        agents = {row["agent_id"]: row for row in agent_rows}
+        assert agents["a"]["average_quality_score"] == pytest.approx(7.0)
+        assert agents["b"]["scored_task_count"] == 1
+
+    async def test_list_scores_filters_sorts_and_paginates(self) -> None:
+        tracker = _FakeTracker(
+            (
+                _record(agent_id="a", quality_score=5.0, completed_at=_NOW),
+                _record(
+                    agent_id="a",
+                    quality_score=9.0,
+                    completed_at=_NOW + timedelta(hours=1),
+                ),
+                _record(agent_id="b", quality_score=7.0),
+            )
+        )
+        service = QualityFacadeService(tracker=tracker)  # type: ignore[arg-type]
+        page, total = await service.list_scores(
+            agent_id=NotBlankStr("a"), offset=0, limit=1
+        )
+        assert total == 2
+        assert len(page) == 1
+        # Newest-first ordering: the 9.0 score (later completed_at) comes first.
+        assert page[0].quality_score == pytest.approx(9.0)
 
 
 # ── ReviewFacadeService ───────────────────────────────────────────
