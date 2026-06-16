@@ -12,6 +12,7 @@ import asyncio
 import copy
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from types import MappingProxyType
 from typing import Final, NamedTuple
 
 from synthorg.budget.quota import (
@@ -523,11 +524,13 @@ def _build_exhaustion_reason(
 
 _MONTHS_PER_YEAR: Final[int] = 12
 
-_WINDOW_DELTAS: dict[QuotaWindow, timedelta] = {
-    QuotaWindow.PER_MINUTE: timedelta(minutes=1),
-    QuotaWindow.PER_HOUR: timedelta(hours=1),
-    QuotaWindow.PER_DAY: timedelta(days=1),
-}
+_WINDOW_DELTAS: Mapping[QuotaWindow, timedelta] = MappingProxyType(
+    {
+        QuotaWindow.PER_MINUTE: timedelta(minutes=1),
+        QuotaWindow.PER_HOUR: timedelta(hours=1),
+        QuotaWindow.PER_DAY: timedelta(days=1),
+    }
+)
 
 
 def _window_end(window: QuotaWindow, start: datetime) -> datetime:

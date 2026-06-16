@@ -808,8 +808,7 @@
         "AnalyticsService",
         "ReportsService",
         "OrgInflectionMonitor",
-        "build_analytics_collector",
-        "InMemoryEvolutionOutcomeStore"
+        "build_analytics_collector"
       ],
       "mcp_tool_names": [
         "synthorg_meta_get_config",
@@ -1244,6 +1243,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-16T16:06:49.948069Z",
+  "generated_at": "2026-06-16T18:05:21.798469Z",
   "schema_version": 1
 }

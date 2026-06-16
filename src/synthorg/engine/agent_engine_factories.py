@@ -1,6 +1,6 @@
 """Factory mixin for :class:`AgentEngine`: approval gate, loop, tool invoker."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from synthorg.core.agent import AgentIdentity, ToolPermissions
 from synthorg.core.task import Task
@@ -80,7 +80,7 @@ class AgentEngineFactoriesMixin:
     _approval_gate: ApprovalGate | None
     _trust_service: TrustService | None
     _policy_engine: PolicyEngine | None
-    _policy_evaluation_mode: str
+    _policy_evaluation_mode: Literal["enforce", "log_only"]
     _mcp_self_consumer: MCPSelfConsumerProvider | None
     _approval_interrupt_timeout_seconds: float | None
     _stagnation_detector: StagnationDetector | None

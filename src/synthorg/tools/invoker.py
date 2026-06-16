@@ -13,6 +13,7 @@ import copy
 from collections.abc import Iterable
 from contextlib import nullcontext
 from datetime import UTC, datetime
+from typing import Literal
 
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.approval.models import EscalationInfo
@@ -91,7 +92,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         agent_provider_name: str | None = None,
         invocation_tracker: ToolInvocationTracker | None = None,
         policy_engine: PolicyEngine | None = None,
-        policy_evaluation_mode: str = "log_only",
+        policy_evaluation_mode: Literal["enforce", "log_only"] = "log_only",
     ) -> None:
         """Initialize with a tool registry and optional checkers.
 
@@ -108,8 +109,13 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                 invocations for the activity timeline.
             policy_engine: Optional runtime policy engine evaluated before
                 each tool call. ``None`` is a transparent pass-through.
-            policy_evaluation_mode: ``"enforce"`` blocks denied tool calls;
-                ``"log_only"`` logs the denial and proceeds.
+            policy_evaluation_mode: ``"enforce"`` blocks denied tool calls
+                (and fails closed when the engine itself errors);
+                ``"log_only"`` logs the denial and proceeds. The
+                ``Literal`` annotation makes a typo a static type error at
+                every call site -- stronger than a runtime guard, and the
+                only runtime source (``PolicyEngineConfig.evaluation_mode``)
+                is already a Pydantic-validated ``Literal``.
         """
         self._registry = registry
         self._permission_checker = permission_checker
@@ -120,6 +126,11 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         self._invocation_tracker = invocation_tracker
         self._policy_engine = policy_engine
         self._policy_evaluation_mode = policy_evaluation_mode
+        # Per-batch execution-run id, set by invoke()/invoke_all() so the
+        # policy seam can stamp Cedar context with the live execution_id
+        # (the invoker is built per-task, before the execution context
+        # exists, so this cannot be a constructor argument).
+        self._execution_id: str | None = None
 
         self._pending_escalations: list[EscalationInfo] = []
         self._html_guard: HTMLParseGuard | None = None
@@ -179,9 +190,11 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
 
         Returns ``None`` to proceed (no engine wired, an allow, or a
         ``log_only`` deny), or a denying ``ToolResult`` when the engine
-        denies in ``enforce`` mode. A request-construction / evaluation
-        error fails open here (proceeds); ``CedarPolicyEngine`` applies its
-        own configured fail-closed policy internally.
+        denies OR errors in ``enforce`` mode. A request-construction /
+        evaluation error fails CLOSED in ``enforce`` mode (blocks the
+        call) -- matching the adjacent ``_check_security`` -- and proceeds
+        only in ``log_only`` mode, so an engine outage cannot silently
+        disable enforcement.
 
         Returns:
             A denying ``ToolResult`` in enforce mode, otherwise ``None``.
@@ -197,17 +210,30 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                 action_type="tool_invoke",
                 principal=str(self._agent_id or "unknown"),
                 resource=tool.name,
-                context={"task_id": str(self._task_id or "unknown")},
+                context={
+                    "task_id": str(self._task_id or "unknown"),
+                    "execution_id": str(self._execution_id or "unknown"),
+                },
             )
             decision = await self._policy_engine.evaluate(request)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            logger.error(
+            logger.warning(
                 SECURITY_POLICY_ENGINE_ERROR,
                 tool_name=tool_call.name,
+                mode=self._policy_evaluation_mode,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            if self._policy_evaluation_mode == "enforce":
+                return ToolResult(
+                    tool_call_id=tool_call.id,
+                    content=(
+                        "Policy evaluation failed (fail-closed). "
+                        "Tool execution blocked."
+                    ),
+                    is_error=True,
+                )
             return None
         if decision.allow:
             return None
@@ -446,7 +472,12 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             return handle_sensitive_scan(tool_call, result, scan_result)
         return result
 
-    async def invoke(self, tool_call: ToolCall) -> ToolResult:
+    async def invoke(
+        self,
+        tool_call: ToolCall,
+        *,
+        execution_id: str | None = None,
+    ) -> ToolResult:
         """Execute a single tool call.
 
         Steps:
@@ -464,10 +495,13 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
 
         Args:
             tool_call: The tool call from the LLM.
+            execution_id: Current execution-run id, stamped onto the
+                policy-engine context for fine-grained Cedar targeting.
 
         Returns:
             A ``ToolResult`` with the tool's output or error message.
         """
+        self._execution_id = execution_id
         self._pending_escalations.clear()
         return await self._invoke_single(tool_call)
 
@@ -933,12 +967,16 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         tool_calls: Iterable[ToolCall],
         *,
         max_concurrency: int | None = None,
+        execution_id: str | None = None,
     ) -> tuple[ToolResult, ...]:
         """Execute multiple tool calls concurrently.
 
         Args:
             tool_calls: Tool calls to execute.
             max_concurrency: Max concurrent invocations (``>= 1``).
+            execution_id: Current execution-run id, stamped onto the
+                policy-engine context. All calls in one batch share the
+                same execution context, so a single value is correct.
 
         Returns:
             Tuple of results in the same order as the input.
@@ -949,6 +987,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             RecursionError: Re-raised if a single fatal error occurred.
             ExceptionGroup: If multiple fatal errors occurred.
         """
+        self._execution_id = execution_id
         self._pending_escalations.clear()
 
         if max_concurrency is not None and max_concurrency < 1:

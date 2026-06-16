@@ -5,8 +5,10 @@ Defines ``MCPServerConfig`` for individual MCP server connections and
 models following the project's immutability conventions.
 """
 
+import ipaddress
 from collections import Counter
-from typing import Literal, Self
+from typing import Final, Literal, Self
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -17,6 +19,12 @@ from synthorg.observability.events.mcp import (
 )
 
 logger = get_logger(__name__)
+
+_ALLOWED_URL_SCHEMES: Final[frozenset[str]] = frozenset({"http", "https"})
+"""Schemes permitted for a ``streamable_http`` server URL.
+
+SSRF guard: a server URL can arrive from a catalog installation, so
+``file://`` / ``ftp://`` / ``gopher://`` and friends are rejected."""
 
 
 class MCPServerConfig(BaseModel):
@@ -126,6 +134,54 @@ class MCPServerConfig(BaseModel):
             raise ValueError(msg)
         if self.transport == "streamable_http" and self.url is None:
             msg = f"Server {self.name!r}: streamable_http transport requires 'url'"
+            logger.warning(
+                MCP_CONFIG_VALIDATION_FAILED,
+                server=self.name,
+                reason=msg,
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_url_scheme(self) -> Self:
+        """Restrict a streamable_http URL to http(s) and block metadata IPs.
+
+        SSRF guard for catalog-installed servers: the scheme must be in
+        :data:`_ALLOWED_URL_SCHEMES`, and a link-local host (the
+        ``169.254.0.0/16`` / ``fe80::/10`` cloud-metadata range) is
+        rejected. Private / internal addresses are intentionally allowed
+        -- self-hosted internal MCP servers are a first-class deployment.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If the scheme is disallowed or the host is link-local.
+        """
+        if self.transport != "streamable_http" or self.url is None:
+            return self
+        parsed = urlparse(self.url)
+        if parsed.scheme not in _ALLOWED_URL_SCHEMES:
+            msg = (
+                f"Server {self.name!r}: url scheme {parsed.scheme!r} is not "
+                f"allowed (must be one of {sorted(_ALLOWED_URL_SCHEMES)})"
+            )
+            logger.warning(
+                MCP_CONFIG_VALIDATION_FAILED,
+                server=self.name,
+                reason=msg,
+            )
+            raise ValueError(msg)
+        host = parsed.hostname or ""
+        try:
+            ip = ipaddress.ip_address(host)
+        except ValueError:
+            ip = None
+        if ip is not None and ip.is_link_local:
+            msg = (
+                f"Server {self.name!r}: url host {host!r} is in the link-local "
+                f"cloud-metadata range and is blocked"
+            )
             logger.warning(
                 MCP_CONFIG_VALIDATION_FAILED,
                 server=self.name,

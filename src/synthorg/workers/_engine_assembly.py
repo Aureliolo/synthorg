@@ -285,6 +285,23 @@ async def _build_mcp_bridge_tools(app_state: AppState) -> tuple[BaseTool, ...]:
 
     base = app_state.config.mcp
     integrations = app_state.slice(IntegrationsStateSlice)
+    existing_factory = integrations.mcp_bridge_factory
+    if existing_factory is not None:
+        # build_runtime_services re-runs this on post_setup_reinit; close the
+        # prior factory's sessions before reconnecting so they do not leak,
+        # and clear the slice so a no-servers reinit leaves nothing wired.
+        try:
+            await existing_factory.shutdown()
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                API_APP_STARTUP,
+                service="mcp_bridge",
+                note="failed to close prior MCP bridge factory before rebuild",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+        app_state.wire(IntegrationsStateSlice, mcp_bridge_factory=None)
     repo = integrations.mcp_installations_repo
     catalog = integrations.mcp_catalog_service
     merged = base
@@ -346,6 +363,11 @@ def _build_classification(
     if not config.enabled:
         return None, ()
     sinks: list[ClassificationSink] = []
+    # The taxonomy store plays a dual role: it is both a classification sink
+    # (write side, appended here) and the signals aggregator's reader. The
+    # reference is captured once at engine construction; the slice field is set
+    # once in engine/_construction.py and never replaced, so this shared object
+    # stays valid for the engine's lifetime (no dangling-reference window).
     store = app_state.slice(EngineStateSlice).error_taxonomy_store
     if store is not None:
         sinks.append(store)

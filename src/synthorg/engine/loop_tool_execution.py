@@ -263,6 +263,7 @@ async def execute_tool_calls(  # noqa: PLR0913
     try:
         results = await tool_invoker.invoke_all(
             response.tool_calls,
+            execution_id=ctx.execution_id,
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)

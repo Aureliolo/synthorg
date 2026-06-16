@@ -26,23 +26,33 @@ if TYPE_CHECKING:
 def _build_policy_engine_or_none(deps: ConstructionDeps) -> PolicyEngine | None:
     """Build the runtime policy engine from config (``none`` by default).
 
-    Best-effort: a policy-file read failure degrades to ``None`` (no policy
-    enforcement) rather than aborting boot. With ``engine='none'`` the result
-    is ``None`` and the tool-invoker policy seam is a transparent pass-through.
+    With ``engine='none'`` the result is ``None`` and the tool-invoker
+    policy seam is a transparent pass-through. When an engine IS configured
+    (``engine != 'none'``) and the build fails, this FAILS HARD (re-raises)
+    rather than degrading to ``None``: an operator who configured Cedar must
+    not silently get zero enforcement because a policy file was momentarily
+    unreadable at boot.
 
     Returns:
-        The configured policy engine, or ``None`` when disabled / unavailable.
+        The configured policy engine, or ``None`` when ``engine='none'``.
+
+    Raises:
+        Exception: When a non-``none`` engine fails to build (fail-closed).
     """
+    config = deps.effective_config.security.policy_engine
     try:
-        return build_policy_engine(deps.effective_config.security.policy_engine)
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        return build_policy_engine(config)
+    except Exception as exc:
         reraise_critical(exc)
-        logger.warning(
+        logger.error(
             SECURITY_POLICY_ENGINE_ERROR,
             context="policy_engine_build_failed",
+            engine=config.engine,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+        if config.engine != "none":
+            raise
         return None
 
 

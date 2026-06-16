@@ -12,7 +12,7 @@ from synthorg.budget.tracker import CostTracker
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.notifications.dispatcher import NotificationDispatcher
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.analytics import (
     ANALYTICS_AGGREGATION_COMPUTED,
     ANALYTICS_RETRY_RATE_ALERT,
@@ -245,5 +245,7 @@ async def _dispatch_retry_rate_alert(
         reraise_critical(exc)
         logger.warning(
             ANALYTICS_RETRY_RATE_ALERT,
-            error="retry_rate_alert_dispatch_failed",
+            note="retry_rate_alert_dispatch_failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )

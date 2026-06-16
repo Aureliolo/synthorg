@@ -64,6 +64,19 @@ def configure_analytics_controller(
     _min_deployments_floor = min_deployments_floor
 
 
+def is_analytics_collector_configured() -> bool:
+    """Return whether the collector role has already been configured.
+
+    Lets the startup wiring hook stay idempotent: a second lifespan
+    (e.g. the ``--count=2`` isolation gate) must not overwrite the live
+    in-memory collector with a fresh empty instance and lose its events.
+
+    Returns:
+        ``True`` when a collector instance is already installed.
+    """
+    return _collector is not None
+
+
 def _require_collector() -> InMemoryAnalyticsCollector:
     """Get the collector or raise ServiceUnavailableError.
 

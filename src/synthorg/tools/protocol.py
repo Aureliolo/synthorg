@@ -47,12 +47,18 @@ class ToolInvokerProtocol(Protocol):
         """
         ...
 
-    async def invoke(self, tool_call: ToolCall) -> ToolResult:
+    async def invoke(
+        self,
+        tool_call: ToolCall,
+        *,
+        execution_id: str | None = None,
+    ) -> ToolResult:
         """Execute a single tool call.
 
         Recoverable errors are returned as ``ToolResult(is_error=True)``;
         non-recoverable errors (``MemoryError``, ``RecursionError``) are
-        re-raised after logging.
+        re-raised after logging. ``execution_id`` is stamped onto the
+        policy-engine context for fine-grained authorization.
 
         Returns:
             Result of type ``ToolResult``.
@@ -64,10 +70,12 @@ class ToolInvokerProtocol(Protocol):
         tool_calls: Iterable[ToolCall],
         *,
         max_concurrency: int | None = None,
+        execution_id: str | None = None,
     ) -> tuple[ToolResult, ...]:
         """Execute multiple tool calls concurrently.
 
-        Results are returned in input order.
+        Results are returned in input order. ``execution_id`` is stamped
+        onto the policy-engine context for fine-grained authorization.
 
         Returns:
             Tuple of ``ToolResult``.

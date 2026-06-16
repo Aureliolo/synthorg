@@ -158,7 +158,6 @@ ENFORCED AnalyticsService #2334 -- constructed in api/lifecycle_helpers/meta_wir
 ENFORCED ReportsService #2334 -- constructed in api/lifecycle_helpers/meta_wiring.py::_wire_reports_service over AnalyticsService; backs the synthorg_reports_* MCP tools
 ENFORCED OrgInflectionMonitor #2334 -- constructed + started in api/lifecycle_helpers/meta_wiring.py::_wire_org_inflection_monitor behind chief_of_staff.alerts_enabled; the boot daemon emitting org-level inflections to the proactive alert sink (stopped by lifecycle_runner_shutdown)
 ENFORCED build_analytics_collector #2334 -- called in api/lifecycle_helpers/meta_wiring.py::_wire_analytics_collector behind cross_deployment_analytics.collector_enabled; constructs the InMemoryAnalyticsCollector the MetaAnalyticsController routes read
-ENFORCED InMemoryEvolutionOutcomeStore #2334 -- constructed in api/lifecycle_helpers/feature_wiring.py::_wire_signals_service and threaded into build_signals_service as the evolution aggregator's outcome store
 ENFORCED QualityFacadeService #2334 -- constructed in infrastructure/_construction.py::wire_construction over the performance tracker; backs the synthorg_quality_* MCP tools
 ENFORCED ReviewFacadeService #2334 -- constructed in infrastructure/_construction.py::wire_construction (dependency-free); backs the synthorg_reviews_* MCP tools
 ENFORCED EvaluationVersionService #2334 -- constructed in api/lifecycle_helpers/persistence_autowire.py::_wire_evaluation_version_service behind connected persistence; backs the synthorg_evaluation_versions_* MCP tools

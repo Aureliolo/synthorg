@@ -524,8 +524,11 @@ def collect_backend_routes(
     # Step 3: feature-manifest controllers (a2a, demo) declared via
     # ControllerRegistration rather than the controllers/__init__.py tuples.
     # Predicate gating is ignored; every declared route is inventoried.
+    # The class name is unpacked but unused: we walk every Controller subclass
+    # in module_rel, not just the named one (feature controller modules carry
+    # one class per file in practice, but the walker handles multiple).
     for (
-        class_name,
+        _,
         module_rel,
         mounted_under_prefix,
     ) in _find_feature_manifest_controllers(src_root):
@@ -540,10 +543,5 @@ def collect_backend_routes(
                 strip_api_prefix=mounted_under_prefix,
             )
         )
-        # We collected every controller class in module_rel above, not just
-        # *class_name* -- typical feature controller modules carry one class
-        # per file so this is what we want; if they ever carry multiple, the
-        # walker still produces one record per Controller subclass.
-        del class_name  # silence unused-warning; class_name is the discriminator
 
     return routes

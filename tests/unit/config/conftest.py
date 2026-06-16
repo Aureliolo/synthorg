@@ -26,6 +26,7 @@ from synthorg.config.schema import (
 from synthorg.core.company import CompanyConfig
 from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
 from synthorg.engine.coordination.section_config import CoordinationSectionConfig
+from synthorg.engine.evolution.config import EvolutionConfig
 from synthorg.engine.strategy.models import StrategyConfig
 from synthorg.engine.workflow.config import WorkflowConfig
 from synthorg.hr.performance.config import PerformanceConfig
@@ -108,6 +109,10 @@ class RootConfigFactory(ModelFactory[RootConfig]):
     trust = TrustConfig()
     promotion = PromotionConfig()
     performance = PerformanceConfig()
+    # Pinned to the valid default: polyfactory would otherwise synthesise an
+    # EvolutionConfig whose nested ShadowEvaluationConfig fails its cross-field
+    # validator.
+    evolution = EvolutionConfig()
     coordination = CoordinationSectionConfig()
     strategy = StrategyConfig()
     backup = BackupConfig()

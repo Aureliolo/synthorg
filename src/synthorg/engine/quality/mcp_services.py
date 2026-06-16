@@ -38,9 +38,9 @@ class QualityScoreEntry(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    agent_id: str
-    task_id: str
-    task_type: str
+    agent_id: NotBlankStr
+    task_id: NotBlankStr
+    task_type: NotBlankStr
     quality_score: float
     completed_at: datetime
 
@@ -52,9 +52,9 @@ class QualityScoreEntry(BaseModel):
             The projected quality-score entry.
         """
         return cls(
-            agent_id=str(record.agent_id),
-            task_id=str(record.task_id),
-            task_type=record.task_type.value,
+            agent_id=record.agent_id,
+            task_id=record.task_id,
+            task_type=NotBlankStr(record.task_type.value),
             quality_score=cast("float", record.quality_score),
             completed_at=record.completed_at,
         )

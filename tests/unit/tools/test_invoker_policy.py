@@ -114,7 +114,7 @@ async def test_log_only_deny_proceeds() -> None:
     assert result.content == "executed: ls"
 
 
-async def test_evaluation_error_fails_open() -> None:
+async def test_evaluation_error_in_enforce_fails_closed() -> None:
     engine = _StubPolicyEngine(allow=False, raises=True)
     invoker = ToolInvoker(
         _registry(),
@@ -122,6 +122,20 @@ async def test_evaluation_error_fails_open() -> None:
         policy_evaluation_mode="enforce",
     )
     result = await invoker.invoke(_call())
-    # Request-construction / evaluation errors fail open at the seam.
+    # An evaluation error in enforce mode must fail CLOSED -- an engine
+    # outage cannot silently disable enforcement.
+    assert result.is_error is True
+    assert "fail-closed" in result.content
+
+
+async def test_evaluation_error_in_log_only_proceeds() -> None:
+    engine = _StubPolicyEngine(allow=False, raises=True)
+    invoker = ToolInvoker(
+        _registry(),
+        policy_engine=engine,
+        policy_evaluation_mode="log_only",
+    )
+    result = await invoker.invoke(_call())
+    # In log_only mode an evaluation error is logged and the tool proceeds.
     assert result.is_error is False
     assert result.content == "executed: ls"

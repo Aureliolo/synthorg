@@ -152,7 +152,7 @@ class MCPBridgeTool(BaseTool):
                 error=safe_error_description(exc),
             )
             return ToolExecutionResult(
-                content=str(exc),
+                content=safe_error_description(exc),
                 is_error=True,
             )
         return map_call_tool_result(raw)

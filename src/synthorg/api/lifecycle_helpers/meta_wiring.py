@@ -105,18 +105,10 @@ async def _wire_org_inflection_monitor(app_state: AppState) -> None:
         return
     signals_service = app_state.slice(MetaStateSlice).signals_service
     if signals_service is None:
-        return
-    from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
-
-    si_config = await load_self_improvement_config(
-        app_state.slice(SettingsStateSlice).settings_service,
-    )
-    cos_config = si_config.chief_of_staff
-    if not cos_config.alerts_enabled:
         logger.info(
             API_APP_STARTUP,
             service="org_inflection_monitor",
-            note="alerts disabled; monitor not started",
+            note="signals service absent; monitor not started",
         )
         return
     from synthorg.meta.chief_of_staff.alerts import (  # noqa: PLC0415
@@ -129,8 +121,20 @@ async def _wire_org_inflection_monitor(app_state: AppState) -> None:
     from synthorg.meta.chief_of_staff.monitor import (  # noqa: PLC0415
         OrgInflectionMonitor,
     )
+    from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
 
     try:
+        si_config = await load_self_improvement_config(
+            app_state.slice(SettingsStateSlice).settings_service,
+        )
+        cos_config = si_config.chief_of_staff
+        if not cos_config.alerts_enabled:
+            logger.info(
+                API_APP_STARTUP,
+                service="org_inflection_monitor",
+                note="alerts disabled; monitor not started",
+            )
+            return
         alert_service = ProactiveAlertService(
             alert_sinks=(LoggingAlertSink(),),
             severity_threshold=cos_config.inflection_severity_threshold,
@@ -141,8 +145,11 @@ async def _wire_org_inflection_monitor(app_state: AppState) -> None:
             sinks=(alert_service,),
             check_interval_minutes=cos_config.inflection_check_interval_minutes,
         )
-        await monitor.start()
+        # Wire BEFORE start so a running daemon is always tracked for
+        # shutdown; if start() then fails, it stays tracked and the
+        # shutdown runner still stops it (no untracked-daemon leak).
         app_state.wire(MetaStateSlice, org_inflection_monitor=monitor)
+        await monitor.start()
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
@@ -167,6 +174,7 @@ async def _wire_analytics_collector(app_state: AppState) -> None:
     """
     from synthorg.api.controllers.meta_analytics import (  # noqa: PLC0415
         configure_analytics_controller,
+        is_analytics_collector_configured,
     )
     from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
     from synthorg.meta.telemetry.factory import (  # noqa: PLC0415
@@ -175,10 +183,12 @@ async def _wire_analytics_collector(app_state: AppState) -> None:
     )
     from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
-    si_config = await load_self_improvement_config(
-        app_state.slice(SettingsStateSlice).settings_service,
-    )
+    if is_analytics_collector_configured():
+        return
     try:
+        si_config = await load_self_improvement_config(
+            app_state.slice(SettingsStateSlice).settings_service,
+        )
         collector = build_analytics_collector(si_config)
         if collector is None:
             logger.info(
