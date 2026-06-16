@@ -134,9 +134,9 @@ runs:
       run: |
         df -h /
         sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-        sudo rm -rf /opt/hostedtoolcache/CodeQL /opt/hostedtoolcache/Python
+        sudo rm -rf /opt/hostedtoolcache /usr/share/swift /usr/share/miniconda
         sudo rm -rf /usr/local/share/powershell /usr/local/share/chromium
-        sudo rm -rf /usr/local/lib/node_modules
+        sudo rm -rf /usr/local/lib/node_modules /usr/local/.ghcup
         sudo docker image prune --all --force
         df -h /
 
@@ -311,6 +311,22 @@ runs:
         DISPLAY_NAME: ${{ inputs.display-name }}
       run: scripts/report-image-size.sh "$SCAN_REF" "$DISPLAY_NAME (arm64)"
 
+    # `trivy image <ref>` re-exports the whole image from the Docker daemon
+    # to a docker-archive under its temp dir before analysing layers. For the
+    # fine-tune GPU image (~4 GB compressed, far larger uncompressed) that
+    # export is a third full copy alongside the build tarball and the loaded
+    # daemon image, overflowing the runner's ~14 GB root volume with
+    # `no space left on device`. The `/mnt` resource disk has ~70 GB free, so
+    # point Trivy's scratch (export temp via TMPDIR + vuln-db cache via
+    # TRIVY_CACHE_DIR) there. Created unconditionally so every image scans the
+    # same way, not just the disk-pressured fine-tune variants.
+    - name: Provision Trivy scratch on /mnt
+      shell: bash
+      run: |
+        sudo mkdir -p /mnt/trivy-tmp /mnt/trivy-cache
+        sudo chown "$(id -u):$(id -g)" /mnt/trivy-tmp /mnt/trivy-cache
+        df -h /mnt /
+
     - name: Install Trivy
       shell: bash
       env:
@@ -330,6 +346,8 @@ runs:
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
         SCAN_REF: ${{ steps.scan-ref.outputs.ref_amd64 }}
+        TMPDIR: /mnt/trivy-tmp
+        TRIVY_CACHE_DIR: /mnt/trivy-cache
       run: |
         trivy image "${SCAN_REF}" --format json --output "trivy-${IMAGE_NAME}-amd64.json" \
           --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
@@ -347,6 +365,8 @@ runs:
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
         SCAN_REF: ${{ steps.scan-ref.outputs.ref_arm64 }}
+        TMPDIR: /mnt/trivy-tmp
+        TRIVY_CACHE_DIR: /mnt/trivy-cache
       run: |
         trivy image "${SCAN_REF}" --format json --output "trivy-${IMAGE_NAME}-arm64.json" \
           --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
@@ -374,6 +394,8 @@ runs:
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
         SCAN_REF: ${{ steps.scan-ref.outputs.ref_amd64 }}
+        TMPDIR: /mnt/trivy-tmp
+        TRIVY_CACHE_DIR: /mnt/trivy-cache
       run: |
         trivy image "${SCAN_REF}" --format sarif --output "trivy-${IMAGE_NAME}-amd64.sarif" \
           --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
@@ -396,6 +418,8 @@ runs:
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
         SCAN_REF: ${{ steps.scan-ref.outputs.ref_arm64 }}
+        TMPDIR: /mnt/trivy-tmp
+        TRIVY_CACHE_DIR: /mnt/trivy-cache
       run: |
         trivy image "${SCAN_REF}" --format sarif --output "trivy-${IMAGE_NAME}-arm64.sarif" \
           --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml

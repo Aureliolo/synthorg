@@ -406,6 +406,13 @@ runs:
     # attempts with backoff before failing hard; attestation is idempotent
     # (push-to-registry re-uploads the same bundle), and the final attempt
     # has no continue-on-error so a terminal error still fails the job.
+    #
+    # The backoffs (30s, 90s) are also sized to ride out the GitHub
+    # attestation API's per-installation secondary rate limit ("Failed to
+    # persist attestation: API rate limit exceeded for installation"). The
+    # ~nine attestation-bearing publish jobs fan out in parallel and, when two
+    # main-push runs overlap, briefly exceed the secondary limit; that limit
+    # clears within ~a minute, so a 15s/30s ladder retried too soon to help.
     - name: Attest build provenance (SLSA Level 3, attempt 1)
       id: attest_image_1
       continue-on-error: true
@@ -418,7 +425,7 @@ runs:
     - name: Back off before image attest retry 1
       if: steps.attest_image_1.outcome == 'failure'
       shell: bash
-      run: sleep 15
+      run: sleep 30
 
     - name: Attest build provenance (SLSA Level 3, attempt 2)
       if: steps.attest_image_1.outcome == 'failure'
@@ -433,7 +440,7 @@ runs:
     - name: Back off before image attest retry 2
       if: steps.attest_image_2.outcome == 'failure'
       shell: bash
-      run: sleep 30
+      run: sleep 90
 
     - name: Attest build provenance (SLSA Level 3, final attempt)
       if: steps.attest_image_2.outcome == 'failure'
