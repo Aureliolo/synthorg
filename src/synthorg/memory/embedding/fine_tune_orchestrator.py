@@ -178,18 +178,18 @@ class FineTuneOrchestrator:
         # on any failure/cancellation so the orchestrator is not wedged.
         try:
             await self._run_repo.save(run)
+            async with self._lifecycle_lock:
+                self._current_run = run
+                self._cancellation = CancellationToken()
+                self._current_task = asyncio.create_task(
+                    self._execute_pipeline(run),
+                )
+                self._current_task.add_done_callback(self._on_task_done)
+                self._starting = False
         except BaseException:
             async with self._lifecycle_lock:
                 self._starting = False
             raise
-        async with self._lifecycle_lock:
-            self._current_run = run
-            self._cancellation = CancellationToken()
-            self._current_task = asyncio.create_task(
-                self._execute_pipeline(run),
-            )
-            self._current_task.add_done_callback(self._on_task_done)
-            self._starting = False
         logger.info(
             MEMORY_FINE_TUNE_STARTED,
             run_id=str(run.id),
@@ -235,18 +235,18 @@ class FineTuneOrchestrator:
                 },
             )
             await self._run_repo.save(resumed)
+            async with self._lifecycle_lock:
+                self._current_run = resumed
+                self._cancellation = CancellationToken()
+                self._current_task = asyncio.create_task(
+                    self._execute_pipeline(resumed),
+                )
+                self._current_task.add_done_callback(self._on_task_done)
+                self._starting = False
         except BaseException:
             async with self._lifecycle_lock:
                 self._starting = False
             raise
-        async with self._lifecycle_lock:
-            self._current_run = resumed
-            self._cancellation = CancellationToken()
-            self._current_task = asyncio.create_task(
-                self._execute_pipeline(resumed),
-            )
-            self._current_task.add_done_callback(self._on_task_done)
-            self._starting = False
         logger.info(
             MEMORY_FINE_TUNE_STARTED,
             run_id=run_id,

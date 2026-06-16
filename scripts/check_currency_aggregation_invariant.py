@@ -278,7 +278,7 @@ def _augassign_iter_source(
     current: ast.AST | None = parents.get(id(node))
     while current is not None:
         if (
-            isinstance(current, ast.For)
+            isinstance(current, (ast.For, ast.AsyncFor))
             and isinstance(current.target, ast.Name)
             and current.target.id == var_name
         ):
