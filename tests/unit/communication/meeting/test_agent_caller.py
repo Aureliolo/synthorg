@@ -243,6 +243,7 @@ class TestBuildMeetingAgentCaller:
         assert len(failures) == 1
         assert failures[0]["agent_id"] == _AGENT_ID
         assert failures[0]["error_type"] == "RuntimeError"
+        assert failures[0]["error"] == "RuntimeError: provider boom"
 
     async def test_renders_prompt_without_traits_when_tuple_empty(
         self,

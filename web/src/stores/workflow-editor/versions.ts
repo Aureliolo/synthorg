@@ -124,12 +124,15 @@ async function rollbackImpl(
       expected_revision: defn.revision,
     })
     const { nodes, edges, yaml } = parseDefinition(updated)
+    // ``saving`` stays true until ``loadVersions`` resolves: the Restore
+    // controls are disabled while ``saving``, so re-enabling them before
+    // the version list refreshes would expose a stale list and a
+    // double-rollback window against the now-superseded revision.
     set((prev) => ({
       definition: updated,
       nodes,
       edges,
       yamlPreview: yaml,
-      saving: false,
       dirty: false,
       diffResult: null,
       _diffRequestId: prev._diffRequestId + 1,
@@ -139,6 +142,11 @@ async function rollbackImpl(
       validationResult: null,
     }))
     await get().loadVersions()
+    set({ saving: false })
+    useToastStore.getState().add({
+      variant: 'success',
+      title: `Workflow restored to version ${targetVersion}`,
+    })
   } catch (err) {
     log.warn('Rollback failed', sanitizeForLog(err))
     useToastStore.getState().add({

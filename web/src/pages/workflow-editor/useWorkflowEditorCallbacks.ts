@@ -165,8 +165,16 @@ function useSaveOpsCallbacks(
 function emitValidationToast(
   addToast: ReturnType<typeof useToastStore.getState>['add'],
 ): void {
-  const result = useWorkflowEditorStore.getState().validationResult
-  if (!result) return
+  const { validationResult: result, error } = useWorkflowEditorStore.getState()
+  // ``validate`` clears ``validationResult`` and sets ``error`` on every
+  // failure path (no workflow loaded, malformed graph, API error). Without
+  // surfacing ``error`` here the click produced no feedback at all.
+  if (!result) {
+    if (error) {
+      addToast({ variant: 'error', title: 'Validation failed', description: error })
+    }
+    return
+  }
   const errorCount = result.errors.length
   const errorWord = errorCount === 1 ? 'error' : 'errors'
   addToast({

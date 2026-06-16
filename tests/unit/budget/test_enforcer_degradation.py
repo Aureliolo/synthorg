@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from contextlib import AbstractContextManager
 
 import pytest
+import structlog
 
 from synthorg.budget.config import BudgetAlertConfig, BudgetConfig
 from synthorg.budget.degradation import DegradationResult, PreFlightResult
@@ -22,6 +23,9 @@ from synthorg.budget.quota import (
 )
 from synthorg.budget.quota_tracker import QuotaTracker
 from synthorg.budget.tracker import CostTracker
+from synthorg.observability.events.quota import (
+    QUOTA_DEGRADATION_RESOLUTION_FAILED,
+)
 
 _BILLING_START = datetime(2026, 3, 1, tzinfo=UTC)
 _DAY_START = datetime(2026, 3, 15, tzinfo=UTC)
@@ -370,3 +374,57 @@ class TestEnforcerPreFlightResult:
                 "alice",
                 provider_name="primary",
             )
+
+    async def test_degradation_error_logs_before_raise(self) -> None:
+        """The wrapping raise is preceded by a structured WARNING.
+
+        A degradation-resolution failure must surface as an
+        observable log entry with redacted error context, not only
+        be folded into the QuotaExhaustedError message.
+        """
+        cfg = _make_budget_config()
+        tracker = CostTracker(budget_config=cfg)
+        quota_tracker = _make_quota_tracker({"primary": 5})
+        await _exhaust_provider(quota_tracker, "primary", 5)
+
+        degradation_configs = {
+            "primary": DegradationConfig(
+                strategy=DegradationAction.FALLBACK,
+                fallback_providers=("fallback-a",),
+            ),
+        }
+
+        enforcer = BudgetEnforcer(
+            budget_config=cfg,
+            cost_tracker=tracker,
+            quota_tracker=quota_tracker,
+            degradation_configs=degradation_configs,
+        )
+
+        billing_patch, daily_patch = _patch_periods()
+        with (
+            billing_patch,
+            daily_patch,
+            patch(
+                "synthorg.budget.enforcer.resolve_degradation",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("boom"),
+            ),
+            structlog.testing.capture_logs() as captured,
+            pytest.raises(QuotaExhaustedError),
+        ):
+            await enforcer.check_can_execute(
+                "alice",
+                provider_name="primary",
+            )
+
+        failures = [
+            e for e in captured if e["event"] == QUOTA_DEGRADATION_RESOLUTION_FAILED
+        ]
+        assert len(failures) == 1
+        entry = failures[0]
+        assert entry["log_level"] == "warning"
+        assert entry["provider"] == "primary"
+        assert entry["degradation_action"] == DegradationAction.FALLBACK.value
+        assert entry["error_type"] == "RuntimeError"
+        assert "error" in entry

@@ -39,7 +39,7 @@ from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_persona import render_agent_system_prompt
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meeting import (
     MEETING_AGENT_CALL_FAILED,
     MEETING_AGENT_CALLED,
@@ -156,6 +156,7 @@ def build_meeting_agent_caller(
                 agent_id=agent_id,
                 provider=provider_name,
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         agent_response = AgentResponse(

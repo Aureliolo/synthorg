@@ -74,6 +74,7 @@ from synthorg.observability.events.notification import (
 from synthorg.observability.events.quota import (
     QUOTA_CHECK_ALLOWED,
     QUOTA_CHECK_DENIED,
+    QUOTA_DEGRADATION_RESOLUTION_FAILED,
 )
 from synthorg.observability.events.risk_budget import (
     RISK_BUDGET_ENFORCEMENT_CHECK,
@@ -457,6 +458,13 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             raise
         except Exception as exc:
             reraise_critical(exc)
+            logger.warning(
+                QUOTA_DEGRADATION_RESOLUTION_FAILED,
+                provider=provider_name,
+                degradation_action=deg_config.strategy.value,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             msg = f"Degradation resolution failed for provider {provider_name!r}: {safe_error_description(exc)}"  # noqa: E501
             raise QuotaExhaustedError(
                 msg,
