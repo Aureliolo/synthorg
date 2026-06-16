@@ -75,6 +75,15 @@ If you do not need the release pipeline at all (you are running a research fork 
 
 `image-push` needs no secrets; the workflow uses the auto-provided `${{ github.token }}` against your fork's GHCR namespace. The environment exists purely for branch-policy gating.
 
+### Optional: GHCR image cleanup
+
+`ghcr-cleanup.yml` prunes old dev and PR container images from your fork's GHCR namespace (releases are always kept). It ships **disabled**, in dry-run. To enable real deletions on your fork:
+
+- Set the repository **variable** `GHCR_CLEANUP_ENABLED=true` (Settings -> Secrets and variables -> Actions -> Variables). While unset, the cleanup runs in dry-run and deletes nothing.
+- Optionally add a repository **secret** `GHCR_CLEANUP_TOKEN`: a classic PAT with `write:packages` + `delete:packages` scopes, giving the cleanup an explicit deletion identity. When absent, deletion falls back to the auto-provided `${{ github.token }}`. Both are repository-scoped, not environment-scoped.
+
+Leave both unset on a research fork that never cuts dev releases; the `cleanup-images` job is gated on `!github.event.repository.fork` and skips cleanly.
+
 ## 5. Branch protection on `main`
 
 The preflight checks for three things on `main`:

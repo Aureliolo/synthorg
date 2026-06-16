@@ -43,6 +43,19 @@ Reconciliation mechanisms:
 | Renovate (Docker ecosystem + digest pinning) | Thin Dockerfile `FROM` lines (apko-base digest) | Weekly (Sat 00:00-06:00 UTC) |
 | `apko lock` cron (`.github/workflows/apko-lock.yml`) | `docker/*/apko.lock.json` (backend, sandbox, sidecar, fine-tune). `docker/web/apko.yaml` is intentionally skipped: it depends on the workflow-build-time `synthorg-web-assets@local` melange package, which has no stable upstream to lock against | Weekly (Mon 06:00 UTC); the single `fine-tune` apko base is shared by both `-gpu` and `-cpu` runtime images |
 
+## GHCR image retention
+
+Published and dev images accumulate in GHCR on every build, so `ghcr-cleanup.yml` (the reusable workflow invoked as the final `cleanup-images` job of `dev-release.yml`, and able to be run on its own via `workflow_dispatch`) prunes the non-release ones on a fixed policy. Official releases are never touched.
+
+| Tag class | Example | Retention |
+|-----------|---------|-----------|
+| Release | `0.8.4`, `0.8`, `latest` | Kept forever (protected by an `exclude-tags` regex on every pass) |
+| Dev build | `0.8.4-dev.5`, floating `dev` | Newest 5 kept; older deleted |
+| PR / scan | `sha-<short>`, `sha-<short>-amd64`, `scan-<full>-amd64` | Deleted after 7 days |
+| Orphaned referrer | cosign `sha256-<digest>`, untagged attestation | Deleted once its parent image is gone |
+
+The signatures, attestations, and multi-arch platform children of any kept image are retained automatically; `validate: true` asserts no surviving multi-arch image lost a child after each pass. The job ships in dry-run and only deletes once the repository variable `GHCR_CLEANUP_ENABLED=true` is set. See the **GHCR Cleanup** CI entry in [claude-reference.md](../reference/claude-reference.md) for workflow detail.
+
 ## Image verification at launch
 
 ```mermaid

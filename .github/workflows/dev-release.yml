@@ -293,6 +293,29 @@ jobs:
             exit 1
           fi
 
+  cleanup-images:
+    name: Prune dev/PR container images from GHCR
+    needs: dev-release
+    # Runs after the dev tag + downstream Docker/CLI workflows are safe,
+    # keeping GHCR deletion off the #1818-sensitive release-critical path.
+    # Ships in dry-run: set repository variable GHCR_CLEANUP_ENABLED=true
+    # to perform deletions, once a manual dispatch dry-run has confirmed no
+    # release tag is ever in scope. Skips on forks (no GHCR access) and
+    # when dev-release did not actually run.
+    if: >-
+      !github.event.repository.fork
+      && needs.dev-release.result == 'success'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/ghcr-cleanup.yml
+    with:
+      dry-run: ${{ vars.GHCR_CLEANUP_ENABLED != 'true' }}
+    # Pass only the GHCR cleanup PAT (empty -> the called workflow falls
+    # back to GITHUB_TOKEN); never `secrets: inherit`.
+    secrets:
+      GHCR_CLEANUP_TOKEN: ${{ secrets.GHCR_CLEANUP_TOKEN }}
+
   report-failure:
     name: Open / update tracking issue on dev-release failure
     needs: dev-release
