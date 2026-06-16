@@ -30,6 +30,12 @@ const baseBudgetConfig: BudgetConfig = {
     per_task_risk_limit: 5,
     total_daily_risk_limit: 100,
   },
+  call_analytics: {
+    enabled: true,
+    orchestration_alerts: { critical: 0.7, info: 0.3, warn: 0.5 },
+    retry_alerts: { warn_rate: 0.1 },
+  },
+  subscriptions: {},
 }
 
 function makeOverview(usedPercent: number): OverviewMetrics {

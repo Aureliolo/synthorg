@@ -401,7 +401,7 @@ class BudgetController(Controller):
             ),
         ] = None,
         provider: Annotated[
-            str | None,
+            NotBlankStr | None,
             QueryParameter(
                 max_length=QUERY_MAX_LENGTH,
                 description="Filter to calls served by this provider.",
@@ -426,7 +426,7 @@ class BudgetController(Controller):
         ).get_aggregation(
             agent_id=agent_id,
             task_id=task_id,
-            provider=NotBlankStr(provider) if provider else None,
+            provider=provider,
         )
         return ApiResponse(data=aggregation)
 

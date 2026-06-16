@@ -1190,8 +1190,8 @@
     },
     "src/synthorg/workers/_engine_assembly.py": {
       "cap": 500,
-      "loc": 494,
-      "ratio": 0.988,
+      "loc": 497,
+      "ratio": 0.994,
       "tier": "code"
     },
     "src/synthorg/workers/claim.py": {

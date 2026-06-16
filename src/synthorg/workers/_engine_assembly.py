@@ -312,11 +312,17 @@ async def _build_mcp_bridge_tools(app_state: AppState) -> tuple[BaseTool, ...]:
             merged = merge_installed_servers(base, installations, entries_by_id)
     if not merged.servers:
         return ()
+    factory: MCPToolFactory | None = None
     try:
         factory = MCPToolFactory(merged)
         tools = await factory.create_tools()
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
+        # A factory that opened sessions before failing must release them;
+        # shutdown() is self-guarding (per-client try/except + clear), so
+        # only a critical propagates here, which is the correct behaviour.
+        if factory is not None:
+            await factory.shutdown()
         logger.warning(
             API_APP_STARTUP,
             service="mcp_bridge",
