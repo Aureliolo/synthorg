@@ -16,7 +16,7 @@ from synthorg.api.api_core_state import (
 from synthorg.api.state import AppState
 from synthorg.core.auth.roles import HumanRole
 from synthorg.persistence.state import persistence_of
-from tests._shared import LoopAsyncClient
+from tests._shared import LoopAsyncClient, as_uuid
 from tests.unit.api.conftest import _TEST_JWT_SECRET, make_auth_headers
 from tests.unit.api.fakes import FakePersistenceBackend
 
@@ -74,7 +74,6 @@ class TestSetup:
         bare_client: LoopAsyncClient,
     ) -> None:
         # Re-seed a user so the check fails
-        import uuid
         from datetime import UTC, datetime
 
         from synthorg.api.auth.service import AuthService
@@ -85,7 +84,7 @@ class TestSetup:
         svc: AuthService = auth_service_of(app_state)
         now = datetime.now(UTC)
         user = User(
-            id=str(uuid.uuid4()),
+            id=str(as_uuid("existing-ceo")),
             username="existing",
             password_hash=await svc.hash_password_async("test-password-12chars"),
             role=HumanRole.CEO,
@@ -133,7 +132,6 @@ class TestSetup:
         ``constraint=IDX_SINGLE_CEO``). The guard maps it to the uniform
         setup-complete 409 rather than leaking the persistence token.
         """
-        import uuid
         from datetime import UTC, datetime
 
         from synthorg.core.auth.models import User
@@ -145,7 +143,7 @@ class TestSetup:
         now = datetime.now(UTC)
         users_repo.seed(
             User(
-                id=str(uuid.uuid4()),
+                id=str(as_uuid("incumbent-ceo")),
                 username="incumbent-ceo",
                 password_hash="x",
                 role=HumanRole.CEO,
@@ -177,7 +175,6 @@ class TestSetup:
         username-unique constraint, which the guard maps to the uniform
         setup-complete 409 via the typed ``DuplicateUsernameError``.
         """
-        import uuid
         from datetime import UTC, datetime
 
         from synthorg.core.auth.models import User
@@ -188,7 +185,7 @@ class TestSetup:
         now = datetime.now(UTC)
         backend._users.seed(
             User(
-                id=str(uuid.uuid4()),
+                id=str(as_uuid("taken-observer")),
                 username="taken",
                 password_hash="x",
                 role=HumanRole.OBSERVER,
