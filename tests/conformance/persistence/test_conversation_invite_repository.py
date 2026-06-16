@@ -402,16 +402,15 @@ class TestConversationInviteRepository:
     async def test_protocol_runtime_check(self, backend: PersistenceBackend) -> None:
         assert isinstance(_repo(backend), ConversationInviteRepository)
 
-    async def test_conversational_invite_source_check_per_backend(
+    async def test_conversational_invite_source_persists(
         self, backend: PersistenceBackend
-    ) -> None:  # lint-allow: dual-backend-parity -- source CHECK is asymmetric by design (Postgres admits, SQLite rejects)  # noqa: E501
+    ) -> None:
         # The consent approval is stamped ``source=CONVERSATIONAL_INVITE``.
-        # Postgres (the production backend) widened ``approvals.source``
-        # to admit it, so it persists and round-trips. SQLite keeps the
-        # narrow source domain on purpose -- conversational approvals stay
-        # in-memory there (the proposer hard-blocks the persistent SQLite
-        # + ApprovalStore combo), so the table must REJECT the row. Both
-        # arms pin that deliberate divergence.
+        # Both backends admit it: Postgres has always widened
+        # ``approvals.source`` for the conversational interface, and SQLite
+        # now mirrors that domain so a persistent-SQLite ApprovalStore can
+        # hold conversational-interface rows. The row persists and
+        # round-trips identically on either backend.
         repo = _approval_repo(backend)
         item = ApprovalItem(
             id=as_uuid("appr-invite"),
@@ -424,11 +423,7 @@ class TestConversationInviteRepository:
             status=ApprovalStatus.PENDING,
             created_at=_NOW,
         )
-        if backend.backend_name == "postgres":
-            await repo.save(item)
-            fetched = await repo.get(str(item.id))
-            assert fetched is not None
-            assert fetched.source is ApprovalSource.CONVERSATIONAL_INVITE
-        else:
-            with pytest.raises(ConstraintViolationError):
-                await repo.save(item)
+        await repo.save(item)
+        fetched = await repo.get(str(item.id))
+        assert fetched is not None
+        assert fetched.source is ApprovalSource.CONVERSATIONAL_INVITE

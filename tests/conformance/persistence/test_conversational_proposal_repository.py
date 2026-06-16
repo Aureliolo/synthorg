@@ -17,7 +17,6 @@ from synthorg.communication.conversation.enums import (
     ConversationStatus,
 )
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationalProposal
 from synthorg.persistence.approval_protocol import ApprovalRepository
@@ -339,14 +338,15 @@ class TestConversationalProposalRepository:
         assert fetched is not None
         assert fetched.status is ConversationalProposalStatus.PENDING
 
-    async def test_conversational_intake_source_check_per_backend(
+    async def test_conversational_intake_source_persists(
         self, backend: PersistenceBackend
-    ) -> None:  # lint-allow: dual-backend-parity -- source CHECK is asymmetric by design (Postgres admits, SQLite rejects)  # noqa: E501
+    ) -> None:
         # The intake approval is stamped ``source=CONVERSATIONAL_INTAKE``.
-        # Postgres widened ``approvals.source`` to admit it, so it
-        # persists; SQLite keeps the narrow source domain on purpose
-        # (conversational approvals stay in-memory there), so the table
-        # must REJECT the row. Mirrors the invite-source asymmetry test.
+        # Both backends admit it: Postgres has always widened
+        # ``approvals.source`` for the conversational interface, and SQLite
+        # now mirrors that domain so a persistent-SQLite ApprovalStore can
+        # hold conversational-interface rows. The row persists and
+        # round-trips identically on either backend.
         repo = _approval_repo(backend)
         item = ApprovalItem(
             id=as_uuid("appr-intake"),
@@ -359,14 +359,10 @@ class TestConversationalProposalRepository:
             status=ApprovalStatus.PENDING,
             created_at=_NOW,
         )
-        if backend.backend_name == "postgres":
-            await repo.save(item)
-            fetched = await repo.get(str(item.id))
-            assert fetched is not None
-            assert fetched.source is ApprovalSource.CONVERSATIONAL_INTAKE
-        else:
-            with pytest.raises(ConstraintViolationError):
-                await repo.save(item)
+        await repo.save(item)
+        fetched = await repo.get(str(item.id))
+        assert fetched is not None
+        assert fetched.source is ApprovalSource.CONVERSATIONAL_INTAKE
 
     async def test_protocol_runtime_check(self, backend: PersistenceBackend) -> None:
         repo = _repo(backend)

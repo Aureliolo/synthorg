@@ -335,7 +335,18 @@ class CostTracker(CostTrackerSummaryMixin):
         # claim was already applied in a prior process, so skip the
         # increment but promote the claim to the in-memory LRU so the
         # next same-process redelivery short-circuits without a DB read.
-        if await self._durable_claim_already_billed(cost_record):
+        # The in-flight reservation is held across this DB read, so any
+        # failure or cancellation must release it -- otherwise the claim_id
+        # stays pinned in ``_inflight_claims`` forever and every retry is
+        # falsely deduped. ``except Exception`` would miss CancelledError
+        # (timeout / shutdown), so catch BaseException and re-raise.
+        try:
+            already_billed = await self._durable_claim_already_billed(cost_record)
+        except BaseException:
+            async with self._get_lock():
+                self._inflight_claims.discard(cost_record.claim_id)
+            raise
+        if already_billed:
             async with self._get_lock():
                 self._inflight_claims.discard(cost_record.claim_id)
                 self._promote_seen_claim(cost_record.claim_id)

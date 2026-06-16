@@ -16,7 +16,7 @@ keep their once-only / if-absent / hot-replace semantics.
 """
 
 import asyncio
-from typing import cast
+from typing import Final, cast
 
 from synthorg.api.state_bridge_config import BridgeConfigState
 from synthorg.api.state_per_op_limits import PerOpLimitsState
@@ -43,8 +43,8 @@ from synthorg.workers.execution_service import WorkerExecutionService
 # (8s in api/lifecycle.py) so initiating the cooperative drain at the top
 # of teardown cannot push the total past the orchestrator SIGKILL
 # deadline (75s in api/server.py).
-_SHUTDOWN_GRACE_SECONDS: float = 8.0
-_SHUTDOWN_CLEANUP_SECONDS: float = 2.0
+_SHUTDOWN_GRACE_SECONDS: Final[float] = 8.0
+_SHUTDOWN_CLEANUP_SECONDS: Final[float] = 2.0
 
 
 class AppState(AppStateSliceMixin):

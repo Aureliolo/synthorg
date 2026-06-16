@@ -9,7 +9,7 @@ health-prober / training-backend state now lives on the shared
 
 import asyncio
 from collections.abc import Awaitable
-from typing import cast
+from typing import Final, cast
 
 from synthorg.a2a.state import A2aStateSlice
 from synthorg.api.bus_bridge import MessageBusBridge
@@ -47,9 +47,9 @@ logger = get_logger(__name__)
 # ``asyncio.wait_for`` keeps shutdown bounded even when a task body shields
 # ``CancelledError`` (third-party callees, hung I/O); the orchestrator's SIGKILL
 # deadline must not slip past ``graceful_shutdown`` (75s in api/server.py).
-_TICKET_CLEANUP_SHUTDOWN_SECONDS: float = 2.0
-_AUDIT_RETENTION_SHUTDOWN_SECONDS: float = 2.0
-_WEBHOOK_CLEANUP_SHUTDOWN_SECONDS: float = 2.0
+_TICKET_CLEANUP_SHUTDOWN_SECONDS: Final[float] = 2.0
+_AUDIT_RETENTION_SHUTDOWN_SECONDS: Final[float] = 2.0
+_WEBHOOK_CLEANUP_SHUTDOWN_SECONDS: Final[float] = 2.0
 
 # Outer backstop budgets for the two in-flight drains run at the top of
 # shutdown. Each drain is internally bounded (its own ``asyncio.wait``
@@ -60,20 +60,20 @@ _WEBHOOK_CLEANUP_SHUTDOWN_SECONDS: float = 2.0
 # budget exceeds the inner deadline by a small grace so the inner
 # mechanism (which logs ``pending_count``) fires first and the outer is
 # purely the backstop.
-_DRAIN_OUTER_GRACE_SECONDS: float = 2.0
-_RESUME_DRAIN_OUTER_SECONDS: float = (
+_DRAIN_OUTER_GRACE_SECONDS: Final[float] = 2.0
+_RESUME_DRAIN_OUTER_SECONDS: Final[float] = (
     _RESUME_DRAIN_TIMEOUT_SECONDS + _DRAIN_OUTER_GRACE_SECONDS
 )
 # ReviewGate drains through a BackgroundTaskRegistry with the registry's
 # 5.0s default deadline; mirror that plus the shared grace.
-_REVIEW_GATE_DRAIN_OUTER_SECONDS: float = 5.0 + _DRAIN_OUTER_GRACE_SECONDS
+_REVIEW_GATE_DRAIN_OUTER_SECONDS: Final[float] = 5.0 + _DRAIN_OUTER_GRACE_SECONDS
 
 # Outer backstop for the cooperative multi-agent drain. ``initiate_shutdown``
 # is internally bounded (grace 8s + cancel-propagation 5s + cleanup 2s);
 # wrap it so a strategy that hangs before reaching its own deadlines cannot
 # block the shutdown window. No-op (returns immediately) when no parallel
 # agent tasks are registered, which is the common case.
-_COOPERATIVE_SHUTDOWN_OUTER_SECONDS: float = 18.0
+_COOPERATIVE_SHUTDOWN_OUTER_SECONDS: Final[float] = 18.0
 
 
 async def _run_shutdown(  # noqa: PLR0913

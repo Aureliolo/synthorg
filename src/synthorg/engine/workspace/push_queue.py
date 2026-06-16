@@ -116,9 +116,13 @@ class PushQueueCoordinator:
     async def stop(self) -> None:
         """Drain in-flight work then stop the worker (idempotent).
 
-        The lifecycle lock is held across the drain so a concurrent
-        ``start()`` waits for the stop to finish rather than racing the
-        ``_worker`` / ``_queue`` reset and orphaning a fresh worker.
+        Closure is signalled (and the sentinel enqueued) under the
+        lifecycle lock, but the worker drain is awaited OUTSIDE the lock so
+        the network-bound git pushes the worker runs cannot block a
+        concurrent ``start()`` on the lock for the whole drain. The
+        ``_worker`` / ``_queue`` reset re-acquires the lock and only fires
+        when the worker is still the one this call drained, so a fresh
+        ``start()`` that interleaves is not clobbered.
         """
         async with self._lifecycle_lock:
             worker = self._worker
@@ -131,11 +135,14 @@ class PushQueueCoordinator:
             queue = self._queue
             if queue is not None:
                 await queue.put(None)
-            try:
-                await worker
-            finally:
-                self._worker = None
-                self._queue = None
+
+        try:
+            await worker
+        finally:
+            async with self._lifecycle_lock:
+                if self._worker is worker:
+                    self._worker = None
+                    self._queue = None
 
     async def enqueue_merge_push(
         self,
