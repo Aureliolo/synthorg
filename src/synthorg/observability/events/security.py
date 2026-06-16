@@ -213,6 +213,7 @@ SECURITY_AUTONOMY_DOWNGRADE_TRIGGERED: Final[str] = (
 SECURITY_AUTONOMY_RECOVERY_REQUESTED: Final[str] = (
     "security.autonomy.recovery.requested"
 )
+SECURITY_AUTONOMY_OVERRIDE_CLEARED: Final[str] = "security.autonomy.override.cleared"
 
 # ── Provider / API-key management (signed) ─────────────────────
 # Validation failures stay under provider.management.* (operational).

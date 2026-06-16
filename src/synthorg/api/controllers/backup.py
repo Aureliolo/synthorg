@@ -9,7 +9,6 @@ from typing import Annotated, Final
 
 from litestar import Controller, delete, get, post
 from litestar.datastructures import State
-from litestar.exceptions import InternalServerException
 from litestar.params import HeaderParameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
@@ -150,7 +149,7 @@ class BackupController(Controller):
 
         Raises:
             ConflictError: Raised on the corresponding failure path.
-            InternalServerException: Raised on the corresponding failure path.
+            ManifestError: When a cached manifest payload fails validation.
         """
         app_state: AppState = state.app_state
 
@@ -161,10 +160,9 @@ class BackupController(Controller):
             # ``BackupNotFoundError`` to 404, and any other
             # ``BackupError`` type to a scrubbed 5xx with the
             # RFC 9457 envelope. Translating here would route
-            # through the generic ``ConflictError`` /
-            # ``InternalServerException`` paths and drop the
-            # domain-specific ``BackupError`` type the handler
-            # discriminates on.
+            # through the generic ``ConflictError`` / internal-error
+            # paths and drop the domain-specific ``BackupError`` type
+            # the handler discriminates on.
             return await _backup_service(app_state).create_backup(
                 BackupTrigger.MANUAL,
             )
@@ -210,7 +208,7 @@ class BackupController(Controller):
                 stage="cached_manifest_validate",
             )
             msg = "Cached backup manifest failed validation; rerun the backup"
-            raise InternalServerException(msg) from exc
+            raise ManifestError(msg) from exc
         return ApiResponse(data=manifest)
 
     @get()
@@ -243,8 +241,8 @@ class BackupController(Controller):
         )
         # ``BackupError`` propagates to ``handle_backup_error`` so the
         # response carries the structured RFC 9457 envelope; an
-        # ``InternalServerException`` re-raise here would drop the
-        # ``BackupError`` type and force an unstructured 500.
+        # internal-error re-raise here would drop the ``BackupError``
+        # type and force an unstructured 500.
         # Fetch ``limit + 1`` so we can detect that another page
         # follows without a second full-directory scan.
         backups = await _backup_service(app_state).list_backups(
@@ -344,7 +342,8 @@ class BackupController(Controller):
             ValidationError: If confirm is false or manifest invalid (422).
             ConflictError: If a backup is in progress (409).
             NotFoundError: If the backup does not exist (404).
-            InternalServerException: If the restore fails.
+            RestoreError: If the restore fails (re-raised so the
+                ``BACKUP_RESTORE_FAILED`` code survives).
             BackupNotFoundError: Raised on the corresponding failure path.
         """
         if not data.confirm:
@@ -407,9 +406,11 @@ class BackupController(Controller):
             msg_in_progress = "A backup operation is already in progress"
             raise ConflictError(msg_in_progress) from exc
         except RestoreError as exc:
+            # Re-raise the domain error directly so ``handle_domain_error``
+            # surfaces ``ErrorCode.BACKUP_RESTORE_FAILED`` instead of the
+            # generic ``INTERNAL_ERROR`` a Litestar HTTP exception yields.
             log_exception_redacted(
                 logger, BACKUP_RESTORE_FAILED, exc, backup_id=data.backup_id
             )
-            msg = "Restore operation failed"
-            raise InternalServerException(msg) from exc
+            raise
         return ApiResponse(data=response)

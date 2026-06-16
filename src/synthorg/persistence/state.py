@@ -26,6 +26,16 @@ class PersistenceStateSlice(BaseFeatureStateSlice):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     backend: PersistenceBackend | None = None
+    persistence_expected: bool = False
+    """Whether a backend was *meant* to be wired.
+
+    Set ``True`` the moment startup attempts to build/connect a backend
+    (config or env indicated one). A wired-but-absent backend
+    (``backend is None`` while ``persistence_expected``) is a genuine
+    failure and the readiness probe reports it UNAVAILABLE, rather than
+    silently treating the missing backend as a deliberately
+    persistence-less dev run.
+    """
 
 
 def persistence_of(app_state: AppStateSliceMixin) -> PersistenceBackend:

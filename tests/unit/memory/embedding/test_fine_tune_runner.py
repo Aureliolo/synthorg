@@ -10,8 +10,8 @@ import pytest
 from synthorg.memory.embedding.fine_tune_runner import (
     _DEFAULT_HEALTH_PORT,
     _load_config,
-    _resolve_health_port,
     _run,
+    resolve_health_port,
 )
 
 pytestmark = pytest.mark.unit
@@ -29,7 +29,7 @@ def _mock_health_server() -> Iterator[None]:
 
 
 class TestResolveHealthPort:
-    """`_resolve_health_port` env-driven port resolution."""
+    """`resolve_health_port` env-driven port resolution."""
 
     _ENV_VAR = "SYNTHORG_FINE_TUNE_HEALTH_PORT"
 
@@ -38,7 +38,7 @@ class TestResolveHealthPort:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.delenv(self._ENV_VAR, raising=False)
-        assert _resolve_health_port() == _DEFAULT_HEALTH_PORT
+        assert resolve_health_port() == _DEFAULT_HEALTH_PORT
 
     @pytest.mark.parametrize(
         ("raw", "expected"),
@@ -56,7 +56,7 @@ class TestResolveHealthPort:
         expected: int,
     ) -> None:
         monkeypatch.setenv(self._ENV_VAR, raw)
-        assert _resolve_health_port() == expected
+        assert resolve_health_port() == expected
 
     @pytest.mark.parametrize(
         ("raw", "match"),
@@ -85,7 +85,7 @@ class TestResolveHealthPort:
     ) -> None:
         monkeypatch.setenv(self._ENV_VAR, raw)
         with pytest.raises(ValueError, match=match):
-            _resolve_health_port()
+            resolve_health_port()
 
 
 class TestLoadConfig:
@@ -141,7 +141,7 @@ class TestRun:
 
         The other tests stub ``_start_health_server`` via the
         ``_mock_health_server`` autouse fixture. Here we route that
-        stub through a lambda that re-invokes ``_resolve_health_port``
+        stub through a lambda that re-invokes ``resolve_health_port``
         so the port validation still runs -- locking in the fast-fail
         container contract: a bad port must crash startup, not
         silently bind the wrong port.
@@ -150,7 +150,7 @@ class TestRun:
         with (
             patch(
                 "synthorg.memory.embedding.fine_tune_runner._start_health_server",
-                side_effect=_resolve_health_port,
+                side_effect=resolve_health_port,
             ),
             pytest.raises(ValueError, match="not a valid integer"),
         ):

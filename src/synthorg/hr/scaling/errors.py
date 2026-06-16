@@ -32,5 +32,5 @@ class ScalingCooldownActiveError(ScalingError):
 
     default_message: ClassVar[str] = "Scaling blocked by active cooldown"
     error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
-    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.SCALING_COOLDOWN_ACTIVE
     status_code: ClassVar[int] = 409

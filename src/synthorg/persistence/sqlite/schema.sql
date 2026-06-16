@@ -1367,11 +1367,12 @@ CREATE TABLE approvals (
         risk_level IN ('low', 'medium', 'high', 'critical')
     ),
     source TEXT NOT NULL DEFAULT 'review_gate' CHECK (
-        -- SQLite retains the narrow domain here; the conversational
-        -- propose path keeps ApprovalStore in-memory by default so a
-        -- 'conversational_intake' row never reaches SQLite. Postgres
-        -- (the production backend) widens this CHECK to include it.
-        source IN ('parked_context', 'review_gate')
+        -- Matches the Postgres domain so a persistent-SQLite
+        -- ApprovalStore can hold conversational-interface rows.
+        source IN (
+            'parked_context', 'review_gate',
+            'conversational_intake', 'conversational_invite'
+        )
     ),
     status TEXT NOT NULL DEFAULT 'pending' CHECK (
         status IN ('pending', 'approved', 'rejected', 'expired')
@@ -1894,6 +1895,19 @@ CREATE TABLE seen_claims (
 );
 CREATE INDEX idx_seen_claims_expires_at ON seen_claims (expires_at);
 
+-- Restart-safe project-cost-claim dedup: durable backstop so a
+-- JetStream redelivery after a process restart cannot double-bill a project
+-- cost aggregate.  CostTracker consults this before a durable increment.
+CREATE TABLE project_cost_claim_seen (
+    claim_id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(claim_id)) > 0),
+    project_id TEXT NOT NULL CHECK (LENGTH(TRIM(project_id)) > 0),
+    seen_at TEXT NOT NULL CHECK (LENGTH(TRIM(seen_at)) > 0),
+    expires_at TEXT NOT NULL CHECK (LENGTH(TRIM(expires_at)) > 0),
+    CHECK (expires_at > seen_at)
+);
+CREATE INDEX idx_project_cost_claim_seen_expires_at
+ON project_cost_claim_seen (expires_at);
+
 -- Principle-override table for the rollback executor's PromptMutator.
 -- Overlays the read-only YAML principle packs loaded by
 -- engine/strategy/principles.py so a rollback operation can restore
@@ -2191,6 +2205,11 @@ CREATE TABLE code_execution_record (
     stdout_tail TEXT,
     stderr_tail TEXT,
     executed_at TEXT NOT NULL,
+    -- Parity note: Postgres stores ``timed_out`` as BOOLEAN and writes
+    -- this CHECK as ``NOT timed_out``; SQLite stores it as INTEGER 0/1
+    -- so the equivalent predicate is ``timed_out = 0``. The two are
+    -- semantically identical -- only the per-backend boolean encoding
+    -- differs.
     CHECK (passed = (returncode = 0 AND timed_out = 0))
 );
 

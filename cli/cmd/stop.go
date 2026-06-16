@@ -46,6 +46,17 @@ func runStop(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 	opts := GetGlobalOpts(ctx)
 
+	// Validate the --timeout flag first so a usage error (exit 2)
+	// surfaces before any config load or docker detection, mirroring
+	// start.go's flag-validation-first ordering. Doing this last meant
+	// `synthorg stop --timeout bogus` only failed after detecting
+	// docker -- expensive work wasted on an input we could reject up
+	// front.
+	downArgs, err := buildDownArgs()
+	if err != nil {
+		return fmt.Errorf("building docker compose down args: %w", err)
+	}
+
 	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
@@ -64,11 +75,6 @@ func runStop(cmd *cobra.Command, _ []string) error {
 	info, err := docker.Detect(ctx)
 	if err != nil {
 		return fmt.Errorf("detecting docker: %w", err)
-	}
-
-	downArgs, err := buildDownArgs()
-	if err != nil {
-		return fmt.Errorf("building docker compose down args: %w", err)
 	}
 
 	sp := out.StartSpinner("Stopping containers...")

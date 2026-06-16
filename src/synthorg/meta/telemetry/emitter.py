@@ -26,6 +26,7 @@ from synthorg.meta.telemetry.anonymizer import anonymize_decision, anonymize_rol
 from synthorg.meta.telemetry.config import CrossDeploymentAnalyticsConfig
 from synthorg.meta.telemetry.models import AnonymizedOutcomeEvent, EventBatch
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.cross_deployment import (
     XDEPLOY_BATCH_DROPPED,
     XDEPLOY_BATCH_FLUSH_FAILED,
@@ -353,19 +354,50 @@ class HttpAnalyticsEmitter:
                 self._flush_task = asyncio.create_task(
                     self._periodic_flush(),
                 )
+                # Make an unexpected loop death observable: without this
+                # a non-CancelledError that escaped the loop would kill
+                # periodic flushing with no log entry.
+                self._flush_task.add_done_callback(
+                    log_task_exceptions(
+                        logger,
+                        XDEPLOY_BATCH_FLUSH_FAILED,
+                        note="periodic_flush_task_died",
+                    ),
+                )
 
     async def _periodic_flush(self) -> None:
         """Background loop that flushes on interval.
 
         Runs until ``aclose()`` sets ``_closed`` and cancels this
         task. The cancellation interrupts the sleep, so no
-        post-sleep guard is needed.
+        post-sleep guard is needed. A per-tick ``flush()`` failure is
+        logged and the loop continues, so a transient send error never
+        kills periodic flushing.
+
+        Raises:
+            asyncio.CancelledError: Propagated on shutdown so the loop
+                ends promptly.
         """
         while not self._closed:
             await asyncio.sleep(
                 self._analytics_config.flush_interval_seconds,
             )
-            await self.flush()
+            try:
+                await self.flush()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 -- loop must survive
+                # A flush failure (e.g. ``_send_batch`` raising on a
+                # missing collector_url) must NOT silently kill periodic
+                # flushing and strand every buffered event. Log and keep
+                # looping; the next tick retries.
+                reraise_critical(exc)
+                logger.warning(
+                    XDEPLOY_BATCH_FLUSH_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    note="periodic_flush_error",
+                )
 
     async def _enqueue(self, event: AnonymizedOutcomeEvent) -> None:
         """Add event to buffer and maybe flush.

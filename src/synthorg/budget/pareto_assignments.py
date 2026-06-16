@@ -18,6 +18,7 @@ from collections.abc import Sequence
 from datetime import timedelta
 
 from synthorg.budget._cost_window import COST_WINDOW_DAYS, ClockFn, utc_now
+from synthorg.budget.currency import assert_currencies_match
 from synthorg.budget.pareto import RoleAssignment
 from synthorg.budget.tracker import CostTracker
 from synthorg.hr.registry import AgentRegistryService
@@ -92,6 +93,9 @@ class AgentRegistryAssignmentLookup:
         end = self._clock()
         start = end - timedelta(days=COST_WINDOW_DAYS)
         records = await self._cost_tracker.get_records(start=start, end=end)
+        # Reject mixed-currency input before accumulating per-model
+        # totals so a per-model mean cannot blend two currencies.
+        assert_currencies_match(r.currency for r in records)
         totals: dict[str, float] = defaultdict(float)
         counts: dict[str, int] = defaultdict(int)
         for record in records:

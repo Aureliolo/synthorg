@@ -14,9 +14,11 @@ from synthorg.a2a.models import (
     JSONRPC_METHOD_NOT_FOUND,
 )
 from synthorg.a2a.rpc_params import A2AMessageSendParams
+from synthorg.api.state import AppState
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.persistence.idempotency_protocol import IdempotencyClaim
 from tests._shared import as_uuid, make_app_state, mock_of, sid
 
 
@@ -582,8 +584,14 @@ def _make_task(task_id: str, status: TaskStatus) -> Task:
     )
 
 
-def _send_params(parts: int = 1) -> A2AMessageSendParams:
+def _send_params(
+    parts: int = 1,
+    *,
+    message_id: str = "11111111-1111-1111-1111-111111111111",
+) -> A2AMessageSendParams:
     """Build a ``message/send`` params model with ``parts`` text parts."""
+    from uuid import UUID
+
     from synthorg.a2a.models import A2AMessage, A2AMessageRole, A2ATextPart
 
     return A2AMessageSendParams(
@@ -591,6 +599,81 @@ def _send_params(parts: int = 1) -> A2AMessageSendParams:
             role=A2AMessageRole.USER,
             parts=tuple(A2ATextPart(text=f"part-{i}") for i in range(parts)),
         ),
+        message_id=UUID(message_id),
+    )
+
+
+class _KeyedIdempotencyRepo:
+    """Per-``(scope, key)`` in-memory ``IdempotencyRepository`` for tests.
+
+    Models FRESH -> (callback) -> COMPLETED independently per ``(scope,
+    key)`` pair. Keying by the pair (rather than a single global slot) is
+    what lets the dedup test prove the gateway derives the idempotency key
+    correctly: a mis-keyed claim would land in a different slot and replay
+    FRESH instead of the cached body.
+    """
+
+    def __init__(self) -> None:
+        self._completed: dict[tuple[object, object], str] = {}
+
+    async def claim(
+        self, *, scope: object, key: object, ttl_seconds: int, now: object
+    ) -> IdempotencyClaim:
+        from synthorg.core.types import NotBlankStr
+        from synthorg.persistence.idempotency_protocol import IdempotencyOutcome
+
+        del ttl_seconds, now
+        cached = self._completed.get((scope, key))
+        if cached is None:
+            return IdempotencyClaim(
+                outcome=IdempotencyOutcome.FRESH,
+                claim_token=NotBlankStr("tok"),
+            )
+        return IdempotencyClaim(
+            outcome=IdempotencyOutcome.COMPLETED,
+            cached_response=cached,
+        )
+
+    async def complete(
+        self,
+        *,
+        scope: object,
+        key: object,
+        response_body: str,
+        response_hash: str,
+        claim_token: object,
+    ) -> bool:
+        del response_hash, claim_token
+        self._completed[(scope, key)] = response_body
+        return True
+
+    async def fail(self, *, scope: object, key: object, claim_token: object) -> bool:
+        from synthorg.persistence.idempotency_protocol import IdempotencyOutcome
+
+        del scope, key, claim_token
+        self._outcome = IdempotencyOutcome.FAILED
+        return True
+
+    async def get(self, *, scope: object, key: object) -> None:
+        del scope, key
+
+    async def cleanup_expired(self, now: object) -> int:
+        del now
+        return 0
+
+
+def _app_state_with_engine(task_engine: object) -> AppState:
+    """Build an app-state wiring the engine and a fresh idempotency service."""
+    from synthorg.api.api_core_state import ApiCoreStateSlice
+    from synthorg.api.services.idempotency_service import IdempotencyService
+
+    return make_app_state(
+        task_engine=task_engine,
+        slices={
+            ApiCoreStateSlice: {
+                "idempotency_service": IdempotencyService(_KeyedIdempotencyRepo()),
+            },
+        },
     )
 
 
@@ -607,7 +690,7 @@ class TestHandleMessageSend:
         task = _make_task("task-1", TaskStatus.IN_PROGRESS)
         engine = mock_of[TaskEngine]()
         engine.create_task.return_value = task
-        app_state = make_app_state(task_engine=engine)
+        app_state = _app_state_with_engine(engine)
 
         result = await _handle_message_send(app_state, _send_params(), "peer-a")
 
@@ -658,13 +741,48 @@ class TestHandleMessageSend:
 
         engine = mock_of[TaskEngine]()
         engine.create_task.return_value = _make_task("task-1", TaskStatus.IN_PROGRESS)
-        app_state = make_app_state(task_engine=engine)
+        app_state = _app_state_with_engine(engine)
         at_cap = AsyncMock(spec=_resolve_max_message_parts, return_value=2)
 
         with patch("synthorg.a2a.gateway._resolve_max_message_parts", new=at_cap):
             result = await _handle_message_send(app_state, _send_params(parts=2), "p")
         assert result == {"id": sid("task-1"), "state": "working"}
         engine.create_task.assert_awaited_once()
+
+    @pytest.mark.unit
+    async def test_duplicate_message_id_replays_same_task(self) -> None:
+        """Regression (audit 133): a retried message/send with the same
+        message_id returns the same task and creates exactly one task."""
+        from synthorg.a2a.gateway import _handle_message_send
+        from synthorg.core.task_enums import TaskStatus
+        from synthorg.engine.task_engine import TaskEngine
+
+        engine = mock_of[TaskEngine]()
+        engine.create_task.return_value = _make_task("task-1", TaskStatus.IN_PROGRESS)
+        app_state = _app_state_with_engine(engine)
+        params = _send_params(message_id="22222222-2222-2222-2222-222222222222")
+
+        first = await _handle_message_send(app_state, params, "peer-a")
+        second = await _handle_message_send(app_state, params, "peer-a")
+
+        assert first == second == {"id": sid("task-1"), "state": "working"}
+        engine.create_task.assert_awaited_once()
+
+    @pytest.mark.unit
+    def test_missing_message_id_is_rejected(self) -> None:
+        """Regression (audit 133): message/send without message_id is rejected
+        at the typed-params boundary (strictly required)."""
+        from pydantic import ValidationError
+
+        from synthorg.a2a.models import A2AMessage, A2AMessageRole, A2ATextPart
+
+        with pytest.raises(ValidationError):
+            A2AMessageSendParams(
+                message=A2AMessage(
+                    role=A2AMessageRole.USER,
+                    parts=(A2ATextPart(text="hello"),),
+                ),
+            )  # type: ignore[call-arg]
 
 
 class TestHandleTasksGet:

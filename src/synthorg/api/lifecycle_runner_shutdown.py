@@ -7,8 +7,9 @@ health-prober / training-backend state now lives on the shared
 :class:`_LifecycleTasks` container threaded in by the builder.
 """
 
+import asyncio
 from collections.abc import Awaitable
-from typing import cast
+from typing import Final, cast
 
 from synthorg.a2a.state import A2aStateSlice
 from synthorg.api.bus_bridge import MessageBusBridge
@@ -33,6 +34,7 @@ from synthorg.observability.events.api import API_APP_SHUTDOWN
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
+from synthorg.workers.execution_resume import _RESUME_DRAIN_TIMEOUT_SECONDS
 from synthorg.workers.state import RuntimeStateSlice
 
 logger = get_logger(__name__)
@@ -45,9 +47,33 @@ logger = get_logger(__name__)
 # ``asyncio.wait_for`` keeps shutdown bounded even when a task body shields
 # ``CancelledError`` (third-party callees, hung I/O); the orchestrator's SIGKILL
 # deadline must not slip past ``graceful_shutdown`` (75s in api/server.py).
-_TICKET_CLEANUP_SHUTDOWN_SECONDS: float = 2.0
-_AUDIT_RETENTION_SHUTDOWN_SECONDS: float = 2.0
-_WEBHOOK_CLEANUP_SHUTDOWN_SECONDS: float = 2.0
+_TICKET_CLEANUP_SHUTDOWN_SECONDS: Final[float] = 2.0
+_AUDIT_RETENTION_SHUTDOWN_SECONDS: Final[float] = 2.0
+_WEBHOOK_CLEANUP_SHUTDOWN_SECONDS: Final[float] = 2.0
+
+# Outer backstop budgets for the two in-flight drains run at the top of
+# shutdown. Each drain is internally bounded (its own ``asyncio.wait``
+# deadline), but ``_try_stop`` previously awaited them with no outer
+# timeout: a drain that hangs BEFORE reaching its internal wait (e.g. a
+# stuck done-callback, a hung pre-drain await) would block the whole
+# shutdown window past the orchestrator SIGKILL deadline. The outer
+# budget exceeds the inner deadline by a small grace so the inner
+# mechanism (which logs ``pending_count``) fires first and the outer is
+# purely the backstop.
+_DRAIN_OUTER_GRACE_SECONDS: Final[float] = 2.0
+_RESUME_DRAIN_OUTER_SECONDS: Final[float] = (
+    _RESUME_DRAIN_TIMEOUT_SECONDS + _DRAIN_OUTER_GRACE_SECONDS
+)
+# ReviewGate drains through a BackgroundTaskRegistry with the registry's
+# 5.0s default deadline; mirror that plus the shared grace.
+_REVIEW_GATE_DRAIN_OUTER_SECONDS: Final[float] = 5.0 + _DRAIN_OUTER_GRACE_SECONDS
+
+# Outer backstop for the cooperative multi-agent drain. ``initiate_shutdown``
+# is internally bounded (grace 8s + cancel-propagation 5s + cleanup 2s);
+# wrap it so a strategy that hangs before reaching its own deadlines cannot
+# block the shutdown window. No-op (returns immediately) when no parallel
+# agent tasks are registered, which is the common case.
+_COOPERATIVE_SHUTDOWN_OUTER_SECONDS: Final[float] = 18.0
 
 
 async def _run_shutdown(  # noqa: PLR0913
@@ -76,6 +102,12 @@ async def _run_shutdown(  # noqa: PLR0913
         meeting_scheduler: Meeting scheduler service.
         backup_service: Backup and restore service.
         approval_timeout_scheduler: Background approval timeout checker.
+
+    Raises:
+        MemoryError: Re-raised unchanged from the cooperative-shutdown
+            guard (never swallowed).
+        RecursionError: Re-raised unchanged from the cooperative-shutdown
+            guard (never swallowed).
     """
     # Emit the shutdown event before any teardown step so the gate-crossing is
     # observable even if a downstream stop hangs or raises. Mirrors the
@@ -83,6 +115,26 @@ async def _run_shutdown(  # noqa: PLR0913
     from synthorg import __version__  # noqa: PLC0415
 
     logger.info(API_APP_SHUTDOWN, version=__version__)
+    # Cooperatively drain in-flight multi-agent parallel tasks first: the
+    # drain gate already closed when the signal arrived (so no new agent
+    # tasks register), and this waits the bounded grace for registered
+    # tasks to exit at a turn boundary before force-cancelling stragglers.
+    # Runs before the resume / service teardown so an in-flight agent run
+    # is cancelled cleanly rather than abruptly when the loop tears down.
+    try:
+        await asyncio.wait_for(
+            app_state.shutdown_manager.initiate_shutdown(),
+            timeout=_COOPERATIVE_SHUTDOWN_OUTER_SECONDS,
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- shutdown best-effort: log and continue
+        logger.warning(
+            API_APP_SHUTDOWN,
+            phase="cooperative_shutdown",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
     # Drain in-flight parked-context resumes (background tasks spawned off the
     # /approvals path) before teardown so an approved resume is not silently
     # dropped mid-flight. Read the runtime slice field directly; only the
@@ -95,6 +147,8 @@ async def _run_shutdown(  # noqa: PLR0913
             cast("Awaitable[None]", _drain_resumes()),
             API_APP_SHUTDOWN,
             "Failed to drain in-flight parked-context resumes",
+            timeout=_RESUME_DRAIN_OUTER_SECONDS,
+            service="resume_drain",
         )
     # Drain in-flight gated-completion background tasks (the red-team
     # evaluation dispatched off the /approvals path) so an approved
@@ -107,6 +161,8 @@ async def _run_shutdown(  # noqa: PLR0913
             _review_gate.drain_background_tasks(),
             API_APP_SHUTDOWN,
             "Failed to drain in-flight gated-completion background tasks",
+            timeout=_REVIEW_GATE_DRAIN_OUTER_SECONDS,
+            service="review_gate_drain",
         )
     # Disconnect training memory backend if auto-wired.
     if tasks.training_memory_backend is not None:

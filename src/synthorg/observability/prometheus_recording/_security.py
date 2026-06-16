@@ -77,8 +77,13 @@ class _SecurityRecordingMixin(_RecordingMetricsBase):
         require_non_negative("record_audit_append: chain_depth", chain_depth)
         require_finite("record_audit_append: timestamp_unix", timestamp_unix)
         self._audit_chain_appends.labels(status=status).inc()
-        self._audit_chain_depth.set(chain_depth)
-        self._audit_chain_last_append_ts.set(timestamp_unix)
+        # An "error" status means no append happened (validation reject,
+        # signing timeout, encode failure), so the depth / last-append
+        # gauges must keep their prior values rather than being clobbered
+        # to the placeholder ``0`` the error path passes.
+        if status != "error":
+            self._audit_chain_depth.set(chain_depth)
+            self._audit_chain_last_append_ts.set(timestamp_unix)
 
     def record_audit_chain_verification(
         self,

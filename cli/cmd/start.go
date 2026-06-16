@@ -180,7 +180,11 @@ func printStartDryRun(out *ui.UI, state config.State, opts *GlobalOpts) error {
 	out.KeyValue("Detached", strconv.FormatBool(!startNoDetach))
 	out.KeyValue("Health check", strconv.FormatBool(!startNoWait && !startNoDetach))
 	out.Step("Dry run -- no changes made")
-	out.HintNextStep("Remove --dry-run to start the stack")
+	if startNoPull {
+		out.HintNextStep("Remove --dry-run to start the stack (--no-pull: images will not be pulled or verified)")
+	} else {
+		out.HintNextStep("Remove --dry-run to start the stack")
+	}
 	return nil
 }
 
@@ -306,10 +310,14 @@ func startDetached(ctx context.Context, info docker.Info, safeDir string, state 
 	out.Box("Ready", readyLines)
 	out.Blank()
 	out.Section(fmt.Sprintf("Open http://localhost:%d", state.WebPort))
-	out.HintTip("Run 'synthorg status --watch' to monitor container health.")
+	// Surface the --no-pull caveat BEFORE the routine status-watch tip:
+	// "images not verified" is the more consequential message and must
+	// not be buried under (or lost to the once-per-session dedup of) the
+	// monitoring tip.
 	if startNoPull {
-		out.HintGuidance("Images not verified -- run 'synthorg update' to pull and verify latest images.")
+		out.HintNextStep("Images not verified -- run 'synthorg update' to pull and verify latest images.")
 	}
+	out.HintTip("Run 'synthorg status --watch' to monitor container health.")
 	return nil
 }
 

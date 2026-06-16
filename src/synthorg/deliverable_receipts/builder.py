@@ -13,9 +13,7 @@ import hashlib
 from typing import Final
 from uuid import uuid4
 
-from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import CurrencyCode
-from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.core.clock import Clock
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
@@ -31,7 +29,6 @@ from synthorg.deliverable_receipts.models import (
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.deliverable_receipts import (
     RECEIPT_CASSETTE_UNAVAILABLE,
-    RECEIPT_MIXED_CURRENCY_COST,
     RECEIPT_REDTEAM_UNAVAILABLE,
 )
 from synthorg.persistence.code_execution_protocol import (
@@ -201,9 +198,14 @@ class ReceiptBuilder:
         """Aggregate cost and resolve the currency for the task.
 
         Returns:
-            ``(total_cost, currency)``. Falls back to the dominant
-            currency on a mixed-currency task and to the configured
-            default currency when no cost records exist.
+            ``(total_cost, currency)``. The configured default currency
+            is used when no cost records exist.
+
+        Raises:
+            MixedCurrencyAggregationError: When the task's cost records
+                span more than one currency. The receipt build fails
+                loudly rather than silently under-reporting a partial,
+                dominant-currency-only total.
         """
         records = await self._cost_records.query(
             CostRecordFilterSpec(task_id=task_id),
@@ -211,32 +213,8 @@ class ReceiptBuilder:
         )
         if not records:
             return 0.0, self._default_currency
-        try:
-            total = await self._cost_records.aggregate(task_id=task_id)
-        except MixedCurrencyAggregationError:
-            return self._dominant_currency_total(records)
+        total = await self._cost_records.aggregate(task_id=task_id)
         return total, records[0].currency
-
-    @staticmethod
-    def _dominant_currency_total(
-        records: tuple[CostRecord, ...],
-    ) -> tuple[float, CurrencyCode]:
-        """Sum the highest-total currency on a mixed-currency task.
-
-        Returns:
-            ``(total, currency)`` for the currency with the greatest
-            summed cost; ties break on first appearance.
-        """
-        totals: dict[str, float] = {}
-        for record in records:
-            totals[record.currency] = totals.get(record.currency, 0.0) + record.cost
-        dominant = max(totals, key=lambda c: totals[c])
-        logger.warning(
-            RECEIPT_MIXED_CURRENCY_COST,
-            currency=dominant,
-            currencies=sorted(totals),
-        )
-        return totals[dominant], dominant
 
     async def _tests(self, execution_id: NotBlankStr) -> tuple[ReceiptTestEntry, ...]:
         """Collect the test runs recorded during the run.

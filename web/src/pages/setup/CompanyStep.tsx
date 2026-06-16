@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { SectionCard } from '@/components/ui/section-card'
@@ -9,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
-import { useStepCompletionSync } from './_hooks'
+import { useGoToStep, useStepCompletionSync } from './_hooks'
 import { graphemeLength, validateCompanyStep } from '@/utils/setup-validation'
 import { CURRENCY_OPTIONS } from '@/utils/currencies'
 import type { CurrencyCode } from '@/utils/currencies'
@@ -261,7 +260,7 @@ function useCompanyStepController() {
   const setCurrency = useSetupWizardStore((s) => s.setCurrency)
   const setTemplateVariable = useSetupWizardStore((s) => s.setTemplateVariable)
   const submitCompany = useSetupWizardStore((s) => s.submitCompany)
-  const navigate = useNavigate()
+  const goToProvidersStep = useGoToStep('providers')
 
   // Resolve the full template object for the selected template
   const selectedTemplateObj = useMemo(
@@ -303,10 +302,6 @@ function useCompanyStepController() {
   const startEditing = useCallback(() => {
     setEditing(true)
   }, [])
-
-  const goToProvidersStep = useCallback(() => {
-    void navigate('/setup/providers')
-  }, [navigate])
 
   // The Apply button is the affordance that moves `templateApplied` from
   // false -> true, so it must be enabled when `baseDetailsValid` holds (name

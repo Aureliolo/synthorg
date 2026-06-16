@@ -9,6 +9,7 @@ stays below the 800-line limit mandated by ``CLAUDE.md``.
 
 import asyncio
 import math
+import re
 from dataclasses import dataclass
 from typing import Final, get_args
 
@@ -20,10 +21,12 @@ from synthorg.providers.errors import ProviderErrorLabel
 __all__ = [
     "MCP_UNKNOWN_TOOL_LABEL",
     "TRANSIENT_PROVIDER_ERROR_CLASSES",
+    "UNKNOWN_LABEL",
     "VALID_API_ERROR_CATEGORIES",
     "VALID_APPROVAL_OUTCOMES",
     "VALID_AUDIT_APPEND_STATUSES",
     "VALID_AUDIT_VERIFICATION_OUTCOMES",
+    "VALID_AUTONOMY_PROMOTION_OUTCOMES",
     "VALID_BLUEPRINT_OUTCOMES",
     "VALID_BUDGET_QUERY_TYPES",
     "VALID_CACHE_NAMES",
@@ -38,6 +41,7 @@ __all__ = [
     "VALID_OTLP_KINDS",
     "VALID_OTLP_OUTCOMES",
     "VALID_PG_BACKENDS",
+    "VALID_PROVIDER_CALL_TYPES",
     "VALID_PROVIDER_ERROR_CLASSES",
     "VALID_PUSH_QUEUE_OUTCOMES",
     "VALID_SETTINGS_NAMESPACES",
@@ -55,6 +59,8 @@ __all__ = [
     "_snapshot_lock",
     "is_known_agent_id",
     "normalize_mcp_tool_label",
+    "normalize_model_label",
+    "normalize_provider_label",
     "register_mcp_tool_names",
     "require_finite",
     "require_label",
@@ -181,6 +187,10 @@ VALID_VERDICTS: Final[frozenset[str]] = frozenset(
     {"allow", "deny", "escalate", "output_scan"}
 )
 VALID_TOKEN_DIRECTIONS: Final[frozenset[str]] = frozenset({"input", "output"})
+VALID_PROVIDER_CALL_TYPES: Final[frozenset[str]] = frozenset({"complete", "stream"})
+VALID_AUTONOMY_PROMOTION_OUTCOMES: Final[frozenset[str]] = frozenset(
+    {"granted", "denied"}
+)
 VALID_TASK_OUTCOMES: Final[frozenset[str]] = frozenset(
     {"succeeded", "failed", "cancelled", "rejected"}
 )
@@ -227,13 +237,11 @@ failures (caller should retry).  Mirrors
 # valid-class allowlist.  Without this guard, a renamed or removed label in
 # ``ProviderErrorLabel`` would silently leave a stale entry here that no
 # label-validation pipeline consults.
-_TRANSIENT_DIFF: Final[frozenset[str]] = (
-    TRANSIENT_PROVIDER_ERROR_CLASSES - VALID_PROVIDER_ERROR_CLASSES
-)
-if _TRANSIENT_DIFF:
+_transient_diff = TRANSIENT_PROVIDER_ERROR_CLASSES - VALID_PROVIDER_ERROR_CLASSES
+if _transient_diff:
     msg = (
         "TRANSIENT_PROVIDER_ERROR_CLASSES contains labels not in "
-        f"VALID_PROVIDER_ERROR_CLASSES: {sorted(_TRANSIENT_DIFF)}"
+        f"VALID_PROVIDER_ERROR_CLASSES: {sorted(_transient_diff)}"
     )
     raise ValueError(msg)
 # In-process cache names that emit ``synthorg_cache_operations_total``.
@@ -416,10 +424,12 @@ class _LabelSnapshot:
     workflow_definition_ids: frozenset[str] = frozenset()
     departments: frozenset[str] = frozenset()
     tool_names: frozenset[str] = frozenset()
+    providers: frozenset[str] = frozenset()
     agent_ids_seeded: bool = False
     workflow_definition_ids_seeded: bool = False
     departments_seeded: bool = False
     tool_names_seeded: bool = False
+    providers_seeded: bool = False
 
 
 _INITIAL_SNAPSHOT: Final[_LabelSnapshot] = _LabelSnapshot()
@@ -549,6 +559,51 @@ def validate_tool_name(value: str) -> None:
     """
     snapshot = _snapshot
     require_label_summary("tool_name", value, snapshot.tool_names)
+
+
+UNKNOWN_LABEL: Final[str] = "__unknown__"
+
+_MODEL_LABEL_MAX_LENGTH: Final[int] = 128
+_MODEL_LABEL_PATTERN: Final[re.Pattern[str]] = re.compile(r"\A[A-Za-z0-9._:/-]+\Z")
+
+
+def normalize_provider_label(value: str) -> str:
+    """Return *value* if a registered provider, else :data:`UNKNOWN_LABEL`.
+
+    Bounds the ``provider`` Prometheus label against the configured
+    ``ProviderRegistry`` snapshot. Provider names come from operator
+    config (free-form display strings), so without this fold a renamed
+    or fat-fingered provider would mint a permanent time-series child.
+    Unlike the ``validate_*`` helpers this folds rather than raises:
+    provider/usage error metrics must still record under an aggregate
+    bucket for a misconfigured provider. Fails closed during bootstrap
+    (no snapshot seeded yet); the next scrape rotates the snapshot and
+    subsequent samples land under the real provider name.
+    """
+    snapshot = _snapshot
+    if snapshot.providers_seeded and value in snapshot.providers:
+        return value
+    return UNKNOWN_LABEL
+
+
+def normalize_model_label(value: str) -> str:
+    """Return *value* if a well-formed model id, else :data:`UNKNOWN_LABEL`.
+
+    Unlike ``provider``, the ``model`` label cannot be allowlisted: the
+    usable model set is the open litellm namespace plus whatever a
+    self-hosted server reports at runtime, so a registry snapshot would
+    fold most legitimate ids to UNKNOWN and gut the metric. Model
+    strings already originate from provider config rather than request
+    bodies, so the residual cardinality risk is a misconfiguration
+    injecting a garbage value; a length plus charset cap bounds that
+    without rejecting real ids (``provider/model:tag`` forms included).
+    An empty, over-long, or out-of-charset value folds to UNKNOWN.
+    """
+    if not value or len(value) > _MODEL_LABEL_MAX_LENGTH:
+        return UNKNOWN_LABEL
+    if _MODEL_LABEL_PATTERN.match(value) is None:
+        return UNKNOWN_LABEL
+    return value
 
 
 MCP_UNKNOWN_TOOL_LABEL: Final[str] = "__unknown__"

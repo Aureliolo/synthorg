@@ -116,6 +116,12 @@ class RetryHandler:
 
         if last_error is None:
             msg = "RetryHandler reached exhaustion with no recorded error"
+            logger.error(
+                PROVIDER_CALL_ERROR,
+                reason="invariant_violation",
+                error_type="RuntimeError",
+                error=msg,
+            )
             raise RuntimeError(msg)
         logger.warning(
             PROVIDER_RETRY_EXHAUSTED,

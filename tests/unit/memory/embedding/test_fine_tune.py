@@ -150,7 +150,7 @@ class TestChunkText:
 @pytest.mark.unit
 class TestGenerateQuery:
     def test_extractive_fallback(self) -> None:
-        query = _generate_query("First sentence. Second.", None)
+        query = _generate_query("First sentence. Second.")
         assert "First sentence" in query
 
 

@@ -278,6 +278,7 @@ async def _build_runtime_coordinator(
         coordination_metrics_collector=coordination_metrics_collector,
         scorer=scorer,
         coordination_chain=_build_coordination_chain(app_state),
+        shutdown_manager=app_state.shutdown_manager,
     )
     logger.info(
         API_APP_STARTUP,

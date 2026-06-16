@@ -335,6 +335,11 @@ def build_construction_services(
         interrupt_store=overrides.interrupt_store or InterruptStore(),
         cursor_secret=cursor_secret,
         persistence=persistence,
+        # Persistence is "expected" whenever the operator pointed the boot
+        # at a backend (SYNTHORG_DATABASE_URL / SYNTHORG_DB_PATH); a later
+        # missing/unconnected backend is then a real readiness failure
+        # rather than a deliberately persistence-less dev run.
+        persistence_expected=bool(boot.db_url or boot.db_path),
         settings_service=overrides.settings_service,
         auth_service=overrides.auth_service,
         audit_log=audit_log,

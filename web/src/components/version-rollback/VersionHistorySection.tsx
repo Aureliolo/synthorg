@@ -56,11 +56,13 @@ interface VersionHistorySectionBase {
   /** Empty-state secondary copy. */
   emptyDescription?: string
   /**
-   * Whether the backend serves ``/<base>/versions/diff``. Defaults to
-   * true (the budget / company / evaluation / workflow domains). Set
-   * to false for domains that expose list + get only (e.g. role
-   * versions): the two-click compare and the diff drawer are then
-   * suppressed so the UI never fires a request the backend 404s.
+   * Whether the backend serves a diff for this domain. Defaults to
+   * true; only the agent-identity and workflow domains have a diff
+   * route, so they pass a normalising ``diff`` fn on the client and
+   * leave this true. Domains that expose list + get only (role, budget
+   * config, evaluation config, company) MUST set this false so the
+   * two-click compare and the diff drawer are suppressed and the UI
+   * never fires a request the backend 404s.
    */
   diffSupported?: boolean
 }

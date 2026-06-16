@@ -22,7 +22,10 @@ from synthorg.communication.meeting._structured_phases_prompts import (
 from synthorg.communication.meeting._token_tracker import TokenTracker
 from synthorg.communication.meeting.config import StructuredPhasesConfig
 from synthorg.communication.meeting.enums import MeetingPhase
-from synthorg.communication.meeting.errors import MeetingBudgetExhaustedError
+from synthorg.communication.meeting.errors import (
+    MeetingBudgetExhaustedError,
+    MeetingPhaseSlotError,
+)
 from synthorg.communication.meeting.models import MeetingContribution
 from synthorg.communication.meeting.protocol import (
     AgentCaller,
@@ -86,8 +89,8 @@ class StructuredPhaseRunnersMixin:
             Tuple of (inputs, contributions) in participant order.
 
         Raises:
-            RuntimeError: If any parallel input slot is left unfilled
-                (an internal invariant violation).
+            MeetingPhaseSlotError: If any parallel input slot is left
+                unfilled (an internal invariant violation).
         """
         logger.info(
             MEETING_PHASE_STARTED,
@@ -177,7 +180,7 @@ class StructuredPhaseRunnersMixin:
                 error=msg,
                 meeting_id=meeting_id,
             )
-            raise RuntimeError(msg)
+            raise MeetingPhaseSlotError(msg)
         if not all(c is not None for c in result_contributions):
             msg = f"Expected {num_participants} contributions but some slots are None"
             logger.error(
@@ -185,7 +188,7 @@ class StructuredPhaseRunnersMixin:
                 error=msg,
                 meeting_id=meeting_id,
             )
-            raise RuntimeError(msg)
+            raise MeetingPhaseSlotError(msg)
         inputs: list[tuple[str, str]] = list(result_inputs)  # type: ignore[arg-type]
         input_contributions: list[MeetingContribution] = list(
             result_contributions,  # type: ignore[arg-type]

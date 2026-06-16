@@ -5,6 +5,7 @@ import { InputField } from '@/components/ui/input-field'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 import type { VersionHistoryClient } from '@/api/endpoints/version-history'
 
 const log = createLogger('rollback-confirm')
@@ -49,8 +50,10 @@ function RollbackReasonBody({
  * earlier snapshot.  Surfaces a required reason field; the backend
  * audits the rollback under the supplied reason.
  *
- * Generic over the snapshot payload type; the only constraint is
- * that ``client.rollback`` resolves to a ``VersionSnapshot``.
+ * Generic over the snapshot payload type. The dialog collects only a
+ * target version and a reason; the client's per-domain ``rollback``
+ * function maps that onto its own wire body and the dialog discards the
+ * returned entity (it just toasts success).
  */
 export function RollbackConfirmDialog<T>({
   client,
@@ -67,18 +70,19 @@ export function RollbackConfirmDialog<T>({
   // function body can rely on it without a non-null assertion.
   const submitRollback = async (version: number): Promise<boolean> => {
     try {
-      await client.rollback({ to_version: version, reason: reason.trim() })
+      await client.rollback({ targetVersion: version, reason: reason.trim() })
       useToastStore.getState().add({
         variant: 'success',
         title: `Rolled back to v${version}`,
       })
       return true
     } catch (err) {
-      log.warn('Rollback failed:', getErrorMessage(err))
+      const message = getErrorMessage(err)
+      log.warn('rollback_failed', { error: sanitizeForLog(message) })
       useToastStore.getState().add({
         variant: 'error',
         title: 'Rollback failed',
-        description: getErrorMessage(err),
+        description: message,
       })
       return false
     } finally {
@@ -103,7 +107,9 @@ export function RollbackConfirmDialog<T>({
     try {
       onSuccess?.()
     } catch (err) {
-      log.warn('Rollback onSuccess callback failed:', getErrorMessage(err))
+      log.warn('rollback_on_success_callback_failed', {
+        error: sanitizeForLog(getErrorMessage(err)),
+      })
     }
     setReason('')
     onClose()

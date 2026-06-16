@@ -125,6 +125,9 @@ from synthorg.persistence.project_brain_protocol import ProjectBrainRepository
 from synthorg.persistence.project_cost_aggregate_protocol import (
     ProjectCostAggregateRepository,
 )
+from synthorg.persistence.project_cost_claim_seen_protocol import (
+    ProjectCostClaimSeenRepository,
+)
 from synthorg.persistence.project_environment_protocol import (
     ProjectEnvironmentRepository,
 )
@@ -635,6 +638,11 @@ class PersistenceBackend(Protocol):
     @property
     def seen_claims(self) -> SeenClaimsRepository:
         """Repository for worker TaskClaim dedup persistence."""
+        ...
+
+    @property
+    def project_cost_claim_seen(self) -> ProjectCostClaimSeenRepository:
+        """Repository for durable project-cost-claim dedup (restart-safe billing)."""
         ...
 
     @property

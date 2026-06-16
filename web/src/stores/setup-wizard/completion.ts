@@ -4,7 +4,7 @@ import { useThemeStore } from '@/stores/theme'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
-import { initialStepsCompleted, initialStepsNeedRevalidation } from './navigation'
+import { getStepOrder, initialStepsCompleted, initialStepsNeedRevalidation } from './navigation'
 import { DEFAULT_THEME } from './theme'
 import type { CompletionSlice, SliceCreator, ThemeSettings } from './types'
 
@@ -32,7 +32,10 @@ const log = createLogger('setup-wizard:completion')
 function getInitialState() {
   return {
     currentStep: 'mode' as const,
-    stepOrder: ['mode', 'template', 'providers', 'company', 'agents', 'theme', 'complete'] as const,
+    // Single source of truth: the default (no-admin, guided) order
+    // lives in navigation.ts. Duplicating the literal here drifted from
+    // getStepOrder when steps were reordered.
+    stepOrder: getStepOrder(false, 'guided'),
     stepsCompleted: initialStepsCompleted(),
     stepsNeedRevalidation: initialStepsNeedRevalidation(),
     direction: 'forward' as const,
@@ -55,6 +58,7 @@ function getInitialState() {
     companyResponse: null,
     companyLoading: false,
     companyError: null,
+    companyErrorCode: null,
 
     agents: [],
     agentsLoading: false,
@@ -68,9 +72,12 @@ function getInitialState() {
     presetsLoading: false,
     presetsError: null,
     probeResults: {},
+    probeErrors: {},
+    probeGlobalError: null,
     probing: false,
     providersLoading: false,
     providersError: null,
+    providersWarning: null,
 
     themeSettings: { ...DEFAULT_THEME },
 

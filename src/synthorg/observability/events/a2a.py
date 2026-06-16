@@ -68,3 +68,12 @@ A2A_PUSH_VERIFIER_CONFIG_INVALID: Final[str] = "a2a.push.verifier_config_invalid
 A2A_JSONRPC_PARSE_ERROR: Final[str] = "a2a.jsonrpc.parse_error"
 A2A_JSONRPC_METHOD_NOT_FOUND: Final[str] = "a2a.jsonrpc.method_not_found"
 A2A_JSONRPC_INVALID_PARAMS: Final[str] = "a2a.jsonrpc.invalid_params"
+
+# Server-side ``message/send`` idempotency-guard rejections. Kept distinct
+# from A2A_JSONRPC_INVALID_PARAMS (which is for client param-validation
+# failures) so operator telemetry separates "the caller sent bad params"
+# from "the server's durable idempotency guard refused the call". The
+# ``reason`` kwarg differentiates the in-flight retry from a corrupt cache.
+A2A_MESSAGE_SEND_IDEMPOTENCY_REJECTED: Final[str] = (
+    "a2a.message_send.idempotency_rejected"
+)

@@ -58,6 +58,10 @@ func init() {
 	if err := updateCmd.Flags().MarkHidden("skip-cli-update"); err != nil {
 		panic(err)
 	}
+	updateCmd.Flags().Bool("health-recovered", false, "carry the parent's installation-health verdict across re-exec (internal)")
+	if err := updateCmd.Flags().MarkHidden("health-recovered"); err != nil {
+		panic(err)
+	}
 	updateCmd.Flags().BoolVar(&updateDryRun, "dry-run", false, "show what would happen without executing")
 	updateCmd.Flags().BoolVar(&updateNoRestart, "no-restart", false, "pull images but do not restart running containers")
 	updateCmd.Flags().StringVar(&updateTimeout, "timeout", "90s", "health check and verification timeout")
@@ -90,28 +94,33 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 	// Failure is non-fatal (pre-init, first run) -- auto-behavior defaults to false.
 	state, _ := config.Load(GetGlobalOpts(cmd.Context()).DataDir)
 
-	// --check: just check for updates and exit with appropriate code.
-	if updateCheck {
-		return runUpdateCheck(cmd, state)
-	}
-
-	// --dry-run: show what would happen without executing.
-	if updateDryRun {
-		return runUpdateDryRun(cmd, state)
+	// --check / --dry-run are read-only modes that report and exit.
+	if handled, err := runUpdateReadOnlyModes(cmd, state); handled {
+		return err
 	}
 
 	opts := GetGlobalOpts(cmd.Context())
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
-	// CLI update (unless --images-only).
-	if !updateImagesOnly {
-		err := updateCLI(cmd, state.AutoUpdateCLI)
-		if errors.Is(err, errReexec) {
-			return reexecUpdate(cmd)
-		}
-		if err != nil {
-			return fmt.Errorf("updating CLI binary: %w", err)
-		}
+	// Resolve installation health BEFORE updating the CLI binary so a
+	// genuinely broken install aborts before the irreversible binary
+	// swap, instead of swapping the binary and only discovering the
+	// corruption in the re-exec'd child. The verdict is carried across
+	// the re-exec on --health-recovered so the child neither re-prompts
+	// nor loses the force-pull (recovered) signal.
+	abort, recovered, healthErr := resolveInstallationHealth(cmd, state)
+	if healthErr != nil {
+		return healthErr
+	}
+	if abort {
+		return nil
+	}
+
+	// CLI update (unless --images-only). A re-exec or hard error ends
+	// the run here; otherwise the CLI was already current and we fall
+	// through to the compose/image steps.
+	if done, err := runCLIUpdateStep(cmd, state, recovered); done || err != nil {
+		return err
 	}
 
 	// --cli-only: stop after CLI update.
@@ -120,7 +129,7 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	if err := updateComposeAndImages(cmd); err != nil {
+	if err := updateComposeAndImages(cmd, recovered); err != nil {
 		return fmt.Errorf("updating compose and images: %w", err)
 	}
 	if updateImagesOnly {
@@ -129,20 +138,67 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
+// runUpdateReadOnlyModes dispatches the read-only --check / --dry-run
+// modes. It returns handled=true (with that mode's result) when one
+// fired, so the caller exits before the mutating update flow.
+func runUpdateReadOnlyModes(cmd *cobra.Command, state config.State) (bool, error) {
+	if updateCheck {
+		return true, runUpdateCheck(cmd, state)
+	}
+	if updateDryRun {
+		runUpdateDryRun(cmd, state)
+		return true, nil
+	}
+	return false, nil
+}
+
+// runCLIUpdateStep runs the CLI self-update unless --images-only. It
+// returns done=true when the run is finished here -- either a re-exec
+// occurred (the child continues the update) or a hard error must
+// propagate. done=false means the CLI was already current and the
+// caller should proceed to the compose/image steps.
+func runCLIUpdateStep(cmd *cobra.Command, state config.State, recovered bool) (bool, error) {
+	if updateImagesOnly {
+		return false, nil
+	}
+	err := updateCLI(cmd, state.AutoUpdateCLI)
+	if errors.Is(err, errReexec) {
+		return true, reexecUpdate(cmd, recovered)
+	}
+	if err != nil {
+		return true, fmt.Errorf("updating CLI binary: %w", err)
+	}
+	return false, nil
+}
+
+// resolveInstallationHealth determines whether the install is healthy
+// enough to proceed, returning (abort, recovered, error). After a
+// re-exec the parent already ran the interactive check, so the child
+// (--skip-cli-update) trusts the verdict carried on --health-recovered
+// rather than re-prompting for the same corruption.
+func resolveInstallationHealth(cmd *cobra.Command, state config.State) (bool, bool, error) {
+	skipCLI, err := cmd.Flags().GetBool("skip-cli-update")
+	if err != nil {
+		return false, false, fmt.Errorf("getting skip-cli-update flag: %w", err)
+	}
+	if skipCLI {
+		recovered, recErr := cmd.Flags().GetBool("health-recovered")
+		if recErr != nil {
+			return false, false, fmt.Errorf("getting health-recovered flag: %w", recErr)
+		}
+		return false, recovered, nil
+	}
+	return checkInstallationHealth(cmd, state)
+}
+
 // updateComposeAndImages reloads config, refreshes the compose template,
 // and pulls new container images. Separated from runUpdate for readability.
-func updateComposeAndImages(cmd *cobra.Command) error {
+// recovered is the installation-health verdict resolved up front (before
+// the CLI binary swap), forcing a pull when images are missing.
+func updateComposeAndImages(cmd *cobra.Command, recovered bool) error {
 	state, err := config.Load(GetGlobalOpts(cmd.Context()).DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
-	}
-
-	abort, recovered, healthErr := checkInstallationHealth(cmd, state)
-	if healthErr != nil {
-		return healthErr
-	}
-	if abort {
-		return nil
 	}
 
 	applied, err := refreshCompose(cmd, state, recovered)
@@ -181,7 +237,7 @@ func runUpdateCheck(cmd *cobra.Command, state config.State) error {
 }
 
 // runUpdateDryRun shows what an update would do without executing.
-func runUpdateDryRun(cmd *cobra.Command, state config.State) error {
+func runUpdateDryRun(cmd *cobra.Command, state config.State) {
 	ctx := cmd.Context()
 	opts := GetGlobalOpts(ctx)
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
@@ -194,7 +250,6 @@ func runUpdateDryRun(cmd *cobra.Command, state config.State) error {
 	out.KeyValue("Image update", boolToYesNo(!updateCLIOnly))
 	out.KeyValue("Restart after pull", boolToYesNo(!updateNoRestart))
 	out.HintNextStep("Remove --dry-run to execute the update")
-	return nil
 }
 
 // handleDeclinedCompose warns the user that new images may not work with
@@ -229,22 +284,23 @@ func isDevChannelMismatch(channel, ver string) bool {
 // printed by runChangelogWalk (or its offline fallback) before this is
 // called, so we go straight to the install confirm prompt.
 func downloadAndApplyCLI(ctx context.Context, out *ui.UI, result selfupdate.CheckResult, autoAccept bool) error {
+	// Surface a permission error in the install directory before the
+	// confirmation prompt; otherwise we ask the user to confirm an
+	// update that cannot possibly succeed, then fail at the final
+	// ``Replace`` step after they have already said yes.
+	if err := selfupdate.ProbeInstallDirWritable(); err != nil {
+		return fmt.Errorf(
+			"cannot update CLI in place; re-run as an administrator "+
+				"or move the binary to a writable directory: %w", err,
+		)
+	}
+
 	ok, err := confirmUpdate(ctx, fmt.Sprintf("Update CLI from %s to %s?", result.CurrentVersion, result.LatestVersion), autoAccept)
 	if err != nil {
 		return fmt.Errorf("confirming CLI update: %w", err)
 	}
 	if !ok {
 		return nil
-	}
-
-	// Surface a permission error in the install directory before the
-	// download starts; otherwise the user waits through a multi-MB
-	// transfer only to fail at the final ``Replace`` step.
-	if err := selfupdate.ProbeInstallDirWritable(); err != nil {
-		return fmt.Errorf(
-			"cannot update CLI in place; re-run as an administrator "+
-				"or move the binary to a writable directory: %w", err,
-		)
 	}
 
 	out.Step("Downloading...")
@@ -343,13 +399,13 @@ func resolveUpdateChannel(ctx context.Context) string {
 //
 // Returns a *ChildExitError if the child exits non-zero, so the caller
 // can propagate the exit code rather than printing a generic error.
-func reexecUpdate(cmd *cobra.Command) error {
+func reexecUpdate(cmd *cobra.Command, recovered bool) error {
 	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Re-launching updated CLI to continue...")
 	execPath, err := resolveCurrentExecutable(cmd)
 	if err != nil {
 		return err
 	}
-	c := exec.CommandContext(cmd.Context(), execPath, buildReexecArgs(cmd)...) //nolint:gosec // G204: execPath is the CLI's own resolved binary, args reconstructed from known flags (not raw os.Args)
+	c := exec.CommandContext(cmd.Context(), execPath, buildReexecArgs(cmd, recovered)...) //nolint:gosec // G204: execPath is the CLI's own resolved binary, args reconstructed from known flags (not raw os.Args)
 	c.Stdin = os.Stdin
 	c.Stdout = cmd.OutOrStdout()
 	c.Stderr = cmd.ErrOrStderr()
@@ -384,8 +440,14 @@ func resolveCurrentExecutable(cmd *cobra.Command) (string, error) {
 // the known flag set. Forwarding os.Args would silently propagate
 // unexpected flags; rebuilding from typed values keeps the contract
 // explicit.
-func buildReexecArgs(cmd *cobra.Command) []string {
+func buildReexecArgs(cmd *cobra.Command, recovered bool) []string {
 	reArgs := []string{"update", "--skip-cli-update"}
+	if recovered {
+		// Carry the parent's installation-health verdict so the child
+		// forces the image pull without re-running the interactive
+		// corruption check.
+		reArgs = append(reArgs, "--health-recovered")
+	}
 	if flagDataDir != "" {
 		reArgs = append(reArgs, "--data-dir", flagDataDir)
 	}

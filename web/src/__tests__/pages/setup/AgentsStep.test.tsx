@@ -80,6 +80,17 @@ describe('AgentsStep: unresolved-agent detection', () => {
       // pass trivially because the wizard might already be on
       // ``'providers'`` from an earlier test that didn't reset it.
       currentStep: 'agents',
+      // Reaching the agents step means every prior step is complete;
+      // the guarded "Open Providers step" navigator consults
+      // canNavigateTo('providers'), which requires the steps before
+      // providers (mode, template) to be complete.
+      stepsCompleted: {
+        ...useSetupWizardStore.getState().stepsCompleted,
+        mode: true,
+        template: true,
+        providers: true,
+        company: true,
+      },
     })
 
     const { router } = renderWithRouter(<AgentsStep />, { initialEntries: ['/setup/agents'] })

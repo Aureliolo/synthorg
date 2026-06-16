@@ -38,6 +38,25 @@ class PushMetrics:
             ["provider", "model"],
             registry=registry,
         )
+        self.provider_call_duration = Histogram(
+            f"{prefix}_provider_call_duration_seconds",
+            "Provider call wall-clock duration per provider, model, and call type",
+            ["provider", "model", "call_type"],
+            buckets=(
+                0.05,
+                0.1,
+                0.25,
+                0.5,
+                1.0,
+                2.5,
+                5.0,
+                10.0,
+                30.0,
+                60.0,
+                120.0,
+            ),
+            registry=registry,
+        )
 
         # -- API request histogram -----------------------------------
         self.api_request_duration = Histogram(
@@ -228,6 +247,19 @@ class PushMetrics:
         self.approval_decisions = PromCounter(
             f"{prefix}_approval_decisions_total",
             "Approval-gate terminal decisions by outcome",
+            ["outcome"],
+            registry=registry,
+        )
+
+        # -- Autonomy promotion decisions counter --------------------
+        # Outcome label is bounded via
+        # ``VALID_AUTONOMY_PROMOTION_OUTCOMES``; cardinality fixed at 2
+        # series (granted / denied). Separate from
+        # ``approval_decisions`` because autonomy promotion is a
+        # distinct workflow with its own grant/deny terminal vocabulary.
+        self.autonomy_promotion_decisions = PromCounter(
+            f"{prefix}_autonomy_promotion_decisions_total",
+            "Autonomy-promotion workflow terminal decisions by outcome",
             ["outcome"],
             registry=registry,
         )

@@ -11,7 +11,10 @@ if TYPE_CHECKING:
 
 
 def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
-    """Populate the persistence slice (backend)."""
+    """Populate the persistence slice (backend + expected flag)."""
     app_state.swap_slice(
-        PersistenceStateSlice.model_construct(backend=deps.persistence)
+        PersistenceStateSlice.model_construct(
+            backend=deps.persistence,
+            persistence_expected=deps.persistence_expected,
+        )
     )

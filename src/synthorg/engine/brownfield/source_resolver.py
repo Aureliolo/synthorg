@@ -21,6 +21,7 @@ from synthorg.engine.workspace.git_backend.protocol import (
 )
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.observability import get_logger
+from synthorg.observability.events.brownfield import BROWNFIELD_IMPORT_REJECTED
 from synthorg.tools.git_url_validator import (
     DnsValidationOk,
     GitCloneNetworkPolicy,
@@ -102,6 +103,11 @@ class BrownfieldSourceResolver:
         raw = source_ref.removeprefix("file://")
         path = Path(raw)
         if not path.is_dir():
+            logger.warning(
+                BROWNFIELD_IMPORT_REJECTED,
+                source_ref=source_ref,
+                reason="local_path_not_readable_directory",
+            )
             msg = f"brownfield local source {source_ref!r} is not a readable directory"
             raise BrownfieldSourceUnavailableError(msg)
         return ResolvedSource(
@@ -127,6 +133,14 @@ class BrownfieldSourceResolver:
                 URL-embedded credentials, or a blocked / unresolvable host.
         """
         if not is_allowed_clone_scheme(source_ref):
+            # Log only the scheme, never the full ``source_ref``: a
+            # disallowed scheme can still carry embedded credentials
+            # (``ftp://user:pass@host/repo``) which must not reach logs.
+            logger.warning(
+                BROWNFIELD_IMPORT_REJECTED,
+                scheme=urlsplit(source_ref).scheme or "<none>",
+                reason="disallowed_scheme",
+            )
             msg = (
                 f"brownfield remote source {source_ref!r} uses a disallowed "
                 "scheme (only https:// and ssh:// are permitted)"
@@ -142,6 +156,12 @@ class BrownfieldSourceResolver:
             # URL), never from the operator-supplied source reference. The
             # bare ``git@host`` username of an ssh:// ref is not a credential,
             # so SSH usernames stay allowed.
+            # Do NOT log ``source_ref`` here: it carries the embedded
+            # credential the guard exists to keep out of logs.
+            logger.warning(
+                BROWNFIELD_IMPORT_REJECTED,
+                reason="embedded_credentials",
+            )
             msg = (
                 "brownfield remote source must not embed credentials in the "
                 "URL; register a forge connection instead"
@@ -149,6 +169,16 @@ class BrownfieldSourceResolver:
             raise BrownfieldSourceUnavailableError(msg)
         validation = await validate_clone_url_host(source_ref, self._network_policy)
         if isinstance(validation, str):
+            # Log only host + scheme: the full ``source_ref`` can carry
+            # sensitive query/fragment tokens (``?token=...``) that the
+            # embedded-credential guard above does not strip.
+            rejected = urlsplit(source_ref)
+            logger.warning(
+                BROWNFIELD_IMPORT_REJECTED,
+                host=rejected.hostname or "<none>",
+                scheme=rejected.scheme or "<none>",
+                reason="host_blocked_or_unresolvable",
+            )
             raise BrownfieldSourceUnavailableError(validation)
         fetch_url = await self._maybe_inject_token(source_ref, validation)
         return ResolvedSource(

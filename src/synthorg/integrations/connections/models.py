@@ -115,7 +115,7 @@ class Connection(BaseModel):
     connection_type: ConnectionType
     auth_method: AuthMethod
     base_url: NotBlankStr | None = None
-    secret_refs: tuple[SecretRef, ...] = ()
+    secret_refs: tuple[SecretRef, ...] = Field(default=(), exclude=True)
     rate_limiter: RateLimiterConfig | None = None
     health_check_enabled: bool = True
     health_status: ConnectionStatus = ConnectionStatus.UNKNOWN

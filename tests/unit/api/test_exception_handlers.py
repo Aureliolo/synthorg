@@ -1716,7 +1716,7 @@ class TestDomainErrorFamilyClassVarHttpMapping:
                 "synthorg.hr.errors",
                 "AgentAlreadyRegisteredError",
                 409,
-                ErrorCode.RESOURCE_CONFLICT,
+                ErrorCode.AGENT_ALREADY_REGISTERED,
                 ErrorCategory.CONFLICT,
             ),
             (
@@ -1730,7 +1730,7 @@ class TestDomainErrorFamilyClassVarHttpMapping:
                 "synthorg.hr.errors",
                 "PromotionCooldownError",
                 409,
-                ErrorCode.RESOURCE_CONFLICT,
+                ErrorCode.PROMOTION_COOLDOWN_ACTIVE,
                 ErrorCategory.CONFLICT,
             ),
             (
@@ -1744,7 +1744,7 @@ class TestDomainErrorFamilyClassVarHttpMapping:
                 "synthorg.hr.scaling.errors",
                 "ScalingCooldownActiveError",
                 409,
-                ErrorCode.RESOURCE_CONFLICT,
+                ErrorCode.SCALING_COOLDOWN_ACTIVE,
                 ErrorCategory.CONFLICT,
             ),
             (

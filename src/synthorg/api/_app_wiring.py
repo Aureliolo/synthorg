@@ -105,6 +105,15 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
     # poisoning startup.
     registry = app_state.slice(HrStateSlice).agent_registry
     cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
+    # Attach the durable project-cost write + restart-safe dedup repos now
+    # that persistence is connected (the tracker is built at the synchronous
+    # construction phase before a backend exists). The dedup guard makes the
+    # increment idempotent across a JetStream redelivery after a restart.
+    if cost_tracker is not None:
+        cost_tracker.attach_durable_repos(
+            project_cost_repo=persistence.project_cost_aggregates,
+            claim_seen_repo=persistence.project_cost_claim_seen,
+        )
     assignment_lookup = None
     history_lookup = None
     if registry is not None and cost_tracker is not None:
@@ -157,6 +166,40 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
         forecast_service=forecast_service,
         budget_enforcer=budget_enforcer,
     )
+
+
+def _try_wire_performance_persistence(app_state: AppState) -> None:
+    """Attach the durable metric repos to the performance tracker.
+
+    Best-effort and idempotent: the tracker is built at the construction
+    phase before persistence is connected, so its task/collaboration
+    metric repos are attached here once a backend exists. A persistence-
+    less boot (tests/dev) leaves the tracker in-memory-only.
+    """
+    from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
+    from synthorg.persistence.state import (  # noqa: PLC0415
+        PersistenceStateSlice,
+        persistence_of,
+    )
+
+    tracker = app_state.slice(HrStateSlice).performance_tracker
+    if tracker is None or app_state.slice(PersistenceStateSlice).backend is None:
+        return
+    try:
+        persistence = persistence_of(app_state)
+        tracker.attach_metric_repos(
+            task_metric_repo=persistence.task_metrics,
+            collab_metric_repo=persistence.collaboration_metrics,
+        )
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_APP_STARTUP,
+            service="performance_persistence",
+            note="performance-metric persistence wiring failed; in-memory only",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
 
 
 def _try_wire_cost_dial(app_state: AppState) -> None:
@@ -407,6 +450,7 @@ __all__ = [
     "_try_wire_cockpit",
     "_try_wire_cost_dial",
     "_try_wire_environment_service",
+    "_try_wire_performance_persistence",
     "_wire_cockpit_services",
     "_wire_cost_dial_services",
     "_wire_environment_service",

@@ -1,15 +1,18 @@
 package cmd
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
+	"github.com/spf13/cobra"
 )
 
 func TestTargetImageTag(t *testing.T) {
@@ -688,6 +691,53 @@ func TestPatchComposeImageRefs_MissingRequiredService(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), `"web" not found`) {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+// TestBuildReexecArgs_HealthRecovered pins the installation-health
+// verdict carried across the update re-exec: when the parent resolved
+// recovered=true (force a pull without re-prompting), the child argv
+// must carry --health-recovered; when false it must not. The function
+// reads the package-level flag globals, so the case zeroes the ones it
+// asserts on and restores them via t.Cleanup (no t.Parallel: shared
+// globals).
+func TestBuildReexecArgs_HealthRecovered(t *testing.T) {
+	origDataDir, origSkipVerify := flagDataDir, flagSkipVerify
+	origQuiet, origVerbose := flagQuiet, flagVerbose
+	origNoColor, origPlain, origJSON, origYes := flagNoColor, flagPlain, flagJSON, flagYes
+	origNoRestart, origImagesOnly, origCLIOnly, origTimeout :=
+		updateNoRestart, updateImagesOnly, updateCLIOnly, updateTimeout
+	t.Cleanup(func() {
+		flagDataDir, flagSkipVerify = origDataDir, origSkipVerify
+		flagQuiet, flagVerbose = origQuiet, origVerbose
+		flagNoColor, flagPlain, flagJSON, flagYes = origNoColor, origPlain, origJSON, origYes
+		updateNoRestart, updateImagesOnly, updateCLIOnly, updateTimeout =
+			origNoRestart, origImagesOnly, origCLIOnly, origTimeout
+	})
+
+	flagDataDir, flagSkipVerify = "", false
+	flagQuiet, flagVerbose = false, 0
+	flagNoColor, flagPlain, flagJSON, flagYes = false, false, false, false
+	updateNoRestart, updateImagesOnly, updateCLIOnly, updateTimeout = false, false, false, "90s"
+
+	newCmd := func() *cobra.Command {
+		c := &cobra.Command{Use: "update"}
+		c.Flags().String("timeout", "90s", "")
+		c.SetErr(&bytes.Buffer{})
+		return c
+	}
+
+	recoveredArgs := buildReexecArgs(newCmd(), true)
+	if !slices.Contains(recoveredArgs, "--health-recovered") {
+		t.Errorf("recovered=true must append --health-recovered; got %v", recoveredArgs)
+	}
+	if !slices.Contains(recoveredArgs, "--skip-cli-update") {
+		t.Errorf("re-exec args must always carry --skip-cli-update; got %v", recoveredArgs)
+	}
+
+	plainArgs := buildReexecArgs(newCmd(), false)
+	if slices.Contains(plainArgs, "--health-recovered") {
+		t.Errorf("recovered=false must not append --health-recovered; got %v", plainArgs)
 	}
 }
 

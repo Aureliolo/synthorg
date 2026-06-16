@@ -18,6 +18,7 @@ connected). Stop order is reversed and best-effort so one slow
 component cannot strand the others.
 """
 
+import asyncio
 from typing import TYPE_CHECKING, Protocol
 
 from synthorg.core.clock import Clock
@@ -74,6 +75,10 @@ class DistributedBackendServices:
         self._dead_letter = dead_letter
         self._pruner = pruner
         self._heartbeat = heartbeat
+        # Serialises the composite check-and-set on the bundle's running
+        # state: without it a racing lifecycle re-entry could double-start
+        # every sub-service or interleave a stop() mid-start().
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- ctx
         # Start order (stop is the reverse); each entry is
         # (name, component). Pruner first (no NATS dependency), then the
         # two consumers that need the connected queue.
@@ -98,53 +103,62 @@ class DistributedBackendServices:
         Called by the API lifecycle immediately after the distributed
         task queue connects. A start failure here must not leave a
         half-started bundle behind, so already-started components are
-        stopped before the error propagates.
+        stopped before the error propagates. The lifecycle lock
+        serialises the whole sequence so a racing ``start()`` / ``stop()``
+        cannot interleave with this fan-out.
         """
-        started: list[tuple[str, _LifecycleComponent]] = []
-        failed_component = "<unknown>"
-        try:
-            for name, component in self._start_order:
-                failed_component = name
-                await component.start()
-                started.append((name, component))
-        except Exception as exc:
-            # Critical errors skip the rollback: stopping components is
-            # async teardown work that may allocate, and must not run
-            # under catastrophic interpreter state.
-            reraise_critical(exc)
-            logger.error(
-                WORKERS_BACKEND_BUNDLE_START_FAILED,
-                component=failed_component,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            for _name, component in reversed(started):
+        async with self._lifecycle_lock:
+            if self.is_running:
+                # Already fully started: a second start() queued behind the
+                # lock would re-call each component's non-idempotent start()
+                # and duplicate subscribers/pruners. Make start() idempotent.
+                return
+            started: list[tuple[str, _LifecycleComponent]] = []
+            failed_component = "<unknown>"
+            try:
+                for name, component in self._start_order:
+                    failed_component = name
+                    await component.start()
+                    started.append((name, component))
+            except Exception as exc:
+                # Critical errors skip the rollback: stopping components is
+                # async teardown work that may allocate, and must not run
+                # under catastrophic interpreter state.
+                reraise_critical(exc)
+                logger.error(
+                    WORKERS_BACKEND_BUNDLE_START_FAILED,
+                    component=failed_component,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                for _name, component in reversed(started):
+                    try:
+                        await component.stop()
+                    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                        reraise_critical(exc)
+                        logger.warning(
+                            WORKERS_BACKEND_BUNDLE_STOP_FAILED,
+                            component=_name,
+                            error_type=type(exc).__name__,
+                            error=safe_error_description(exc),
+                        )
+                raise
+            logger.info(WORKERS_BACKEND_BUNDLE_STARTED)
+
+    async def stop(self) -> None:
+        """Stop every component, reverse order, best-effort. Idempotent."""
+        async with self._lifecycle_lock:
+            for name, component in reversed(self._start_order):
                 try:
                     await component.stop()
                 except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     logger.warning(
                         WORKERS_BACKEND_BUNDLE_STOP_FAILED,
-                        component=_name,
+                        component=name,
                         error_type=type(exc).__name__,
                         error=safe_error_description(exc),
                     )
-            raise
-        logger.info(WORKERS_BACKEND_BUNDLE_STARTED)
-
-    async def stop(self) -> None:
-        """Stop every component, reverse order, best-effort. Idempotent."""
-        for name, component in reversed(self._start_order):
-            try:
-                await component.stop()
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                logger.warning(
-                    WORKERS_BACKEND_BUNDLE_STOP_FAILED,
-                    component=name,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
 
 
 def build_distributed_backend_services(

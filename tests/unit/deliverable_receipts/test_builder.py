@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.deliverable_receipts.builder import ReceiptBuilder
@@ -104,6 +105,38 @@ async def test_empty_run_yields_valid_empty_receipt() -> None:
     assert receipt.cassette is None
     assert receipt.total_cost == 0.0
     assert receipt.currency == "EUR"
+
+
+async def test_mixed_currency_cost_raises_loudly() -> None:
+    """A task whose cost records span currencies fails the receipt build
+    loudly instead of silently under-reporting a dominant-currency total."""
+    cost_records = mock_of[CostRecordRepository]()
+    cost_records.query = AsyncMock(
+        spec=CostRecordRepository.query,
+        return_value=("record-a", "record-b"),
+    )
+    cost_records.aggregate = AsyncMock(
+        spec=CostRecordRepository.aggregate,
+        side_effect=MixedCurrencyAggregationError(
+            currencies=frozenset({"USD", "EUR"}),
+        ),
+    )
+    knowledge_sources = mock_of[KnowledgeSourceRepository]()
+    knowledge_sources.get = AsyncMock(
+        spec=KnowledgeSourceRepository.get, return_value=None
+    )
+    builder = ReceiptBuilder(
+        cost_records=cost_records,
+        knowledge_usage_records=InMemoryKnowledgeUsageRecordRepository(),
+        knowledge_sources=knowledge_sources,
+        code_execution_records=InMemoryCodeExecutionRecordRepository(),
+        clock=FakeClock(),
+        default_currency="EUR",
+    )
+    with pytest.raises(MixedCurrencyAggregationError):
+        await builder.build(
+            task=_task(), execution_id="exec-1", deliverable_doc_slug="d"
+        )
 
 
 async def test_sources_deduped_and_resolved() -> None:

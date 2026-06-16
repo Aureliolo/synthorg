@@ -1,4 +1,5 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect } from 'react'
+import { useNavigate } from 'react-router'
 import { useSetupWizardStore, type WizardStep } from '@/stores/setup-wizard'
 
 export interface StepCompletionSyncOptions {
@@ -55,4 +56,21 @@ export function useClearStepRevalidationOnMount(step: WizardStep): void {
   useEffect(() => {
     clearStepRevalidationFlag(step)
   }, [step, clearStepRevalidationFlag])
+}
+
+/**
+ * Return a guarded navigator to a specific wizard step. Mirrors the
+ * canonical ``handleStepClick`` pattern in ``WizardShell`` -- it routes
+ * through ``canNavigateTo`` (so a jump to a not-yet-reachable step is a
+ * no-op) and derives the URL from the step name via the single
+ * ``/setup/<step>`` route shape, instead of hardcoding a literal path
+ * string that can drift from the route table.
+ */
+export function useGoToStep(step: WizardStep): () => void {
+  const navigate = useNavigate()
+  const canNavigateTo = useSetupWizardStore((s) => s.canNavigateTo)
+  return useCallback(() => {
+    if (!canNavigateTo(step)) return
+    void navigate(`/setup/${step}`)
+  }, [step, canNavigateTo, navigate])
 }

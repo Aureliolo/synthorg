@@ -7,6 +7,7 @@ mirroring the vendor-agnostic house pattern: a missing provider simply
 means that source family does not fan out.
 """
 
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.clock import Clock
 from synthorg.knowledge.service import KnowledgeService
 from synthorg.persistence.research_protocol import ResearchRunRepository
@@ -45,6 +46,7 @@ def _build_triage(
     provider: CompletionProvider,
     model: str,
     clock: Clock | None,
+    cost_tracker: CostTracker | None,
 ) -> CredibilityTriage:
     """Select the credibility-triage strategy per the config discriminator.
 
@@ -56,7 +58,10 @@ def _build_triage(
     if config.credibility_triage == "heuristic":
         return heuristic
     llm = LlmCredibilityTriage(
-        provider=provider, model=model, batch_size=config.triage_batch_size
+        provider=provider,
+        model=model,
+        batch_size=config.triage_batch_size,
+        cost_tracker=cost_tracker,
     )
     if config.credibility_triage == "llm":
         return llm
@@ -136,6 +141,7 @@ def build_research_service(  # noqa: PLR0913 -- injected boot collaborators
     code_provider: CodeSearchProvider | None = None,
     embedder: Embedder | None = None,
     clock: Clock | None = None,
+    cost_tracker: CostTracker | None = None,
 ) -> ResearchService:
     """Wire a :class:`ResearchService` from the config + injected providers.
 
@@ -150,7 +156,9 @@ def build_research_service(  # noqa: PLR0913 -- injected boot collaborators
         msg = "research mode is disabled in config"
         raise ResearchUnavailableError(msg)
     return ResearchService(
-        planner=LlmQueryPlanner(provider=provider, model=model),
+        planner=LlmQueryPlanner(
+            provider=provider, model=model, cost_tracker=cost_tracker
+        ),
         sources=_build_sources(
             knowledge_service=knowledge_service,
             web_search_provider=web_search_provider,
@@ -158,13 +166,20 @@ def build_research_service(  # noqa: PLR0913 -- injected boot collaborators
             code_provider=code_provider,
             clock=clock,
         ),
-        triage=_build_triage(config, provider=provider, model=model, clock=clock),
+        triage=_build_triage(
+            config,
+            provider=provider,
+            model=model,
+            clock=clock,
+            cost_tracker=cost_tracker,
+        ),
         deduplicator=_build_deduplicator(config, embedder=embedder),
         synthesizer=LlmSynthesizer(
             provider=provider,
             model=model,
             binder=CitationBinder(),
             clock=clock,
+            cost_tracker=cost_tracker,
         ),
         runs_repo=runs_repo,
         per_query_limit=config.per_query_limit,

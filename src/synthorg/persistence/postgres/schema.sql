@@ -801,7 +801,7 @@ CREATE TABLE subworkflows (
     edges JSONB NOT NULL,
     created_by TEXT NOT NULL CHECK (LENGTH(created_by) > 0),
     created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT '1970-01-01T00:00:00+00:00'::TIMESTAMPTZ,
     PRIMARY KEY (subworkflow_id, semver)
 );
 
@@ -1850,6 +1850,18 @@ CREATE TABLE seen_claims (
 );
 CREATE INDEX idx_seen_claims_expires_at ON seen_claims (expires_at);
 
+-- Restart-safe project-cost-claim dedup: durable backstop so a
+-- JetStream redelivery after a process restart cannot double-bill a project
+-- cost aggregate.  CostTracker consults this before a durable increment.
+CREATE TABLE project_cost_claim_seen (
+    claim_id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(claim_id)) > 0),
+    project_id TEXT NOT NULL CHECK (LENGTH(TRIM(project_id)) > 0),
+    seen_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL CHECK (expires_at > seen_at)
+);
+CREATE INDEX idx_project_cost_claim_seen_expires_at
+ON project_cost_claim_seen (expires_at);
+
 -- Principle-override table for the rollback executor's PromptMutator.
 -- Overlays the read-only YAML principle packs loaded by
 -- engine/strategy/principles.py so a rollback operation can restore
@@ -2129,6 +2141,11 @@ CREATE TABLE code_execution_record (
     stdout_tail TEXT,
     stderr_tail TEXT,
     executed_at TIMESTAMPTZ NOT NULL,
+    -- Parity note: SQLite stores ``timed_out`` as INTEGER 0/1 and writes
+    -- this CHECK as ``timed_out = 0``; Postgres stores it as BOOLEAN so
+    -- the equivalent predicate is ``NOT timed_out``. The two are
+    -- semantically identical -- only the per-backend boolean encoding
+    -- differs.
     CHECK (passed = (returncode = 0 AND NOT timed_out))
 );
 

@@ -16,6 +16,7 @@ the gateway maps it to a ``-32602 Invalid params`` response.
 """
 
 from typing import Annotated, Literal
+from uuid import UUID
 
 from pydantic import (
     BaseModel,
@@ -37,6 +38,10 @@ class A2AMessageSendParams(BaseModel):
         method: Discriminator literal (always ``"message/send"``).
         message: The A2A message envelope, validated as a typed
             :class:`~synthorg.a2a.models.A2AMessage`.
+        message_id: Caller-supplied stable idempotency key. Required so a
+            peer retry of ``message/send`` (after a 503 / transport error)
+            replays to the same task instead of creating a duplicate. A
+            missing/invalid value is rejected as invalid params.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -46,6 +51,9 @@ class A2AMessageSendParams(BaseModel):
         description="RPC method discriminator",
     )
     message: A2AMessage = Field(description="Inbound A2A message")
+    message_id: UUID = Field(
+        description="Stable per-message idempotency key (UUID); required.",
+    )
 
 
 class A2ATaskGetParams(BaseModel):

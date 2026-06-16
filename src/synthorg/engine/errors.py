@@ -565,6 +565,8 @@ class SubworkflowCycleError(WorkflowExecutionError):
             participate in the cycle.
     """
 
+    error_code: ClassVar[ErrorCode] = ErrorCode.SUBWORKFLOW_CYCLE_ERROR
+
     def __init__(
         self,
         message: str,
@@ -582,6 +584,8 @@ class SubworkflowDepthExceededError(WorkflowExecutionError):
         depth: The depth at which the limit was exceeded.
         max_depth: The configured maximum.
     """
+
+    error_code: ClassVar[ErrorCode] = ErrorCode.SUBWORKFLOW_DEPTH_EXCEEDED_ERROR
 
     def __init__(
         self,

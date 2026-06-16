@@ -142,6 +142,9 @@ from synthorg.persistence.sqlite.project_brain_repo import (
 from synthorg.persistence.sqlite.project_cost_aggregate_repo import (
     SQLiteProjectCostAggregateRepository,
 )
+from synthorg.persistence.sqlite.project_cost_claim_seen_repo import (
+    SQLiteProjectCostClaimSeenRepository,
+)
 from synthorg.persistence.sqlite.project_environment_repo import (
     SQLiteProjectEnvironmentRepository,
 )
@@ -293,6 +296,7 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
         self._refresh_tokens = None
         self._idempotency_keys = None
         self._seen_claims = None
+        self._project_cost_claim_seen = None
         self._principle_overrides = None
         self._mcp_installations = None
         self._org_facts = None
@@ -553,6 +557,10 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._seen_claims = SQLiteSeenClaimsRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._project_cost_claim_seen = SQLiteProjectCostClaimSeenRepository(
             self._db,
             write_context=self.write_context,
         )

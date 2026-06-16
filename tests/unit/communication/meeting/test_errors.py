@@ -8,8 +8,10 @@ from synthorg.communication.meeting.errors import (
     MeetingBudgetExhaustedError,
     MeetingError,
     MeetingParticipantError,
+    MeetingPhaseSlotError,
     MeetingProtocolNotFoundError,
 )
+from synthorg.core.error_taxonomy import ErrorCode
 
 
 @pytest.mark.unit
@@ -30,6 +32,13 @@ class TestMeetingErrorHierarchy:
 
     def test_agent_error_is_meeting_error(self) -> None:
         assert issubclass(MeetingAgentError, MeetingError)
+
+    def test_phase_slot_error_is_meeting_error(self) -> None:
+        # Audit 34: meeting-phase invariant violations route through a
+        # domain error (COMMUNICATION_ERROR) instead of a bare RuntimeError
+        # so the API surfaces a structured RFC 9457 envelope.
+        assert issubclass(MeetingPhaseSlotError, MeetingError)
+        assert MeetingPhaseSlotError.error_code == ErrorCode.COMMUNICATION_ERROR
 
 
 @pytest.mark.unit

@@ -1,7 +1,11 @@
 """Tests for SQLitePersistenceBackend."""
 
+import asyncio
+import contextlib
 import sqlite3
+from collections.abc import AsyncIterator
 from pathlib import Path
+from unittest.mock import patch
 
 import aiosqlite
 import pytest
@@ -53,6 +57,28 @@ class TestSQLitePersistenceBackend:
     async def test_health_check_disconnected(self) -> None:
         backend = SQLitePersistenceBackend(SQLiteConfig(path=":memory:"))
         assert await backend.health_check() is False
+
+    async def test_health_check_times_out(self) -> None:
+        # A wedged connection (held lock, stalled disk) must yield an
+        # unhealthy verdict within ``health_timeout_seconds`` rather than
+        # hanging the readiness probe forever.
+        backend = SQLitePersistenceBackend(
+            SQLiteConfig(path=":memory:", health_timeout_seconds=0.05),
+        )
+        await backend.connect()
+        stall = asyncio.Event()  # never set: the probe blocks until cancelled
+
+        @contextlib.asynccontextmanager
+        async def _hanging_execute(
+            *_args: object, **_kwargs: object
+        ) -> AsyncIterator[None]:
+            await stall.wait()
+            yield  # pragma: no cover -- never reached; the wait is cancelled
+
+        assert backend._db is not None
+        with patch.object(backend._db, "execute", _hanging_execute):
+            assert await backend.health_check() is False
+        await backend.disconnect()
 
     async def test_backend_name(self) -> None:
         backend = SQLitePersistenceBackend(SQLiteConfig(path=":memory:"))

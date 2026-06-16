@@ -203,6 +203,11 @@ class ExternalRemoteGitBackend:
     async def _connection(self) -> Connection:
         connection = await self._catalog.get(self._connection_name)
         if connection is None or not connection.base_url:
+            logger.warning(
+                GIT_BACKEND_PROVISION_FAILED,
+                connection_name=self._connection_name,
+                reason="connection_not_found_or_missing_base_url",
+            )
             msg = (
                 f"external git connection {self._connection_name!r} is not "
                 "registered or has no base_url"
@@ -217,6 +222,11 @@ class ExternalRemoteGitBackend:
         credentials = await self._catalog.get_credentials(self._connection_name)
         token = credentials.get("token")
         if not token:
+            logger.warning(
+                GIT_BACKEND_PROVISION_FAILED,
+                connection_name=self._connection_name,
+                reason="missing_token",
+            )
             msg = (
                 f"external git connection {self._connection_name!r} has no "
                 "'token' credential"
@@ -312,6 +322,13 @@ class ExternalRemoteGitBackend:
         try:
             await asyncio.to_thread(workspace_path.mkdir, parents=True, exist_ok=True)
         except OSError as exc:
+            logger.warning(
+                GIT_BACKEND_PROVISION_FAILED,
+                project_id=pid,
+                reason="mkdir_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             msg = f"failed to create workspace dir for {pid!r}"
             raise GitBackendProvisionError(msg) from exc
         rc, _stdout, stderr = await run_git_subprocess(

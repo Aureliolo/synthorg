@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Final
 
 from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.currency import assert_currencies_match
 from synthorg.budget.report_config import AutomatedReportingConfig, ReportPeriod
 from synthorg.budget.report_models import SpendingReport
 from synthorg.budget.report_templates import (
@@ -391,7 +392,10 @@ def _build_performance_report(
     for m in metrics:
         by_agent[m.agent_id].append(m)
 
-    # Pre-aggregate cost and risk per agent.
+    # Pre-aggregate cost and risk per agent. Reject mixed-currency
+    # input BEFORE accumulating so the per-agent ``total_cost`` cannot
+    # silently blend two currencies under one label.
+    assert_currencies_match(r.currency for r in cost_records)
     cost_by_agent: dict[str, float] = defaultdict(float)
     for r in cost_records:
         cost_by_agent[r.agent_id] += r.cost

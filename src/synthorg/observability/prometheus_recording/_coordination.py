@@ -8,6 +8,7 @@ from synthorg.observability.events.metrics import (
 )
 from synthorg.observability.prometheus_labels import (
     VALID_APPROVAL_OUTCOMES,
+    VALID_AUTONOMY_PROMOTION_OUTCOMES,
     VALID_ESCALATION_OUTCOMES,
     require_label,
     require_non_negative,
@@ -127,3 +128,18 @@ class _CoordinationRecordingMixin(_RecordingMetricsBase):
         """
         require_label("approval outcome", outcome, VALID_APPROVAL_OUTCOMES)
         self._approval_decisions.labels(outcome=outcome).inc()
+
+    def record_autonomy_promotion(self, *, outcome: str) -> None:
+        """Increment the autonomy-promotion-decision counter.
+
+        Args:
+            outcome: One of ``"granted"`` / ``"denied"``.
+
+        Raises:
+            ValueError: If *outcome* is not in
+                :data:`VALID_AUTONOMY_PROMOTION_OUTCOMES`.
+        """
+        require_label(
+            "autonomy promotion outcome", outcome, VALID_AUTONOMY_PROMOTION_OUTCOMES
+        )
+        self._autonomy_promotion_decisions.labels(outcome=outcome).inc()

@@ -16,7 +16,7 @@ keep their once-only / if-absent / hot-replace semantics.
 """
 
 import asyncio
-from typing import cast
+from typing import Final, cast
 
 from synthorg.api.state_bridge_config import BridgeConfigState
 from synthorg.api.state_per_op_limits import PerOpLimitsState
@@ -32,9 +32,19 @@ from synthorg.engine.pipeline.entry.objective_adapter import ObjectiveSubmission
 from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
 from synthorg.engine.pipeline.entry.task_board_adapter import TaskBoardEntryAdapter
 from synthorg.engine.pipeline.protocol import WorkPipeline
+from synthorg.engine.shutdown import CooperativeTimeoutStrategy, ShutdownManager
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.workers.execution_service import WorkerExecutionService
+
+# Grace window the cooperative shutdown manager waits for in-flight
+# multi-agent parallel tasks to exit at a turn boundary before it
+# force-cancels stragglers. Kept under the task-engine shutdown budget
+# (8s in api/lifecycle.py) so initiating the cooperative drain at the top
+# of teardown cannot push the total past the orchestrator SIGKILL
+# deadline (75s in api/server.py).
+_SHUTDOWN_GRACE_SECONDS: Final[float] = 8.0
+_SHUTDOWN_CLEANUP_SECONDS: Final[float] = 2.0
 
 
 class AppState(AppStateSliceMixin):
@@ -87,6 +97,17 @@ class AppState(AppStateSliceMixin):
         # Shutdown flag observable by long-lived subsystems; constructed
         # eagerly so concurrent first-reads share one ``Event``.
         self._shutdown_requested: asyncio.Event = asyncio.Event()
+        # Cooperative shutdown manager: the multi-agent coordinator
+        # registers each in-flight parallel agent task with it, so on
+        # SIGTERM new tasks are rejected (drain gate) and in-flight tasks
+        # get a bounded grace-then-cancel via ``initiate_shutdown``.
+        self._shutdown_manager: ShutdownManager = ShutdownManager(
+            CooperativeTimeoutStrategy(
+                grace_seconds=_SHUTDOWN_GRACE_SECONDS,
+                cleanup_seconds=_SHUTDOWN_CLEANUP_SECONDS,
+                clock=self.clock,
+            ),
+        )
         # Cohesive owners of the cross-cutting mutable primitives a frozen
         # slice cannot hold.
         self.bridge_config = BridgeConfigState()
@@ -105,6 +126,16 @@ class AppState(AppStateSliceMixin):
             The process-shared shutdown ``asyncio.Event``.
         """
         return self._shutdown_requested
+
+    @property
+    def shutdown_manager(self) -> ShutdownManager:
+        """Cooperative shutdown manager for in-flight multi-agent tasks.
+
+        Returns:
+            The process-shared :class:`ShutdownManager` the coordinator
+            registers parallel agent tasks with.
+        """
+        return self._shutdown_manager
 
     @property
     def objective_background_tasks(self) -> set[asyncio.Task[None]]:

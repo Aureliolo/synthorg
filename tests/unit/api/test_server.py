@@ -88,3 +88,38 @@ class TestRunServerUvicornParams:
         kw = mock_run.call_args.kwargs
         assert kw["forwarded_allow_ips"] == "10.0.0.1,172.16.0.0/12"
         assert kw["proxy_headers"] is True
+
+
+class TestRunServerWorkerTopology:
+    """Worker / reload topology must reach uvicorn correctly.
+
+    A pre-built app object makes uvicorn silently drop ``workers`` /
+    ``reload``; multi-process topologies must be driven from an import
+    string so each subprocess rebuilds the app.
+    """
+
+    def test_single_worker_passes_object_not_factory(self) -> None:
+        mock_run = _run_with_config(ServerConfig(workers=1, reload=False))
+        call = mock_run.call_args
+        # First positional arg is the pre-built drain wrapper, and the
+        # factory flag is off.
+        assert not isinstance(call.args[0], str)
+        assert call.kwargs["factory"] is False
+
+    def test_multi_worker_uses_import_string_factory(self) -> None:
+        mock_run = _run_with_config(ServerConfig(workers=4))
+        call = mock_run.call_args
+        assert call.args[0] == "synthorg.api.server:create_drain_app"
+        assert call.kwargs["factory"] is True
+        assert call.kwargs["workers"] == 4
+
+    def test_reload_uses_import_string_factory(self) -> None:
+        mock_run = _run_with_config(ServerConfig(workers=1, reload=True))
+        call = mock_run.call_args
+        assert call.args[0] == "synthorg.api.server:create_drain_app"
+        assert call.kwargs["factory"] is True
+        assert call.kwargs["reload"] is True
+
+    def test_reload_with_multiple_workers_rejected(self) -> None:
+        with pytest.raises(ValueError, match="reload requires workers == 1"):
+            _run_with_config(ServerConfig(workers=2, reload=True))

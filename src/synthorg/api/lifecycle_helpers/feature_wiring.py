@@ -250,6 +250,7 @@ async def _wire_research_engine(
         return
     runtime_settings = settings_service_of(app_state)
     try:
+        from synthorg.budget.state import cost_tracker_of  # noqa: PLC0415
         from synthorg.research.config import ResearchConfig  # noqa: PLC0415
         from synthorg.research.factory import build_research_service  # noqa: PLC0415
         from synthorg.research.tool_factory import (  # noqa: PLC0415
@@ -316,6 +317,7 @@ async def _wire_research_engine(
             config=config,
             knowledge_service=app_state.slice(KnowledgeStateSlice).service,
             clock=app_state.clock,
+            cost_tracker=cost_tracker_of(app_state),
         )
         tool_factory = build_research_tool_factory(
             service=service, clock=app_state.clock

@@ -29,7 +29,9 @@ class TestRollbackMutationDeniedError:
 
     def test_carries_conflict_category_and_code(self) -> None:
         assert RollbackMutationDeniedError.error_category == ErrorCategory.CONFLICT
-        assert RollbackMutationDeniedError.error_code == ErrorCode.RESOURCE_CONFLICT
+        assert (
+            RollbackMutationDeniedError.error_code == ErrorCode.ROLLBACK_MUTATION_DENIED
+        )
 
     def test_default_message_present(self) -> None:
         err = RollbackMutationDeniedError()

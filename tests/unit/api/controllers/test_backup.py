@@ -11,7 +11,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from litestar.datastructures import State
-from litestar.exceptions import InternalServerException
 
 from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.controllers.backup import BackupController
@@ -37,6 +36,7 @@ from synthorg.backup.models import (
 from synthorg.backup.service import BackupService
 from synthorg.backup.state import BackupStateSlice
 from synthorg.core.domain_errors import ConflictError, ValidationError
+from synthorg.core.error_taxonomy import ErrorCode
 from tests._shared import LoopAsyncClient, make_app_state
 from tests.unit.api.conftest import make_auth_headers
 
@@ -358,7 +358,10 @@ class TestRestoreBackup:
 
         assert exc_info.value.status_code == 422
 
-    async def test_restore_raises_500_on_restore_error(self) -> None:
+    async def test_restore_reraises_restore_error(self) -> None:
+        # Audit 34: the controller re-raises ``RestoreError`` directly so
+        # ``handle_domain_error`` preserves ``BACKUP_RESTORE_FAILED``
+        # instead of collapsing it to a generic 500 / ``INTERNAL_ERROR``.
         state, service = _make_state_and_service()
         service.restore_from_backup.side_effect = RestoreError("disk failure")
 
@@ -367,8 +370,11 @@ class TestRestoreBackup:
             confirm=True,
         )
         ctrl = _controller()
-        with pytest.raises(InternalServerException):
+        with pytest.raises(RestoreError) as exc_info:
             await ctrl.restore_backup.fn(ctrl, state=state, data=request)
+
+        assert exc_info.value.status_code == 500
+        assert exc_info.value.error_code == ErrorCode.BACKUP_RESTORE_FAILED
 
 
 @pytest.mark.unit

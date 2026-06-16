@@ -8,12 +8,17 @@ import type {
   getAutonomy,
   listActiveAgents,
   listAgents,
+  rollbackAgentIdentity,
   setAutonomy,
 } from '@/api/endpoints/agents'
-import type { AgentHealthResponse } from '@/api/types'
+import type {
+  VersionHistoryClient,
+  VersionSnapshot,
+} from '@/api/endpoints/version-history'
+import type { AgentHealthResponse, AgentIdentity, AgentIdentityDiff } from '@/api/types'
 import type { AgentConfig, AgentPerformanceSummary } from '@/api/types/agents'
 import type { AutonomyLevel } from '@/api/types/enums'
-import { apiError, emptyPage, paginatedFor, successFor } from './helpers'
+import { apiError, apiSuccess, emptyPage, paginatedFor, successFor } from './helpers'
 
 const ALLOWED_AUTONOMY_LEVELS: readonly AutonomyLevel[] = [
   'full',
@@ -81,6 +86,67 @@ export function buildAgent(
     tier: null,
     model_requirement: null,
     hiring_date: '2026-01-01T00:00:00Z',
+    ...overrides,
+  }
+}
+
+/** Minimal valid AgentIdentity stub for the rollback happy path. */
+function buildAgentIdentity(
+  overrides: Partial<AgentIdentity> = {},
+): AgentIdentity {
+  return {
+    id: 'agent-default',
+    name: 'default-agent',
+    role: 'engineer',
+    department: 'engineering',
+    level: 'mid',
+    status: 'active',
+    autonomy_level: 'supervised',
+    strategic_output_mode: null,
+    hiring_date: '2026-01-01',
+    authority: {
+      budget_limit: 0,
+      can_approve: [],
+      can_delegate_to: [],
+      reports_to: null,
+    },
+    model: {
+      provider: 'example-provider',
+      model_id: 'example-medium-001',
+      model_tier: 'medium',
+      fallback_model: null,
+      temperature: 0.7,
+      max_tokens: 4096,
+    },
+    memory: {
+      type: 'project',
+      retention_days: null,
+      retention_overrides: [],
+    },
+    personality: {
+      description: 'Balanced default personality.',
+      communication_style: 'concise',
+      openness: 0.5,
+      conscientiousness: 0.5,
+      extraversion: 0.5,
+      agreeableness: 0.5,
+      stress_response: 0.5,
+      risk_tolerance: 'medium',
+      creativity: 'medium',
+      collaboration: 'team',
+      decision_making: 'analytical',
+      conflict_approach: 'collaborate',
+      traits: [],
+      verbosity: 'balanced',
+    },
+    skills: { primary: [], secondary: [] },
+    tools: {
+      access_level: 'standard',
+      allowed: [],
+      denied: [],
+      mcp_capabilities: [],
+      sub_constraints: null,
+    },
     ...overrides,
   }
 }
@@ -173,4 +239,30 @@ export const agentsHandlers = [
       successFor<typeof getAgentHealth>(buildHealth(String(params['agentId']))),
     ),
   ),
+  http.post('/api/v1/agents/:agentId/versions/rollback', ({ params }) =>
+    HttpResponse.json(
+      successFor<typeof rollbackAgentIdentity>(
+        buildAgentIdentity({ id: String(params['agentId']) }),
+      ),
+    ),
+  ),
+  http.get('/api/v1/agents/:agentId/versions', () =>
+    HttpResponse.json(
+      paginatedFor<VersionHistoryClient<Record<string, unknown>>['list']>(
+        emptyPage<VersionSnapshot<Record<string, unknown>>>(),
+      ),
+    ),
+  ),
+  http.get('/api/v1/agents/:agentId/versions/diff', ({ params, request }) => {
+    const url = new URL(request.url)
+    return HttpResponse.json(
+      apiSuccess<AgentIdentityDiff>({
+        agent_id: String(params['agentId']),
+        from_version: Number(url.searchParams.get('from_version') ?? 1),
+        to_version: Number(url.searchParams.get('to_version') ?? 2),
+        field_changes: [],
+        summary: '',
+      }),
+    )
+  }),
 ]

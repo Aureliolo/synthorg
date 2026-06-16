@@ -13,7 +13,6 @@ finish current tool, and checkpoint-and-stop.  The
 """
 
 import asyncio
-import contextlib
 import signal
 import sys
 import types
@@ -104,6 +103,15 @@ class ShutdownStrategy(Protocol):
         """Signal that a graceful shutdown has been requested."""
         ...
 
+    def clear_shutdown(self) -> None:
+        """Clear the shutdown flag so a reused strategy accepts work again.
+
+        Called when an app lifespan re-enters on a reused instance (shared
+        test app, in-place restart): without it the flag set by a prior
+        shutdown stays latched and the drain gate rejects every new task.
+        """
+        ...
+
     def is_shutting_down(self) -> bool:
         """Return ``True`` when shutdown has been requested."""
         ...
@@ -162,6 +170,10 @@ class CooperativeTimeoutStrategy:
     def request_shutdown(self) -> None:
         """Signal that a graceful shutdown has been requested."""
         self._shutdown_event.set()
+
+    def clear_shutdown(self) -> None:
+        """Reopen the drain gate for a reused strategy (lifespan re-entry)."""
+        self._shutdown_event.clear()
 
     def is_shutting_down(self) -> bool:
         """Return ``True`` when shutdown has been requested."""
@@ -425,8 +437,19 @@ class ShutdownManager:
             )
             # If request_shutdown() itself fails, stop the event loop as
             # a last resort to avoid a process that ignores signals.
-            with contextlib.suppress(Exception):
+            try:
                 asyncio.get_running_loop().stop()
+            except Exception as stop_exc:  # noqa: BLE001 -- criticals re-raised
+                # The primary path already logged via structlog above; if
+                # the last-resort loop.stop() ALSO fails the process may be
+                # stuck. Emit via signal-safe ``sys.stderr.write`` (not
+                # structlog, whose lock state is suspect here) so there is
+                # still a trace.
+                reraise_critical(stop_exc)
+                sys.stderr.write(
+                    "shutdown: last-resort loop.stop() failed "
+                    f"({type(stop_exc).__name__})\n"
+                )
 
     def _handle_signal_threadsafe(
         self,
@@ -459,8 +482,14 @@ class ShutdownManager:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-                with contextlib.suppress(Exception):
+                try:
                     asyncio.get_running_loop().stop()
+                except Exception as stop_exc:  # noqa: BLE001 -- criticals re-raised
+                    reraise_critical(stop_exc)
+                    sys.stderr.write(
+                        "shutdown: last-resort loop.stop() failed "
+                        f"({type(stop_exc).__name__})\n"
+                    )
 
         try:
             loop = asyncio.get_running_loop()
@@ -537,6 +566,27 @@ class ShutdownManager:
             shutdown has been requested.
         """
         return self._strategy.is_shutting_down()
+
+    def request_shutdown(self) -> None:
+        """Close the drain gate without running the full shutdown sequence.
+
+        Bridges an OS signal (handled elsewhere) to the strategy so
+        :meth:`register_task` starts rejecting new work immediately,
+        while the bounded drain + force-cancel runs later via
+        :meth:`initiate_shutdown` from the on-shutdown hook.
+        """
+        self._strategy.request_shutdown()
+
+    def reset(self) -> None:
+        """Reopen the drain gate so a reused manager accepts work again.
+
+        A reused :class:`AppState` (shared-app tests, in-place restart)
+        keeps this manager across lifespans; the strategy's shutdown flag,
+        once set by a prior shutdown, otherwise stays latched and
+        :meth:`register_task` rejects every task on the next lifespan.
+        Called at lifespan startup before any task can register.
+        """
+        self._strategy.clear_shutdown()
 
     async def initiate_shutdown(self) -> ShutdownResult:
         """Invoke the strategy's shutdown sequence.

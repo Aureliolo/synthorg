@@ -206,6 +206,15 @@ class TestAuditRepositoryConformance:
         with pytest.raises(QueryError):
             await backend.audit_entries.query(AuditFilterSpec(), limit=0)
 
+    async def test_query_negative_offset_raises(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # Audit 60: Postgres previously skipped the offset guard SQLite
+        # already enforced, so a negative offset must be rejected on both
+        # backends for parity.
+        with pytest.raises(QueryError):
+            await backend.audit_entries.query(AuditFilterSpec(), offset=-1)
+
     async def test_query_until_before_since_raises(
         self, backend: PersistenceBackend
     ) -> None:

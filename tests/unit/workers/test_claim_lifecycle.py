@@ -26,6 +26,7 @@ from synthorg.communication.config import NatsConfig
 from synthorg.observability.events.workers import (
     WORKERS_QUEUE_NOT_RUNNING,
     WORKERS_QUEUE_START_REJECTED,
+    WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED,
 )
 from synthorg.workers.claim import (
     _MAX_CLAIM_PAYLOAD_BYTES,
@@ -441,6 +442,44 @@ async def test_stop_drain_timeout_marks_unrestartable(
         await queue.stop()
 
     assert queue._stop_failed is True
+
+
+@pytest.mark.unit
+async def test_stop_unsubscribe_timeout_logs_and_continues(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A slow ``unsubscribe()`` is deadline-bounded, logged, and stop() proceeds.
+
+    The unsubscribe runs BEFORE the drain in ``stop()``; an unbounded await
+    here would stall teardown to the caller's wall-clock limit instead of
+    the drain deadline. The bound turns that into a swallowed, structured
+    warning so teardown still clears the subscription and reaches the drain.
+    """
+    import asyncio
+
+    spy = _patch_logger(monkeypatch)
+    queue = _make_queue()
+    queue._stop_drain_timeout_seconds = 0.05
+
+    # Far longer than the 0.05s unsubscribe deadline, so the stubbed
+    # unsubscribe is guaranteed still running when the bound trips.
+    slow_unsubscribe_seconds: Final[float] = 10.0
+
+    async def _slow_unsubscribe() -> None:
+        await asyncio.sleep(slow_unsubscribe_seconds)
+
+    sub = AsyncMock(spec=_SubscriptionStub)
+    sub.unsubscribe.side_effect = _slow_unsubscribe
+    queue._sub = cast("PullSubscription | None", sub)
+
+    await queue.stop()
+
+    assert queue._sub is None
+    spy.warning.assert_called_once()
+    # Assert the telemetry EVENT too, not just the error type: a regression
+    # that swapped the event constant would otherwise pass.
+    assert spy.warning.call_args.args[0] == WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED
+    assert spy.warning.call_args.kwargs["error_type"] == "TimeoutError"
 
 
 @pytest.mark.unit

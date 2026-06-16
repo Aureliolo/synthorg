@@ -79,7 +79,6 @@ function buildProvidersModalOverrides(presetState: {
 }
 
 interface ProvidersStepController {
-  agents: ReturnType<typeof useSetupWizardStore.getState>['agents']
   providers: ReturnType<typeof useSetupWizardStore.getState>['providers']
   presets: ReturnType<typeof useSetupWizardStore.getState>['presets']
   probeResults: ReturnType<typeof useSetupWizardStore.getState>['probeResults']
@@ -92,7 +91,6 @@ interface ProvidersStepController {
   presetsLoading: boolean
   presetsError: string | null
   validation: ProvidersValidation
-  missingProviders: string[]
   hasConfiguredProviders: boolean
   modalOpen: boolean
   modalPreset: string | null
@@ -108,7 +106,6 @@ interface ProvidersStepController {
 }
 
 function useProvidersStepController(): ProvidersStepController {
-  const agents = useSetupWizardStore((s) => s.agents)
   const providers = useSetupWizardStore((s) => s.providers)
   const presets = useSetupWizardStore((s) => s.presets)
   const probeResults = useSetupWizardStore((s) => s.probeResults)
@@ -177,16 +174,17 @@ function useProvidersStepController(): ProvidersStepController {
     [presets, presetsLoading, presetsError],
   )
 
-  const neededProviders = new Set(
-    agents.map((a) => a.model_provider).filter((p): p is string => Boolean(p)),
-  )
-  const missingProviders = [...neededProviders].filter((p) => !providers[p])
+  // Provider coverage for configured agents is validated on the Agents
+  // step (which runs AFTER Providers in the wizard order and already
+  // renders UnresolvedAgentsBanner). Computing it here read an empty
+  // ``agents`` slice -- agents do not exist yet -- so the banner could
+  // never fire usefully.
   const hasConfiguredProviders = Object.keys(providers).length > 0
 
   return {
-    agents, providers, presets, probeResults, probeErrors, probeGlobalError, probing,
+    providers, presets, probeResults, probeErrors, probeGlobalError, probing,
     providersLoading, providersError, providersWarning, presetsLoading, presetsError,
-    validation, missingProviders, hasConfiguredProviders,
+    validation, hasConfiguredProviders,
     modalOpen, modalPreset, setModalOpen, modalOverrides,
     handleSelectCloud, handleAddLocal, handleAddCloudCounterpart, handleConfigureManually, handleReprobe,
     onRetryProviders: () => void useSetupWizardStore.getState().fetchProviders(),
@@ -225,7 +223,6 @@ interface ProvidersStepBannersProps {
   providersError: string | null
   providersWarning: string | null
   probeGlobalError: string | null
-  missingProviders: readonly string[]
   onRetryProviders: () => void
   onReprobe: () => void
 }
@@ -234,7 +231,6 @@ function ProvidersStepBanners({
   providersError,
   providersWarning,
   probeGlobalError,
-  missingProviders,
   onRetryProviders,
   onReprobe,
 }: ProvidersStepBannersProps) {
@@ -265,14 +261,6 @@ function ProvidersStepBanners({
           title="Local provider probe did not complete"
           description={`${probeGlobalError} Re-scan to try again, or configure providers manually below.`}
           onRetry={onReprobe}
-        />
-      )}
-
-      {missingProviders.length > 0 && (
-        <ErrorBanner
-          severity="warning"
-          title="Agents need providers that are not configured"
-          description={`Missing: ${missingProviders.join(', ')}`}
         />
       )}
     </>
@@ -388,7 +376,6 @@ export function ProvidersStep() {
         providersError={c.providersError}
         providersWarning={c.providersWarning}
         probeGlobalError={c.probeGlobalError}
-        missingProviders={c.missingProviders}
         onRetryProviders={c.onRetryProviders}
         onReprobe={c.handleReprobe}
       />

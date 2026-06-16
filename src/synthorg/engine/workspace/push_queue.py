@@ -65,6 +65,7 @@ class PushQueueCoordinator:
         "_closing",
         "_default_branch",
         "_git_backend",
+        "_lifecycle_lock",
         "_project_id",
         "_queue",
         "_repo_root",
@@ -93,6 +94,11 @@ class PushQueueCoordinator:
         # event loop (pytest-asyncio per-test loops, lifecycle restart).
         self._queue: asyncio.Queue[_QueuedMerge | None] | None = None
         self._worker: asyncio.Task[None] | None = None
+        # Serialises the check-and-set on ``_worker`` / ``_queue`` /
+        # ``_closing`` across the ``start()`` / ``stop()`` await
+        # boundaries so two racing callers cannot orphan a worker task
+        # or interleave a stop() into a start().
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- ctx
         # ``stop()`` sets this BEFORE enqueuing the sentinel so a late
         # ``enqueue_merge_push()`` racing the shutdown path refuses the
         # request instead of appending behind the sentinel (where it
@@ -100,29 +106,53 @@ class PushQueueCoordinator:
         self._closing = False
 
     async def start(self) -> None:
-        """Start the background queue worker (idempotent)."""
-        if self._worker is None or self._worker.done():
-            self._queue = asyncio.Queue()
-            self._closing = False
-            self._worker = asyncio.create_task(self._worker_loop())
+        """Start the background queue worker (idempotent).
+
+        Restarts when no worker is live OR a ``stop()`` is mid-drain
+        (``_closing`` set, the old worker still exiting on its sentinel).
+        Without the ``_closing`` arm a ``start()`` that interleaves a drain
+        would see the draining worker as not-done and return a silent
+        no-op, leaving the coordinator stopped with no worker. The fresh
+        worker takes the new queue; ``stop()``'s reset is guarded by
+        ``self._worker is worker`` so it cannot clobber it, and the old
+        worker drains its own captured queue to the sentinel independently.
+        """
+        async with self._lifecycle_lock:
+            if self._worker is None or self._worker.done() or self._closing:
+                self._queue = asyncio.Queue()
+                self._closing = False
+                self._worker = asyncio.create_task(self._worker_loop())
 
     async def stop(self) -> None:
-        """Drain in-flight work then stop the worker (idempotent)."""
-        worker = self._worker
-        if worker is None:
-            return
-        # Refuse any further enqueues BEFORE the sentinel goes in: a
-        # request that wins the race after the sentinel is enqueued
-        # would sit forever behind it.
-        self._closing = True
-        queue = self._queue
-        if queue is not None:
-            await queue.put(None)
+        """Drain in-flight work then stop the worker (idempotent).
+
+        Closure is signalled (and the sentinel enqueued) under the
+        lifecycle lock, but the worker drain is awaited OUTSIDE the lock so
+        the network-bound git pushes the worker runs cannot block a
+        concurrent ``start()`` on the lock for the whole drain. The
+        ``_worker`` / ``_queue`` reset re-acquires the lock and only fires
+        when the worker is still the one this call drained, so a fresh
+        ``start()`` that interleaves is not clobbered.
+        """
+        async with self._lifecycle_lock:
+            worker = self._worker
+            if worker is None:
+                return
+            # Refuse any further enqueues BEFORE the sentinel goes in: a
+            # request that wins the race after the sentinel is enqueued
+            # would sit forever behind it.
+            self._closing = True
+            queue = self._queue
+            if queue is not None:
+                await queue.put(None)
+
         try:
             await worker
         finally:
-            self._worker = None
-            self._queue = None
+            async with self._lifecycle_lock:
+                if self._worker is worker:
+                    self._worker = None
+                    self._queue = None
 
     async def enqueue_merge_push(
         self,
@@ -141,10 +171,20 @@ class PushQueueCoordinator:
             WorkspacePushError: The backend push failed.
         """
         if self._closing:
+            logger.warning(
+                WORKSPACE_PUSH_QUEUE_FAILED,
+                project_id=self._project_id,
+                reason="coordinator_closing",
+            )
             msg = "PushQueueCoordinator is stopping; new pushes refused"
             raise WorkspaceError(msg)
         queue = self._queue
         if queue is None:
+            logger.error(
+                WORKSPACE_PUSH_QUEUE_FAILED,
+                project_id=self._project_id,
+                reason="queue_not_started",
+            )
             msg = "PushQueueCoordinator: enqueue called before start()"
             raise WorkspaceError(msg)
         loop = asyncio.get_running_loop()

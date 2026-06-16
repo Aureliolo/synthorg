@@ -13,14 +13,18 @@ from synthorg.api.signals import (
     install_shutdown_handlers,
 )
 from synthorg.api.state import AppState
+from synthorg.engine.shutdown import ShutdownManager
 from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
 
 def _fake_app_state() -> AppState:
-    """AppState double exposing a real shutdown event for handler tests."""
-    app_state: AppState = mock_of[AppState](shutdown_requested=asyncio.Event())
+    """AppState double exposing a real shutdown event + manager."""
+    app_state: AppState = mock_of[AppState](
+        shutdown_requested=asyncio.Event(),
+        shutdown_manager=ShutdownManager(),
+    )
     return app_state
 
 
@@ -119,6 +123,15 @@ class TestOnSignal:
         _on_signal(signal.SIGTERM, app_state)
         _on_signal(signal.SIGTERM, app_state)
         assert app_state.shutdown_requested.is_set()
+
+    def test_closes_cooperative_drain_gate(self) -> None:
+        # The signal must also close the cooperative drain gate so the
+        # coordinator rejects new parallel agent tasks immediately,
+        # before the on-shutdown hook runs the bounded drain.
+        app_state = _fake_app_state()
+        assert not app_state.shutdown_manager.is_shutting_down()
+        _on_signal(signal.SIGTERM, app_state)
+        assert app_state.shutdown_manager.is_shutting_down()
 
 
 class TestMakeHandler:

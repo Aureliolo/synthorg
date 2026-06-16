@@ -2,6 +2,7 @@
 
 import pytest
 
+from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.hr.errors import (
     AgentAlreadyRegisteredError,
     AgentNotFoundError,
@@ -17,6 +18,9 @@ from synthorg.hr.errors import (
     OffboardingError,
     OnboardingError,
     PerformanceError,
+    PromotionApprovalRequiredError,
+    PromotionCooldownError,
+    PruningUnrestartableError,
     TaskReassignmentError,
 )
 
@@ -66,3 +70,26 @@ class TestErrorHierarchy:
 
     def test_performance_subhierarchy(self) -> None:
         assert issubclass(InsufficientDataError, PerformanceError)
+
+
+@pytest.mark.unit
+class TestErrorCodes:
+    """Audit 34: each HR conflict type carries a discriminating ErrorCode
+    rather than the generic ``RESOURCE_CONFLICT`` so clients can branch."""
+
+    @pytest.mark.parametrize(
+        ("error_cls", "expected_code"),
+        [
+            (HiringApprovalRequiredError, ErrorCode.HIRING_APPROVAL_REQUIRED),
+            (HiringRejectedError, ErrorCode.HIRING_REJECTED),
+            (AgentAlreadyRegisteredError, ErrorCode.AGENT_ALREADY_REGISTERED),
+            (PromotionCooldownError, ErrorCode.PROMOTION_COOLDOWN_ACTIVE),
+            (PromotionApprovalRequiredError, ErrorCode.PROMOTION_APPROVAL_REQUIRED),
+            (PruningUnrestartableError, ErrorCode.PRUNING_UNRESTARTABLE),
+        ],
+    )
+    def test_conflict_error_carries_dedicated_code(
+        self, error_cls: type[HRError], expected_code: ErrorCode
+    ) -> None:
+        assert error_cls.error_code == expected_code
+        assert error_cls.status_code == 409

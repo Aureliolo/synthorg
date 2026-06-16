@@ -1,4 +1,5 @@
 import { apiClient, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
+import type { VersionDiffResponse } from './version-history'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 import type {
   BlueprintInfo,
@@ -134,6 +135,44 @@ export async function getWorkflowDiff(
     { params: { from_version: fromVersion, to_version: toVersion } },
   )
   return unwrap(response)
+}
+
+/**
+ * Diff two workflow versions, normalised for the shared diff drawer.
+ *
+ * Calls ``GET /workflows/{id}/diff`` (returns ``WorkflowDiff`` with
+ * separate ``node_changes`` / ``edge_changes`` / ``metadata_changes``
+ * lists) and flattens all three -- prefixing each path with its change
+ * domain so node, edge, and metadata entries stay distinguishable -- into
+ * the cross-domain ``VersionDiffResponse`` shape the drawer renders.
+ */
+export async function diffWorkflowVersions(
+  id: string,
+  fromVersion: number,
+  toVersion: number,
+): Promise<VersionDiffResponse> {
+  const diff = await getWorkflowDiff(id, fromVersion, toVersion)
+  return {
+    from_version: diff.from_version,
+    to_version: diff.to_version,
+    entries: [
+      ...diff.node_changes.map((change) => ({
+        path: `node:${change.node_id}`,
+        before: change.old_value,
+        after: change.new_value,
+      })),
+      ...diff.edge_changes.map((change) => ({
+        path: `edge:${change.edge_id}`,
+        before: change.old_value,
+        after: change.new_value,
+      })),
+      ...diff.metadata_changes.map((change) => ({
+        path: `metadata:${change.field}`,
+        before: change.old_value,
+        after: change.new_value,
+      })),
+    ],
+  }
 }
 
 export async function rollbackWorkflow(

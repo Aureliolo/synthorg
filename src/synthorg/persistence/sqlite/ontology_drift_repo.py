@@ -12,11 +12,13 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.ontology import (
     ONTOLOGY_DRIFT_STORE_DESERIALIZE_FAILED,
+    ONTOLOGY_DRIFT_STORE_FAILED,
     ONTOLOGY_DRIFT_STORE_WRITE_FAILED,
 )
 from synthorg.ontology.models import AgentDrift, DriftAction, DriftReport
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT, format_iso_utc
+from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.ontology_protocol import DriftReportFilterSpec
 from synthorg.persistence.sqlite._shared import WriteContext
 
@@ -121,30 +123,75 @@ class SQLiteOntologyDriftReportRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[DriftReport, ...]:
-        """Filtered drift-report query (not implemented).
+        """Return drift reports newest-first, paginated.
 
-        Drift consumers use :meth:`get_latest` / :meth:`get_all_latest`;
-        the generic filtered ``query`` surface is unimplemented and
-        raises rather than silently returning an empty tuple, which
-        would mask the missing functionality from a caller.
+        ``DriftReportFilterSpec`` is currently an empty placeholder, so
+        every report is in scope; ordering follows the append-only
+        contract (descending ``id``, which is monotonic with insertion).
 
-        Raises:
-            NotImplementedError: If the underlying call raises.
+        Args:
+            filter_spec: Filter specification (no fields yet).
+            limit: Maximum rows to return.
+            offset: Rows to skip from the head of the ordering.
+
+        Returns:
+            Drift reports in descending insertion order.
         """
-        msg = "OntologyDriftReportRepository.query is not implemented"
-        raise NotImplementedError(msg)
+        _ = filter_spec
+        limit = validate_pagination_args(
+            limit, offset, event=ONTOLOGY_DRIFT_STORE_FAILED
+        )
+        async with self._db.execute(
+            "SELECT entity_name, divergence_score, canonical_version, "
+            "recommendation, divergent_agents "
+            "FROM drift_reports "
+            "ORDER BY id DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return tuple(_row_to_report(row) for row in rows)
 
     async def purge_before(self, threshold: datetime) -> int:
-        """Retention purge of drift reports (not implemented).
+        """Delete drift reports created before ``threshold`` (retention).
 
-        Raises rather than silently reporting zero deletions, which
-        would let a retention caller believe a sweep ran.
+        ``threshold`` must be timezone-aware: a naive value compared
+        against the UTC-stored ``created_at`` would silently delete the
+        wrong window. The stored column uses the DB ``STRFTIME`` ``Z``
+        format, so the offset-formatted threshold is re-formatted via
+        SQLite ``strftime`` to share the column's exact representation
+        before the lexicographic comparison.
+
+        Args:
+            threshold: Tz-aware cutoff; rows strictly older are removed.
+
+        Returns:
+            Number of rows removed.
 
         Raises:
-            NotImplementedError: If the underlying call raises.
+            ValueError: If ``threshold`` is naive.
         """
-        msg = "OntologyDriftReportRepository.purge_before is not implemented"
-        raise NotImplementedError(msg)
+        if threshold.tzinfo is None:
+            msg = f"threshold must be timezone-aware, got naive {threshold!r}"
+            raise ValueError(msg)
+        cutoff = format_iso_utc(threshold)
+        async with self._write_context():
+            try:
+                async with self._db.execute(
+                    "DELETE FROM drift_reports "
+                    "WHERE created_at < STRFTIME('%Y-%m-%dT%H:%M:%fZ', ?)",
+                    (cutoff,),
+                ) as cursor:
+                    removed = cursor.rowcount
+                await self._db.commit()
+            except Exception:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                logger.error(
+                    ONTOLOGY_DRIFT_STORE_WRITE_FAILED,
+                    entity_name="<purge_before>",
+                )
+                raise
+        return removed
 
     async def get_latest(
         self,

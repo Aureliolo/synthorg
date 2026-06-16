@@ -8,7 +8,6 @@ connection for the lifetime of a LISTEN subscription, and
 checkout.
 """
 
-import contextlib
 import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -17,6 +16,7 @@ from typing import Final
 import psycopg
 from psycopg_pool import AsyncConnectionPool
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.escalation import (
     PERSISTENCE_ESCALATION_NOTIFY_FAILED,
@@ -110,8 +110,20 @@ async def subscribe(
                 # Close the physical connection so the pool discards it
                 # rather than handing altered session state to the next
                 # borrower.
-                with contextlib.suppress(Exception):
+                try:
                     await conn.close()
+                except Exception as close_exc:  # noqa: BLE001 -- criticals re-raised
+                    # A failed close may leave the tainted connection in
+                    # the pool; warn so operators know a borrower might get
+                    # a connection with the wrong autocommit state.
+                    reraise_critical(close_exc)
+                    logger.warning(
+                        PERSISTENCE_ESCALATION_SUBSCRIBE_FAILED,
+                        error_type=type(close_exc).__name__,
+                        error=safe_error_description(close_exc),
+                        channel=channel,
+                        note="tainted_conn_close_failed",
+                    )
 
 
 async def publish_notifies(

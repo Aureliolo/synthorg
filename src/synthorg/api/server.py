@@ -23,6 +23,31 @@ from synthorg.settings.mirrors import parse_int, parse_str_tuple_json
 
 logger = get_logger(__name__)
 
+# Import string for the drain-wrapped ASGI factory. uvicorn needs an
+# import string (not a pre-built object) to spawn worker subprocesses or
+# the reloader; each child imports and calls this factory afresh.
+_DRAIN_APP_FACTORY_PATH: str = "synthorg.api.server:create_drain_app"
+
+
+def create_drain_app() -> RequestDrainMiddleware:
+    """Build the drain-wrapped ASGI app from the environment-derived config.
+
+    This is the uvicorn ``--factory`` entry used when ``workers > 1`` or
+    ``reload`` is set: worker subprocesses cannot receive the pre-built
+    object passed to a single-process run, so they rebuild the app from
+    configuration the same way the production container's
+    ``create_app --factory`` launch does. The drain middleware is applied
+    here so multi-worker deployments retain in-flight request draining on
+    shutdown.
+
+    Returns:
+        The Litestar app wrapped in :class:`RequestDrainMiddleware`.
+    """
+    return RequestDrainMiddleware(
+        create_app(),
+        drain_timeout_seconds=_DRAIN_TIMEOUT_SECONDS,
+    )
+
 
 class _OptionalUvicornKwargs(TypedDict, total=False):
     """Optional ``uvicorn.run`` kwargs set only when configured.
@@ -48,9 +73,24 @@ def run_server(config: RootConfig) -> None:
     Args:
         config: Root company configuration containing server
             settings.
+
+    Raises:
+        ValueError: If ``reload`` is enabled with more than one worker
+            (the uvicorn reloader is single-process only).
     """
     api_config = config.api
     server = api_config.server
+
+    # uvicorn runs the reloader in a single supervised process; pairing
+    # it with multiple workers is unsupported and silently drops one or
+    # the other. Reject the combination loudly instead of booting a
+    # surprising topology.
+    if server.reload and server.workers > 1:
+        msg = (
+            "api.server.reload requires workers == 1 "
+            f"(got workers={server.workers}); reload is single-process only"
+        )
+        raise ValueError(msg)
 
     def _str_or_none(key: str) -> str | None:
         resolved = resolve_init_value(SettingNamespace.API, key)
@@ -109,22 +149,29 @@ def run_server(config: RootConfig) -> None:
         extra["forwarded_allow_ips"] = ",".join(trusted_proxies)
         extra["proxy_headers"] = True
 
-    app = create_app(config=config)
-    # Wrap the Litestar app in the request-drain middleware as the
-    # outermost ASGI layer.  The wrap happens here rather than in
-    # ``create_app`` so unit tests retrieve a raw ``Litestar`` for
-    # ``TestClient``; production uvicorn always gets the drain
-    # wrapper.  The drain middleware itself intercepts
-    # ``lifespan.shutdown`` and runs ``begin_drain`` before
-    # forwarding the message to Litestar, so the per-service
-    # ``on_shutdown`` hooks only start once in-flight HTTP traffic
-    # has drained.
-    drain_app = RequestDrainMiddleware(
-        app,
-        drain_timeout_seconds=_DRAIN_TIMEOUT_SECONDS,
+    # Worker subprocesses and the reloader can only be driven from an
+    # import string -- passing a pre-built object makes uvicorn silently
+    # ignore ``workers`` / ``reload`` and run a single in-process app. So
+    # select the app target by topology: an import-string factory when
+    # spawning subprocesses, otherwise the pre-built drain wrapper (which
+    # lets the explicit ``config`` flow and keeps unit tests retrieving a
+    # raw ``Litestar`` via ``TestClient``). The drain middleware wraps the
+    # Litestar app as the outermost ASGI layer in both paths; it
+    # intercepts ``lifespan.shutdown`` and runs ``begin_drain`` before
+    # forwarding to Litestar, so the per-service ``on_shutdown`` hooks
+    # only start once in-flight HTTP traffic has drained.
+    needs_import_string = server.workers > 1 or server.reload
+    app_target: str | RequestDrainMiddleware = (
+        _DRAIN_APP_FACTORY_PATH
+        if needs_import_string
+        else RequestDrainMiddleware(
+            create_app(config=config),
+            drain_timeout_seconds=_DRAIN_TIMEOUT_SECONDS,
+        )
     )
     uvicorn.run(
-        drain_app,
+        app_target,
+        factory=needs_import_string,
         host=host,
         port=port,
         workers=server.workers,

@@ -60,6 +60,22 @@ _PROGRESS_THROTTLE_SEC: Final[float] = 1.0
 _CANCEL_TIMEOUT_SEC: Final[float] = 30.0
 
 
+def _validate_resumable(run: FineTuneRun | None, run_id: str) -> FineTuneRun:
+    """Return *run* when it exists and is resumable, else raise.
+
+    Raises:
+        ValueError: If the run is not found or is not in a resumable
+            (FAILED) stage.
+    """
+    if run is None:
+        msg = f"Run {run_id} not found"
+        raise ValueError(msg)
+    if run.stage != FineTuneStage.FAILED:
+        msg = f"Run {run_id} is not resumable (stage={run.stage})"
+        raise ValueError(msg)
+    return run
+
+
 class FineTuneOrchestrator:
     """Background pipeline orchestrator.
 
@@ -98,16 +114,25 @@ class FineTuneOrchestrator:
         self._current_task: asyncio.Task[None] | None = None
         self._cancellation: CancellationToken | None = None
         self._current_run: FineTuneRun | None = None
-        # Eager init: start() and cancel() may interleave, so the
-        # lock must exist before the first call to either method.
-        self._op_lock = asyncio.Lock()  # lint-allow: loop-bound-init
+        # Reservation flag set under the lifecycle lock the instant a
+        # start()/resume() wins the is_running check, so the repo I/O that
+        # follows can run OUTSIDE the lock without a concurrent caller
+        # slipping past the check before the background task exists.
+        self._starting: bool = False
+        # Eager init: start(), resume() and cancel() may interleave, so
+        # the lifecycle lock must exist before the first call to any of
+        # them. Named ``_lifecycle_lock`` (not a hot-path lock) because
+        # it serialises the start/resume/cancel lifecycle transitions.
+        self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init
 
     # -- Public API ---------------------------------------------------
 
     @property
     def is_running(self) -> bool:
         """Whether a pipeline run is currently active."""
-        return self._current_task is not None and not self._current_task.done()
+        return self._starting or (
+            self._current_task is not None and not self._current_task.done()
+        )
 
     @property
     def current_run(self) -> FineTuneRun | None:
@@ -133,34 +158,44 @@ class FineTuneOrchestrator:
         Raises:
             FineTuneRunActiveError: If a run is already active (409 Conflict).
         """
-        async with self._op_lock:
+        config = build_config(request)
+        now = datetime.now(UTC)
+        run = FineTuneRun(
+            id=uuid.uuid4(),
+            stage=FineTuneStage.GENERATING_DATA,
+            config=config,
+            started_at=now,
+            updated_at=now,
+        )
+        async with self._lifecycle_lock:
             if self.is_running:
                 msg = "A fine-tuning run is already active"
                 raise FineTuneRunActiveError(msg)
-
-            config = build_config(request)
-            now = datetime.now(UTC)
-            run = FineTuneRun(
-                id=uuid.uuid4(),
-                stage=FineTuneStage.GENERATING_DATA,
-                config=config,
-                started_at=now,
-                updated_at=now,
-            )
+            self._starting = True
+        # Persist OUTSIDE the lock so a slow backend cannot block concurrent
+        # lifecycle calls; the ``_starting`` reservation keeps is_running True
+        # so a racing start()/resume() still rejects. Release the reservation
+        # on any failure/cancellation so the orchestrator is not wedged.
+        try:
             await self._run_repo.save(run)
-            self._current_run = run
-            logger.info(
-                MEMORY_FINE_TUNE_STARTED,
-                run_id=str(run.id),
-                source_dir=config.source_dir,
-            )
-
-            self._cancellation = CancellationToken()
-            self._current_task = asyncio.create_task(
-                self._execute_pipeline(run),
-            )
-            self._current_task.add_done_callback(self._on_task_done)
-            return run
+            async with self._lifecycle_lock:
+                self._current_run = run
+                self._cancellation = CancellationToken()
+                self._current_task = asyncio.create_task(
+                    self._execute_pipeline(run),
+                )
+                self._current_task.add_done_callback(self._on_task_done)
+                self._starting = False
+        except BaseException:
+            async with self._lifecycle_lock:
+                self._starting = False
+            raise
+        logger.info(
+            MEMORY_FINE_TUNE_STARTED,
+            run_id=str(run.id),
+            source_dir=config.source_dir,
+        )
+        return run
 
     async def resume(self, run_id: str) -> FineTuneRun:
         """Resume a failed run from the last completed stage.
@@ -178,18 +213,17 @@ class FineTuneOrchestrator:
             FineTuneRunActiveError: If a run is already active.
             ValueError: If run not found or not resumable.
         """
-        async with self._op_lock:
+        async with self._lifecycle_lock:
             if self.is_running:
                 msg = "A fine-tuning run is already active"
                 raise FineTuneRunActiveError(msg)
-            run = await self._run_repo.get(run_id)
-            if run is None:
-                msg = f"Run {run_id} not found"
-                raise ValueError(msg)
-            if run.stage != FineTuneStage.FAILED:
-                msg = f"Run {run_id} is not resumable (stage={run.stage})"
-                raise ValueError(msg)
-
+            self._starting = True
+        # Repo get/validate/save run OUTSIDE the lock (the ``_starting``
+        # reservation already rejects concurrent callers); release the
+        # reservation on any failure so a not-found / non-resumable run does
+        # not wedge the orchestrator.
+        try:
+            run = _validate_resumable(await self._run_repo.get(run_id), run_id)
             now = datetime.now(UTC)
             resumed = run.model_copy(
                 update={
@@ -201,20 +235,25 @@ class FineTuneOrchestrator:
                 },
             )
             await self._run_repo.save(resumed)
-            self._current_run = resumed
-            logger.info(
-                MEMORY_FINE_TUNE_STARTED,
-                run_id=run_id,
-                resumed=True,
-                stages_completed=run.stages_completed,
-            )
-
-            self._cancellation = CancellationToken()
-            self._current_task = asyncio.create_task(
-                self._execute_pipeline(resumed),
-            )
-            self._current_task.add_done_callback(self._on_task_done)
-            return resumed
+            async with self._lifecycle_lock:
+                self._current_run = resumed
+                self._cancellation = CancellationToken()
+                self._current_task = asyncio.create_task(
+                    self._execute_pipeline(resumed),
+                )
+                self._current_task.add_done_callback(self._on_task_done)
+                self._starting = False
+        except BaseException:
+            async with self._lifecycle_lock:
+                self._starting = False
+            raise
+        logger.info(
+            MEMORY_FINE_TUNE_STARTED,
+            run_id=run_id,
+            resumed=True,
+            stages_completed=run.stages_completed,
+        )
+        return resumed
 
     async def cancel(self) -> None:
         """Cancel the active pipeline run and wait for it to stop.
@@ -223,12 +262,17 @@ class FineTuneOrchestrator:
         task for up to 30 seconds. If the task does not stop in
         time, the method returns anyway.
         """
-        async with self._op_lock:
+        async with self._lifecycle_lock:
             if self._cancellation is not None:
                 self._cancellation.cancel()
                 logger.info(MEMORY_FINE_TUNE_CANCELLED)
             task = self._current_task
-        # Await outside the lock so pipeline can complete.
+        # Drain OUTSIDE the lifecycle lock. While the task is not yet
+        # done ``is_running`` stays True, so a racing start()/resume()
+        # still rejects with FineTuneRunActiveError -- there is no window
+        # where the lock would need to be held. Holding it across the
+        # (up to 30s) drain would needlessly block every concurrent
+        # lifecycle call for the whole timeout.
         if task is not None and not task.done():
             try:
                 async with asyncio.timeout(_CANCEL_TIMEOUT_SEC):

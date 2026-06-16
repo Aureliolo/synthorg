@@ -42,7 +42,7 @@ class RollbackMutationDeniedError(SelfImprovementError):
 
     default_message: ClassVar[str] = "Rollback mutation denied"
     error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
-    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.ROLLBACK_MUTATION_DENIED
     status_code: ClassVar[int] = 409
 
 

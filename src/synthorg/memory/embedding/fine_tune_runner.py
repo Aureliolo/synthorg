@@ -51,7 +51,7 @@ _MAX_TCP_PORT: Final[int] = 65535
 _MAX_LOGGED_ENV_CHARS: Final[int] = 64
 
 
-def _resolve_health_port() -> int:
+def resolve_health_port() -> int:
     """Resolve the HTTP health server port from env or default.
 
     Reads ``SYNTHORG_FINE_TUNE_HEALTH_PORT``; falls back to
@@ -185,7 +185,7 @@ def _start_health_server() -> http.server.HTTPServer | None:
     Returns:
         The server instance, or ``None`` if the port is unavailable.
     """
-    port = _resolve_health_port()
+    port = resolve_health_port()
     try:
         server = http.server.HTTPServer(("0.0.0.0", port), _HealthHandler)  # noqa: S104
     except OSError:

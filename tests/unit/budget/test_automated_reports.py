@@ -6,15 +6,17 @@ import pytest
 
 from synthorg.budget.automated_reports import (
     AutomatedReportService,
+    _build_performance_report,
     compute_period_range,
 )
 from synthorg.budget.config import BudgetConfig
+from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.budget.report_config import ReportPeriod
 from synthorg.budget.reports import ReportGenerator
 from synthorg.budget.risk_config import RiskBudgetConfig
 from synthorg.budget.risk_tracker import RiskTracker
 from synthorg.budget.tracker import CostTracker
-from tests.unit.budget.conftest import make_risk_record
+from tests.unit.budget.conftest import make_cost_record, make_risk_record
 
 
 def _make_service(
@@ -37,6 +39,31 @@ def _make_service(
         cost_tracker=cost_tracker,
         risk_tracker=risk_tracker,
     )
+
+
+@pytest.mark.unit
+class TestBuildPerformanceReportCurrency:
+    """``_build_performance_report`` rejects mixed-currency cost input."""
+
+    def test_uniform_currency_aggregates(self) -> None:
+        now = datetime(2026, 4, 4, 12, 0, tzinfo=UTC)
+        cost_records = (
+            make_cost_record(agent_id="alice", cost=0.10, currency="USD"),
+            make_cost_record(agent_id="bob", cost=0.20, currency="USD"),
+        )
+        report = _build_performance_report((), cost_records, (), now)
+        assert report.generated_at == now
+
+    def test_mixed_currency_raises(self) -> None:
+        """Two agents billed in different currencies must not blend into
+        a single meaningless ``total_cost``."""
+        now = datetime(2026, 4, 4, 12, 0, tzinfo=UTC)
+        cost_records = (
+            make_cost_record(agent_id="alice", cost=0.10, currency="USD"),
+            make_cost_record(agent_id="bob", cost=0.20, currency="EUR"),
+        )
+        with pytest.raises(MixedCurrencyAggregationError):
+            _build_performance_report((), cost_records, (), now)
 
 
 @pytest.mark.unit

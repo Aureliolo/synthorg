@@ -8,7 +8,7 @@ import asyncio
 import contextlib
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.task_engine_apply import dispatch as _dispatch_mutation
@@ -43,6 +43,13 @@ if TYPE_CHECKING:
     from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
+
+# After this many CONSECUTIVE ``_process_one`` failures the processing
+# loop escalates from per-mutation WARNING to a loud ERROR carrying the
+# run length, so a programming error that turns every mutation into an
+# ``internal`` response is alertable instead of an invisible stream of
+# redacted warnings.
+_MAX_CONSECUTIVE_PROCESSING_FAILURES: Final[int] = 5
 
 
 @dataclass
@@ -191,6 +198,7 @@ class TaskEngineLoopsMixin:
                 failure.
             RecursionError: Same path as ``MemoryError``.
         """
+        consecutive_failures = 0
         while self._running or not self._queue.empty():
             try:
                 envelope = await asyncio.wait_for(
@@ -201,6 +209,7 @@ class TaskEngineLoopsMixin:
                 continue
             try:
                 await self._process_one(envelope)
+                consecutive_failures = 0
             except (MemoryError, RecursionError) as exc:
                 if not envelope.future.done():
                     envelope.future.set_exception(exc)
@@ -218,12 +227,27 @@ class TaskEngineLoopsMixin:
                         envelope.future.exception()
                 raise
             except Exception as exc:  # noqa: BLE001 -- processing-loop boundary
+                consecutive_failures += 1
                 log_exception_redacted(
                     logger,
                     TASK_ENGINE_LOOP_ERROR,
                     exc,
                     reason="Unhandled exception in processing loop",
+                    consecutive_failure_count=consecutive_failures,
                 )
+                if consecutive_failures >= _MAX_CONSECUTIVE_PROCESSING_FAILURES:
+                    # A sustained run of failures means the loop is wedged
+                    # converting every mutation into an ``internal`` error
+                    # rather than a one-off bad request. Escalate to ERROR
+                    # so monitoring can alert; the loop keeps draining so
+                    # queued callers still get a (failed) response instead
+                    # of hanging forever on an aborted loop.
+                    logger.error(
+                        TASK_ENGINE_LOOP_ERROR,
+                        reason="processing loop wedged on consecutive failures",
+                        consecutive_failure_count=consecutive_failures,
+                        threshold=_MAX_CONSECUTIVE_PROCESSING_FAILURES,
+                    )
                 if not envelope.future.done():
                     envelope.future.set_result(
                         TaskMutationResult(

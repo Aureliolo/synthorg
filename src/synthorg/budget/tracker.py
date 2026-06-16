@@ -39,6 +39,8 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.budget import (
     BUDGET_AGENT_COST_QUERIED,
+    BUDGET_CLAIM_DEDUP_LOOKUP_FAILED,
+    BUDGET_CLAIM_DEDUP_MARK_FAILED,
     BUDGET_DEPARTMENT_RESOLVE_FAILED,
     BUDGET_MIXED_CURRENCY_REJECTED,
     BUDGET_PENDING_RECORD_DRAIN_UNEXPECTED,
@@ -60,6 +62,9 @@ from synthorg.observability.metrics_hub import record_budget_query
 from synthorg.persistence.project_cost_aggregate_protocol import (
     ProjectCostAggregateRepository,
 )
+from synthorg.persistence.project_cost_claim_seen_protocol import (
+    ProjectCostClaimSeenRepository,
+)
 
 logger = get_logger(__name__)
 
@@ -75,6 +80,12 @@ _AUTO_PRUNE_THRESHOLD: Final[int] = 100_000
 #: while keeping the LRU footprint bounded so a misbehaving caller
 #: spamming unique ``claim_id`` values cannot grow it without limit.
 _DEFAULT_CLAIM_LRU_CAPACITY: Final[int] = 10_000
+
+#: Default TTL for a durable cost-claim dedup row. The row only needs to
+#: outlive the maximum redelivery / restart-replay horizon; 7 days
+#: comfortably covers a JetStream redelivery window plus an extended
+#: container outage while letting ``prune_expired`` reclaim stale rows.
+_DEFAULT_CLAIM_SEEN_TTL_SECONDS: Final[float] = 604800.0
 
 
 class ProviderUsageSummary(NamedTuple):
@@ -119,6 +130,8 @@ class CostTracker(CostTrackerSummaryMixin):
         department_resolver: Callable[[str], str | None] | None = None,
         auto_prune_threshold: int = _AUTO_PRUNE_THRESHOLD,
         project_cost_repo: ProjectCostAggregateRepository | None = None,
+        claim_seen_repo: ProjectCostClaimSeenRepository | None = None,
+        claim_seen_ttl_seconds: float = _DEFAULT_CLAIM_SEEN_TTL_SECONDS,
         claim_lru_capacity: int = _DEFAULT_CLAIM_LRU_CAPACITY,
         clock: Clock | None = None,
     ) -> None:
@@ -127,6 +140,9 @@ class CostTracker(CostTrackerSummaryMixin):
             raise ValueError(msg)
         if claim_lru_capacity < 1:
             msg = f"claim_lru_capacity must be >= 1, got {claim_lru_capacity}"
+            raise ValueError(msg)
+        if claim_seen_ttl_seconds <= 0:
+            msg = f"claim_seen_ttl_seconds must be > 0, got {claim_seen_ttl_seconds}"
             raise ValueError(msg)
         self._records: list[CostRecord] = []
         # Defer Lock construction until the first async method runs so
@@ -139,6 +155,8 @@ class CostTracker(CostTrackerSummaryMixin):
         self._department_resolver = department_resolver
         self._auto_prune_threshold = auto_prune_threshold
         self._project_cost_repo = project_cost_repo
+        self._claim_seen_repo = claim_seen_repo
+        self._claim_seen_ttl_seconds = claim_seen_ttl_seconds
         self._clock: Clock = clock or SystemClock()
         # Strong references to in-flight background recording tasks
         # scheduled by the cost-recording chokepoint. Owned by the
@@ -164,6 +182,7 @@ class CostTracker(CostTrackerSummaryMixin):
             has_budget_config=budget_config is not None,
             has_department_resolver=department_resolver is not None,
             has_project_cost_repo=project_cost_repo is not None,
+            has_claim_seen_repo=claim_seen_repo is not None,
             claim_lru_capacity=claim_lru_capacity,
         )
 
@@ -190,6 +209,24 @@ class CostTracker(CostTrackerSummaryMixin):
             Budget config if set, else ``None``.
         """
         return self._budget_config
+
+    def attach_durable_repos(
+        self,
+        *,
+        project_cost_repo: ProjectCostAggregateRepository,
+        claim_seen_repo: ProjectCostClaimSeenRepository,
+    ) -> None:
+        """Attach the durable project-cost write + dedup repos post-connect.
+
+        The tracker is constructed at the synchronous construction phase
+        before persistence is connected, so the durable repos are wired
+        here once a backend is available. Called once at boot before the
+        app serves traffic, so the plain attribute assignment is safe
+        (single-threaded, pre-traffic) without the hot-swap lock the
+        provider-registry seams use.
+        """
+        self._project_cost_repo = project_cost_repo
+        self._claim_seen_repo = claim_seen_repo
 
     async def record(self, cost_record: CostRecord) -> None:
         """Append a cost record.
@@ -290,12 +327,64 @@ class CostTracker(CostTrackerSummaryMixin):
                 return
             self._inflight_claims.add(cost_record.claim_id)
 
+        # Durable restart-survival guard. The in-memory LRU above is
+        # empty after a crash/OOM/container restart, so a JetStream
+        # redelivery of an already-billed record would otherwise pass
+        # the memory check and re-increment the durable aggregate. The
+        # durable store survives the restart: a hit here means the
+        # claim was already applied in a prior process, so skip the
+        # increment but promote the claim to the in-memory LRU so the
+        # next same-process redelivery short-circuits without a DB read.
+        # The in-flight reservation is held across this DB read, so any
+        # failure or cancellation must release it -- otherwise the claim_id
+        # stays pinned in ``_inflight_claims`` forever and every retry is
+        # falsely deduped. ``except Exception`` would miss CancelledError
+        # (timeout / shutdown), so catch BaseException and re-raise.
+        try:
+            already_billed = await self._durable_claim_already_billed(cost_record)
+        except BaseException:
+            async with self._get_lock():
+                self._inflight_claims.discard(cost_record.claim_id)
+            raise
+        if already_billed:
+            async with self._get_lock():
+                self._inflight_claims.discard(cost_record.claim_id)
+                self._promote_seen_claim(cost_record.claim_id)
+            logger.info(
+                BUDGET_RECORD_DEDUPED,
+                claim_id=cost_record.claim_id,
+                agent_id=cost_record.agent_id,
+                task_id=cost_record.task_id,
+                provider=cost_record.provider,
+                model=cost_record.model,
+                cost=cost_record.cost,
+                reason="durable",
+            )
+            return
+
         # Run the durable aggregate update OUTSIDE the lock -- DB I/O
         # must not block concurrent in-memory readers/writers. Any
         # failure releases the in-flight reservation so a retry with
         # the same claim_id is not falsely deduped.
         try:
             await self._update_project_aggregate(cost_record)
+        except BaseException:
+            async with self._get_lock():
+                self._inflight_claims.discard(cost_record.claim_id)
+            raise
+
+        # Record the durable dedup row AFTER a successful increment so a
+        # later redelivery (lost ack, post-restart replay) observes it
+        # and skips re-billing. Best-effort and fail-open: a write
+        # failure logs but does not roll back the increment (the
+        # in-memory LRU still guards same-process duplicates), mirroring
+        # the aggregate path's best-effort contract. The reservation is
+        # still held here, so a cancellation crossing this await must
+        # release it -- otherwise the claim_id stays pinned and a retry
+        # is falsely deduped (``except Exception`` would miss
+        # CancelledError, so catch BaseException).
+        try:
+            await self._mark_durable_claim_billed(cost_record)
         except BaseException:
             async with self._get_lock():
                 self._inflight_claims.discard(cost_record.claim_id)
@@ -309,15 +398,88 @@ class CostTracker(CostTrackerSummaryMixin):
             # in ``_inflight_claims`` are untouched.
             self._inflight_claims.discard(cost_record.claim_id)
             self._records.append(cost_record)
-            self._seen_claims[cost_record.claim_id] = None
-            self._seen_claims.move_to_end(cost_record.claim_id)
-            while len(self._seen_claims) > self._claim_lru_capacity:
-                self._seen_claims.popitem(last=False)
+            self._promote_seen_claim(cost_record.claim_id)
             logger.info(
                 BUDGET_RECORD_ADDED,
                 agent_id=cost_record.agent_id,
                 model=cost_record.model,
                 cost=cost_record.cost,
+            )
+
+    def _promote_seen_claim(self, claim_id: str) -> None:
+        """Insert/refresh ``claim_id`` in the bounded in-memory dedup LRU.
+
+        Caller holds ``_lock``. Trims the head on capacity overflow so a
+        misbehaving caller spamming unique claim ids cannot grow the LRU
+        without bound; in-flight reservations live in a separate set so
+        the trim never evicts a still-running claim.
+        """
+        self._seen_claims[claim_id] = None
+        self._seen_claims.move_to_end(claim_id)
+        while len(self._seen_claims) > self._claim_lru_capacity:
+            self._seen_claims.popitem(last=False)
+
+    async def _durable_claim_already_billed(self, cost_record: CostRecord) -> bool:
+        """Return ``True`` if the durable store already recorded this claim.
+
+        Fail-open: a lookup failure returns ``False`` so a transient DB
+        blip never blocks a legitimate first record (the in-memory LRU
+        still guards same-process duplicates). Only consulted when a
+        durable increment would actually happen (project + repo present).
+
+        Returns:
+            ``True`` if a durable dedup row exists for the claim.
+        """
+        if (
+            self._claim_seen_repo is None
+            or self._project_cost_repo is None
+            or cost_record.project_id is None
+        ):
+            return False
+        try:
+            return await self._claim_seen_repo.has_seen(
+                claim_id=cost_record.claim_id,
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                BUDGET_CLAIM_DEDUP_LOOKUP_FAILED,
+                claim_id=cost_record.claim_id,
+                project_id=cost_record.project_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return False
+
+    async def _mark_durable_claim_billed(self, cost_record: CostRecord) -> None:
+        """Record the durable dedup row after a successful increment.
+
+        Best-effort and fail-open: a write failure logs at WARNING but is
+        swallowed so it never surfaces to the caller or rolls back the
+        already-applied increment, mirroring the aggregate path's
+        best-effort contract.
+        """
+        if (
+            self._claim_seen_repo is None
+            or self._project_cost_repo is None
+            or cost_record.project_id is None
+        ):
+            return
+        try:
+            await self._claim_seen_repo.mark_seen(
+                claim_id=cost_record.claim_id,
+                project_id=cost_record.project_id,
+                now=self._clock.now(),
+                ttl_seconds=self._claim_seen_ttl_seconds,
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                BUDGET_CLAIM_DEDUP_MARK_FAILED,
+                claim_id=cost_record.claim_id,
+                project_id=cost_record.project_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     async def prune_expired(self, *, now: datetime | None = None) -> int:

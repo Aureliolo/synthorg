@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
-import { useNavigate } from 'react-router'
+import { useEffect, useMemo } from 'react'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
@@ -7,7 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import type { WizardMode } from '@/stores/setup-wizard'
 import { resolveAgentModels } from '@/utils/setup-validation'
-import { useClearStepRevalidationOnMount, useStepCompletionSync } from './_hooks'
+import { useClearStepRevalidationOnMount, useGoToStep, useStepCompletionSync } from './_hooks'
 import { MiniOrgChart } from './MiniOrgChart'
 import { SetupAgentCard } from './SetupAgentCard'
 import { Users } from 'lucide-react'
@@ -145,7 +144,7 @@ function useAgentsStepController(): AgentsStepController {
   const updateAgentModel = useSetupWizardStore((s) => s.updateAgentModel)
   const randomizeAgentName = useSetupWizardStore((s) => s.randomizeAgentName)
   const updateAgentPersonality = useSetupWizardStore((s) => s.updateAgentPersonality)
-  const navigate = useNavigate()
+  const goToProvidersStep = useGoToStep('providers')
 
   // Fetch agents if not already loaded (e.g., direct URL navigation)
   useEffect(() => {
@@ -176,10 +175,6 @@ function useAgentsStepController(): AgentsStepController {
   const handleModelChange = updateAgentModel
   const handleRandomizeName = randomizeAgentName
   const handlePersonalityChange = updateAgentPersonality
-
-  const goToProvidersStep = useCallback(() => {
-    void navigate('/setup/providers')
-  }, [navigate])
 
   // Detect agents whose model_provider / model_id no longer resolves against
   // the current providers map (the operator removed the provider, swapped the

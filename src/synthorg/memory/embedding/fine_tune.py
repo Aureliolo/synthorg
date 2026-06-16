@@ -404,13 +404,13 @@ async def generate_training_data(  # noqa: PLR0913
     Generate synthetic query-document pairs from source documents.
     No manual annotation required.
 
-    When no ``llm_provider`` is available, generates simple
-    extractive queries from chunk content.
+    Always generates simple extractive queries from chunk content.
 
     Args:
         source_dir: Directory containing org documents.
         output_dir: Directory to write training data.
-        llm_provider: Optional LLM provider for generation.
+        llm_provider: Reserved for a future LLM-backed query path; currently
+            unused -- passing it does not change the generated output.
         validation_split: Fraction held out for evaluation.
         progress_callback: Called with progress 0.0-1.0.
         cancellation: Checked between documents.
@@ -429,13 +429,18 @@ async def generate_training_data(  # noqa: PLR0913
         msg = f"No documents found in {source_dir}"
         raise ValueError(msg)
 
+    # ``llm_provider`` is reserved on the public signature for the future
+    # LLM-backed query path; the extractive generator below does not use
+    # it, so it is not threaded into ``_generate_query`` (which no longer
+    # accepts a misleading always-ignored argument).
+    _ = llm_provider
     all_pairs: list[dict[str, str]] = []
     for i, (_path, content) in enumerate(docs):
         if cancellation is not None:
             cancellation.check()
         chunks = _chunk_text(content)
         for chunk in chunks:
-            query = _generate_query(chunk, llm_provider)
+            query = _generate_query(chunk)
             all_pairs.append(
                 {"query": query, "positive_passage": chunk},
             )
@@ -449,21 +454,12 @@ async def generate_training_data(  # noqa: PLR0913
     )
 
 
-def _generate_query(
-    chunk: str,
-    llm_provider: object | None,
-) -> str:
+def _generate_query(chunk: str) -> str:
     """Generate an extractive retrieval query from a chunk.
-
-    The *llm_provider* parameter is accepted for forward compatibility
-    but is currently unused -- all queries use extractive fallback.
 
     Returns:
         Result of type ``str``.
     """
-    # LLM-based generation would go here when provider protocol
-    # is wired. For now, use extractive fallback.
-    _ = llm_provider
     sentences = chunk.split(".")
     first = sentences[0].strip() if sentences else chunk[:100]
     if not first:

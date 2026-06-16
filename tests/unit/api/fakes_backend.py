@@ -771,6 +771,7 @@ class FakePersistenceBackend(PersistenceBackend):
         self._ontology_entities_stub: AsyncMock | None = None
         self._ontology_drift_stub: AsyncMock | None = None
         self._project_cost_aggregates_stub: AsyncMock | None = None
+        self._project_cost_claim_seen_stub: AsyncMock | None = None
         self._fine_tune_checkpoints_stub: AsyncMock | None = None
         self._fine_tune_runs_stub: AsyncMock | None = None
         self._meeting_cooldown_stub: AsyncMock | None = None
@@ -1229,6 +1230,22 @@ class FakePersistenceBackend(PersistenceBackend):
                 spec=ProjectCostAggregateRepository,
             )
         return self._project_cost_aggregates_stub
+
+    @override
+    @property
+    def project_cost_claim_seen(self) -> AsyncMock:
+        """Cached fake durable cost-claim dedup repository."""
+        from unittest.mock import AsyncMock
+
+        from synthorg.persistence.project_cost_claim_seen_protocol import (
+            ProjectCostClaimSeenRepository,
+        )
+
+        if self._project_cost_claim_seen_stub is None:
+            self._project_cost_claim_seen_stub = AsyncMock(
+                spec=ProjectCostClaimSeenRepository,
+            )
+        return self._project_cost_claim_seen_stub
 
     @override
     @property

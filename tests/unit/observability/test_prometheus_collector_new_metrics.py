@@ -25,9 +25,11 @@ pytestmark = pytest.mark.unit
 def _seed_tool_name_snapshot() -> None:
     """Seed the prometheus label snapshot per test.
 
-    ``record_tool_invocation`` validates ``tool_name`` against the
-    snapshot maintained by ``PrometheusCollector.refresh()``; these
-    unit tests never invoke ``refresh`` so we seed manually. The
+    ``record_tool_invocation`` validates ``tool_name`` and
+    ``record_provider_usage`` / ``record_provider_error`` fold the
+    ``provider`` label against the snapshot maintained by
+    ``PrometheusCollector.refresh()``; these unit tests never invoke
+    ``refresh`` so we seed both sets manually. The
     top-level ``tests/conftest.py`` autouse fixture resets the
     snapshot before AND after every test, so seeding here is
     function-scoped (a session-scoped seed would be wiped
@@ -39,6 +41,8 @@ def _seed_tool_name_snapshot() -> None:
         _LabelSnapshot(
             tool_names=frozenset({"web_search", "calculator", "t"}),
             tool_names_seeded=True,
+            providers=frozenset({"example-provider"}),
+            providers_seeded=True,
         ),
     )
 

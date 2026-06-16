@@ -135,6 +135,9 @@ from synthorg.persistence.postgres.principle_override_repo import (
 from synthorg.persistence.postgres.project_cost_aggregate_repo import (
     PostgresProjectCostAggregateRepository,
 )
+from synthorg.persistence.postgres.project_cost_claim_seen_repo import (
+    PostgresProjectCostClaimSeenRepository,
+)
 from synthorg.persistence.postgres.provider_audit_repo import (
     PostgresProviderAuditRepo,
 )
@@ -164,6 +167,9 @@ from synthorg.persistence.principle_override_protocol import (
 from synthorg.persistence.project_brain_protocol import ProjectBrainRepository
 from synthorg.persistence.project_cost_aggregate_protocol import (
     ProjectCostAggregateRepository,
+)
+from synthorg.persistence.project_cost_claim_seen_protocol import (
+    ProjectCostClaimSeenRepository,
 )
 from synthorg.persistence.project_environment_protocol import (
     ProjectEnvironmentRepository,
@@ -268,6 +274,7 @@ class _PostgresBackendRepositoryAccessors:
     _refresh_tokens: PostgresRefreshTokenRepository | None
     _idempotency_keys: PostgresIdempotencyRepository | None
     _seen_claims: PostgresSeenClaimsRepository | None
+    _project_cost_claim_seen: PostgresProjectCostClaimSeenRepository | None
     _principle_overrides: PostgresPrincipleOverrideRepository | None
     _mcp_installations: PostgresMcpInstallationRepository | None
     _custom_rules: PostgresCustomRuleRepository | None
@@ -932,6 +939,18 @@ class _PostgresBackendRepositoryAccessors:
         return self._require_connected(
             self._seen_claims,
             "seen_claims",
+        )
+
+    @property
+    def project_cost_claim_seen(self) -> ProjectCostClaimSeenRepository:
+        """Repository for durable project-cost-claim dedup (restart-safe billing).
+
+        Returns:
+            Result of type ``ProjectCostClaimSeenRepository``.
+        """
+        return self._require_connected(
+            self._project_cost_claim_seen,
+            "project_cost_claim_seen",
         )
 
     @property

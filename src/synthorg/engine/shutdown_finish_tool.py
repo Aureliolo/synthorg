@@ -89,6 +89,10 @@ class FinishCurrentToolStrategy:
         """Signal that a graceful shutdown has been requested."""
         self._shutdown_event.set()
 
+    def clear_shutdown(self) -> None:
+        """Reopen the drain gate for a reused strategy (lifespan re-entry)."""
+        self._shutdown_event.clear()
+
     def is_shutting_down(self) -> bool:
         """Return ``True`` when shutdown has been requested."""
         return self._shutdown_event.is_set()

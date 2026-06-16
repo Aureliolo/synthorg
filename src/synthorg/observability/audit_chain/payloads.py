@@ -43,6 +43,12 @@ class AuditChainEventPayload(BaseModel):
         action_type: Optional action-type taxonomy value.
         error: Optional redacted error description (already routed
             through :func:`safe_error_description` upstream).
+        verdict: Optional security/guardrail verdict (e.g. ``allow`` /
+            ``deny`` / ``escalate``) so a chained decision event records
+            what was decided, not merely that a decision happened.
+        model: Optional model identifier for provider-attributed audit
+            events, so the chained record carries which model produced
+            the audited output.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -59,6 +65,8 @@ class AuditChainEventPayload(BaseModel):
     resource: NotBlankStr | None = None
     action_type: NotBlankStr | None = None
     error: str | None = None
+    verdict: NotBlankStr | None = None
+    model: NotBlankStr | None = None
 
 
 __all__ = ["AuditChainEventPayload"]

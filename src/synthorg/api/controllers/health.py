@@ -30,7 +30,7 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.api import API_HEALTH_CHECK
-from synthorg.persistence.state import PersistenceStateSlice, persistence_of
+from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.telemetry.state import TelemetryStateSlice
 
@@ -168,6 +168,39 @@ async def _probe_service(
         return False
 
 
+async def _probe_persistence(app_state: AppState) -> bool | None:
+    """Probe persistence, distinguishing absent-by-design from absent-by-failure.
+
+    A connected backend is health-checked normally. A *missing* backend
+    that startup intended to wire (``persistence_expected``) is reported
+    UNAVAILABLE (``False``), not ``None``: a configured-but-absent backend
+    is a real failure, where the previous behaviour silently treated it
+    the same as a deliberately persistence-less dev run and reported
+    ready.
+
+    Returns:
+        ``True``/``False`` from the health-check, ``False`` when expected
+        but absent, or ``None`` when persistence is deliberately
+        unconfigured.
+    """
+    slice_ = app_state.slice(PersistenceStateSlice)
+    backend = slice_.backend
+    if backend is not None:
+        return await _probe_service(
+            configured=True,
+            probe=backend.health_check,
+            component="persistence",
+        )
+    if slice_.persistence_expected:
+        logger.warning(
+            API_HEALTH_CHECK,
+            component="persistence",
+            error="persistence expected but no backend is connected",
+        )
+        return False
+    return None
+
+
 def _resolve_telemetry_status(app_state: AppState) -> TelemetryStatus:
     """Read the telemetry collector and map to a public status.
 
@@ -222,22 +255,23 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
 
     Returns:
         The full :class:`ReadinessStatus` (``unavailable`` with unknown
-        components if the probe TaskGroup raises a non-fatal error).
+        components if the probe TaskGroup raises a non-fatal error or
+        exceeds ``api.readiness_probe_timeout_seconds``).
 
     Raises:
         BaseExceptionGroup: Re-raised only for fatal signals
             (MemoryError / RecursionError / CancelledError).
     """
+    probe_timeout = app_state.config.api.readiness_probe_timeout_seconds
     try:
-        async with asyncio.TaskGroup() as tg:
-            persistence_task = tg.create_task(
-                _probe_service(
-                    configured=app_state.slice(PersistenceStateSlice).backend
-                    is not None,
-                    probe=lambda: persistence_of(app_state).health_check(),
-                    component="persistence",
-                ),
-            )
+        # Bound the whole dependency fan-out: a single hung probe (a
+        # wedged health_check that never returns) must yield a 503
+        # ``unavailable`` verdict within the probe budget rather than
+        # stalling /readyz past the orchestrator's readinessProbe
+        # timeout. ``asyncio.timeout`` cancels the TaskGroup on expiry;
+        # the resulting ``TimeoutError`` arrives wrapped in the group.
+        async with asyncio.timeout(probe_timeout), asyncio.TaskGroup() as tg:
+            persistence_task = tg.create_task(_probe_persistence(app_state))
             bus_task = tg.create_task(
                 _probe_service(
                     configured=app_state.slice(CommunicationStateSlice).message_bus
@@ -264,6 +298,19 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
                     component="providers",
                 ),
             )
+    except TimeoutError:
+        # The probe fan-out exceeded the budget; ``asyncio.timeout``
+        # cancelled the TaskGroup and surfaced a bare ``TimeoutError``.
+        # A timed-out probe is an unavailable verdict, not a 500.
+        logger.warning(
+            API_HEALTH_CHECK,
+            component="readiness",
+            status=ReadinessOutcome.UNAVAILABLE.value,
+            error="readiness probe timed out",
+            error_type="TimeoutError",
+            timeout_seconds=probe_timeout,
+        )
+        return _unavailable_status(app_state)
     except BaseExceptionGroup as group:
         # Preserve fatal signals (MemoryError / RecursionError /
         # CancelledError) so the process supervisor still sees them;

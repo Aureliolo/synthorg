@@ -271,17 +271,71 @@ class TestOntologyDriftReportRepository:
         rows = await backend.ontology_drift.get_latest(NotBlankStr("Repeated"), limit=2)
         assert len(rows) <= 2
 
-    async def test_query_not_implemented(self, backend: PersistenceBackend) -> None:
-        # The generic filtered query / retention purge are not
-        # implemented; they raise rather than silently masking the gap.
+    async def test_query_returns_newest_first(
+        self, backend: PersistenceBackend
+    ) -> None:
         from synthorg.persistence.ontology_protocol import (
             DriftReportFilterSpec,
         )
 
-        with pytest.raises(NotImplementedError):
-            await backend.ontology_drift.query(DriftReportFilterSpec())
-        with pytest.raises(NotImplementedError):
-            await backend.ontology_drift.purge_before(datetime(2026, 1, 1, tzinfo=UTC))
+        for idx in range(3):
+            await backend.ontology_drift.append(
+                _drift_report(f"QueryEnt{idx}", divergence=idx / 10),
+            )
+        rows = await backend.ontology_drift.query(DriftReportFilterSpec())
+        names = [r.entity_name for r in rows]
+        # Append-only contract: newest insertion first.
+        assert names.index("QueryEnt2") < names.index("QueryEnt0")
+
+    async def test_query_pagination(self, backend: PersistenceBackend) -> None:
+        from synthorg.persistence.ontology_protocol import (
+            DriftReportFilterSpec,
+        )
+
+        for idx in range(4):
+            await backend.ontology_drift.append(
+                _drift_report(f"PageEnt{idx}", divergence=idx / 10),
+            )
+        first = await backend.ontology_drift.query(
+            DriftReportFilterSpec(), limit=2, offset=0
+        )
+        second = await backend.ontology_drift.query(
+            DriftReportFilterSpec(), limit=2, offset=2
+        )
+        assert len(first) == 2
+        assert len(second) == 2
+        first_names = {r.entity_name for r in first}
+        second_names = {r.entity_name for r in second}
+        assert first_names.isdisjoint(second_names)
+
+    async def test_purge_before_removes_old_reports(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.ontology_drift.append(_drift_report("Prunable"))
+        # A far-future threshold strictly newer than every stored row
+        # removes the lot; the return value reports the rows deleted.
+        future = datetime(2999, 1, 1, tzinfo=UTC)
+        removed = await backend.ontology_drift.purge_before(future)
+        assert removed >= 1
+        remaining = await backend.ontology_drift.get_latest(NotBlankStr("Prunable"))
+        assert remaining == ()
+
+    async def test_purge_before_keeps_newer_reports(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.ontology_drift.append(_drift_report("Kept"))
+        # A past threshold older than every stored row deletes nothing.
+        past = datetime(2000, 1, 1, tzinfo=UTC)
+        removed = await backend.ontology_drift.purge_before(past)
+        assert removed == 0
+        remaining = await backend.ontology_drift.get_latest(NotBlankStr("Kept"))
+        assert len(remaining) >= 1
+
+    async def test_purge_before_rejects_naive_threshold(
+        self, backend: PersistenceBackend
+    ) -> None:
+        with pytest.raises(ValueError, match="timezone-aware"):
+            await backend.ontology_drift.purge_before(datetime(2026, 1, 1))  # noqa: DTZ001
 
     async def test_get_latest_missing_entity_empty(
         self, backend: PersistenceBackend

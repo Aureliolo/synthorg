@@ -35,6 +35,8 @@ _GOLDEN_PAYLOAD: dict[str, object] = {
     "resource": "user:user-001",
     "action_type": "auth:login",
     "error": "[REDACTED]",
+    "verdict": "allow",
+    "model": "example-large-001",
 }
 
 # Computed once via the same json.dumps call sink.emit() uses; this
@@ -48,9 +50,11 @@ _GOLDEN_JSON_BYTES: bytes = (
     b'"correlation_id": "corr-1234", "error": "[REDACTED]", '
     b'"event": "security.auth.login", "expected_hash": '
     b'"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", '
-    b'"level": "INFO", "module": "auth.controller", '
+    b'"level": "INFO", "model": "example-large-001", '
+    b'"module": "auth.controller", '
     b'"principal": "user-001", "resource": "user:user-001", '
-    b'"timestamp": 1714694400.0, "tool_name": "synthorg_auth_login"}'
+    b'"timestamp": 1714694400.0, "tool_name": "synthorg_auth_login", '
+    b'"verdict": "allow"}'
 )
 # Hard-coded SHA-256 hex digest of _GOLDEN_JSON_BYTES. Pinned as a
 # literal (NOT recomputed) so a coordinated accidental change to both
@@ -58,7 +62,7 @@ _GOLDEN_JSON_BYTES: bytes = (
 # silently. Regenerating this value requires explicit reviewer
 # sign-off because a chain-hash change invalidates every previously
 # signed audit entry.
-_GOLDEN_HASH: str = "f07d69ba3008a66e129e6e9fb11a71aed53c715021ab660bb471c1c140cdfd72"
+_GOLDEN_HASH: str = "823c1dfe1c899e6ab87251ae0a9103bb3ab8070314d97e6353113cf4be4ea316"
 
 
 @pytest.mark.unit

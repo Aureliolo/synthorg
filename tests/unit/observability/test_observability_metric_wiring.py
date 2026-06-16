@@ -16,6 +16,7 @@ test modules; this module covers the observability-layer
 invariants that the engine tests rely on.
 """
 
+from collections.abc import Iterator
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -32,6 +33,8 @@ from synthorg.observability.events.metrics import (
 from synthorg.observability.prometheus_collector import PrometheusCollector
 from synthorg.observability.prometheus_labels import (
     _LabelSnapshot,
+    _reset_label_snapshot_for_tests,
+    _reset_mcp_tool_names_for_tests,
     is_known_agent_id,
     register_mcp_tool_names,
     update_label_snapshot,
@@ -317,6 +320,19 @@ def test_record_settings_mutation_rejects_unknown_namespace() -> None:
 # -- record_mcp_handler_outcome ----------------------------------------------
 
 
+@pytest.fixture
+def _seed_mcp_tool_names() -> Iterator[None]:
+    """Register the tool names these tests use so the fail-closed
+    ``normalize_mcp_tool_label`` emits them verbatim instead of folding
+    every label to ``__unknown__`` (bootstrap mode)."""
+    register_mcp_tool_names(frozenset({"synthorg_messages_get", "synthorg_tasks_get"}))
+    try:
+        yield
+    finally:
+        _reset_mcp_tool_names_for_tests()
+
+
+@pytest.mark.usefixtures("_seed_mcp_tool_names")
 def test_record_mcp_handler_outcome_increments_counter_and_observes_histogram() -> None:
     from synthorg.observability.events.mcp import MCP_HANDLER_OUTCOME
 
@@ -352,6 +368,22 @@ def test_record_mcp_handler_outcome_increments_counter_and_observes_histogram() 
     )
 
 
+def test_record_mcp_handler_outcome_folds_unknown_tool_in_bootstrap() -> None:
+    """Regression (audit 132): with no registered tool names (bootstrap),
+    a caller-supplied tool label MUST fold to ``__unknown__`` rather than
+    reaching Prometheus verbatim and exploding cardinality."""
+    _reset_mcp_tool_names_for_tests()
+    collector = PrometheusCollector()
+    collector.record_mcp_handler_outcome(
+        tool="attacker_supplied_" + "x" * 200,
+        outcome="success",
+        duration_sec=0.01,
+    )
+    counter_samples = _samples(collector, "synthorg_mcp_handler_outcomes")
+    tool_labels = {labels["tool"] for labels, _ in counter_samples}
+    assert tool_labels == {"__unknown__"}
+
+
 def test_record_mcp_handler_outcome_rejects_unknown_outcome() -> None:
     collector = PrometheusCollector()
     with pytest.raises(ValueError, match="Unknown"):
@@ -362,6 +394,7 @@ def test_record_mcp_handler_outcome_rejects_unknown_outcome() -> None:
         )
 
 
+@pytest.mark.usefixtures("_seed_mcp_tool_names")
 @pytest.mark.parametrize(
     "outcome",
     [
@@ -391,6 +424,150 @@ def test_record_mcp_handler_outcome_records_all_error_outcomes(outcome: str) -> 
         labels == {"tool": "synthorg_tasks_get", "outcome": outcome} and value == 1.0
         for labels, value in histogram_samples
     )
+
+
+# -- record_provider_usage / record_provider_error label bounding ------------
+
+
+@pytest.fixture
+def _seed_provider_names() -> Iterator[None]:
+    """Seed the snapshot with one known provider so ``normalize_provider_label``
+    keeps it verbatim and folds everything else to ``__unknown__``."""
+    update_label_snapshot(
+        _LabelSnapshot(providers=frozenset({"example-provider"}), providers_seeded=True)
+    )
+    try:
+        yield
+    finally:
+        _reset_label_snapshot_for_tests()
+
+
+@pytest.mark.usefixtures("_seed_provider_names")
+def test_record_provider_usage_keeps_known_provider_and_model() -> None:
+    """Regression (audit 132): a registered provider plus a well-formed model
+    id reach Prometheus verbatim."""
+    collector = PrometheusCollector()
+    collector.record_provider_usage(
+        provider="example-provider",
+        model="example-large-001",
+        input_tokens=10,
+        output_tokens=5,
+        cost=0.01,
+    )
+    cost_samples = _samples(collector, "synthorg_provider_cost")
+    assert any(
+        labels == {"provider": "example-provider", "model": "example-large-001"}
+        for labels, _ in cost_samples
+    )
+
+
+@pytest.mark.usefixtures("_seed_provider_names")
+def test_record_provider_usage_folds_unknown_provider() -> None:
+    """Regression (audit 132): an unregistered provider id folds to
+    ``__unknown__`` rather than minting a permanent time-series child."""
+    collector = PrometheusCollector()
+    collector.record_provider_usage(
+        provider="attacker-" + "x" * 200,
+        model="example-medium-001",
+        input_tokens=1,
+        output_tokens=1,
+        cost=0.0,
+    )
+    cost_samples = _samples(collector, "synthorg_provider_cost")
+    providers = {labels["provider"] for labels, _ in cost_samples}
+    assert providers == {"__unknown__"}
+
+
+@pytest.mark.usefixtures("_seed_provider_names")
+def test_record_provider_usage_folds_malformed_model() -> None:
+    """Regression (audit 132): an over-long / out-of-charset model id folds to
+    ``__unknown__`` (the model label cannot be allowlisted, so a length+charset
+    cap bounds the cardinality vector)."""
+    collector = PrometheusCollector()
+    collector.record_provider_usage(
+        provider="example-provider",
+        model="model with spaces and " + "y" * 200,
+        input_tokens=1,
+        output_tokens=1,
+        cost=0.0,
+    )
+    cost_samples = _samples(collector, "synthorg_provider_cost")
+    models = {labels["model"] for labels, _ in cost_samples}
+    assert models == {"__unknown__"}
+
+
+@pytest.mark.usefixtures("_seed_provider_names")
+def test_record_provider_error_bounds_provider_and_model() -> None:
+    """Regression (audit 132): the provider-error counter bounds both the
+    provider and model labels."""
+    collector = PrometheusCollector()
+    collector.record_provider_error(
+        provider="unregistered-provider",
+        model="bad model!",
+        error_class="rate_limit",
+    )
+    error_samples = _samples(collector, "synthorg_provider_errors")
+    assert any(
+        labels["provider"] == "__unknown__" and labels["model"] == "__unknown__"
+        for labels, _ in error_samples
+    )
+
+
+@pytest.mark.usefixtures("_seed_provider_names")
+def test_record_provider_call_duration_observes_histogram() -> None:
+    """Regression (audit 05): provider call latency is captured for both
+    call types (complete recorded only a span attribute before; stream
+    recorded nothing)."""
+    collector = PrometheusCollector()
+    collector.record_provider_call_duration(
+        provider="example-provider",
+        model="example-large-001",
+        call_type="complete",
+        duration_sec=1.5,
+    )
+    samples = _samples(collector, "synthorg_provider_call_duration_seconds")
+    assert any(
+        labels
+        == {
+            "provider": "example-provider",
+            "model": "example-large-001",
+            "call_type": "complete",
+        }
+        and value == 1.0
+        for labels, value in samples
+    )
+
+
+def test_record_provider_call_duration_rejects_unknown_call_type() -> None:
+    collector = PrometheusCollector()
+    with pytest.raises(ValueError, match="Unknown"):
+        collector.record_provider_call_duration(
+            provider="p",
+            model="m",
+            call_type="bogus",
+            duration_sec=0.0,
+        )
+
+
+# -- record_autonomy_promotion -----------------------------------------------
+
+
+@pytest.mark.parametrize("outcome", ["granted", "denied"])
+def test_record_autonomy_promotion_increments_counter(outcome: str) -> None:
+    """Regression (audit 05): the autonomy-promotion workflow's grant/deny
+    decisions are now counted, not only logged."""
+    collector = PrometheusCollector()
+    collector.record_autonomy_promotion(outcome=outcome)
+    samples = _samples(collector, "synthorg_autonomy_promotion_decisions")
+    assert any(
+        labels == {"outcome": outcome} and value == 1.0 for labels, value in samples
+    )
+
+
+def test_record_autonomy_promotion_rejects_unknown_outcome() -> None:
+    collector = PrometheusCollector()
+    with pytest.raises(ValueError, match="Unknown"):
+        collector.record_autonomy_promotion(outcome="maybe")
 
 
 # -- record_budget_query -----------------------------------------------------
