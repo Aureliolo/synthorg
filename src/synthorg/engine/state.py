@@ -16,6 +16,10 @@ from synthorg._core.features import BaseFeatureStateSlice, require_service
 from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.client.models import ClientRequest
 from synthorg.engine.brownfield.models import CodebaseImportSubmission
+from synthorg.engine.classification.taxonomy_store_protocol import (
+    ErrorTaxonomyStore,
+)
+from synthorg.engine.evolution.service import EvolutionService
 from synthorg.engine.pipeline.entry.objective_adapter import (
     ObjectiveSubmission,
 )
@@ -58,6 +62,8 @@ class EngineStateSlice(BaseFeatureStateSlice):
     workflow_execution_service: WorkflowExecutionService | None = None
     subworkflow_service: SubworkflowService | None = None
     evaluation_version_service: EvaluationVersionService | None = None
+    error_taxonomy_store: ErrorTaxonomyStore | None = None
+    evolution_service: EvolutionService | None = None
     ceremony_scheduler: CeremonyScheduler | None = None
     intake_entry_adapter: WorkEntryAdapter[ClientRequest] | None = None
     objective_entry_adapter: WorkEntryAdapter[ObjectiveSubmission] | None = None

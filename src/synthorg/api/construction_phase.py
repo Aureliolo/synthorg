@@ -66,6 +66,7 @@ from synthorg.communication.conflict_resolution.escalation.registry import (
 from synthorg.communication.conflict_resolution.escalation.sweeper import (
     EscalationExpirationSweeper,
 )
+from synthorg.communication.delegation.record_store import DelegationRecordStore
 from synthorg.communication.event_stream.interrupt import InterruptStore
 from synthorg.communication.event_stream.stream import EventStreamHub
 from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
@@ -84,7 +85,10 @@ from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.security.audit import AuditLog
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
+from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import parse_int
 from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -331,7 +335,16 @@ def build_construction_services(
         approval_store=approval_store,
         autonomy_change_strategy=autonomy_change_strategy,
         notification_dispatcher=notification_dispatcher,
-        event_stream_hub=overrides.event_stream_hub or EventStreamHub(),
+        event_stream_hub=overrides.event_stream_hub
+        or EventStreamHub(
+            max_queue_size=int(
+                resolve_init_value(
+                    SettingNamespace.COMMUNICATION,
+                    "event_stream_max_queue_size",
+                    parse=parse_int,
+                ).value
+            ),
+        ),
         interrupt_store=overrides.interrupt_store or InterruptStore(),
         cursor_secret=cursor_secret,
         persistence=persistence,
@@ -348,7 +361,16 @@ def build_construction_services(
         performance_tracker=performance_tracker,
         agent_registry=agent_registry,
         training_service=overrides.training_service,
-        delegation_record_store=overrides.delegation_record_store,
+        delegation_record_store=overrides.delegation_record_store
+        or DelegationRecordStore(
+            max_records=int(
+                resolve_init_value(
+                    SettingNamespace.COMMUNICATION,
+                    "delegation_record_store_max_size",
+                    parse=parse_int,
+                ).value
+            ),
+        ),
         tool_invocation_tracker=overrides.tool_invocation_tracker,
         artifact_storage=boot.artifact_storage,
         coordinator=overrides.coordinator,

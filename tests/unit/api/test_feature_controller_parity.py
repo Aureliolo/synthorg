@@ -46,11 +46,12 @@ def _legacy_controllers() -> set[type[Controller]]:
 
     ``ALL_CONTROLLERS`` already unions ``BASE_CONTROLLERS``,
     ``INTEGRATION_CONTROLLERS``, and the ``OPTIONAL_CONTROLLERS`` classes.
-    The two a2a controllers are built inline in ``api.app`` rather than
-    listed there, so they are added explicitly. ``DemoController`` is the one
-    deliberate post-migration addition (the synthetic ``_demo`` feature's
-    discovery guard), so it joins the expected set rather than tripping the
-    extra-controller assertion.
+    The two a2a controllers are registered via ``src/synthorg/a2a/feature.py``
+    (``ControllerRegistration``) and predate the feature-manifest migration's
+    parity baseline, so they are absent from ``ALL_CONTROLLERS`` and added
+    explicitly here. ``DemoController`` is the one deliberate post-migration
+    addition (the synthetic ``_demo`` feature's discovery guard), so it joins
+    the expected set rather than tripping the extra-controller assertion.
 
     Returns:
         The full set of controller classes the legacy boot path could mount,

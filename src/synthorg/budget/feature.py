@@ -65,6 +65,9 @@ FEATURE: FeatureModule = FeatureManifest(
         "PostgresBenchmarkScoreRepository",
         "SQLiteBenchmarkScoreRepository",
         "StubBenchmarkScoreProvider",
+        "QuotaTracker",
+        "RiskTracker",
+        "CallAnalyticsService",
     ),
     depends_on=(),
 )

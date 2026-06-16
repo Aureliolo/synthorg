@@ -21,6 +21,9 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
     SECURITY_INTERCEPTOR_ERROR,
     SECURITY_OUTPUT_SCAN_ERROR,
+    SECURITY_POLICY_DECISION_DENY,
+    SECURITY_POLICY_ENGINE_ERROR,
+    SECURITY_POLICY_LOG_ONLY_DENY,
 )
 from synthorg.observability.events.tool import (
     TOOL_INVOKE_ALL_COMPLETE,
@@ -38,6 +41,7 @@ from synthorg.observability.events.tool import (
 from synthorg.observability.tracing import tool_span
 from synthorg.providers.models import ToolCall, ToolResult
 from synthorg.security.models import SecurityContext, SecurityVerdictType
+from synthorg.security.policy_engine.protocol import PolicyEngine
 from synthorg.security.protocol import SecurityInterceptionStrategy
 from synthorg.tools.html_parse_guard import HTMLParseGuard
 
@@ -86,6 +90,8 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         task_id: str | None = None,
         agent_provider_name: str | None = None,
         invocation_tracker: ToolInvocationTracker | None = None,
+        policy_engine: PolicyEngine | None = None,
+        policy_evaluation_mode: str = "log_only",
     ) -> None:
         """Initialize with a tool registry and optional checkers.
 
@@ -100,6 +106,10 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                 for cross-family LLM security evaluation.
             invocation_tracker: Optional tracker for recording
                 invocations for the activity timeline.
+            policy_engine: Optional runtime policy engine evaluated before
+                each tool call. ``None`` is a transparent pass-through.
+            policy_evaluation_mode: ``"enforce"`` blocks denied tool calls;
+                ``"log_only"`` logs the denial and proceeds.
         """
         self._registry = registry
         self._permission_checker = permission_checker
@@ -108,6 +118,8 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         self._task_id = task_id
         self._agent_provider_name = agent_provider_name
         self._invocation_tracker = invocation_tracker
+        self._policy_engine = policy_engine
+        self._policy_evaluation_mode = policy_evaluation_mode
 
         self._pending_escalations: list[EscalationInfo] = []
         self._html_guard: HTMLParseGuard | None = None
@@ -157,6 +169,66 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             content=f"Permission denied: {reason}",
             is_error=True,
         )
+
+    async def _check_policy(
+        self,
+        tool: BaseTool,
+        tool_call: ToolCall,
+    ) -> ToolResult | None:
+        """Evaluate the runtime policy engine before a tool call.
+
+        Returns ``None`` to proceed (no engine wired, an allow, or a
+        ``log_only`` deny), or a denying ``ToolResult`` when the engine
+        denies in ``enforce`` mode. A request-construction / evaluation
+        error fails open here (proceeds); ``CedarPolicyEngine`` applies its
+        own configured fail-closed policy internally.
+
+        Returns:
+            A denying ``ToolResult`` in enforce mode, otherwise ``None``.
+        """
+        if self._policy_engine is None:
+            return None
+        from synthorg.security.policy_engine.models import (  # noqa: PLC0415
+            PolicyActionRequest,
+        )
+
+        try:
+            request = PolicyActionRequest(
+                action_type="tool_invoke",
+                principal=str(self._agent_id or "unknown"),
+                resource=tool.name,
+                context={"task_id": str(self._task_id or "unknown")},
+            )
+            decision = await self._policy_engine.evaluate(request)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.error(
+                SECURITY_POLICY_ENGINE_ERROR,
+                tool_name=tool_call.name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return None
+        if decision.allow:
+            return None
+        if self._policy_evaluation_mode == "enforce":
+            logger.warning(
+                SECURITY_POLICY_DECISION_DENY,
+                tool_name=tool_call.name,
+                reason=decision.reason,
+                mode="enforce",
+            )
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                content=f"Policy denied: {decision.reason}",
+                is_error=True,
+            )
+        logger.warning(
+            SECURITY_POLICY_LOG_ONLY_DENY,
+            tool_name=tool_call.name,
+            reason=decision.reason,
+        )
+        return None
 
     def _check_sub_constraints(
         self,
@@ -546,6 +618,10 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         )
         if security_error is not None:
             return security_error
+
+        policy_error = await self._check_policy(tool_or_error, tool_call)
+        if policy_error is not None:
+            return policy_error
 
         exec_result = await self._execute_tool(
             tool_or_error,

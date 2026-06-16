@@ -17,10 +17,13 @@ from synthorg.budget.automated_reports import AutomatedReportService
 from synthorg.budget.benchmark_protocol import (
     BenchmarkScoreProvider,
 )
+from synthorg.budget.call_analytics import CallAnalyticsService
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.forecast_service import BudgetForecastService
 from synthorg.budget.forecaster import CostForecaster
 from synthorg.budget.pareto import ParetoAnalyzer
+from synthorg.budget.quota_tracker import QuotaTracker
+from synthorg.budget.risk_tracker import RiskTracker
 from synthorg.budget.tracker import CostTracker
 from synthorg.persistence.benchmark_score_protocol import (
     BenchmarkScoreRepository,
@@ -37,6 +40,9 @@ class BudgetStateSlice(BaseFeatureStateSlice):
 
     cost_tracker: CostTracker | None = None
     budget_enforcer: BudgetAffordabilityChecker | None = None
+    quota_tracker: QuotaTracker | None = None
+    risk_tracker: RiskTracker | None = None
+    call_analytics_service: CallAnalyticsService | None = None
     cost_forecaster: CostForecaster | None = None
     cost_forecast_repo: CostForecastRepository | None = None
     forecast_service: BudgetForecastService | None = None

@@ -19,9 +19,9 @@ _r.register(
         type=SettingType.STRING,
         default="hello from the demo feature",
         description=(
-            "The greeting the demo feature advertises. Present only to give"
-            " the demo namespace a registered setting; the demo service uses"
-            " a boot constant rather than reading this value."
+            "The greeting the demo feature advertises. Resolved at"
+            " construction (env > code default) and passed into the demo"
+            " service."
         ),
         group="Demo",
         level=SettingLevel.ADVANCED,

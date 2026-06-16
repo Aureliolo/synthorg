@@ -3,7 +3,14 @@
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.security import SECURITY_POLICY_ENGINE_ERROR
+from synthorg.security.policy_engine.config import build_policy_engine
+from synthorg.security.policy_engine.protocol import PolicyEngine
 from synthorg.security.state import SecurityStateSlice
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     # Genuine cycle: ``api.construction_wiring`` imports this security slice
@@ -16,12 +23,36 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
 
 
+def _build_policy_engine_or_none(deps: ConstructionDeps) -> PolicyEngine | None:
+    """Build the runtime policy engine from config (``none`` by default).
+
+    Best-effort: a policy-file read failure degrades to ``None`` (no policy
+    enforcement) rather than aborting boot. With ``engine='none'`` the result
+    is ``None`` and the tool-invoker policy seam is a transparent pass-through.
+
+    Returns:
+        The configured policy engine, or ``None`` when disabled / unavailable.
+    """
+    try:
+        return build_policy_engine(deps.effective_config.security.policy_engine)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            SECURITY_POLICY_ENGINE_ERROR,
+            context="policy_engine_build_failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None
+
+
 def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
-    """Populate the security slice (audit log, trust, autonomy strategy)."""
+    """Populate the security slice (audit log, trust, autonomy, policy)."""
     app_state.swap_slice(
         SecurityStateSlice.model_construct(
             audit_log=deps.audit_log,
             trust_service=deps.trust_service,
             autonomy_change_strategy=deps.autonomy_change_strategy,
+            policy_engine=_build_policy_engine_or_none(deps),
         )
     )

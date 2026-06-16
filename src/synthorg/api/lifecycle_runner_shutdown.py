@@ -270,6 +270,23 @@ async def _run_shutdown(  # noqa: PLR0913
             API_APP_SHUTDOWN,
             "Failed to stop tunnel provider",
         )
+    if integrations.mcp_bridge_factory is not None:
+        await _try_stop(
+            integrations.mcp_bridge_factory.shutdown(),
+            API_APP_SHUTDOWN,
+            "Failed to stop external MCP bridge factory",
+        )
+    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
+
+    meta_slice = app_state.slice(MetaStateSlice)
+    if meta_slice.org_inflection_monitor is not None:
+        await _try_stop(
+            meta_slice.org_inflection_monitor.stop(),
+            API_APP_SHUTDOWN,
+            "Failed to stop org inflection monitor",
+        )
+        app_state.wire(MetaStateSlice, org_inflection_monitor=None)
+
     from synthorg.meta.toolsmith.state import ToolsmithStateSlice  # noqa: PLC0415
 
     toolsmith = app_state.slice(ToolsmithStateSlice)

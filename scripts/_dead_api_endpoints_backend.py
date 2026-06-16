@@ -11,13 +11,14 @@ Source-of-truth model:
    is intentionally ignored to avoid false-positive
    "dead endpoint" findings for optional features.
 
-2. ``src/synthorg/api/app.py`` registers two A2A controllers gated by
-   ``effective_config.a2a.enabled``: ``WellKnownAgentCardController``
-   (mounted at the app root, NOT under the API prefix) and
-   ``A2AGatewayController`` (mounted under the API prefix). These
-   imports live inside an ``if`` block; we walk the file's AST and
-   collect any ``ImportFrom`` whose module starts with
-   ``synthorg.a2a``.
+2. Feature manifests (``feature.py``) declare controllers via
+   ``ControllerRegistration`` rather than the ``__init__.py`` tuples.
+   This covers the two A2A controllers (``WellKnownAgentCardController``,
+   mounted at the app root via ``mount="root"``, and ``A2AGatewayController``,
+   mounted under the API prefix) plus the demo controller. We walk every
+   ``feature.py`` AST and collect each ``ControllerRegistration(controller=...,
+   mount=...)`` call, resolving the controller class to its source module.
+   Conditional ``predicate`` gating is intentionally ignored.
 
 3. ``src/synthorg/api/controllers/ws.py`` carries the
    ``@websocket("/ws", ...)`` handler. It is mounted under the API
@@ -385,37 +386,66 @@ def _join_paths(
     return full
 
 
-def _find_a2a_controllers(
-    app_module: ast.Module,
+def _controller_registration_mount(node: ast.Call) -> tuple[str | None, bool]:
+    """Extract ``(controller_name, mounted_under_api_prefix)`` from a call.
+
+    Reads the ``controller=<Name>`` and ``mount=<"root"|"api">`` keywords
+    of a ``ControllerRegistration(...)`` call. ``mount="root"`` is the
+    root-mounted discriminator (not under the API prefix); the default and
+    ``"api"`` are API-prefix-mounted.
+
+    Returns:
+        ``(controller_name_or_none, mounted_under_api_prefix)``.
+    """
+    controller_name: str | None = None
+    mounted_under_prefix = True
+    for kw in node.keywords:
+        if kw.arg == "controller" and isinstance(kw.value, ast.Name):
+            controller_name = kw.value.id
+        elif (
+            kw.arg == "mount"
+            and isinstance(kw.value, ast.Constant)
+            and kw.value.value == "root"
+        ):
+            mounted_under_prefix = False
+    return controller_name, mounted_under_prefix
+
+
+def _find_feature_manifest_controllers(
+    src_root: Path,
 ) -> list[tuple[str, Path, bool]]:
     """Return ``(class_name, source_file, mounted_under_api_prefix)`` triples.
 
-    Walks the A2A registration block in ``api/app.py``. Two controller
-    families surface there:
-
-    - ``WellKnownAgentCardController`` from ``synthorg.a2a.well_known``
-      -- mounted at the app root (``/.well-known``); not under the
-      API prefix.
-    - ``A2AGatewayController`` from ``synthorg.a2a.gateway`` -- mounted
-      under the API prefix via ``api_router``.
-
-    The ``synthorg.a2a.well_known`` import is the discriminator for
-    "root-mounted"; everything else from ``synthorg.a2a`` is treated
-    as API-prefix-mounted.
+    Discovers controllers declared via ``ControllerRegistration`` in every
+    feature manifest (``feature.py``), replacing the stale ``api/app.py``
+    AST scan: the codebase moved A2A (and demo) controllers to
+    feature-manifest discovery, so they no longer appear as imports in
+    ``app.py``. Controllers reached through the ``controllers/__init__.py``
+    tuples are deduplicated by the caller's ``seen_modules`` set, so this
+    surfaces exactly the manifest-only controllers (a2a, demo). Conditional
+    ``predicate`` gating is intentionally ignored (every declared route is
+    inventoried).
     """
     out: list[tuple[str, Path, bool]] = []
-    for node in ast.walk(app_module):
-        if not isinstance(node, ast.ImportFrom):
+    for feature_path in sorted(src_root.rglob("feature.py")):
+        tree = _read_module(feature_path)
+        if tree is None:
             continue
-        if not node.module or not node.module.startswith("synthorg.a2a"):
-            continue
-        rel_path = Path("src") / Path(*node.module.split("."))
-        candidate = rel_path.with_suffix(".py")
-        is_well_known = node.module == "synthorg.a2a.well_known"
-        for alias in node.names:
-            local = alias.asname or alias.name
-            if local.endswith("Controller"):
-                out.append((local, candidate, not is_well_known))
+        imports = _resolve_imports(tree)
+        for node in ast.walk(tree):
+            if (
+                not isinstance(node, ast.Call)
+                or not isinstance(node.func, ast.Name)
+                or node.func.id != "ControllerRegistration"
+            ):
+                continue
+            controller_name, mounted_under_prefix = _controller_registration_mount(node)
+            if controller_name is None:
+                continue
+            module_rel = imports.get(controller_name)
+            if module_rel is None:
+                continue
+            out.append((controller_name, module_rel, mounted_under_prefix))
     return out
 
 
@@ -491,29 +521,29 @@ def collect_backend_routes(
             )
         )
 
-    # Step 3: A2A controllers (gated by effective_config.a2a.enabled).
-    app_path = src_root / "api" / "app.py"
-    app_tree = _read_module(app_path)
-    if app_tree is not None:
-        for class_name, module_rel, mounted_under_prefix in _find_a2a_controllers(
-            app_tree
-        ):
-            if module_rel in seen_modules:
-                continue
-            seen_modules.add(module_rel)
-            routes.extend(
-                _walk_controller_module(
-                    module_rel,
-                    project_root,
-                    api_prefix if mounted_under_prefix else "",
-                    strip_api_prefix=mounted_under_prefix,
-                )
+    # Step 3: feature-manifest controllers (a2a, demo) declared via
+    # ControllerRegistration rather than the controllers/__init__.py tuples.
+    # Predicate gating is ignored; every declared route is inventoried.
+    for (
+        class_name,
+        module_rel,
+        mounted_under_prefix,
+    ) in _find_feature_manifest_controllers(src_root):
+        if module_rel in seen_modules:
+            continue
+        seen_modules.add(module_rel)
+        routes.extend(
+            _walk_controller_module(
+                module_rel,
+                project_root,
+                api_prefix if mounted_under_prefix else "",
+                strip_api_prefix=mounted_under_prefix,
             )
-            # We collected every controller class in module_rel above,
-            # not just *class_name* -- typical A2A modules carry one
-            # controller per file so this is what we want; if they
-            # ever carry multiple, the walker still produces one
-            # record per Controller subclass.
-            del class_name  # silence unused-warning; class_name is the discriminator
+        )
+        # We collected every controller class in module_rel above, not just
+        # *class_name* -- typical feature controller modules carry one class
+        # per file so this is what we want; if they ever carry multiple, the
+        # walker still produces one record per Controller subclass.
+        del class_name  # silence unused-warning; class_name is the discriminator
 
     return routes

@@ -58,6 +58,7 @@ if TYPE_CHECKING:
     from synthorg.providers.routing.resolver import ModelResolver
     from synthorg.security.audit import AuditLog
     from synthorg.security.config import SecurityConfig
+    from synthorg.security.policy_engine.protocol import PolicyEngine
     from synthorg.security.trust.service import TrustService
     from synthorg.tools.external_api._runtime import ExternalApiRuntime
     from synthorg.tools.invocation_tracker import ToolInvocationTracker
@@ -78,6 +79,8 @@ class AgentEngineFactoriesMixin:
     _injected_approval_gate: ApprovalGate | None
     _approval_gate: ApprovalGate | None
     _trust_service: TrustService | None
+    _policy_engine: PolicyEngine | None
+    _policy_evaluation_mode: str
     _mcp_self_consumer: MCPSelfConsumerProvider | None
     _approval_interrupt_timeout_seconds: float | None
     _stagnation_detector: StagnationDetector | None
@@ -409,6 +412,8 @@ class AgentEngineFactoriesMixin:
             agent_id=str(identity.id),
             task_id=task_id,
             invocation_tracker=self._tool_invocation_tracker,
+            policy_engine=self._policy_engine,
+            policy_evaluation_mode=self._policy_evaluation_mode,
         )
         deferred.bind(invoker)
         return invoker

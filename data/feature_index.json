@@ -130,7 +130,10 @@
         "ParetoAnalyzer",
         "PostgresBenchmarkScoreRepository",
         "SQLiteBenchmarkScoreRepository",
-        "StubBenchmarkScoreProvider"
+        "StubBenchmarkScoreProvider",
+        "QuotaTracker",
+        "RiskTracker",
+        "CallAnalyticsService"
       ],
       "mcp_tool_names": [
         "synthorg_budget_get_config",
@@ -145,6 +148,9 @@
       "state_slice_fields": [
         "cost_tracker",
         "budget_enforcer",
+        "quota_tracker",
+        "risk_tracker",
+        "call_analytics_service",
         "cost_forecaster",
         "cost_forecast_repo",
         "forecast_service",
@@ -423,6 +429,12 @@
       "depends_on": [],
       "directory": "src/synthorg/engine",
       "ghost_wired_symbols": [
+        "EvaluationVersionService",
+        "SubworkflowService",
+        "build_evolution_service",
+        "InMemoryErrorTaxonomyStore",
+        "PerformanceTrackerSink",
+        "NotificationDispatcherSink",
         "AgentEngine",
         "IntakeEngine",
         "DirectIntake",
@@ -495,6 +507,8 @@
         "workflow_execution_service",
         "subworkflow_service",
         "evaluation_version_service",
+        "error_taxonomy_store",
+        "evolution_service",
         "ceremony_scheduler",
         "intake_entry_adapter",
         "objective_entry_adapter",
@@ -507,7 +521,10 @@
       "controllers": [],
       "depends_on": [],
       "directory": "src/synthorg/infrastructure",
-      "ghost_wired_symbols": [],
+      "ghost_wired_symbols": [
+        "QualityFacadeService",
+        "ReviewFacadeService"
+      ],
       "mcp_tool_names": [
         "synthorg_health_check",
         "synthorg_settings_list",
@@ -649,7 +666,9 @@
       ],
       "depends_on": [],
       "directory": "src/synthorg/integrations",
-      "ghost_wired_symbols": [],
+      "ghost_wired_symbols": [
+        "MCPToolFactory"
+      ],
       "mcp_tool_names": [
         "synthorg_mcp_catalog_list",
         "synthorg_mcp_catalog_search",
@@ -687,6 +706,7 @@
         "tunnel_service",
         "mcp_catalog_service",
         "mcp_installations_repo",
+        "mcp_bridge_factory",
         "health_prober_service"
       ]
     },
@@ -783,7 +803,14 @@
       ],
       "depends_on": [],
       "directory": "src/synthorg/meta",
-      "ghost_wired_symbols": [],
+      "ghost_wired_symbols": [
+        "build_signals_service",
+        "AnalyticsService",
+        "ReportsService",
+        "OrgInflectionMonitor",
+        "build_analytics_collector",
+        "InMemoryEvolutionOutcomeStore"
+      ],
       "mcp_tool_names": [
         "synthorg_meta_get_config",
         "synthorg_meta_list_rules",
@@ -820,6 +847,7 @@
         "analytics_service",
         "chief_of_staff_proposer",
         "chief_of_staff_chat",
+        "org_inflection_monitor",
         "conversational_proposal_repo",
         "conversation_invite_repo",
         "conversation_participant_repo",
@@ -1077,7 +1105,8 @@
         "KnowledgeSubstrateGroundingChecker",
         "build_red_team_agent_identity",
         "build_vision_verifier_gate",
-        "DeliverableReviewInputBuilder"
+        "DeliverableReviewInputBuilder",
+        "build_policy_engine"
       ],
       "mcp_tool_names": [],
       "name": "security",
@@ -1092,7 +1121,8 @@
         "audit_log",
         "trust_service",
         "autonomy_change_strategy",
-        "red_team_reports"
+        "red_team_reports",
+        "policy_engine"
       ]
     },
     {
@@ -1214,6 +1244,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-16T06:00:46.822092Z",
+  "generated_at": "2026-06-16T16:06:49.948069Z",
   "schema_version": 1
 }

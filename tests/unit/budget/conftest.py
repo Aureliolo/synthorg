@@ -1,11 +1,12 @@
 """Unit test configuration and fixtures for budget models."""
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import pytest
 from polyfactory.factories.pydantic_factory import ModelFactory
 
+from synthorg.budget.call_analytics_config import CallAnalyticsConfig
 from synthorg.budget.config import (
     AutoDowngradeConfig,
     BudgetAlertConfig,
@@ -87,6 +88,11 @@ class BudgetConfigFactory(ModelFactory[BudgetConfig]):
     alerts = BudgetAlertConfigFactory
     auto_downgrade = AutoDowngradeConfigFactory
     risk_budget = RiskBudgetConfigFactory
+    # Pin the quota / call-analytics composites: polyfactory would otherwise
+    # synthesise a random ``SubscriptionConfig`` whose cost_model violates the
+    # LOCAL monthly_cost invariant.
+    subscriptions: ClassVar[dict[str, SubscriptionConfig]] = {}
+    call_analytics = CallAnalyticsConfig()
 
 
 class TeamBudgetFactory(ModelFactory[TeamBudget]):

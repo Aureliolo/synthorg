@@ -10,11 +10,14 @@ import asyncio
 import copy
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 from uuid import UUID, uuid4
+
+from pydantic import BaseModel, ConfigDict
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.quality import (
     REVIEW_CREATED_VIA_MCP,
@@ -27,6 +30,71 @@ if TYPE_CHECKING:
     from synthorg.hr.performance.tracker import PerformanceTracker
 
 logger = get_logger(__name__)
+_QUALITY_SCORE_ROUNDING: Final[int] = 4
+
+
+class QualityScoreEntry(BaseModel):
+    """One scored task projected for the quality-scores listing."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    agent_id: str
+    task_id: str
+    task_type: str
+    quality_score: float
+    completed_at: datetime
+
+    @classmethod
+    def from_record(cls, record: TaskMetricRecord) -> QualityScoreEntry:
+        """Project a scored task-metric record into a listing entry.
+
+        Returns:
+            The projected quality-score entry.
+        """
+        return cls(
+            agent_id=str(record.agent_id),
+            task_id=str(record.task_id),
+            task_type=record.task_type.value,
+            quality_score=cast("float", record.quality_score),
+            completed_at=record.completed_at,
+        )
+
+
+def _summarise_quality(
+    records: Sequence[TaskMetricRecord],
+) -> Mapping[str, object]:
+    """Aggregate scored task-metric records into an org-wide summary.
+
+    Returns:
+        Mapping with org totals plus a per-agent breakdown.
+    """
+    per_agent: dict[str, list[float]] = {}
+    for record in records:
+        if record.quality_score is None:
+            continue
+        per_agent.setdefault(str(record.agent_id), []).append(record.quality_score)
+    all_scores = [score for scores in per_agent.values() for score in scores]
+    agents = tuple(
+        {
+            "agent_id": agent_id,
+            "scored_task_count": len(scores),
+            "average_quality_score": round(
+                sum(scores) / len(scores), _QUALITY_SCORE_ROUNDING
+            ),
+        }
+        for agent_id, scores in sorted(per_agent.items())
+    )
+    overall = (
+        round(sum(all_scores) / len(all_scores), _QUALITY_SCORE_ROUNDING)
+        if all_scores
+        else None
+    )
+    return {
+        "agent_count": len(per_agent),
+        "scored_task_count": len(all_scores),
+        "overall_quality_score": overall,
+        "agents": agents,
+    }
 
 
 # ── QualityFacadeService ──────────────────────────────────────────
@@ -39,16 +107,14 @@ class QualityFacadeService:
         self._tracker = tracker
 
     async def get_summary(self) -> Mapping[str, object]:
-        fn = getattr(self._tracker, "get_quality_summary", None)
-        if callable(fn):
-            result = fn()
-            if hasattr(result, "__await__"):
-                result = await result
-            return dict(result)
-        raise CapabilityNotSupportedError(
-            "quality_summary",
-            "PerformanceTracker does not expose get_quality_summary",
-        )
+        fn = getattr(self._tracker, "get_task_metrics", None)
+        if not callable(fn):
+            raise CapabilityNotSupportedError(
+                "quality_summary",
+                "PerformanceTracker does not expose get_task_metrics",
+            )
+        records = cast("Sequence[TaskMetricRecord]", fn())
+        return _summarise_quality(records)
 
     async def get_agent_quality(
         self,
@@ -74,7 +140,7 @@ class QualityFacadeService:
         agent_id: NotBlankStr | None = None,
         offset: int = 0,
         limit: int | None = None,
-    ) -> tuple[tuple[object, ...], int]:
+    ) -> tuple[tuple[QualityScoreEntry, ...], int]:
         """Return paginated quality scores + unfiltered total.
 
         Args:
@@ -87,7 +153,7 @@ class QualityFacadeService:
             ValueError: If ``offset`` is negative, or ``limit`` is
                 provided and non-positive.
             CapabilityNotSupportedError: If the underlying tracker
-                does not expose ``list_quality_scores``.
+                does not expose ``get_task_metrics``.
         """
         if offset < 0:
             msg = f"offset must be >= 0, got {offset}"
@@ -95,19 +161,25 @@ class QualityFacadeService:
         if limit is not None and limit < 1:
             msg = f"limit must be >= 1 when provided, got {limit}"
             raise ValueError(msg)
-        fn = getattr(self._tracker, "list_quality_scores", None)
-        if callable(fn):
-            result = fn(agent_id) if agent_id else fn()
-            if hasattr(result, "__await__"):
-                result = await result
-            items = tuple(result)
-            total = len(items)
-            end = total if limit is None else offset + limit
-            return items[offset:end], total
-        raise CapabilityNotSupportedError(
-            "quality_scores",
-            "PerformanceTracker does not expose list_quality_scores",
+        fn = getattr(self._tracker, "get_task_metrics", None)
+        if not callable(fn):
+            raise CapabilityNotSupportedError(
+                "quality_scores",
+                "PerformanceTracker does not expose get_task_metrics",
+            )
+        records = cast(
+            "Sequence[TaskMetricRecord]",
+            fn(agent_id=agent_id) if agent_id else fn(),
         )
+        scored = sorted(
+            (record for record in records if record.quality_score is not None),
+            key=lambda record: record.completed_at,
+            reverse=True,
+        )
+        entries = tuple(QualityScoreEntry.from_record(record) for record in scored)
+        total = len(entries)
+        end = total if limit is None else offset + limit
+        return entries[offset:end], total
 
 
 # ── ReviewFacadeService ───────────────────────────────────────────

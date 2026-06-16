@@ -222,6 +222,86 @@ async def _wire_agent_version_service(
         )
 
 
+async def _wire_subworkflow_service(
+    app_state: AppState,
+    persistence: PersistenceBackend | None,
+) -> None:
+    """Wire ``SubworkflowService`` once persistence is connected.
+
+    Lets the subworkflow MCP handlers reach the control-plane facade
+    (paginated list, version resolution, parent-cascade delete, audit
+    emission) instead of falling through to a ``capability_gap`` envelope.
+    """
+    if persistence is None or not getattr(persistence, "is_connected", False):
+        return
+    if app_state.slice(EngineStateSlice).subworkflow_service is not None or not hasattr(
+        persistence, "subworkflows"
+    ):
+        return
+    try:
+        from synthorg.engine.workflow.subworkflow_registry import (  # noqa: PLC0415
+            SubworkflowRegistry,
+        )
+        from synthorg.engine.workflow.subworkflow_service import (  # noqa: PLC0415
+            SubworkflowService,
+        )
+
+        app_state.wire(
+            EngineStateSlice,
+            subworkflow_service=SubworkflowService(
+                registry=SubworkflowRegistry(persistence.subworkflows),
+            ),
+        )
+        logger.info(API_SERVICE_AUTO_WIRED, service="subworkflow_service")
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_SERVICE_AUTO_WIRE_FAILED,
+            service="subworkflow_service",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+
+
+async def _wire_evaluation_version_service(
+    app_state: AppState,
+    persistence: PersistenceBackend | None,
+) -> None:
+    """Wire ``EvaluationVersionService`` once persistence is connected.
+
+    Mirrors the workflow-version wiring for the evaluation-config version
+    history MCP handlers, gated on the same persistence readiness.
+    """
+    if persistence is None or not getattr(persistence, "is_connected", False):
+        return
+    if app_state.slice(
+        EngineStateSlice
+    ).evaluation_version_service is not None or not hasattr(
+        persistence, "evaluation_config_versions"
+    ):
+        return
+    try:
+        from synthorg.engine.quality.mcp_services import (  # noqa: PLC0415
+            EvaluationVersionService,
+        )
+
+        app_state.wire(
+            EngineStateSlice,
+            evaluation_version_service=EvaluationVersionService(
+                persistence=persistence,
+            ),
+        )
+        logger.info(API_SERVICE_AUTO_WIRED, service="evaluation_version_service")
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_SERVICE_AUTO_WIRE_FAILED,
+            service="evaluation_version_service",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+
+
 async def wire_persistence_services(
     app_state: AppState,
     persistence: PersistenceBackend | None,
@@ -236,3 +316,5 @@ async def wire_persistence_services(
     await _wire_workflow_rollback_service(app_state, persistence)
     await _wire_workflow_version_service(app_state, persistence)
     await _wire_agent_version_service(app_state, persistence)
+    await _wire_subworkflow_service(app_state, persistence)
+    await _wire_evaluation_version_service(app_state, persistence)

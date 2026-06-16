@@ -30,6 +30,7 @@ from synthorg.core.company_handoffs import EscalationPath, WorkflowHandoff
 from synthorg.core.role import CustomRole
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination.section_config import CoordinationSectionConfig
+from synthorg.engine.evolution.config import EvolutionConfig
 from synthorg.engine.routing_policy.config import StakesRoutingConfig
 from synthorg.engine.stagnation.models import StagnationDetectionConfig
 from synthorg.engine.strategy.models import StrategyConfig
@@ -266,6 +267,7 @@ class RootConfig(BaseModel):
         default_factory=CoordinationSectionConfig,
         description="Multi-agent coordination configuration",
     )
+    evolution: EvolutionConfig = Field(default_factory=EvolutionConfig)
     stagnation: StagnationDetectionConfig = Field(
         default_factory=StagnationDetectionConfig,
         description="Intra-loop stagnation detection selector and sub-configs",

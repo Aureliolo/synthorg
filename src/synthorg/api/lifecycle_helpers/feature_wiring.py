@@ -22,6 +22,12 @@ from synthorg.api.lifecycle_helpers.deliverable_receipt_wiring import (
 from synthorg.api.lifecycle_helpers.finetune_wiring import (
     _wire_fine_tune_orchestrator,
 )
+from synthorg.api.lifecycle_helpers.meta_wiring import (
+    _wire_analytics_collector,
+    _wire_analytics_service,
+    _wire_org_inflection_monitor,
+    _wire_reports_service,
+)
 from synthorg.api.lifecycle_helpers.narrative_wiring import wire_run_narrator
 from synthorg.api.state import AppState
 from synthorg.approval.protocol import ApprovalStoreProtocol
@@ -477,6 +483,10 @@ async def _wire_signals_service(
             note="performance tracker absent; signals wiring skipped",
         )
         return
+    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
+    from synthorg.meta.evolution.outcome_store import (  # noqa: PLC0415
+        InMemoryEvolutionOutcomeStore,
+    )
     from synthorg.meta.signals.factory import build_signals_service  # noqa: PLC0415
 
     registry = app_state.slice(HrStateSlice).agent_registry
@@ -487,6 +497,8 @@ async def _wire_signals_service(
             agent_ids_provider=agent_ids_provider,
             approval_store=effective_approval_store,
             scaling_service=app_state.slice(HrStateSlice).scaling_service,
+            error_store=app_state.slice(EngineStateSlice).error_taxonomy_store,
+            evolution_store=InMemoryEvolutionOutcomeStore(),
         )
         app_state.wire(MetaStateSlice, signals_service=signals_service)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
@@ -557,6 +569,10 @@ async def wire_features_on_startup(
         app_state,
         effective_approval_store=effective_approval_store,
     )
+    await _wire_analytics_service(app_state)
+    await _wire_reports_service(app_state)
+    await _wire_org_inflection_monitor(app_state)
+    await _wire_analytics_collector(app_state)
     await _wire_chief_of_staff_chat(
         app_state,
         provider_registry=provider_registry,

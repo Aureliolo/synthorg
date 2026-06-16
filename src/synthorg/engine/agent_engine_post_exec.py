@@ -57,6 +57,8 @@ if TYPE_CHECKING:
     from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine._agent_engine_callables import ApplyRecovery
     from synthorg.engine.checkpoint.models import CheckpointConfig
+    from synthorg.engine.classification.protocol import ClassificationSink
+    from synthorg.engine.evolution.service import EvolutionService
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.memory.procedural.capture.protocol import CaptureStrategy
     from synthorg.memory.procedural.models import ProceduralMemoryConfig
@@ -90,6 +92,7 @@ class AgentEnginePostExecMixin:
     _checkpoint_repo: CheckpointRepository | None
     _heartbeat_repo: HeartbeatRepository | None
     _error_taxonomy_config: ErrorTaxonomyConfig | None
+    _classification_sinks: tuple[ClassificationSink, ...]
     _checkpoint_config: CheckpointConfig
     _coordination_metrics_collector: CoordinationMetricsCollector | None
     _distillation_capture_enabled: bool
@@ -98,6 +101,7 @@ class AgentEnginePostExecMixin:
     _procedural_memory_config: ProceduralMemoryConfig | None
     _procedural_proposer: ProceduralMemoryProposer | None
     _capture_strategy: CaptureStrategy | None
+    _evolution_service: EvolutionService | None
     _provider: CompletionProvider
     _shutdown_checker: ShutdownChecker | None
     # Injected by ``AgentEngine.__init__``; declared on the mixin so
@@ -173,6 +177,7 @@ class AgentEnginePostExecMixin:
                     agent_id,
                     task_id,
                     config=self._error_taxonomy_config,
+                    sinks=self._classification_sinks,
                 )
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
@@ -184,6 +189,7 @@ class AgentEnginePostExecMixin:
                     error=safe_error_description(exc),
                     reason="classification_failed",
                 )
+        await self._try_evolution_trigger(agent_id, task_id)
         await self._try_procedural_memory(
             failed_result or execution_result,
             recovery_result,
@@ -396,6 +402,26 @@ class AgentEnginePostExecMixin:
             task_id,
             capture_strategy=self._capture_strategy,
             memory_backend=self._memory_backend,
+        )
+
+    async def _try_evolution_trigger(
+        self,
+        agent_id: str,
+        task_id: str,
+    ) -> None:
+        """Run the agent self-evolution pipeline post-task (non-critical).
+
+        No-op when the evolution service is unwired (the feature is off by
+        default); the helper itself short-circuits on a ``None`` service.
+        """
+        from synthorg.engine.post_execution import (  # noqa: PLC0415
+            try_evolution_trigger,
+        )
+
+        await try_evolution_trigger(
+            agent_id,
+            task_id,
+            evolution_service=self._evolution_service,
         )
 
     def _build_and_log_result(

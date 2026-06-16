@@ -77,12 +77,14 @@ if TYPE_CHECKING:
     from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.core.task import Task
     from synthorg.engine.approval_gate import ApprovalGate
+    from synthorg.engine.classification.protocol import ClassificationSink
     from synthorg.engine.compaction.protocol import CompactionCallback
     from synthorg.engine.coordination.attribution import (
         CoordinationResultWithAttribution,
     )
     from synthorg.engine.coordination.models import CoordinationContext
     from synthorg.engine.coordination.service import MultiAgentCoordinator
+    from synthorg.engine.evolution.service import EvolutionService
     from synthorg.engine.flight_recording import FlightRecorderSink
     from synthorg.engine.hybrid_models import HybridLoopConfig
     from synthorg.engine.intervention.inbox import SteeringInbox
@@ -122,6 +124,7 @@ if TYPE_CHECKING:
     from synthorg.providers.registry import ProviderRegistry
     from synthorg.providers.routing.resolver import ModelResolver
     from synthorg.security.config import SecurityConfig
+    from synthorg.security.policy_engine.protocol import PolicyEngine
     from synthorg.security.trust.service import TrustService
     from synthorg.settings.resolver import ConfigResolver
     from synthorg.tools.external_api._runtime import ExternalApiRuntime
@@ -188,6 +191,9 @@ class AgentEngine(
         recovery_strategy: RecoveryStrategy | None = _DEFAULT_RECOVERY_STRATEGY,
         shutdown_checker: ShutdownChecker | None = None,
         error_taxonomy_config: ErrorTaxonomyConfig | None = None,
+        classification_sinks: tuple[ClassificationSink, ...] = (),
+        evolution_service: EvolutionService | None = None,
+        policy_engine: PolicyEngine | None = None,
         budget_enforcer: BudgetEnforcer | None = None,
         security_config: SecurityConfig | None = None,
         approval_store: ApprovalStoreProtocol | None = None,
@@ -325,6 +331,14 @@ class AgentEngine(
         self._recovery_strategy = recovery_strategy
         self._shutdown_checker = shutdown_checker
         self._error_taxonomy_config = error_taxonomy_config
+        self._classification_sinks = classification_sinks
+        self._evolution_service = evolution_service
+        self._policy_engine = policy_engine
+        self._policy_evaluation_mode = (
+            security_config.policy_engine.evaluation_mode
+            if security_config is not None
+            else "log_only"
+        )
         self._coordinator = coordinator
         self._tool_invocation_tracker = tool_invocation_tracker
         self._memory_injection_strategy = memory_injection_strategy

@@ -149,9 +149,19 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
     # persistence-less / tracker-absent boot leaves it None and the
     # magentic replan hook simply skips the affordability check.
     from synthorg.budget.enforcer import BudgetEnforcer  # noqa: PLC0415
+    from synthorg.notifications.state import (  # noqa: PLC0415
+        NotificationsStateSlice,
+    )
 
+    budget_slice = app_state.slice(BudgetStateSlice)
     budget_enforcer = (
-        BudgetEnforcer(budget_config=budget_config, cost_tracker=cost_tracker)
+        BudgetEnforcer(
+            budget_config=budget_config,
+            cost_tracker=cost_tracker,
+            quota_tracker=budget_slice.quota_tracker,
+            risk_tracker=budget_slice.risk_tracker,
+            notification_dispatcher=app_state.slice(NotificationsStateSlice).dispatcher,
+        )
         if cost_tracker is not None
         else None
     )
