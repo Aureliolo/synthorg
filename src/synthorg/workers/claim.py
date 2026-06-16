@@ -256,9 +256,13 @@ class JetStreamTaskQueue:
         """
         async with self._lifecycle_lock:
             self._running = False
-            await self._safe_unsubscribe(self._sub)
+            await self._safe_unsubscribe(
+                self._sub, timeout_seconds=self._stop_drain_timeout_seconds
+            )
             self._sub = None
-            await self._safe_unsubscribe(self._dead_sub)
+            await self._safe_unsubscribe(
+                self._dead_sub, timeout_seconds=self._stop_drain_timeout_seconds
+            )
             self._dead_sub = None
             if self._client is not None:
                 try:
@@ -294,9 +298,13 @@ class JetStreamTaskQueue:
 
     async def _drain_partial(self) -> None:
         """Tear down any half-initialised connection/consumer after a failed start."""
-        await self._safe_unsubscribe(self._sub)
+        await self._safe_unsubscribe(
+            self._sub, timeout_seconds=self._stop_drain_timeout_seconds
+        )
         self._sub = None
-        await self._safe_unsubscribe(self._dead_sub)
+        await self._safe_unsubscribe(
+            self._dead_sub, timeout_seconds=self._stop_drain_timeout_seconds
+        )
         self._dead_sub = None
         if self._client is not None:
             try:
@@ -709,17 +717,27 @@ class JetStreamTaskQueue:
         return claim, raw
 
     @staticmethod
-    async def _safe_unsubscribe(sub: PullSubscription | None) -> None:
+    async def _safe_unsubscribe(
+        sub: PullSubscription | None,
+        *,
+        timeout_seconds: float,
+    ) -> None:
         """Unsubscribe *sub* if present; log (never raise) on failure.
 
         Shared by ``stop()`` (ready + dead consumers) and
         ``_drain_partial()`` so teardown stays single-sourced and the
-        complexity of ``stop()`` stays within the gate ceiling.
+        complexity of ``stop()`` stays within the gate ceiling. The
+        unsubscribe is deadline-bounded by ``timeout_seconds``: a broker
+        that is slow to acknowledge the unsubscribe under heavy contention
+        must not hang teardown. An unbounded await here runs BEFORE the
+        ``client.drain()`` deadline in ``stop()``, so without this bound it
+        bypasses that deadline entirely and stalls teardown to the caller's
+        wall-clock limit (a suite-level timeout that aborts the worker).
         """
         if sub is None:
             return
         try:
-            await sub.unsubscribe()
+            await asyncio.wait_for(sub.unsubscribe(), timeout=timeout_seconds)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
