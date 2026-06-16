@@ -61,6 +61,14 @@ jobs:
     strategy:
       # One failing package must not abort the other nine.
       fail-fast: false
+      # Ten deletion-heavy jobs in parallel, each fanning out ~10
+      # concurrent registry reads plus version deletions, trip GitHub's
+      # account-wide secondary rate limit (HTTP 429) -- which the PAT's
+      # primary budget does not raise. Running one package at a time
+      # holds concurrent load to a single job's fan-out; the action
+      # still parallelises reads within the job, and the cleanup is off
+      # the release-critical path, so the longer wall-clock is free.
+      max-parallel: 1
       matrix:
         package:
           - synthorg-backend
