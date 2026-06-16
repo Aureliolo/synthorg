@@ -99,7 +99,7 @@ jobs:
           use-regex: true
           delete-tags: '^\d+\.\d+\.\d+-dev\.\d+$'
           keep-n-tagged: 5
-          exclude-tags: '^\d+\.\d+\.\d+$,^\d+\.\d+$,^latest$,^dev$'
+          exclude-tags: '^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev)$'
           validate: true
           dry-run: ${{ inputs.dry-run }}
 
@@ -114,9 +114,9 @@ jobs:
           package: ${{ matrix.package }}
           token: ${{ secrets.GHCR_CLEANUP_TOKEN || secrets.GITHUB_TOKEN }}
           use-regex: true
-          delete-tags: '^sha-[0-9a-f]{6,}(-amd64|-arm64)?$,^scan-[0-9a-f]{6,}(-amd64|-arm64)?$'
+          delete-tags: '^(sha|scan)-[0-9a-f]{6,}(-amd64|-arm64)?$'
           older-than: 7 days
-          exclude-tags: '^\d+\.\d+\.\d+$,^\d+\.\d+$,^latest$,^dev$,^\d+\.\d+\.\d+-dev\.\d+$'
+          exclude-tags: '^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev|\d+\.\d+\.\d+-dev\.\d+)$'
           validate: true
           dry-run: ${{ inputs.dry-run }}
 
@@ -133,6 +133,6 @@ jobs:
           token: ${{ secrets.GHCR_CLEANUP_TOKEN || secrets.GITHUB_TOKEN }}
           use-regex: true
           delete-orphaned-images: true
-          exclude-tags: '^\d+\.\d+\.\d+$,^\d+\.\d+$,^latest$,^dev$,^\d+\.\d+\.\d+-dev\.\d+$'
+          exclude-tags: '^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev|\d+\.\d+\.\d+-dev\.\d+)$'
           validate: true
           dry-run: ${{ inputs.dry-run }}
