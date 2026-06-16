@@ -86,7 +86,12 @@ inputs:
       Run aggressive disk cleanup before buildx setup. Required for
       fine-tune images (~4 GB GPU + ~1.7 GB CPU variants overflow the
       default `ubuntu-latest` runner). Pass the literal string "true" to
-      enable.
+      enable. WARNING: this wipes the entire pre-installed toolchain cache
+      (`/opt/hostedtoolcache`, dotnet, swift, miniconda, ghcup, the Android
+      SDK, etc.). A caller that sets this MUST NOT rely on any cached
+      toolchain (a hostedtoolcache Python/Node/Java, etc.) in a later step
+      of the same job; the system `/usr/bin` interpreters survive, the
+      cached ones do not.
     required: false
     default: "false"
   trivy-version:
