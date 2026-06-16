@@ -40,6 +40,7 @@ import os
 import re
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Final
 
@@ -232,12 +233,48 @@ class _ClassEntry:
         self.suppressed = suppressed
 
 
+def _iter_class_defs(tree: ast.Module) -> Iterator[ast.ClassDef]:
+    """Yield every ``ClassDef`` except those nested inside a function body.
+
+    ``ast.walk`` dominates the gate's runtime on the full tree because it
+    visits every node. Two prunes cut the bulk without missing an error
+    class:
+
+    * ``ast.expr`` subtrees -- a ``ClassDef`` is a statement, and a statement
+      can never appear inside an expression, so module-level literals (the
+      large dict / list / call values common in this codebase), decorators
+      and default-arg values hold no class to find.
+    * ``FunctionDef`` / ``AsyncFunctionDef`` bodies -- ``DomainError``
+      subclasses are only ever module-level, class-nested, or inside a
+      module-level conditional (``if`` / ``try``); never function-local.
+    """
+    stack: list[ast.AST] = [tree]
+    while stack:
+        node = stack.pop()
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.ClassDef):
+                yield child
+                stack.append(child)
+            elif not isinstance(
+                child, ast.expr | ast.FunctionDef | ast.AsyncFunctionDef
+            ):
+                stack.append(child)
+
+
 def _index_file(path: Path, rel: str) -> tuple[list[_ClassEntry], str | None]:
     """Return every class-definition entry in *path* (and parse error, if any)."""
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         return [], f"{rel}:0: unable to read file: {exc}"
+    # A file with no ``class`` keyword holds no ``ClassDef``, so it
+    # contributes neither an error-code declarer nor an ancestry node.
+    # Skipping the parse for those (the majority of utility / constant
+    # modules) avoids the gate's now-dominant cost. The substring can only
+    # over-include (a ``class`` in a comment / string -> a harmless parse),
+    # never under-include: every real ``ClassDef`` carries the keyword.
+    if "class " not in text:
+        return [], None
     try:
         tree = ast.parse(text, filename=str(path))
     except SyntaxError as exc:
@@ -246,9 +283,7 @@ def _index_file(path: Path, rel: str) -> tuple[list[_ClassEntry], str | None]:
     alias_map = _build_alias_map(tree)
     module = _module_dotted_for_rel(rel)
     entries: list[_ClassEntry] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ClassDef):
-            continue
+    for node in _iter_class_defs(tree):
         bases = [
             resolved
             for b in node.bases
