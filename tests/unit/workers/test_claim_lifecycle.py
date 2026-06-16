@@ -26,6 +26,7 @@ from synthorg.communication.config import NatsConfig
 from synthorg.observability.events.workers import (
     WORKERS_QUEUE_NOT_RUNNING,
     WORKERS_QUEUE_START_REJECTED,
+    WORKERS_TASK_QUEUE_PUBLISH_TIMEOUT,
     WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED,
 )
 from synthorg.workers.claim import (
@@ -67,6 +68,15 @@ class _ClientStub:
     """Concrete spec for the NATS client stand-in (drain only)."""
 
     async def drain(self) -> None:  # pragma: no cover (spec only)
+        ...
+
+
+class _JetStreamStub:
+    """Concrete spec for the JetStream context stand-in (publish only)."""
+
+    async def publish(
+        self, subject: str, payload: bytes
+    ) -> object:  # pragma: no cover (spec only)
         ...
 
 
@@ -368,6 +378,49 @@ async def test_publish_claim_before_start_logs_not_running(
     assert len(matched) == 1
     assert matched[0].kwargs["operation"] == "publish_claim"
     assert matched[0].kwargs["task_id"] == "task-A"
+
+
+@pytest.mark.unit
+async def test_publish_claim_bounded_by_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stalled ``js.publish`` is deadline-bounded into a ``BusStreamError``.
+
+    ``js.publish`` awaits a server PubAck and is otherwise unbounded; without
+    the bound a saturated broker hangs the publish to the caller's wall-clock
+    limit (in CI, the suite timeout that SIGABRTs the whole xdist worker). The
+    bound turns that stall into a retriable, per-call ``BusStreamError`` and a
+    structured warning.
+    """
+    import asyncio
+
+    spy = _patch_logger(monkeypatch)
+    monkeypatch.setattr(claim_module, "_PUBLISH_TIMEOUT_SECONDS", 0.05)
+    queue = _make_queue()
+
+    # Far longer than the 0.05s publish deadline above, so the stubbed publish
+    # is guaranteed still pending when the bound trips.
+    slow_publish_seconds: Final[float] = 10.0
+
+    async def _slow_publish(subject: str, payload: bytes) -> None:
+        await asyncio.sleep(slow_publish_seconds)
+
+    js = AsyncMock(spec=_JetStreamStub)
+    js.publish.side_effect = _slow_publish
+    queue._js = cast("JetStreamContext | None", js)
+
+    claim = TaskClaim(task_id="task-slow", new_status="assigned")
+    with pytest.raises(BusStreamError, match="exceeded"):
+        await queue.publish_claim(claim)
+
+    matched = [
+        c
+        for c in spy.warning.call_args_list
+        if c.args and c.args[0] == WORKERS_TASK_QUEUE_PUBLISH_TIMEOUT
+    ]
+    assert len(matched) == 1
+    assert matched[0].kwargs["task_id"] == "task-slow"
+    assert matched[0].kwargs["error_type"] == "TimeoutError"
 
 
 @pytest.mark.unit
