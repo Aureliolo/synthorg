@@ -16,7 +16,7 @@ from synthorg.api.api_core_state import (
 from synthorg.api.state import AppState
 from synthorg.core.auth.roles import HumanRole
 from synthorg.persistence.state import persistence_of
-from tests._shared import LoopAsyncClient
+from tests._shared import LoopAsyncClient, as_uuid
 from tests.unit.api.conftest import _TEST_JWT_SECRET, make_auth_headers
 from tests.unit.api.fakes import FakePersistenceBackend
 
@@ -74,7 +74,6 @@ class TestSetup:
         bare_client: LoopAsyncClient,
     ) -> None:
         # Re-seed a user so the check fails
-        import uuid
         from datetime import UTC, datetime
 
         from synthorg.api.auth.service import AuthService
@@ -85,7 +84,7 @@ class TestSetup:
         svc: AuthService = auth_service_of(app_state)
         now = datetime.now(UTC)
         user = User(
-            id=str(uuid.uuid4()),
+            id=str(as_uuid("existing-ceo")),
             username="existing",
             password_hash=await svc.hash_password_async("test-password-12chars"),
             role=HumanRole.CEO,
@@ -117,6 +116,157 @@ class TestSetup:
             json={"username": "admin", "password": "short"},
         )
         assert response.status_code == 400
+
+    async def test_setup_race_single_ceo_returns_409(
+        self,
+        bare_client: LoopAsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A losing racer on the single-CEO guard sees 'already completed'.
+
+        ``count_by_role`` is monkeypatched to return 0 for any role,
+        simulating the racing window where the incumbent CEO is not yet
+        visible to the pre-check. ``save`` then trips the fake's single-CEO
+        guard (which mirrors the real ``idx_single_ceo`` partial-unique index
+        by raising ``ConstraintViolationError`` with
+        ``constraint=IDX_SINGLE_CEO``). The guard maps it to the uniform
+        setup-complete 409 rather than leaking the persistence token.
+        """
+        from datetime import UTC, datetime
+
+        from synthorg.core.auth.models import User
+
+        app_state = bare_client.app.state["app_state"]
+        backend = cast(FakePersistenceBackend, persistence_of(app_state))
+        users_repo = backend._users
+        users_repo._users.clear()
+        now = datetime.now(UTC)
+        users_repo.seed(
+            User(
+                id=str(as_uuid("incumbent-ceo")),
+                username="incumbent-ceo",
+                password_hash="x",
+                role=HumanRole.CEO,
+                must_change_password=False,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+
+        async def _no_ceos(role: HumanRole) -> int:
+            return 0
+
+        monkeypatch.setattr(users_repo, "count_by_role", _no_ceos)
+
+        response = await bare_client.post(
+            "/api/v1/auth/setup",
+            json={"username": "newadmin", "password": "super-secure-password-12"},
+        )
+        assert response.status_code == 409
+        assert "Setup already completed" in response.text
+
+    async def test_setup_race_duplicate_username_returns_409(
+        self, bare_client: LoopAsyncClient
+    ) -> None:
+        """A losing racer on the username-unique guard sees 'already completed'.
+
+        An OBSERVER (not a CEO) is seeded under the target username, so the
+        CEO pre-check passes (no CEO yet) but ``save`` raises the
+        username-unique constraint, which the guard maps to the uniform
+        setup-complete 409 via the typed ``DuplicateUsernameError``.
+        """
+        from datetime import UTC, datetime
+
+        from synthorg.core.auth.models import User
+
+        app_state = bare_client.app.state["app_state"]
+        backend = cast(FakePersistenceBackend, persistence_of(app_state))
+        backend._users._users.clear()
+        now = datetime.now(UTC)
+        backend._users.seed(
+            User(
+                id=str(as_uuid("taken-observer")),
+                username="taken",
+                password_hash="x",
+                role=HumanRole.OBSERVER,
+                must_change_password=False,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+
+        response = await bare_client.post(
+            "/api/v1/auth/setup",
+            json={"username": "taken", "password": "super-secure-password-12"},
+        )
+        assert response.status_code == 409
+        assert "Setup already completed" in response.text
+
+    async def test_setup_race_last_ceo_constraint_returns_409(
+        self,
+        bare_client: LoopAsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Every recognised user-constraint token maps to 'already completed'.
+
+        The last-CEO trigger cannot fire on a bootstrap INSERT, but the guard
+        must treat every recognised user-constraint token uniformly: ``save``
+        raising ``LAST_CEO_TRIGGER`` is mapped to the setup-complete 409 by
+        ``raise_for_user_constraint`` rather than surfacing the typed
+        ``LastCeoConstraintError`` default message.
+        """
+        from synthorg.core.persistence_errors import ConstraintViolationError
+        from synthorg.persistence.constraint_tokens import LAST_CEO_TRIGGER
+
+        app_state = bare_client.app.state["app_state"]
+        backend = cast(FakePersistenceBackend, persistence_of(app_state))
+        users_repo = backend._users
+        users_repo._users.clear()
+
+        async def _raise_last_ceo(entity: object) -> None:
+            msg = "last ceo"
+            raise ConstraintViolationError(msg, constraint=LAST_CEO_TRIGGER)
+
+        monkeypatch.setattr(users_repo, "save", _raise_last_ceo)
+
+        response = await bare_client.post(
+            "/api/v1/auth/setup",
+            json={"username": "newadmin", "password": "super-secure-password-12"},
+        )
+        assert response.status_code == 409
+        assert "Setup already completed" in response.text
+
+    async def test_setup_unrelated_constraint_not_masked(
+        self,
+        bare_client: LoopAsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """An unrelated constraint propagates, not masked as setup-complete.
+
+        The race guard only remaps recognised user-constraint conflicts; any
+        other constraint is re-raised as the original ``ConstraintViolationError``
+        and surfaces via the persistence-integrity handler (400) instead of a
+        misleading 'already completed' response.
+        """
+        from synthorg.core.persistence_errors import ConstraintViolationError
+
+        app_state = bare_client.app.state["app_state"]
+        backend = cast(FakePersistenceBackend, persistence_of(app_state))
+        users_repo = backend._users
+        users_repo._users.clear()
+
+        async def _raise_unrelated(entity: object) -> None:
+            msg = "unrelated"
+            raise ConstraintViolationError(msg, constraint="SOME_OTHER_CONSTRAINT")
+
+        monkeypatch.setattr(users_repo, "save", _raise_unrelated)
+
+        response = await bare_client.post(
+            "/api/v1/auth/setup",
+            json={"username": "newadmin", "password": "super-secure-password-12"},
+        )
+        assert response.status_code == 400
+        assert "Setup already completed" not in response.text
 
 
 @pytest.mark.unit

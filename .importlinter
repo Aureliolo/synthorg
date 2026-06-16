@@ -98,6 +98,7 @@ name = controllers reach persistence through services / protocols, never backend
 type = forbidden
 source_modules =
     synthorg.api.controllers
+    synthorg.api.auth.controllers
 forbidden_modules =
     synthorg.persistence._shared
     synthorg.persistence.sqlite
