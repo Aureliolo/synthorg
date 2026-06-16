@@ -92,7 +92,7 @@ class _NoIOPool:
         self.connection_calls += 1
         msg = "connection() entered: pagination guard must reject before I/O"
         raise AssertionError(msg)
-        yield  # pragma: no cover - unreachable; satisfies the generator type
+        yield  # type: ignore[unreachable]  # pragma: no cover - satisfies generator type
 
 
 def _repo() -> PostgresDecisionRepository:

@@ -64,7 +64,7 @@ async def refused_port() -> int:
         writer.close()
 
     server = await asyncio.start_server(_noop, host="127.0.0.1", port=0)
-    port = server.sockets[0].getsockname()[1]
+    port = int(server.sockets[0].getsockname()[1])
     server.close()
     await server.wait_closed()
     return port
