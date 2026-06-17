@@ -100,7 +100,7 @@ class PostgresPresetOverrideRepo:
             raise QueryError(msg)
         params: tuple[object, ...] = (
             override.preset_name,
-            Jsonb([m.model_dump() for m in override.default_models])
+            Jsonb([m.model_dump(mode="json") for m in override.default_models])
             if override.default_models is not None
             else None,
             Jsonb([a.value for a in override.supported_auth_types])

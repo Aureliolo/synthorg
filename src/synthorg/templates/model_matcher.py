@@ -255,16 +255,24 @@ class CapabilityFitStrategy:
     ) -> float:
         """Absolute-axis priority bonus: best in *pool* gets the full bonus.
 
+        Scales by the model's value relative to the pool's min and max on
+        the priority axis (not its rank): any model tied for best earns the
+        full bonus, and the result is independent of how many ties exist, so
+        an identical model scores the same regardless of pool composition.
+
         Returns:
-            ``priority_max_bonus`` scaled by the model's rank on the
-            priority axis within *pool*.
+            ``priority_max_bonus`` scaled by the model's value relative to
+            the min and max values in *pool*.
         """
         if len(pool) <= 1:
             return config.priority_max_bonus
         value_of = _priority_ranker(pool, priority)
-        value = value_of(model)
-        worse = sum(1 for m in pool if value_of(m) < value)
-        return config.priority_max_bonus * worse / (len(pool) - 1)
+        values = [value_of(m) for m in pool]
+        val_min, val_max = min(values), max(values)
+        span = val_max - val_min
+        if span <= 0.0:
+            return config.priority_max_bonus
+        return config.priority_max_bonus * (value_of(model) - val_min) / span
 
 
 def _model_generation(model: ProviderModelConfig) -> float:
