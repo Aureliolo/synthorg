@@ -294,26 +294,30 @@ async def test_max_deliver_dead_letters_to_failed_no_loss(
             queue_config=task_queue._queue_config,
             seen_claims=repo,
         )
-        # One cap over the whole start+publish phase (not one per step) so
-        # the cumulative setup time is bounded by a single hard cap.
-        async with asyncio.timeout(_HARD_CAP_SECONDS):
-            await consumer.start()
-            await task_queue.publish_claim(
-                TaskClaim(task_id="doomed-task", new_status="assigned"),
-            )
-        pool = asyncio.create_task(
-            run_worker_pool(
-                queue_config=task_queue._queue_config,
-                task_queue=task_queue,
-                executor=always_retry,
-                worker_count=2,
-                seen_claims=repo,
-            ),
-        )
+        # Once the consumer exists, guarantee stop() runs even if the bounded
+        # setup times out after start() succeeds (stop() no-ops when not
+        # running). The start+publish phase shares a single cap so cumulative
+        # setup time stays bounded.
         try:
-            await _wait_until(changed, lambda: failed.count("doomed-task") >= 1)
+            async with asyncio.timeout(_HARD_CAP_SECONDS):
+                await consumer.start()
+                await task_queue.publish_claim(
+                    TaskClaim(task_id="doomed-task", new_status="assigned"),
+                )
+            pool = asyncio.create_task(
+                run_worker_pool(
+                    queue_config=task_queue._queue_config,
+                    task_queue=task_queue,
+                    executor=always_retry,
+                    worker_count=2,
+                    seen_claims=repo,
+                ),
+            )
+            try:
+                await _wait_until(changed, lambda: failed.count("doomed-task") >= 1)
+            finally:
+                await _shutdown_pool(pool)
         finally:
-            await _shutdown_pool(pool)
             await _bounded_setup(consumer.stop())
 
     assert failed == ["doomed-task"], f"task lost or double-failed: {failed}"
