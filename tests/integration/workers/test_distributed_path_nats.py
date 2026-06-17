@@ -15,7 +15,7 @@ shipped defaults (300 / 3 / 30) would make these hang.
 
 import asyncio
 import uuid
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from typing import Final
 
 import pytest
@@ -105,12 +105,12 @@ async def task_queue(nats_url: str) -> AsyncIterator[JetStreamTaskQueue]:
         nats_config=NatsConfig(url=nats_url, connect_timeout_seconds=10.0),
         durable_name=f"workers_{suffix}",
     )
-    await queue.start()
+    await _bounded_setup(queue.start())
     try:
         yield queue
     finally:
         if queue.is_running:
-            await queue.stop()
+            await _bounded_setup(queue.stop())
 
 
 async def _wait_until(
@@ -150,6 +150,27 @@ async def _shutdown_pool(pool: asyncio.Task[None]) -> None:
         pass
 
 
+async def _bounded_setup(step: Awaitable[object]) -> None:
+    """Cap a single setup await at ``_HARD_CAP_SECONDS``.
+
+    The happy-path wait and the pool shutdown are already capped, but the
+    fixture's ``queue.start()`` / ``stop()`` and the per-test publish /
+    consumer steps were not. Under JetStream-container contention one of those
+    awaits (a publish awaiting an ack, stream/consumer creation, or a drain on
+    stop) can stall indefinitely and run the test to the module-level timeout,
+    which fires ``SIGABRT`` and takes the whole xdist worker down (the observed
+    "node down" failure). Capping setup gives it the same "hang -> fast, legible
+    per-test ``TimeoutError``" contract the wait and shutdown already use.
+
+    Use this for a *single* setup await; a sequence (a publish loop, or
+    start-then-publish) is instead wrapped in one ``asyncio.timeout`` block so
+    the whole phase shares a single cap, rather than letting per-step caps sum
+    past the module timeout.
+    """
+    async with asyncio.timeout(_HARD_CAP_SECONDS):
+        await step
+
+
 async def test_synthetic_load_no_loss_no_duplication(
     task_queue: JetStreamTaskQueue,
 ) -> None:
@@ -168,10 +189,14 @@ async def test_synthetic_load_no_loss_no_duplication(
         return TaskClaimStatus.SUCCESS
 
     async with make_sqlite_seen_claims() as repo:
-        for i in range(claim_count):
-            await task_queue.publish_claim(
-                TaskClaim(task_id=f"task-{i}", new_status="assigned"),
-            )
+        # One cap over the whole publish phase: a per-call cap would let the
+        # loop's cumulative time exceed the module timeout (and SIGABRT)
+        # without any single publish tripping its own cap.
+        async with asyncio.timeout(_HARD_CAP_SECONDS):
+            for i in range(claim_count):
+                await task_queue.publish_claim(
+                    TaskClaim(task_id=f"task-{i}", new_status="assigned"),
+                )
         pool = asyncio.create_task(
             run_worker_pool(
                 queue_config=task_queue._queue_config,
@@ -218,8 +243,10 @@ async def test_long_execution_extends_ack_no_duplicate(
         return TaskClaimStatus.SUCCESS
 
     async with make_sqlite_seen_claims() as repo:
-        await task_queue.publish_claim(
-            TaskClaim(task_id="slow-task", new_status="assigned"),
+        await _bounded_setup(
+            task_queue.publish_claim(
+                TaskClaim(task_id="slow-task", new_status="assigned"),
+            )
         )
         pool = asyncio.create_task(
             run_worker_pool(
@@ -267,23 +294,30 @@ async def test_max_deliver_dead_letters_to_failed_no_loss(
             queue_config=task_queue._queue_config,
             seen_claims=repo,
         )
-        await consumer.start()
-        await task_queue.publish_claim(
-            TaskClaim(task_id="doomed-task", new_status="assigned"),
-        )
-        pool = asyncio.create_task(
-            run_worker_pool(
-                queue_config=task_queue._queue_config,
-                task_queue=task_queue,
-                executor=always_retry,
-                worker_count=2,
-                seen_claims=repo,
-            ),
-        )
+        # Once the consumer exists, guarantee stop() runs even if the bounded
+        # setup times out after start() succeeds (stop() no-ops when not
+        # running). The start+publish phase shares a single cap so cumulative
+        # setup time stays bounded.
         try:
-            await _wait_until(changed, lambda: failed.count("doomed-task") >= 1)
+            async with asyncio.timeout(_HARD_CAP_SECONDS):
+                await consumer.start()
+                await task_queue.publish_claim(
+                    TaskClaim(task_id="doomed-task", new_status="assigned"),
+                )
+            pool = asyncio.create_task(
+                run_worker_pool(
+                    queue_config=task_queue._queue_config,
+                    task_queue=task_queue,
+                    executor=always_retry,
+                    worker_count=2,
+                    seen_claims=repo,
+                ),
+            )
+            try:
+                await _wait_until(changed, lambda: failed.count("doomed-task") >= 1)
+            finally:
+                await _shutdown_pool(pool)
         finally:
-            await _shutdown_pool(pool)
-            await consumer.stop()
+            await _bounded_setup(consumer.stop())
 
     assert failed == ["doomed-task"], f"task lost or double-failed: {failed}"

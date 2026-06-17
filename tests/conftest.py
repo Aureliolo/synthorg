@@ -682,12 +682,19 @@ _UNIT_TEST_WALL_CLOCK_LIMIT = 6.0  # seconds
 #    tree (``cmd_scan_all``), inherently near the budget and tipping past
 #    it under ``--dist=loadfile`` contention -- the full scan is the
 #    test's whole point, not a fixture leak.
+#  - ``test_construction_wiring.py``: builds the whole app via
+#    ``create_app`` to assert construction-phase slice wiring. The build is
+#    class-scoped (one build shared across the class), so the one-time cost
+#    lands on whichever assert runs first and is inherently near the budget
+#    under ``--dist=loadfile`` contention -- the full build is the test's
+#    whole point, not a fixture leak.
 # pytest nodeids always use ``/`` separators on every platform, so these
 # fragments match on Windows too.
 _WALL_CLOCK_GUARD_EXEMPT_FRAGMENTS: Final = (
     "unit/architecture/",
     "unit/test_cold_import.py",
     "unit/scripts/test_check_completion_config_temperature.py",
+    "unit/api/test_construction_wiring.py",
 )
 _FUZZ_PROFILE_ACTIVE = os.environ.get("HYPOTHESIS_PROFILE") in ("fuzz", "extreme")
 # pytest-repeat's ``--count`` flag is used exclusively by
