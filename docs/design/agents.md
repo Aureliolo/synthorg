@@ -216,7 +216,6 @@ management wrapping `TaskEngine` (see [Async Delegation](communication-events.md
         fallback_model: "openrouter/example-medium-001"
         model_tier: "medium"  # derived by the matcher from the selected model's context window
       model_requirement:            # capability requirements from template
-        tier: "medium"
         priority: "balanced"        # quality / balanced / speed / cost
         min_context: 0
         requires_tools: false       # hard-require function/tool calling

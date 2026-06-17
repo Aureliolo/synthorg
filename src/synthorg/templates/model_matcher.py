@@ -116,7 +116,10 @@ class CapabilityFitStrategy:
             matched = [m for m in survivors if self._ref_matches(m, requirement)]
             if matched:
                 best = self._newest(matched)
-                return best, self._score(best, requirement, survivors, config)
+                # Score against the matched subset, not all survivors: the
+                # pool-normalised priority bonus would otherwise let unrelated
+                # non-matching models shift the pinned model's score.
+                return best, self._score(best, requirement, matched, config)
             logger.debug(
                 TEMPLATE_MODEL_MATCH_FALLBACK,
                 reason="family_pattern_miss",

@@ -59,8 +59,8 @@ context headroom + priority alignment (capped at 1.0).
 **Rationale.** Placeholders chosen so a viable candidate scores 0.4,
 with capability fit, headroom, and priority each adding up to 0.2 (sum
 capped at 1.0). The 2.0 ratio cap means a model with twice the requested
-context gets the full headroom bonus; beyond that, more headroom is
-wasted on the priority axis. The two `tier_*_min_context` thresholds
+context gets the full headroom bonus; beyond that, additional context
+no longer increases the score. The two `tier_*_min_context` thresholds
 derive the report-only tier label only and never affect selection. No
 empirical derivation; revisit alongside matcher-quality telemetry.
 
