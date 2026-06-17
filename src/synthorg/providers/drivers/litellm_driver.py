@@ -394,11 +394,18 @@ class LiteLLMDriver(BaseCompletionProvider):
         """
         litellm_model = f"{self._routing_key}/{model_config.id}"
         info = get_litellm_model_info(litellm_model)
-        metadata = extract_model_metadata(
-            info,
-            litellm_provider=self._routing_key,
-            model_id=model_config.id,
-            parser=get_family_parser(),
+        # An empty info dict (offline or unknown model) would rebuild
+        # all-False capability flags and discard the persisted metadata;
+        # fall back to the config-layer record so capabilities survive.
+        metadata = (
+            extract_model_metadata(
+                info,
+                litellm_provider=self._routing_key,
+                model_id=model_config.id,
+                parser=get_family_parser(),
+            )
+            if info
+            else model_config.metadata
         )
 
         fallback = self._config.defaults.fallback_max_output_tokens

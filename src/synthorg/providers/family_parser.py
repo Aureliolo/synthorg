@@ -184,7 +184,10 @@ class RegexFamilyParser:
             (or the whole stem when no version token is present), and is
             ``None`` only when nothing alphabetic leads the id.
         """
-        stem = stripped_id.lower()
+        # Slash-qualified ids (e.g. a routed ``provider/model-4.1``) must
+        # parse from the terminal model token, not the provider prefix, so
+        # family/generation derive from the real model rather than degrading.
+        stem = stripped_id.lower().rsplit("/", maxsplit=1)[-1]
         match = _GENERIC_RE.match(stem)
         if match is not None:
             return ParsedModelIdentity(

@@ -248,16 +248,22 @@ export function AddManualModelDialog({
   useEffect(() => {
     openRef.current = open;
   }, [open]);
+  // Session token bumped on every close so a request that resolves after
+  // a close+reopen cannot drive ``handleClose`` on the fresh session
+  // (``openRef`` alone is ``true`` again and would not catch this).
+  const dialogSessionRef = useRef(0);
 
   const form = useManualModelForm();
 
   const handleClose = (): void => {
+    dialogSessionRef.current += 1;
     form.reset();
     onClose();
   };
 
   const handleSubmit = async (): Promise<void> => {
     if (!providerName) return;
+    const sessionAtSubmit = dialogSessionRef.current;
     const result = validateManualModel(form.values);
     if ("error" in result) {
       form.setValidationError(result.error);
@@ -266,7 +272,7 @@ export function AddManualModelDialog({
     form.setValidationError(null);
     form.setSubmitting(true);
     const added = await addProviderModel(providerName, { model: result.model });
-    if (!openRef.current) return;
+    if (!openRef.current || sessionAtSubmit !== dialogSessionRef.current) return;
     form.setSubmitting(false);
     if (added !== null) {
       handleClose();

@@ -461,10 +461,10 @@ def match_all_agents(
         strategy: Selection strategy. ``None`` uses the default.
 
     Returns:
-        List of ``ModelMatch`` results. Agents are omitted only when no
-        models exist anywhere or requirement resolution fails; an agent
-        with models but no capability match falls back to the first
-        available model with score 0.
+        List of ``ModelMatch`` results. An agent is omitted when no
+        model clears its hard capability requirements (fail-closed),
+        when no models exist anywhere, or when requirement resolution
+        fails. Callers handle an omitted agent (left unassigned at setup).
     """
     from synthorg.templates.model_requirements import (  # noqa: PLC0415
         ModelRequirement,
@@ -474,10 +474,6 @@ def match_all_agents(
 
     cfg = matcher_config if matcher_config is not None else _DEFAULT_MATCHER_CONFIG
     results: list[ModelMatch] = []
-
-    all_models: list[tuple[str, ProviderModelConfig]] = [
-        (pname, m) for pname, pcfg in providers.items() for m in pcfg.models
-    ]
 
     for idx, agent in enumerate(agents):
         req = _resolve_agent_requirement(
@@ -489,34 +485,36 @@ def match_all_agents(
         )
         if req is None:
             continue
-        match = _match_agent(idx, req, providers, all_models, cfg, strategy)
+        match = _match_agent(idx, req, providers, cfg, strategy)
         if match is not None:
             results.append(match)
 
     return results
 
 
-def _match_agent(  # noqa: PLR0913 -- cohesive internal match helper
+def _match_agent(
     idx: int,
     req: ModelRequirement,
     providers: Mapping[str, _ProviderWithModels],
-    all_models: list[tuple[str, ProviderModelConfig]],
     cfg: ModelMatcherConfig,
     strategy: ModelSelectionStrategy | None,
 ) -> ModelMatch | None:
     """Find the best model for one resolved requirement across providers.
 
+    Fail-closed: when no model clears the requirement's hard capability
+    filters in any provider, returns ``None`` rather than assigning a
+    non-compliant model. The caller leaves such an agent unassigned.
+
     Returns:
-        The best ``ModelMatch``; a score-0 fallback to the first available
-        model when no capability match exists; or ``None`` when no models
-        exist across any provider.
+        The best ``ModelMatch`` across all providers, or ``None`` when no
+        model satisfies the hard capability requirements.
     """
     best_provider: str | None = None
     best_model: ProviderModelConfig | None = None
     best_score = 0.0
     for pname, pcfg in providers.items():
         model, score = match_model(req, pcfg.models, cfg, strategy)
-        if model is not None and score > best_score:
+        if model is not None and (best_model is None or score > best_score):
             best_provider, best_model, best_score = pname, model, score
 
     if best_provider is not None and best_model is not None:
@@ -534,24 +532,9 @@ def _match_agent(  # noqa: PLR0913 -- cohesive internal match helper
             tier=derive_tier(best_model, cfg),
             score=best_score,
         )
-    if all_models:
-        fb_provider, fb_model = all_models[0]
-        logger.debug(
-            TEMPLATE_MODEL_MATCH_FALLBACK,
-            agent_index=idx,
-            fallback_provider=fb_provider,
-            fallback_model=fb_model.id,
-        )
-        return ModelMatch(
-            agent_index=idx,
-            provider_name=fb_provider,
-            model_id=fb_model.id,
-            tier=derive_tier(fb_model, cfg),
-            score=0.0,
-        )
-    logger.warning(
+    logger.debug(
         TEMPLATE_MODEL_MATCH_FAILED,
         agent_index=idx,
-        reason="no_models_available",
+        reason="no_compliant_model",
     )
     return None

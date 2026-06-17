@@ -182,13 +182,12 @@ def match_and_assign_models(
         if idx in match_map:
             result.append({**agent, "model": match_map[idx]})
         else:
-            # Log at DEBUG. The matcher's tier-fallback path is the
-            # documented contract; only the wizard's pre-flight provider
-            # gate escalates "no models at all" to a 422 user error.
-            # This branch fires when the matcher returned no match for
-            # an agent (rare with the gate in place); leaving a DEBUG
-            # breadcrumb still lets operators trace it without polluting
-            # WARNING-level logs.
+            # The matcher is fail-closed: an agent whose hard capability
+            # requirement no configured model satisfies gets no match and
+            # is left unassigned here. The wizard's pre-flight provider
+            # gate escalates "no models at all" to a 422 user error; this
+            # DEBUG breadcrumb lets operators trace a capability gap
+            # without polluting WARNING-level logs.
             logger.debug(
                 SETUP_MODEL_FALLBACK_USED,
                 agent_index=idx,

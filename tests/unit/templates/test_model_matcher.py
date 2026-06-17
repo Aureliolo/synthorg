@@ -262,27 +262,26 @@ class TestMatchAllAgents:
         # Tier reflects the SELECTED model, not the requested "small".
         assert matches[0].tier == "large"
 
-    def test_fallback_to_first_model_when_no_capability_match(self) -> None:
-        # Requires vision but no provider model has it -> fallback path.
+    def test_omits_agent_when_no_capability_match(self) -> None:
+        # Requires vision but no provider model has it -> fail-closed: the
+        # agent is omitted rather than assigned a non-compliant model.
         providers = {"prov": _provider(_make_model("plain", vision=False))}
         agents = [{"model_requirement": {"requires_vision": True}}]
         matches = match_all_agents(agents, providers)
-        assert len(matches) == 1
-        assert matches[0].model_id == "plain"
-        assert matches[0].score == 0.0
+        assert matches == []
 
-    def test_fallback_picks_first_provider_by_insertion_order(self) -> None:
-        # Two providers, neither has vision; fallback is the first provider's
-        # first model by dict insertion order.
+    def test_selects_compliant_model_in_another_provider(self) -> None:
+        # The first provider's model fails the hard filter; the matcher
+        # still finds the compliant model in the second provider.
         providers = {
             "alpha": _provider(_make_model("alpha-1", vision=False)),
-            "beta": _provider(_make_model("beta-1", vision=False)),
+            "beta": _provider(_make_model("beta-1", vision=True)),
         }
         agents = [{"model_requirement": {"requires_vision": True}}]
         matches = match_all_agents(agents, providers)
         assert len(matches) == 1
-        assert matches[0].provider_name == "alpha"
-        assert matches[0].model_id == "alpha-1"
+        assert matches[0].provider_name == "beta"
+        assert matches[0].model_id == "beta-1"
 
     def test_no_models_anywhere_omits_agent(self) -> None:
         providers = {"prov": _provider()}
