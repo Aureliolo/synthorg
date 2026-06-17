@@ -13,6 +13,7 @@ template:
     - "analytics"
     - "machine-learning"
     - "pipeline"
+  posture: "knowledge_heavy"
 
   company:
     type: "custom"
@@ -32,17 +33,23 @@ template:
   agents:
     - role: "Data Analyst"
       level: "mid"
-      model: "medium"
+      model:
+        priority: "quality"
+        requires_tools: true
       personality_preset: "methodical_analyst"
       department: "data_analytics"
     - role: "Data Engineer"
       level: "senior"
-      model: "medium"
+      model:
+        priority: "balanced"
+        requires_tools: true
       personality_preset: "pragmatic_builder"
       department: "data_analytics"
     - role: "ML Engineer"
       level: "mid"
-      model: "medium"
+      model:
+        priority: "quality"
+        requires_tools: true
       personality_preset: "rapid_prototyper"
       department: "data_analytics"
 

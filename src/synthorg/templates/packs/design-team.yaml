@@ -30,12 +30,15 @@ template:
   agents:
     - role: "UX Designer"
       level: "mid"
-      model: "medium"
+      model:
+        priority: "balanced"
       personality_preset: "rapid_prototyper"
       department: "design"
     - role: "UX Researcher"
       level: "mid"
-      model: "small"
+      model:
+        priority: "quality"
+        requires_reasoning: true
       personality_preset: "methodical_analyst"
       department: "design"
 

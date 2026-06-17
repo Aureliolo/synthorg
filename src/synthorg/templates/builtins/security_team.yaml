@@ -1,0 +1,132 @@
+template:
+  name: "Security Team"
+  description: >-
+    A security-first organization: threat modelling, security review, and
+    remediation under a hardened posture. A Software Architect frames the
+    threat model, security engineers review and operate, and a backend
+    developer remediates. Security-hardened: the red-team completion gate
+    runs at a lowered stakes floor with knowledge-substrate grounding.
+  version: "1.0.0"
+  min_agents: 4
+  max_agents: 6
+  tags:
+    - "security"
+    - "red-team"
+    - "threat-modelling"
+    - "compliance"
+    - "hardened"
+  skill_patterns:
+    - "reviewer"
+    - "inversion"
+    - "tool_wrapper"
+  posture: "security_hardened"
+
+  variables:
+    - name: "company_name"
+      description: "Name of your security team"
+      default: "Security Team"
+    - name: "budget"
+      description: "Monthly budget in the company's configured currency"
+      var_type: "float"
+      default: 65.0
+    - name: "wip_limit"
+      description: "Work-in-progress limit per column"
+      var_type: "int"
+      default: 2
+
+  company:
+    type: "security_team"
+    budget_monthly: {{ budget | default(65.0) }}
+    autonomy:
+      level: "supervised"
+
+  departments:
+    - name: "security"
+      budget_percent: 65
+      head_role: "Security Engineer"
+      policies:
+        approval_chains:
+          - action_type: "security_review"
+            approvers:
+              - "Security Engineer"
+      reporting_lines:
+        - subordinate: "Security Operations"
+          supervisor: "Security Engineer"
+    - name: "engineering"
+      budget_percent: 35
+      head_role: "Software Architect"
+      reporting_lines:
+        - subordinate: "Backend Developer"
+          supervisor: "Software Architect"
+
+  agents:
+    - role: "Security Engineer"
+      level: "principal"
+      model:
+        priority: "quality"
+        min_context: 100000
+        requires_reasoning: true
+      personality_preset: "security_sentinel"
+      department: "security"
+    - role: "Security Operations"
+      level: "senior"
+      model:
+        priority: "quality"
+        requires_reasoning: true
+      personality_preset: "devil_advocate"
+      department: "security"
+    - role: "Software Architect"
+      level: "principal"
+      model:
+        priority: "quality"
+        min_context: 100000
+        requires_reasoning: true
+      personality_preset: "systems_thinker"
+      department: "engineering"
+    - role: "Backend Developer"
+      level: "senior"
+      model:
+        priority: "quality"
+        requires_tools: true
+      personality_preset: "code_craftsman"
+      department: "engineering"
+
+  workflow: "kanban"
+  communication: "hierarchical"
+
+  workflow_config:
+    kanban:
+      wip_limits:
+        - column: "in_progress"
+          limit: {{ wip_limit | default(2) }}
+        - column: "review"
+          limit: 2
+      enforce_wip: true
+    sprint:
+      ceremony_policy:
+        strategy: "calendar"
+        velocity_calculator: "calendar"
+
+  workflow_handoffs:
+    - from_department: "engineering"
+      to_department: "security"
+      trigger: "Change requires threat modelling and security review"
+      artifacts:
+        - "pull_request"
+        - "threat_model"
+    - from_department: "security"
+      to_department: "engineering"
+      trigger: "Security findings require engineering remediation"
+      artifacts:
+        - "vulnerability_report"
+        - "remediation_guidance"
+
+  escalation_paths:
+    - from_department: "security"
+      to_department: "engineering"
+      condition: "Critical vulnerability requiring immediate remediation"
+      priority_boost: 3
+    - from_department: "engineering"
+      to_department: "security"
+      condition: "Architectural change with unclear security impact"
+      priority_boost: 1

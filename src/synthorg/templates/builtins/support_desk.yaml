@@ -1,0 +1,139 @@
+template:
+  name: "Support Desk"
+  description: >-
+    A customer-facing support and incident-response organization. A triage
+    lead routes issues, a knowledge-base writer documents resolutions, and a
+    small engineering pair reproduces and fixes defects. Supervised and
+    client-facing: group chat, agent invite, and clarify proposals are
+    pre-enabled so customers and stakeholders collaborate in the loop.
+  version: "1.0.0"
+  min_agents: 5
+  max_agents: 7
+  tags:
+    - "support"
+    - "customer-facing"
+    - "incident-response"
+    - "triage"
+    - "supervised"
+  skill_patterns:
+    - "inversion"
+    - "tool_wrapper"
+    - "reviewer"
+  posture: "supervised_client_facing"
+
+  variables:
+    - name: "company_name"
+      description: "Name of your support organization"
+      default: "Support Desk"
+    - name: "budget"
+      description: "Monthly budget in the company's configured currency"
+      var_type: "float"
+      default: 70.0
+    - name: "wip_limit"
+      description: "Work-in-progress limit per column"
+      var_type: "int"
+      default: 4
+
+  company:
+    type: "support_desk"
+    budget_monthly: {{ budget | default(70.0) }}
+    autonomy:
+      level: "supervised"
+
+  departments:
+    - name: "support"
+      budget_percent: 55
+      head_role: "Project Manager"
+      policies:
+        approval_chains:
+          - action_type: "customer_response"
+            approvers:
+              - "Project Manager"
+      reporting_lines:
+        - subordinate: "Product Manager"
+          supervisor: "Project Manager"
+        - subordinate: "Technical Writer"
+          supervisor: "Project Manager"
+    - name: "engineering"
+      budget_percent: 45
+      head_role: "Backend Developer"
+      head_merge_id: "support-eng"
+      reporting_lines:
+        - subordinate: "QA Engineer"
+          supervisor: "Backend Developer"
+          supervisor_id: "support-eng"
+
+  agents:
+    - role: "Project Manager"
+      level: "senior"
+      model:
+        priority: "speed"
+      personality_preset: "client_advisor"
+      department: "support"
+    - role: "Product Manager"
+      level: "mid"
+      model:
+        priority: "balanced"
+      personality_preset: "user_advocate"
+      department: "support"
+    - role: "Technical Writer"
+      level: "mid"
+      model:
+        priority: "quality"
+      personality_preset: "technical_communicator"
+      department: "support"
+    - role: "Backend Developer"
+      merge_id: "support-eng"
+      level: "senior"
+      model:
+        priority: "balanced"
+        requires_tools: true
+      personality_preset: "pragmatic_builder"
+      department: "engineering"
+    - role: "QA Engineer"
+      level: "mid"
+      model:
+        priority: "cost"
+        requires_tools: true
+      personality_preset: "methodical_analyst"
+      department: "engineering"
+
+  workflow: "kanban"
+  communication: "hierarchical"
+
+  workflow_config:
+    kanban:
+      wip_limits:
+        - column: "in_progress"
+          limit: {{ wip_limit | default(4) }}
+        - column: "review"
+          limit: 2
+      enforce_wip: true
+    sprint:
+      ceremony_policy:
+        strategy: "event_driven"
+        velocity_calculator: "task_driven"
+
+  workflow_handoffs:
+    - from_department: "support"
+      to_department: "engineering"
+      trigger: "Reproducible defect escalated for a fix"
+      artifacts:
+        - "incident_report"
+        - "repro_steps"
+    - from_department: "engineering"
+      to_department: "support"
+      trigger: "Fix verified and ready for customer communication"
+      artifacts:
+        - "resolution_notes"
+        - "release_notes"
+
+  escalation_paths:
+    - from_department: "support"
+      to_department: "engineering"
+      condition: "Severity-1 incident impacting customers"
+      priority_boost: 3
+    - from_department: "engineering"
+      to_department: "support"
+      condition: "Fix requires customer-facing coordination or downtime window"
+      priority_boost: 1

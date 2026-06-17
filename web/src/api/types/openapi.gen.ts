@@ -8697,7 +8697,7 @@ export type components = {
          * @default custom
          * @enum {string}
          */
-        readonly CompanyType: "solo_founder" | "startup" | "dev_shop" | "product_team" | "agency" | "full_company" | "research_lab" | "consultancy" | "data_team" | "custom";
+        readonly CompanyType: "solo_founder" | "startup" | "dev_shop" | "product_team" | "agency" | "full_company" | "research_lab" | "consultancy" | "data_team" | "support_desk" | "security_team" | "growth_marketing" | "custom";
         /**
          * Comparator
          * @description Comparison operator for threshold evaluation.

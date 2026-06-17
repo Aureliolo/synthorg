@@ -30,12 +30,14 @@ template:
   agents:
     - role: "Content Writer"
       level: "mid"
-      model: "medium"
+      model:
+        priority: "quality"
       personality_preset: "team_diplomat"
       department: "creative_marketing"
     - role: "Brand Strategist"
       level: "senior"
-      model: "medium"
+      model:
+        priority: "balanced"
       personality_preset: "strategic_planner"
       department: "creative_marketing"
 

@@ -107,18 +107,19 @@ def expand_template_agents(
             preset_name = "pragmatic_builder"
             personality = get_personality_preset(preset_name)
 
-        # Resolve model tier and optional structured ModelRequirement.
-        tier: str
-        if isinstance(agent_cfg.model, dict):
-            from synthorg.templates.model_requirements import (  # noqa: PLC0415
-                parse_model_requirement,
-            )
+        # Resolve the structured ModelRequirement from the agent's model
+        # reference (an explicit id string or a capability/family dict),
+        # merging the personality preset's affinity defaults.
+        from synthorg.templates.model_requirements import (  # noqa: PLC0415
+            resolve_model_requirement,
+        )
 
-            model_req = parse_model_requirement(agent_cfg.model)
-            tier = model_req.tier
-        else:
-            model_req = None
-            tier = agent_cfg.model
+        model_req = resolve_model_requirement(
+            preset_name,
+            agent_cfg.model if isinstance(agent_cfg.model, dict) else None,
+        )
+        if isinstance(agent_cfg.model, str):
+            model_req = model_req.model_copy(update={"model_id": agent_cfg.model})
 
         agent_dict: dict[str, object] = {
             "name": name,
@@ -127,11 +128,9 @@ def expand_template_agents(
             "level": agent_cfg.level.value,
             "personality": personality,
             "personality_preset": preset_name,
-            "tier": tier,
+            "model_requirement": model_req.model_dump(),
             "model": {"provider": "", "model_id": ""},
         }
-        if model_req is not None:
-            agent_dict["model_requirement"] = model_req.model_dump()
         agents.append(agent_dict)
 
     return agents
@@ -180,7 +179,12 @@ def match_and_assign_models(
     result: list[dict[str, object]] = []
     for idx, agent in enumerate(agents):
         if idx in match_map:
-            result.append({**agent, "model": match_map[idx]})
+            # ``tier`` is report-only, derived from the selected model's
+            # metadata; round-trips to the UI via ``AgentConfig.tier``.
+            assigned = match_map[idx]
+            result.append(
+                {**agent, "model": assigned, "tier": assigned["model_tier"]},
+            )
         else:
             # The matcher is fail-closed: an agent whose hard capability
             # requirement no configured model satisfies gets no match and

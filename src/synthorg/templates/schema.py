@@ -26,7 +26,7 @@ from synthorg.memory.config import EmbedderOverrideConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import TEMPLATE_SCHEMA_VALIDATION_ERROR
 from synthorg.organization.enums import CompanyType
-from synthorg.templates.enums import SkillPattern
+from synthorg.templates.enums import PostureName, SkillPattern
 
 logger = get_logger(__name__)
 
@@ -38,6 +38,16 @@ def _default_autonomy() -> dict[str, JsonValue]:
         A fresh ``{"level": "semi"}`` mapping.
     """
     return {"level": "semi"}
+
+
+def _default_model() -> dict[str, JsonValue]:
+    """Return the default agent model reference.
+
+    Returns:
+        A fresh ``{"priority": "balanced"}`` capability reference, which
+        resolves on any provider rather than pinning a tier or vendor id.
+    """
+    return {"priority": "balanced"}
 
 
 class TemplateVariable(BaseModel):
@@ -136,9 +146,11 @@ class TemplateAgentConfig(BaseModel):
         name: Agent name (may contain Jinja2 placeholders).  ``None``
             triggers auto-generation during rendering.
         level: Seniority level override.
-        model: Model tier alias (``"large"``, ``"medium"``, ``"small"``)
-            or a structured ``ModelRequirement`` dict with ``tier``,
-            ``priority``, ``min_context``, and ``capabilities`` fields.
+        model: A model reference: either an explicit configured model
+            id/alias string, or a structured ``ModelRequirement`` dict with
+            ``priority`` / ``min_context`` / ``requires_*`` capability flags
+            and an optional ``family`` / ``model_pattern``. Built-in
+            templates use capability dicts so they resolve on any provider.
         personality_preset: Named personality preset from the presets registry.
         personality: Inline personality config dict (alternative to
             ``personality_preset``).
@@ -168,8 +180,8 @@ class TemplateAgentConfig(BaseModel):
         description="Seniority level",
     )
     model: NotBlankStr | dict[str, JsonValue] = Field(
-        default="medium",
-        description="Model tier alias or structured ModelRequirement dict",
+        default_factory=_default_model,
+        description="Explicit model id/alias or a structured ModelRequirement dict",
     )
 
     @field_validator("model")
@@ -178,13 +190,13 @@ class TemplateAgentConfig(BaseModel):
         cls,
         value: NotBlankStr | dict[str, JsonValue],
     ) -> NotBlankStr | dict[str, JsonValue]:
-        """Validate model value: tier string or ModelRequirement dict.
+        """Validate model value: explicit id string or ModelRequirement dict.
 
         Returns:
             The validated value, unchanged.
 
         Raises:
-            ValueError: When the value is neither a valid tier string nor
+            ValueError: When the value is neither a non-blank id string nor
                 a parseable model-requirement dict.
         """
         from synthorg.templates.model_requirements import (  # noqa: PLC0415
@@ -490,6 +502,10 @@ class CompanyTemplate(BaseModel):
     uses_packs: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Pack names to compose into this template",
+    )
+    posture: PostureName | None = Field(
+        default=None,
+        description="Named operating posture that expands to a feature-flag bundle",
     )
     memory: TemplateMemoryConfig = Field(
         default_factory=TemplateMemoryConfig,

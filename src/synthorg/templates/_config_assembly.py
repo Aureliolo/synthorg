@@ -11,6 +11,7 @@ from typing import cast
 
 from pydantic import JsonValue
 
+from synthorg.config.posture_config import PostureConfig
 from synthorg.config.utils import to_float
 from synthorg.engine.workflow.enums import WorkflowType
 from synthorg.observability import get_logger, safe_error_description
@@ -25,6 +26,30 @@ from synthorg.templates.errors import TemplateRenderError
 from synthorg.templates.schema import CompanyTemplate
 
 logger = get_logger(__name__)
+
+
+def thread_posture_knobs(
+    result: dict[str, object],
+    posture: PostureConfig,
+) -> None:
+    """Stamp *posture* onto *result* and thread its config-resident knobs.
+
+    Sets ``result["posture"]`` to the resolved flag bundle and threads the
+    config-resident knobs (``security.red_team`` / ``budget.auto_downgrade``)
+    directly. The settings-resident flags (chat modes, toolsmith, steering)
+    are written by the setup-completion seeder, not here. Called once at the
+    top of a render with the effective (inheritance + pack-unioned) posture.
+    """
+    result["posture"] = posture.model_dump()
+    if posture.red_team:
+        result["security"] = {
+            "red_team": {
+                "enabled": True,
+                "grounding_checker_kind": posture.red_team_grounding,
+            },
+        }
+    if posture.auto_downgrade:
+        result["budget"] = {"auto_downgrade": {"enabled": True}}
 
 
 def _build_workflow_dict(

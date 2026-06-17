@@ -12,6 +12,7 @@ template:
     - "security"
     - "compliance"
     - "infosec"
+  posture: "security_hardened"
 
   company:
     type: "custom"
@@ -30,14 +31,16 @@ template:
     - role: "Security Engineer"
       level: "senior"
       model:
-        tier: "large"
         priority: "quality"
         min_context: 100000
+        requires_reasoning: true
       personality_preset: "quality_guardian"
       department: "security"
     - role: "Security Operations"
       level: "mid"
-      model: "medium"
+      model:
+        priority: "quality"
+        requires_reasoning: true
       personality_preset: "methodical_analyst"
       department: "security"
 

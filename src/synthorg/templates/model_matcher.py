@@ -104,10 +104,21 @@ class CapabilityFitStrategy:
     ) -> tuple[ProviderModelConfig | None, float]:
         """Select the best model for *requirement* from *candidates*.
 
+        Resolution order: an explicit ``model_id`` pin wins outright (the
+        user chose it, so the capability hard-filters do not apply); then a
+        ``family`` / ``model_pattern`` reference pins the newest match; then
+        capability scoring over the hard-filter survivors.
+
         Returns:
             ``(model, score)`` for the best survivor, or ``(None, 0.0)``
-            when nothing clears the hard filters.
+            when nothing matches the pin / clears the hard filters.
         """
+        if requirement.model_id is not None:
+            pinned = [m for m in candidates if requirement.model_id in (m.id, m.alias)]
+            if not pinned:
+                return None, 0.0
+            return self._newest(pinned), 1.0
+
         survivors = [m for m in candidates if self._passes_hard_filters(m, requirement)]
         if not survivors:
             return None, 0.0
@@ -377,9 +388,12 @@ def _resolve_agent_requirement(
     idx: int,
     model_requirement_cls: type[ModelRequirement],
     parse_fn: Callable[[str | dict[str, JsonValue]], ModelRequirement],
-    resolve_fn: Callable[[str, str | None], ModelRequirement],
+    resolve_fn: Callable[[str | None, dict[str, JsonValue] | None], ModelRequirement],
 ) -> ModelRequirement | None:
     """Resolve a single agent's model requirement.
+
+    Checks ``model_requirement`` (object then dict) first; otherwise builds
+    a requirement from the agent's ``personality_preset`` affinity defaults.
 
     Returns:
         The resolved ``ModelRequirement``, or ``None`` if the agent
@@ -402,18 +416,6 @@ def _resolve_agent_requirement(
             )
             return None
 
-    raw_tier = agent.get("tier", "medium")
-    if isinstance(raw_tier, str):
-        tier_str = raw_tier
-    else:
-        logger.warning(
-            TEMPLATE_MODEL_MATCH_COERCED,
-            agent_index=idx,
-            field="tier",
-            coerced_to="medium",
-            value_type=type(raw_tier).__name__,
-        )
-        tier_str = "medium"
     raw_preset = agent.get("personality_preset")
     if raw_preset is None or isinstance(raw_preset, str):
         preset = raw_preset
@@ -427,12 +429,11 @@ def _resolve_agent_requirement(
         )
         preset = None
     try:
-        return resolve_fn(tier_str, preset)
+        return resolve_fn(preset, None)
     except (ValidationError, ValueError) as exc:
         logger.warning(
             TEMPLATE_MODEL_MATCH_SKIPPED,
             agent_index=idx,
-            tier=tier_str,
             preset=preset,
             reason="invalid_requirement",
             error_type=type(exc).__name__,
@@ -456,7 +457,7 @@ def match_all_agents(
     Args:
         agents: List of expanded agent config dicts. Requirement
             resolution checks ``model_requirement`` (object then dict),
-            then ``tier`` + optional ``personality_preset``.
+            then falls back to ``personality_preset`` affinity defaults.
         providers: Provider name -> provider config mapping; each must
             expose a ``models`` tuple of ``ProviderModelConfig``.
         matcher_config: Operator-tunable score weights. ``None`` uses the

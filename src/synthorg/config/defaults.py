@@ -62,4 +62,5 @@ def default_config_dict() -> dict[str, object]:
         "communication_tools": None,
         "analytics_tools": None,
         "tool_disclosure": {},
+        "posture": {},
     }

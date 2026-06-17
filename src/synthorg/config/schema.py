@@ -20,6 +20,7 @@ from synthorg.config.agent_schema import (
     TaskAssignmentConfig,
 )
 from synthorg.config.model_metadata import ModelMetadata
+from synthorg.config.posture_config import PostureConfig
 from synthorg.config.provider_schema import (
     LocalModelParams,
     ProviderConfig,
@@ -129,10 +130,8 @@ class RootConfig(BaseModel):
         telemetry: Anonymous product telemetry configuration (opt-in,
             disabled by default).
         web: Web tool configuration (``None`` = default web config).
-        database: Database tool configuration (``None`` = no database
-            tools).
-        terminal: Terminal tool configuration (``None`` = default
-            terminal config).
+        database: Database tool configuration (``None`` = no database tools).
+        terminal: Terminal tool configuration (``None`` = default config).
         design_tools: Design tool configuration (``None`` = disabled).
         communication_tools: Communication tool configuration
             (``None`` = disabled).
@@ -338,6 +337,7 @@ class RootConfig(BaseModel):
         default_factory=ToolDisclosureConfig,
         description="Progressive tool disclosure configuration",
     )
+    posture: PostureConfig = Field(default_factory=PostureConfig)
 
     @model_validator(mode="after")
     def _validate_unique_agent_names(self) -> Self:

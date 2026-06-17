@@ -1,10 +1,11 @@
 template:
   name: "Engineering Squad"
   description: >-
-    A lean engineering team built for shipping. No C-suite overhead;
-    a Software Architect leads directly. Three backend developers,
-    a frontend specialist, QA pipeline, and a DevOps engineer.
-    Optimized for throughput with quality gates.
+    A lean engineering team built for throughput on a tight budget. No
+    C-suite overhead; a Software Architect leads directly. Three backend
+    developers, a frontend specialist, a QA pipeline, and a DevOps engineer.
+    Cost-disciplined: auto-downgrade keeps spend in check while quality
+    gates hold the line.
   version: "1.0.0"
   min_agents: 6
   max_agents: 10
@@ -14,11 +15,13 @@ template:
     - "code-review"
     - "quality-gates"
     - "devops"
+    - "cost-disciplined"
   skill_patterns:
     - "pipeline"
     - "reviewer"
     - "tool_wrapper"
   extends: "startup"
+  posture: "cost_disciplined"
 
   variables:
     - name: "company_name"
@@ -103,53 +106,61 @@ template:
     - role: "Software Architect"
       level: "principal"
       model:
-        tier: "large"
         priority: "quality"
         min_context: 100000
+        requires_reasoning: true
       personality_preset: "systems_thinker"
       department: "engineering"
     - role: "Backend Developer"
       merge_id: "backend-senior-1"
       level: "senior"
-      model: "medium"
+      model:
+        priority: "balanced"
+        requires_tools: true
       personality_preset: "pragmatic_builder"
       department: "engineering"
     - role: "Backend Developer"
       merge_id: "backend-mid"
       level: "mid"
       model:
-        tier: "small"
         priority: "cost"
+        requires_tools: true
       personality_preset: "eager_learner"
       department: "engineering"
     - role: "Frontend Developer"
       level: "mid"
       model:
-        tier: "small"
         priority: "cost"
+        requires_tools: true
       personality_preset: "creative_innovator"
       department: "engineering"
     - role: "QA Lead"
       level: "lead"
-      model: "medium"
+      model:
+        priority: "quality"
+        requires_tools: true
       personality_preset: "quality_guardian"
       department: "quality_assurance"
     - role: "QA Engineer"
       level: "mid"
-      model: "small"
+      model:
+        priority: "cost"
+        requires_tools: true
       personality_preset: "methodical_analyst"
       department: "quality_assurance"
     - role: "DevOps/SRE Engineer"
       level: "mid"
       model:
-        tier: "medium"
         priority: "speed"
+        requires_tools: true
       personality_preset: "process_optimizer"
       department: "operations"
     - role: "Backend Developer"
       merge_id: "backend-senior-2"
       level: "senior"
-      model: "medium"
+      model:
+        priority: "balanced"
+        requires_tools: true
       personality_preset: "disciplined_executor"
       department: "engineering"
 

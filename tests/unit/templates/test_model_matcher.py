@@ -255,11 +255,11 @@ class TestDeriveTierAndScore:
 class TestMatchAllAgents:
     def test_assigns_and_derives_tier_from_selected_model(self) -> None:
         providers = {"prov": _provider(_make_model("big", max_context=200_000))}
-        agents = [{"tier": "small"}]
+        agents: list[dict[str, object]] = [{}]
         matches = match_all_agents(agents, providers)
         assert len(matches) == 1
         assert matches[0].model_id == "big"
-        # Tier reflects the SELECTED model, not the requested "small".
+        # Tier is report-only, derived from the SELECTED model's metadata.
         assert matches[0].tier == "large"
 
     def test_omits_agent_when_no_capability_match(self) -> None:
@@ -285,13 +285,50 @@ class TestMatchAllAgents:
 
     def test_no_models_anywhere_omits_agent(self) -> None:
         providers = {"prov": _provider()}
-        matches = match_all_agents([{"tier": "medium"}], providers)
+        matches = match_all_agents([{}], providers)
         assert matches == []
 
     def test_returns_model_match_instances(self) -> None:
         providers = {"prov": _provider(_make_model("m"))}
-        matches = match_all_agents([{"tier": "medium"}], providers)
+        matches = match_all_agents([{}], providers)
         assert all(isinstance(m, ModelMatch) for m in matches)
+
+
+# ── Explicit model-id pin ────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestExplicitModelId:
+    def test_pins_exact_id_over_scoring(self) -> None:
+        cheap = _make_model("cheap", cost_input=0.001, generation=9.0)
+        pinned = _make_model("pinned", cost_input=0.5, generation=1.0)
+        req = ModelRequirement(model_id="pinned")
+        model, score = match_model(req, (cheap, pinned))
+        assert model is not None
+        assert model.id == "pinned"
+        assert score == 1.0
+
+    def test_pins_by_alias(self) -> None:
+        aliased = ProviderModelConfig(id="full-id-001", alias="fast")
+        req = ModelRequirement(model_id="fast")
+        model, _ = match_model(req, (aliased,))
+        assert model is not None
+        assert model.id == "full-id-001"
+
+    def test_pin_absent_returns_none(self) -> None:
+        req = ModelRequirement(model_id="missing")
+        model, score = match_model(req, (_make_model("present"),))
+        assert model is None
+        assert score == 0.0
+
+    def test_pin_bypasses_capability_filter(self) -> None:
+        # An explicit pin is honoured even if it lacks a capability that a
+        # bare requirement would hard-filter on (the user chose this model).
+        plain = _make_model("plain", vision=False)
+        req = ModelRequirement(model_id="plain", requires_vision=True)
+        model, _ = match_model(req, (plain,))
+        assert model is not None
+        assert model.id == "plain"
 
 
 # ── Strategy seam ────────────────────────────────────────────

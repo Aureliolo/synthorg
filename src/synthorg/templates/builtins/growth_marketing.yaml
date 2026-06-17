@@ -1,0 +1,137 @@
+template:
+  name: "Growth Marketing Studio"
+  description: >-
+    A content and marketing studio focused on campaigns, copy, and
+    growth experiments on a tight budget. A brand strategist leads
+    content writers, with a data analyst measuring campaign performance
+    and a project manager coordinating delivery. Cost-disciplined:
+    auto-downgrade keeps spend in check.
+  version: "1.0.0"
+  min_agents: 5
+  max_agents: 8
+  tags:
+    - "marketing"
+    - "content"
+    - "growth"
+    - "campaigns"
+    - "cost-disciplined"
+  skill_patterns:
+    - "generator"
+    - "reviewer"
+    - "tool_wrapper"
+  posture: "cost_disciplined"
+
+  variables:
+    - name: "company_name"
+      description: "Name of your studio"
+      default: "Growth Studio"
+    - name: "budget"
+      description: "Monthly budget in the company's configured currency"
+      var_type: "float"
+      default: 45.0
+    - name: "wip_limit"
+      description: "Work-in-progress limit per column"
+      var_type: "int"
+      default: 4
+
+  company:
+    type: "growth_marketing"
+    budget_monthly: {{ budget | default(45.0) }}
+    autonomy:
+      level: "semi"
+
+  departments:
+    - name: "creative_marketing"
+      budget_percent: 70
+      head_role: "Brand Strategist"
+      policies:
+        review_requirements:
+          min_reviewers: 1
+      reporting_lines:
+        - subordinate: "Content Writer"
+          subordinate_id: "writer-lead"
+          supervisor: "Brand Strategist"
+        - subordinate: "Content Writer"
+          subordinate_id: "writer-support"
+          supervisor: "Brand Strategist"
+    - name: "operations"
+      budget_percent: 30
+      head_role: "Project Manager"
+      reporting_lines:
+        - subordinate: "Data Analyst"
+          supervisor: "Project Manager"
+
+  agents:
+    - role: "Brand Strategist"
+      level: "senior"
+      model:
+        priority: "balanced"
+      personality_preset: "growth_hacker"
+      department: "creative_marketing"
+    - role: "Content Writer"
+      merge_id: "writer-lead"
+      level: "mid"
+      model:
+        priority: "quality"
+      personality_preset: "creative_innovator"
+      department: "creative_marketing"
+    - role: "Content Writer"
+      merge_id: "writer-support"
+      level: "mid"
+      model:
+        priority: "cost"
+      personality_preset: "technical_communicator"
+      department: "creative_marketing"
+    - role: "Data Analyst"
+      level: "mid"
+      model:
+        priority: "cost"
+        requires_tools: true
+      personality_preset: "data_driven_optimizer"
+      department: "operations"
+    - role: "Project Manager"
+      level: "senior"
+      model:
+        priority: "speed"
+      personality_preset: "process_optimizer"
+      department: "operations"
+
+  workflow: "agile_kanban"
+  communication: "hybrid"
+
+  workflow_config:
+    kanban:
+      wip_limits:
+        - column: "in_progress"
+          limit: {{ wip_limit | default(4) }}
+        - column: "review"
+          limit: 2
+      enforce_wip: true
+    sprint:
+      ceremony_policy:
+        strategy: "event_driven"
+        velocity_calculator: "points_per_sprint"
+
+  workflow_handoffs:
+    - from_department: "creative_marketing"
+      to_department: "operations"
+      trigger: "Campaign assets ready for scheduling and measurement"
+      artifacts:
+        - "content_drafts"
+        - "campaign_plan"
+    - from_department: "operations"
+      to_department: "creative_marketing"
+      trigger: "Performance data suggests creative iteration"
+      artifacts:
+        - "analytics_report"
+        - "recommendations"
+
+  escalation_paths:
+    - from_department: "operations"
+      to_department: "creative_marketing"
+      condition: "Campaign underperforming and needs creative pivot"
+      priority_boost: 1
+    - from_department: "creative_marketing"
+      to_department: "operations"
+      condition: "Asset blocked awaiting budget or scheduling decision"
+      priority_boost: 1

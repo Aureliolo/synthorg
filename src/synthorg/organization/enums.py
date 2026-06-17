@@ -15,6 +15,9 @@ class CompanyType(StrEnum):
     RESEARCH_LAB = "research_lab"
     CONSULTANCY = "consultancy"
     DATA_TEAM = "data_team"
+    SUPPORT_DESK = "support_desk"
+    SECURITY_TEAM = "security_team"
+    GROWTH_MARKETING = "growth_marketing"
     CUSTOM = "custom"
 
 

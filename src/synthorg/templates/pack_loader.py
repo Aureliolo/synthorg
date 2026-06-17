@@ -45,6 +45,7 @@ BUILTIN_PACKS: MappingProxyType[str, str] = MappingProxyType(
         "qa-pipeline": "qa-pipeline.yaml",
         "creative-marketing": "creative-marketing.yaml",
         "design-team": "design-team.yaml",
+        "verifier-harness": "verifier-harness.yaml",
     }
 )
 

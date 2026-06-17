@@ -1,10 +1,10 @@
 template:
   name: "Data Team"
   description: >-
-    A data-first organization focused on analytics and ML. Distinct
-    from research_lab (broader engineering scope with Software Architect
+    A data-first organization focused on analytics and ML. Distinct from
+    research_lab (broader engineering scope with a Software Architect
     lead). Pipelines, analysis, and models with lightweight engineering
-    support.
+    support. Knowledge-heavy: grounded in the shared knowledge base.
   version: "1.0.0"
   min_agents: 5
   max_agents: 8
@@ -13,12 +13,13 @@ template:
     - "analytics"
     - "ml"
     - "pipelines"
-    - "autonomous"
+    - "knowledge-heavy"
   skill_patterns:
     - "generator"
     - "reviewer"
     - "tool_wrapper"
   extends: "research_lab"
+  posture: "knowledge_heavy"
 
   variables:
     - name: "company_name"
@@ -78,14 +79,15 @@ template:
     - role: "Backend Developer"
       level: "mid"
       model:
-        tier: "small"
         priority: "cost"
+        requires_tools: true
       personality_preset: "pragmatic_builder"
       department: "engineering"
     # Add Technical Writer in engineering (different dept from parent's product)
     - role: "Technical Writer"
       level: "mid"
-      model: "small"
+      model:
+        priority: "balanced"
       personality_preset: "technical_communicator"
       department: "engineering"
   # Inherited unchanged from research_lab:

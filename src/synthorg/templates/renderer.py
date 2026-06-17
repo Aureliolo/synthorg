@@ -38,7 +38,10 @@ from synthorg.observability.events.template import (
     TEMPLATE_RENDER_VARIABLE_ERROR,
     TEMPLATE_RENDER_YAML_ERROR,
 )
-from synthorg.templates._config_assembly import _build_config_dict
+from synthorg.templates._config_assembly import (
+    _build_config_dict,
+    thread_posture_knobs,
+)
 from synthorg.templates._inheritance import (
     deduplicate_merged_agent_names,
     render_parent_config,
@@ -47,6 +50,7 @@ from synthorg.templates._render_helpers import validate_as_root_config
 from synthorg.templates.errors import TemplateRenderError
 from synthorg.templates.loader import LoadedTemplate
 from synthorg.templates.merge import merge_template_configs
+from synthorg.templates.postures import resolve_template_posture
 from synthorg.templates.schema import CompanyTemplate
 
 logger = get_logger(__name__)
@@ -94,6 +98,8 @@ def render_template(
         custom_presets=custom_presets,
     )
 
+    _apply_effective_posture(loaded.template, config_dict)
+
     # Merge with defaults and validate.
     merged = deep_merge(default_config_dict(), config_dict)
     result = validate_as_root_config(merged, loaded.source_name)
@@ -102,6 +108,29 @@ def render_template(
         source_name=loaded.source_name,
     )
     return result
+
+
+def _apply_effective_posture(
+    template: CompanyTemplate,
+    config_dict: dict[str, object],
+) -> None:
+    """Resolve the template's effective posture and thread its knobs.
+
+    Posture is applied once at the top of the render with the effective
+    (inheritance + pack-unioned) posture, so the config-resident knobs
+    (``security.red_team`` / ``budget.auto_downgrade``) reflect packs and
+    inheritance rather than only the top template's own declaration.
+    """
+    from synthorg.templates.loader import load_template  # noqa: PLC0415
+    from synthorg.templates.pack_loader import load_pack  # noqa: PLC0415
+
+    posture = resolve_template_posture(
+        template,
+        load_pack=lambda name: load_pack(name).template,
+        load_parent=lambda name: load_template(name).template,
+    )
+    if posture is not None:
+        thread_posture_knobs(config_dict, posture)
 
 
 def _render_to_dict(

@@ -2,9 +2,10 @@ template:
   name: "Research Lab"
   description: >-
     An autonomous research organization where analysis begins with
-    structured inquiry to define the research question before data
-    work starts. Output is peer-reviewed before publication,
-    producing rigorous, structured research artifacts.
+    structured inquiry to define the research question before data work
+    starts. Output is peer-reviewed before publication. Knowledge-grounded
+    and self-directing: the knowledge substrate, steering, and clarify
+    proposals are pre-enabled for rigorous autonomous inquiry.
   version: "1.0.0"
   min_agents: 5
   max_agents: 10
@@ -14,10 +15,12 @@ template:
     - "data-pipeline"
     - "peer-review"
     - "autonomous"
+    - "knowledge-heavy"
   skill_patterns:
     - "inversion"
     - "generator"
     - "reviewer"
+  posture: "research_autonomous"
 
   variables:
     - name: "company_name"
@@ -68,41 +71,52 @@ template:
     - role: "Software Architect"
       level: "principal"
       model:
-        tier: "large"
         priority: "quality"
         min_context: 100000
+        requires_reasoning: true
       personality_preset: "systems_thinker"
       department: "engineering"
     - role: "Backend Developer"
       level: "mid"
-      model: "medium"
+      model:
+        priority: "quality"
+        requires_reasoning: true
       personality_preset: "independent_researcher"
       department: "engineering"
     - role: "Data Engineer"
       level: "senior"
-      model: "medium"
+      model:
+        priority: "balanced"
+        requires_tools: true
       personality_preset: "disciplined_executor"
       department: "data_analytics"
     - role: "Data Analyst"
       merge_id: "analyst-primary"
       level: "mid"
-      model: "medium"
+      model:
+        priority: "quality"
+        requires_tools: true
       personality_preset: "data_driven_optimizer"
       department: "data_analytics"
     - role: "ML Engineer"
       level: "senior"
-      model: "medium"
+      model:
+        priority: "quality"
+        requires_tools: true
       personality_preset: "independent_researcher"
       department: "data_analytics"
     - role: "Data Analyst"
       merge_id: "analyst-secondary"
       level: "mid"
-      model: "small"
+      model:
+        priority: "balanced"
+        requires_reasoning: true
       personality_preset: "methodical_analyst"
       department: "data_analytics"
     - role: "Technical Writer"
       level: "mid"
-      model: "small"
+      model:
+        priority: "balanced"
       personality_preset: "technical_communicator"
       department: "product"
 

@@ -30,6 +30,10 @@ class TemplateInheritanceError(TemplateRenderError):
     """
 
 
+class TemplatePostureError(TemplateError):
+    """Raised when a template declares an unknown operating posture."""
+
+
 class TemplateValidationError(TemplateError):
     """Raised when a rendered template fails validation.
 

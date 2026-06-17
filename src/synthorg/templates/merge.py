@@ -82,11 +82,12 @@ def merge_template_configs(
     Merge strategies by field:
 
     - ``company_name``, ``company_type``: child wins if present.
-    - ``config`` (dict): deep-merged; child keys override parent.
+    - ``config``, ``security``, ``budget`` (dict): deep-merged; child keys
+      override parent.
     - ``agents`` (list): merged by ``(role, department, merge_id)`` key.
     - ``departments`` (list): merged by ``name`` (case-insensitive).
-    - ``workflow``, ``workflow_handoffs``, ``escalation_paths``: child
-      replaces entirely if present; otherwise inherited from parent.
+    - ``workflow``, ``workflow_handoffs``, ``escalation_paths``, ``posture``:
+      child replaces entirely if present; otherwise inherited from parent.
 
     Args:
         parent: Rendered parent config dict (post-Jinja2, pre-defaults).
@@ -106,14 +107,15 @@ def merge_template_configs(
         elif key in parent:
             result[key] = parent[key]
 
-    # Config dict: deep merge.
-    parent_config = parent.get("config", {})
-    child_config = child.get("config", {})
-    if parent_config or child_config:
-        result["config"] = deep_merge(
-            parent_config if isinstance(parent_config, dict) else {},
-            child_config if isinstance(child_config, dict) else {},
-        )
+    # Deep-merged dict sections: child keys override parent.
+    for section in ("config", "security", "budget"):
+        parent_section = parent.get(section, {})
+        child_section = child.get(section, {})
+        if parent_section or child_section:
+            result[section] = deep_merge(
+                parent_section if isinstance(parent_section, dict) else {},
+                child_section if isinstance(child_section, dict) else {},
+            )
 
     # Agents: merge by (role, department, merge_id) key.
     parent_agents = parent.get("agents", [])
@@ -134,7 +136,9 @@ def merge_template_configs(
         )
 
     # Replace-if-present fields (deep-copied to prevent reference sharing).
-    for key in ("workflow", "workflow_handoffs", "escalation_paths"):
+    # ``posture`` is child-wins: a child template's declared posture replaces
+    # the parent's entirely rather than blending two operating modes.
+    for key in ("workflow", "workflow_handoffs", "escalation_paths", "posture"):
         if key in child and child[key] is not None:
             result[key] = copy.deepcopy(child[key])
         elif key in parent:
