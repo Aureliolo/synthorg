@@ -3,6 +3,7 @@
 from unittest.mock import patch
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.providers.management.model_presence_probe import (
@@ -61,5 +62,5 @@ class TestStaticPresenceProbe:
 
     def test_report_is_frozen(self) -> None:
         report = ModelPresenceReport(provider_name="p")
-        with pytest.raises(Exception):  # noqa: B017, PT011 -- frozen pydantic
+        with pytest.raises(ValidationError):
             report.provider_name = "q"  # type: ignore[misc]

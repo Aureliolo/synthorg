@@ -16,9 +16,12 @@ singleton, and any object satisfying :class:`FamilyParser` can replace it.
 import re
 from collections.abc import Mapping
 from datetime import date
+from types import MappingProxyType
 from typing import Final, NamedTuple, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from synthorg.core.types import NotBlankStr
 
 _DATE_TOKEN_LEN: Final[int] = 8
 
@@ -36,7 +39,7 @@ class ParsedModelIdentity(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-    family: str | None = Field(default=None)
+    family: NotBlankStr | None = Field(default=None)
     generation: float | None = Field(default=None, ge=0.0)
     release_date: date | None = Field(default=None)
 
@@ -129,8 +132,10 @@ class RegexFamilyParser:
     """
 
     def __init__(self, rules: Mapping[str, tuple[FamilyRule, ...]]) -> None:
-        """Store the per-provider rule table."""
-        self._rules = rules
+        """Store an immutable view of the per-provider rule table."""
+        self._rules: Mapping[str, tuple[FamilyRule, ...]] = MappingProxyType(
+            dict(rules),
+        )
 
     def parse(
         self,

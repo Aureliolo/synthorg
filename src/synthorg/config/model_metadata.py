@@ -35,7 +35,7 @@ class ModelMetadata(BaseModel):
         supports_vision: Model accepts image inputs.
         supports_reasoning: Model exposes extended reasoning.
         max_output_tokens: Maximum output tokens, when known.
-        family: Parsed model family (e.g. ``"claude-sonnet"``).
+        family: Parsed model family (e.g. ``"example-large"``).
         generation: Parsed generation/recency as a sortable number
             (e.g. ``4.5`` for a ``4-5`` version), higher is newer.
         release_date: Parsed release date, when derivable from the id.
@@ -54,7 +54,7 @@ class ModelMetadata(BaseModel):
     )
     family: NotBlankStr | None = Field(
         default=None,
-        description="Parsed model family (e.g. 'claude-sonnet')",
+        description="Parsed model family (e.g. 'example-large')",
     )
     generation: float | None = Field(
         default=None,

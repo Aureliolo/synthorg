@@ -28,14 +28,16 @@ class TestModelMetadata:
             supports_vision=True,
             supports_reasoning=True,
             max_output_tokens=8192,
-            family="claude-sonnet",
+            family="example-large",
             generation=4.5,
             release_date=date(2025, 5, 14),
             metadata_source="litellm",
         )
         assert meta.supports_tools is True
+        assert meta.supports_vision is True
+        assert meta.supports_reasoning is True
         assert meta.max_output_tokens == 8192
-        assert meta.family == "claude-sonnet"
+        assert meta.family == "example-large"
         assert meta.generation == 4.5
         assert meta.release_date == date(2025, 5, 14)
         assert meta.metadata_source == "litellm"

@@ -889,9 +889,13 @@ MODEL_FAMILY_RULES: Final[MappingProxyType[str, tuple[FamilyRule, ...]]] = (
                 ),
             ),
             "mistral": (
+                # Mistral versions are YYMM date codes, not semantic
+                # generations; capturing them as ``gen`` would inflate the
+                # cross-family quality axis. Parse the family only and let
+                # within-family recency fall back to the id ordering.
                 FamilyRule(
                     capture=re.compile(
-                        r"^mistral-(?P<variant>large|medium|small)-(?P<gen>\d+)$",
+                        r"^mistral-(?P<variant>large|medium|small)",
                     ),
                     family_template="mistral-{variant}",
                 ),

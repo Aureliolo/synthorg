@@ -26,7 +26,11 @@ from synthorg.observability.events.template import (
     TEMPLATE_MODEL_MATCH_SKIPPED,
     TEMPLATE_MODEL_MATCH_SUCCESS,
 )
-from synthorg.settings.bridge_configs import EngineBridgeConfig
+from synthorg.templates.model_matcher_config import (
+    _DEFAULT_MATCHER_CONFIG,
+    ModelMatcherConfig,
+    derive_tier,
+)
 from synthorg.templates.model_requirements import ModelRequirement, ModelTier
 
 logger = get_logger(__name__)
@@ -37,6 +41,10 @@ _CAPABILITY_COUNT: Final[int] = 3
 # Latency stand-in (ms) for models without a measured latency, so they
 # sort last on the speed axis without using inf (frozen models forbid it).
 _LATENCY_UNKNOWN_MS: Final[int] = 10_000_000
+
+# Weight of the (pool-normalised) generation axis in the balanced blend;
+# the remainder weights cheapness. 0.5 splits quality and cost evenly.
+_BALANCED_GENERATION_WEIGHT: Final[float] = 0.5
 
 
 class _ProviderWithModels(Protocol):
@@ -63,79 +71,6 @@ class ModelMatch(BaseModel):
     model_id: NotBlankStr
     tier: ModelTier
     score: float = Field(ge=0.0, le=1.0)
-
-
-class ModelMatcherConfig(BaseModel):
-    """Operator-tunable weights for the capability-aware matcher.
-
-    The score of a surviving candidate is ``base_score`` plus the
-    capability-fit, context-headroom, and priority bonuses, capped at
-    1.0.  ``tier_*_min_context`` derive the report-only tier label.
-
-    Field defaults mirror the registered defaults in
-    :mod:`synthorg.settings.definitions.engine`. Runtime callers passing
-    ``matcher_config=None`` fall back to ``_DEFAULT_MATCHER_CONFIG``,
-    projected from a default ``EngineBridgeConfig`` so the canonical
-    settings registration is the single source of truth.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    base_score: float = Field(default=0.4, ge=0.0, le=1.0)
-    capability_fit_weight: float = Field(default=0.2, ge=0.0, le=1.0)
-    headroom_max_bonus: float = Field(default=0.2, ge=0.0, le=1.0)
-    priority_max_bonus: float = Field(default=0.2, ge=0.0, le=1.0)
-    headroom_ratio_cap: float = Field(default=2.0, ge=1.0, le=100.0)
-    tier_large_min_context: int = Field(default=200_000, gt=0)
-    tier_medium_min_context: int = Field(default=32_000, gt=0)
-
-    @classmethod
-    def from_bridge_config(cls, bridge: EngineBridgeConfig) -> ModelMatcherConfig:
-        """Project the matcher subset out of an ``EngineBridgeConfig``.
-
-        Returns:
-            A ``ModelMatcherConfig`` carrying the matcher-relevant fields
-            projected from ``bridge``.
-        """
-        return cls(
-            base_score=bridge.matcher_base_score,
-            capability_fit_weight=bridge.matcher_capability_fit_weight,
-            headroom_max_bonus=bridge.matcher_headroom_max_bonus,
-            priority_max_bonus=bridge.matcher_priority_max_bonus,
-            headroom_ratio_cap=bridge.matcher_headroom_ratio_cap,
-            tier_large_min_context=bridge.matcher_tier_large_min_context,
-            tier_medium_min_context=bridge.matcher_tier_medium_min_context,
-        )
-
-
-def _build_default_matcher_config() -> ModelMatcherConfig:
-    """Project the matcher defaults out of a default ``EngineBridgeConfig``.
-
-    Returns:
-        A ``ModelMatcherConfig`` projected from a default
-        ``EngineBridgeConfig`` so the no-config path tracks the
-        registered defaults rather than this module's field defaults.
-    """
-    from synthorg.settings.bridge_configs import EngineBridgeConfig  # noqa: PLC0415
-
-    return ModelMatcherConfig.from_bridge_config(EngineBridgeConfig())
-
-
-_DEFAULT_MATCHER_CONFIG = _build_default_matcher_config()
-
-
-def derive_tier(model: ProviderModelConfig, config: ModelMatcherConfig) -> ModelTier:
-    """Derive the report-only tier label from a model's context window.
-
-    Returns:
-        ``"large"`` / ``"medium"`` / ``"small"`` by absolute context
-        thresholds (operator-tunable). Selection never depends on this.
-    """
-    if model.max_context >= config.tier_large_min_context:
-        return "large"
-    if model.max_context >= config.tier_medium_min_context:
-        return "medium"
-    return "small"
 
 
 @runtime_checkable
@@ -189,11 +124,10 @@ class CapabilityFitStrategy:
                 pattern=requirement.model_pattern,
             )
 
-        best = max(
-            survivors,
-            key=lambda m: self._score(m, requirement, survivors, config),
-        )
-        return best, self._score(best, requirement, survivors, config)
+        scored = [
+            (m, self._score(m, requirement, survivors, config)) for m in survivors
+        ]
+        return max(scored, key=lambda pair: pair[1])
 
     def _passes_hard_filters(
         self,
@@ -232,8 +166,10 @@ class CapabilityFitStrategy:
     ) -> bool:
         """Return ``True`` when *model* matches the family/pattern ref."""
         family = requirement.family
-        if family is not None and model.metadata.family == family.strip().lower():
-            return True
+        if family is not None:
+            stored = (model.metadata.family or "").lower()
+            if stored and stored == family.strip().lower():
+                return True
         pattern = requirement.model_pattern
         return pattern is not None and fnmatch(model.id, pattern)
 
@@ -325,28 +261,65 @@ class CapabilityFitStrategy:
         """
         if len(pool) <= 1:
             return config.priority_max_bonus
-        value = _priority_value(model, priority)
-        worse = sum(1 for m in pool if _priority_value(m, priority) < value)
+        value_of = _priority_ranker(pool, priority)
+        value = value_of(model)
+        worse = sum(1 for m in pool if value_of(m) < value)
         return config.priority_max_bonus * worse / (len(pool) - 1)
 
 
-def _priority_value(model: ProviderModelConfig, priority: str) -> float:
-    """Higher-is-better value of *model* on the *priority* axis.
+def _model_generation(model: ProviderModelConfig) -> float:
+    """Return the model's generation, or ``0.0`` when unknown.
 
     Returns:
-        ``generation`` for quality, negative cost for cost, negative
-        latency for speed, and a generation-minus-cost blend for balanced.
+        The parsed ``metadata.generation`` or ``0.0``.
     """
-    cost = model.cost_per_1k_input
-    gen = model.metadata.generation if model.metadata.generation is not None else 0.0
-    if priority == "quality":
-        return gen
+    return model.metadata.generation if model.metadata.generation is not None else 0.0
+
+
+def _priority_ranker(
+    pool: Sequence[ProviderModelConfig],
+    priority: str,
+) -> Callable[[ProviderModelConfig], float]:
+    """Build a higher-is-better value function for *priority* over *pool*.
+
+    For ``balanced`` the generation and cost axes are normalised to
+    ``[0, 1]`` within *pool* before blending, so the two incomparable
+    scales contribute evenly instead of generation dominating.
+
+    Returns:
+        A callable mapping a model to its priority-axis value.
+    """
+    if priority != "balanced":
+        return lambda m: _priority_value(m, priority)
+
+    gens = [_model_generation(m) for m in pool]
+    costs = [m.cost_per_1k_input for m in pool]
+    gen_min, gen_span = min(gens), (max(gens) - min(gens)) or 1.0
+    cost_min, cost_span = min(costs), (max(costs) - min(costs)) or 1.0
+
+    def balanced(model: ProviderModelConfig) -> float:
+        norm_gen = (_model_generation(model) - gen_min) / gen_span
+        norm_cost = (model.cost_per_1k_input - cost_min) / cost_span
+        return _BALANCED_GENERATION_WEIGHT * norm_gen + (
+            1.0 - _BALANCED_GENERATION_WEIGHT
+        ) * (1.0 - norm_cost)
+
+    return balanced
+
+
+def _priority_value(model: ProviderModelConfig, priority: str) -> float:
+    """Higher-is-better value of *model* on a single (non-balanced) axis.
+
+    Returns:
+        ``generation`` for quality (and as the default), negative cost
+        for cost, and negative latency for speed.
+    """
     if priority == "cost":
-        return -cost
+        return -model.cost_per_1k_input
     if priority == "speed":
         latency = model.estimated_latency_ms
         return -float(latency if latency is not None else _LATENCY_UNKNOWN_MS)
-    return gen - cost
+    return _model_generation(model)
 
 
 _DEFAULT_STRATEGY: ModelSelectionStrategy = CapabilityFitStrategy()
@@ -508,57 +481,69 @@ def match_all_agents(
         )
         if req is None:
             continue
-
-        best_provider: str | None = None
-        best_model: ProviderModelConfig | None = None
-        best_score = 0.0
-
-        for pname, pcfg in providers.items():
-            model, score = match_model(req, pcfg.models, cfg, strategy)
-            if model is not None and score > best_score:
-                best_provider = pname
-                best_model = model
-                best_score = score
-
-        if best_provider is not None and best_model is not None:
-            logger.debug(
-                TEMPLATE_MODEL_MATCH_SUCCESS,
-                agent_index=idx,
-                provider=best_provider,
-                model=best_model.id,
-                score=best_score,
-            )
-            results.append(
-                ModelMatch(
-                    agent_index=idx,
-                    provider_name=best_provider,
-                    model_id=best_model.id,
-                    tier=derive_tier(best_model, cfg),
-                    score=best_score,
-                ),
-            )
-        elif all_models:
-            fb_provider, fb_model = all_models[0]
-            logger.debug(
-                TEMPLATE_MODEL_MATCH_FALLBACK,
-                agent_index=idx,
-                fallback_provider=fb_provider,
-                fallback_model=fb_model.id,
-            )
-            results.append(
-                ModelMatch(
-                    agent_index=idx,
-                    provider_name=fb_provider,
-                    model_id=fb_model.id,
-                    tier=derive_tier(fb_model, cfg),
-                    score=0.0,
-                ),
-            )
-        else:
-            logger.warning(
-                TEMPLATE_MODEL_MATCH_FAILED,
-                agent_index=idx,
-                reason="no_models_available",
-            )
+        match = _match_agent(idx, req, providers, all_models, cfg, strategy)
+        if match is not None:
+            results.append(match)
 
     return results
+
+
+def _match_agent(  # noqa: PLR0913 -- cohesive internal match helper
+    idx: int,
+    req: ModelRequirement,
+    providers: Mapping[str, _ProviderWithModels],
+    all_models: list[tuple[str, ProviderModelConfig]],
+    cfg: ModelMatcherConfig,
+    strategy: ModelSelectionStrategy | None,
+) -> ModelMatch | None:
+    """Find the best model for one resolved requirement across providers.
+
+    Returns:
+        The best ``ModelMatch``; a score-0 fallback to the first available
+        model when no capability match exists; or ``None`` when no models
+        exist across any provider.
+    """
+    best_provider: str | None = None
+    best_model: ProviderModelConfig | None = None
+    best_score = 0.0
+    for pname, pcfg in providers.items():
+        model, score = match_model(req, pcfg.models, cfg, strategy)
+        if model is not None and score > best_score:
+            best_provider, best_model, best_score = pname, model, score
+
+    if best_provider is not None and best_model is not None:
+        logger.debug(
+            TEMPLATE_MODEL_MATCH_SUCCESS,
+            agent_index=idx,
+            provider=best_provider,
+            model=best_model.id,
+            score=best_score,
+        )
+        return ModelMatch(
+            agent_index=idx,
+            provider_name=best_provider,
+            model_id=best_model.id,
+            tier=derive_tier(best_model, cfg),
+            score=best_score,
+        )
+    if all_models:
+        fb_provider, fb_model = all_models[0]
+        logger.debug(
+            TEMPLATE_MODEL_MATCH_FALLBACK,
+            agent_index=idx,
+            fallback_provider=fb_provider,
+            fallback_model=fb_model.id,
+        )
+        return ModelMatch(
+            agent_index=idx,
+            provider_name=fb_provider,
+            model_id=fb_model.id,
+            tier=derive_tier(fb_model, cfg),
+            score=0.0,
+        )
+    logger.warning(
+        TEMPLATE_MODEL_MATCH_FAILED,
+        agent_index=idx,
+        reason="no_models_available",
+    )
+    return None

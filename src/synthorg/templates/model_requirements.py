@@ -52,9 +52,9 @@ class ModelRequirement(BaseModel):
         requires_vision: Hard-require image-input support.
         requires_reasoning: Hard-require extended-reasoning support.
         family: Resolve to the newest configured model in this family
-            (e.g. ``"claude-sonnet"``); pins a concrete id at match time.
+            (e.g. ``"example-large"``); pins a concrete id at match time.
         model_pattern: Resolve to the newest configured model whose id
-            matches this glob (e.g. ``"gpt-4*"``); pins a concrete id.
+            matches this glob (e.g. ``"example-*"``); pins a concrete id.
         capabilities: Future-use capability tags (e.g. ``"reasoning"``).
     """
 

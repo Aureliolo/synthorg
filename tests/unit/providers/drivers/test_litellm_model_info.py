@@ -62,6 +62,16 @@ class TestExtractModelMetadata:
         )
         assert meta.max_output_tokens is None
 
+    def test_bool_output_tokens_drop_to_none(self) -> None:
+        # A boolean is not a valid token count; coercion rejects it.
+        meta = extract_model_metadata(
+            {"max_output_tokens": True},
+            litellm_provider=None,
+            model_id="examplemodel1.0",
+            parser=_PARSER,
+        )
+        assert meta.max_output_tokens is None
+
     def test_source_override(self) -> None:
         meta = extract_model_metadata(
             {},

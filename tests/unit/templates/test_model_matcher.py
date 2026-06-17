@@ -54,10 +54,15 @@ def _make_model(  # noqa: PLR0913 -- keyword-only test factory
 
 
 class _Provider:
-    """Minimal provider exposing a models tuple."""
+    """Minimal provider exposing a typed ``models`` tuple."""
 
     def __init__(self, models: tuple[ProviderModelConfig, ...]) -> None:
         self.models = models
+
+
+def _provider(*models: ProviderModelConfig) -> _Provider:
+    """Build a ``_Provider`` from positional models."""
+    return _Provider(models)
 
 
 # ── Hard capability filters ──────────────────────────────────
@@ -139,13 +144,13 @@ class TestFamilyResolution:
         assert model.id == "ex-1"
 
     def test_pattern_pins_newest_matching_id(self) -> None:
-        a = _make_model("gpt-x-1", generation=1.0)
-        b = _make_model("gpt-x-2", generation=2.0)
+        a = _make_model("example-x-1", generation=1.0)
+        b = _make_model("example-x-2", generation=2.0)
         c = _make_model("other-9", generation=9.0)
-        req = ModelRequirement(model_pattern="gpt-x-*")
+        req = ModelRequirement(model_pattern="example-x-*")
         model, _ = match_model(req, (a, b, c))
         assert model is not None
-        assert model.id == "gpt-x-2"
+        assert model.id == "example-x-2"
 
     def test_family_miss_falls_back_to_survivors(self) -> None:
         m = _make_model("only", family="example-large", generation=1.0)
@@ -198,6 +203,27 @@ class TestPriorityAxis:
         assert model is not None
         assert model.id == "fast"
 
+    def test_speed_priority_deprioritises_unknown_latency(self) -> None:
+        slow = _make_model("slow", latency_ms=5_000)
+        unknown = _make_model("unknown", latency_ms=None)
+        req = ModelRequirement(priority="speed")
+        model, _ = match_model(req, (unknown, slow))
+        # A model with a real (even slow) latency beats unknown latency.
+        assert model is not None
+        assert model.id == "slow"
+
+    def test_balanced_priority_blends_quality_and_cost(self) -> None:
+        # Pool-normalised blend: the mid model beats both the dear-but-newest
+        # and the cheap-but-oldest extremes (which tie). Without normalisation
+        # the raw gen-minus-cost formula would just pick the newest.
+        quality = _make_model("dear-new", generation=3.0, cost_input=0.1)
+        cheap = _make_model("cheap-old", generation=1.0, cost_input=0.001)
+        middle = _make_model("mid", generation=2.0, cost_input=0.01)
+        req = ModelRequirement(priority="balanced")
+        model, _ = match_model(req, (quality, cheap, middle))
+        assert model is not None
+        assert model.id == "mid"
+
 
 # ── Derived tier + score bounds ──────────────────────────────
 
@@ -229,9 +255,7 @@ class TestDeriveTierAndScore:
 @pytest.mark.unit
 class TestMatchAllAgents:
     def test_assigns_and_derives_tier_from_selected_model(self) -> None:
-        providers = {
-            "prov": _Provider((_make_model("big", max_context=200_000),)),
-        }
+        providers = {"prov": _provider(_make_model("big", max_context=200_000))}
         agents = [{"tier": "small"}]
         matches = match_all_agents(agents, providers)
         assert len(matches) == 1
@@ -241,20 +265,33 @@ class TestMatchAllAgents:
 
     def test_fallback_to_first_model_when_no_capability_match(self) -> None:
         # Requires vision but no provider model has it -> fallback path.
-        providers = {"prov": _Provider((_make_model("plain", vision=False),))}
+        providers = {"prov": _provider(_make_model("plain", vision=False))}
         agents = [{"model_requirement": {"requires_vision": True}}]
         matches = match_all_agents(agents, providers)
         assert len(matches) == 1
         assert matches[0].model_id == "plain"
         assert matches[0].score == 0.0
 
+    def test_fallback_picks_first_provider_by_insertion_order(self) -> None:
+        # Two providers, neither has vision; fallback is the first provider's
+        # first model by dict insertion order.
+        providers = {
+            "alpha": _provider(_make_model("alpha-1", vision=False)),
+            "beta": _provider(_make_model("beta-1", vision=False)),
+        }
+        agents = [{"model_requirement": {"requires_vision": True}}]
+        matches = match_all_agents(agents, providers)
+        assert len(matches) == 1
+        assert matches[0].provider_name == "alpha"
+        assert matches[0].model_id == "alpha-1"
+
     def test_no_models_anywhere_omits_agent(self) -> None:
-        providers = {"prov": _Provider(())}
+        providers = {"prov": _provider()}
         matches = match_all_agents([{"tier": "medium"}], providers)
         assert matches == []
 
     def test_returns_model_match_instances(self) -> None:
-        providers = {"prov": _Provider((_make_model("m"),))}
+        providers = {"prov": _provider(_make_model("m"))}
         matches = match_all_agents([{"tier": "medium"}], providers)
         assert all(isinstance(m, ModelMatch) for m in matches)
 

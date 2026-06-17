@@ -86,8 +86,10 @@ async def test_round_trip_models_list(backend: PersistenceBackend) -> None:
     loaded = await repo.get("test-cloud-provider")
     assert loaded is not None
     assert loaded.default_models is not None
-    assert len(loaded.default_models) == 2
-    assert loaded.default_models[0].id == "example-large-001"
+    assert [m.id for m in loaded.default_models] == [
+        "example-large-001",
+        "example-small-001",
+    ]
 
 
 async def test_round_trip_model_metadata(backend: PersistenceBackend) -> None:

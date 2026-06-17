@@ -48,6 +48,7 @@ from synthorg.providers.management.capability_dtos import (
     SyncModelsRequest,
     SyncModelsResponse,
 )
+from synthorg.providers.management.model_presence_probe import StaticPresenceProbe
 from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -388,6 +389,21 @@ class ProviderCapabilitiesMixin:
                 "replace_existing": request.replace_existing,
             },
         )
+
+        # Best-effort presence probe: flag any persisted id absent from the
+        # offline LiteLLM catalogue (e.g. baked or manually-added models).
+        # A probe failure must never fail an already-persisted sync.
+        try:
+            await StaticPresenceProbe().probe(name, updated_config)
+        except Exception as exc:  # noqa: BLE001 -- presence probe is best-effort
+            reraise_critical(exc)
+            logger.warning(
+                PROVIDER_VALIDATION_FAILED,
+                provider=name,
+                reason="presence_probe_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
         return SyncModelsResponse(
             added=tuple(sorted(added)),

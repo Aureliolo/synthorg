@@ -424,8 +424,12 @@ factory to build a callback bound to the live `ChannelsPlugin`.
 
 ### Tier Flow
 
-1. Template YAML specifies agent tier (`large`/`medium`/`small`)
-2. Model matcher resolves tier to a concrete model, stores `model_tier` in
+1. Template YAML specifies an agent's capability requirements (capability
+   flags, `min_context`, optional `family`/`model_pattern`, priority)
+2. Model matcher hard-filters on those requirements against each model's
+   persisted `ModelMetadata`, resolves any family/pattern reference to the
+   newest matching model, scores survivors, and stores the report-only
+   `model_tier` (derived from the selected model's context window) in
    `ModelConfig`
 3. Budget auto-downgrade updates `model_tier` when the target alias is a
    canonical tier name (`large`/`medium`/`small`); non-tier aliases (e.g.
