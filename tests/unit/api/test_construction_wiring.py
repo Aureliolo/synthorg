@@ -27,14 +27,21 @@ from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 pytestmark = pytest.mark.unit
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def built_app_state(
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
     cost_tracker: CostTracker,
     root_config: RootConfig,
 ) -> AppState:
-    """Build a full app with fakes injected and return its ``AppState``."""
+    """Build the full app once and share it across the class's read-only asserts.
+
+    Every test here only reads construction-wired slice fields, so the
+    expensive ``create_app`` build is amortised class-wide rather than rebuilt
+    per test (eight builds collapse to one). All four dependencies are
+    session-scoped, so the identity assertions (``is fake_persistence`` etc.)
+    still hold against the single shared build.
+    """
     app = build_test_app(
         config=root_config,
         persistence=fake_persistence,
