@@ -11598,6 +11598,35 @@ export type components = {
             readonly temperature: number;
         };
         /**
+         * ModelMetadata
+         * @description Capability and family/generation metadata (enriched at ingest)
+         */
+        readonly ModelMetadata: {
+            /** @description Parsed model family (e.g. 'example-large') */
+            readonly family: string | null;
+            /** @description Sortable generation/recency (higher is newer) */
+            readonly generation: number | null;
+            /** @description Maximum output tokens, when known */
+            readonly max_output_tokens: number | null;
+            /**
+             * @description Provenance of this metadata record
+             * @default unknown
+             * @enum {string}
+             */
+            readonly metadata_source: "litellm" | "preset" | "probe" | "unknown";
+            /**
+             * Format: date
+             * @description Parsed release date, when derivable from the id
+             */
+            readonly release_date: string | null;
+            /** @default false */
+            readonly supports_reasoning: boolean;
+            /** @default false */
+            readonly supports_tools: boolean;
+            /** @default false */
+            readonly supports_vision: boolean;
+        };
+        /**
          * NetworkMode
          * @description Network access mode.
          *
@@ -13633,6 +13662,7 @@ export type components = {
              * @default 200000
              */
             readonly max_context: number;
+            readonly metadata: components["schemas"]["ModelMetadata"];
         };
         /** ProviderModelResponse */
         readonly ProviderModelResponse: {

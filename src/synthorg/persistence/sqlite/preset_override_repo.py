@@ -125,7 +125,7 @@ class SQLitePresetOverrideRepo:
         params = (
             override.preset_name,
             json.dumps(
-                [m.model_dump() for m in override.default_models],
+                [m.model_dump(mode="json") for m in override.default_models],
                 sort_keys=True,
             )
             if override.default_models is not None

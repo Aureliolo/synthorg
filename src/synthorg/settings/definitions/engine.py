@@ -332,21 +332,41 @@ _r.register(
 )
 
 # ── Model matcher score weights ─────────────────────────────────
-# Three score components contribute up to ``matcher_tier_base_score`` /
-# ``matcher_headroom_max_bonus`` / ``matcher_priority_max_bonus``;
-# ``matcher_headroom_ratio_cap`` clamps the headroom curve;
-# ``matcher_balanced_partial_credit`` is the balanced-priority bonus.
+# Capability-aware composite: ``matcher_base_score`` is the floor for a
+# candidate that clears the hard capability filters; ``matcher_capability_fit_weight``
+# rewards models carrying more capabilities; ``matcher_headroom_max_bonus``
+# (clamped by ``matcher_headroom_ratio_cap``) credits context headroom;
+# ``matcher_priority_max_bonus`` ranks on the absolute priority axis. The
+# two ``tier_*_min_context`` thresholds derive the report-only tier label.
 
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
-        key="matcher_tier_base_score",
+        key="matcher_base_score",
         type=SettingType.FLOAT,
-        default="0.5",
+        default="0.4",
         description=(
-            "Model matcher: floor score awarded when a model's tier"
-            " satisfies the requirement before headroom and priority"
-            " bonuses are applied."
+            "Model matcher: floor score awarded when a candidate clears"
+            " the hard capability filters, before capability-fit,"
+            " headroom, and priority bonuses are applied."
+        ),
+        group="Model Matcher",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+        max_value=1.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="matcher_capability_fit_weight",
+        type=SettingType.FLOAT,
+        default="0.2",
+        description=(
+            "Model matcher: maximum bonus from the fraction of known"
+            " capabilities (tools / vision / reasoning) a model"
+            " supports. Rewards more capable models as a tiebreaker."
         ),
         group="Model Matcher",
         level=SettingLevel.ADVANCED,
@@ -360,7 +380,7 @@ _r.register(
         namespace=SettingNamespace.ENGINE,
         key="matcher_headroom_max_bonus",
         type=SettingType.FLOAT,
-        default="0.25",
+        default="0.2",
         description=(
             "Model matcher: maximum bonus when a model's context"
             " window comfortably exceeds the requirement (clamped"
@@ -378,10 +398,10 @@ _r.register(
         namespace=SettingNamespace.ENGINE,
         key="matcher_priority_max_bonus",
         type=SettingType.FLOAT,
-        default="0.25",
+        default="0.2",
         description=(
-            "Model matcher: maximum bonus from the priority-axis"
-            " ranking within the matched tier (cost / quality / speed)."
+            "Model matcher: maximum bonus from the absolute priority-axis"
+            " ranking among candidates (cost / quality / speed / balanced)."
         ),
         group="Model Matcher",
         level=SettingLevel.ADVANCED,
@@ -412,18 +432,33 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
-        key="matcher_balanced_partial_credit",
-        type=SettingType.FLOAT,
-        default="0.125",
+        key="matcher_tier_large_min_context",
+        type=SettingType.INTEGER,
+        default="200000",
         description=(
-            "Model matcher: bonus awarded to balanced-priority"
-            " requirements when no other ranking applies (i.e. the"
-            " 'no strong preference' fallback)."
+            "Model matcher: minimum context window (tokens) for a model"
+            " to derive the report-only 'large' tier label."
         ),
         group="Model Matcher",
         level=SettingLevel.ADVANCED,
-        min_value=0.0,
-        max_value=1.0,
+        min_value=1,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="matcher_tier_medium_min_context",
+        type=SettingType.INTEGER,
+        default="32000",
+        description=(
+            "Model matcher: minimum context window (tokens) for a model"
+            " to derive the report-only 'medium' tier label (below this"
+            " is 'small')."
+        ),
+        group="Model Matcher",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
     )
 )
 

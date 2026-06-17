@@ -19,6 +19,7 @@ from synthorg.config.agent_schema import (
     RoutingConfig,
     TaskAssignmentConfig,
 )
+from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.provider_schema import (
     LocalModelParams,
     ProviderConfig,
@@ -68,6 +69,7 @@ logger = get_logger(__name__)
 
 __all__ = [
     "LocalModelParams",
+    "ModelMetadata",
     "ProviderConfig",
     "ProviderModelConfig",
 ]

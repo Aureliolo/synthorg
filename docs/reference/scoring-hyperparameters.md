@@ -38,24 +38,31 @@ place.
 
 ## Model matcher (`match_model`)
 
-Selects the best provider-model fit for a tier-bound `ModelRequirement`.
-Three score components: tier base + headroom + priority alignment.
+Selects the best provider-model fit for a capability-bound
+`ModelRequirement`. The matcher first hard-filters on declared
+capability requirements (vision / function-calling / `min_context` /
+reasoning) against each model's persisted `ModelMetadata`, then resolves
+any family/pattern reference to the newest matching configured model,
+then scores survivors. Four score components: base + capability fit +
+context headroom + priority alignment (capped at 1.0).
 
 | Setting | Default | Controls |
 |---|---:|---|
-| `engine.matcher.tier_base_score` | 0.5 | Floor when a model satisfies the tier. |
-| `engine.matcher.headroom_max_bonus` | 0.25 | Max bonus when context window comfortably exceeds the requirement. |
-| `engine.matcher.priority_max_bonus` | 0.25 | Max bonus from priority-axis ranking (cost/quality/speed). |
-| `engine.matcher.headroom_ratio_cap` | 2.0 | Maximum context-headroom multiple credited. |
-| `engine.matcher.balanced_partial_credit` | 0.125 | Bonus for the balanced-priority "no preference" fallback. |
+| `engine.matcher_base_score` | 0.4 | Floor when a candidate clears the hard capability filters. |
+| `engine.matcher_capability_fit_weight` | 0.2 | Max bonus from the share of known capabilities (tools / vision / reasoning) a model supports. |
+| `engine.matcher_headroom_max_bonus` | 0.2 | Max bonus when context window comfortably exceeds the requirement. |
+| `engine.matcher_priority_max_bonus` | 0.2 | Max bonus from absolute priority-axis ranking (cost / quality / speed / balanced). |
+| `engine.matcher_headroom_ratio_cap` | 2.0 | Maximum context-headroom multiple credited. |
+| `engine.matcher_tier_large_min_context` | 200000 | Context floor (tokens) for the report-only `large` tier label. |
+| `engine.matcher_tier_medium_min_context` | 32000 | Context floor (tokens) for the report-only `medium` tier label (below is `small`). |
 
-**Rationale.** Audit-set placeholders chosen so tier match alone
-gives 0.5, headroom adds up to 0.25, and priority alignment adds up
-to 0.25. The 2.0 ratio cap means a model with twice the requested
-context gets the full headroom bonus; beyond that, more headroom is
-wasted on the priority axis. Balanced partial credit at 0.125 is half
-of `priority_max_bonus`. No empirical derivation; revisit alongside
-matcher-quality telemetry.
+**Rationale.** Placeholders chosen so a viable candidate scores 0.4,
+with capability fit, headroom, and priority each adding up to 0.2 (sum
+capped at 1.0). The 2.0 ratio cap means a model with twice the requested
+context gets the full headroom bonus; beyond that, additional context
+no longer increases the score. The two `tier_*_min_context` thresholds
+derive the report-only tier label only and never affect selection. No
+empirical derivation; revisit alongside matcher-quality telemetry.
 
 ## Heuristic quality grader (`HeuristicRubricGrader`)
 

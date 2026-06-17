@@ -92,7 +92,9 @@ async def auto_create_template_agents(
     Returns:
         Tuple of the declared element types.
     """
-    from synthorg.templates.model_matcher import ModelMatcherConfig  # noqa: PLC0415
+    from synthorg.templates.model_matcher_config import (  # noqa: PLC0415
+        ModelMatcherConfig,
+    )
     from synthorg.templates.preset_service import (  # noqa: PLC0415
         fetch_custom_presets_map,
     )
