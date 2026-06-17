@@ -133,13 +133,10 @@ class RootConfig(BaseModel):
         database: Database tool configuration (``None`` = no database tools).
         terminal: Terminal tool configuration (``None`` = default config).
         design_tools: Design tool configuration (``None`` = disabled).
-        communication_tools: Communication tool configuration
-            (``None`` = disabled).
-        analytics_tools: Analytics tool configuration
-            (``None`` = disabled).
+        communication_tools: Communication tool configuration (``None`` = disabled).
+        analytics_tools: Analytics tool configuration (``None`` = disabled).
         tool_disclosure: Progressive tool disclosure configuration.
-        posture: Resolved operating-posture feature flags (a default
-            ``PostureConfig`` is the neutral "no posture" baseline).
+        posture: Resolved operating-posture feature flags.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -340,10 +337,7 @@ class RootConfig(BaseModel):
         default_factory=ToolDisclosureConfig,
         description="Progressive tool disclosure configuration",
     )
-    posture: PostureConfig = Field(
-        default_factory=PostureConfig,
-        description="Resolved operating-posture feature flags",
-    )
+    posture: PostureConfig = Field(default_factory=PostureConfig)
 
     @model_validator(mode="after")
     def _validate_unique_agent_names(self) -> Self:
