@@ -74,7 +74,7 @@ class TestTemplateAgentConfig:
         assert a.name is None
         assert a.merge_id is None
         assert a.level == SeniorityLevel.MID
-        assert a.model == "medium"
+        assert a.model == {"priority": "balanced"}
         assert a.personality_preset is None
         assert a.department is None
 
@@ -83,7 +83,7 @@ class TestTemplateAgentConfig:
             role="CEO",
             name="{{ company_name }} CEO",
             level=SeniorityLevel.C_SUITE,
-            model="large",
+            model={"priority": "quality", "requires_reasoning": True},
             personality_preset="visionary_leader",
             department="executive",
         )
@@ -136,42 +136,45 @@ class TestTemplateAgentConfig:
 
     def test_dict_model_accepted(self) -> None:
         model_dict: dict[str, JsonValue] = {
-            "tier": "large",
             "priority": "quality",
             "min_context": 100000,
+            "requires_reasoning": True,
         }
         a = TemplateAgentConfig(role="CEO", model=model_dict)
         assert a.model == model_dict
 
-    def test_dict_model_tier_only(self) -> None:
-        a = TemplateAgentConfig(role="Dev", model={"tier": "small"})
-        assert a.model == {"tier": "small"}
-
-    def test_dict_model_invalid_tier_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            TemplateAgentConfig(role="Dev", model={"tier": "huge"})
+    def test_dict_model_family_and_pattern(self) -> None:
+        a = TemplateAgentConfig(
+            role="Dev",
+            model={"family": "example-large", "model_pattern": "example-*"},
+        )
+        assert a.model == {"family": "example-large", "model_pattern": "example-*"}
 
     def test_dict_model_invalid_priority_rejected(self) -> None:
         with pytest.raises(ValidationError):
             TemplateAgentConfig(
                 role="Dev",
-                model={"tier": "medium", "priority": "fastest"},
+                model={"priority": "fastest"},
             )
 
     def test_dict_model_extra_field_rejected(self) -> None:
         with pytest.raises(ValidationError):
             TemplateAgentConfig(
                 role="Dev",
-                model={"tier": "medium", "unknown_field": "x"},
+                model={"priority": "balanced", "unknown_field": "x"},
             )
 
-    def test_dict_model_empty_uses_defaults(self) -> None:
+    def test_dict_model_legacy_tier_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            TemplateAgentConfig(role="Dev", model={"tier": "large"})
+
+    def test_dict_model_empty_accepted_and_preserved(self) -> None:
         a = TemplateAgentConfig(role="Dev", model={})
         assert a.model == {}
 
-    def test_string_model_invalid_tier_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            TemplateAgentConfig(role="Dev", model="xlarge")
+    def test_string_model_is_explicit_id(self) -> None:
+        a = TemplateAgentConfig(role="Dev", model="example-large-001")
+        assert a.model == "example-large-001"
 
     def test_both_personality_and_preset_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Cannot specify both"):

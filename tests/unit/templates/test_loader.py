@@ -415,6 +415,9 @@ class TestBuiltinOperationalConfigs:
         ("full_company", "supervised", "hierarchical", "agile_kanban"),
         ("consultancy", "supervised", "hierarchical", "kanban"),
         ("data_team", "full", "event_driven", "kanban"),
+        ("support_desk", "supervised", "hierarchical", "kanban"),
+        ("security_team", "supervised", "hierarchical", "kanban"),
+        ("growth_marketing", "semi", "hybrid", "agile_kanban"),
     ]
 
     def test_matrix_covers_all_builtins(self) -> None:
@@ -479,8 +482,11 @@ class TestBuiltinSkillPatterns:
             ),
         ),
         ("research_lab", ("generator", "inversion", "reviewer")),
-        ("consultancy", ("generator", "pipeline", "reviewer")),
+        ("consultancy", ("generator", "inversion", "reviewer")),
         ("data_team", ("generator", "reviewer", "tool_wrapper")),
+        ("support_desk", ("inversion", "reviewer", "tool_wrapper")),
+        ("security_team", ("inversion", "reviewer", "tool_wrapper")),
+        ("growth_marketing", ("generator", "reviewer", "tool_wrapper")),
     ]
 
     def test_matrix_covers_all_builtins(self) -> None:

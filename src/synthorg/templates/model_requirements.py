@@ -1,20 +1,39 @@
+# module-kind: code
 """Structured model requirements and personality-based model affinity.
 
 Provides :class:`ModelRequirement` for expressing what kind of LLM an
-agent needs (tier, priority, context window, capabilities) and a
-preset-keyed affinity mapping that supplies soft defaults when the
-template does not specify full requirements.
+agent needs (priority, context window, capability flags, family/pattern,
+or an explicit example id) and a preset-keyed affinity mapping that
+supplies capability defaults when the template does not state full
+requirements.
+
+A template agent references a model by one of three forms, all expressed
+through :class:`ModelRequirement`:
+
+* **explicit example id** (``model_id``): pin a concrete configured model.
+* **family / pattern** (``family`` / ``model_pattern``): resolve to the
+  newest configured model matching the family or glob.
+* **capability** (``requires_tools`` / ``requires_vision`` /
+  ``requires_reasoning`` plus ``priority`` / ``min_context``): let the
+  matcher pick the best-fitting configured model.
+
+There is no tier-string selection axis: the matcher classifies models by
+real metadata, and ``ModelMatch.tier`` is report-only.
 """
 
 from types import MappingProxyType
-from typing import Literal, get_args
+from typing import Literal, Self, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
-
-from synthorg.core.normalization import (
-    normalize_ascii_lowercase,
-    normalize_ascii_lowercase_or_default,
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    ValidationError,
+    model_validator,
 )
+
+from synthorg.core.normalization import normalize_ascii_lowercase_or_default
 from synthorg.core.types import ModelTier, NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
@@ -23,30 +42,33 @@ from synthorg.observability.events.template import (
     TEMPLATE_MODEL_REQUIREMENT_RESOLVED,
 )
 
+# ``ModelTier`` is re-exported for report-only consumers (``ModelMatch``);
+# it is not a selection axis on ``ModelRequirement``.
 __all__ = ["ModelTier"]
 
 logger = get_logger(__name__)
 
-# Valid tier and priority literals.
+# Valid priority literals for the capability-scoring axis.
 ModelPriority = Literal["quality", "balanced", "speed", "cost"]
 
 # Closed value set for personality affinity entries: a string ``priority``
-# axis and an integer ``min_context`` floor.
-type AffinityValue = str | int
-
-_VALID_TIERS: frozenset[str] = frozenset(get_args(ModelTier))
+# axis, an integer ``min_context`` floor, boolean ``requires_*`` flags, and
+# an optional string ``family`` hint.
+type AffinityValue = str | int | bool
 
 
 class ModelRequirement(BaseModel):
     """Structured model requirement for a template agent.
 
-    Describes *what* an agent needs from an LLM without referencing a
-    specific provider or model.  Used by the matching engine to select
-    the best available model.
+    Describes *what* an agent needs from an LLM. Resolution order at match
+    time is explicit ``model_id`` first, then ``family`` / ``model_pattern``,
+    then capability scoring over the survivors of the hard filters.
 
     Attributes:
-        tier: Cost/capability tier (large = most capable, small = cheapest).
-        priority: Optimization axis when multiple models match a tier.
+        model_id: Explicit configured model id (or alias) to pin. When set,
+            the matcher selects this exact model and skips family/capability
+            scoring.
+        priority: Optimisation axis when several models clear the filters.
         min_context: Minimum context window in tokens (0 = no minimum).
         requires_tools: Hard-require function/tool-calling support.
         requires_vision: Hard-require image-input support.
@@ -55,15 +77,17 @@ class ModelRequirement(BaseModel):
             (e.g. ``"example-large"``); pins a concrete id at match time.
         model_pattern: Resolve to the newest configured model whose id
             matches this glob (e.g. ``"example-*"``); pins a concrete id.
-        capabilities: Future-use capability tags (e.g. ``"reasoning"``).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-    tier: ModelTier = Field(default="medium", description="Cost/capability tier")
+    model_id: NotBlankStr | None = Field(
+        default=None,
+        description="Explicit configured model id/alias to pin",
+    )
     priority: ModelPriority = Field(
         default="balanced",
-        description="Optimization axis for model selection",
+        description="Optimisation axis for capability scoring",
     )
     min_context: int = Field(
         default=0,
@@ -90,40 +114,60 @@ class ModelRequirement(BaseModel):
         default=None,
         description="Resolve to the newest configured model id matching this glob",
     )
-    capabilities: tuple[str, ...] = Field(
-        default=(),
-        description="Future-use capability tags",
-    )
+
+    @model_validator(mode="after")
+    def _validate_resolution_axes(self) -> Self:
+        """Reject an explicit pin combined with a resolution hint.
+
+        A ``model_id`` pin is selected verbatim and bypasses family/pattern
+        and capability scoring, so pairing it with ``family``/``model_pattern``
+        is contradictory input rather than a meaningful refinement.
+        (``family`` and ``model_pattern`` together are allowed: family is the
+        primary match, pattern the fallback.)
+
+        Returns:
+            The validated requirement.
+
+        Raises:
+            ValueError: When ``model_id`` coexists with ``family`` or
+                ``model_pattern``.
+        """
+        if self.model_id is not None and (
+            self.family is not None or self.model_pattern is not None
+        ):
+            msg = "model_id is mutually exclusive with family / model_pattern"
+            raise ValueError(msg)
+        return self
 
 
 def parse_model_requirement(raw: str | dict[str, JsonValue]) -> ModelRequirement:
-    """Parse a model requirement from a string tier or dict.
+    """Parse a model requirement from an explicit id string or a dict.
 
-    Backward-compatible: accepts the legacy ``"medium"`` string format
-    used by existing template YAML files as well as the new dict format.
+    A bare string is an explicit example-id pin (``model_id``); a dict maps
+    directly onto the :class:`ModelRequirement` capability/family fields.
 
     Args:
-        raw: Either a tier string (``"large"``, ``"medium"``, ``"small"``)
-            or a dict with ``ModelRequirement`` fields.
+        raw: Either a non-blank model id/alias string, or a dict with
+            ``ModelRequirement`` fields.
 
     Returns:
         Parsed ``ModelRequirement``.
 
     Raises:
-        ValueError: If *raw* is a string not in the valid tier set.
+        ValueError: If *raw* is a blank string.
         ValidationError: If *raw* is a dict with invalid fields.
     """
     if isinstance(raw, str):
-        key = normalize_ascii_lowercase(raw)
-        if key not in _VALID_TIERS:
-            msg = f"Invalid model tier {raw!r}. Valid tiers: {sorted(_VALID_TIERS)}"
+        pinned = raw.strip()
+        if not pinned:
+            msg = "Model id reference must be a non-blank string"
             logger.warning(
                 TEMPLATE_MODEL_REQUIREMENT_INVALID,
-                raw_tier=raw,
-                valid_tiers=sorted(_VALID_TIERS),
+                raw_reference=raw,
+                reason="blank_model_id",
             )
             raise ValueError(msg)
-        result = ModelRequirement.model_validate({"tier": key})
+        result = ModelRequirement.model_validate({"model_id": pinned})
     else:
         try:
             result = ModelRequirement.model_validate(raw)
@@ -137,8 +181,9 @@ def parse_model_requirement(raw: str | dict[str, JsonValue]) -> ModelRequirement
 
     logger.debug(
         TEMPLATE_MODEL_REQUIREMENT_PARSED,
-        tier=result.tier,
+        model_id=result.model_id,
         priority=result.priority,
+        family=result.family,
     )
     return result
 
@@ -146,32 +191,39 @@ def parse_model_requirement(raw: str | dict[str, JsonValue]) -> ModelRequirement
 # ── Model affinity per personality preset ────────────────────
 #
 # Separated from the preset dicts because PersonalityConfig has
-# extra="forbid".  These are soft defaults applied when resolving
-# model requirements.
+# extra="forbid".  Each profile supplies capability defaults (priority,
+# context floor, and hard requirement flags) that apply when the template
+# agent does not state them explicitly; explicit template fields always win.
+
+_VISIONARY_CONTEXT_FLOOR: int = 100_000
 
 _RAW_AFFINITY: dict[str, dict[str, AffinityValue]] = {
-    # Leaders and strategists benefit from stronger reasoning.
-    "visionary_leader": {"priority": "quality", "min_context": 100_000},
-    "strategic_planner": {"priority": "quality"},
-    "systems_thinker": {"priority": "quality"},
+    # Leaders and strategists reason over wide context.
+    "visionary_leader": {
+        "priority": "quality",
+        "min_context": _VISIONARY_CONTEXT_FLOOR,
+        "requires_reasoning": True,
+    },
+    "strategic_planner": {"priority": "quality", "requires_reasoning": True},
+    "systems_thinker": {"priority": "quality", "requires_reasoning": True},
     # Analysts and guardians need precision.
-    "methodical_analyst": {"priority": "quality"},
+    "methodical_analyst": {"priority": "quality", "requires_reasoning": True},
     "quality_guardian": {"priority": "quality"},
-    "security_sentinel": {"priority": "quality"},
-    "data_driven_optimizer": {"priority": "quality"},
-    "code_craftsman": {"priority": "quality"},
-    "devil_advocate": {"priority": "quality"},
-    # Fast movers prefer speed.
+    "security_sentinel": {"priority": "quality", "requires_reasoning": True},
+    "data_driven_optimizer": {"priority": "quality", "requires_tools": True},
+    "code_craftsman": {"priority": "quality", "requires_tools": True},
+    "devil_advocate": {"priority": "quality", "requires_reasoning": True},
+    # Fast movers prefer speed; builders still need tool-calling.
     "eager_learner": {"priority": "speed"},
-    "rapid_prototyper": {"priority": "speed"},
+    "rapid_prototyper": {"priority": "speed", "requires_tools": True},
     "growth_hacker": {"priority": "speed"},
-    # Cost-conscious executors.
-    "disciplined_executor": {"priority": "cost"},
+    # Cost-conscious executors that still run tools.
+    "disciplined_executor": {"priority": "cost", "requires_tools": True},
     # Balanced defaults for everyone else.
-    "pragmatic_builder": {"priority": "balanced"},
+    "pragmatic_builder": {"priority": "balanced", "requires_tools": True},
     "creative_innovator": {"priority": "balanced"},
     "team_diplomat": {"priority": "balanced"},
-    "independent_researcher": {"priority": "balanced"},
+    "independent_researcher": {"priority": "balanced", "requires_reasoning": True},
     "empathetic_mentor": {"priority": "balanced"},
     "communication_bridge": {"priority": "balanced"},
     "user_advocate": {"priority": "balanced"},
@@ -193,40 +245,74 @@ assert all(  # noqa: S101
     v.get("priority", "balanced") in _VALID_PRIORITIES for v in MODEL_AFFINITY.values()
 ), "MODEL_AFFINITY has invalid priority values"
 
+# Capability-default keys a profile may contribute to a requirement.
+_AFFINITY_DEFAULT_KEYS: tuple[str, ...] = (
+    "priority",
+    "min_context",
+    "requires_tools",
+    "requires_vision",
+    "requires_reasoning",
+    "family",
+)
+
 
 def resolve_model_requirement(
-    tier_str: str,
     preset_name: str | None = None,
+    overrides: dict[str, JsonValue] | None = None,
 ) -> ModelRequirement:
-    """Merge a template tier alias with personality-preset affinity.
+    """Merge a personality-preset affinity profile with explicit overrides.
 
-    The template's tier always wins.  Affinity provides ``priority``
-    and ``min_context`` defaults based on the personality preset.
+    The affinity profile supplies capability defaults (priority, context
+    floor, hard requirement flags, optional family hint); any field the
+    template states explicitly via *overrides* always wins.
 
     Args:
-        tier_str: Tier alias from the template agent config.
         preset_name: Optional personality preset name for affinity lookup.
+        overrides: Explicit ``ModelRequirement`` fields from the template
+            agent that take precedence over the affinity defaults.
 
     Returns:
         Resolved ``ModelRequirement``.
     """
-    affinity: dict[str, AffinityValue] = dict(
-        MODEL_AFFINITY.get(normalize_ascii_lowercase_or_default(preset_name), {}),
-    )
+    if overrides:
+        pin = overrides.get("model_id")
+        if isinstance(pin, str) and pin.strip():
+            # A pin is selected verbatim and bypasses capability scoring, so
+            # affinity flags would be inert against it and are NOT merged in.
+            # The full overrides dict is parsed (not just the pin) so any
+            # explicit field the template set alongside model_id is preserved,
+            # and a contradictory model_id + family/model_pattern pairing is
+            # rejected by the ModelRequirement validator.
+            pinned = parse_model_requirement(
+                {key: value for key, value in overrides.items() if value is not None}
+            )
+            logger.debug(
+                TEMPLATE_MODEL_REQUIREMENT_RESOLVED,
+                model_id=pinned.model_id,
+                priority=pinned.priority,
+                min_context=pinned.min_context,
+                family=pinned.family,
+                preset=preset_name,
+            )
+            return pinned
 
-    merged: dict[str, JsonValue] = {"tier": normalize_ascii_lowercase(tier_str)}
-    # Affinity values fill in priority and min_context when available.
-    if "priority" in affinity:
-        merged["priority"] = affinity["priority"]
-    if "min_context" in affinity:
-        merged["min_context"] = affinity["min_context"]
+    affinity = MODEL_AFFINITY.get(
+        normalize_ascii_lowercase_or_default(preset_name),
+        MappingProxyType({}),
+    )
+    merged: dict[str, JsonValue] = {
+        key: affinity[key] for key in _AFFINITY_DEFAULT_KEYS if key in affinity
+    }
+    if overrides:
+        merged.update({k: v for k, v in overrides.items() if v is not None})
 
     result = parse_model_requirement(merged)
     logger.debug(
         TEMPLATE_MODEL_REQUIREMENT_RESOLVED,
-        tier=result.tier,
+        model_id=result.model_id,
         priority=result.priority,
         min_context=result.min_context,
+        family=result.family,
         preset=preset_name,
     )
     return result

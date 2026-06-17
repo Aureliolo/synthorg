@@ -1,10 +1,11 @@
 template:
   name: "Agency"
   description: >-
-    A client-services organization with project management, creative,
-    and delivery roles under supervised autonomy. Client deliverables
-    flow through a structured pipeline with quality review at each
-    checkpoint before handoff.
+    A client-services organization combining creative, marketing, design,
+    and delivery under supervised autonomy. Client deliverables flow
+    through a structured pipeline with quality review at each checkpoint.
+    Group chat and proposals are pre-enabled so stakeholders collaborate
+    in the loop.
   version: "1.0.0"
   min_agents: 10
   max_agents: 15
@@ -19,6 +20,7 @@ template:
     - "pipeline"
     - "generator"
     - "reviewer"
+  posture: "supervised_client_facing"
 
   variables:
     - name: "company_name"
@@ -91,75 +93,80 @@ template:
     - role: "Project Manager"
       level: "senior"
       model:
-        tier: "medium"
         priority: "speed"
       personality_preset: "process_optimizer"
       department: "operations"
     - role: "Product Manager"
       level: "mid"
       model:
-        tier: "medium"
         priority: "speed"
       personality_preset: "communication_bridge"
       department: "operations"
     - role: "Scrum Master"
       level: "senior"
       model:
-        tier: "medium"
         priority: "speed"
       personality_preset: "team_diplomat"
       department: "operations"
     - role: "UX Designer"
       level: "mid"
-      model: "medium"
+      model:
+        priority: "balanced"
       personality_preset: "user_advocate"
       department: "design"
     - role: "UI Designer"
       level: "mid"
-      model: "medium"
+      model:
+        priority: "balanced"
       personality_preset: "creative_innovator"
       department: "design"
     - role: "Frontend Developer"
       level: "mid"
       model:
-        tier: "small"
         priority: "cost"
+        requires_tools: true
       personality_preset: "rapid_prototyper"
       department: "engineering"
     - role: "Backend Developer"
       level: "senior"
-      model: "medium"
+      model:
+        priority: "balanced"
+        requires_tools: true
       personality_preset: "disciplined_executor"
       department: "engineering"
     - role: "Full-Stack Developer"
       merge_id: "fullstack-senior"
       level: "senior"
-      model: "medium"
+      model:
+        priority: "balanced"
+        requires_tools: true
       personality_preset: "pragmatic_builder"
       department: "engineering"
     - role: "QA Engineer"
       level: "mid"
-      model: "small"
+      model:
+        priority: "cost"
+        requires_tools: true
       personality_preset: "process_optimizer"
       department: "quality_assurance"
     - role: "Content Writer"
       level: "mid"
       model:
-        tier: "small"
         priority: "quality"
       personality_preset: "creative_innovator"
       department: "creative_marketing"
     - role: "Brand Strategist"
       level: "senior"
-      model: "medium"
+      model:
+        priority: "balanced"
       personality_preset: "growth_hacker"
       department: "creative_marketing"
     - role: "Full-Stack Developer"
       merge_id: "fullstack-mid"
       level: "mid"
       model:
-        tier: "small"
         priority: "cost"
+        requires_tools: true
       personality_preset: "empathetic_mentor"
       department: "engineering"
 

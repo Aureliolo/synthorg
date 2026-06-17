@@ -32,17 +32,23 @@ template:
   agents:
     - role: "QA Lead"
       level: "senior"
-      model: "medium"
+      model:
+        priority: "quality"
+        requires_tools: true
       personality_preset: "quality_guardian"
       department: "quality_assurance"
     - role: "QA Engineer"
       level: "mid"
-      model: "small"
+      model:
+        priority: "cost"
+        requires_tools: true
       personality_preset: "methodical_analyst"
       department: "quality_assurance"
     - role: "Automation Engineer"
       level: "mid"
-      model: "small"
+      model:
+        priority: "cost"
+        requires_tools: true
       personality_preset: "pragmatic_builder"
       department: "quality_assurance"
 

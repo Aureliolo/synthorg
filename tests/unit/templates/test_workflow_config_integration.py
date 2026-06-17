@@ -454,6 +454,9 @@ class TestBuiltinWorkflowConfigs:
         ("full_company", "agile_kanban"),
         ("consultancy", "kanban"),
         ("data_team", "kanban"),
+        ("support_desk", "kanban"),
+        ("security_team", "kanban"),
+        ("growth_marketing", "agile_kanban"),
     ]
 
     def test_matrix_covers_all_builtins(self) -> None:
@@ -598,6 +601,9 @@ class TestBuiltinWorkflowConfigs:
         ("research_lab", "throughput_adaptive"),
         ("consultancy", "calendar"),
         ("data_team", "task_driven"),
+        ("support_desk", "event_driven"),
+        ("security_team", "calendar"),
+        ("growth_marketing", "event_driven"),
     ]
 
     def test_strategy_matrix_covers_all_builtins(self) -> None:
@@ -631,6 +637,9 @@ class TestBuiltinWorkflowConfigs:
         ("research_lab", "task_driven"),
         ("consultancy", "calendar"),
         ("data_team", "task_driven"),
+        ("support_desk", "task_driven"),
+        ("security_team", "calendar"),
+        ("growth_marketing", "points_per_sprint"),
     ]
 
     def test_velocity_calc_matrix_covers_all_builtins(self) -> None:

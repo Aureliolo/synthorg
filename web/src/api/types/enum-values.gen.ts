@@ -212,6 +212,9 @@ export const COMPANY_TYPE_VALUES = [
     'research_lab',
     'consultancy',
     'data_team',
+    'support_desk',
+    'security_team',
+    'growth_marketing',
     'custom',
 ] as const
 export type CompanyType = (typeof COMPANY_TYPE_VALUES)[number]

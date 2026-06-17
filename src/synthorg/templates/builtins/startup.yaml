@@ -20,6 +20,7 @@ template:
     - "generator"
     - "pipeline"
   extends: "solo_founder"
+  posture: "autonomous"
 
   variables:
     - name: "company_name"
@@ -70,16 +71,18 @@ template:
     - role: "Full-Stack Developer"
       merge_id: "fullstack-senior"
       level: "senior"
-      model: "medium"
+      model:
+        priority: "balanced"
+        requires_tools: true
       personality_preset: "pragmatic_builder"
       department: "engineering"
     # New agents
     - role: "CTO"
       level: "c_suite"
       model:
-        tier: "large"
         priority: "quality"
         min_context: 100000
+        requires_reasoning: true
       personality_preset: "rapid_prototyper"
       department: "executive"
       strategic_output_mode: "advisor"
@@ -87,14 +90,13 @@ template:
       merge_id: "fullstack-mid"
       level: "mid"
       model:
-        tier: "small"
         priority: "cost"
+        requires_tools: true
       personality_preset: "team_diplomat"
       department: "engineering"
     - role: "Product Manager"
       level: "senior"
       model:
-        tier: "medium"
         priority: "speed"
       personality_preset: "strategic_planner"
       department: "product"

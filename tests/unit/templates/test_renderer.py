@@ -162,7 +162,7 @@ class TestRenderTemplateAgents:
 
 @pytest.mark.unit
 class TestRenderTemplateStructuredModel:
-    def test_dict_model_extracts_tier(
+    def test_dict_model_preserves_capability_requirement(
         self,
         tmp_template_file: TemplateFileFactory,
     ) -> None:
@@ -180,9 +180,9 @@ template:
       name: "Test CEO"
       level: "c_suite"
       model:
-        tier: "large"
         priority: "quality"
         min_context: 100000
+        requires_reasoning: true
       department: "executive"
 """
         path = tmp_template_file(yaml_content)
@@ -190,7 +190,13 @@ template:
         config = render_template(loaded)
         assert isinstance(config, RootConfig)
         ceo = config.agents[0]
-        assert ceo.model["model_id"] == "large"
+        # The full requirement survives; model_id placeholder is the default
+        # routing alias until the matcher pins a concrete id.
+        assert ceo.model_requirement is not None
+        assert ceo.model_requirement["priority"] == "quality"
+        assert ceo.model_requirement["min_context"] == 100000
+        assert ceo.model_requirement["requires_reasoning"] is True
+        assert ceo.model["model_id"] == "medium"
 
     def test_string_model_still_works(
         self,
@@ -237,13 +243,13 @@ template:
       name: "Test CEO"
       level: "c_suite"
       model:
-        tier: "large"
         priority: "quality"
+        requires_reasoning: true
       department: "executive"
     - role: "Backend Developer"
       name: "Test Dev"
       level: "mid"
-      model: "small"
+      model: "example-small-001"
       department: "engineering"
 """
         path = tmp_template_file(yaml_content)
@@ -253,8 +259,9 @@ template:
         assert len(config.agents) == 2
         ceo = next(a for a in config.agents if a.role == "CEO")
         dev = next(a for a in config.agents if a.role == "Backend Developer")
-        assert ceo.model["model_id"] == "large"
-        assert dev.model["model_id"] == "small"
+        # Capability dict -> default alias placeholder; explicit id -> pinned.
+        assert ceo.model["model_id"] == "medium"
+        assert dev.model["model_id"] == "example-small-001"
 
 
 # ── Departments ──────────────────────────────────────────────────

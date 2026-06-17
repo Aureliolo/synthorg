@@ -30,6 +30,15 @@ class TemplateInheritanceError(TemplateRenderError):
     """
 
 
+class TemplatePostureError(TemplateError):
+    """Raised when posture resolution fails.
+
+    Covers a posture name with no registered feature bundle, an unknown
+    expansion-strategy discriminator, and an inheritance/pack graph that
+    exceeds the maximum resolution depth (a likely cycle).
+    """
+
+
 class TemplateValidationError(TemplateError):
     """Raised when a rendered template fails validation.
 

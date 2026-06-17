@@ -60,6 +60,9 @@ BUILTIN_TEMPLATES: MappingProxyType[str, str] = MappingProxyType(
         "research_lab": "research_lab.yaml",
         "consultancy": "consultancy.yaml",
         "data_team": "data_team.yaml",
+        "support_desk": "support_desk.yaml",
+        "security_team": "security_team.yaml",
+        "growth_marketing": "growth_marketing.yaml",
     }
 )
 
@@ -549,6 +552,8 @@ def _normalize_template_data(data: dict[str, object]) -> dict[str, object]:
     }
     if "extends" in data:
         result["extends"] = data["extends"]
+    if "posture" in data:
+        result["posture"] = data["posture"]
     if "uses_packs" in data:
         raw_packs = data["uses_packs"]
         if raw_packs is None:
@@ -569,19 +574,13 @@ def _normalize_template_data(data: dict[str, object]) -> dict[str, object]:
 
 
 def _to_float(value: object) -> float:
-    """Coerce a value to float for Pass 1 normalization.
+    """Coerce a Pass-1 value to float, or ``0.0`` when unconvertible.
 
-    Returns ``0.0`` for values that cannot be converted (e.g. Jinja2
-    placeholders like ``__JINJA2__``) since the real value will be
-    resolved in Pass 2.
-
-    Args:
-        value: Raw value from YAML (may be str, int, float, or
-            ``None``).
+    Jinja2 placeholders (e.g. ``__JINJA2__``) and ``None`` yield ``0.0``;
+    the real value is resolved in Pass 2.
 
     Returns:
-        Float value, or ``0.0`` for ``None`` or unconvertible strings
-        (typically Jinja2 placeholders).
+        The float value, or ``0.0`` for unconvertible input.
     """
     if isinstance(value, (int, float, str)) and not isinstance(value, bool):
         try:

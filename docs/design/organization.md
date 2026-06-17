@@ -9,18 +9,26 @@ description: Company types, organisational hierarchy, department configuration, 
 
 SynthOrg provides pre-built company templates for common organisational patterns:
 
-| Template | Size | Autonomy | Communication | Workflow | Use Case |
-|----------|------|----------|---------------|----------|----------|
-| **Solo Builder** | 1-2 | full | event_driven | kanban | Quick prototypes, solo projects |
-| **Tech Startup** | 3-5 | semi | hybrid | agile_kanban | Small projects, MVPs |
-| **Engineering Squad** | 6-10 | semi | hybrid | agile_kanban | Software development focus |
-| **Product Studio** | 8-15 | semi | meeting_based | agile_kanban | Product-focused development |
-| **Agency** | 10-20 | supervised | hierarchical | kanban | Client work, multiple projects |
-| **Enterprise Org** | 20-50+ | supervised | hierarchical | agile_kanban | Enterprise simulation |
-| **Research Lab** | 5-10 | full | event_driven | kanban | Research and analysis |
-| **Consultancy** | 4-6 | supervised | hierarchical | kanban | Client-facing advisory/delivery |
-| **Data Team** | 5-8 | full | event_driven | kanban | Analytics and ML pipelines |
-| **Custom** | Any | semi | hybrid | agile_kanban | Anything |
+| Template | Size | Posture | Autonomy | Communication | Workflow | Use Case |
+|----------|------|---------|----------|---------------|----------|----------|
+| **Solo Builder** | 2-3 | autonomous | full | event_driven | kanban | Quick prototypes, solo projects |
+| **Tech Startup** | 3-5 | autonomous | semi | hybrid | agile_kanban | Small projects, MVPs |
+| **Engineering Squad** | 6-10 | cost_disciplined | semi | hybrid | agile_kanban | Software throughput on a budget |
+| **Product Studio** | 8-12 | knowledge_heavy | semi | meeting_based | agile_kanban | Discovery-led product development |
+| **Agency** | 10-15 | supervised_client_facing | supervised | hierarchical | kanban | Creative and marketing client work |
+| **Enterprise Org** | 20-50 | supervised_client_facing | supervised | hierarchical | agile_kanban | Enterprise simulation |
+| **Research Lab** | 5-10 | research_autonomous | full | event_driven | kanban | Autonomous research and analysis |
+| **Consultancy** | 4-6 | supervised_client_facing | supervised | hierarchical | kanban | Senior client-facing advisory |
+| **Data Team** | 5-8 | knowledge_heavy | full | event_driven | kanban | Analytics and ML pipelines |
+| **Support Desk** | 5-7 | supervised_client_facing | supervised | hierarchical | kanban | Customer support, incident response |
+| **Security Team** | 4-6 | security_hardened | supervised | hierarchical | kanban | Threat modelling, security review |
+| **Growth Marketing Studio** | 5-8 | cost_disciplined | semi | hybrid | agile_kanban | Content, campaigns, growth |
+| **Custom** | Any | -- | semi | hybrid | agile_kanban | Anything |
+
+A template's **posture** expands to a coherent bundle of runtime feature flags
+(knowledge substrate, conversational chat modes, mid-flight steering, red-team
+gate, cost-dial auto-downgrade), so a template configures behaviour, not just an
+org chart. See [Operating Postures](#operating-postures).
 
 !!! info "Company size vs. per-task coordination group size"
     The `Size` column above describes the full company roster, not the number of
@@ -34,6 +42,32 @@ SynthOrg provides pre-built company templates for common organisational patterns
 
 See the [Template System](#template-system) section for details on how templates are defined,
 inherited, and customised.
+
+### Operating Postures
+
+A template declares a named **posture** that resolves to a frozen bundle of
+runtime feature flags. The bundle threads into the company configuration: the
+config-resident knobs (`security.red_team`, `budget.auto_downgrade`) are set on
+the rendered `RootConfig`, and the settings-resident flags (conversational chat
+modes, mid-flight steering) are seeded into the settings service at setup so the
+best-effort boot wiring enables them. Boot wiring degrades cleanly when a
+dependency (provider, persistence, memory backend) is absent.
+
+| Posture | Enables |
+|---------|---------|
+| `autonomous` | Knowledge substrate, mid-flight steering |
+| `supervised_client_facing` | Group chat, agent invite, clarify-or-park + routing proposals, steering |
+| `knowledge_heavy` | Knowledge substrate, clarify proposals, steering |
+| `cost_disciplined` | Budget auto-downgrade |
+| `security_hardened` | Red-team completion gate (knowledge-substrate grounding), knowledge substrate, steering |
+| `research_autonomous` | Knowledge substrate, clarify + routing proposals, steering |
+
+Postures resolve through a pluggable `PostureExpansionStrategy` (default: a
+curated named-bundle registry). Inheritance is child-wins: a child template's
+posture replaces its parent's. A template pack may declare a posture that unions
+additively into the host template's bundle (each flag takes the more-capable
+value). The toolsmith is intentionally not posture driven: enabling it needs an
+explicit capability allowlist, so it stays an operator opt-in.
 
 ### Skill Pattern Taxonomy
 
@@ -60,8 +94,11 @@ Templates declare which patterns they exhibit via the `skill_patterns` metadata 
 | **Agency** | Pipeline, Generator, Reviewer |
 | **Enterprise Org** | Tool Wrapper, Generator, Reviewer, Inversion, Pipeline |
 | **Research Lab** | Inversion, Generator, Reviewer |
-| **Consultancy** | Generator, Pipeline, Reviewer |
+| **Consultancy** | Generator, Inversion, Reviewer |
 | **Data Team** | Generator, Reviewer, Tool Wrapper |
+| **Support Desk** | Inversion, Reviewer, Tool Wrapper |
+| **Security Team** | Inversion, Reviewer, Tool Wrapper |
+| **Growth Marketing Studio** | Generator, Reviewer, Tool Wrapper |
 
 Patterns compose naturally: a Pipeline can embed a Reviewer step at each gate, a Generator
 can begin with an Inversion phase to gather variables, and individual Pipeline stages can
@@ -210,57 +247,58 @@ template:
       var_type: "int"
       default: 3
 
+  posture: "autonomous"            # expands to a runtime feature-flag bundle
+
   company:
     type: "startup"
     budget_monthly: "{{ budget | default(50.00) }}"
     autonomy:
       level: "semi"
 
-  # Built-in templates use explicit names drawn from Faker at build time.
-  # User-defined templates may use Jinja2 placeholders (e.g. {{ name | auto }})
-  # which trigger Faker-based auto-generation at render time using the
-  # locales selected in the Names setup step.
-  # The `model` field accepts either a string tier alias (backward-compatible)
-  # or a structured dict with tier, priority, min_context, and optionally
-  # capabilities.  Structured format overrides personality-based affinity
-  # defaults.
+  # Built-in templates omit the agent `name` field entirely; Faker
+  # auto-generates names at render time using the locales selected in the
+  # Names setup step. User-defined templates may instead set an explicit
+  # name or a Jinja2 placeholder (e.g. {{ name | auto }}).
+  # The `model` field is a capability reference: either a structured dict
+  # (priority / min_context / requires_tools / requires_vision /
+  # requires_reasoning, plus an optional family or model_pattern), or an
+  # explicit model id/alias string to pin a configured model. The matcher
+  # resolves it against the configured providers; personality-preset affinity
+  # fills any capability defaults the agent omits. Built-in templates use
+  # capability dicts so they resolve on any provider, Ollama Cloud included.
   agents:
-    - role: "CEO"
-      name: "Amara Okafor"
-      model:                          # structured model requirement
-        tier: "large"
+    - role: "CEO"                     # name omitted -> Faker at render time
+      model:                          # capability requirement
         priority: "quality"
         min_context: 100000
+        requires_reasoning: true
       personality_preset: "visionary_leader"
 
     - role: "CTO"
-      name: "Hiroshi Tanaka"
       model:
-        tier: "large"
         priority: "quality"
         min_context: 100000
+        requires_reasoning: true
       personality_preset: "rapid_prototyper"
 
     - role: "Full-Stack Developer"
       merge_id: "fullstack-senior"
-      name: "Kenji Matsuda"
       level: "senior"
-      model: "medium"                 # string tier alias (still works)
+      model:
+        priority: "balanced"
+        requires_tools: true
       personality_preset: "pragmatic_builder"
 
     - role: "Full-Stack Developer"
       merge_id: "fullstack-mid"
-      name: "Sofia Reyes"
       level: "mid"
       model:
-        tier: "small"
         priority: "cost"
+        requires_tools: true
       personality_preset: "team_diplomat"
 
     - role: "Product Manager"
-      name: "Liam Chen"
       model:
-        tier: "medium"
         priority: "speed"
       personality_preset: "strategic_planner"
 
@@ -361,16 +399,21 @@ is detected via chain tracking and raises `TemplateInheritanceError`.
 **Built-in inheritance tree:**
 
 ```text
-solo_founder (base: 2 agents)
-  -> startup (extends solo_founder: 5 agents)
-     -> dev_shop (extends startup: 8 agents)
-     -> product_team (extends startup: 10 agents)
+solo_founder (base)
+  -> startup (extends solo_founder)
+     -> dev_shop (extends startup)
+     -> product_team (extends startup)
 
-research_lab (base: 7 agents)
-  -> data_team (extends research_lab: 6 agents)
+research_lab (base)
+  -> data_team (extends research_lab)
 
-Standalone (no inheritance): agency, full_company, consultancy
+Standalone (no inheritance): agency, consultancy, full_company,
+                             support_desk, security_team, growth_marketing
 ```
+
+Each template's roster size is declared by its own `min_agents` / `max_agents`
+(see the Company Types table); extending templates inherit the parent roster
+and append (or `_remove`) their own agents.
 
 ### Merge Semantics
 

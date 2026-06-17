@@ -2,11 +2,12 @@ template:
   name: "Enterprise Org"
   description: >-
     A full enterprise simulation spanning all departments with C-suite
-    executives, department heads, and individual contributors. Uses
-    all five skill patterns and covers the complete range of
-    organizational capabilities from strategy to execution.
+    executives, department heads, and individual contributors. Uses all
+    five skill patterns and covers the complete range of organizational
+    capabilities from strategy to execution. Supervised with group chat
+    and proposals pre-enabled for human-in-the-loop oversight.
   version: "1.0.0"
-  min_agents: 1
+  min_agents: 20
   max_agents: 50
   tags:
     - "enterprise"
@@ -21,6 +22,7 @@ template:
     - "reviewer"
     - "inversion"
     - "pipeline"
+  posture: "supervised_client_facing"
 
   variables:
     - name: "company_name"
@@ -153,45 +155,45 @@ template:
     - role: "CEO"
       level: "c_suite"
       model:
-        tier: "large"
         priority: "quality"
         min_context: 100000
+        requires_reasoning: true
       personality_preset: "visionary_leader"
       department: "executive"
       strategic_output_mode: "advisor"
     - role: "CTO"
       level: "c_suite"
       model:
-        tier: "large"
         priority: "quality"
         min_context: 100000
+        requires_reasoning: true
       personality_preset: "systems_thinker"
       department: "executive"
       strategic_output_mode: "advisor"
     - role: "CFO"
       level: "c_suite"
       model:
-        tier: "large"
         priority: "quality"
         min_context: 100000
+        requires_reasoning: true
       personality_preset: "data_driven_optimizer"
       department: "executive"
       strategic_output_mode: "advisor"
     - role: "COO"
       level: "c_suite"
       model:
-        tier: "large"
         priority: "quality"
         min_context: 100000
+        requires_reasoning: true
       personality_preset: "process_optimizer"
       department: "operations"
       strategic_output_mode: "advisor"
     - role: "CPO"
       level: "c_suite"
       model:
-        tier: "large"
         priority: "quality"
         min_context: 100000
+        requires_reasoning: true
       personality_preset: "user_advocate"
       department: "product"
       strategic_output_mode: "advisor"
@@ -199,45 +201,50 @@ template:
     - role: "Product Manager"
       level: "senior"
       model:
-        tier: "medium"
         priority: "speed"
       personality_preset: "strategic_planner"
       department: "product"
     - role: "Technical Writer"
       level: "mid"
-      model: "small"
+      model:
+        priority: "balanced"
       personality_preset: "technical_communicator"
       department: "product"
     # Design (2)
     - role: "UX Designer"
       level: "mid"
-      model: "medium"
+      model:
+        priority: "balanced"
       personality_preset: "user_advocate"
       department: "design"
     - role: "UX Researcher"
       level: "mid"
-      model: "medium"
+      model:
+        priority: "quality"
+        requires_reasoning: true
       personality_preset: "independent_researcher"
       department: "design"
     # Engineering -- static (3)
     - role: "Software Architect"
       level: "principal"
       model:
-        tier: "large"
         priority: "quality"
         min_context: 100000
+        requires_reasoning: true
       personality_preset: "systems_thinker"
       department: "engineering"
     - role: "DevOps/SRE Engineer"
       level: "mid"
       model:
-        tier: "medium"
         priority: "speed"
+        requires_tools: true
       personality_preset: "disciplined_executor"
       department: "engineering"
     - role: "Database Engineer"
       level: "mid"
-      model: "medium"
+      model:
+        priority: "balanced"
+        requires_tools: true
       personality_preset: "methodical_analyst"
       department: "engineering"
     # Engineering -- dynamic backend devs
@@ -246,13 +253,15 @@ template:
       merge_id: "backend-{{ i }}"
 {% if i == 0 %}
       level: "senior"
-      model: "medium"
+      model:
+        priority: "balanced"
+        requires_tools: true
       personality_preset: "pragmatic_builder"
 {% else %}
       level: "mid"
       model:
-        tier: "small"
         priority: "cost"
+        requires_tools: true
       personality_preset: "eager_learner"
 {% endif %}
       department: "engineering"
@@ -263,13 +272,15 @@ template:
       merge_id: "frontend-{{ i }}"
 {% if i == 0 %}
       level: "senior"
-      model: "medium"
+      model:
+        priority: "balanced"
+        requires_tools: true
       personality_preset: "creative_innovator"
 {% else %}
       level: "mid"
       model:
-        tier: "small"
         priority: "cost"
+        requires_tools: true
       personality_preset: "team_diplomat"
 {% endif %}
       department: "engineering"
@@ -277,67 +288,79 @@ template:
     # Quality Assurance (3)
     - role: "QA Lead"
       level: "lead"
-      model: "medium"
+      model:
+        priority: "quality"
+        requires_tools: true
       personality_preset: "quality_guardian"
       department: "quality_assurance"
     - role: "QA Engineer"
       level: "mid"
-      model: "small"
+      model:
+        priority: "cost"
+        requires_tools: true
       personality_preset: "methodical_analyst"
       department: "quality_assurance"
     - role: "Automation Engineer"
       level: "mid"
-      model: "small"
+      model:
+        priority: "cost"
+        requires_tools: true
       personality_preset: "disciplined_executor"
       department: "quality_assurance"
     # Data & Analytics (2)
     - role: "Data Analyst"
       level: "mid"
-      model: "medium"
+      model:
+        priority: "quality"
+        requires_tools: true
       personality_preset: "data_driven_optimizer"
       department: "data_analytics"
     - role: "Data Engineer"
       level: "mid"
-      model: "medium"
+      model:
+        priority: "balanced"
+        requires_tools: true
       personality_preset: "pragmatic_builder"
       department: "data_analytics"
     # Operations (2)
     - role: "Project Manager"
       level: "senior"
       model:
-        tier: "medium"
         priority: "speed"
       personality_preset: "communication_bridge"
       department: "operations"
     - role: "Scrum Master"
       level: "senior"
       model:
-        tier: "medium"
         priority: "speed"
       personality_preset: "empathetic_mentor"
       department: "operations"
     # Security (2)
     - role: "Security Engineer"
       level: "senior"
-      model: "medium"
+      model:
+        priority: "quality"
+        requires_reasoning: true
       personality_preset: "security_sentinel"
       department: "security"
     - role: "Security Operations"
       level: "senior"
-      model: "medium"
+      model:
+        priority: "quality"
+        requires_reasoning: true
       personality_preset: "security_sentinel"
       department: "security"
     # Creative & Marketing (2)
     - role: "Content Writer"
       level: "mid"
       model:
-        tier: "small"
         priority: "quality"
       personality_preset: "creative_innovator"
       department: "creative_marketing"
     - role: "Brand Strategist"
       level: "senior"
-      model: "medium"
+      model:
+        priority: "balanced"
       personality_preset: "growth_hacker"
       department: "creative_marketing"
 

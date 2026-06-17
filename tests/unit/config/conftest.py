@@ -18,6 +18,7 @@ from synthorg.config.agent_schema import (
     RoutingRuleConfig,
     TaskAssignmentConfig,
 )
+from synthorg.config.posture_config import PostureConfig
 from synthorg.config.schema import (
     ProviderConfig,
     ProviderModelConfig,
@@ -132,6 +133,11 @@ class RootConfigFactory(ModelFactory[RootConfig]):
     # internal bus, and polyfactory cannot coordinate the two
     # sub-configs automatically.
     queue = QueueConfig()
+    # Pinned to the valid default: PostureConfig's cross-field validator
+    # requires red_team=True whenever red_team_grounding is non-heuristic, and
+    # polyfactory draws the two fields independently, intermittently producing
+    # the rejected combination.
+    posture = PostureConfig()
 
 
 # ── Sample YAML strings ──────────────────────────────────────────

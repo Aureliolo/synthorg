@@ -13,6 +13,9 @@ from litestar.status_codes import HTTP_201_CREATED
 from synthorg.api.controllers.setup._embedder_setup import (
     auto_create_template_agents as _auto_create_template_agents,
 )
+from synthorg.api.controllers.setup._posture_seeding import (
+    seed_posture_settings as _seed_posture_settings,
+)
 from synthorg.api.controllers.setup._runtime_wiring import (
     AGENT_LOCK as _AGENT_LOCK,
 )
@@ -118,6 +121,10 @@ class SetupCompanyController(Controller):
                     count=len(agent_summaries),
                     template=tmpl_res.template_applied,
                 )
+                # Seed the template posture's settings-resident feature flags
+                # before /setup/complete runs post_setup_reinit, so the
+                # rebuilt runtime and boot wiring pick them up.
+                await _seed_posture_settings(settings_svc, tmpl_res.template)
             else:
                 # Blank path: clear any agents persisted by a previous
                 # template selection so GET /setup/agents returns empty.

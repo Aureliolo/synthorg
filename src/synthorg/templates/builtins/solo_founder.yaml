@@ -17,6 +17,8 @@ template:
   skill_patterns:
     - "tool_wrapper"
 
+  posture: "autonomous"
+
   variables:
     - name: "company_name"
       description: "Name of your company"
@@ -48,16 +50,18 @@ template:
     - role: "CEO"
       level: "c_suite"
       model:
-        tier: "large"
         priority: "quality"
         min_context: 100000
+        requires_reasoning: true
       personality_preset: "visionary_leader"
       department: "executive"
       strategic_output_mode: "advisor"
     - role: "Full-Stack Developer"
       merge_id: "fullstack-senior"
       level: "senior"
-      model: "medium"
+      model:
+        priority: "balanced"
+        requires_tools: true
       personality_preset: "rapid_prototyper"
       department: "engineering"
 

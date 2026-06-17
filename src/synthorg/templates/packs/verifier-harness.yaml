@@ -32,25 +32,25 @@ template:
     - role: "Planner"
       level: "senior"
       model:
-        tier: "large"
         priority: "quality"
         min_context: 100000
+        requires_reasoning: true
       personality_preset: "strategic_planner"
       department: "engineering"
     - role: "Generator"
       level: "mid"
       model:
-        tier: "medium"
         priority: "balanced"
         min_context: 50000
+        requires_tools: true
       personality_preset: "pragmatic_builder"
       department: "engineering"
     - role: "Evaluator"
       level: "senior"
       model:
-        tier: "medium"
         priority: "quality"
         min_context: 50000
+        requires_reasoning: true
       personality_preset: "quality_guardian"
       department: "engineering"
 

@@ -3,10 +3,11 @@
 
 Expands raw template agent dicts into ``AgentConfig``-compatible dicts:
 auto-name generation, name deduplication, personality preset/inline
-resolution, model tier assignment, and merge directive handling.
+resolution, model-requirement resolution, and merge directive handling.
 """
 
 from collections.abc import Mapping
+from typing import Final
 
 from pydantic import JsonValue, ValidationError
 
@@ -18,10 +19,19 @@ from synthorg.observability.events.template import (
 from synthorg.templates._preset_resolution import resolve_agent_personality
 from synthorg.templates.errors import TemplateRenderError
 from synthorg.templates.merge import DEFAULT_MERGE_DEPARTMENT
+from synthorg.templates.model_requirements import (
+    ModelRequirement,
+    resolve_model_requirement,
+)
 from synthorg.templates.presets import generate_auto_name
 
 # Placeholder provider name resolved by the engine at startup.
 _DEFAULT_PROVIDER = "default"
+
+# Routing-alias placeholder written into the agent ``model`` dict before the
+# capability matcher pins a concrete id; the full requirement rides in
+# ``model_requirement``. Overwritten by ``match_and_assign_models``.
+_DEFAULT_MODEL_ALIAS: Final[str] = "medium"
 
 # Default department when not specified in template agent config.
 _DEFAULT_DEPARTMENT = DEFAULT_MERGE_DEPARTMENT
@@ -132,8 +142,14 @@ def _expand_single_agent(  # noqa: PLR0913
     if personality is not None:
         agent_dict["personality"] = personality
 
-    model_tier = _resolve_model_tier(agent)
-    agent_dict["model"] = {"provider": _DEFAULT_PROVIDER, "model_id": model_tier}
+    preset = _agent_preset_name(agent)
+    if preset is not None:
+        agent_dict["personality_preset"] = preset
+
+    requirement = _resolve_model_requirement(agent, preset)
+    agent_dict["model_requirement"] = requirement.model_dump()
+    placeholder = requirement.model_id or _DEFAULT_MODEL_ALIAS
+    agent_dict["model"] = {"provider": _DEFAULT_PROVIDER, "model_id": placeholder}
 
     # Preserve _remove merge directive for inheritance.
     if agent.get("_remove"):
@@ -161,41 +177,58 @@ def _expand_single_agent(  # noqa: PLR0913
     return agent_dict
 
 
-def _resolve_model_tier(agent: dict[str, object]) -> str:
-    """Extract the model tier from a template agent dict.
+def _agent_preset_name(agent: dict[str, object]) -> str | None:
+    """Return the named personality preset, when the agent uses one.
 
-    Handles both the string format (``"medium"``) and the structured
-    ``ModelRequirement`` dict format
-    (``{"tier": "medium", "priority": "quality"}``).
+    A template agent references a preset by a bare ``personality`` string;
+    an inline ``personality`` dict has no preset name.
 
-    The renderer path sets a placeholder ``model_id``; structured
-    requirements are only fully threaded through the setup wizard path
-    which calls ``match_all_agents``.
+    Returns:
+        The preset name, or ``None`` for inline / absent personality.
+    """
+    raw = agent.get("personality")
+    return raw.strip() if isinstance(raw, str) and raw.strip() else None
+
+
+def _resolve_model_requirement(
+    agent: dict[str, object],
+    preset: str | None,
+) -> ModelRequirement:
+    """Resolve an agent's model reference into a full ``ModelRequirement``.
+
+    A bare ``model`` string pins an explicit example id; a dict maps onto
+    the capability/family fields. Personality-preset affinity supplies
+    capability defaults that the explicit reference overrides. The full
+    requirement is preserved on the expanded agent so the capability
+    matcher can pin a concrete id (no lossy tier collapse).
 
     Args:
         agent: Raw template agent dict from Jinja2 rendering.
+        preset: Resolved personality preset name (or ``None``).
 
     Returns:
-        Tier string (``"large"``, ``"medium"``, or ``"small"``).
+        The resolved ``ModelRequirement``.
 
     Raises:
-        TemplateRenderError: If a dict model contains invalid fields.
+        TemplateRenderError: If a dict model reference has invalid fields.
     """
-    model_raw = agent.get("model", "medium")
+    model_raw = agent.get("model")
+    overrides: dict[str, JsonValue]
     if isinstance(model_raw, dict):
-        from synthorg.templates.model_requirements import (  # noqa: PLC0415
-            parse_model_requirement,
-        )
+        overrides = model_raw
+    elif isinstance(model_raw, str) and model_raw.strip():
+        overrides = {"model_id": model_raw.strip()}
+    else:
+        overrides = {}
 
-        try:
-            return parse_model_requirement(model_raw).tier
-        except (ValidationError, ValueError) as exc:
-            msg = f"Invalid structured model requirement: {safe_error_description(exc)}"
-            logger.warning(
-                TEMPLATE_RENDER_TYPE_ERROR,
-                field="model",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise TemplateRenderError(msg) from exc
-    return str(model_raw)
+    try:
+        return resolve_model_requirement(preset, overrides)
+    except (ValidationError, ValueError) as exc:
+        msg = f"Invalid model reference: {safe_error_description(exc)}"
+        logger.warning(
+            TEMPLATE_RENDER_TYPE_ERROR,
+            field="model",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        raise TemplateRenderError(msg) from exc

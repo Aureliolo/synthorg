@@ -1,6 +1,6 @@
 """Tests for expand_template_agents, match_and_assign_models, and build_agent_config."""
 
-from typing import Any
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,9 +10,12 @@ from synthorg.api.controllers.setup_agents import (
     expand_template_agents,
     match_and_assign_models,
 )
+from synthorg.api.controllers.setup_models import SetupAgentRequest
 from synthorg.core.domain_errors import ValidationError
+from synthorg.core.types import ModelTier
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.organization.enums import CompanyType
+from synthorg.templates.model_matcher import ModelMatch
 from synthorg.templates.schema import (
     CompanyTemplate,
     TemplateAgentConfig,
@@ -35,16 +38,16 @@ def _make_template(agents: list[JsonDict]) -> CompanyTemplate:
 
 @pytest.mark.unit
 class TestExpandTemplateAgentsDictModel:
-    def test_dict_model_produces_model_requirement(self) -> None:
-        """Dict model in template populates model_requirement in output."""
+    def test_capability_dict_produces_model_requirement(self) -> None:
+        """A capability dict populates model_requirement (no tier collapse)."""
         template = _make_template(
             [
                 {
                     "role": "CEO",
                     "model": {
-                        "tier": "large",
                         "priority": "quality",
                         "min_context": 100_000,
+                        "requires_reasoning": True,
                     },
                 },
             ]
@@ -52,35 +55,37 @@ class TestExpandTemplateAgentsDictModel:
         agents: list[JsonDict] = expand_template_agents(template)
         assert len(agents) == 1
         agent = agents[0]
-        assert agent["tier"] == "large"
+        # Pre-match the agent carries no resolved tier (set by the matcher).
+        assert "tier" not in agent
         assert "model_requirement" in agent
         req = agent["model_requirement"]
-        assert req["tier"] == "large"
+        assert "tier" not in req
         assert req["priority"] == "quality"
         assert req["min_context"] == 100_000
+        assert req["requires_reasoning"] is True
 
-    def test_string_model_has_no_model_requirement(self) -> None:
-        """String model in template does not produce model_requirement."""
+    def test_string_model_pins_explicit_id(self) -> None:
+        """A string model is an explicit model_id pin in model_requirement."""
         template = _make_template(
             [
-                {"role": "Developer", "model": "medium"},
+                {"role": "Developer", "model": "example-medium-001"},
             ]
         )
         agents: list[JsonDict] = expand_template_agents(template)
         assert len(agents) == 1
         agent = agents[0]
-        assert agent["tier"] == "medium"
-        assert "model_requirement" not in agent
+        assert "model_requirement" in agent
+        assert agent["model_requirement"]["model_id"] == "example-medium-001"
 
     def test_mixed_models_in_same_template(self) -> None:
-        """Dict and string models coexist in the same template."""
+        """Capability-dict and explicit-id models coexist in one template."""
         template = _make_template(
             [
                 {
                     "role": "CEO",
-                    "model": {"tier": "large", "priority": "quality"},
+                    "model": {"priority": "quality", "requires_reasoning": True},
                 },
-                {"role": "Developer", "model": "small"},
+                {"role": "Developer", "model": "example-small-001"},
             ]
         )
         agents: list[JsonDict] = expand_template_agents(template)
@@ -89,13 +94,12 @@ class TestExpandTemplateAgentsDictModel:
         ceo = next(a for a in agents if a["role"] == "CEO")
         dev = next(a for a in agents if a["role"] == "Developer")
 
-        assert "model_requirement" in ceo
-        assert ceo["tier"] == "large"
-        assert "model_requirement" not in dev
-        assert dev["tier"] == "small"
+        assert ceo["model_requirement"]["priority"] == "quality"
+        assert ceo["model_requirement"]["model_id"] is None
+        assert dev["model_requirement"]["model_id"] == "example-small-001"
 
     def test_dict_model_empty_uses_defaults(self) -> None:
-        """Empty dict model produces defaults in model_requirement."""
+        """An empty dict model resolves to the balanced default requirement."""
         template = _make_template(
             [
                 {"role": "Dev", "model": {}},
@@ -104,10 +108,9 @@ class TestExpandTemplateAgentsDictModel:
         agents: list[JsonDict] = expand_template_agents(template)
         assert len(agents) == 1
         agent = agents[0]
-        assert agent["tier"] == "medium"
         assert "model_requirement" in agent
-        assert agent["model_requirement"]["tier"] == "medium"
         assert agent["model_requirement"]["priority"] == "balanced"
+        assert agent["model_requirement"]["model_id"] is None
 
 
 @pytest.mark.unit
@@ -154,20 +157,25 @@ class TestExpandTemplateAgentsCustomPresets:
 
 @pytest.mark.unit
 class TestBuildAgentConfigCustomPresets:
-    def _make_request(  # type: ignore[explicit-any]  # returns a MagicMock request stub
+    def _make_request(
         self,
         preset: str = "pragmatic_builder",
-    ) -> Any:
-        req = MagicMock()
-        req.name = "Test Agent"
-        req.role = "Backend Developer"
-        req.department = "engineering"
-        req.level = SeniorityLevel.MID
-        req.personality_preset = preset
-        req.model_provider = "test-provider"
-        req.model_id = "test-small-001"
-        req.budget_limit_monthly = None
-        return req
+    ) -> SetupAgentRequest:
+        # ``model_construct`` builds a real, typed ``SetupAgentRequest`` while
+        # bypassing validation: the model validates ``personality_preset``
+        # against the built-in catalogue, but these tests exercise
+        # ``build_agent_config`` with custom / unknown presets that the model
+        # would reject at construction.
+        return SetupAgentRequest.model_construct(
+            name="Test Agent",
+            role="Backend Developer",
+            department="engineering",
+            level=SeniorityLevel.MID,
+            personality_preset=preset,
+            model_provider="test-provider",
+            model_id="test-small-001",
+            budget_limit_monthly=None,
+        )
 
     def test_builtin_preset_resolves(self) -> None:
         data = self._make_request("pragmatic_builder")
@@ -217,11 +225,13 @@ class TestMatchAndAssignModels:
         model_id: str,
     ) -> None:
         """model_tier from the match is included in the agent model dict."""
-        match = MagicMock()
-        match.agent_index = 0
-        match.provider_name = "test-provider"
-        match.model_id = model_id
-        match.tier = tier
+        match = ModelMatch(
+            agent_index=0,
+            provider_name="test-provider",
+            model_id=model_id,
+            tier=cast("ModelTier", tier),
+            score=1.0,
+        )
         mock_match.return_value = [match]
 
         agents: list[JsonDict] = [

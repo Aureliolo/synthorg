@@ -1,22 +1,26 @@
 template:
   name: "Consultancy"
   description: >-
-    A client-facing advisory and delivery firm. Senior-heavy and
-    project-driven, structured around technical delivery with client
-    oversight. Distinct from agency (larger, creative/marketing scope).
+    A client-facing advisory firm. Senior-heavy and supervised: a
+    Software Architect and senior advisors produce recommendations,
+    reviews, and technical guidance under client oversight, with a
+    Project Manager owning the client relationship. Advisory rather than a
+    full delivery line, so it stays small and senior. Group chat and
+    proposals are pre-enabled for stakeholder collaboration.
   version: "1.0.0"
   min_agents: 4
   max_agents: 6
   tags:
     - "consulting"
     - "client-facing"
-    - "delivery"
+    - "advisory"
     - "senior-heavy"
-    - "project-driven"
+    - "supervised"
   skill_patterns:
     - "generator"
-    - "pipeline"
     - "reviewer"
+    - "inversion"
+  posture: "supervised_client_facing"
 
   variables:
     - name: "company_name"
@@ -43,10 +47,10 @@ template:
       head_role: "Software Architect"
       reporting_lines:
         - subordinate: "Backend Developer"
-          subordinate_id: "backend-1"
+          subordinate_id: "advisor-1"
           supervisor: "Software Architect"
         - subordinate: "Backend Developer"
-          subordinate_id: "backend-2"
+          subordinate_id: "advisor-2"
           supervisor: "Software Architect"
     - name: "operations"
       budget_percent: 35
@@ -59,34 +63,36 @@ template:
     - role: "Software Architect"
       level: "principal"
       model:
-        tier: "large"
         priority: "quality"
         min_context: 100000
+        requires_reasoning: true
       personality_preset: "systems_thinker"
       department: "consulting"
     - role: "Backend Developer"
-      merge_id: "backend-1"
+      merge_id: "advisor-1"
       level: "senior"
-      model: "medium"
+      model:
+        priority: "quality"
+        requires_reasoning: true
       personality_preset: "pragmatic_builder"
       department: "consulting"
     - role: "Backend Developer"
-      merge_id: "backend-2"
+      merge_id: "advisor-2"
       level: "senior"
-      model: "medium"
+      model:
+        priority: "quality"
+        requires_tools: true
       personality_preset: "code_craftsman"
       department: "consulting"
     - role: "Project Manager"
       level: "senior"
       model:
-        tier: "medium"
         priority: "speed"
       personality_preset: "client_advisor"
       department: "operations"
     - role: "Technical Writer"
       level: "mid"
       model:
-        tier: "small"
         priority: "quality"
       personality_preset: "technical_communicator"
       department: "operations"
@@ -110,13 +116,13 @@ template:
   workflow_handoffs:
     - from_department: "consulting"
       to_department: "operations"
-      trigger: "Deliverable ready for client review and scheduling"
+      trigger: "Recommendation ready for client review and scheduling"
       artifacts:
-        - "implementation"
+        - "advisory_report"
         - "documentation"
     - from_department: "operations"
       to_department: "consulting"
-      trigger: "Client feedback requiring technical changes"
+      trigger: "Client feedback requiring revised guidance"
       artifacts:
         - "change_request"
         - "requirements"
@@ -124,7 +130,7 @@ template:
   escalation_paths:
     - from_department: "operations"
       to_department: "consulting"
-      condition: "Technical blocker impeding client delivery timeline"
+      condition: "Technical blocker impeding client advisory timeline"
       priority_boost: 2
     - from_department: "consulting"
       to_department: "operations"
