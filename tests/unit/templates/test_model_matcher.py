@@ -9,13 +9,12 @@ from synthorg.config.schema import ProviderModelConfig
 from synthorg.templates.model_matcher import (
     CapabilityFitStrategy,
     ModelMatch,
-    ModelMatcherConfig,
     ModelSelectionStrategy,
-    derive_tier,
     get_model_selection_strategy,
     match_all_agents,
     match_model,
 )
+from synthorg.templates.model_matcher_config import ModelMatcherConfig, derive_tier
 from synthorg.templates.model_requirements import ModelRequirement
 
 _CFG = ModelMatcherConfig()

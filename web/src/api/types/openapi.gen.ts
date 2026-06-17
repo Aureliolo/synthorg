@@ -11602,7 +11602,7 @@ export type components = {
          * @description Capability and family/generation metadata (enriched at ingest)
          */
         readonly ModelMetadata: {
-            /** @description Parsed model family (e.g. 'claude-sonnet') */
+            /** @description Parsed model family (e.g. 'example-large') */
             readonly family: string | null;
             /** @description Sortable generation/recency (higher is newer) */
             readonly generation: number | null;

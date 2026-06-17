@@ -26,7 +26,7 @@ from synthorg.observability.events.setup import (
 from synthorg.settings.enums import SettingSource
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.service import SettingsService
-from synthorg.templates.model_matcher import ModelMatcherConfig
+from synthorg.templates.model_matcher_config import ModelMatcherConfig
 from synthorg.templates.schema import CompanyTemplate, TemplateDepartmentConfig
 
 if TYPE_CHECKING:
