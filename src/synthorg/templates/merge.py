@@ -113,8 +113,8 @@ def merge_template_configs(
         child_section = child.get(section, {})
         if parent_section or child_section:
             result[section] = deep_merge(
-                parent_section if isinstance(parent_section, dict) else {},
-                child_section if isinstance(child_section, dict) else {},
+                parent_section if isinstance(parent_section, Mapping) else {},
+                child_section if isinstance(child_section, Mapping) else {},
             )
 
     # Agents: merge by (role, department, merge_id) key.

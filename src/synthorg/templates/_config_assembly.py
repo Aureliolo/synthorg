@@ -77,7 +77,7 @@ def _merge_section(
         The template section deep-merged over the posture knob, so explicit
         template values win and other keys survive.
     """
-    base = dict(existing) if isinstance(existing, dict) else {}
+    base = dict(existing) if isinstance(existing, Mapping) else {}
     return deep_merge(posture_knob, base)
 
 

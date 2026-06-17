@@ -277,10 +277,15 @@ def resolve_model_requirement(
     if overrides:
         pin = overrides.get("model_id")
         if isinstance(pin, str) and pin.strip():
-            # An explicit pin is selected verbatim and bypasses capability
-            # scoring, so layering affinity flags onto it would be inert and
-            # misleading (and trips the mutual-exclusion validator). Pin clean.
-            pinned = parse_model_requirement(pin)
+            # A pin is selected verbatim and bypasses capability scoring, so
+            # affinity flags would be inert against it and are NOT merged in.
+            # The full overrides dict is parsed (not just the pin) so any
+            # explicit field the template set alongside model_id is preserved,
+            # and a contradictory model_id + family/model_pattern pairing is
+            # rejected by the ModelRequirement validator.
+            pinned = parse_model_requirement(
+                {key: value for key, value in overrides.items() if value is not None}
+            )
             logger.debug(
                 TEMPLATE_MODEL_REQUIREMENT_RESOLVED,
                 model_id=pinned.model_id,

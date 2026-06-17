@@ -386,6 +386,7 @@ contextvars
 cooldown
 cooldowns
 coroutine
+cost_disciplined
 cost_optimized
 covariate
 created_by
@@ -536,6 +537,7 @@ jsdom
 kanban
 keyframes
 keyless
+knowledge_heavy
 kwarg
 kwargs
 lazification
@@ -680,6 +682,7 @@ reputational
 request_id
 rerank
 rescan
+research_autonomous
 research_lab
 retag
 retention_days
@@ -707,6 +710,7 @@ scaffolder
 scrapable
 scrollable
 scrot
+security_hardened
 semantic_llm_prompt
 semver
 serializability
@@ -761,6 +765,7 @@ subtree
 subworkflow
 subworkflows
 superset
+supervised_client_facing
 swappable
 syslog
 systemd

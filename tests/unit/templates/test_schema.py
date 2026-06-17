@@ -168,7 +168,7 @@ class TestTemplateAgentConfig:
         with pytest.raises(ValidationError):
             TemplateAgentConfig(role="Dev", model={"tier": "large"})
 
-    def test_dict_model_empty_uses_defaults(self) -> None:
+    def test_dict_model_empty_accepted_and_preserved(self) -> None:
         a = TemplateAgentConfig(role="Dev", model={})
         assert a.model == {}
 
