@@ -1,6 +1,7 @@
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
+import { ModelStalenessBadge } from '@/components/ui/model-staleness-badge'
 import { cn } from '@/lib/utils'
 import { Boxes, Settings2, Trash2 } from 'lucide-react'
 import type { ProviderModelResponse } from '@/api/types/providers'
@@ -53,7 +54,12 @@ function ProviderModelRow({ model, supportsDelete, supportsConfig, onDelete, onC
   const hasActions = supportsDelete || supportsConfig
   return (
     <tr>
-      <td className="py-2 pr-4 font-mono text-foreground">{model.id}</td>
+      <td className="py-2 pr-4 font-mono text-foreground">
+        <span className="inline-flex items-center gap-1.5">
+          {model.id}
+          <ModelStalenessBadge stale={model.stale} />
+        </span>
+      </td>
       <td className="py-2 pr-4 text-text-secondary">{model.alias ?? '--'}</td>
       <td className="py-2 pr-4">
         <CapabilityBadges model={model} />

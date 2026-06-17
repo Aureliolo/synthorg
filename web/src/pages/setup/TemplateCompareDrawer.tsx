@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { StatPill } from '@/components/ui/stat-pill'
 import type { TemplateInfoResponse } from '@/api/types/setup'
 import { deriveCategoryFromTags, getCategoryLabel } from '@/utils/template-categories'
+import { POSTURE_INFO } from '@/utils/posture-info'
 
 export interface TemplateCompareDrawerProps {
   open: boolean
@@ -33,6 +34,10 @@ const COMPARISON_ROWS: readonly ComparisonRow[] = [
     getValue: (t) => getCategoryLabel(deriveCategoryFromTags(t.tags)),
   },
   { label: 'Estimated Agents', getValue: (t) => String(estimateAgentCount(t)) },
+  {
+    label: 'Posture',
+    getValue: (t) => (t.posture != null ? POSTURE_INFO[t.posture].label : '--'),
+  },
   { label: 'Source', getValue: (t) => t.source },
   { label: 'Tags', getValue: (t) => t.tags },
   { label: 'Skill Patterns', getValue: (t) => [...t.skill_patterns] },

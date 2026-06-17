@@ -725,6 +725,56 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         )
         return discovered or models
 
+    async def discover_models_readonly(
+        self,
+        name: str,
+        *,
+        preset_hint: str | None = None,
+    ) -> tuple[ProviderModelConfig, ...]:
+        """Discover a provider's live models without persisting anything.
+
+        The read-only core of :meth:`discover_models_for_provider`: it
+        resolves the endpoint, builds auth headers, applies the SSRF
+        trust decision, and queries the provider. It performs NO
+        persistence, so the periodic model-refresh probe can use it for
+        detection without mutating the configured model list.
+
+        Args:
+            name: Provider name.
+            preset_hint: Optional preset name for endpoint selection.
+
+        Returns:
+            The discovered models, or an empty tuple when the provider
+            has no base URL, targets this backend, or discovery returns
+            nothing.
+
+        Raises:
+            ProviderNotFoundError: If the provider does not exist.
+        """
+        config = await self.get_provider(name)
+
+        if config.base_url is None:
+            logger.info(
+                PROVIDER_DISCOVERY_FAILED,
+                provider=name,
+                reason="no_base_url",
+            )
+            return ()
+
+        if self._is_self_connection(config.base_url):
+            return ()
+
+        resolved_hint = preset_hint or infer_preset_hint(config.base_url)
+        headers = build_discovery_headers(config)
+        policy = await self._allowlist.load()
+        trust = is_url_allowed(config.base_url, policy)
+        return await discover_models(
+            config.base_url,
+            resolved_hint,
+            headers=headers,
+            trust_url=trust,
+        )
+
     async def discover_models_for_provider(
         self,
         name: str,
@@ -745,35 +795,10 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         Raises:
             ProviderNotFoundError: If the provider does not exist.
         """
-        # Optimistic read (no lock): early-exit if base_url is None.
-        # The authoritative check happens under the lock in
-        # _apply_discovered_models, which re-reads and verifies base_url
-        # has not changed before persisting discovered models.
         config = await self.get_provider(name)
+        discovered = await self.discover_models_readonly(name, preset_hint=preset_hint)
 
-        if config.base_url is None:
-            logger.info(
-                PROVIDER_DISCOVERY_FAILED,
-                provider=name,
-                reason="no_base_url",
-            )
-            return ()
-
-        if self._is_self_connection(config.base_url):
-            return ()
-
-        resolved_hint = preset_hint or infer_preset_hint(config.base_url)
-        headers = build_discovery_headers(config)
-        policy = await self._allowlist.load()
-        trust = is_url_allowed(config.base_url, policy)
-        discovered = await discover_models(
-            config.base_url,
-            resolved_hint,
-            headers=headers,
-            trust_url=trust,
-        )
-
-        if discovered:
+        if discovered and config.base_url is not None:
             applied = await self._apply_discovered_models(
                 name,
                 config.base_url,

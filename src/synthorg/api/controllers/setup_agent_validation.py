@@ -9,12 +9,13 @@ live provider config.
 
 from collections.abc import Mapping
 
+from synthorg.api._model_validation import validate_provider_model_pair
 from synthorg.api.controllers.setup_models import (
     SetupAgentRequest,
     UpdateAgentModelRequest,
 )
 from synthorg.config.schema import ProviderConfig
-from synthorg.core.domain_errors import NotFoundError, ValidationError
+from synthorg.core.domain_errors import ValidationError
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import (
     SETUP_MODEL_NOT_FOUND,
@@ -22,39 +23,6 @@ from synthorg.observability.events.setup import (
 )
 
 logger = get_logger(__name__)
-
-
-def _validate_provider_model_pair(
-    providers: Mapping[str, ProviderConfig],
-    provider_name: str,
-    model_id: str,
-) -> None:
-    """Validate that a provider exists and contains the given model.
-
-    Args:
-        providers: Provider name -> config mapping.
-        provider_name: Provider to look up.
-        model_id: Model identifier to find within the provider.
-
-    Raises:
-        NotFoundError: If the provider does not exist.
-        ValidationError: If the model is not in the provider.
-    """
-    if provider_name not in providers:
-        msg = f"Provider {provider_name!r} not found"
-        logger.warning(SETUP_PROVIDER_NOT_FOUND, provider=provider_name)
-        raise NotFoundError(msg)
-
-    provider_config = providers[provider_name]
-    known_ids = {m.id for m in provider_config.models}
-    if model_id not in known_ids:
-        msg = f"Model {model_id!r} not found in provider {provider_name!r}"
-        logger.warning(
-            SETUP_MODEL_NOT_FOUND,
-            provider=provider_name,
-            model=model_id,
-        )
-        raise ValidationError(msg)
 
 
 def validate_model_assignment(
@@ -71,7 +39,7 @@ def validate_model_assignment(
         NotFoundError: If the provider does not exist.
         ValidationError: If the model is not in the provider.
     """
-    _validate_provider_model_pair(providers, data.model_provider, data.model_id)
+    validate_provider_model_pair(providers, data.model_provider, data.model_id)
 
 
 def validate_persisted_agents_against_providers(
@@ -151,4 +119,4 @@ def validate_provider_and_model(
         NotFoundError: If the provider does not exist.
         ValidationError: If the model is not in the provider.
     """
-    _validate_provider_model_pair(providers, data.model_provider, data.model_id)
+    validate_provider_model_pair(providers, data.model_provider, data.model_id)

@@ -1,6 +1,7 @@
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { StatPill } from '@/components/ui/stat-pill'
+import { PostureBadge } from './PostureBadge'
 import type { TemplateInfoResponse } from '@/api/types/setup'
 import { deriveCategoryFromTags, getCategoryLabel } from '@/utils/template-categories'
 import { Users, Building2, Shield, GitBranch } from 'lucide-react'
@@ -110,6 +111,11 @@ export function TemplateCard({
           <StatPill value={category} className="text-compact" />
         </div>
         <p className="line-clamp-2 text-xs text-muted-foreground">{template.description}</p>
+        {template.posture != null && (
+          <div className="flex items-center gap-1.5 pt-0.5">
+            <PostureBadge posture={template.posture} />
+          </div>
+        )}
       </div>
 
       {/* Structural metadata */}

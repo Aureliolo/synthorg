@@ -10,6 +10,7 @@ import { formatNumber } from '@/utils/format'
 import { AgentsSkeleton } from './agents/AgentsSkeleton'
 import { AgentFilters } from './agents/AgentFilters'
 import { AgentGridView } from './agents/AgentGridView'
+import { RecommendationsLink } from './agents/RecommendationsLink'
 import {
   useAgentsPageController,
   type AgentsPageController,
@@ -28,7 +29,12 @@ export default function AgentsPage() {
 
   return (
     <div className="space-y-section-gap">
-      <ListHeader title="Agents" count={data.filteredAgents.length} countLabel={countLabel} />
+      <ListHeader
+        title="Agents"
+        count={data.filteredAgents.length}
+        countLabel={countLabel}
+        secondaryActions={<RecommendationsLink />}
+      />
       <AgentsBanners ctrl={ctrl} />
       <AgentFilters />
       <AgentGridView

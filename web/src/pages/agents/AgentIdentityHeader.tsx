@@ -1,18 +1,32 @@
+import { useState } from 'react'
+import { Pencil } from 'lucide-react'
 import { Avatar } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { StatPill } from '@/components/ui/stat-pill'
 import { toRuntimeStatus } from '@/utils/agents'
 import { formatLabel, formatDateTime, formatRelativeTime } from '@/utils/format'
 import { cn } from '@/lib/utils'
 import type { AgentConfig } from '@/api/types/agents'
+import { ModelChangeDrawer } from './ModelChangeDrawer'
 
 interface AgentIdentityHeaderProps {
   agent: AgentConfig
   className?: string
 }
 
+/** Read a string field from the agent's raw ``model`` config dict. */
+function modelField(agent: AgentConfig, key: string): string {
+  const value = agent.model[key]
+  return typeof value === 'string' ? value : ''
+}
+
 export function AgentIdentityHeader({ agent, className }: AgentIdentityHeaderProps) {
   const runtimeStatus = toRuntimeStatus(agent.status ?? 'active')
+  const [modelDrawerOpen, setModelDrawerOpen] = useState(false)
+  const modelProvider = modelField(agent, 'provider')
+  const modelId = modelField(agent, 'model_id')
+  const hasModel = modelProvider !== '' && modelId !== ''
 
   return (
     <div className={cn('flex items-start gap-4', className)}>
@@ -36,6 +50,20 @@ export function AgentIdentityHeader({ agent, className }: AgentIdentityHeaderPro
           {agent.autonomy_level && (
             <StatPill label="AUTONOMY" value={formatLabel(agent.autonomy_level)} />
           )}
+          {hasModel && (
+            <span className="inline-flex items-center gap-1.5">
+              <StatPill label="MODEL" value={modelId} />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setModelDrawerOpen(true)}
+                className="gap-1"
+              >
+                <Pencil className="size-3.5" />
+                Change Model
+              </Button>
+            </span>
+          )}
           {agent.hiring_date && (
             <time
               dateTime={agent.hiring_date}
@@ -47,6 +75,16 @@ export function AgentIdentityHeader({ agent, className }: AgentIdentityHeaderPro
           )}
         </div>
       </div>
+
+      {hasModel && (
+        <ModelChangeDrawer
+          agentId={agent.id}
+          currentProvider={modelProvider}
+          currentModelId={modelId}
+          open={modelDrawerOpen}
+          onClose={() => setModelDrawerOpen(false)}
+        />
+      )}
     </div>
   )
 }

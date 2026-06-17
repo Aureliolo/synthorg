@@ -29,6 +29,7 @@ const EVENT_LABEL: Record<ProviderAuditEventType, string> = {
   model_config_updated: 'Model config',
   model_pulled: 'Model pulled',
   models_synced: 'Models synced',
+  model_flagged_stale: 'Model flagged stale',
 }
 
 type AuditPayload = NonNullable<ProviderAuditEvent['payload']>

@@ -3683,6 +3683,91 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/providers/model-refresh/recommendations": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListRecommendations */
+        readonly get: operations["ApiV1ProvidersModelRefreshRecommendationsListRecommendations"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/providers/model-refresh/recommendations/{rec_id}/approve": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** ApproveRecommendation */
+        readonly post: operations["ApiV1ProvidersModelRefreshRecommendationsRecIdApproveApproveRecommendation"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/providers/model-refresh/recommendations/{rec_id}/reject": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** RejectRecommendation */
+        readonly post: operations["ApiV1ProvidersModelRefreshRecommendationsRecIdRejectRejectRecommendation"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/providers/model-refresh/refresh": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** TriggerRefresh */
+        readonly post: operations["ApiV1ProvidersModelRefreshTriggerRefresh"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/providers/model-refresh/status": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetStatus */
+        readonly get: operations["ApiV1ProvidersModelRefreshStatusGetStatus"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/providers/presets": {
         readonly parameters: {
             readonly query?: never;
@@ -9476,6 +9561,11 @@ export type components = {
              */
             readonly type: "data";
         };
+        /** DecideRecommendationRequest */
+        readonly DecideRecommendationRequest: {
+            /** @description Operator identifier */
+            readonly decided_by: string;
+        };
         /** DecisionBlock */
         readonly DecisionBlock: {
             readonly block_id: string;
@@ -9938,7 +10028,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4025 | 4026 | 4027 | 4028 | 4029 | 5000 | 5001 | 5002 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4025 | 4026 | 4027 | 4028 | 4029 | 4030 | 5000 | 5001 | 5002 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;
@@ -11626,6 +11716,20 @@ export type components = {
             /** @default false */
             readonly supports_vision: boolean;
         };
+        /** ModelStaleness */
+        readonly ModelStaleness: {
+            /** Format: date-time */
+            readonly flagged_at: string;
+            /**
+             * Format: date
+             * @description Last date the id was seen in the live catalogue
+             */
+            readonly last_seen: string | null;
+            /** @enum {string} */
+            readonly reason: "removed_from_catalog" | "deprecated";
+            /** @description Suggested in-family replacement id, when identified */
+            readonly successor_model_id: string | null;
+        };
         /**
          * NetworkMode
          * @description Network access mode.
@@ -13241,6 +13345,32 @@ export type components = {
          * @enum {string}
          */
         readonly PolicyFieldOrigin: "project" | "department" | "default";
+        /**
+         * PostureName
+         * @description Named operating postures a template can declare.
+         *
+         *     A posture expands to a coherent runtime feature-flag bundle (knowledge
+         *     substrate, conversational chat modes, red-team gate, mid-flight steering,
+         *     cost-dial) so a template configures behaviour, not just an org chart. The
+         *     toolsmith is intentionally excluded: enabling it needs an explicit
+         *     capability allowlist and stays an operator opt-in.
+         *
+         *     Attributes:
+         *         AUTONOMOUS: High-autonomy delivery; steering and knowledge on,
+         *             human chat off.
+         *         SUPERVISED_CLIENT_FACING: Human-in-the-loop client work; group chat
+         *             and agent invite on for stakeholder collaboration.
+         *         KNOWLEDGE_HEAVY: Knowledge-substrate-grounded work; entailment
+         *             grounding and a shared knowledge base.
+         *         COST_DISCIPLINED: Budget-first operation; auto-downgrade on, optional
+         *             features off to minimise spend.
+         *         SECURITY_HARDENED: Security-first operation; red-team completion gate
+         *             on at a lowered stakes floor, self-extension off.
+         *         RESEARCH_AUTONOMOUS: Autonomous inquiry; knowledge substrate, steering,
+         *             and clarify-or-park + routing proposals on.
+         * @enum {string}
+         */
+        readonly PostureName: "autonomous" | "supervised_client_facing" | "knowledge_heavy" | "cost_disciplined" | "security_hardened" | "research_autonomous";
         /** PreflightCheck */
         readonly PreflightCheck: {
             /** @description Additional detail */
@@ -13570,7 +13700,7 @@ export type components = {
              * @description Mutation category
              * @enum {string}
              */
-            readonly event_type: "provider_created" | "provider_updated" | "provider_deleted" | "provider_credentials_rotated" | "provider_rate_limits_updated" | "preset_override_updated" | "model_added" | "model_removed" | "model_config_updated" | "model_pulled" | "models_synced";
+            readonly event_type: "provider_created" | "provider_updated" | "provider_deleted" | "provider_credentials_rotated" | "provider_rate_limits_updated" | "preset_override_updated" | "model_added" | "model_removed" | "model_config_updated" | "model_pulled" | "models_synced" | "model_flagged_stale";
             /** @description Repo-assigned row id */
             readonly id: number | null;
             /**
@@ -13663,6 +13793,8 @@ export type components = {
              */
             readonly max_context: number;
             readonly metadata: components["schemas"]["ModelMetadata"];
+            /** @description Set by the periodic model-refresh service when the id is no longer advertised by its provider; None means current. */
+            readonly stale: components["schemas"]["ModelStaleness"] | null;
         };
         /** ProviderModelResponse */
         readonly ProviderModelResponse: {
@@ -13685,6 +13817,8 @@ export type components = {
             readonly currency: string;
             /** @description Estimated median latency in ms */
             readonly estimated_latency_ms: number | null;
+            /** @description Parsed model family (groups models for the picker) */
+            readonly family: string | null;
             /** @description Model identifier */
             readonly id: string;
             /** @description Per-model launch parameters for local providers */
@@ -13694,6 +13828,8 @@ export type components = {
              * @default 200000
              */
             readonly max_context: number;
+            /** @description Staleness marker when the id left the live catalogue */
+            readonly stale: components["schemas"]["ModelStaleness"] | null;
             /**
              * @description Supports streaming responses
              * @default true
@@ -13936,6 +14072,16 @@ export type components = {
             /** @description Whether all present signals are consistent */
             readonly valid: boolean;
         };
+        /**
+         * RecommendationStatus
+         * @description Lifecycle state of an upgrade recommendation.
+         *
+         *     ``PENDING`` awaits a human decision; ``APPROVED`` / ``REJECTED`` are
+         *     operator decisions; ``AUTO_APPLIED`` was applied automatically by the
+         *     in-family auto-apply flow without human review.
+         * @enum {string}
+         */
+        readonly RecommendationStatus: "pending" | "approved" | "rejected" | "auto_applied";
         /** RecommendedAction */
         readonly RecommendedAction: {
             /** @description Semantic action key */
@@ -14032,6 +14178,34 @@ export type components = {
             readonly sample_count: number;
             /** @description Mean redundancy */
             readonly value: number;
+        };
+        /** RefreshCycleReportDTO */
+        readonly RefreshCycleReportDTO: {
+            readonly added_count: number;
+            readonly auto_applied_count: number;
+            readonly providers_scanned: number;
+            readonly recommended_count: number;
+            readonly stale_count: number;
+        };
+        /**
+         * RefreshMode
+         * @description How the periodic model-refresh subsystem operates.
+         *
+         *     Attributes:
+         *         OFF: Disabled entirely (the safe default); nothing is scheduled.
+         *         MANUAL_ONLY: No cadence; only the explicit refresh endpoint runs.
+         *         DETECT_ONLY: Periodically probe and flag removed models stale,
+         *             but never persist new models or emit recommendations.
+         *         RECONCILE_RECOMMEND: Probe, persist refreshed metadata, flag
+         *             removed models stale, and feed upgrade recommendations.
+         * @enum {string}
+         */
+        readonly RefreshMode: "off" | "manual_only" | "detect_only" | "reconcile_recommend";
+        /** RefreshStatusDTO */
+        readonly RefreshStatusDTO: {
+            readonly auto_apply_within_family: boolean;
+            readonly interval_seconds: number;
+            readonly mode: components["schemas"]["RefreshMode"];
         };
         /** RegisterExperimentVariantRequest */
         readonly RegisterExperimentVariantRequest: {
@@ -15433,6 +15607,11 @@ export type components = {
             readonly display_name: string;
             readonly name: string;
             /**
+             * @description Named operating posture the template declares (or None)
+             * @enum {string|null}
+             */
+            readonly posture: "autonomous" | "supervised_client_facing" | "knowledge_heavy" | "cost_disciplined" | "security_hardened" | "research_autonomous" | null;
+            /**
              * @description Skill design pattern identifiers
              * @default []
              */
@@ -16021,6 +16200,25 @@ export type components = {
             readonly version?: string | null;
             /** @enum {string|null} */
             readonly workflow_type?: "sequential_pipeline" | "parallel_execution" | "kanban" | "agile_kanban" | null;
+        };
+        /** UpgradeRecommendationDTO */
+        readonly UpgradeRecommendationDTO: {
+            readonly agent_ids: readonly string[];
+            /** Format: date-time */
+            readonly created_at: string;
+            readonly current_generation: number;
+            readonly current_model_id: string;
+            /** Format: date-time */
+            readonly decided_at: string | null;
+            readonly decided_by: string | null;
+            readonly family: string;
+            readonly id: string;
+            readonly provider_name: string;
+            readonly reason: string;
+            readonly recommended_generation: number;
+            readonly recommended_model_id: string;
+            readonly score: number;
+            readonly status: components["schemas"]["RecommendationStatus"];
         };
         /**
          * UrgencyLevel
@@ -25050,6 +25248,156 @@ export interface operations {
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersModelRefreshRecommendationsListRecommendations: {
+        readonly parameters: {
+            readonly query?: {
+                readonly status?: "pending" | "approved" | "rejected" | "auto_applied" | null;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["UpgradeRecommendationDTO"][];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersModelRefreshRecommendationsRecIdApproveApproveRecommendation: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly rec_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["DecideRecommendationRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["UpgradeRecommendationDTO"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersModelRefreshRecommendationsRecIdRejectRejectRecommendation: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly rec_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["DecideRecommendationRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["UpgradeRecommendationDTO"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersModelRefreshTriggerRefresh: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RefreshCycleReportDTO"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersModelRefreshStatusGetStatus: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RefreshStatusDTO"];
+                };
+            };
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

@@ -9,6 +9,7 @@ on version conflict.
 
 import json
 import math
+from collections.abc import Mapping
 from typing import Final, TypedDict, override
 
 from synthorg.api.concurrency import check_if_match, compute_etag
@@ -16,6 +17,7 @@ from synthorg.api.services._org_agent_mutations import OrgAgentMutationsMixin
 from synthorg.api.services._org_department_mutations import OrgDepartmentMutationsMixin
 from synthorg.budget.config import BudgetConfig
 from synthorg.config.agent_schema import AgentConfig
+from synthorg.config.schema import ProviderConfig
 from synthorg.core.company import Company
 from synthorg.core.company_departments import Department
 from synthorg.core.concurrency import CASRetryHandler
@@ -167,6 +169,15 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
             Tuple of declared ``Department`` configs.
         """
         return await self._resolver.get_departments()
+
+    @override
+    async def _read_provider_configs(self) -> Mapping[str, ProviderConfig]:
+        """Read resolved provider configs for agent-model catalog validation.
+
+        Returns:
+            Provider name -> config mapping from the resolver.
+        """
+        return await self._resolver.get_provider_configs()
 
     @override
     async def _write_departments(

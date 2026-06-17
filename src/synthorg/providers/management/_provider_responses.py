@@ -21,6 +21,7 @@ from synthorg.budget.currency import (
     DEFAULT_CURRENCY,
     CurrencyCode,
 )
+from synthorg.config.model_staleness import ModelStaleness
 from synthorg.config.schema import (
     LocalModelParams,
     ProviderModelConfig,
@@ -97,6 +98,14 @@ class ProviderModelResponse(BaseModel):
     supports_streaming: bool = Field(
         default=True,
         description="Supports streaming responses",
+    )
+    family: NotBlankStr | None = Field(
+        default=None,
+        description="Parsed model family (groups models for the picker)",
+    )
+    stale: ModelStaleness | None = Field(
+        default=None,
+        description="Staleness marker when the id left the live catalogue",
     )
 
 

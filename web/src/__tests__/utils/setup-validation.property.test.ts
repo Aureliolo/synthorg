@@ -61,6 +61,7 @@ const makeProvider = (
       release_date: null,
       metadata_source: "unknown",
     },
+    stale: null,
   })),
   has_api_key: true,
   has_oauth_credentials: false,

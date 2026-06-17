@@ -195,6 +195,15 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
 
     startup = [*startup, _wire_toolsmith]
 
+    async def _wire_model_refresh() -> None:
+        from synthorg.api.lifecycle_helpers.model_refresh_wiring import (  # noqa: PLC0415
+            wire_model_refresh,
+        )
+
+        await wire_model_refresh(app_state)
+
+    startup = [*startup, _wire_model_refresh]
+
     # Bring up the notification dispatcher's HTTP-bearing sinks lazily under
     # their lifecycle locks. Teardown lives in the on-shutdown runner
     # (``lifecycle_runner_shutdown``) via ``notification_dispatcher.aclose``.

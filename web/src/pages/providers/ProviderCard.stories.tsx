@@ -28,6 +28,7 @@ const baseProvider: ProviderWithName = {
         release_date: null,
         metadata_source: "unknown",
       },
+      stale: null,
     },
     {
       id: "claude-haiku-4-5-20251001",
@@ -47,6 +48,7 @@ const baseProvider: ProviderWithName = {
         release_date: null,
         metadata_source: "unknown",
       },
+      stale: null,
     },
   ],
   has_api_key: true,

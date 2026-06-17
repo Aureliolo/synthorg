@@ -64,6 +64,7 @@ ProviderAuditEventType = Literal[
     "model_config_updated",
     "model_pulled",
     "models_synced",
+    "model_flagged_stale",
 ]
 """Event-type discriminator for ``ProviderAuditEvent``.
 

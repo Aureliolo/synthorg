@@ -153,6 +153,7 @@ class SetupStatusController(Controller):
                 department_count=t.department_count,
                 autonomy_level=t.autonomy_level,
                 workflow=t.workflow,
+                posture=t.posture,
             )
             for t in templates
         )

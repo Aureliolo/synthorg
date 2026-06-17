@@ -81,6 +81,7 @@ import { projectDocsHandlers } from './projectDocs'
 import { projectsHandlers } from './projects'
 import { providersHandlers } from './providers'
 import { qualityHandlers } from './quality'
+import { recommendationsHandlers } from './recommendations'
 import { reportsHandlers } from './reports'
 import { rolesHandlers } from './roles'
 import { scalingHandlers } from './scaling'
@@ -146,6 +147,7 @@ export const defaultHandlers = [
   ...projectsHandlers,
   ...providersHandlers,
   ...qualityHandlers,
+  ...recommendationsHandlers,
   ...reportsHandlers,
   ...rolesHandlers,
   ...scalingHandlers,

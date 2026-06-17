@@ -7,7 +7,7 @@ import { StatPill } from '@/components/ui/stat-pill'
 import { Button } from '@/components/ui/button'
 import type { ProviderConfig } from '@/api/types/providers'
 import type { PersonalityPresetInfo, SetupAgentSummary } from '@/api/types/setup'
-import { AgentModelPicker } from './AgentModelPicker'
+import { AgentModelPicker } from '@/components/ui/agent-model-picker'
 
 export interface SetupAgentCardProps {
   agent: SetupAgentSummary

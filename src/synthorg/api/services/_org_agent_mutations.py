@@ -5,11 +5,14 @@ the service orchestration.
 """
 
 import json
+from collections.abc import Mapping
 
 from pydantic import JsonValue
 
+from synthorg.api._model_validation import validate_provider_model_pair
 from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.config.agent_schema import AgentConfig
+from synthorg.config.schema import ProviderConfig
 from synthorg.core.company_departments import Department
 from synthorg.core.concurrency import CASRetryHandler
 from synthorg.core.domain_errors import (
@@ -58,6 +61,12 @@ class OrgAgentMutationsMixin:
         self,
     ) -> tuple[AgentConfig, ...]:
         """Read the company's agents."""
+        raise NotImplementedError
+
+    async def _read_provider_configs(  # pragma: no cover - see concrete
+        self,
+    ) -> Mapping[str, ProviderConfig]:
+        """Read the resolved provider configs for catalog validation."""
         raise NotImplementedError
 
     async def _write_agents(  # pragma: no cover - see concrete
@@ -232,6 +241,18 @@ class OrgAgentMutationsMixin:
             updates["model_provider"] = data.model_provider
         if "model_id" in fields_set:
             updates["model_id"] = data.model_id
+        # Catalog-existence check: a concrete pair must reference a
+        # provider + model the live catalogue still exposes (the setup
+        # endpoint already validates this; the post-setup PATCH path now
+        # closes the same gap so an agent cannot be repointed at a model
+        # no provider serves).
+        if data.model_provider is not None and data.model_id is not None:
+            providers = await self._read_provider_configs()
+            validate_provider_model_pair(
+                providers,
+                str(data.model_provider),
+                str(data.model_id),
+            )
 
         return updates
 

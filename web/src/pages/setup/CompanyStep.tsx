@@ -99,18 +99,28 @@ function CompanyDetailsForm({
   )
 }
 
+function applyTemplateLabel(reapply: boolean, hasTemplate: boolean): string {
+  if (reapply) return 'Re-apply Template'
+  // In Quick mode the template step is skipped, so no template is
+  // selected; "Apply Default Template" tells the operator the company is
+  // built from the default rather than implying a chosen template.
+  return hasTemplate ? 'Apply Template' : 'Apply Default Template'
+}
+
 function ApplyTemplateButton({
   onApply,
   disabled,
   loading,
   reapply,
+  hasTemplate,
 }: {
   onApply: () => void
   disabled: boolean
   loading: boolean
   reapply: boolean
+  hasTemplate: boolean
 }) {
-  const idleLabel = reapply ? 'Re-apply Template' : 'Apply Template'
+  const idleLabel = applyTemplateLabel(reapply, hasTemplate)
   return (
     <Button onClick={onApply} disabled={disabled} className="w-full">
       {loading ? 'Applying Template...' : idleLabel}
@@ -124,6 +134,7 @@ interface CompanyApplyControlsProps {
   applyDisabled: boolean
   companyLoading: boolean
   editing: boolean
+  hasTemplate: boolean
   onApply: () => void
   onStartEditing: () => void
 }
@@ -140,6 +151,7 @@ function CompanyApplyControls({
   applyDisabled,
   companyLoading,
   editing,
+  hasTemplate,
   onApply,
   onStartEditing,
 }: CompanyApplyControlsProps) {
@@ -162,6 +174,7 @@ function CompanyApplyControls({
           disabled={applyDisabled}
           loading={companyLoading}
           reapply={editing}
+          hasTemplate={hasTemplate}
         />
       )}
     </>
@@ -391,7 +404,6 @@ export function CompanyStep() {
         disabled={fieldsLocked}
       />
 
-      {/* Template variables */}
       <TemplateVariables
         variables={selectedTemplateObj?.variables ?? []}
         values={templateVariables}
@@ -406,6 +418,7 @@ export function CompanyStep() {
         applyDisabled={applyDisabled}
         companyLoading={companyLoading}
         editing={editing}
+        hasTemplate={selectedTemplate !== null}
         onApply={handleApplyTemplate}
         onStartEditing={startEditing}
       />

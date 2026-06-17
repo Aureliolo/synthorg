@@ -4,9 +4,11 @@ import {
   getAgentHealth,
   getAgentHistory,
   getAgentPerformance,
+  updateAgentModel,
 } from '@/api/endpoints/agents'
 import { listTasks } from '@/api/endpoints/tasks'
-import { getErrorMessage } from '@/utils/errors'
+import { useToastStore } from '@/stores/toast'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 // AgentConfig is the dashboard overlay (id? / status? / hiring_date?
@@ -260,11 +262,45 @@ function clearDetailImpl(set: AgentsSet): void {
   })
 }
 
+async function updateAgentModelImpl(
+  set: AgentsSet,
+  agentId: string,
+  provider: string,
+  modelId: string,
+): Promise<boolean> {
+  set({ updatingModel: true })
+  try {
+    await updateAgentModel(agentId, { model_provider: provider, model_id: modelId })
+    useToastStore.getState().add({
+      variant: 'success',
+      title: 'Model updated',
+      description: `Agent now uses ${modelId}.`,
+    })
+    set({ updatingModel: false })
+    // The wire ``model`` field is an opaque dict, so re-fetch the detail
+    // to reflect the canonical server-side state rather than guessing at
+    // the dict's shape for an optimistic patch.
+    await fetchAgentDetailImpl(set, agentId)
+    return true
+  } catch (err) {
+    log.error('updateAgentModel:', getErrorMessage(err))
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, 'Could not update model'),
+      description: getErrorMessage(err),
+    })
+    set({ updatingModel: false })
+    return false
+  }
+}
+
 export function createDetailActions(set: AgentsSet, get: AgentsGet) {
   return {
     fetchAgentDetail: (agentId: string) => fetchAgentDetailImpl(set, agentId),
     fetchMoreActivity: (agentId: string) =>
       fetchMoreActivityImpl(set, get, agentId),
     clearDetail: () => clearDetailImpl(set),
+    updateAgentModel: (agentId: string, provider: string, modelId: string) =>
+      updateAgentModelImpl(set, agentId, provider, modelId),
   }
 }

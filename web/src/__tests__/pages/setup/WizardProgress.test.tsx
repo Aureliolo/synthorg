@@ -133,7 +133,7 @@ describe('WizardProgress', () => {
     const agentsButton = buttons.find((b) => b.textContent.includes('Agents'))!
     // The sr-only revalidation hint is referenced via aria-describedby.
     expect(agentsButton).toHaveAttribute('aria-describedby', 'agents-needs-revalidation')
-    expect(screen.getByText(/Needs review/i)).toBeInTheDocument()
+    expect(screen.getByText(/An earlier step changed/i)).toBeInTheDocument()
   })
 
   it('does NOT render the warning indicator on the active step (the user is fixing it)', () => {

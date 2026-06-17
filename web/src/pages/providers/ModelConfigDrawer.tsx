@@ -2,8 +2,14 @@ import { useState } from 'react'
 import { Drawer } from '@/components/ui/drawer'
 import { InputField } from '@/components/ui/input-field'
 import { Button } from '@/components/ui/button'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { useProvidersStore } from '@/stores/providers'
 import type { LocalModelParams, ProviderModelResponse } from '@/api/types/providers'
+
+const STALE_REASON_LABEL: Record<'removed_from_catalog' | 'deprecated', string> = {
+  removed_from_catalog: 'removed from the provider catalogue',
+  deprecated: 'deprecated by the provider',
+}
 
 interface ModelConfigDrawerProps {
   providerName: string
@@ -162,6 +168,18 @@ function ModelConfigForm({
 
   return (
     <div className="flex flex-col gap-section-gap">
+      {model.stale != null && (
+        <ErrorBanner
+          variant="section"
+          severity="warning"
+          title="This model is stale"
+          description={`${model.id} was ${STALE_REASON_LABEL[model.stale.reason]}.${
+            model.stale.successor_model_id != null
+              ? ` Consider switching to ${model.stale.successor_model_id}.`
+              : ' Consider switching to a current model.'
+          }`}
+        />
+      )}
       <ModelConfigFields
         numCtx={numCtx}
         setNumCtx={setNumCtx}

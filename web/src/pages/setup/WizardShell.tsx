@@ -254,6 +254,10 @@ export function WizardShell() {
 
   const StepComponent = STEP_COMPONENTS[currentStep]
   const showProgress = !HIDDEN_PROGRESS_STEPS.has(currentStep)
+  // Navigation renders on every step (including mode) so a step reached
+  // from an earlier step keeps a Back affordance; the mode step hides
+  // its Next button because selecting a mode auto-advances.
+  const isModeStep = currentStep === 'mode'
 
   return (
     <div className="flex min-h-screen flex-col items-center bg-background">
@@ -279,19 +283,20 @@ export function WizardShell() {
           </AnimatedPresence>
         </ErrorBoundary>
 
-        {/* Navigation (hidden for mode selection step -- it advances on click) */}
-        {showProgress && (
-          <div className="mt-8">
-            <WizardNavigation
-              stepOrder={stepOrder}
-              currentStep={currentStep}
-              onBack={handleBack}
-              onNext={handleNext}
-              nextDisabled={!stepComplete}
-              nextDisabledReason={nextDisabledReason}
-            />
-          </div>
-        )}
+        {/* Navigation: shown on every step. The mode step hides Next
+            (selecting a mode auto-advances) but keeps Back so a user who
+            reached mode from the account step can return. */}
+        <div className="mt-8">
+          <WizardNavigation
+            stepOrder={stepOrder}
+            currentStep={currentStep}
+            onBack={handleBack}
+            onNext={handleNext}
+            nextDisabled={!stepComplete}
+            nextDisabledReason={nextDisabledReason}
+            hideNext={isModeStep}
+          />
+        </div>
       </div>
     </div>
   )

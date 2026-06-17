@@ -2,6 +2,7 @@ import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../cli
 import type { VersionDiffResponse } from './version-history'
 import type {
   ActiveAgentSummary,
+  AgentConfig,
   AgentHealthResponse,
   AgentIdentity,
   AgentIdentityDiff,
@@ -28,6 +29,22 @@ export async function listAgents(params?: PaginationParams): Promise<PaginatedRe
 export async function listActiveAgents(): Promise<readonly ActiveAgentSummary[]> {
   const response =
     await apiClient.get<ApiResponse<readonly ActiveAgentSummary[]>>('/agents/active')
+  return unwrap(response)
+}
+
+/**
+ * Re-point an agent at a different model after setup. Uses the canonical
+ * ``PATCH /agents/{id}`` mutation, which validates the provider/model
+ * pair against the live catalogue server-side.
+ */
+export async function updateAgentModel(
+  agentId: string,
+  data: { model_provider: string; model_id: string },
+): Promise<AgentConfig> {
+  const response = await apiClient.patch<ApiResponse<AgentConfig>>(
+    `/agents/${encodeURIComponent(agentId)}`,
+    data,
+  )
   return unwrap(response)
 }
 

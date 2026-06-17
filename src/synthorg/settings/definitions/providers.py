@@ -103,6 +103,64 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.PROVIDERS,
+        key="model_refresh_mode",
+        type=SettingType.ENUM,
+        default="off",
+        # Mirrors synthorg.providers.management.refresh_config.RefreshMode;
+        # kept literal here to avoid a definitions -> providers import cycle
+        # (parity asserted by test_model_refresh_settings).
+        enum_values=("off", "manual_only", "detect_only", "reconcile_recommend"),
+        description=(
+            "Periodic model-refresh/reconcile mode. 'off' (the safe default)"
+            " schedules nothing; 'manual_only' runs only on the explicit"
+            " refresh endpoint; 'detect_only' periodically probes and flags"
+            " removed models stale; 'reconcile_recommend' also persists"
+            " refreshed metadata and feeds upgrade recommendations. Re-read"
+            " live each cycle, so changes apply without a restart."
+        ),
+        group="Model Refresh",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="model_refresh_interval_seconds",
+        type=SettingType.FLOAT,
+        default="86400.0",
+        description=(
+            "Cadence in seconds between automatic model-refresh cycles when"
+            " the mode schedules a loop. Floored at the scheduler minimum."
+        ),
+        group="Model Refresh",
+        level=SettingLevel.ADVANCED,
+        min_value=60.0,
+        max_value=604800.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="model_refresh_auto_apply_within_family",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "When true, strictly in-family upgrade recommendations (same"
+            " family, newer generation, no capability regression) are"
+            " auto-applied by reassigning pinned agents instead of being"
+            " parked for human approval. Cross-family upgrades always wait"
+            " for approval. Off by default."
+        ),
+        group="Model Refresh",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
         key="cassette_path",
         type=SettingType.STRING,
         default=None,
