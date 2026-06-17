@@ -17,7 +17,7 @@ catalogue at the template layer where it is declared.
 
 from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
 
@@ -60,6 +60,24 @@ class PostureConfig(BaseModel):
     red_team: bool = Field(default=False)
     red_team_grounding: GroundingChecker = Field(default="heuristic")
     auto_downgrade: bool = Field(default=False)
+
+    @model_validator(mode="after")
+    def _grounding_requires_red_team(self) -> Self:
+        """Reject a non-default grounding checker without the red-team gate.
+
+        ``red_team_grounding`` only has meaning when ``red_team`` is on; a
+        non-``heuristic`` checker with the gate off is an incoherent state.
+
+        Returns:
+            The validated config.
+
+        Raises:
+            ValueError: When grounding is set but ``red_team`` is ``False``.
+        """
+        if self.red_team_grounding != "heuristic" and not self.red_team:
+            msg = "red_team_grounding requires red_team=True"
+            raise ValueError(msg)
+        return self
 
     def merge(self, other: Self) -> PostureConfig:
         """Union *self* with *other*, taking the more-capable value per flag.

@@ -17,7 +17,7 @@ wires a subsystem itself.
 
 from collections.abc import Callable
 from types import MappingProxyType
-from typing import Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 from synthorg.config.posture_config import PostureConfig
 from synthorg.observability import get_logger
@@ -89,6 +89,17 @@ _POSTURE_BUNDLES: MappingProxyType[PostureName, PostureConfig] = MappingProxyTyp
     },
 )
 
+# Every named posture must have a curated bundle; fail at import (not at first
+# expansion) if a new ``PostureName`` is added without one.
+assert set(_POSTURE_BUNDLES) == set(PostureName), (  # noqa: S101
+    f"_POSTURE_BUNDLES missing: {set(PostureName) - set(_POSTURE_BUNDLES)}"
+)
+
+# Max inheritance/pack recursion depth for posture resolution; mirrors the
+# template inheritance-chain limit and guards against a cyclic graph reaching
+# the seeder path (which resolves postures independently of the renderer).
+_MAX_POSTURE_DEPTH: Final[int] = 10
+
 
 @runtime_checkable
 class PostureExpansionStrategy(Protocol):
@@ -156,6 +167,7 @@ def resolve_template_posture(
     load_pack: Callable[[str], CompanyTemplate],
     load_parent: Callable[[str], CompanyTemplate],
     strategy: PostureExpansionStrategy | None = None,
+    _depth: int = 0,
 ) -> PostureConfig | None:
     """Resolve a template's effective posture (inheritance + pack union).
 
@@ -166,6 +178,8 @@ def resolve_template_posture(
       effective posture is inherited.
     * Each pack in ``uses_packs`` unions its effective posture on top
       (flags OR to the more-capable value), so packs contribute additively.
+    * When only packs declare a posture (no host or parent), the pack union
+      is returned verbatim so its ``name`` survives for observability.
 
     Args:
         template: The parsed (pass-1) template.
@@ -173,11 +187,19 @@ def resolve_template_posture(
         load_parent: Resolves a parent template name to its
             ``CompanyTemplate``.
         strategy: Posture-expansion strategy (default ``"named"``).
+        _depth: Internal recursion-depth guard.
 
     Returns:
         The effective :class:`PostureConfig`, or ``None`` when neither the
         template, its parent, nor any pack declares a posture.
+
+    Raises:
+        TemplatePostureError: When the inheritance/pack graph exceeds the
+            maximum resolution depth (a likely cycle).
     """
+    if _depth > _MAX_POSTURE_DEPTH:
+        msg = f"Posture resolution exceeded max depth {_MAX_POSTURE_DEPTH} (cycle?)"
+        raise TemplatePostureError(msg)
     expander = strategy if strategy is not None else get_posture_strategy()
 
     host: PostureConfig | None = (
@@ -189,6 +211,7 @@ def resolve_template_posture(
             load_pack=load_pack,
             load_parent=load_parent,
             strategy=expander,
+            _depth=_depth + 1,
         )
 
     pack_union: PostureConfig | None = None
@@ -198,6 +221,7 @@ def resolve_template_posture(
             load_pack=load_pack,
             load_parent=load_parent,
             strategy=expander,
+            _depth=_depth + 1,
         )
         if pack_posture is not None:
             pack_union = (
@@ -206,4 +230,6 @@ def resolve_template_posture(
 
     if pack_union is None:
         return host
-    return (host or PostureConfig()).merge(pack_union)
+    if host is None:
+        return pack_union
+    return host.merge(pack_union)

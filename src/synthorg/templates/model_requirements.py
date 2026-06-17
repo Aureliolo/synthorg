@@ -1,3 +1,4 @@
+# module-kind: code
 """Structured model requirements and personality-based model affinity.
 
 Provides :class:`ModelRequirement` for expressing what kind of LLM an
@@ -21,9 +22,16 @@ real metadata, and ``ModelMatch.tier`` is report-only.
 """
 
 from types import MappingProxyType
-from typing import Literal, get_args
+from typing import Literal, Self, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    ValidationError,
+    model_validator,
+)
 
 from synthorg.core.normalization import normalize_ascii_lowercase_or_default
 from synthorg.core.types import ModelTier, NotBlankStr
@@ -106,6 +114,30 @@ class ModelRequirement(BaseModel):
         default=None,
         description="Resolve to the newest configured model id matching this glob",
     )
+
+    @model_validator(mode="after")
+    def _validate_resolution_axes(self) -> Self:
+        """Reject an explicit pin combined with a resolution hint.
+
+        A ``model_id`` pin is selected verbatim and bypasses family/pattern
+        and capability scoring, so pairing it with ``family``/``model_pattern``
+        is contradictory input rather than a meaningful refinement.
+        (``family`` and ``model_pattern`` together are allowed: family is the
+        primary match, pattern the fallback.)
+
+        Returns:
+            The validated requirement.
+
+        Raises:
+            ValueError: When ``model_id`` coexists with ``family`` or
+                ``model_pattern``.
+        """
+        if self.model_id is not None and (
+            self.family is not None or self.model_pattern is not None
+        ):
+            msg = "model_id is mutually exclusive with family / model_pattern"
+            raise ValueError(msg)
+        return self
 
 
 def parse_model_requirement(raw: str | dict[str, JsonValue]) -> ModelRequirement:
@@ -242,6 +274,23 @@ def resolve_model_requirement(
     Returns:
         Resolved ``ModelRequirement``.
     """
+    if overrides:
+        pin = overrides.get("model_id")
+        if isinstance(pin, str) and pin.strip():
+            # An explicit pin is selected verbatim and bypasses capability
+            # scoring, so layering affinity flags onto it would be inert and
+            # misleading (and trips the mutual-exclusion validator). Pin clean.
+            pinned = parse_model_requirement(pin)
+            logger.debug(
+                TEMPLATE_MODEL_REQUIREMENT_RESOLVED,
+                model_id=pinned.model_id,
+                priority=pinned.priority,
+                min_context=pinned.min_context,
+                family=pinned.family,
+                preset=preset_name,
+            )
+            return pinned
+
     affinity = MODEL_AFFINITY.get(
         normalize_ascii_lowercase_or_default(preset_name),
         MappingProxyType({}),

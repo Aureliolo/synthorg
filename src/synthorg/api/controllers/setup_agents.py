@@ -114,12 +114,12 @@ def expand_template_agents(
             resolve_model_requirement,
         )
 
-        model_req = resolve_model_requirement(
-            preset_name,
-            agent_cfg.model if isinstance(agent_cfg.model, dict) else None,
+        overrides: dict[str, JsonValue] | None = (
+            {"model_id": agent_cfg.model}
+            if isinstance(agent_cfg.model, str)
+            else agent_cfg.model
         )
-        if isinstance(agent_cfg.model, str):
-            model_req = model_req.model_copy(update={"model_id": agent_cfg.model})
+        model_req = resolve_model_requirement(preset_name, overrides)
 
         agent_dict: dict[str, object] = {
             "name": name,

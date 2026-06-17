@@ -210,4 +210,7 @@ class TestResolveModelRequirement:
     def test_overrides_with_model_id(self) -> None:
         req = resolve_model_requirement("code_craftsman", {"model_id": "pinned-001"})
         assert req.model_id == "pinned-001"
-        assert req.requires_tools is True
+        # An explicit pin is clean: affinity capability flags are NOT layered
+        # on (the matcher selects the pinned id verbatim, ignoring filters).
+        assert req.requires_tools is False
+        assert req.family is None

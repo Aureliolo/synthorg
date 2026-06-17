@@ -45,8 +45,8 @@ class TestPostureConfig:
         assert merged.steering is True
 
     def test_merge_upgrades_grounding(self) -> None:
-        a = PostureConfig(red_team_grounding="heuristic")
-        b = PostureConfig(red_team_grounding="knowledge_substrate")
+        a = PostureConfig(red_team=True, red_team_grounding="heuristic")
+        b = PostureConfig(red_team=True, red_team_grounding="knowledge_substrate")
         assert a.merge(b).red_team_grounding == "knowledge_substrate"
         assert b.merge(a).red_team_grounding == "knowledge_substrate"
 
@@ -54,6 +54,10 @@ class TestPostureConfig:
         a = PostureConfig()
         b = PostureConfig(steering=True)
         assert a.merge(b).red_team_grounding == "heuristic"
+
+    def test_grounding_without_red_team_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="red_team"):
+            PostureConfig(red_team_grounding="knowledge_substrate")
 
 
 @pytest.mark.unit
@@ -90,6 +94,13 @@ class TestNamedBundleStrategy:
         assert bundle.auto_downgrade is True
         assert bundle.knowledge_substrate is False
         assert bundle.chat_propose is False
+
+    def test_knowledge_heavy_bundle(self) -> None:
+        bundle = NamedBundlePostureStrategy().expand(PostureName.KNOWLEDGE_HEAVY)
+        assert bundle.knowledge_substrate is True
+        assert bundle.chat_propose is True
+        assert bundle.steering is True
+        assert bundle.red_team is False
 
     def test_research_autonomous_bundle(self) -> None:
         bundle = NamedBundlePostureStrategy().expand(PostureName.RESEARCH_AUTONOMOUS)

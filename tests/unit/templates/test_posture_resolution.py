@@ -6,6 +6,7 @@ from synthorg.config.posture_config import PostureConfig
 from synthorg.organization.enums import CompanyType
 from synthorg.templates._config_assembly import thread_posture_knobs
 from synthorg.templates.enums import PostureName
+from synthorg.templates.errors import TemplatePostureError
 from synthorg.templates.postures import resolve_template_posture
 from synthorg.templates.schema import (
     CompanyTemplate,
@@ -76,6 +77,9 @@ class TestResolveTemplatePosture:
         assert result is not None
         assert result.name == "cost_disciplined"
         assert result.auto_downgrade is True
+        # Child wins outright: the parent's flags are NOT inherited.
+        assert result.steering is False
+        assert result.knowledge_substrate is False
 
     def test_pack_posture_unions_into_host(self) -> None:
         security_pack = _template(posture=PostureName.SECURITY_HARDENED)
@@ -91,7 +95,7 @@ class TestResolveTemplatePosture:
         assert result.red_team is True
         assert result.red_team_grounding == "knowledge_substrate"
 
-    def test_pack_only_posture_has_no_name(self) -> None:
+    def test_pack_only_posture_keeps_pack_name(self) -> None:
         security_pack = _template(posture=PostureName.SECURITY_HARDENED)
         result = resolve_template_posture(
             _template(uses_packs=("sec",)),
@@ -99,8 +103,50 @@ class TestResolveTemplatePosture:
             load_parent=_no_load,
         )
         assert result is not None
-        assert result.name is None
+        # With no host/parent posture the pack union is returned verbatim, so
+        # its name survives for observability (logged by the seeder).
+        assert result.name == "security_hardened"
         assert result.red_team is True
+
+    def test_pack_unions_onto_inherited_parent(self) -> None:
+        parent = _template(posture=PostureName.AUTONOMOUS)
+        security_pack = _template(posture=PostureName.SECURITY_HARDENED)
+        result = resolve_template_posture(
+            _template(extends="parent", uses_packs=("sec",)),
+            load_pack=lambda _name: security_pack,
+            load_parent=lambda _name: parent,
+        )
+        assert result is not None
+        # Host name inherited from parent; pack folds red_team on top.
+        assert result.name == "autonomous"
+        assert result.steering is True
+        assert result.knowledge_substrate is True
+        assert result.red_team is True
+
+    def test_multiple_packs_union_their_flags(self) -> None:
+        cost_pack = _template(posture=PostureName.COST_DISCIPLINED)
+        security_pack = _template(posture=PostureName.SECURITY_HARDENED)
+        packs = {"cost": cost_pack, "sec": security_pack}
+        result = resolve_template_posture(
+            _template(posture=PostureName.AUTONOMOUS, uses_packs=("cost", "sec")),
+            load_pack=lambda name: packs[name],
+            load_parent=_no_load,
+        )
+        assert result is not None
+        assert result.name == "autonomous"
+        assert result.auto_downgrade is True
+        assert result.red_team is True
+
+    def test_inheritance_cycle_raises(self) -> None:
+        def _self_parent(_name: str) -> CompanyTemplate:
+            return _template(extends="loop")
+
+        with pytest.raises(TemplatePostureError, match="max depth"):
+            resolve_template_posture(
+                _template(extends="loop"),
+                load_pack=_no_load,
+                load_parent=_self_parent,
+            )
 
 
 @pytest.mark.unit

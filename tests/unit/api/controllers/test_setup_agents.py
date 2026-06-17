@@ -1,6 +1,6 @@
 """Tests for expand_template_agents, match_and_assign_models, and build_agent_config."""
 
-from typing import Any
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,9 +10,12 @@ from synthorg.api.controllers.setup_agents import (
     expand_template_agents,
     match_and_assign_models,
 )
+from synthorg.api.controllers.setup_models import SetupAgentRequest
 from synthorg.core.domain_errors import ValidationError
+from synthorg.core.types import ModelTier
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.organization.enums import CompanyType
+from synthorg.templates.model_matcher import ModelMatch
 from synthorg.templates.schema import (
     CompanyTemplate,
     TemplateAgentConfig,
@@ -154,20 +157,25 @@ class TestExpandTemplateAgentsCustomPresets:
 
 @pytest.mark.unit
 class TestBuildAgentConfigCustomPresets:
-    def _make_request(  # type: ignore[explicit-any]  # returns a MagicMock request stub
+    def _make_request(
         self,
         preset: str = "pragmatic_builder",
-    ) -> Any:
-        req = MagicMock()
-        req.name = "Test Agent"
-        req.role = "Backend Developer"
-        req.department = "engineering"
-        req.level = SeniorityLevel.MID
-        req.personality_preset = preset
-        req.model_provider = "test-provider"
-        req.model_id = "test-small-001"
-        req.budget_limit_monthly = None
-        return req
+    ) -> SetupAgentRequest:
+        # ``model_construct`` builds a real, typed ``SetupAgentRequest`` while
+        # bypassing validation: the model validates ``personality_preset``
+        # against the built-in catalogue, but these tests exercise
+        # ``build_agent_config`` with custom / unknown presets that the model
+        # would reject at construction.
+        return SetupAgentRequest.model_construct(
+            name="Test Agent",
+            role="Backend Developer",
+            department="engineering",
+            level=SeniorityLevel.MID,
+            personality_preset=preset,
+            model_provider="test-provider",
+            model_id="test-small-001",
+            budget_limit_monthly=None,
+        )
 
     def test_builtin_preset_resolves(self) -> None:
         data = self._make_request("pragmatic_builder")
@@ -217,11 +225,13 @@ class TestMatchAndAssignModels:
         model_id: str,
     ) -> None:
         """model_tier from the match is included in the agent model dict."""
-        match = MagicMock()
-        match.agent_index = 0
-        match.provider_name = "test-provider"
-        match.model_id = model_id
-        match.tier = tier
+        match = ModelMatch(
+            agent_index=0,
+            provider_name="test-provider",
+            model_id=model_id,
+            tier=cast("ModelTier", tier),
+            score=1.0,
+        )
         mock_match.return_value = [match]
 
         agents: list[JsonDict] = [

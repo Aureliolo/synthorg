@@ -23,7 +23,7 @@ SynthOrg provides pre-built company templates for common organisational patterns
 | **Support Desk** | 5-7 | supervised_client_facing | supervised | hierarchical | kanban | Customer support, incident response |
 | **Security Team** | 4-6 | security_hardened | supervised | hierarchical | kanban | Threat modelling, security review |
 | **Growth Marketing Studio** | 5-8 | cost_disciplined | semi | hybrid | agile_kanban | Content, campaigns, growth |
-| **Custom** | Any | none | semi | hybrid | agile_kanban | Anything |
+| **Custom** | Any | -- | semi | hybrid | agile_kanban | Anything |
 
 A template's **posture** expands to a coherent bundle of runtime feature flags
 (knowledge substrate, conversational chat modes, mid-flight steering, red-team
@@ -255,10 +255,10 @@ template:
     autonomy:
       level: "semi"
 
-  # Built-in templates use explicit names drawn from Faker at build time.
-  # User-defined templates may use Jinja2 placeholders (e.g. {{ name | auto }})
-  # which trigger Faker-based auto-generation at render time using the
-  # locales selected in the Names setup step.
+  # Built-in templates omit the agent `name` field entirely; Faker
+  # auto-generates names at render time using the locales selected in the
+  # Names setup step. User-defined templates may instead set an explicit
+  # name or a Jinja2 placeholder (e.g. {{ name | auto }}).
   # The `model` field is a capability reference: either a structured dict
   # (priority / min_context / requires_tools / requires_vision /
   # requires_reasoning, plus an optional family or model_pattern), or an
@@ -267,8 +267,7 @@ template:
   # fills any capability defaults the agent omits. Built-in templates use
   # capability dicts so they resolve on any provider, Ollama Cloud included.
   agents:
-    - role: "CEO"
-      name: "Amara Okafor"
+    - role: "CEO"                     # name omitted -> Faker at render time
       model:                          # capability requirement
         priority: "quality"
         min_context: 100000
@@ -276,7 +275,6 @@ template:
       personality_preset: "visionary_leader"
 
     - role: "CTO"
-      name: "Hiroshi Tanaka"
       model:
         priority: "quality"
         min_context: 100000
@@ -285,7 +283,6 @@ template:
 
     - role: "Full-Stack Developer"
       merge_id: "fullstack-senior"
-      name: "Kenji Matsuda"
       level: "senior"
       model:
         priority: "balanced"
@@ -294,7 +291,6 @@ template:
 
     - role: "Full-Stack Developer"
       merge_id: "fullstack-mid"
-      name: "Sofia Reyes"
       level: "mid"
       model:
         priority: "cost"
@@ -302,7 +298,6 @@ template:
       personality_preset: "team_diplomat"
 
     - role: "Product Manager"
-      name: "Liam Chen"
       model:
         priority: "speed"
       personality_preset: "strategic_planner"
@@ -404,16 +399,21 @@ is detected via chain tracking and raises `TemplateInheritanceError`.
 **Built-in inheritance tree:**
 
 ```text
-solo_founder (base: 2 agents)
-  -> startup (extends solo_founder: 5 agents)
-     -> dev_shop (extends startup: 8 agents)
-     -> product_team (extends startup: 10 agents)
+solo_founder (base)
+  -> startup (extends solo_founder)
+     -> dev_shop (extends startup)
+     -> product_team (extends startup)
 
-research_lab (base: 7 agents)
-  -> data_team (extends research_lab: 6 agents)
+research_lab (base)
+  -> data_team (extends research_lab)
 
-Standalone (no inheritance): agency, full_company, consultancy
+Standalone (no inheritance): agency, consultancy, full_company,
+                             support_desk, security_team, growth_marketing
 ```
+
+Each template's roster size is declared by its own `min_agents` / `max_agents`
+(see the Company Types table); extending templates inherit the parent roster
+and append (or `_remove`) their own agents.
 
 ### Merge Semantics
 

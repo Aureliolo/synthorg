@@ -15,9 +15,10 @@ from synthorg.templates.model_matcher import match_all_agents
 from synthorg.templates.renderer import render_template
 
 _OLLAMA_CLOUD_PRESET = get_preset("ollama-cloud")
-assert _OLLAMA_CLOUD_PRESET is not None, "ollama-cloud preset must exist"
-_OLLAMA_CLOUD_MODELS: tuple[ProviderModelConfig, ...] = default_models_for(
-    _OLLAMA_CLOUD_PRESET,
+# Compute lazily so a missing preset surfaces as a named test failure
+# (``test_preset_registered``) rather than a collection-time crash.
+_OLLAMA_CLOUD_MODELS: tuple[ProviderModelConfig, ...] = (
+    default_models_for(_OLLAMA_CLOUD_PRESET) if _OLLAMA_CLOUD_PRESET is not None else ()
 )
 
 
@@ -30,6 +31,9 @@ class _Provider:
 
 @pytest.mark.unit
 class TestOllamaCloudRunnable:
+    def test_preset_registered(self) -> None:
+        assert _OLLAMA_CLOUD_PRESET is not None, "ollama-cloud preset must exist"
+
     def test_preset_ships_models(self) -> None:
         assert _OLLAMA_CLOUD_MODELS, "ollama-cloud must bake example models"
 

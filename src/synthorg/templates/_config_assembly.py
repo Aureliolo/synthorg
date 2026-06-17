@@ -12,7 +12,7 @@ from typing import cast
 from pydantic import JsonValue
 
 from synthorg.config.posture_config import PostureConfig
-from synthorg.config.utils import to_float
+from synthorg.config.utils import deep_merge, to_float
 from synthorg.engine.workflow.enums import WorkflowType
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.template import (
@@ -36,20 +36,49 @@ def thread_posture_knobs(
 
     Sets ``result["posture"]`` to the resolved flag bundle and threads the
     config-resident knobs (``security.red_team`` / ``budget.auto_downgrade``)
-    directly. The settings-resident flags (chat modes, toolsmith, steering)
-    are written by the setup-completion seeder, not here. Called once at the
-    top of a render with the effective (inheritance + pack-unioned) posture.
+    into any existing section. The settings-resident flags (chat modes,
+    steering) are written by the setup-completion seeder, not here. Called
+    once at the top of a render with the effective (inheritance + pack-unioned)
+    posture.
+
+    The posture knob is the merge base and any template-declared section is
+    the override, so an explicit ``security``/``budget`` value in the template
+    wins (a template can opt out of a posture default) while other keys in
+    those sections survive rather than being clobbered. ``knowledge_substrate``
+    has no config knob: it is recorded on ``result["posture"]`` and the
+    knowledge engine enables it at boot when a memory backend is present,
+    degrading cleanly when one is not.
     """
     result["posture"] = posture.model_dump()
     if posture.red_team:
-        result["security"] = {
-            "red_team": {
-                "enabled": True,
-                "grounding_checker_kind": posture.red_team_grounding,
+        result["security"] = _merge_section(
+            result.get("security"),
+            {
+                "red_team": {
+                    "enabled": True,
+                    "grounding_checker_kind": posture.red_team_grounding,
+                },
             },
-        }
+        )
     if posture.auto_downgrade:
-        result["budget"] = {"auto_downgrade": {"enabled": True}}
+        result["budget"] = _merge_section(
+            result.get("budget"),
+            {"auto_downgrade": {"enabled": True}},
+        )
+
+
+def _merge_section(
+    existing: object,
+    posture_knob: dict[str, object],
+) -> dict[str, object]:
+    """Merge a posture knob under any template-declared section value.
+
+    Returns:
+        The template section deep-merged over the posture knob, so explicit
+        template values win and other keys survive.
+    """
+    base = dict(existing) if isinstance(existing, dict) else {}
+    return deep_merge(posture_knob, base)
 
 
 def _build_workflow_dict(
