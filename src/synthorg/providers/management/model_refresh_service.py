@@ -47,7 +47,7 @@ logger = get_logger(__name__)
 ApplyHook = Callable[[StoredUpgradeRecommendation], Awaitable[None]]
 """Api-layer callback that reassigns pinned agents for an auto-apply."""
 
-_PENDING_SCAN_LIMIT: int = 1_000
+_PENDING_SCAN_PAGE_SIZE: int = 1_000
 
 
 class RefreshCycleReport(BaseModel):
@@ -273,22 +273,34 @@ class ModelRefreshService:
     async def _existing_pending_keys(self) -> set[tuple[str, str, str]]:
         """Return keys of pending recommendations to dedup against.
 
+        Pages through the full pending set so dedup stays correct beyond a
+        single page; an artificial row cap would silently drop keys and
+        let already-pending recommendations be re-created every cycle.
+
         Returns:
             A set of ``(provider, current_id, recommended_id)`` for every
             currently-pending recommendation.
         """
-        pending = await self._repo.query(
-            UpgradeRecommendationFilterSpec(status=RecommendationStatus.PENDING),
-            limit=_PENDING_SCAN_LIMIT,
-        )
-        return {
-            (
-                row.recommendation.provider_name,
-                row.recommendation.current_model_id,
-                row.recommendation.recommended_model_id,
+        keys: set[tuple[str, str, str]] = set()
+        offset = 0
+        while True:
+            page = await self._repo.query(
+                UpgradeRecommendationFilterSpec(status=RecommendationStatus.PENDING),
+                limit=_PENDING_SCAN_PAGE_SIZE,
+                offset=offset,
             )
-            for row in pending
-        }
+            keys.update(
+                (
+                    row.recommendation.provider_name,
+                    row.recommendation.current_model_id,
+                    row.recommendation.recommended_model_id,
+                )
+                for row in page
+            )
+            if len(page) < _PENDING_SCAN_PAGE_SIZE:
+                break
+            offset += _PENDING_SCAN_PAGE_SIZE
+        return keys
 
     async def _persist(
         self,

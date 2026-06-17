@@ -50,20 +50,18 @@ export function AgentIdentityHeader({ agent, className }: AgentIdentityHeaderPro
           {agent.autonomy_level && (
             <StatPill label="AUTONOMY" value={formatLabel(agent.autonomy_level)} />
           )}
-          {hasModel && (
-            <span className="inline-flex items-center gap-1.5">
-              <StatPill label="MODEL" value={modelId} />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setModelDrawerOpen(true)}
-                className="gap-1"
-              >
-                <Pencil className="size-3.5" />
-                Change Model
-              </Button>
-            </span>
-          )}
+          <span className="inline-flex items-center gap-1.5">
+            {hasModel && <StatPill label="MODEL" value={modelId} />}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setModelDrawerOpen(true)}
+              className="gap-1"
+            >
+              <Pencil className="size-3.5" />
+              {hasModel ? 'Change Model' : 'Set Model'}
+            </Button>
+          </span>
           {agent.hiring_date && (
             <time
               dateTime={agent.hiring_date}
@@ -76,15 +74,15 @@ export function AgentIdentityHeader({ agent, className }: AgentIdentityHeaderPro
         </div>
       </div>
 
-      {hasModel && (
-        <ModelChangeDrawer
-          agentId={agent.id}
-          currentProvider={modelProvider}
-          currentModelId={modelId}
-          open={modelDrawerOpen}
-          onClose={() => setModelDrawerOpen(false)}
-        />
-      )}
+      {/* Always mounted so an agent with a missing / invalid model can
+          still be repointed at a valid one. */}
+      <ModelChangeDrawer
+        agentId={agent.id}
+        currentProvider={modelProvider}
+        currentModelId={modelId}
+        open={modelDrawerOpen}
+        onClose={() => setModelDrawerOpen(false)}
+      />
     </div>
   )
 }

@@ -139,30 +139,45 @@ class UpgradeRecommender:
 
         out: list[UpgradeRecommendation] = []
         for family, entries in by_family.items():
-            newest_model, newest_gen = max(entries, key=lambda e: e[1])
+            newest_gen = max(generation for _, generation in entries)
+            # Every model at the newest generation is a candidate (a tie is
+            # broken deterministically by id), so a single regressing pick
+            # never masks a regress-free sibling of the same generation.
+            newest_candidates = sorted(
+                (model for model, generation in entries if generation >= newest_gen),
+                key=lambda model: model.id,
+            )
             for model, generation in entries:
-                if model.id == newest_model.id or generation >= newest_gen:
+                if generation >= newest_gen:
                     continue
-                if _has_capability_regression(model.metadata, newest_model.metadata):
+                candidate = next(
+                    (
+                        c
+                        for c in newest_candidates
+                        if not _has_capability_regression(model.metadata, c.metadata)
+                    ),
+                    None,
+                )
+                if candidate is None:
                     continue
                 out.append(
                     UpgradeRecommendation(
                         provider_name=provider_name,
                         current_model_id=model.id,
-                        recommended_model_id=newest_model.id,
+                        recommended_model_id=candidate.id,
                         family=family,
                         current_generation=generation,
                         recommended_generation=newest_gen,
                         score=_score(
                             current=model,
-                            candidate=newest_model,
+                            candidate=candidate,
                             current_generation=generation,
                             candidate_generation=newest_gen,
                             config=self._config,
                         ),
                         reason=(
                             f"Newer in-family model "
-                            f"{flatten_label(newest_model.id)!r} "
+                            f"{flatten_label(candidate.id)!r} "
                             f"(generation {newest_gen}) available; current "
                             f"{flatten_label(model.id)!r} is "
                             f"generation {generation}."

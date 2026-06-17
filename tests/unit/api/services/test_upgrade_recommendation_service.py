@@ -22,7 +22,7 @@ from synthorg.providers.management.upgrade_models import (
     StoredUpgradeRecommendation,
     UpgradeRecommendation,
 )
-from tests._shared import FakeClock, as_uuid, mock_of
+from tests._shared import FakeClock, as_uuid, mock_of, sid
 
 pytestmark = pytest.mark.unit
 
@@ -30,7 +30,7 @@ _NOW = datetime(2026, 6, 1, tzinfo=UTC)
 
 
 def _stored(
-    *, rec_id: str = "rec-1", agents: tuple[str, ...] = ("writer",)
+    *, rec_id: str = "rec-1", agents: tuple[str, ...] = (sid("writer"),)
 ) -> StoredUpgradeRecommendation:
     return StoredUpgradeRecommendation(
         id=as_uuid(rec_id),
@@ -86,7 +86,7 @@ class TestUpgradeRecommendationService:
         assert cas.kwargs["to_state"] is RecommendationStatus.APPROVED
         assert cas.kwargs["decided_by"] == "op"
         org.update_agent.assert_awaited_once_with(
-            "writer",
+            sid("writer"),
             UpdateAgentOrgRequest(model_provider="example-provider", model_id="new"),
         )
 
@@ -146,7 +146,7 @@ class TestUpgradeRecommendationService:
         org.update_agent.assert_not_called()
 
     async def test_reassign_tolerates_failed_agent(self) -> None:
-        stored = _stored(agents=("a", "b"))
+        stored = _stored(agents=(sid("a"), sid("b")))
         repo = mock_of[UpgradeRecommendationRepository](
             get=AsyncMock(return_value=stored),
             transition_if=AsyncMock(return_value=True),
@@ -159,7 +159,10 @@ class TestUpgradeRecommendationService:
         await service.approve(stored.id, decided_by="op")
         assert org.update_agent.await_count == 2
         # Both agents were attempted with the recommended model, in order.
-        assert [call.args[0] for call in org.update_agent.await_args_list] == ["a", "b"]
+        assert [call.args[0] for call in org.update_agent.await_args_list] == [
+            sid("a"),
+            sid("b"),
+        ]
         expected = UpdateAgentOrgRequest(
             model_provider="example-provider", model_id="new"
         )

@@ -66,6 +66,7 @@ const EVENT_SUMMARISERS: Partial<
   model_config_updated: summariseFieldsChanged,
   provider_updated: summariseFieldsChanged,
   models_synced: summariseSyncCounts,
+  model_flagged_stale: summariseModelId,
   provider_credentials_rotated: summariseCredentials,
 }
 

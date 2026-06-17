@@ -72,10 +72,21 @@ class _StaleFlagger:
         self._mgmt = mgmt_service
         self._clock = clock
 
-    async def flag(self, provider_name: str, missing_ids: tuple[str, ...]) -> None:
-        """Flag *missing_ids* stale; never raises (best-effort)."""
+    async def flag(
+        self, provider_name: str, missing_ids: tuple[str, ...]
+    ) -> tuple[str, ...]:
+        """Flag *missing_ids* stale; never raises (best-effort).
+
+        The underlying ``flag_models_stale`` write is atomic for the
+        batch, so the outcome is all-or-nothing.
+
+        Returns:
+            ``missing_ids`` when the flag write succeeded, or an empty
+            tuple when it failed, so callers report only ids actually
+            persisted as stale rather than every id they hoped to flag.
+        """
         if not missing_ids:
-            return
+            return ()
         try:
             await self._mgmt.flag_models_stale(
                 provider_name,
@@ -92,6 +103,8 @@ class _StaleFlagger:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            return ()
+        return missing_ids
 
 
 class DetectOnlyStrategy:
@@ -120,10 +133,10 @@ class DetectOnlyStrategy:
             The per-provider outcome (no added models, no recommendations).
         """
         report = await self._probe.discover_report(provider_name, provider)
-        await self._flagger.flag(provider_name, report.missing_ids)
+        stale_ids = await self._flagger.flag(provider_name, report.missing_ids)
         return ProviderRefreshOutcome(
             provider_name=provider_name,
-            stale_ids=report.missing_ids,
+            stale_ids=stale_ids,
         )
 
 
@@ -164,13 +177,13 @@ class ReconcileRecommendStrategy:
         added_ids = await self._add_discovered(
             provider_name, report.added_ids, discovered_by_id
         )
-        await self._flagger.flag(provider_name, report.missing_ids)
+        stale_ids = await self._flagger.flag(provider_name, report.missing_ids)
 
         recommendations = await self._recommend(provider_name)
         return ProviderRefreshOutcome(
             provider_name=provider_name,
             added_ids=added_ids,
-            stale_ids=report.missing_ids,
+            stale_ids=stale_ids,
             recommendations=recommendations,
         )
 

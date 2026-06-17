@@ -268,7 +268,9 @@ class OrgAgentMutationsMixin:
 
         The setup endpoint already validates this; the post-setup PATCH
         path closes the same gap so an agent cannot be repointed at a
-        model no provider serves.
+        model no provider serves. ``UpdateAgentOrgRequest`` enforces that
+        ``model_provider`` and ``model_id`` are supplied together (or not
+        at all), so a half-specified pair never reaches here.
         """
         if data.model_provider is not None and data.model_id is not None:
             providers = await self._read_provider_configs()

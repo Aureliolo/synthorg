@@ -73,9 +73,11 @@ export interface AgentsState {
   setSortDirection: (dir: 'asc' | 'desc') => void
   clearDetail: () => void
   /**
-   * Re-point an agent at a new provider/model after setup. Optimistic:
-   * the selected agent's model fields update immediately and restore on
-   * failure. Returns false on failure (the store owns the error toast).
+   * Re-point an agent at a new provider/model after setup. Sends the
+   * update to the server, then re-fetches the agent detail to reflect
+   * the canonical model state (not optimistic; the opaque ``model`` dict
+   * makes a local patch unreliable). Returns false on failure (the store
+   * owns the error toast).
    */
   updateAgentModel: (agentId: string, provider: string, modelId: string) => Promise<boolean>
   updateRuntimeStatus: (agentId: string, status: AgentRuntimeStatus) => void

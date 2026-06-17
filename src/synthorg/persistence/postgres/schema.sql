@@ -2194,10 +2194,21 @@ CREATE TABLE upgrade_recommendations (
     created_at TIMESTAMPTZ NOT NULL,
     decided_at TIMESTAMPTZ,
     decided_by TEXT,
-    -- A decision stamps both columns together; pending stamps neither.
+    -- Decision metadata is coupled to status: a pending recommendation
+    -- stamps neither column; a decided one (approved / rejected /
+    -- auto_applied) stamps both, with a non-blank principal.
     CHECK (
-        (decided_at IS NULL AND decided_by IS NULL)
-        OR (decided_at IS NOT NULL AND decided_by IS NOT NULL)
+        (
+            status = 'pending'
+            AND decided_at IS NULL
+            AND decided_by IS NULL
+        )
+        OR (
+            status IN ('approved', 'rejected', 'auto_applied')
+            AND decided_at IS NOT NULL
+            AND decided_by IS NOT NULL
+            AND CHAR_LENGTH(TRIM(decided_by)) > 0
+        )
     )
 );
 CREATE INDEX idx_ur_status

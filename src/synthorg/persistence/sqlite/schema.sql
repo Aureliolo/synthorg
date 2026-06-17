@@ -2251,8 +2251,12 @@ CREATE TABLE benchmark_scores (
 -- are JSON; status is a scalar column so the review surface can filter.
 CREATE TABLE upgrade_recommendations (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
-    recommendation_json TEXT NOT NULL CHECK (LENGTH(TRIM(recommendation_json)) > 0),
-    agent_ids_json TEXT NOT NULL CHECK (LENGTH(TRIM(agent_ids_json)) > 0),
+    recommendation_json TEXT NOT NULL CHECK (
+        LENGTH(TRIM(recommendation_json)) > 0 AND json_valid(recommendation_json)
+    ),
+    agent_ids_json TEXT NOT NULL CHECK (
+        LENGTH(TRIM(agent_ids_json)) > 0 AND json_valid(agent_ids_json)
+    ),
     status TEXT NOT NULL DEFAULT 'pending' CHECK (
         status IN ('pending', 'approved', 'rejected', 'auto_applied')
     ),
@@ -2265,10 +2269,21 @@ CREATE TABLE upgrade_recommendations (
         OR decided_at LIKE '%Z'
     ),
     decided_by TEXT,
-    -- A decision stamps both columns together; pending stamps neither.
+    -- Decision metadata is coupled to status: a pending recommendation
+    -- stamps neither column; a decided one (approved / rejected /
+    -- auto_applied) stamps both, with a non-blank principal.
     CHECK (
-        (decided_at IS NULL AND decided_by IS NULL)
-        OR (decided_at IS NOT NULL AND decided_by IS NOT NULL)
+        (
+            status = 'pending'
+            AND decided_at IS NULL
+            AND decided_by IS NULL
+        )
+        OR (
+            status IN ('approved', 'rejected', 'auto_applied')
+            AND decided_at IS NOT NULL
+            AND decided_by IS NOT NULL
+            AND LENGTH(TRIM(decided_by)) > 0
+        )
     )
 );
 CREATE INDEX idx_ur_status

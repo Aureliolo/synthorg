@@ -78,7 +78,9 @@ export function WizardNavigation({
   // associate it via aria-describedby. Only attached on the button
   // when the caption is actually rendered.
   const reasonId = useId()
-  const showReason = Boolean(nextDisabled) && Boolean(nextDisabledReason) && !isLast
+  // Gate on showNext (not just !isLast) so the disabled-reason caption
+  // never renders orphaned when the Next control itself is hidden.
+  const showReason = showNext && Boolean(nextDisabled) && Boolean(nextDisabledReason)
 
   return (
     <div className="flex flex-col gap-2 border-t border-border px-2 pt-4">

@@ -308,13 +308,10 @@ class PostgresUpgradeRecommendationRepository:
         """
         extra = set(updates) - _ALLOWED_TRANSITION_KEYS
         if extra:
+            # Programmer-error guard, not a persistence fault: raise
+            # directly rather than emitting a noisy persistence-failed
+            # warning for what is a caller bug.
             msg = f"transition_if got unknown update keys {sorted(extra)!r}"
-            logger.warning(
-                PERSISTENCE_UPGRADE_RECOMMENDATION_FAILED,
-                operation="transition_if",
-                rec_id=str(entity_id),
-                error=msg,
-            )
             raise QueryError(msg)
 
         set_cols = ["status = %s"]

@@ -136,7 +136,10 @@ test.describe('Setup wizard company submit', () => {
       page.waitForResponse(
         (res) => res.url().includes('/api/v1/setup/company') && res.request().method() === 'POST',
       ),
-      clickButton(page, /apply template/i),
+      // Deep-linking straight to the company step selects no template, so
+      // the button renders "Apply Default Template"; the optional group
+      // also matches the plain "Apply Template" / "Re-apply Template" labels.
+      clickButton(page, /apply (default )?template/i),
     ])
     expect(submitted.request().method()).toBe('POST')
 

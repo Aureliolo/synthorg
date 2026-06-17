@@ -15,6 +15,10 @@ from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.api import (
+    API_RESOURCE_CONFLICT,
+    API_RESOURCE_NOT_FOUND,
+)
 from synthorg.observability.events.provider import (
     PROVIDER_MODEL_UPGRADE_APPROVED,
     PROVIDER_MODEL_UPGRADE_AUTO_APPLIED,
@@ -90,6 +94,7 @@ class UpgradeRecommendationService:
         found = await self._repo.get(rec_id)
         if found is None:
             msg = f"Upgrade recommendation {rec_id} not found"
+            logger.warning(API_RESOURCE_NOT_FOUND, reason=msg, rec_id=str(rec_id))
             raise UpgradeRecommendationNotFoundError(msg)
         return found
 
@@ -197,6 +202,7 @@ class UpgradeRecommendationService:
         )
         if not moved:
             msg = f"Recommendation {stored.id} is not pending"
+            logger.warning(API_RESOURCE_CONFLICT, reason=msg, rec_id=str(stored.id))
             raise UpgradeRecommendationAlreadyDecidedError(msg)
 
     async def _reassign(self, stored: StoredUpgradeRecommendation) -> None:

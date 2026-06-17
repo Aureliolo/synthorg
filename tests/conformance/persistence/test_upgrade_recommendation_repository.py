@@ -58,6 +58,10 @@ def _make(
     rec_id: str = "rec-001",
     status: RecommendationStatus = RecommendationStatus.PENDING,
 ) -> StoredUpgradeRecommendation:
+    # A decided status carries its decision pair; the entity invariant
+    # (and the backend CHECK) require ``decided_at`` + ``decided_by``
+    # together exactly when the status is not PENDING.
+    decided = status is not RecommendationStatus.PENDING
     return StoredUpgradeRecommendation(
         id=as_uuid(rec_id),
         recommendation=UpgradeRecommendation(
@@ -73,6 +77,8 @@ def _make(
         agent_ids=("agent-a", "agent-b"),
         status=status,
         created_at=_NOW,
+        decided_at=_NOW if decided else None,
+        decided_by="operator" if decided else None,
     )
 
 

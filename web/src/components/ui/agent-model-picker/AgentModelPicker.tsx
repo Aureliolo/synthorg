@@ -11,9 +11,41 @@ export interface AgentModelPickerProps {
   disabled?: boolean
 }
 
-const VALUE_SEPARATOR = '::'
 const OTHER_FAMILY = 'Other'
 const TOKENS_PER_K = 1000
+
+interface ModelValue {
+  provider: string
+  modelId: string
+}
+
+/** Encode a provider/model pair as a collision-free option value. */
+function encodeModelValue(provider: string, modelId: string): string {
+  return JSON.stringify({ provider, modelId })
+}
+
+/** Narrow a parsed JSON value to a non-empty provider/model pair. */
+function isModelValue(value: unknown): value is ModelValue {
+  if (typeof value !== 'object' || value === null) return false
+  const { provider, modelId } = value as Partial<ModelValue>
+  return (
+    typeof provider === 'string' &&
+    typeof modelId === 'string' &&
+    provider.length > 0 &&
+    modelId.length > 0
+  )
+}
+
+/** Decode an option value, or ``null`` when it is empty / malformed. */
+function decodeModelValue(raw: string): ModelValue | null {
+  if (!raw) return null
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    return isModelValue(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
 
 /** Compact capability + context hint shown after a model's name. */
 function modelHint(model: ProviderModelConfig): string {
@@ -26,7 +58,7 @@ function modelHint(model: ProviderModelConfig): string {
 
 function modelOption(providerName: string, model: ProviderModelConfig): SelectOption {
   return {
-    value: `${providerName}${VALUE_SEPARATOR}${model.id}`,
+    value: encodeModelValue(providerName, model.id),
     label: `${model.alias ?? model.id} (${modelHint(model)})`,
   }
 }
@@ -72,7 +104,7 @@ export function AgentModelPicker({
   const hasModels = groups.some((g) => g.options.length > 0)
   const currentValue =
     currentProvider && currentModelId
-      ? `${currentProvider}${VALUE_SEPARATOR}${currentModelId}`
+      ? encodeModelValue(currentProvider, currentModelId)
       : ''
 
   return (
@@ -81,11 +113,8 @@ export function AgentModelPicker({
       groups={groups}
       value={currentValue}
       onChange={(val) => {
-        const sepIdx = val.indexOf(VALUE_SEPARATOR)
-        if (sepIdx === -1) return
-        const provider = val.slice(0, sepIdx)
-        const modelId = val.slice(sepIdx + VALUE_SEPARATOR.length)
-        if (provider && modelId) onChange(provider, modelId)
+        const parsed = decodeModelValue(val)
+        if (parsed) onChange(parsed.provider, parsed.modelId)
       }}
       disabled={disabled}
       placeholder={hasModels ? 'Select model...' : 'No models available'}

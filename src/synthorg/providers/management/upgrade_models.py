@@ -155,9 +155,16 @@ class StoredUpgradeRecommendation(BaseModel):
             RecommendationStatus.REJECTED,
             RecommendationStatus.AUTO_APPLIED,
         }
-        if self.status in decided and self.decided_at is None:
-            msg = f"decided_at is required for status {self.status.value!r}"
-            raise ValueError(msg)
+        if self.status in decided:
+            # Both stamps are required so a decided record always carries
+            # actor attribution, not only a timestamp; the persistence
+            # CHECK enforces the same pairing at the storage boundary.
+            if self.decided_at is None:
+                msg = f"decided_at is required for status {self.status.value!r}"
+                raise ValueError(msg)
+            if self.decided_by is None:
+                msg = f"decided_by is required for status {self.status.value!r}"
+                raise ValueError(msg)
         if self.status is RecommendationStatus.PENDING and (
             self.decided_at is not None or self.decided_by is not None
         ):

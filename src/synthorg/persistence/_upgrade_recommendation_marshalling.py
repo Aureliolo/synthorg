@@ -53,7 +53,7 @@ def row_to_recommendation(row: RowLike) -> StoredUpgradeRecommendation:
             ),
             decided_by=str(decided_by_raw) if decided_by_raw is not None else None,
         )
-    except (ValueError, TypeError, KeyError) as exc:
+    except (ValueError, TypeError, KeyError, IndexError) as exc:
         msg = "Corrupt upgrade_recommendation row"
         logger.warning(
             PERSISTENCE_UPGRADE_RECOMMENDATION_FAILED,

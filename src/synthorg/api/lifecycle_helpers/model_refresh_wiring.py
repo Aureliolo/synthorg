@@ -83,18 +83,23 @@ async def wire_model_refresh(app_state: AppState) -> None:
         repo=repo,
         config_resolver=resolver,
     )
-    recommendation_service = UpgradeRecommendationService(
-        repo=repo,
-        org_mutations=org_mutation_service_of(app_state),
-    )
 
     if config.mode not in _CADENCE_MODES:
-        # manual_only: on-demand refresh, no cadence scheduler.
+        # manual_only: on-demand refresh, no cadence scheduler. Auto-apply
+        # never runs here, so the org-mutation-coupled recommendation
+        # service is deliberately not built (keeps manual_only boot from
+        # depending on org-mutation wiring).
         app_state.swap_slice(
             ModelRefreshStateSlice(service=service, recommendation_repo=repo),
         )
         return
 
+    # Cadence modes can auto-apply, which reassigns pinned agents through
+    # the org-mutation service; build it only on this path.
+    recommendation_service = UpgradeRecommendationService(
+        repo=repo,
+        org_mutations=org_mutation_service_of(app_state),
+    )
     scheduler = ModelRefreshScheduler(
         service,
         interval_seconds=config.interval_seconds,

@@ -158,8 +158,8 @@
     },
     "src/synthorg/api/services/_org_agent_mutations.py": {
       "cap": 500,
-      "loc": 420,
-      "ratio": 0.84,
+      "loc": 422,
+      "ratio": 0.844,
       "tier": "code"
     },
     "src/synthorg/api/services/org_mutations.py": {
@@ -1300,7 +1300,7 @@
     "synthorg.meta.models": 64,
     "synthorg.observability": 1569,
     "synthorg.observability.background_tasks": 21,
-    "synthorg.observability.events.api": 168,
+    "synthorg.observability.events.api": 169,
     "synthorg.observability.events.chief_of_staff": 29,
     "synthorg.observability.events.client": 24,
     "synthorg.observability.events.communication": 25,

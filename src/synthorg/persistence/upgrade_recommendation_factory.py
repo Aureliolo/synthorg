@@ -15,15 +15,17 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.upgrade_recommendation import (
     PERSISTENCE_UPGRADE_RECOMMENDATION_FAILED,
 )
+from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.upgrade_recommendation_protocol import (
+    UpgradeRecommendationRepository,
+)
 
 if TYPE_CHECKING:
+    # Driver types used only in ``cast`` string annotations; kept deferred
+    # so importing this factory never eagerly pulls in the heavy aiosqlite
+    # / psycopg drivers (the concrete repos import them lazily per-branch).
     import aiosqlite
     from psycopg_pool import AsyncConnectionPool
-
-    from synthorg.persistence.protocol import PersistenceBackend
-    from synthorg.persistence.upgrade_recommendation_protocol import (
-        UpgradeRecommendationRepository,
-    )
 
 logger = get_logger(__name__)
 
