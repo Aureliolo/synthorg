@@ -55,7 +55,14 @@ jobs:
   cleanup:
     name: Prune ${{ matrix.package }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # GitHub throttles version deletions (the action backs off on each
+    # 429), so a package's drain rate is capped regardless of work left.
+    # At 30 min a large package (thousands of versions) is cut off
+    # mid-delete and must finish over many runs. 120 min lets one pass
+    # clear ~6-7k versions, draining the big packages in a single run
+    # during the historical backfill; steady-state runs finish in
+    # minutes well under the cap.
+    timeout-minutes: 120
     permissions:
       packages: write
     strategy:
