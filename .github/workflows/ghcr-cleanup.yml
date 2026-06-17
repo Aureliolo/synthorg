@@ -135,11 +135,22 @@ jobs:
           validate: true
           dry-run: ${{ inputs.dry-run }}
 
-      # Pass 3 -- reap cosign / attestation referrers and untagged
-      # manifests whose parent image was deleted by passes 1-2. Referrers
-      # of kept images (every release, the newest 5 dev builds) have a
-      # live parent and are left untouched. `validate` asserts no surviving
-      # multi-arch image lost a platform child.
+      # Pass 3 -- reap every orphan with no live parent. Two distinct
+      # classes, both needed:
+      #   - delete-orphaned-images: cosign / attestation OCI referrers
+      #     whose subject was deleted, plus children of an index deleted
+      #     earlier in THIS run.
+      #   - delete-untagged: dangling untagged manifests (per-build SLSA
+      #     attestation / SBOM / platform blobs) whose parent index was
+      #     deleted in a PAST run. delete-orphaned-images does NOT catch
+      #     these (they are not subject-bearing referrers and their parent
+      #     is long gone), so without delete-untagged they accumulate
+      #     forever -- the dominant share of stored versions.
+      # `initFilterSet` strips every LIVE image's children/referrers from
+      # the candidate set first, so delete-untagged only ever sees truly
+      # dangling manifests; `validate` then asserts no surviving multi-arch
+      # image lost a platform child. exclude-tags still protects every
+      # release / kept-dev tag (delete-untagged only touches untagged).
       - name: Prune orphaned signatures and untagged manifests
         uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
         with:
@@ -148,6 +159,7 @@ jobs:
           token: ${{ secrets.GHCR_CLEANUP_TOKEN || secrets.GITHUB_TOKEN }}
           use-regex: true
           delete-orphaned-images: true
+          delete-untagged: true
           exclude-tags: '^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev|\d+\.\d+\.\d+-dev\.\d+)$'
           validate: true
           dry-run: ${{ inputs.dry-run }}
