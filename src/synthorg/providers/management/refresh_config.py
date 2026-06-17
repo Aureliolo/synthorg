@@ -12,13 +12,14 @@ default the operator sees.
 from enum import StrEnum
 from typing import Final
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_MODEL_REFRESH_MODE_RESOLVE_FAILED,
 )
+from synthorg.settings.kill_switch import resolve_bool_with_fallback
 from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -51,9 +52,9 @@ class RefreshMode(StrEnum):
     RECONCILE_RECOMMEND = "reconcile_recommend"
 
 
-# Authoritative enum-value tuple mirrored by the registered
-# ``providers.model_refresh_mode`` setting (kept literal there to avoid a
-# settings-definitions -> providers import cycle; a unit test asserts parity).
+# Authoritative enum-value tuple; the registered ``providers.model_refresh_mode``
+# setting keeps the values as a literal to avoid a
+# settings-definitions -> providers import cycle.
 REFRESH_MODE_VALUES: Final[tuple[str, ...]] = tuple(m.value for m in RefreshMode)
 
 
@@ -97,22 +98,61 @@ async def resolve_refresh_mode(resolver: ConfigResolver) -> RefreshMode:
         logger.warning(
             PROVIDER_MODEL_REFRESH_MODE_RESOLVE_FAILED,
             error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return RefreshMode.OFF
+
+
+async def _resolve_interval_seconds(resolver: ConfigResolver) -> float:
+    """Resolve the cadence interval, failing safe to the default.
+
+    Returns:
+        The resolved interval, or :data:`_DEFAULT_REFRESH_INTERVAL_SECONDS`
+        on any read/coercion failure.
+    """
+    try:
+        return await resolver.get_float(_REFRESH_NAMESPACE, _INTERVAL_KEY)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            PROVIDER_MODEL_REFRESH_MODE_RESOLVE_FAILED,
+            key=_INTERVAL_KEY,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return _DEFAULT_REFRESH_INTERVAL_SECONDS
 
 
 async def load_model_refresh_config(resolver: ConfigResolver) -> ModelRefreshConfig:
     """Assemble a :class:`ModelRefreshConfig` from the registered settings.
 
+    Each read fails safe to its field default (off mode, daily cadence,
+    no auto-apply); an out-of-range stored interval is rejected by the
+    field bounds and also falls back to the default, so a bad setting can
+    never abort wiring or 500 the status endpoint.
+
     Returns:
-        A frozen config view; falls back to field defaults (off,
-        daily cadence, no auto-apply) on any read failure.
+        A frozen config view assembled from the registered settings.
     """
     mode = await resolve_refresh_mode(resolver)
-    interval = await resolver.get_float(_REFRESH_NAMESPACE, _INTERVAL_KEY)
-    auto_apply = await resolver.get_bool(_REFRESH_NAMESPACE, _AUTO_APPLY_KEY)
-    return ModelRefreshConfig(
-        mode=mode,
-        interval_seconds=interval,
-        auto_apply_within_family=auto_apply,
+    interval = await _resolve_interval_seconds(resolver)
+    auto_apply = await resolve_bool_with_fallback(
+        resolver=resolver,
+        namespace=_REFRESH_NAMESPACE,
+        key=_AUTO_APPLY_KEY,
+        fallback=False,
     )
+    try:
+        return ModelRefreshConfig(
+            mode=mode,
+            interval_seconds=interval,
+            auto_apply_within_family=auto_apply,
+        )
+    except ValidationError as exc:
+        logger.warning(
+            PROVIDER_MODEL_REFRESH_MODE_RESOLVE_FAILED,
+            note="config_invalid",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return ModelRefreshConfig(mode=mode, auto_apply_within_family=auto_apply)

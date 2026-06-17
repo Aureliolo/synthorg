@@ -176,6 +176,12 @@ PROVIDER_MODEL_REFRESH_PROVIDER_FAILED: Final[str] = (
 PROVIDER_MODEL_REFRESH_MODE_RESOLVE_FAILED: Final[str] = (
     "provider.model_refresh.mode_resolve_failed"
 )
+PROVIDER_MODEL_REFRESH_ADD_FAILED: Final[str] = "provider.model_refresh.add_failed"
 PROVIDER_MODEL_FLAGGED_STALE: Final[str] = "provider.model.flagged_stale"
 PROVIDER_MODEL_UPGRADE_RECOMMENDED: Final[str] = "provider.model.upgrade_recommended"
 PROVIDER_MODEL_UPGRADE_AUTO_APPLIED: Final[str] = "provider.model.upgrade_auto_applied"
+PROVIDER_MODEL_UPGRADE_APPROVED: Final[str] = "provider.model.upgrade_approved"
+PROVIDER_MODEL_UPGRADE_REJECTED: Final[str] = "provider.model.upgrade_rejected"
+PROVIDER_MODEL_UPGRADE_REASSIGN_FAILED: Final[str] = (
+    "provider.model.upgrade_reassign_failed"
+)

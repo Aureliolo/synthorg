@@ -85,6 +85,11 @@ export function SetupAgentCard({
   const { nameSaving, randomizeSaving, handleNameSave, handleRandomize } =
     useSetupAgentNameControls(index, onNameChange, onRandomizeName)
 
+  const handleModelChange = useCallback(
+    (provider: string, modelId: string) => void onModelChange(index, provider, modelId),
+    [index, onModelChange],
+  )
+
   return (
     <div className="flex gap-3 rounded-lg border border-border bg-card p-card">
       <Avatar name={agent.name} size="md" />
@@ -128,7 +133,7 @@ export function SetupAgentCard({
           currentProvider={agent.model_provider ?? ''}
           currentModelId={agent.model_id ?? ''}
           providers={providers}
-          onChange={(provider, modelId) => onModelChange(index, provider, modelId)}
+          onChange={handleModelChange}
         />
       </div>
     </div>

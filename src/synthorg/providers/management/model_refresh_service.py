@@ -9,14 +9,19 @@ so the api layer reassigns pinned agents (keeping this providers-layer
 service free of any upward api import).
 """
 
-from collections.abc import Awaitable, Callable
+import asyncio
+from collections.abc import Awaitable, Callable, Mapping
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.config.agent_schema import AgentConfig
+from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
+    PROVIDER_MODEL_REFRESH_CYCLE_FAILED,
     PROVIDER_MODEL_REFRESH_CYCLE_RAN,
     PROVIDER_MODEL_REFRESH_PROVIDER_FAILED,
     PROVIDER_MODEL_UPGRADE_RECOMMENDED,
@@ -63,6 +68,22 @@ class RefreshCycleReport(BaseModel):
     stale_count: int = Field(default=0, ge=0)
     recommended_count: int = Field(default=0, ge=0)
     auto_applied_count: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def _applied_within_recommended(self) -> Self:
+        """Enforce that auto-applied never exceeds recommended.
+
+        Returns:
+            The validated report.
+
+        Raises:
+            ValueError: If ``auto_applied_count`` exceeds
+                ``recommended_count`` (a counting bug).
+        """
+        if self.auto_applied_count > self.recommended_count:
+            msg = "auto_applied_count cannot exceed recommended_count"
+            raise ValueError(msg)
+        return self
 
 
 class ModelRefreshService:
@@ -126,13 +147,15 @@ class ModelRefreshService:
         if strategy is None:
             return RefreshCycleReport()
 
-        providers = await self._mgmt.list_providers()
-        seen_pending = await self._existing_pending_keys()
-        agents = await self._config_resolver.get_agents()
+        setup = await self._load_cycle_inputs()
+        if setup is None:
+            return RefreshCycleReport()
+        providers, seen_pending, agents = setup
 
         added = stale = recommended = auto_applied = 0
         scanned = 0
         for provider_name, provider in providers.items():
+            scanned += 1
             try:
                 outcome = await strategy.reconcile(provider_name, provider)
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
@@ -144,7 +167,6 @@ class ModelRefreshService:
                     error=safe_error_description(exc),
                 )
                 continue
-            scanned += 1
             added += len(outcome.added_ids)
             stale += len(outcome.stale_ids)
             for rec in outcome.recommendations:
@@ -158,19 +180,34 @@ class ModelRefreshService:
                 seen_pending.add(key)
                 try:
                     stored = await self._persist(rec, agents)
-                    recommended += 1
-                    if auto_apply and apply_recommendation is not None:
-                        await apply_recommendation(stored)
-                        auto_applied += 1
                 except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     logger.warning(
                         PROVIDER_MODEL_REFRESH_PROVIDER_FAILED,
                         provider=provider_name,
-                        note="recommendation_persist_or_apply_failed",
+                        note="recommendation_persist_failed",
+                        current_model=rec.current_model_id,
+                        recommended_model=rec.recommended_model_id,
                         error_type=type(exc).__name__,
                         error=safe_error_description(exc),
                     )
+                    continue
+                recommended += 1
+                if auto_apply and apply_recommendation is not None:
+                    try:
+                        await apply_recommendation(stored)
+                    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                        reraise_critical(exc)
+                        logger.warning(
+                            PROVIDER_MODEL_REFRESH_PROVIDER_FAILED,
+                            provider=provider_name,
+                            note="recommendation_auto_apply_failed",
+                            rec_id=str(stored.id),
+                            error_type=type(exc).__name__,
+                            error=safe_error_description(exc),
+                        )
+                        continue
+                    auto_applied += 1
 
         report = RefreshCycleReport(
             providers_scanned=scanned,
@@ -188,6 +225,50 @@ class ModelRefreshService:
             auto_applied_count=auto_applied,
         )
         return report
+
+    async def _load_cycle_inputs(
+        self,
+    ) -> (
+        tuple[
+            Mapping[str, ProviderConfig],
+            set[tuple[str, str, str]],
+            tuple[AgentConfig, ...],
+        ]
+        | None
+    ):
+        """Fetch the three independent cycle inputs concurrently.
+
+        The provider catalogue, the pending-recommendation dedup set, and
+        the agent roster are independent reads, so they run in a
+        ``TaskGroup``.  A failure in any read aborts the cycle cleanly
+        (logged with ``phase="setup"``) rather than surfacing as an
+        unattributed per-provider failure.
+
+        Returns:
+            ``(providers, seen_pending, agents)`` on success, or ``None``
+            when a setup read failed (the caller returns an empty report).
+        """
+        try:
+            async with asyncio.TaskGroup() as tg:
+                providers_task = tg.create_task(self._mgmt.list_providers())
+                pending_task = tg.create_task(self._existing_pending_keys())
+                agents_task = tg.create_task(self._config_resolver.get_agents())
+            return (
+                providers_task.result(),
+                pending_task.result(),
+                agents_task.result(),
+            )
+        except* Exception as eg:  # noqa: BLE001 -- criticals re-raised below
+            for exc in eg.exceptions:
+                reraise_critical(exc)
+            first = eg.exceptions[0]
+            logger.warning(
+                PROVIDER_MODEL_REFRESH_CYCLE_FAILED,
+                phase="setup",
+                error_type=type(first).__name__,
+                error=safe_error_description(first),
+            )
+        return None
 
     async def _existing_pending_keys(self) -> set[tuple[str, str, str]]:
         """Return keys of pending recommendations to dedup against.
@@ -212,7 +293,7 @@ class ModelRefreshService:
     async def _persist(
         self,
         rec: UpgradeRecommendation,
-        agents: tuple[object, ...],
+        agents: tuple[AgentConfig, ...],
     ) -> StoredUpgradeRecommendation:
         """Persist *rec* as a pending recommendation with pinned agents.
 
@@ -238,7 +319,7 @@ class ModelRefreshService:
 
 
 def _pinned_agent_ids(
-    agents: tuple[object, ...],
+    agents: tuple[AgentConfig, ...],
     rec: UpgradeRecommendation,
 ) -> tuple[str, ...]:
     """Return the names of agents pinned to the recommendation's current model.
@@ -249,16 +330,12 @@ def _pinned_agent_ids(
     """
     names: list[str] = []
     for agent in agents:
-        model = getattr(agent, "model", {})
-        if not isinstance(model, dict):
-            continue
+        model = agent.model
         if (
             model.get("provider") == rec.provider_name
             and model.get("model_id") == rec.current_model_id
         ):
-            name = getattr(agent, "name", None)
-            if isinstance(name, str) and name.strip():
-                names.append(name)
+            names.append(agent.name)
     return tuple(names)
 
 

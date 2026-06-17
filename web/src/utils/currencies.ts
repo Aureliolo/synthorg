@@ -48,3 +48,12 @@ export type CurrencyCode = (typeof CURRENCY_OPTIONS)[number]['value']
  * symbol for future rows but does not convert numeric values -- SynthOrg
  * performs no FX conversion. */
 export const DEFAULT_CURRENCY: CurrencyCode = 'USD'
+
+const CURRENCY_CODES: ReadonlySet<string> = new Set(
+  CURRENCY_OPTIONS.map((option) => option.value),
+)
+
+/** Narrow an arbitrary string to a known {@link CurrencyCode}. */
+export function isCurrencyCode(value: string): value is CurrencyCode {
+  return CURRENCY_CODES.has(value)
+}

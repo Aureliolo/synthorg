@@ -36,8 +36,11 @@ export function ModelRecommendationCard({
         <span className="font-mono font-semibold text-foreground">
           {recommendation.recommended_model_id}
         </span>
-        <span className="text-compact text-muted-foreground">
-          gen {recommendation.current_generation} {String.fromCharCode(8594)}{' '}
+        <span
+          className="text-compact text-muted-foreground"
+          aria-label={`generation ${recommendation.current_generation} to ${recommendation.recommended_generation}`}
+        >
+          gen {recommendation.current_generation} &rarr;{' '}
           {recommendation.recommended_generation}
         </span>
       </div>

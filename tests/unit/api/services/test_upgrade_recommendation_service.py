@@ -9,9 +9,11 @@ from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.api.services.upgrade_recommendation_service import (
     UpgradeRecommendationService,
 )
+from synthorg.organization.models import UpdateAgentOrgRequest
 from synthorg.persistence.upgrade_recommendation_protocol import (
     UpgradeRecommendationRepository,
 )
+from synthorg.providers.enums import RecommendationStatus
 from synthorg.providers.errors import (
     UpgradeRecommendationAlreadyDecidedError,
     UpgradeRecommendationNotFoundError,
@@ -78,8 +80,15 @@ class TestUpgradeRecommendationService:
         service = _service(repo=repo, org_mutations=org)
         await service.approve(stored.id, decided_by="op")
         repo.transition_if.assert_awaited_once()
-        org.update_agent.assert_awaited_once()
-        assert org.update_agent.await_args.args[0] == "writer"
+        cas = repo.transition_if.await_args
+        assert cas.args[0] == stored.id
+        assert cas.kwargs["from_state"] is RecommendationStatus.PENDING
+        assert cas.kwargs["to_state"] is RecommendationStatus.APPROVED
+        assert cas.kwargs["decided_by"] == "op"
+        org.update_agent.assert_awaited_once_with(
+            "writer",
+            UpdateAgentOrgRequest(model_provider="example-provider", model_id="new"),
+        )
 
     async def test_approve_already_decided_raises(self) -> None:
         stored = _stored()
@@ -102,6 +111,18 @@ class TestUpgradeRecommendationService:
         org = mock_of[OrgMutationService](update_agent=AsyncMock())
         service = _service(repo=repo, org_mutations=org)
         await service.reject(stored.id, decided_by="op")
+        org.update_agent.assert_not_called()
+
+    async def test_reject_already_decided_raises(self) -> None:
+        stored = _stored()
+        repo = mock_of[UpgradeRecommendationRepository](
+            get=AsyncMock(return_value=stored),
+            transition_if=AsyncMock(return_value=False),
+        )
+        org = mock_of[OrgMutationService](update_agent=AsyncMock())
+        service = _service(repo=repo, org_mutations=org)
+        with pytest.raises(UpgradeRecommendationAlreadyDecidedError):
+            await service.reject(stored.id, decided_by="op")
         org.update_agent.assert_not_called()
 
     async def test_apply_auto_reassigns_when_cas_wins(self) -> None:
@@ -137,3 +158,11 @@ class TestUpgradeRecommendationService:
         # One agent fails; the apply still completes for the other.
         await service.approve(stored.id, decided_by="op")
         assert org.update_agent.await_count == 2
+        # Both agents were attempted with the recommended model, in order.
+        assert [call.args[0] for call in org.update_agent.await_args_list] == ["a", "b"]
+        expected = UpdateAgentOrgRequest(
+            model_provider="example-provider", model_id="new"
+        )
+        assert all(
+            call.args[1] == expected for call in org.update_agent.await_args_list
+        )

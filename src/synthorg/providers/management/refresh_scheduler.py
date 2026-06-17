@@ -184,6 +184,10 @@ class ModelRefreshScheduler:
                     timeout=_STOP_DRAIN_TIMEOUT_SECONDS,
                 )
             except TimeoutError:
+                # ``shield`` keeps ``wait_for`` from cancelling the drain on
+                # timeout, so cancel it explicitly rather than leaking an
+                # orphaned task onto the (possibly torn-down) loop.
+                drain_task.cancel()
                 self._stop_failed = True
                 logger.error(
                     PROVIDER_MODEL_REFRESH_CYCLE_FAILED,
@@ -193,9 +197,11 @@ class ModelRefreshScheduler:
                     timeout_seconds=_STOP_DRAIN_TIMEOUT_SECONDS,
                 )
                 raise
+            # Keep the lifecycle lock + stop event bound (the
+            # ToolsmithCycleScheduler pattern): nulling them while the lock is
+            # still held opens a rebind race; ``start()`` clears the event on
+            # restart and a loop change rebinds via the loop-identity check.
             self._task = None
-            self._stop_event = None
-            self._lifecycle_lock = None
             logger.info(PROVIDER_MODEL_REFRESH_STOPPED)
 
     async def _run(self) -> None:
@@ -209,7 +215,7 @@ class ModelRefreshScheduler:
         if stop_event is None:  # defensive; start() guarantees non-None
             msg = "_run invoked without an initialised stop event"
             raise RuntimeError(msg)
-        # lint-allow: long-running-loop-kill-switch -- mode re-read pauses loop
+        # lint-allow: long-running-loop-kill-switch -- _stop_event drives shutdown.
         while not stop_event.is_set():
             mode = await resolve_refresh_mode(self._config_resolver)
             if mode in _SCHEDULED_MODES:

@@ -21,7 +21,12 @@ describe('recommendations store', () => {
   it('fetchRecommendations populates pending recommendations', async () => {
     await useRecommendationsStore.getState().fetchRecommendations()
     const state = useRecommendationsStore.getState()
-    expect(state.recommendations.length).toBeGreaterThan(0)
+    expect(state.recommendations[0]).toMatchObject({
+      id: 'rec-1',
+      status: 'pending',
+      provider_name: 'example-provider',
+      recommended_model_id: 'example-large-002',
+    })
     expect(state.listLoading).toBe(false)
     expect(state.listError).toBeNull()
   })
@@ -30,14 +35,14 @@ describe('recommendations store', () => {
     server.use(http.get(`${BASE}/recommendations`, () => failJson(500)))
     await useRecommendationsStore.getState().fetchRecommendations()
     const state = useRecommendationsStore.getState()
-    expect(state.listError).not.toBeNull()
+    expect(state.listError).toMatch(/server error/i)
     expect(state.listLoading).toBe(false)
   })
 
   it('approve removes the decided recommendation on success', async () => {
     await useRecommendationsStore.getState().fetchRecommendations()
     const id = useRecommendationsStore.getState().recommendations[0]!.id
-    const ok = await useRecommendationsStore.getState().approve(id, 'operator')
+    const ok = await useRecommendationsStore.getState().approve(id)
     expect(ok).toBe(true)
     const state = useRecommendationsStore.getState()
     expect(state.recommendations.some((r) => r.id === id)).toBe(false)
@@ -49,7 +54,7 @@ describe('recommendations store', () => {
     const before = useRecommendationsStore.getState().recommendations.length
     const id = useRecommendationsStore.getState().recommendations[0]!.id
     server.use(http.post(`${BASE}/recommendations/:id/approve`, () => failJson(409)))
-    const ok = await useRecommendationsStore.getState().approve(id, 'operator')
+    const ok = await useRecommendationsStore.getState().approve(id)
     expect(ok).toBe(false)
     expect(useRecommendationsStore.getState().recommendations.length).toBe(before)
     expect(useRecommendationsStore.getState().decidingId).toBeNull()
@@ -58,7 +63,7 @@ describe('recommendations store', () => {
   it('reject removes the decided recommendation on success', async () => {
     await useRecommendationsStore.getState().fetchRecommendations()
     const id = useRecommendationsStore.getState().recommendations[0]!.id
-    const ok = await useRecommendationsStore.getState().reject(id, 'operator')
+    const ok = await useRecommendationsStore.getState().reject(id)
     expect(ok).toBe(true)
     expect(useRecommendationsStore.getState().recommendations.some((r) => r.id === id)).toBe(
       false,

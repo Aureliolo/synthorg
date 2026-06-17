@@ -27,7 +27,7 @@ from synthorg.observability.events.template import (
     TEMPLATE_MODEL_MATCH_SUCCESS,
 )
 from synthorg.templates.model_matcher_config import (
-    _DEFAULT_MATCHER_CONFIG,
+    DEFAULT_MATCHER_CONFIG,
     ModelMatcherConfig,
     derive_tier,
 )
@@ -378,7 +378,7 @@ def match_model(
     """
     if not available:
         return None, 0.0
-    cfg = matcher_config if matcher_config is not None else _DEFAULT_MATCHER_CONFIG
+    cfg = matcher_config if matcher_config is not None else DEFAULT_MATCHER_CONFIG
     selector = strategy if strategy is not None else _DEFAULT_STRATEGY
     return selector.select(requirement, available, cfg)
 
@@ -476,7 +476,7 @@ def match_all_agents(
         resolve_model_requirement,
     )
 
-    cfg = matcher_config if matcher_config is not None else _DEFAULT_MATCHER_CONFIG
+    cfg = matcher_config if matcher_config is not None else DEFAULT_MATCHER_CONFIG
     results: list[ModelMatch] = []
 
     for idx, agent in enumerate(agents):

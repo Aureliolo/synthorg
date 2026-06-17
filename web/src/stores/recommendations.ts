@@ -25,8 +25,8 @@ interface RecommendationsState {
   fetchRecommendations: () => Promise<void>
   fetchStatus: () => Promise<void>
   runRefresh: () => Promise<boolean>
-  approve: (id: string, decidedBy: string) => Promise<boolean>
-  reject: (id: string, decidedBy: string) => Promise<boolean>
+  approve: (id: string) => Promise<boolean>
+  reject: (id: string) => Promise<boolean>
   reset: () => void
 }
 
@@ -98,31 +98,40 @@ export const useRecommendationsStore = create<RecommendationsState>((set, get) =
     }
   },
 
-  approve: async (id, decidedBy) => decide(set, get, id, decidedBy, 'approve'),
-  reject: async (id, decidedBy) => decide(set, get, id, decidedBy, 'reject'),
+  approve: async (id) => decide(set, get, id, 'approve'),
+  reject: async (id) => decide(set, get, id, 'reject'),
 }))
 
 const DECISION_COPY = {
-  approve: { verb: approveRecommendation, title: 'Recommendation approved', fail: 'Could not approve' },
-  reject: { verb: rejectRecommendation, title: 'Recommendation rejected', fail: 'Could not reject' },
+  approve: {
+    verb: approveRecommendation,
+    title: 'Recommendation approved',
+    fail: 'Could not approve',
+    event: 'approveRecommendation',
+  },
+  reject: {
+    verb: rejectRecommendation,
+    title: 'Recommendation rejected',
+    fail: 'Could not reject',
+    event: 'rejectRecommendation',
+  },
 } as const
 
 async function decide(
   set: (partial: Partial<RecommendationsState>) => void,
   get: () => RecommendationsState,
   id: string,
-  decidedBy: string,
   kind: 'approve' | 'reject',
 ): Promise<boolean> {
   const copy = DECISION_COPY[kind]
   set({ decidingId: id })
   try {
-    await copy.verb(id, decidedBy)
+    await copy.verb(id)
     useToastStore.getState().add({ variant: 'success', title: copy.title })
     set({ recommendations: dropById(get().recommendations, id), decidingId: null })
     return true
   } catch (err) {
-    log.error(`${kind}Recommendation:`, getErrorMessage(err))
+    log.error(copy.event, getErrorMessage(err))
     useToastStore.getState().add({
       variant: 'error',
       ...getCrudErrorTitle(err, copy.fail),

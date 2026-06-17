@@ -10,7 +10,7 @@ import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useGoToStep, useStepCompletionSync } from './_hooks'
 import { graphemeLength, validateCompanyStep } from '@/utils/setup-validation'
-import { CURRENCY_OPTIONS } from '@/utils/currencies'
+import { CURRENCY_OPTIONS, isCurrencyCode } from '@/utils/currencies'
 import type { CurrencyCode } from '@/utils/currencies'
 import { ErrorCode } from '@/api/types/errors'
 import { TemplateVariables } from './TemplateVariables'
@@ -80,7 +80,9 @@ function CompanyDetailsForm({
         options={CURRENCY_OPTIONS}
         value={currency}
         disabled={disabled}
-        onChange={(value) => setCurrency(value as CurrencyCode)}
+        onChange={(value) => {
+          if (isCurrencyCode(value)) setCurrency(value)
+        }}
       />
 
       <SelectField

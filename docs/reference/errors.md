@@ -95,6 +95,7 @@ The NotFound hierarchy is rooted at `NotFoundError`. Each resource has a dedicat
 | 3022 | `BRAIN_ENTRY_NOT_FOUND` | Project-brain entry |
 | 3023 | `DELIVERABLE_RECEIPT_NOT_FOUND` | Deliverable receipt |
 | 3024 | `API_KEY_NOT_FOUND` | API key |
+| 3025 | `UPGRADE_RECOMMENDATION_NOT_FOUND` | Upgrade recommendation |
 
 All share the same `type` URI; the numeric code is the discriminator.
 
@@ -132,6 +133,7 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 4027 | `PRUNING_UNRESTARTABLE` | Pruning service is unrestartable after a timed-out stop |
 | 4028 | `SCALING_COOLDOWN_ACTIVE` | Scaling action blocked by an active cooldown window |
 | 4029 | `ROLLBACK_MUTATION_DENIED` | Rollback mutator's underlying store refused the write |
+| 4030 | `UPGRADE_RECOMMENDATION_ALREADY_DECIDED` | Approving/rejecting an already-decided recommendation |
 
 ## Rate Limit (5xxx)
 

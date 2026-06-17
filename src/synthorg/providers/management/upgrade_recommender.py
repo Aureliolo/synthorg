@@ -16,12 +16,13 @@ from collections.abc import Mapping
 
 from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
+from synthorg.core.types import flatten_label
 from synthorg.providers.management.upgrade_models import (
     UpgradeAnalysis,
     UpgradeRecommendation,
 )
 from synthorg.templates.model_matcher_config import (
-    _DEFAULT_MATCHER_CONFIG,
+    DEFAULT_MATCHER_CONFIG,
     ModelMatcherConfig,
 )
 
@@ -96,10 +97,10 @@ class UpgradeRecommender:
 
         Args:
             matcher_config: Operator-tunable matcher weights; defaults to
-                the settings-projected ``_DEFAULT_MATCHER_CONFIG`` so the
+                the settings-projected ``DEFAULT_MATCHER_CONFIG`` so the
                 registered defaults remain the single source of truth.
         """
-        self._config = matcher_config or _DEFAULT_MATCHER_CONFIG
+        self._config = matcher_config or DEFAULT_MATCHER_CONFIG
 
     def recommend(
         self,
@@ -160,9 +161,11 @@ class UpgradeRecommender:
                             config=self._config,
                         ),
                         reason=(
-                            f"Newer in-family model {newest_model.id!r} "
+                            f"Newer in-family model "
+                            f"{flatten_label(newest_model.id)!r} "
                             f"(generation {newest_gen}) available; current "
-                            f"{model.id!r} is generation {generation}."
+                            f"{flatten_label(model.id)!r} is "
+                            f"generation {generation}."
                         ),
                     ),
                 )

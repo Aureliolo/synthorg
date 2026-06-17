@@ -58,6 +58,8 @@ export interface ProvidersState {
   pullingModel: boolean
   pullProgress: PullProgressEvent | null
   deletingModel: boolean
+  /** True while a model-config save (``updateModelConfig``) is in flight. */
+  updatingModelConfig: boolean
 
   // Audit log (cursor-paginated, scoped to one provider at a time)
   auditEvents: readonly ProviderAuditEvent[]

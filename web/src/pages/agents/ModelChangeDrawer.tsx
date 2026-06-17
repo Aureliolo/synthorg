@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Drawer } from '@/components/ui/drawer'
 import { Button } from '@/components/ui/button'
 import { AgentModelPicker } from '@/components/ui/agent-model-picker'
@@ -89,13 +89,12 @@ export function ModelChangeDrawer({
 }: ModelChangeDrawerProps) {
   const providers = useProvidersStore((s) => s.providers)
   const fetchProviders = useProvidersStore((s) => s.fetchProviders)
-  const fetchedRef = useRef(false)
 
+  // Fetch whenever the drawer opens with no providers loaded; re-opening
+  // after the list was cleared correctly re-fetches (the prior ref-gate
+  // latched after the first open and never reset).
   useEffect(() => {
-    if (open && !fetchedRef.current && providers.length === 0) {
-      fetchedRef.current = true
-      void fetchProviders()
-    }
+    if (open && providers.length === 0) void fetchProviders()
   }, [open, providers.length, fetchProviders])
 
   const providerMap = useMemo<Record<string, ProviderConfig>>(

@@ -1,6 +1,5 @@
 import { apiClient, unwrap } from '../client'
 import type {
-  DecideRecommendationRequest,
   RefreshCycleReportDTO,
   RefreshStatusDTO,
   UpgradeRecommendationDTO,
@@ -22,24 +21,20 @@ export async function listModelRecommendations(
 
 export async function approveRecommendation(
   id: string,
-  decidedBy: string,
 ): Promise<UpgradeRecommendationDTO> {
-  const body: DecideRecommendationRequest = { decided_by: decidedBy }
+  // The deciding operator is taken from the authenticated session
+  // server-side; the client sends no actor identity.
   const response = await apiClient.post<ApiResponse<UpgradeRecommendationDTO>>(
     `${BASE}/recommendations/${encodeURIComponent(id)}/approve`,
-    body,
   )
   return unwrap(response)
 }
 
 export async function rejectRecommendation(
   id: string,
-  decidedBy: string,
 ): Promise<UpgradeRecommendationDTO> {
-  const body: DecideRecommendationRequest = { decided_by: decidedBy }
   const response = await apiClient.post<ApiResponse<UpgradeRecommendationDTO>>(
     `${BASE}/recommendations/${encodeURIComponent(id)}/reject`,
-    body,
   )
   return unwrap(response)
 }

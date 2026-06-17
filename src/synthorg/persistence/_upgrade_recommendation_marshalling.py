@@ -7,7 +7,6 @@ status/timestamp columns are scalar so the review surface can filter.
 """
 
 import json
-from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 from synthorg.core.persistence_errors import QueryError
@@ -16,6 +15,7 @@ from synthorg.observability.events.persistence.upgrade_recommendation import (
     PERSISTENCE_UPGRADE_RECOMMENDATION_FAILED,
 )
 from synthorg.persistence._shared import coerce_row_timestamp
+from synthorg.persistence._shared.rows import RowLike
 from synthorg.providers.enums import RecommendationStatus
 from synthorg.providers.management.upgrade_models import (
     StoredUpgradeRecommendation,
@@ -23,15 +23,6 @@ from synthorg.providers.management.upgrade_models import (
 )
 
 logger = get_logger(__name__)
-
-
-@runtime_checkable
-class RowLike(Protocol):
-    """Minimal mapping access shared by aiosqlite.Row and psycopg rows."""
-
-    def __getitem__(self, key: str) -> object:
-        """Return the column value for *key*."""
-        ...
 
 
 def row_to_recommendation(row: RowLike) -> StoredUpgradeRecommendation:
@@ -62,7 +53,7 @@ def row_to_recommendation(row: RowLike) -> StoredUpgradeRecommendation:
             ),
             decided_by=str(decided_by_raw) if decided_by_raw is not None else None,
         )
-    except (ValueError, TypeError, KeyError, IndexError) as exc:
+    except (ValueError, TypeError, KeyError) as exc:
         msg = "Corrupt upgrade_recommendation row"
         logger.warning(
             PERSISTENCE_UPGRADE_RECOMMENDATION_FAILED,

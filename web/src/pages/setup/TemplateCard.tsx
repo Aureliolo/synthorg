@@ -80,7 +80,7 @@ export function TemplateCard({
     <div
       className={cn(
         'flex flex-col gap-3 rounded-lg border bg-card p-card transition-colors',
-        selected ? 'border-accent shadow-[0_0_12px_color-mix(in_srgb,var(--so-accent)_15%,transparent)]' : 'border-border',
+        selected ? 'border-accent shadow-[var(--so-shadow-accent-glow)]' : 'border-border',
         'hover:bg-card-hover',
       )}
     >

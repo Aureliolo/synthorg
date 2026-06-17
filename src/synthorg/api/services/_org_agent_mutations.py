@@ -5,7 +5,7 @@ the service orchestration.
 """
 
 import json
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 
 from pydantic import JsonValue
 
@@ -41,6 +41,9 @@ from synthorg.organization.models import (
 
 logger = get_logger(__name__)
 
+_AgentRoster = tuple[AgentConfig, ...]
+_RosterWriter = Callable[[_AgentRoster, str], Awaitable[None]]
+
 
 class OrgAgentMutationsMixin:
     """Agent CRUD + reorder for ``OrgMutationService``."""
@@ -59,7 +62,7 @@ class OrgAgentMutationsMixin:
 
     async def _read_agents(  # pragma: no cover - see concrete
         self,
-    ) -> tuple[AgentConfig, ...]:
+    ) -> _AgentRoster:
         """Read the company's agents."""
         raise NotImplementedError
 
@@ -71,7 +74,7 @@ class OrgAgentMutationsMixin:
 
     async def _write_agents(  # pragma: no cover - see concrete
         self,
-        agents: tuple[AgentConfig, ...],
+        agents: _AgentRoster,
         *,
         expected_updated_at: str | None = None,
     ) -> None:
@@ -91,7 +94,7 @@ class OrgAgentMutationsMixin:
         raise NotImplementedError
 
     def _find_agent(  # pragma: no cover - see concrete
-        self, agents: tuple[AgentConfig, ...], name: str
+        self, agents: _AgentRoster, name: str
     ) -> AgentConfig | None:
         """Find an agent by name within the given tuple."""
         raise NotImplementedError
@@ -104,6 +107,33 @@ class OrgAgentMutationsMixin:
     ) -> None:
         """Validate that requested names are a permutation of current names."""
         raise NotImplementedError
+
+    def _roster_writer(self, *, saved_by: str) -> _RosterWriter:
+        """Return the shared CAS write step (persist + snapshot).
+
+        Returns:
+            A ``write(new_agents, version)`` coroutine factory shared by
+            every agent mutation so the persist-then-snapshot step is
+            defined once.
+        """
+
+        async def write(new_agents: _AgentRoster, version: str) -> None:
+            await self._write_agents(new_agents, expected_updated_at=version)
+            await self._snapshot_company(saved_by=saved_by)
+
+        return write
+
+    async def _require_department(self, name: str) -> None:
+        """Raise when no department matches *name*.
+
+        Raises:
+            ValidationError: When the department does not exist.
+        """
+        departments = await self._read_departments()
+        if not self._find_department(departments, name):
+            msg = f"Department {name!r} does not exist"
+            logger.warning(API_VALIDATION_FAILED, reason=msg, department=name)
+            raise ValidationError(msg)
 
     async def create_agent(
         self,
@@ -122,59 +152,12 @@ class OrgAgentMutationsMixin:
         """
         captured: dict[str, AgentConfig] = {}
 
-        async def read() -> tuple[tuple[AgentConfig, ...], str]:
-            """Return read.
+        async def read() -> tuple[_AgentRoster, str]:
+            return await self._create_agent_read(data, captured)
 
-            Raises:
-                ConflictError: Raised on the corresponding failure path.
-                ValidationError: Raised on the corresponding failure path.
-            """
-            _, version = await self._read_setting_versioned("company", "agents")
-            departments = await self._read_departments()
-            if not self._find_department(departments, data.department):
-                msg = f"Department {data.department!r} does not exist"
-                logger.warning(
-                    API_VALIDATION_FAILED,
-                    reason=msg,
-                    department=data.department,
-                )
-                raise ValidationError(msg)
-
-            agents = await self._read_agents()
-            if self._find_agent(agents, data.name):
-                msg = f"Agent {data.name!r} already exists"
-                logger.warning(
-                    API_RESOURCE_CONFLICT,
-                    reason=msg,
-                    agent=data.name,
-                )
-                raise ConflictError(msg)
-
-            model_dict: dict[str, JsonValue] = {}
-            if data.model_provider is not None:
-                model_dict = {
-                    "provider": str(data.model_provider),
-                    "model_id": str(data.model_id),
-                }
-
-            agent = AgentConfig(
-                name=data.name,
-                role=data.role,
-                department=data.department,
-                level=data.level,
-                model=model_dict,
-            )
-            captured["agent"] = agent
-            return (*agents, agent), version
-
-        async def write(
-            new_agents: tuple[AgentConfig, ...],
-            version: str,
-        ) -> None:
-            await self._write_agents(new_agents, expected_updated_at=version)
-            await self._snapshot_company(saved_by=saved_by)
-
-        await CASRetryHandler(resource="org_mutation").execute(read, write)
+        await CASRetryHandler(resource="org_mutation").execute(
+            read, self._roster_writer(saved_by=saved_by)
+        )
 
         # Log post-commit values (the persisted model can normalise /
         # coerce input, e.g. case-folding the name); the request-payload
@@ -188,11 +171,65 @@ class OrgAgentMutationsMixin:
         )
         return agent
 
+    async def _create_agent_read(
+        self,
+        data: CreateAgentOrgRequest,
+        captured: dict[str, AgentConfig],
+    ) -> tuple[_AgentRoster, str]:
+        """Validate and build the new roster for ``create_agent``.
+
+        Returns:
+            The roster with the new agent appended, and the read version.
+
+        Raises:
+            ConflictError: When an agent of that name already exists.
+            ValidationError: When the target department does not exist.
+        """
+        _, version = await self._read_setting_versioned("company", "agents")
+        await self._require_department(data.department)
+
+        agents = await self._read_agents()
+        if self._find_agent(agents, data.name):
+            msg = f"Agent {data.name!r} already exists"
+            logger.warning(API_RESOURCE_CONFLICT, reason=msg, agent=data.name)
+            raise ConflictError(msg)
+
+        model_dict: dict[str, JsonValue] = {}
+        if data.model_provider is not None:
+            model_dict = {
+                "provider": str(data.model_provider),
+                "model_id": str(data.model_id),
+            }
+
+        agent = AgentConfig(
+            name=data.name,
+            role=data.role,
+            department=data.department,
+            level=data.level,
+            model=model_dict,
+        )
+        captured["agent"] = agent
+        return (*agents, agent), version
+
+    def _reject_duplicate_rename(
+        self, name: str, new_name: str, agents: _AgentRoster
+    ) -> None:
+        """Raise when renaming *name* to *new_name* would collide.
+
+        Raises:
+            ConflictError: When another agent already uses *new_name*.
+        """
+        others = tuple(a for a in agents if not compare_ci(a.name, name))
+        if self._find_agent(others, new_name):
+            msg = f"Agent {new_name!r} already exists"
+            logger.warning(API_RESOURCE_CONFLICT, reason=msg, agent_name=new_name)
+            raise ConflictError(msg)
+
     async def _validate_agent_update(
         self,
         name: str,
         data: UpdateAgentOrgRequest,
-        agents: tuple[AgentConfig, ...],
+        agents: _AgentRoster,
     ) -> dict[str, object]:
         """Validate agent update and collect field changes.
 
@@ -207,45 +244,32 @@ class OrgAgentMutationsMixin:
         fields_set = data.model_fields_set
 
         if "name" in fields_set and data.name is not None:
-            if self._find_agent(
-                tuple(a for a in agents if not compare_ci(a.name, name)),
-                str(data.name),
-            ):
-                msg = f"Agent {data.name!r} already exists"
-                logger.warning(
-                    API_RESOURCE_CONFLICT, reason=msg, agent_name=str(data.name)
-                )
-                raise ConflictError(msg)
+            self._reject_duplicate_rename(name, str(data.name), agents)
             updates["name"] = data.name
-
         if "role" in fields_set and data.role is not None:
             updates["role"] = data.role
-
         if "department" in fields_set and data.department is not None:
-            departments = await self._read_departments()
-            if not self._find_department(departments, str(data.department)):
-                msg = f"Department {data.department!r} does not exist"
-                logger.warning(
-                    API_VALIDATION_FAILED, reason=msg, department=str(data.department)
-                )
-                raise ValidationError(msg)
+            await self._require_department(str(data.department))
             updates["department"] = data.department
-
         if "level" in fields_set and data.level is not None:
             updates["level"] = data.level
-
         if "autonomy_level" in fields_set:
             updates["autonomy_level"] = data.autonomy_level
-
         if "model_provider" in fields_set:
             updates["model_provider"] = data.model_provider
         if "model_id" in fields_set:
             updates["model_id"] = data.model_id
-        # Catalog-existence check: a concrete pair must reference a
-        # provider + model the live catalogue still exposes (the setup
-        # endpoint already validates this; the post-setup PATCH path now
-        # closes the same gap so an agent cannot be repointed at a model
-        # no provider serves).
+
+        await self._validate_model_pair(data)
+        return updates
+
+    async def _validate_model_pair(self, data: UpdateAgentOrgRequest) -> None:
+        """Reject a model pair the live catalogue no longer exposes.
+
+        The setup endpoint already validates this; the post-setup PATCH
+        path closes the same gap so an agent cannot be repointed at a
+        model no provider serves.
+        """
         if data.model_provider is not None and data.model_id is not None:
             providers = await self._read_provider_configs()
             validate_provider_model_pair(
@@ -253,8 +277,6 @@ class OrgAgentMutationsMixin:
                 str(data.model_provider),
                 str(data.model_id),
             )
-
-        return updates
 
     async def update_agent(
         self,
@@ -275,53 +297,14 @@ class OrgAgentMutationsMixin:
         captured: dict[str, AgentConfig] = {}
         captured_updates: dict[str, object] = {}
 
-        async def read() -> tuple[tuple[AgentConfig, ...], str]:
-            """Return read.
-
-            Raises:
-                NotFoundError: Raised on the corresponding failure path.
-            """
-            _, version = await self._read_setting_versioned("company", "agents")
-            agents = await self._read_agents()
-            existing = self._find_agent(agents, name)
-            if existing is None:
-                msg = f"Agent {name!r} not found"
-                logger.warning(API_RESOURCE_NOT_FOUND, reason=msg, agent=name)
-                raise NotFoundError(msg)
-
-            if if_match:
-                cur = json.dumps(
-                    existing.model_dump(mode="json"),
-                    sort_keys=True,
-                )
-                check_if_match(if_match, compute_etag(cur, ""), f"agent:{name}")
-
-            updates = await self._validate_agent_update(name, data, agents)
-            if "name" in updates:
-                # ``model_copy`` bypasses the before-validator that derives the
-                # stable id from the name, so a rename would otherwise return
-                # and persist the old name's id (now unroutable). Re-stamp it
-                # so the row is addressable under its new name.
-                updates = {
-                    **updates,
-                    "id": stable_agent_id(str(updates["name"])),
-                }
-            updated = existing.model_copy(update=updates, deep=True)
-            new_agents = tuple(
-                updated if compare_ci(a.name, name) else a for a in agents
+        async def read() -> tuple[_AgentRoster, str]:
+            return await self._update_agent_read(
+                name, data, if_match, captured, captured_updates
             )
-            captured_updates.update(updates)
-            captured["updated"] = updated
-            return new_agents, version
 
-        async def write(
-            new_agents: tuple[AgentConfig, ...],
-            version: str,
-        ) -> None:
-            await self._write_agents(new_agents, expected_updated_at=version)
-            await self._snapshot_company(saved_by=saved_by)
-
-        await CASRetryHandler(resource="org_mutation").execute(read, write)
+        await CASRetryHandler(resource="org_mutation").execute(
+            read, self._roster_writer(saved_by=saved_by)
+        )
 
         # Always log the post-commit canonical name; the row's stored
         # identifier is authoritative even when the request didn't
@@ -335,6 +318,47 @@ class OrgAgentMutationsMixin:
         )
         return committed_agent
 
+    async def _update_agent_read(
+        self,
+        name: str,
+        data: UpdateAgentOrgRequest,
+        if_match: str | None,
+        captured: dict[str, AgentConfig],
+        captured_updates: dict[str, object],
+    ) -> tuple[_AgentRoster, str]:
+        """Validate and build the updated roster for ``update_agent``.
+
+        Returns:
+            The roster with the agent updated, and the read version.
+
+        Raises:
+            NotFoundError: When the agent does not exist.
+        """
+        _, version = await self._read_setting_versioned("company", "agents")
+        agents = await self._read_agents()
+        existing = self._find_agent(agents, name)
+        if existing is None:
+            msg = f"Agent {name!r} not found"
+            logger.warning(API_RESOURCE_NOT_FOUND, reason=msg, agent=name)
+            raise NotFoundError(msg)
+
+        if if_match:
+            cur = json.dumps(existing.model_dump(mode="json"), sort_keys=True)
+            check_if_match(if_match, compute_etag(cur, ""), f"agent:{name}")
+
+        updates = await self._validate_agent_update(name, data, agents)
+        if "name" in updates:
+            # ``model_copy`` bypasses the before-validator that derives the
+            # stable id from the name, so a rename would otherwise return
+            # and persist the old name's id (now unroutable). Re-stamp it
+            # so the row is addressable under its new name.
+            updates = {**updates, "id": stable_agent_id(str(updates["name"]))}
+        updated = existing.model_copy(update=updates, deep=True)
+        new_agents = tuple(updated if compare_ci(a.name, name) else a for a in agents)
+        captured_updates.update(updates)
+        captured["updated"] = updated
+        return new_agents, version
+
     async def delete_agent(self, name: str, *, saved_by: str = "api") -> None:
         """Delete an agent from the org config.
 
@@ -344,46 +368,12 @@ class OrgAgentMutationsMixin:
         """
         captured: dict[str, AgentConfig] = {}
 
-        async def read() -> tuple[tuple[AgentConfig, ...], str]:
-            """Return read.
+        async def read() -> tuple[_AgentRoster, str]:
+            return await self._delete_agent_read(name, captured)
 
-            Raises:
-                ConflictError: Raised on the corresponding failure path.
-                NotFoundError: Raised on the corresponding failure path.
-            """
-            _, version = await self._read_setting_versioned("company", "agents")
-            agents = await self._read_agents()
-            existing = self._find_agent(agents, name)
-            if existing is None:
-                msg = f"Agent {name!r} not found"
-                logger.warning(API_RESOURCE_NOT_FOUND, reason=msg, agent=name)
-                raise NotFoundError(msg)
-
-            if existing.level == SeniorityLevel.C_SUITE and compare_ci(
-                existing.role, "ceo"
-            ):
-                msg = f"Cannot delete CEO agent {name!r} -- reassign or demote first"
-                logger.warning(
-                    API_RESOURCE_CONFLICT,
-                    reason=msg,
-                    agent=existing.name,
-                    level=existing.level.value,
-                    role=existing.role,
-                )
-                raise ConflictError(msg)
-
-            captured["resolved"] = existing
-            new_agents = tuple(a for a in agents if not compare_ci(a.name, name))
-            return new_agents, version
-
-        async def write(
-            new_agents: tuple[AgentConfig, ...],
-            version: str,
-        ) -> None:
-            await self._write_agents(new_agents, expected_updated_at=version)
-            await self._snapshot_company(saved_by=saved_by)
-
-        await CASRetryHandler(resource="org_mutation").execute(read, write)
+        await CASRetryHandler(resource="org_mutation").execute(
+            read, self._roster_writer(saved_by=saved_by)
+        )
         # Log the resolved agent's persisted identifier rather than the
         # caller-supplied ``name``; the lookup is case-insensitive so
         # the two can differ in case / whitespace, and audit consistency
@@ -392,13 +382,50 @@ class OrgAgentMutationsMixin:
         agent_for_log = resolved.name if resolved is not None else name
         logger.info(API_AGENT_DELETED, agent=agent_for_log)
 
+    async def _delete_agent_read(
+        self, name: str, captured: dict[str, AgentConfig]
+    ) -> tuple[_AgentRoster, str]:
+        """Validate and build the roster with *name* removed.
+
+        Returns:
+            The roster without the agent, and the read version.
+
+        Raises:
+            NotFoundError: When the agent does not exist.
+            ConflictError: When deleting the CEO agent.
+        """
+        _, version = await self._read_setting_versioned("company", "agents")
+        agents = await self._read_agents()
+        existing = self._find_agent(agents, name)
+        if existing is None:
+            msg = f"Agent {name!r} not found"
+            logger.warning(API_RESOURCE_NOT_FOUND, reason=msg, agent=name)
+            raise NotFoundError(msg)
+
+        if existing.level == SeniorityLevel.C_SUITE and compare_ci(
+            existing.role, "ceo"
+        ):
+            msg = f"Cannot delete CEO agent {name!r} -- reassign or demote first"
+            logger.warning(
+                API_RESOURCE_CONFLICT,
+                reason=msg,
+                agent=existing.name,
+                level=existing.level.value,
+                role=existing.role,
+            )
+            raise ConflictError(msg)
+
+        captured["resolved"] = existing
+        new_agents = tuple(a for a in agents if not compare_ci(a.name, name))
+        return new_agents, version
+
     async def reorder_agents(
         self,
         dept_name: str,
         data: ReorderAgentsRequest,
         *,
         saved_by: str = "api",
-    ) -> tuple[AgentConfig, ...]:
+    ) -> _AgentRoster:
         """Reorder agents within a department.
 
         Returns:
@@ -407,60 +434,14 @@ class OrgAgentMutationsMixin:
         Raises:
             NotFoundError: Raised on the corresponding failure path.
         """
-        captured: dict[str, tuple[AgentConfig, ...]] = {}
+        captured: dict[str, _AgentRoster] = {}
 
-        async def read() -> tuple[tuple[AgentConfig, ...], str]:
-            """Return read.
+        async def read() -> tuple[_AgentRoster, str]:
+            return await self._reorder_agents_read(dept_name, data, captured)
 
-            Raises:
-                NotFoundError: Raised on the corresponding failure path.
-            """
-            _, version = await self._read_setting_versioned("company", "agents")
-            departments = await self._read_departments()
-            if not self._find_department(departments, dept_name):
-                msg = f"Department {dept_name!r} not found"
-                logger.warning(
-                    API_RESOURCE_NOT_FOUND,
-                    reason=msg,
-                    department=dept_name,
-                )
-                raise NotFoundError(msg)
-
-            agents = await self._read_agents()
-            dept_agents = tuple(
-                a for a in agents if compare_ci(a.department, dept_name)
-            )
-            current_names = tuple(a.name for a in dept_agents)
-            self._validate_permutation(current_names, data.agent_names, "agent")
-
-            agent_by_normalised = {normalize_identifier(a.name): a for a in dept_agents}
-            reordered_dept = tuple(
-                agent_by_normalised[normalize_identifier(n)] for n in data.agent_names
-            )
-            captured["reordered_dept"] = reordered_dept
-
-            new_agents: list[AgentConfig] = []
-            dept_inserted = False
-            for a in agents:
-                if compare_ci(a.department, dept_name):
-                    if not dept_inserted:
-                        new_agents.extend(reordered_dept)
-                        dept_inserted = True
-                else:
-                    new_agents.append(a)
-            if not dept_inserted:
-                new_agents.extend(reordered_dept)
-
-            return tuple(new_agents), version
-
-        async def write(
-            new_agents: tuple[AgentConfig, ...],
-            version: str,
-        ) -> None:
-            await self._write_agents(new_agents, expected_updated_at=version)
-            await self._snapshot_company(saved_by=saved_by)
-
-        await CASRetryHandler(resource="org_mutation").execute(read, write)
+        await CASRetryHandler(resource="org_mutation").execute(
+            read, self._roster_writer(saved_by=saved_by)
+        )
 
         reordered_dept = captured["reordered_dept"]
         logger.info(
@@ -469,3 +450,64 @@ class OrgAgentMutationsMixin:
             order=[a.name for a in reordered_dept],
         )
         return reordered_dept
+
+    async def _reorder_agents_read(
+        self,
+        dept_name: str,
+        data: ReorderAgentsRequest,
+        captured: dict[str, _AgentRoster],
+    ) -> tuple[_AgentRoster, str]:
+        """Validate the permutation and build the reordered roster.
+
+        Returns:
+            The roster with the department block reordered, and the read
+            version.
+
+        Raises:
+            NotFoundError: When the department does not exist.
+        """
+        _, version = await self._read_setting_versioned("company", "agents")
+        departments = await self._read_departments()
+        if not self._find_department(departments, dept_name):
+            msg = f"Department {dept_name!r} not found"
+            logger.warning(API_RESOURCE_NOT_FOUND, reason=msg, department=dept_name)
+            raise NotFoundError(msg)
+
+        agents = await self._read_agents()
+        dept_agents = tuple(a for a in agents if compare_ci(a.department, dept_name))
+        current_names = tuple(a.name for a in dept_agents)
+        self._validate_permutation(current_names, data.agent_names, "agent")
+
+        agent_by_normalised = {normalize_identifier(a.name): a for a in dept_agents}
+        reordered_dept = tuple(
+            agent_by_normalised[normalize_identifier(n)] for n in data.agent_names
+        )
+        captured["reordered_dept"] = reordered_dept
+
+        new_agents = self._splice_department(agents, dept_name, reordered_dept)
+        return new_agents, version
+
+    @staticmethod
+    def _splice_department(
+        agents: _AgentRoster,
+        dept_name: str,
+        reordered_dept: _AgentRoster,
+    ) -> _AgentRoster:
+        """Replace *dept_name*'s agents in place with *reordered_dept*.
+
+        Returns:
+            The full roster with the department block reordered, keeping
+            every other agent's position.
+        """
+        new_agents: list[AgentConfig] = []
+        dept_inserted = False
+        for a in agents:
+            if compare_ci(a.department, dept_name):
+                if not dept_inserted:
+                    new_agents.extend(reordered_dept)
+                    dept_inserted = True
+            else:
+                new_agents.append(a)
+        if not dept_inserted:
+            new_agents.extend(reordered_dept)
+        return tuple(new_agents)

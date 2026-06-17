@@ -18,7 +18,12 @@ CREATE TABLE upgrade_recommendations (
         OR decided_at LIKE '%+00:00'
         OR decided_at LIKE '%Z'
     ),
-    decided_by TEXT
+    decided_by TEXT,
+    -- A decision stamps both columns together; pending stamps neither.
+    CHECK (
+        (decided_at IS NULL AND decided_by IS NULL)
+        OR (decided_at IS NOT NULL AND decided_by IS NOT NULL)
+    )
 );
 CREATE INDEX idx_ur_status
 ON upgrade_recommendations (status, created_at DESC, id DESC);

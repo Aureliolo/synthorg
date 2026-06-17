@@ -6738,6 +6738,32 @@ export type components = {
              */
             readonly success: boolean;
         };
+        /** ApiResponse[RefreshCycleReportDTO] */
+        readonly ApiResponse_RefreshCycleReportDTO_: {
+            readonly data: components["schemas"]["RefreshCycleReportDTO"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[RefreshStatusDTO] */
+        readonly ApiResponse_RefreshStatusDTO_: {
+            readonly data: components["schemas"]["RefreshStatusDTO"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
         /** ApiResponse[ReplaySeekView] */
         readonly ApiResponse_ReplaySeekView_: {
             readonly data: components["schemas"]["ReplaySeekView"] | null;
@@ -7336,6 +7362,19 @@ export type components = {
              */
             readonly success: boolean;
         };
+        /** ApiResponse[tuple[UpgradeRecommendationDTO, ...]] */
+        readonly "ApiResponse_tuple_UpgradeRecommendationDTO_..._": {
+            readonly data: readonly components["schemas"]["UpgradeRecommendationDTO"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
         /** ApiResponse[tuple[WebhookReceipt, ...]] */
         readonly "ApiResponse_tuple_WebhookReceipt_..._": {
             readonly data: readonly components["schemas"]["WebhookReceipt"][] | null;
@@ -7380,6 +7419,19 @@ export type components = {
         /** ApiResponse[Union[RedTeamReportRecord, NoneType]] */
         readonly ApiResponse_Union_RedTeamReportRecord_NoneType_: {
             readonly data: components["schemas"]["RedTeamReportRecord"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[UpgradeRecommendationDTO] */
+        readonly ApiResponse_UpgradeRecommendationDTO_: {
+            readonly data: components["schemas"]["UpgradeRecommendationDTO"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /**
@@ -9560,11 +9612,6 @@ export type components = {
              * @constant
              */
             readonly type: "data";
-        };
-        /** DecideRecommendationRequest */
-        readonly DecideRecommendationRequest: {
-            /** @description Operator identifier */
-            readonly decided_by: string;
         };
         /** DecisionBlock */
         readonly DecisionBlock: {
@@ -25270,7 +25317,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": readonly components["schemas"]["UpgradeRecommendationDTO"][];
+                    readonly "application/json": components["schemas"]["ApiResponse_tuple_UpgradeRecommendationDTO_..._"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -25291,11 +25338,7 @@ export interface operations {
             };
             readonly cookie?: never;
         };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["DecideRecommendationRequest"];
-            };
-        };
+        readonly requestBody?: never;
         readonly responses: {
             /** @description Document created, URL follows */
             readonly 201: {
@@ -25303,7 +25346,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["UpgradeRecommendationDTO"];
+                    readonly "application/json": components["schemas"]["ApiResponse_UpgradeRecommendationDTO_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -25326,11 +25369,7 @@ export interface operations {
             };
             readonly cookie?: never;
         };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["DecideRecommendationRequest"];
-            };
-        };
+        readonly requestBody?: never;
         readonly responses: {
             /** @description Document created, URL follows */
             readonly 201: {
@@ -25338,7 +25377,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["UpgradeRecommendationDTO"];
+                    readonly "application/json": components["schemas"]["ApiResponse_UpgradeRecommendationDTO_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -25366,7 +25405,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["RefreshCycleReportDTO"];
+                    readonly "application/json": components["schemas"]["ApiResponse_RefreshCycleReportDTO_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -25393,7 +25432,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["RefreshStatusDTO"];
+                    readonly "application/json": components["schemas"]["ApiResponse_RefreshStatusDTO_"];
                 };
             };
             readonly 401: components["responses"]["Unauthorized"];

@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { Link } from 'react-router'
 import { Sparkles } from 'lucide-react'
 import { cn, FOCUS_RING } from '@/lib/utils'
@@ -6,16 +5,12 @@ import { useRecommendationsStore } from '@/stores/recommendations'
 
 /**
  * Link to the model-recommendations review page, badged with the count
- * of pending recommendations. Renders nothing while the count is zero so
- * it stays out of the way until the refresh service surfaces an upgrade.
+ * of pending recommendations. Pure display: the count is fetched by the
+ * hosting page. Renders nothing while the count is zero so it stays out
+ * of the way until the refresh service surfaces an upgrade.
  */
 export function RecommendationsLink() {
   const count = useRecommendationsStore((s) => s.recommendations.length)
-  const fetchRecommendations = useRecommendationsStore((s) => s.fetchRecommendations)
-
-  useEffect(() => {
-    void fetchRecommendations()
-  }, [fetchRecommendations])
 
   if (count === 0) return null
   return (

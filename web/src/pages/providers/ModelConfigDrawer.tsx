@@ -149,6 +149,7 @@ function ModelConfigForm({
   onClose: () => void
 }) {
   const updateModelConfig = useProvidersStore((s) => s.updateModelConfig)
+  const saving = useProvidersStore((s) => s.updatingModelConfig)
   const initial = initialModelParams(model.local_params)
 
   const [numCtx, setNumCtx] = useState(initial.numCtx)
@@ -156,13 +157,10 @@ function ModelConfigForm({
   const [numThreads, setNumThreads] = useState(initial.numThreads)
   const [numBatch, setNumBatch] = useState(initial.numBatch)
   const [repeatPenalty, setRepeatPenalty] = useState(initial.repeatPenalty)
-  const [saving, setSaving] = useState(false)
 
   const handleSave = async () => {
-    setSaving(true)
     const newParams = buildLocalParams({ numCtx, numGpuLayers, numThreads, numBatch, repeatPenalty })
     const success = await updateModelConfig(providerName, model.id, newParams)
-    setSaving(false)
     if (success) onClose()
   }
 

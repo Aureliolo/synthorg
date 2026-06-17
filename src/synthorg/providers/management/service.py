@@ -795,6 +795,10 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         Raises:
             ProviderNotFoundError: If the provider does not exist.
         """
+        # Capture the pre-discovery base_url so ``_apply_discovered_models``
+        # can detect a concurrent change (TOCTOU): if the provider's
+        # base_url is updated while discovery is in flight, the apply is
+        # refused and the discovered models are dropped.
         config = await self.get_provider(name)
         discovered = await self.discover_models_readonly(name, preset_hint=preset_hint)
 

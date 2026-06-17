@@ -1,5 +1,7 @@
+import { useEffect } from 'react'
 import { AnimatePresence } from 'motion/react'
 import { Trash2 } from 'lucide-react'
+import { useRecommendationsStore } from '@/stores/recommendations'
 import { BulkActionBar } from '@/components/ui/bulk-action-bar'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -19,6 +21,13 @@ import {
 export default function AgentsPage() {
   const ctrl = useAgentsPageController()
   const { data } = ctrl
+  const fetchRecommendations = useRecommendationsStore((s) => s.fetchRecommendations)
+
+  // Populate the pending-upgrade badge in the header; RecommendationsLink
+  // is a pure display component fed by this fetch.
+  useEffect(() => {
+    void fetchRecommendations()
+  }, [fetchRecommendations])
 
   if (data.loading && data.totalAgents === 0) return <AgentsSkeleton />
 

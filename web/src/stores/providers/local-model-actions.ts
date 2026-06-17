@@ -111,11 +111,13 @@ async function deleteModelImpl(
 }
 
 async function updateModelConfigImpl(
+  set: ProvidersSet,
   get: ProvidersGet,
   name: string,
   modelId: string,
   params: LocalModelParams,
 ): Promise<boolean> {
+  set({ updatingModelConfig: true })
   try {
     await apiUpdateModelConfig(name, modelId, params)
     useToastStore.getState().add({
@@ -132,6 +134,8 @@ async function updateModelConfigImpl(
       description: getErrorMessage(err),
     })
     return false
+  } finally {
+    set({ updatingModelConfig: false })
   }
 }
 
@@ -153,6 +157,6 @@ export function createLocalModelActions(
       name: string,
       modelId: string,
       params: LocalModelParams,
-    ) => updateModelConfigImpl(get, name, modelId, params),
+    ) => updateModelConfigImpl(set, get, name, modelId, params),
   }
 }

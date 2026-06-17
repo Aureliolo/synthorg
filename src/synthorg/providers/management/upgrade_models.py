@@ -88,6 +88,29 @@ class UpgradeAnalysis(BaseModel):
         """Number of recommendations in this analysis."""
         return len(self.recommendations)
 
+    @model_validator(mode="after")
+    def _no_duplicate_recommendations(self) -> Self:
+        """Reject duplicate recommendations for the same upgrade.
+
+        A single scan must not surface the same
+        ``(provider, current, recommended)`` upgrade twice, which would
+        otherwise persist as duplicate pending rows.
+
+        Returns:
+            The validated analysis.
+
+        Raises:
+            ValueError: If two recommendations share an upgrade key.
+        """
+        keys = [
+            (r.provider_name, r.current_model_id, r.recommended_model_id)
+            for r in self.recommendations
+        ]
+        if len(keys) != len(set(keys)):
+            msg = "UpgradeAnalysis contains duplicate recommendations"
+            raise ValueError(msg)
+        return self
+
 
 class StoredUpgradeRecommendation(BaseModel):
     """A persisted upgrade recommendation with review lifecycle state.
@@ -111,3 +134,33 @@ class StoredUpgradeRecommendation(BaseModel):
     created_at: datetime
     decided_at: datetime | None = None
     decided_by: NotBlankStr | None = None
+
+    @model_validator(mode="after")
+    def _decision_matches_status(self) -> Self:
+        """Enforce the status<->decision-stamp correlation.
+
+        A decided status (approved / rejected / auto-applied) must carry a
+        ``decided_at``; a pending recommendation must carry neither
+        ``decided_at`` nor ``decided_by``. Makes the illegal "approved but
+        undecided" state unrepresentable rather than doc-only.
+
+        Returns:
+            The validated recommendation.
+
+        Raises:
+            ValueError: If the status and decision stamps disagree.
+        """
+        decided = {
+            RecommendationStatus.APPROVED,
+            RecommendationStatus.REJECTED,
+            RecommendationStatus.AUTO_APPLIED,
+        }
+        if self.status in decided and self.decided_at is None:
+            msg = f"decided_at is required for status {self.status.value!r}"
+            raise ValueError(msg)
+        if self.status is RecommendationStatus.PENDING and (
+            self.decided_at is not None or self.decided_by is not None
+        ):
+            msg = "pending recommendations must not carry decided_at/decided_by"
+            raise ValueError(msg)
+        return self

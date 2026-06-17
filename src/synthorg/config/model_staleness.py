@@ -13,9 +13,9 @@ the model (so an operator can still see and re-point away from it).
 """
 
 from datetime import date, datetime
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
 
@@ -51,3 +51,21 @@ class ModelStaleness(BaseModel):
         default=None,
         description="Suggested in-family replacement id, when identified",
     )
+
+    @model_validator(mode="after")
+    def _last_seen_not_after_flagged(self) -> Self:
+        """Reject a ``last_seen`` later than ``flagged_at``.
+
+        A model cannot have last been observed in the catalogue after the
+        moment it was flagged as gone from it.
+
+        Returns:
+            The validated marker.
+
+        Raises:
+            ValueError: If ``last_seen`` post-dates ``flagged_at``.
+        """
+        if self.last_seen is not None and self.last_seen > self.flagged_at.date():
+            msg = "last_seen cannot be after flagged_at"
+            raise ValueError(msg)
+        return self

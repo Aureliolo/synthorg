@@ -32,16 +32,25 @@ class ModelRefreshStateSlice(BaseFeatureStateSlice):
     recommendation_repo: UpgradeRecommendationRepository | None = None
 
     @model_validator(mode="after")
-    def _scheduler_implies_service(self) -> Self:
-        """A wired scheduler must have a service to drive.
+    def _wiring_invariants(self) -> Self:
+        """Enforce the both-or-neither wiring invariants.
+
+        A wired scheduler must have a service to drive, and a wired
+        service must have the recommendation repo it persists through
+        (otherwise ``run_cycle`` would ``AttributeError`` at the first
+        save instead of failing fast at construction).
 
         Returns:
             The validated instance (``self``).
 
         Raises:
-            ValueError: When a scheduler is set without a service.
+            ValueError: When a scheduler is set without a service, or a
+                service is set without a recommendation repo.
         """
         if self.scheduler is not None and self.service is None:
             msg = "ModelRefreshStateSlice.scheduler set without a service"
+            raise ValueError(msg)
+        if self.service is not None and self.recommendation_repo is None:
+            msg = "ModelRefreshStateSlice.service set without a recommendation_repo"
             raise ValueError(msg)
         return self

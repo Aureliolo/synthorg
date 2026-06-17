@@ -18,18 +18,19 @@ from litestar.datastructures import State
 from litestar.params import QueryParameter
 
 from synthorg.api.api_core_state import org_mutation_service_of
+from synthorg.api.dto import ApiResponse
 from synthorg.api.dto_model_refresh import (
-    DecideRecommendationRequest,
     RefreshCycleReportDTO,
     RefreshStatusDTO,
     UpgradeRecommendationDTO,
 )
-from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.guards import require_ceo_or_manager, require_write_access
 from synthorg.api.path_params import PathId
 from synthorg.api.services.upgrade_recommendation_service import (
     UpgradeRecommendationService,
 )
 from synthorg.api.state import AppState
+from synthorg.core.actor_context import resolve_decided_by
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import PROVIDER_MODEL_REFRESH_CYCLE_FAILED
@@ -69,7 +70,7 @@ class ModelRefreshController(Controller):
     """Upgrade-recommendation review + manual refresh endpoints."""
 
     path = "/providers/model-refresh"
-    guards = (require_read_access,)
+    guards = (require_write_access,)
     tags = ("providers", "model-refresh")
 
     @get("/recommendations")
@@ -77,7 +78,7 @@ class ModelRefreshController(Controller):
         self,
         state: State,
         status: Annotated[RecommendationStatus | None, QueryParameter()] = None,
-    ) -> tuple[UpgradeRecommendationDTO, ...]:
+    ) -> ApiResponse[tuple[UpgradeRecommendationDTO, ...]]:
         """List upgrade recommendations, optionally filtered by status.
 
         Returns:
@@ -85,47 +86,55 @@ class ModelRefreshController(Controller):
         """
         service = _recommendation_service(state)
         rows = await service.list_recommendations(status=status)
-        return tuple(UpgradeRecommendationDTO.from_entity(r) for r in rows)
+        return ApiResponse(
+            data=tuple(UpgradeRecommendationDTO.from_entity(r) for r in rows),
+        )
 
-    @post("/recommendations/{rec_id:str}/approve", guards=[require_write_access])
+    @post("/recommendations/{rec_id:str}/approve")
     async def approve_recommendation(
         self,
         rec_id: PathId,
-        data: DecideRecommendationRequest,
         state: State,
-    ) -> UpgradeRecommendationDTO:
+    ) -> ApiResponse[UpgradeRecommendationDTO]:
         """Approve a pending recommendation and reassign pinned agents.
+
+        The deciding operator is taken from the authenticated session
+        (never the request body), so the audit trail cannot be forged.
 
         Returns:
             The approved recommendation.
         """
         service = _recommendation_service(state)
-        updated = await service.approve(UUID(rec_id), decided_by=data.decided_by)
-        return UpgradeRecommendationDTO.from_entity(updated)
+        updated = await service.approve(UUID(rec_id), decided_by=resolve_decided_by())
+        return ApiResponse(data=UpgradeRecommendationDTO.from_entity(updated))
 
-    @post("/recommendations/{rec_id:str}/reject", guards=[require_write_access])
+    @post("/recommendations/{rec_id:str}/reject")
     async def reject_recommendation(
         self,
         rec_id: PathId,
-        data: DecideRecommendationRequest,
         state: State,
-    ) -> UpgradeRecommendationDTO:
+    ) -> ApiResponse[UpgradeRecommendationDTO]:
         """Reject a pending recommendation (no reassignment).
+
+        The deciding operator is taken from the authenticated session
+        (never the request body), so the audit trail cannot be forged.
 
         Returns:
             The rejected recommendation.
         """
         service = _recommendation_service(state)
-        updated = await service.reject(UUID(rec_id), decided_by=data.decided_by)
-        return UpgradeRecommendationDTO.from_entity(updated)
+        updated = await service.reject(UUID(rec_id), decided_by=resolve_decided_by())
+        return ApiResponse(data=UpgradeRecommendationDTO.from_entity(updated))
 
-    @post("/refresh", guards=[require_write_access])
-    async def trigger_refresh(self, state: State) -> RefreshCycleReportDTO:
+    @post("/refresh", guards=[require_ceo_or_manager])
+    async def trigger_refresh(self, state: State) -> ApiResponse[RefreshCycleReportDTO]:
         """Run one reconcile+recommend cycle on demand.
 
-        Available regardless of cadence mode so ``manual_only`` operators
-        can refresh on demand. Human approval still gates apply (no
-        auto-apply on a manual trigger).
+        Restricted to CEO / Manager: it drives live discovery against
+        every configured provider's endpoint. Available regardless of
+        cadence mode so ``manual_only`` operators can refresh on demand.
+        Human approval still gates apply (no auto-apply on a manual
+        trigger).
 
         Returns:
             The aggregate cycle report.
@@ -142,10 +151,10 @@ class ModelRefreshController(Controller):
             msg = "Model-refresh service not configured"
             raise ServiceUnavailableError(msg)
         report = await service.run_cycle(mode=RefreshMode.RECONCILE_RECOMMEND)
-        return RefreshCycleReportDTO.from_report(report)
+        return ApiResponse(data=RefreshCycleReportDTO.from_report(report))
 
     @get("/status")
-    async def get_status(self, state: State) -> RefreshStatusDTO:
+    async def get_status(self, state: State) -> ApiResponse[RefreshStatusDTO]:
         """Return the current model-refresh configuration.
 
         Returns:
@@ -153,4 +162,4 @@ class ModelRefreshController(Controller):
         """
         app_state: AppState = state.app_state
         config = await load_model_refresh_config(config_resolver_of(app_state))
-        return RefreshStatusDTO.from_config(config)
+        return ApiResponse(data=RefreshStatusDTO.from_config(config))

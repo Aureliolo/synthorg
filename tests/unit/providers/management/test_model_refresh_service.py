@@ -1,10 +1,10 @@
 """Tests for the model-refresh orchestration service."""
 
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.config.agent_schema import AgentConfig
 from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.persistence.upgrade_recommendation_protocol import (
@@ -44,9 +44,10 @@ _PROVIDER = ProviderConfig(base_url="http://localhost:11434", models=(_OLD, _NEW
 def _build_service(
     *,
     repo: UpgradeRecommendationRepository,
-    agents: tuple[object, ...] = (),
+    agents: tuple[AgentConfig, ...] = (),
+    probe: LiveDiscoveryProbe | None = None,
 ) -> ModelRefreshService:
-    probe = mock_of[LiveDiscoveryProbe](
+    probe = probe or mock_of[LiveDiscoveryProbe](
         discover_report=AsyncMock(
             return_value=LiveCatalogReport(
                 provider_name="example-provider",
@@ -85,8 +86,10 @@ class TestModelRefreshService:
             query=AsyncMock(return_value=()),
             save=AsyncMock(),
         )
-        agent = SimpleNamespace(
+        agent = AgentConfig(
             name="writer",
+            role="Writer",
+            department="Engineering",
             model={"provider": "example-provider", "model_id": "old"},
         )
         service = _build_service(repo=repo, agents=(agent,))
@@ -145,11 +148,15 @@ class TestModelRefreshService:
             query=AsyncMock(return_value=()),
             save=AsyncMock(),
         )
-        service = _build_service(repo=repo)
-        # Force the per-provider reconcile to raise via a probe that errors.
-        service._probe = mock_of[LiveDiscoveryProbe](
+        # A probe that errors makes the per-provider reconcile raise; the
+        # failing probe is injected at construction, not patched onto a
+        # private attribute.
+        failing_probe = mock_of[LiveDiscoveryProbe](
             discover_report=AsyncMock(side_effect=RuntimeError("boom")),
         )
+        service = _build_service(repo=repo, probe=failing_probe)
         report = await service.run_cycle(mode=RefreshMode.RECONCILE_RECOMMEND)
-        assert report.providers_scanned == 0
+        # The provider was attempted (counted) but its reconcile failed,
+        # so no recommendation was produced.
+        assert report.providers_scanned == 1
         assert report.recommended_count == 0

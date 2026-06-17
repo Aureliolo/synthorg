@@ -14,9 +14,9 @@ model as absent.
 """
 
 from collections.abc import Callable
-from typing import Protocol, runtime_checkable
+from typing import Protocol, Self, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.types import NotBlankStr
@@ -65,6 +65,32 @@ class LiveCatalogReport(BaseModel):
     missing_ids: tuple[str, ...] = Field(default=())
     added_ids: tuple[str, ...] = Field(default=())
     checked_ids: tuple[str, ...] = Field(default=())
+
+    @model_validator(mode="after")
+    def _diff_coherent(self) -> Self:
+        """Enforce the no-op and diff-coherence invariants.
+
+        An empty ``discovered`` set is a documented no-op, so every diff
+        field must also be empty; otherwise ``missing_ids`` must be a
+        subset of ``checked_ids`` (a configured id cannot be reported
+        missing without having been checked). Guards against an incoherent
+        report driving an unjustified stale flag downstream.
+
+        Returns:
+            The validated report.
+
+        Raises:
+            ValueError: If the no-op or subset invariant is violated.
+        """
+        if not self.discovered:
+            if self.missing_ids or self.added_ids or self.checked_ids:
+                msg = "empty discovered implies empty missing/added/checked ids"
+                raise ValueError(msg)
+            return self
+        if not set(self.missing_ids).issubset(self.checked_ids):
+            msg = "missing_ids must be a subset of checked_ids"
+            raise ValueError(msg)
+        return self
 
 
 def _stamp_probe_source(model: ProviderModelConfig) -> ProviderModelConfig:

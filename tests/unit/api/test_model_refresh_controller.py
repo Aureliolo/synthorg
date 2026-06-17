@@ -16,7 +16,7 @@ from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.providers.management.refresh_config import RefreshMode
 from synthorg.providers.management.refresh_state import ModelRefreshStateSlice
 from synthorg.settings.resolver import ConfigResolver
-from tests._shared import make_app_state, mock_of
+from tests._shared import make_app_state, mock_of, sid
 
 pytestmark = pytest.mark.unit
 
@@ -46,6 +46,20 @@ async def test_list_recommendations_503_when_repo_unwired() -> None:
         )
 
 
+async def test_approve_503_when_repo_unwired() -> None:
+    with pytest.raises(ServiceUnavailableError):
+        await ModelRefreshController.approve_recommendation.fn(
+            _controller(), rec_id=sid("rec"), state=_unwired_state()
+        )
+
+
+async def test_reject_503_when_repo_unwired() -> None:
+    with pytest.raises(ServiceUnavailableError):
+        await ModelRefreshController.reject_recommendation.fn(
+            _controller(), rec_id=sid("rec"), state=_unwired_state()
+        )
+
+
 async def test_trigger_refresh_503_when_service_unwired() -> None:
     with pytest.raises(ServiceUnavailableError):
         await ModelRefreshController.trigger_refresh.fn(
@@ -71,6 +85,6 @@ async def test_get_status_reports_resolved_config() -> None:
         },
     )
     result = await ModelRefreshController.get_status.fn(_controller(), state=state)
-    assert result.mode is RefreshMode.MANUAL_ONLY
-    assert result.interval_seconds == 3600.0
-    assert result.auto_apply_within_family is True
+    assert result.data.mode is RefreshMode.MANUAL_ONLY
+    assert result.data.interval_seconds == 3600.0
+    assert result.data.auto_apply_within_family is True

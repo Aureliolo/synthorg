@@ -291,6 +291,7 @@ class PostgresUpgradeRecommendationRepository:
 
     async def transition_if(
         self,
+        /,
         entity_id: UUID,
         from_state: RecommendationStatus,
         to_state: RecommendationStatus,

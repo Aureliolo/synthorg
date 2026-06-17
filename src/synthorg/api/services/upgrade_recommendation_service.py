@@ -16,7 +16,10 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
+    PROVIDER_MODEL_UPGRADE_APPROVED,
     PROVIDER_MODEL_UPGRADE_AUTO_APPLIED,
+    PROVIDER_MODEL_UPGRADE_REASSIGN_FAILED,
+    PROVIDER_MODEL_UPGRADE_REJECTED,
 )
 from synthorg.organization.models import UpdateAgentOrgRequest
 from synthorg.persistence.upgrade_recommendation_protocol import (
@@ -111,6 +114,12 @@ class UpgradeRecommendationService:
             to_state=RecommendationStatus.APPROVED,
             decided_by=decided_by,
         )
+        logger.info(
+            PROVIDER_MODEL_UPGRADE_APPROVED,
+            rec_id=str(rec_id),
+            decided_by=decided_by,
+            agents=len(stored.agent_ids),
+        )
         await self._reassign(stored)
         return await self.get_or_404(rec_id)
 
@@ -133,6 +142,11 @@ class UpgradeRecommendationService:
         await self._decide(
             stored,
             to_state=RecommendationStatus.REJECTED,
+            decided_by=decided_by,
+        )
+        logger.info(
+            PROVIDER_MODEL_UPGRADE_REJECTED,
+            rec_id=str(rec_id),
             decided_by=decided_by,
         )
         return await self.get_or_404(rec_id)
@@ -205,9 +219,10 @@ class UpgradeRecommendationService:
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
-                    PROVIDER_MODEL_UPGRADE_AUTO_APPLIED,
-                    note="reassign_failed",
+                    PROVIDER_MODEL_UPGRADE_REASSIGN_FAILED,
                     agent=agent_name,
+                    provider=rec.provider_name,
+                    recommended_model=rec.recommended_model_id,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )

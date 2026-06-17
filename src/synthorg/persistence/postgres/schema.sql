@@ -2193,7 +2193,12 @@ CREATE TABLE upgrade_recommendations (
     ),
     created_at TIMESTAMPTZ NOT NULL,
     decided_at TIMESTAMPTZ,
-    decided_by TEXT
+    decided_by TEXT,
+    -- A decision stamps both columns together; pending stamps neither.
+    CHECK (
+        (decided_at IS NULL AND decided_by IS NULL)
+        OR (decided_at IS NOT NULL AND decided_by IS NOT NULL)
+    )
 );
 CREATE INDEX idx_ur_status
 ON upgrade_recommendations (status, created_at DESC, id DESC);

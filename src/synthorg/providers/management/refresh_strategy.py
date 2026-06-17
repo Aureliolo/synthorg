@@ -15,12 +15,14 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.config.provider_schema import ProviderConfig
+from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_MODEL_FLAGGED_STALE,
+    PROVIDER_MODEL_REFRESH_ADD_FAILED,
 )
 from synthorg.providers.management.capability_dtos import AddModelRequest
 from synthorg.providers.management.live_discovery_probe import LiveDiscoveryProbe
@@ -44,7 +46,7 @@ class ProviderRefreshOutcome(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-    provider_name: str
+    provider_name: NotBlankStr
     added_ids: tuple[str, ...] = Field(default=())
     stale_ids: tuple[str, ...] = Field(default=())
     recommendations: tuple[UpgradeRecommendation, ...] = Field(default=())
@@ -159,21 +161,79 @@ class ReconcileRecommendStrategy:
         """
         report = await self._probe.discover_report(provider_name, provider)
         discovered_by_id = {m.id: m for m in report.discovered}
-        for added_id in report.added_ids:
-            await self._mgmt.add_model(
-                provider_name,
-                AddModelRequest(model=discovered_by_id[added_id]),
-            )
+        added_ids = await self._add_discovered(
+            provider_name, report.added_ids, discovered_by_id
+        )
         await self._flagger.flag(provider_name, report.missing_ids)
 
-        refreshed = await self._mgmt.get_provider(provider_name)
-        analysis = self._recommender.recommend({provider_name: refreshed})
+        recommendations = await self._recommend(provider_name)
         return ProviderRefreshOutcome(
             provider_name=provider_name,
-            added_ids=report.added_ids,
+            added_ids=added_ids,
             stale_ids=report.missing_ids,
-            recommendations=analysis.recommendations,
+            recommendations=recommendations,
         )
+
+    async def _add_discovered(
+        self,
+        provider_name: str,
+        added_ids: tuple[str, ...],
+        discovered_by_id: dict[str, ProviderModelConfig],
+    ) -> tuple[str, ...]:
+        """Persist each newly-discovered model, isolating per-model failures.
+
+        A single bad model id (validation error, transient persistence
+        error) must not abort the whole provider's reconcile, so each
+        ``add_model`` is guarded and the returned tuple reflects only the
+        ids that were actually persisted.
+
+        Returns:
+            The subset of *added_ids* that were successfully persisted.
+        """
+        persisted: list[str] = []
+        for added_id in added_ids:
+            try:
+                await self._mgmt.add_model(
+                    provider_name,
+                    AddModelRequest(model=discovered_by_id[added_id]),
+                )
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                logger.warning(
+                    PROVIDER_MODEL_REFRESH_ADD_FAILED,
+                    provider=provider_name,
+                    model=added_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                continue
+            persisted.append(added_id)
+        return tuple(persisted)
+
+    async def _recommend(self, provider_name: str) -> tuple[UpgradeRecommendation, ...]:
+        """Re-read the refreshed provider and recommend in-family upgrades.
+
+        Isolates a failure of the post-add re-read / recommend step (e.g.
+        a concurrent provider deletion) so it does not lose the stale
+        flags already applied this pass.
+
+        Returns:
+            The produced recommendations, or an empty tuple on failure.
+        """
+        try:
+            refreshed = await self._mgmt.get_provider(provider_name)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                PROVIDER_MODEL_REFRESH_ADD_FAILED,
+                provider=provider_name,
+                note="recommend_reread_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return ()
+        analysis = self._recommender.recommend({provider_name: refreshed})
+        return analysis.recommendations
 
 
 def build_refresh_strategy(

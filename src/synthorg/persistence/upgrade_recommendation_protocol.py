@@ -56,7 +56,10 @@ class UpgradeRecommendationRepository(
     """CRUD + state-transition + filtered query for upgrade recommendations.
 
     Composes :class:`StatefulRepository` + :class:`FilteredQueryRepository`
-    (ADR-0001). No bespoke methods.
+    (ADR-0001). Adds one bespoke method, ``list_items`` (ordered paginated
+    enumeration with no filter spec); ``StatefulRepository`` does not
+    extend ``IdKeyedRepository``, so it is declared here rather than
+    inherited.
 
     Non-recoverable errors propagate. Constraint violations raise
     :class:`ConstraintViolationError`; other DB errors raise

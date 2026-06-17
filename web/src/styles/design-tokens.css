@@ -92,6 +92,7 @@
   --so-shadow-card: 0 2px 8px color-mix(in srgb, var(--so-bg-base) 25%, transparent);
   --so-shadow-card-hover: 0 4px 24px color-mix(in srgb, var(--so-accent) 8%, transparent);
   --so-shadow-health-glow: 0 0 8px color-mix(in srgb, var(--so-accent) 30%, transparent);
+  --so-shadow-accent-glow: 0 0 12px color-mix(in srgb, var(--so-accent) 15%, transparent);
 
   /* -- Transitions -- */
   --so-transition-dim: 180ms;
@@ -253,6 +254,7 @@
   /* Neon theme uses stronger glow than the color-mix defaults */
   --so-shadow-card-hover: 0 4px 24px color-mix(in srgb, var(--so-accent) 12%, transparent);
   --so-shadow-health-glow: 0 0 8px color-mix(in srgb, var(--so-accent) 40%, transparent);
+  --so-shadow-accent-glow: 0 0 12px color-mix(in srgb, var(--so-accent) 20%, transparent);
 }
 
 /* ---------------------------------------------------------------------------

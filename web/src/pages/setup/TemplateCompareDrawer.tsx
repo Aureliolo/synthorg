@@ -45,9 +45,10 @@ const COMPARISON_ROWS: readonly ComparisonRow[] = [
 
 /** Check whether all templates have the same value for a row. */
 function valuesAreEqual(templates: readonly TemplateInfoResponse[], getValue: (t: TemplateInfoResponse) => string | readonly string[]): boolean {
-  if (templates.length < 2) return true
-  const first = getValue(templates[0]!)
-  const firstStr = Array.isArray(first) ? first.join(',') : first
+  const first = templates[0]
+  if (first === undefined) return true
+  const firstValue = getValue(first)
+  const firstStr = Array.isArray(firstValue) ? firstValue.join(',') : firstValue
   return templates.every((t) => {
     const val = getValue(t)
     const valStr = Array.isArray(val) ? val.join(',') : val
@@ -55,20 +56,25 @@ function valuesAreEqual(templates: readonly TemplateInfoResponse[], getValue: (t
   })
 }
 
+// The compared-template count is dynamic, so the column count travels as
+// a CSS custom property consumed by the arbitrary grid-template-columns
+// class below (no hardcoded layout value, no per-render inline style rule).
+const COMPARE_GRID = 'grid gap-grid-gap [grid-template-columns:repeat(var(--compare-cols),minmax(0,1fr))]'
+
 interface ComparisonRowProps {
   row: ComparisonRow
   templates: readonly TemplateInfoResponse[]
-  gridStyle: React.CSSProperties
+  gridVars: React.CSSProperties
 }
 
-function ComparisonRowEntry({ row, templates, gridStyle }: ComparisonRowProps) {
+function ComparisonRowEntry({ row, templates, gridVars }: ComparisonRowProps) {
   const isDifferent = !valuesAreEqual(templates, row.getValue)
   return (
     <div>
       <h4 className="mb-1 text-compact uppercase tracking-wide text-muted-foreground">
         {row.label}
       </h4>
-      <div className="grid gap-grid-gap" style={gridStyle}>
+      <div className={COMPARE_GRID} style={gridVars}>
         {templates.map((t) => {
           const value = row.getValue(t)
           const display = Array.isArray(value) ? value.join(', ') : String(value)
@@ -104,8 +110,8 @@ export function TemplateCompareDrawer({
   onSelect,
   onRemove,
 }: TemplateCompareDrawerProps) {
-  const gridStyle = useMemo<React.CSSProperties>(
-    () => ({ gridTemplateColumns: `repeat(${templates.length}, 1fr)` }),
+  const gridVars = useMemo<React.CSSProperties>(
+    () => ({ '--compare-cols': templates.length }) as React.CSSProperties,
     [templates.length],
   )
 
@@ -115,7 +121,7 @@ export function TemplateCompareDrawer({
     <Drawer open={open} onClose={onClose} title="Compare Templates">
       <div className="space-y-section-gap">
         {/* Column headers */}
-        <div className="grid gap-grid-gap" style={gridStyle}>
+        <div className={COMPARE_GRID} style={gridVars}>
           {templates.map((t) => (
             <div key={t.name} className="space-y-2 rounded-md border border-border p-card">
               <h3 className="text-sm font-semibold text-foreground">{t.display_name}</h3>
@@ -126,11 +132,11 @@ export function TemplateCompareDrawer({
 
         {/* Comparison rows */}
         {COMPARISON_ROWS.map((row) => (
-          <ComparisonRowEntry key={row.label} row={row} templates={templates} gridStyle={gridStyle} />
+          <ComparisonRowEntry key={row.label} row={row} templates={templates} gridVars={gridVars} />
         ))}
 
         {/* Action buttons */}
-        <div className="grid gap-grid-gap border-t border-border pt-card" style={gridStyle}>
+        <div className={cn(COMPARE_GRID, 'border-t border-border pt-card')} style={gridVars}>
           {templates.map((t) => (
             <div key={t.name} className="flex flex-col gap-2">
               <Button size="sm" onClick={() => onSelect(t.name)}>Select</Button>

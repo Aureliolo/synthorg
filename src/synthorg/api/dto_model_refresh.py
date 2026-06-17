@@ -7,7 +7,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.core.types import NotBlankStr
 from synthorg.providers.enums import RecommendationStatus
 from synthorg.providers.management.model_refresh_service import RefreshCycleReport
-from synthorg.providers.management.refresh_config import ModelRefreshConfig, RefreshMode
+from synthorg.providers.management.refresh_config import (
+    _MAX_REFRESH_INTERVAL_SECONDS,
+    _MIN_REFRESH_INTERVAL_SECONDS,
+    ModelRefreshConfig,
+    RefreshMode,
+)
 from synthorg.providers.management.upgrade_models import StoredUpgradeRecommendation
 
 
@@ -21,9 +26,9 @@ class UpgradeRecommendationDTO(BaseModel):
     current_model_id: NotBlankStr
     recommended_model_id: NotBlankStr
     family: NotBlankStr
-    current_generation: float
-    recommended_generation: float
-    score: float
+    current_generation: float = Field(ge=0.0)
+    recommended_generation: float = Field(gt=0.0)
+    score: float = Field(ge=0.0, le=1.0)
     reason: NotBlankStr
     agent_ids: tuple[NotBlankStr, ...]
     status: RecommendationStatus
@@ -92,7 +97,10 @@ class RefreshStatusDTO(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     mode: RefreshMode
-    interval_seconds: float
+    interval_seconds: float = Field(
+        ge=_MIN_REFRESH_INTERVAL_SECONDS,
+        le=_MAX_REFRESH_INTERVAL_SECONDS,
+    )
     auto_apply_within_family: bool
 
     @classmethod
@@ -107,11 +115,3 @@ class RefreshStatusDTO(BaseModel):
             interval_seconds=config.interval_seconds,
             auto_apply_within_family=config.auto_apply_within_family,
         )
-
-
-class DecideRecommendationRequest(BaseModel):
-    """Approve/reject payload identifying the deciding operator."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
-
-    decided_by: NotBlankStr = Field(description="Operator identifier")

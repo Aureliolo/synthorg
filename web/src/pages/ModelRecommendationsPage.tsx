@@ -6,7 +6,6 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StatPill } from '@/components/ui/stat-pill'
-import { useAuthStore } from '@/stores/auth'
 import { useRecommendationsStore } from '@/stores/recommendations'
 import { ModelRecommendationCard } from './agents/ModelRecommendationCard'
 
@@ -42,7 +41,6 @@ function RecommendationsList() {
   const decidingId = useRecommendationsStore((s) => s.decidingId)
   const approve = useRecommendationsStore((s) => s.approve)
   const reject = useRecommendationsStore((s) => s.reject)
-  const decidedBy = useAuthStore((s) => s.user?.username ?? 'operator')
 
   if (listLoading && recommendations.length === 0) {
     return <Skeleton className="h-40 w-full" />
@@ -63,8 +61,8 @@ function RecommendationsList() {
           key={rec.id}
           recommendation={rec}
           deciding={decidingId === rec.id}
-          onApprove={() => void approve(rec.id, decidedBy)}
-          onReject={() => void reject(rec.id, decidedBy)}
+          onApprove={() => void approve(rec.id)}
+          onReject={() => void reject(rec.id)}
         />
       ))}
     </div>
