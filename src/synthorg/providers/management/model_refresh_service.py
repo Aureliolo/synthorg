@@ -281,14 +281,13 @@ class ModelRefreshService:
             A set of ``(provider, current_id, recommended_id)`` for every
             currently-pending recommendation.
         """
+        spec = UpgradeRecommendationFilterSpec(status=RecommendationStatus.PENDING)
         keys: set[tuple[str, str, str]] = set()
         offset = 0
-        while True:
-            page = await self._repo.query(
-                UpgradeRecommendationFilterSpec(status=RecommendationStatus.PENDING),
-                limit=_PENDING_SCAN_PAGE_SIZE,
-                offset=offset,
-            )
+        page = await self._repo.query(
+            spec, limit=_PENDING_SCAN_PAGE_SIZE, offset=offset
+        )
+        while page:
             keys.update(
                 (
                     row.recommendation.provider_name,
@@ -300,6 +299,9 @@ class ModelRefreshService:
             if len(page) < _PENDING_SCAN_PAGE_SIZE:
                 break
             offset += _PENDING_SCAN_PAGE_SIZE
+            page = await self._repo.query(
+                spec, limit=_PENDING_SCAN_PAGE_SIZE, offset=offset
+            )
         return keys
 
     async def _persist(

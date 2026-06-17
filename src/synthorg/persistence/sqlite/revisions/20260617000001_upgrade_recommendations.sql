@@ -6,10 +6,10 @@
 CREATE TABLE upgrade_recommendations (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
     recommendation_json TEXT NOT NULL CHECK (
-        LENGTH(TRIM(recommendation_json)) > 0 AND json_valid(recommendation_json)
+        LENGTH(TRIM(recommendation_json)) > 0 AND JSON_VALID(recommendation_json)
     ),
     agent_ids_json TEXT NOT NULL CHECK (
-        LENGTH(TRIM(agent_ids_json)) > 0 AND json_valid(agent_ids_json)
+        LENGTH(TRIM(agent_ids_json)) > 0 AND JSON_VALID(agent_ids_json)
     ),
     status TEXT NOT NULL DEFAULT 'pending' CHECK (
         status IN ('pending', 'approved', 'rejected', 'auto_applied')

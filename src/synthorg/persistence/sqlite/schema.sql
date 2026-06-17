@@ -1836,7 +1836,7 @@ CREATE TABLE provider_audit_events (
     actor_id TEXT NOT NULL CHECK (LENGTH(TRIM(actor_id)) > 0),
     actor_label TEXT NOT NULL CHECK (LENGTH(TRIM(actor_label)) > 0),
     -- payload mirrors the Postgres JSONB column; SQLite has no JSONB
-    -- type so we store TEXT and enforce JSON validity via json_valid().
+    -- type so we store TEXT and enforce JSON validity via JSON_VALID().
     payload TEXT NOT NULL DEFAULT '{}' CHECK (JSON_VALID(payload)),
     -- Timestamp format is enforced by the Python layer via
     -- ``parse_iso_utc`` / ``format_iso_utc`` (see
@@ -1860,8 +1860,8 @@ CREATE TABLE preset_overrides (
     CHECK (LENGTH(TRIM(preset_name)) > 0),
     -- Column names aligned with Postgres.  default_models /
     -- supported_auth_types / candidate_urls are JSONB on Postgres;
-    -- here we store TEXT and enforce JSON validity via json_valid().
-    -- Each column is nullable, and SQLite's json_valid() returns 0
+    -- here we store TEXT and enforce JSON validity via JSON_VALID().
+    -- Each column is nullable, and SQLite's JSON_VALID() returns 0
     -- for NULL so the CHECK is guarded with IS NULL OR.
     default_models TEXT
     CHECK (default_models IS NULL OR JSON_VALID(default_models)),
@@ -2252,10 +2252,10 @@ CREATE TABLE benchmark_scores (
 CREATE TABLE upgrade_recommendations (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
     recommendation_json TEXT NOT NULL CHECK (
-        LENGTH(TRIM(recommendation_json)) > 0 AND json_valid(recommendation_json)
+        LENGTH(TRIM(recommendation_json)) > 0 AND JSON_VALID(recommendation_json)
     ),
     agent_ids_json TEXT NOT NULL CHECK (
-        LENGTH(TRIM(agent_ids_json)) > 0 AND json_valid(agent_ids_json)
+        LENGTH(TRIM(agent_ids_json)) > 0 AND JSON_VALID(agent_ids_json)
     ),
     status TEXT NOT NULL DEFAULT 'pending' CHECK (
         status IN ('pending', 'approved', 'rejected', 'auto_applied')
