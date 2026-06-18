@@ -8,10 +8,11 @@ validation shared by all tools.
 """
 
 from pathlib import Path
-from typing import ClassVar, Final, cast, override
+from typing import ClassVar, Final, override
 
 from pydantic import BaseModel
 
+from synthorg.core.boundary import parse_typed
 from synthorg.observability import get_logger
 from synthorg.observability.events.git import GIT_COMMAND_START
 from synthorg.security.autonomy.enums import ActionType
@@ -89,12 +90,13 @@ class GitStatusTool(_BaseGitTool):
         Returns:
             A ``ToolExecutionResult`` with the status output.
         """
-        args = ["status"]
-        if arguments.get("porcelain"):
-            args.append("--porcelain")
-        elif arguments.get("short"):
-            args.append("--short")
-        return await self._run_git(args)
+        args = parse_typed("tool.git_status", arguments, GitStatusArgs)
+        git_args = ["status"]
+        if args.porcelain:
+            git_args.append("--porcelain")
+        elif args.short:
+            git_args.append("--short")
+        return await self._run_git(git_args)
 
 
 # ── GitLogTool ────────────────────────────────────────────────────
@@ -143,7 +145,7 @@ class GitLogTool(_BaseGitTool):
 
     def _build_filter_args(
         self,
-        arguments: dict[str, object],
+        args: GitLogArgs,
     ) -> list[str] | ToolExecutionResult:
         """Validate and build ``--author``, ``--since``, ``--until`` args.
 
@@ -154,12 +156,12 @@ class GitLogTool(_BaseGitTool):
             Result of type ``list[str] | ToolExecutionResult``.
         """
         filter_args: list[str] = []
-        for param, flag in (
-            ("author", "--author"),
-            ("since", "--since"),
-            ("until", "--until"),
+        for value, flag, param in (
+            (args.author, "--author", "author"),
+            (args.since, "--since", "since"),
+            (args.until, "--until", "until"),
         ):
-            if (value := arguments.get(param)) and isinstance(value, str):
+            if value:
                 if err := self._check_git_arg(value, param=param):
                     return err
                 filter_args.append(f"{flag}={value}")
@@ -180,33 +182,31 @@ class GitLogTool(_BaseGitTool):
         Returns:
             A ``ToolExecutionResult`` with the log output.
         """
-        max_count = min(
-            cast("int", arguments.get("max_count", 10)),
-            self._max_count_limit,
-        )
-        args = ["log", f"--max-count={max_count}"]
+        args = parse_typed("tool.git_log", arguments, GitLogArgs)
+        max_count = min(args.max_count, self._max_count_limit)
+        git_args = ["log", f"--max-count={max_count}"]
 
-        if arguments.get("oneline"):
-            args.append("--oneline")
+        if args.oneline:
+            git_args.append("--oneline")
 
-        filter_args = self._build_filter_args(arguments)
+        filter_args = self._build_filter_args(args)
         if isinstance(filter_args, ToolExecutionResult):
             return filter_args
-        args.extend(filter_args)
+        git_args.extend(filter_args)
 
-        if ref := arguments.get("ref"):
-            if err := self._check_git_arg(cast("str", ref), param="ref"):
+        if args.ref:
+            if err := self._check_git_arg(args.ref, param="ref"):
                 return err
-            args.append(cast("str", ref))
+            git_args.append(args.ref)
 
-        paths: list[str] = cast("list[str]", arguments.get("paths", []))
+        paths = list(args.paths)
         if paths:
             if err := self._check_paths(paths):
                 return err
-            args.append("--")
-            args.extend(paths)
+            git_args.append("--")
+            git_args.extend(paths)
 
-        result = await self._run_git(args)
+        result = await self._run_git(git_args)
         if not result.is_error and not result.content:
             return ToolExecutionResult(content="No commits found")
         return result
@@ -264,36 +264,34 @@ class GitDiffTool(_BaseGitTool):
             A ``ToolExecutionResult`` with the diff output. Empty diff
             returns "No changes" (not an error).
         """
-        args = ["diff"]
+        # ``GitDiffArgs`` enforces the ``ref2`` requires ``ref1``
+        # cross-field rule at the typed boundary.
+        args = parse_typed("tool.git_diff", arguments, GitDiffArgs)
+        git_args = ["diff"]
 
-        if arguments.get("staged"):
-            args.append("--cached")
+        if args.staged:
+            git_args.append("--cached")
 
-        if arguments.get("stat"):
-            args.append("--stat")
+        if args.stat:
+            git_args.append("--stat")
 
-        if ref1 := arguments.get("ref1"):
-            if err := self._check_git_arg(cast("str", ref1), param="ref1"):
+        if args.ref1:
+            if err := self._check_git_arg(args.ref1, param="ref1"):
                 return err
-            args.append(cast("str", ref1))
-        if ref2 := arguments.get("ref2"):
-            if not ref1:
-                return ToolExecutionResult(
-                    content="ref2 requires ref1 to be specified",
-                    is_error=True,
-                )
-            if err := self._check_git_arg(cast("str", ref2), param="ref2"):
+            git_args.append(args.ref1)
+        if args.ref2:
+            if err := self._check_git_arg(args.ref2, param="ref2"):
                 return err
-            args.append(cast("str", ref2))
+            git_args.append(args.ref2)
 
-        paths: list[str] = cast("list[str]", arguments.get("paths", []))
+        paths = list(args.paths)
         if paths:
             if err := self._check_paths(paths):
                 return err
-            args.append("--")
-            args.extend(paths)
+            git_args.append("--")
+            git_args.extend(paths)
 
-        result = await self._run_git(args)
+        result = await self._run_git(git_args)
         if not result.is_error and not result.content:
             return ToolExecutionResult(content="No changes")
         return result
@@ -311,8 +309,6 @@ class GitBranchTool(_BaseGitTool):
     """
 
     args_model: ClassVar[type[BaseModel] | None] = GitBranchArgs
-
-    _ACTIONS_REQUIRING_NAME = frozenset({"create", "switch", "delete"})
 
     def __init__(
         self,
@@ -352,19 +348,19 @@ class GitBranchTool(_BaseGitTool):
     async def _create_branch(
         self,
         name: str,
-        arguments: dict[str, object],
+        start_point: str | None,
     ) -> ToolExecutionResult:
         """Create a branch, optionally from a start point.
 
         Returns:
             Result of type ``ToolExecutionResult``.
         """
-        args = ["branch", name]
-        if start_point := cast("str | None", arguments.get("start_point")):
+        git_args = ["branch", name]
+        if start_point:
             if err := self._check_git_arg(start_point, param="start_point"):
                 return err
-            args.append(start_point)
-        return await self._run_git(args)
+            git_args.append(start_point)
+        return await self._run_git(git_args)
 
     @override
     async def execute(
@@ -380,38 +376,34 @@ class GitBranchTool(_BaseGitTool):
         Returns:
             A ``ToolExecutionResult`` with the operation output.
         """
-        action = cast("str", arguments.get("action", "list"))
-        name = cast("str | None", arguments.get("name"))
+        # ``GitBranchArgs`` enforces the create/switch/delete actions
+        # require a branch ``name`` cross-field rule at the typed
+        # boundary, so ``list`` is the only action reachable here with a
+        # ``None`` name.
+        args = parse_typed("tool.git_branch", arguments, GitBranchArgs)
 
-        if action in self._ACTIONS_REQUIRING_NAME and not name:
-            return ToolExecutionResult(
-                content=(f"Branch name is required for '{action}' action"),
-                is_error=True,
-            )
-
-        if action == "list":
+        if args.action == "list":
             return await self._list_branches()
 
-        # Narrowing: guaranteed non-None by guard above.
-        branch_name = cast("str", name)
+        # Narrowing: guaranteed non-None by the args-model validator.
+        branch_name = args.name
+        if branch_name is None:
+            return ToolExecutionResult(
+                content=(f"Branch name is required for '{args.action}' action"),
+                is_error=True,
+            )
 
         if err := self._check_git_arg(branch_name, param="name"):
             return err
 
-        if action == "create":
-            return await self._create_branch(branch_name, arguments)
+        if args.action == "create":
+            return await self._create_branch(branch_name, args.start_point)
 
-        if action == "switch":
+        if args.action == "switch":
             return await self._run_git(["switch", branch_name])
 
-        if action == "delete":
-            flag = "-D" if arguments.get("force") else "-d"
-            return await self._run_git(["branch", flag, branch_name])
-
-        return ToolExecutionResult(
-            content=f"Unknown branch action: {action!r}",
-            is_error=True,
-        )
+        flag = "-D" if args.force else "-d"
+        return await self._run_git(["branch", flag, branch_name])
 
 
 # ── GitCommitTool ─────────────────────────────────────────────────
@@ -465,9 +457,10 @@ class GitCommitTool(_BaseGitTool):
         Returns:
             A ``ToolExecutionResult`` with the commit output.
         """
-        message = cast("str", arguments["message"])
-        paths: list[str] = cast("list[str]", arguments.get("paths", []))
-        stage_all = cast("bool", arguments.get("all", False))
+        args = parse_typed("tool.git_commit", arguments, GitCommitArgs)
+        message = args.message
+        paths = list(args.paths)
+        stage_all = args.all
 
         if paths:
             if err := self._check_paths(paths):

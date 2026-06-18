@@ -5,11 +5,13 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools._git_subprocess import _sanitize_command
 
 # GitCloneTool is still in _ALL_GIT_TOOL_CLASSES for property tests.
+from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.git_tools import (
     GitBranchTool,
     GitCloneTool,
@@ -185,11 +187,31 @@ class TestGitLogTool:
         lines = result.content.strip().split("\n")
         assert len(lines) == 1
 
-    async def test_max_count_clamped(self, log_tool: GitLogTool) -> None:
-        result = await log_tool.execute(
-            arguments={"max_count": 200},
-        )
-        assert not result.is_error
+    async def test_max_count_clamped_to_instance_limit(
+        self, git_repo: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A per-call ``max_count`` within the model range (<=100) but
+        # above the configured instance limit is clamped down.
+        tool = GitLogTool(workspace=git_repo, max_count_limit=2)
+        captured: list[list[str]] = []
+
+        async def _capture(args: list[str]) -> ToolExecutionResult:
+            captured.append(args)
+            return ToolExecutionResult(content="x")
+
+        monkeypatch.setattr(tool, "_run_git", _capture)
+        await tool.execute(arguments={"max_count": 50})
+        assert captured[0][1] == "--max-count=2"
+
+    async def test_max_count_above_model_cap_rejected(
+        self, log_tool: GitLogTool
+    ) -> None:
+        # The args model's ``le=100`` rejects an out-of-range max_count
+        # at the typed boundary.
+        with pytest.raises(ValidationError, match="max_count"):
+            await log_tool.execute(
+                arguments={"max_count": 200},
+            )
 
     async def test_empty_repo_no_commits(self, empty_git_repo: Path) -> None:
         tool = GitLogTool(workspace=empty_git_repo)
@@ -279,11 +301,12 @@ class TestGitDiffTool:
         self,
         diff_tool: GitDiffTool,
     ) -> None:
-        result = await diff_tool.execute(
-            arguments={"ref2": "HEAD"},
-        )
-        assert result.is_error
-        assert "ref2 requires ref1" in result.content
+        # The args-model validator rejects ``ref2`` without ``ref1`` at
+        # the typed boundary.
+        with pytest.raises(ValidationError, match="ref2 requires ref1"):
+            await diff_tool.execute(
+                arguments={"ref2": "HEAD"},
+            )
 
 
 # ── GitBranchTool ─────────────────────────────────────────────────
@@ -365,23 +388,24 @@ class TestGitBranchTool:
         assert not result.is_error
 
     async def test_name_required_for_create(self, branch_tool: GitBranchTool) -> None:
-        result = await branch_tool.execute(
-            arguments={"action": "create"},
-        )
-        assert result.is_error
-        assert "required" in result.content.lower()
+        # The args-model validator requires a branch ``name`` for the
+        # create/switch/delete actions at the typed boundary.
+        with pytest.raises(ValidationError, match="name"):
+            await branch_tool.execute(
+                arguments={"action": "create"},
+            )
 
     async def test_name_required_for_switch(self, branch_tool: GitBranchTool) -> None:
-        result = await branch_tool.execute(
-            arguments={"action": "switch"},
-        )
-        assert result.is_error
+        with pytest.raises(ValidationError, match="name"):
+            await branch_tool.execute(
+                arguments={"action": "switch"},
+            )
 
     async def test_name_required_for_delete(self, branch_tool: GitBranchTool) -> None:
-        result = await branch_tool.execute(
-            arguments={"action": "delete"},
-        )
-        assert result.is_error
+        with pytest.raises(ValidationError, match="name"):
+            await branch_tool.execute(
+                arguments={"action": "delete"},
+            )
 
     async def test_switch_nonexistent_branch(self, branch_tool: GitBranchTool) -> None:
         result = await branch_tool.execute(
@@ -396,11 +420,12 @@ class TestGitBranchTool:
         self,
         branch_tool: GitBranchTool,
     ) -> None:
-        result = await branch_tool.execute(
-            arguments={"action": "unknown", "name": "x"},
-        )
-        assert result.is_error
-        assert "Unknown branch action" in result.content
+        # The GitBranchAction literal rejects an out-of-set action at the
+        # typed boundary.
+        with pytest.raises(ValidationError, match="action"):
+            await branch_tool.execute(
+                arguments={"action": "unknown", "name": "x"},
+            )
 
 
 # ── GitCommitTool ─────────────────────────────────────────────────
