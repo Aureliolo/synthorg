@@ -32,6 +32,7 @@ from synthorg.observability.events.company import (
     DEPARTMENT_DELETED_VIA_MCP,
     DEPARTMENT_UPDATED_VIA_MCP,
     DEPARTMENTS_REORDERED_VIA_MCP,
+    ORG_CAPABILITY_UNSUPPORTED,
     TEAM_CREATED_VIA_MCP,
     TEAM_DELETED_VIA_MCP,
     TEAM_UPDATED_VIA_MCP,
@@ -92,6 +93,11 @@ class CompanyReadService:
         fn = getattr(self._org, "get_company", None)
         if callable(fn):
             return await fn()
+        logger.warning(
+            ORG_CAPABILITY_UNSUPPORTED,
+            capability="company_get",
+            error_type=CapabilityNotSupportedError.__name__,
+        )
         raise CapabilityNotSupportedError(
             "company_get",
             "OrgMutationService does not expose get_company",
@@ -120,6 +126,11 @@ class CompanyReadService:
         """
         fn = getattr(self._org, "update_company", None)
         if not callable(fn):
+            logger.warning(
+                ORG_CAPABILITY_UNSUPPORTED,
+                capability="company_update",
+                error_type=CapabilityNotSupportedError.__name__,
+            )
             raise CapabilityNotSupportedError(
                 "company_update",
                 "OrgMutationService does not expose update_company",
@@ -138,6 +149,11 @@ class CompanyReadService:
         """
         fn = getattr(self._org, "list_departments", None)
         if not callable(fn):
+            logger.warning(
+                ORG_CAPABILITY_UNSUPPORTED,
+                capability="company_list_departments",
+                error_type=CapabilityNotSupportedError.__name__,
+            )
             raise CapabilityNotSupportedError(
                 "company_list_departments",
                 "OrgMutationService does not expose list_departments",
@@ -158,6 +174,11 @@ class CompanyReadService:
         """
         fn = getattr(self._org, "reorder_departments", None)
         if not callable(fn):
+            logger.warning(
+                ORG_CAPABILITY_UNSUPPORTED,
+                capability="company_reorder_departments",
+                error_type=CapabilityNotSupportedError.__name__,
+            )
             raise CapabilityNotSupportedError(
                 "company_reorder_departments",
                 "OrgMutationService does not expose reorder_departments",
@@ -178,6 +199,11 @@ class CompanyReadService:
         """
         fn = getattr(self._org, "list_company_versions", None)
         if not callable(fn):
+            logger.warning(
+                ORG_CAPABILITY_UNSUPPORTED,
+                capability="company_list_versions",
+                error_type=CapabilityNotSupportedError.__name__,
+            )
             raise CapabilityNotSupportedError(
                 "company_list_versions",
                 "OrgMutationService does not expose list_company_versions",
@@ -197,6 +223,11 @@ class CompanyReadService:
         """
         fn = getattr(self._org, "get_company_version", None)
         if not callable(fn):
+            logger.warning(
+                ORG_CAPABILITY_UNSUPPORTED,
+                capability="company_get_version",
+                error_type=CapabilityNotSupportedError.__name__,
+            )
             raise CapabilityNotSupportedError(
                 "company_get_version",
                 "OrgMutationService does not expose get_company_version",
@@ -628,12 +659,24 @@ class RoleVersionService:
                 ``list_role_versions``.
         """
         if self._org is None:
+            logger.warning(
+                ORG_CAPABILITY_UNSUPPORTED,
+                capability="role_versions_list",
+                reason="not_wired",
+                error_type=CapabilityNotSupportedError.__name__,
+            )
             raise CapabilityNotSupportedError(
                 "role_versions_list",
                 "OrgMutationService not wired on app_state",
             )
         fn = getattr(self._org, "list_role_versions", None)
         if not callable(fn):
+            logger.warning(
+                ORG_CAPABILITY_UNSUPPORTED,
+                capability="role_versions_list",
+                reason="not_exposed",
+                error_type=CapabilityNotSupportedError.__name__,
+            )
             raise CapabilityNotSupportedError(
                 "role_versions_list",
                 "OrgMutationService does not expose list_role_versions",
@@ -659,12 +702,24 @@ class RoleVersionService:
                 ``get_role_version``.
         """
         if self._org is None:
+            logger.warning(
+                ORG_CAPABILITY_UNSUPPORTED,
+                capability="role_versions_get",
+                reason="not_wired",
+                error_type=CapabilityNotSupportedError.__name__,
+            )
             raise CapabilityNotSupportedError(
                 "role_versions_get",
                 "OrgMutationService not wired on app_state",
             )
         fn = getattr(self._org, "get_role_version", None)
         if not callable(fn):
+            logger.warning(
+                ORG_CAPABILITY_UNSUPPORTED,
+                capability="role_versions_get",
+                reason="not_exposed",
+                error_type=CapabilityNotSupportedError.__name__,
+            )
             raise CapabilityNotSupportedError(
                 "role_versions_get",
                 "OrgMutationService does not expose get_role_version",
