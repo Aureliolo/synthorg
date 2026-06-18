@@ -1,10 +1,11 @@
 """ISO 8601 marshalling helpers for persistence repositories.
 
-Strict pair for round-tripping timestamps through ISO 8601 strings
-(SQLite TEXT columns, JSON envelopes, settings ``updated_at``).  Naive
-datetimes are rejected: a naive value at this layer is a programming
-bug, and the server's session time zone would otherwise corrupt the
-instant.  For the relaxed "naive is UTC" semantics, use
+The strict round-tripping pair (:func:`parse_iso_utc` /
+:func:`format_iso_utc`) is defined in :mod:`synthorg.core.iso_datetime`
+and re-exported here so persistence repositories keep their existing
+import surface. Naive datetimes are rejected: a naive value at this layer
+is a programming bug, and the server's session time zone would otherwise
+corrupt the instant.  For the relaxed "naive is UTC" semantics, use
 :func:`synthorg.persistence._shared.normalize_utc`.
 
 The :func:`coerce_row_timestamp` dispatcher accepts either flavour
@@ -14,56 +15,9 @@ either type depending on connection configuration (SQLite TEXT vs
 ``detect_types``; Postgres ``TIMESTAMPTZ`` vs legacy ISO strings).
 """
 
-from datetime import UTC, datetime
+from datetime import datetime
 
-
-def parse_iso_utc(value: str) -> datetime:
-    """Parse an ISO 8601 string to a tz-aware UTC datetime.
-
-    Delegates to :py:meth:`datetime.datetime.fromisoformat`, which
-    accepts only numeric UTC offsets (e.g. ``+00:00``, ``-05:00``,
-    ``+01:30``) or the ``Z`` suffix (Zulu, equivalent to ``+00:00``).
-    IANA timezone names like ``Europe/Zurich`` or ``UTC`` are *not*
-    accepted by ``fromisoformat`` and will raise ``ValueError``;
-    callers that need to ingest such input must convert to an offset
-    representation first (e.g. via ``ZoneInfo`` + ``isoformat()``).
-
-    Args:
-        value: An ISO 8601 string with explicit timezone information,
-            either a numeric UTC offset (``+00:00``, ``-05:00``, ...) or
-            the ``Z`` suffix.  Naive timestamps are rejected.
-
-    Returns:
-        A tz-aware datetime normalized to UTC via
-        :py:meth:`~datetime.datetime.astimezone`.
-
-    Raises:
-        ValueError: If ``value`` is not a parseable ISO 8601 string,
-            or parses to a naive datetime.
-    """
-    parsed = datetime.fromisoformat(value)
-    if parsed.tzinfo is None:
-        msg = f"timestamp must be timezone-aware, got naive value {value!r}"
-        raise ValueError(msg)
-    return parsed.astimezone(UTC)
-
-
-def format_iso_utc(value: datetime) -> str:
-    """Format a tz-aware datetime as a UTC ISO 8601 string.
-
-    Args:
-        value: A tz-aware datetime.
-
-    Returns:
-        ISO 8601 string with a ``+00:00`` offset suffix.
-
-    Raises:
-        ValueError: If ``value`` is naive (``tzinfo`` is ``None``).
-    """
-    if value.tzinfo is None:
-        msg = f"timestamp must be timezone-aware, got naive datetime {value!r}"
-        raise ValueError(msg)
-    return value.astimezone(UTC).isoformat()
+from synthorg.core.iso_datetime import format_iso_utc, parse_iso_utc
 
 
 def coerce_row_timestamp(value: object) -> datetime:
