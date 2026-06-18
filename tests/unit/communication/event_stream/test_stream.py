@@ -5,7 +5,10 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.communication.event_stream.stream import EventStreamHub
+from synthorg.communication.event_stream.stream import (
+    EventStreamHub,
+    EventStreamSubscription,
+)
 from synthorg.communication.event_stream.types import AgUiEventType, StreamEvent
 
 _TS = datetime(2026, 4, 13, tzinfo=UTC)
@@ -25,10 +28,10 @@ def _make_event(
 
 @pytest.mark.unit
 class TestEventStreamHub:
-    async def test_subscribe_returns_queue(self) -> None:
+    async def test_subscribe_returns_subscription(self) -> None:
         hub = EventStreamHub()
         queue = await hub.subscribe("session-abc")
-        assert isinstance(queue, asyncio.Queue)
+        assert isinstance(queue, EventStreamSubscription)
 
     async def test_publish_delivers_to_subscriber(self) -> None:
         hub = EventStreamHub()
@@ -59,15 +62,15 @@ class TestEventStreamHub:
     async def test_unsubscribe_removes_queue(self) -> None:
         hub = EventStreamHub()
         queue = await hub.subscribe("session-abc")
-        await hub.unsubscribe("session-abc", queue)
+        await hub.unsubscribe(queue)
         event = _make_event()
         await hub.publish(event)
         assert queue.empty()
 
     async def test_unsubscribe_unknown_session_no_error(self) -> None:
         hub = EventStreamHub()
-        queue: asyncio.Queue[StreamEvent] = asyncio.Queue()
-        await hub.unsubscribe("nonexistent", queue)
+        subscription = EventStreamSubscription("nonexistent", asyncio.Queue())
+        await hub.unsubscribe(subscription)
 
     async def test_publish_to_session_with_no_subscribers(self) -> None:
         hub = EventStreamHub()
@@ -142,7 +145,7 @@ class TestEventStreamHubRaceConditions:
         n_subscribers = 100
         barrier = asyncio.Barrier(n_subscribers)
 
-        async def subscribe_under_barrier() -> asyncio.Queue[StreamEvent]:
+        async def subscribe_under_barrier() -> EventStreamSubscription:
             await barrier.wait()
             return await hub.subscribe("race-session")
 
@@ -165,7 +168,7 @@ class TestEventStreamHubRaceConditions:
         async def subscribe_then_unsubscribe() -> None:
             await barrier.wait()
             queue = await hub.subscribe("race-session")
-            await hub.unsubscribe("race-session", queue)
+            await hub.unsubscribe(queue)
 
         async def publish_repeatedly() -> None:
             await barrier.wait()

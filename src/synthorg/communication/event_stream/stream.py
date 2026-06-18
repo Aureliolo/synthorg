@@ -89,6 +89,61 @@ class _Subscriber:
     last_active: float = field()
 
 
+class EventStreamSubscription:
+    """Opaque handle to a session's event stream.
+
+    Returned by :meth:`EventStreamHub.subscribe`. Callers consume events
+    via :meth:`get` and release the subscription through
+    :meth:`EventStreamHub.unsubscribe`, so the hub's internal
+    ``asyncio.Queue`` never crosses the boundary.
+    """
+
+    __slots__ = ("_queue", "session_id")
+
+    def __init__(
+        self,
+        session_id: str,
+        queue: asyncio.Queue[StreamEvent],
+    ) -> None:
+        self.session_id = session_id
+        self._queue = queue
+
+    async def get(self) -> StreamEvent:
+        """Await the next event delivered to this subscription.
+
+        Returns:
+            The next :class:`StreamEvent` for the subscription's session.
+        """
+        return await self._queue.get()
+
+    def get_nowait(self) -> StreamEvent:
+        """Return the next buffered event without blocking.
+
+        Returns:
+            The next :class:`StreamEvent`.
+
+        Raises:
+            asyncio.QueueEmpty: When no event is currently buffered.
+        """
+        return self._queue.get_nowait()
+
+    def empty(self) -> bool:
+        """Return whether the subscription has no buffered events.
+
+        Returns:
+            ``True`` when no event is currently buffered.
+        """
+        return self._queue.empty()
+
+    def qsize(self) -> int:
+        """Return the number of currently buffered events.
+
+        Returns:
+            The buffered-event count.
+        """
+        return self._queue.qsize()
+
+
 class EventStreamHub:
     """In-memory pub/sub hub for real-time event streaming.
 
@@ -407,14 +462,16 @@ class EventStreamHub:
     async def subscribe(
         self,
         session_id: str,
-    ) -> asyncio.Queue[StreamEvent]:
+    ) -> EventStreamSubscription:
         """Subscribe to events for a session.
 
         Args:
             session_id: Session to subscribe to.
 
         Returns:
-            An asyncio queue that will receive events for this session.
+            An :class:`EventStreamSubscription` handle that delivers
+            events for this session. The backing queue stays internal to
+            the hub.
         """
         queue: asyncio.Queue[StreamEvent] = asyncio.Queue(
             maxsize=self._max_queue_size,
@@ -422,19 +479,19 @@ class EventStreamHub:
         subscriber = _Subscriber(queue=queue, last_active=self._clock.monotonic())
         async with self._lock_for_current_loop():
             self._subscribers.setdefault(session_id, []).append(subscriber)
-        return queue
+        return EventStreamSubscription(session_id, queue)
 
     async def unsubscribe(
         self,
-        session_id: str,
-        queue: asyncio.Queue[StreamEvent],
+        subscription: EventStreamSubscription,
     ) -> None:
-        """Remove a subscriber queue.
+        """Remove a subscription.
 
         Args:
-            session_id: Session the queue belongs to.
-            queue: The queue to remove.
+            subscription: The handle returned by :meth:`subscribe`.
         """
+        session_id = subscription.session_id
+        queue = subscription._queue  # noqa: SLF001 -- same-module internal access
         async with self._lock_for_current_loop():
             subs = self._subscribers.get(session_id)
             if subs is None:
