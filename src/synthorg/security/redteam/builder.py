@@ -33,6 +33,7 @@ from synthorg.security.redteam.grounding.factory import build_grounding_checker
 from synthorg.security.redteam.grounding.resolver import (
     GroundingSubstrateResolver,
 )
+from synthorg.security.redteam.protocol import RedTeamReportRepository
 from synthorg.security.redteam.report_repo import InMemoryRedTeamReportRepository
 from synthorg.security.redteam.runner import AgentEngineRunner
 from synthorg.security.redteam.tools.submit_report import SubmitRedTeamReportTool
@@ -63,7 +64,7 @@ class RedTeamToolSeed(NamedTuple):
     are ``None`` and ``extra_tools`` is an empty tuple.
     """
 
-    report_repo: InMemoryRedTeamReportRepository | None
+    report_repo: RedTeamReportRepository | None
     submit_tool: SubmitRedTeamReportTool | None
     extra_tools: tuple[BaseTool, ...]
 
@@ -115,7 +116,7 @@ class RedTeamRuntime(NamedTuple):
 
     submit_tool: SubmitRedTeamReportTool
     gate: RedTeamGateService
-    report_repo: InMemoryRedTeamReportRepository
+    report_repo: RedTeamReportRepository
     runner: AgentEngineRunner
     on_missing_deliverable: Literal["block", "skip"]
 
