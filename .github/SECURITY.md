@@ -52,7 +52,7 @@ This project is designed to handle LLM API keys, sandboxed code execution, and a
 - **Trivy** scans container images (CRITICAL = hard fail, HIGH = warn-only)
 - **Cosign** keyless image signing for supply-chain integrity (GHCR)
 - **Hadolint** lints all Dockerfiles (backend, web, sandbox) in CI + pre-commit hook
-- **Chainguard Python** distroless runtime (non-root, CIS Docker Benchmark v1.6.0 hardened)
+- **Wolfi apko-composed** distroless runtime (non-root, CIS Docker Benchmark v1.6.0 hardened)
 
 ### Workflow & Supply Chain Security
 

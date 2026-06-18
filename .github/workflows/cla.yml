@@ -235,6 +235,15 @@ jobs:
       # the failing cla-check run on the PR's head SHA, flipping the gate
       # green without waiting for a fresh push. Mirrors the rerun
       # behaviour the bundled action provides on its issue_comment path.
+      #
+      # Justification for keeping this on GITHUB_TOKEN rather than the
+      # minted App token: the release-bot App installation is scoped to
+      # ``contents`` only (it signs CLA commits via the Git Data API), so
+      # routing the re-run through the App token would require widening the
+      # App's installation permissions to include ``actions`` -- a broader,
+      # less auditable grant than this single ``actions: write`` on the
+      # workflow's own ephemeral GITHUB_TOKEN, which is confined to this
+      # release-environment job and expires with the run.
       actions: write
     steps:
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf

@@ -122,7 +122,11 @@ jobs:
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.cache/pre-commit
-          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+          # Hash install_cli_tools.sh too: the language:system hooks (vale,
+          # lychee, golangci-lint) resolve binaries provisioned by that
+          # script, so a toolchain version bump there must bust the cached
+          # hook environments alongside a config change.
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml', 'scripts/install_cli_tools.sh') }}
       - name: All pre-commit-stage gates over the whole tree
         run: uv run pre-commit run --all-files --hook-stage pre-commit --show-diff-on-failure --color always
       - name: All pre-push-stage gates over the whole tree
@@ -357,7 +361,7 @@ jobs:
     # backstop above the session timeout, for the rare case where pytest
     # itself wedges (e.g. a collection hang) before the session timer can
     # fire; it should never be the primary signal.
-    timeout-minutes: 9
+    timeout-minutes: 7
     permissions:
       contents: read
     strategy:
@@ -430,7 +434,7 @@ jobs:
             -m unit \
             -n auto \
             --max-worker-restart=0 \
-            --session-timeout 420 \
+            --session-timeout 300 \
             --splits 4 \
             --group ${{ matrix.shard }} \
             --durations-path .test_durations.unit \

@@ -39,11 +39,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: Build Preview
+  metadata:
+    name: Resolve PR metadata
     if: github.event_name == 'workflow_dispatch' || github.event.action != 'closed'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read
@@ -102,13 +102,28 @@ jobs:
             echo "same_repo=$SAME_REPO"
           } >> "$GITHUB_OUTPUT"
 
+  build:
+    name: Build Preview
+    needs: metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Untrusted PR code executes in this job (the zensical / Astro builds run
+    # repository scripts from the PR head). It is deliberately isolated:
+    # ``contents: read`` is the only granted scope and no step references a
+    # repository secret, so a malicious PR build cannot exfiltrate a
+    # privileged token. PR-metadata resolution (which needs a ``gh`` token)
+    # lives in the separate ``metadata`` job; the deploy job consumes the
+    # built artifact and never re-runs PR code.
+    permissions:
+      contents: read
+    steps:
       # zizmor: ignore[untrusted-checkout]; intentional: preview builds require
-      # PR code. Mitigated: no secrets in this job, contents:read + pull-requests:read
-      # only, persist-credentials:false. Deploy job uses artifacts, not checkout.
+      # PR code. Mitigated: no secrets in this job, contents:read only,
+      # persist-credentials:false. Deploy job uses artifacts, not checkout.
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
           persist-credentials: false
-          ref: ${{ steps.pr.outputs.head_sha }}
+          ref: ${{ needs.metadata.outputs.head_sha }}
 
       # --- Zensical (documentation at /docs) ---
       - name: Set up Python
@@ -227,8 +242,8 @@ jobs:
       # --- Inject preview banner ---
       - name: Inject preview banner
         env:
-          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
-          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          PR_NUMBER: ${{ needs.metadata.outputs.pr_number }}
+          HEAD_SHA: ${{ needs.metadata.outputs.head_sha }}
         run: |
           python3 << 'PYEOF'
           import os, pathlib, re
@@ -288,8 +303,8 @@ jobs:
 
   deploy-preview:
     name: Deploy Preview
-    needs: build
-    if: needs.build.outputs.same_repo == 'true'
+    needs: [metadata, build]
+    if: needs.metadata.outputs.same_repo == 'true'
     runs-on: ubuntu-latest
     environment: cloudflare-preview
     timeout-minutes: 5
@@ -327,8 +342,8 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          PR_NUMBER: ${{ needs.build.outputs.pr_number }}
-          HEAD_SHA: ${{ needs.build.outputs.head_sha }}
+          PR_NUMBER: ${{ needs.metadata.outputs.pr_number }}
+          HEAD_SHA: ${{ needs.metadata.outputs.head_sha }}
         run: |
           npm ci --ignore-scripts --prefix .github
           npx --prefix .github wrangler pages deploy _site \
@@ -341,9 +356,9 @@ jobs:
       - name: Comment preview URL
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          PREVIEW_URL: "https://pr-${{ needs.build.outputs.pr_number }}.synthorg-pr-preview.pages.dev"
-          PR_NUMBER: ${{ needs.build.outputs.pr_number }}
-          HEAD_SHA: ${{ needs.build.outputs.head_sha }}
+          PREVIEW_URL: "https://pr-${{ needs.metadata.outputs.pr_number }}.synthorg-pr-preview.pages.dev"
+          PR_NUMBER: ${{ needs.metadata.outputs.pr_number }}
+          HEAD_SHA: ${{ needs.metadata.outputs.head_sha }}
         with:
           script: |
             const url = process.env.PREVIEW_URL;

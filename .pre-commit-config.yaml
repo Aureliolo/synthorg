@@ -94,7 +94,7 @@ repos:
         name: license compatibility (no AGPL/GPL; LGPL attributed in NOTICE)
         entry: uv run python scripts/check_license_compat.py
         language: system
-        files: ^(pyproject\.toml|uv\.lock|cli/go\.(mod|sum)|NOTICE|scripts/check_license_compat\.py)$
+        files: ^(pyproject\.toml|uv\.lock|cli/go\.(mod|sum)|web/package\.json|web/package-lock\.json|NOTICE|scripts/check_license_compat\.py)$
         pass_filenames: false
         stages: [pre-push]
   - repo: https://github.com/pre-commit/pre-commit-hooks
