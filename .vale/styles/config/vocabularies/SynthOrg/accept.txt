@@ -652,6 +652,8 @@ pytest
 pyzmq
 queryable
 radiogroup
+ranker's
+rankers
 rate_limit
 rc
 reachability
@@ -820,6 +822,7 @@ undecryptable
 undercounted
 underperforming
 underspecified
+unencrypted
 ungated
 unheadered
 unimported
