@@ -199,39 +199,39 @@ class KnowledgeService:
         project_id = identity.project_id or search_project_id
         if project_id is None:
             return
-        recorded = 0
-        for hit in hits:
-            citation = hit.citation
-            try:
-                await self._usage_records.append(
-                    KnowledgeUsageRecord(
-                        task_id=identity.task_id,
-                        execution_id=identity.execution_id,
-                        project_id=project_id,
-                        source_id=citation.source_id,
-                        chunk_id=citation.chunk_id,
-                        content_hash=citation.content_hash,
-                        recorded_at=self._clock.now(),
-                    )
-                )
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                logger.warning(
-                    KNOWLEDGE_USAGE_RECORD_FAILED,
-                    execution_id=identity.execution_id,
-                    source_id=citation.source_id,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                continue
-            recorded += 1
-        if recorded:
-            logger.debug(
-                KNOWLEDGE_USAGE_RECORDED,
-                execution_id=identity.execution_id,
+        records = tuple(
+            KnowledgeUsageRecord(
                 task_id=identity.task_id,
-                count=recorded,
+                execution_id=identity.execution_id,
+                project_id=project_id,
+                source_id=hit.citation.source_id,
+                chunk_id=hit.citation.chunk_id,
+                content_hash=hit.citation.content_hash,
+                recorded_at=self._clock.now(),
             )
+            for hit in hits
+        )
+        try:
+            # One batched write per search instead of an append per hit
+            # (the previous N+1). Best-effort: a usage-capture failure must
+            # never fail the search it instruments.
+            await self._usage_records.append_many(records)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                KNOWLEDGE_USAGE_RECORD_FAILED,
+                execution_id=identity.execution_id,
+                count=len(records),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return
+        logger.debug(
+            KNOWLEDGE_USAGE_RECORDED,
+            execution_id=identity.execution_id,
+            task_id=identity.task_id,
+            count=len(records),
+        )
 
     async def list_sources(
         self,

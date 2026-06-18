@@ -83,6 +83,41 @@ class PostgresKnowledgeUsageRecordRepository:
             )
             raise QueryError(msg) from exc
 
+    async def append_many(self, records: tuple[KnowledgeUsageRecord, ...]) -> None:
+        """Persist many usage records in one transaction (ADR-0001 D7).
+
+        Raises:
+            DuplicateRecordError: If any record id already exists.
+            QueryError: If the database query fails.
+        """
+        if not records:
+            return
+        count = len(records)
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.executemany(
+                    _INSERT_SQL, [self._to_row(record) for record in records]
+                )
+                await conn.commit()
+        except psycopg.errors.UniqueViolation as exc:
+            msg = f"Duplicate id among {count} knowledge usage records"
+            logger.warning(
+                PERSISTENCE_KNOWLEDGE_USAGE_SAVE_FAILED,
+                record_count=count,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise DuplicateRecordError(msg) from exc
+        except psycopg.Error as exc:
+            msg = f"Failed to save {count} knowledge usage records"
+            logger.warning(
+                PERSISTENCE_KNOWLEDGE_USAGE_SAVE_FAILED,
+                record_count=count,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+
     async def query(
         self,
         filter_spec: KnowledgeUsageFilterSpec,

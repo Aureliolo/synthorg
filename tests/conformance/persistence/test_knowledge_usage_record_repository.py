@@ -79,6 +79,33 @@ class TestKnowledgeUsageRecordRepository:
         )
         assert [r.record_id for r in by_project] == ["b"]
 
+    async def test_append_many_persists_all(self, backend: PersistenceBackend) -> None:
+        records = tuple(
+            _record(record_id=f"batch-{i}", source_id=f"src-{i}") for i in range(5)
+        )
+        await backend.knowledge_usage_records.append_many(records)
+
+        page = await backend.knowledge_usage_records.query(
+            KnowledgeUsageFilterSpec(execution_id=NotBlankStr("exec-001")),
+        )
+        assert {r.record_id for r in page} == {f"batch-{i}" for i in range(5)}
+
+    async def test_append_many_empty_is_noop(self, backend: PersistenceBackend) -> None:
+        await backend.knowledge_usage_records.append_many(())
+        page = await backend.knowledge_usage_records.query(KnowledgeUsageFilterSpec())
+        assert page == ()
+
+    async def test_append_many_duplicate_id_raises(
+        self, backend: PersistenceBackend
+    ) -> None:
+        with pytest.raises(DuplicateRecordError):
+            await backend.knowledge_usage_records.append_many(
+                (
+                    _record(record_id="same"),
+                    _record(record_id="same", source_id="other"),
+                ),
+            )
+
     async def test_append_duplicate_id_raises(
         self, backend: PersistenceBackend
     ) -> None:
