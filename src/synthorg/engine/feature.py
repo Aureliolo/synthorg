@@ -21,6 +21,7 @@ from synthorg._core.features import (
     FeatureModule,
 )
 from synthorg.api.controllers.brownfield import BrownfieldController
+from synthorg.api.controllers.decomposition import DecompositionController
 from synthorg.api.controllers.evaluation_config_versions import (
     EvaluationConfigVersionController,
 )
@@ -58,6 +59,7 @@ FEATURE: FeatureModule = FeatureManifest(
         WorkflowExecutionController,
         SubworkflowController,
         EvaluationConfigVersionController,
+        DecompositionController,
         # Mounted unconditionally: their work-entry adapters wire during
         # startup (after route assembly), so a predicate read at mount
         # time would always be False and the controller would never mount
@@ -92,6 +94,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "wire_real_brownfield_entry",
         "build_mcp_self_consumer",
         "build_coordinator",
+        "ManualDecompositionStrategy",
         "build_stakes_router",
         "build_work_pipeline",
         "ForecastGate",

@@ -25,6 +25,7 @@
 
 ENFORCED AgentEngine #1956 -- runtime root; construct at boot behind the provider switch
 ENFORCED build_coordinator #1958 -- called by workers.runtime_builder.build_runtime_services behind the provider switch
+ENFORCED ManualDecompositionStrategy #2404 -- constructed in api/controllers/decomposition.py::DecompositionController.decompose_manual over a caller-authored plan; runs through DecompositionService to validate + classify + assess a hand-built subtask breakdown served by POST /tasks/{task_id}/decompose
 ENFORCED ApprovalGate #1957 -- one gate wired at boot in lifecycle_builder, injected into AgentEngine; engine parks, /approvals resumes
 ENFORCED TrustService #1957 -- built at boot (non-DISABLED strategy), injected into AgentEngine; narrows tool permissions at the invoker seam
 ENFORCED build_mcp_self_consumer #1957 -- called in runtime_builder; agent invokes SynthOrg's own MCP tools trust-scoped with actor fail-closed

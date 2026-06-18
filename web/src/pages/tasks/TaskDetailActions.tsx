@@ -1,7 +1,9 @@
-import { Loader2 } from 'lucide-react'
+import { Loader2, Workflow } from 'lucide-react'
+import { Link } from 'react-router'
 import { Button } from '@/components/ui/button'
 import type { TaskStatus } from '@/api/types/enums'
 import type { Task } from '@/api/types/tasks'
+import { ROUTES } from '@/router/routes'
 import { getAvailableTransitions, getTaskStatusLabel } from '@/utils/tasks'
 
 interface TaskDetailActionsProps {
@@ -43,6 +45,12 @@ export function TaskDetailActions(props: TaskDetailActionsProps) {
       )}
 
       <div className="flex items-center justify-end gap-2 border-t border-border pt-4">
+        <Button variant="outline" size="sm" asChild>
+          <Link to={ROUTES.TASK_DECOMPOSE.replace(':taskId', task.id)}>
+            <Workflow />
+            Decompose
+          </Link>
+        </Button>
         {task.status !== 'cancelled' && task.status !== 'completed' && (
           <Button variant="outline" size="sm" onClick={onRequestCancel}>
             Cancel Task

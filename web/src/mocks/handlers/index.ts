@@ -59,6 +59,7 @@ import { companyHandlers } from './company'
 import { connectionsHandlers } from './connections'
 import { coordinationHandlers } from './coordination'
 import { customRulesHandlers } from './custom-rules'
+import { decompositionHandlers } from './decomposition'
 import { deliverableReceiptsHandlers } from './deliverableReceipts'
 import { escalationsHandlers } from './escalations'
 import { experimentsHandlers } from './experiments'
@@ -127,6 +128,7 @@ export const defaultHandlers = [
   ...connectionsHandlers,
   ...coordinationHandlers,
   ...customRulesHandlers,
+  ...decompositionHandlers,
   ...deliverableReceiptsHandlers,
   ...escalationsHandlers,
   ...experimentsHandlers,

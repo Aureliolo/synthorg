@@ -122,6 +122,8 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "custom_rules.preview": (30, 60),
     "custom_rules.toggle": (30, 60),
     "custom_rules.update": (30, 60),
+    # decomposition (manual task decomposition)
+    "decomposition.manual": (20, 60),
     # departments
     "departments.create": (10, 60),
     "departments.delete": (5, 60),

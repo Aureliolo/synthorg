@@ -4908,6 +4908,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/tasks/{task_id}/decompose": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** DecomposeManual */
+        readonly post: operations["ApiV1TasksTaskIdDecomposeDecomposeManual"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/tasks/{task_id}/execute": {
         readonly parameters: {
             readonly query?: never;
@@ -6288,6 +6305,19 @@ export type components = {
         /** ApiResponse[CreatedApiKeyResponse] */
         readonly ApiResponse_CreatedApiKeyResponse_: {
             readonly data: components["schemas"]["CreatedApiKeyResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[DecompositionResult] */
+        readonly ApiResponse_DecompositionResult_: {
+            readonly data: components["schemas"]["DecompositionResult"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /**
@@ -10045,6 +10075,32 @@ export type components = {
              */
             readonly entry_kind: "decision";
         };
+        /**
+         * DecompositionPlan
+         * @description Executed decomposition plan
+         */
+        readonly DecompositionPlan: {
+            readonly coordination_topology: components["schemas"]["CoordinationTopology"];
+            /** @description ID of the task being decomposed */
+            readonly parent_task_id: string;
+            /** @description Ordered subtask definitions */
+            readonly subtasks: readonly components["schemas"]["SubtaskDefinition"][];
+            readonly task_structure: components["schemas"]["TaskStructure"];
+        };
+        /** DecompositionResult */
+        readonly DecompositionResult: {
+            /** @description Task objects created from subtask definitions */
+            readonly created_tasks: readonly components["schemas"]["Task"][];
+            /**
+             * @description Directed edges (from_id, to_id) in the DAG
+             * @default []
+             */
+            readonly dependency_edges: readonly (readonly [
+                string,
+                string
+            ])[];
+            readonly plan: components["schemas"]["DecompositionPlan"];
+        };
         /** DeliverableReceipt */
         readonly DeliverableReceipt: {
             /** @description Replayable cassette reference, when recording was active */
@@ -11813,6 +11869,45 @@ export type components = {
         readonly LoginRequest: {
             readonly password: string;
             readonly username: string;
+        };
+        /** ManualDecomposeRequest */
+        readonly ManualDecomposeRequest: {
+            readonly coordination_topology?: components["schemas"]["CoordinationTopology"];
+            /**
+             * @description Maximum nesting depth
+             * @default 3
+             */
+            readonly max_depth: number;
+            /**
+             * @description Maximum number of subtasks allowed
+             * @default 10
+             */
+            readonly max_subtasks: number;
+            /** @description Hand-authored subtask specifications */
+            readonly subtasks: readonly components["schemas"]["ManualSubtaskSpec"][];
+        };
+        /** ManualSubtaskSpec */
+        readonly ManualSubtaskSpec: {
+            /**
+             * @description Labels of subtasks this one depends on
+             * @default []
+             */
+            readonly dependencies: readonly string[];
+            /** @description Detailed subtask description */
+            readonly description: string;
+            readonly estimated_complexity?: components["schemas"]["Complexity"];
+            /** @description Caller-chosen subtask label (unique within the request) */
+            readonly label: string;
+            /** @description Optional role name for routing */
+            readonly required_role?: string | null;
+            /**
+             * @description Skill IDs needed for routing
+             * @default []
+             */
+            readonly required_skills: readonly string[];
+            readonly stakes?: components["schemas"]["Stakes"];
+            /** @description Short subtask title */
+            readonly title: string;
         };
         /**
          * MeetingAgenda
@@ -16145,6 +16240,34 @@ export type components = {
              */
             readonly quotas: readonly components["schemas"]["QuotaLimit"][];
         };
+        /** SubtaskDefinition */
+        readonly SubtaskDefinition: {
+            /**
+             * @description IDs of subtasks this one depends on
+             * @default []
+             */
+            readonly dependencies: readonly string[];
+            /** @description Detailed subtask description */
+            readonly description: string;
+            readonly estimated_complexity: components["schemas"]["Complexity"];
+            /** @description Unique subtask identifier */
+            readonly id: string;
+            /** @description Optional role name for routing */
+            readonly required_role: string | null;
+            /**
+             * @description Skill IDs needed for routing
+             * @default []
+             */
+            readonly required_skills: readonly string[];
+            /**
+             * @description Tags needed for multi-faceted routing match
+             * @default []
+             */
+            readonly required_tags: readonly string[];
+            readonly stakes: components["schemas"]["Stakes"];
+            /** @description Short subtask title */
+            readonly title: string;
+        };
         /** SubworkflowSummary */
         readonly SubworkflowSummary: {
             /**
@@ -16356,6 +16479,7 @@ export type components = {
          *
          *     Used by the decomposition engine to determine coordination topology
          *     and execution ordering. See the Engine design page.
+         * @default sequential
          * @enum {string}
          */
         readonly TaskStructure: "sequential" | "parallel" | "mixed";
@@ -28657,6 +28781,41 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ApiResponse_CoordinationResultResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1TasksTaskIdDecomposeDecomposeManual: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly task_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ManualDecomposeRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_DecompositionResult_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

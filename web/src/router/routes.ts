@@ -16,6 +16,7 @@ export const ROUTES = {
   ROLE_VERSIONS: '/roles/:roleName/versions',
   TASKS: '/tasks',
   TASK_DETAIL: '/tasks/:taskId',
+  TASK_DECOMPOSE: '/tasks/:taskId/decompose',
   BUDGET: '/budget',
   BUDGET_FORECAST: '/budget/forecast',
   REPORTS: '/reports',
