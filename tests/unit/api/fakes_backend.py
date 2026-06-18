@@ -549,6 +549,19 @@ class _FakePresetOverrideRepo:
     async def save(self, entity: PresetOverride) -> None:
         self._overrides[entity.preset_name] = entity
 
+    async def save_if_unchanged(
+        self,
+        entity: PresetOverride,
+        *,
+        expected_updated_at: datetime | None,
+    ) -> bool:
+        existing = self._overrides.get(entity.preset_name)
+        observed = existing.updated_at if existing is not None else None
+        if observed != expected_updated_at:
+            return False
+        self._overrides[entity.preset_name] = entity
+        return True
+
     async def delete(self, entity_id: NotBlankStr) -> bool:
         return self._overrides.pop(entity_id, None) is not None
 

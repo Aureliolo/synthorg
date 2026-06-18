@@ -70,6 +70,9 @@ PROVIDER_PRESET_OVERRIDE_UPDATED: Final[str] = (
 PROVIDER_PRESET_OVERRIDE_DELETED: Final[str] = (
     "provider.management.preset_override_deleted"
 )
+PROVIDER_PRESET_OVERRIDE_UPDATE_CONFLICT: Final[str] = (
+    "provider.management.preset_override_update_conflict"
+)
 
 # ── Provider model discovery ───────────────────────────────
 

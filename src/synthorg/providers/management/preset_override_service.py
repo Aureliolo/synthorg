@@ -22,10 +22,12 @@ from datetime import UTC, datetime
 
 from pydantic import JsonValue
 
+from synthorg.core.domain_errors import ConflictError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
     PROVIDER_PRESET_OVERRIDE_DELETED,
+    PROVIDER_PRESET_OVERRIDE_UPDATE_CONFLICT,
     PROVIDER_PRESET_OVERRIDE_UPDATED,
     PROVIDER_VALIDATION_FAILED,
 )
@@ -101,6 +103,8 @@ class PresetOverrideService:
             ProviderValidationError: When the preset name is unknown
                 or the override shape conflicts with the preset's
                 kind (cloud vs local).
+            ConflictError: When a concurrent operator patched the same
+                preset between this call's read and write.
         """
         preset = get_preset(preset_name)
         if preset is None:
@@ -119,7 +123,28 @@ class PresetOverrideService:
         merged = self._build_merged(preset_name, existing, updates, actor)
         self._validate_against_preset(preset, merged)
 
-        await self._repo.save(merged)
+        # Optimistic-concurrency conditional write: the read above and
+        # the write are separated by awaits, so two concurrent operators
+        # patching the same preset could otherwise lose one update. The
+        # repo guards on the row still carrying the ``updated_at`` we
+        # read (or no row, when we read none); a lost race surfaces a
+        # typed conflict the caller can retry rather than silently
+        # clobbering the winner (Slot 39 CAS).
+        written = await self._repo.save_if_unchanged(
+            merged,
+            expected_updated_at=existing.updated_at if existing is not None else None,
+        )
+        if not written:
+            msg = (
+                f"Preset override {preset_name!r} was modified concurrently;"
+                f" re-read and retry the patch"
+            )
+            logger.warning(
+                PROVIDER_PRESET_OVERRIDE_UPDATE_CONFLICT,
+                preset_name=preset_name,
+                error_type=ConflictError.__name__,
+            )
+            raise ConflictError(msg)
         logger.info(
             PROVIDER_PRESET_OVERRIDE_UPDATED,
             preset_name=preset_name,

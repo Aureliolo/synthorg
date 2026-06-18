@@ -6,6 +6,7 @@ state transition and the audit-row emission.
 """
 
 from datetime import UTC, datetime
+from typing import override
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -25,6 +26,7 @@ from synthorg.api.dto_provider_capabilities import (
 )
 from synthorg.api.state import AppState
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig, RootConfig
+from synthorg.core.domain_errors import ConflictError
 from synthorg.core.resilience_config import RateLimiterConfig
 from synthorg.persistence.provider_audit_protocol import ProviderAuditFilterSpec
 from synthorg.providers.enums import AuthType
@@ -89,6 +91,19 @@ class _FakeOverrideRepo:
 
     async def save(self, override: PresetOverride) -> None:
         self.store[override.preset_name] = override
+
+    async def save_if_unchanged(
+        self,
+        override: PresetOverride,
+        *,
+        expected_updated_at: datetime | None,
+    ) -> bool:
+        existing = self.store.get(override.preset_name)
+        observed = existing.updated_at if existing is not None else None
+        if observed != expected_updated_at:
+            return False
+        self.store[override.preset_name] = override
+        return True
 
     async def delete(self, preset_name: str) -> bool:
         return self.store.pop(preset_name, None) is not None
@@ -768,6 +783,32 @@ class TestPresetOverrideService:
         # Delete with no row present.
         result = await service.delete_override("test-cloud-provider", actor=actor)
         assert result is False
+
+    async def test_upsert_lost_race_raises_conflict(
+        self,
+        actor: ProviderAuditActor,
+        stub_preset_lookup: str,
+    ) -> None:
+        # A concurrent writer shifts the stored row's ``updated_at``
+        # between this caller's read and conditional write: the CAS
+        # must fail rather than clobber the winner.
+        class _RacingRepo(_FakeOverrideRepo):
+            @override
+            async def save_if_unchanged(
+                self,
+                override: PresetOverride,
+                *,
+                expected_updated_at: datetime | None,
+            ) -> bool:
+                return False
+
+        service = PresetOverrideService(_RacingRepo())
+        with pytest.raises(ConflictError, match="modified concurrently"):
+            await service.upsert_override(
+                stub_preset_lookup,
+                PresetOverrideUpdateRequest(base_url="https://api.example.com/v1"),
+                actor=actor,
+            )
 
 
 @pytest.mark.unit
