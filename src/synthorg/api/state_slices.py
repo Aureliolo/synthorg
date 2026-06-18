@@ -102,8 +102,8 @@ class AppStateSliceMixin:
 
         The replacement is atomic under the slice lock: a reader that already
         holds the old slice keeps its references, and the next ``slice`` call
-        returns the new one (the same whole-old-or-new guarantee the legacy
-        per-service swap seams provided).
+        returns the new one (a whole-old-or-new guarantee, never a partially
+        updated slice).
 
         Args:
             state_slice: The replacement slice, keyed by its concrete type.

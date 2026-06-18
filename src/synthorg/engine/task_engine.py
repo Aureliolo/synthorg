@@ -768,7 +768,7 @@ class TaskEngine(TaskEngineLoopsMixin):
         """Reject negative or ill-composed pagination before touching the repo.
 
         ``offset > 0`` without a matching ``limit`` is rejected: the
-        legacy fallback computes ``total = len(tasks)``, which would
+        no-limit path computes ``total = len(tasks)``, which would
         undercount the full cardinality once the offset has skipped
         leading rows.  Callers that want offset must pass an explicit
         ``limit`` so the engine can route through the paginated branch
@@ -886,15 +886,15 @@ class TaskEngine(TaskEngineLoopsMixin):
         Callers that pass ``limit`` get the requested window straight
         out of the repository (no 10k safety truncation because the
         repo itself bounds the result).  Callers that pass ``limit=None``
-        keep the legacy behaviour: fetch everything and apply the
-        ``_MAX_LIST_RESULTS`` safety cap in-memory as defense-in-depth.
+        receive all results, capped in-memory by ``_MAX_LIST_RESULTS``
+        as defense-in-depth.
 
         Args:
             status: Filter by status.
             assigned_to: Filter by assignee.
             project: Filter by project.
-            limit: Max rows to return; ``None`` retains the safety-capped
-                "fetch all" semantics for legacy callers.
+            limit: Max rows to return; ``None`` returns all rows under
+                the in-memory safety cap.
             offset: Rows to skip before the returned window.
             include_total: When ``True`` issue an additional ``count_tasks``
                 call and return the true total; when ``False`` the
@@ -924,7 +924,7 @@ class TaskEngine(TaskEngineLoopsMixin):
         )
 
         # When the caller paginates at the repo layer, ``tasks`` is
-        # already bounded by the repo's safety cap. For the legacy
+        # already bounded by the repo's safety cap. For the
         # ``limit=None`` (fetch-all) path, ``_fetch_tasks`` pre-clamps
         # to ``_MAX_LIST_RESULTS`` at the repo layer so ``len(tasks)``
         # is the post-cap count, not the true total -- issuing an

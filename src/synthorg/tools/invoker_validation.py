@@ -86,7 +86,7 @@ class ToolInvokerValidationMixin:
             callers MUST pass this dict to ``tool.execute`` instead of
             the raw ``tool_call.arguments`` so the typed-boundary
             promise actually reaches the tool body.
-          * ``None`` when there is no ``args_model`` and the legacy
+          * ``None`` when there is no ``args_model`` and the tool's
             JSON-Schema check passed; callers fall back to the raw
             deepcopied arguments.
         """
@@ -152,7 +152,7 @@ class ToolInvokerValidationMixin:
         tool: BaseTool,
         tool_call: ToolCall,
     ) -> ToolResult | None:
-        """Validate ``tool_call.arguments`` against the legacy JSON Schema.
+        """Validate ``tool_call.arguments`` against the tool's JSON Schema.
 
         Returns:
             The resulting ``ToolResult``, or ``None`` when unavailable.

@@ -76,10 +76,10 @@ async def try_mid_execution_resume(
     :attr:`ApprovalItem.source` discriminator (fixed at creation), not
     a live parked-context probe: ``PARKED_CONTEXT`` means this flow
     owns the decision, anything else falls through to the review gate.
-    The legacy ``has_parked_context`` probe is kept only as a logged
-    fallback for the degenerate case where the just-decided approval
-    cannot be re-read (it should always be present here, since the
-    caller persisted the decision immediately before).
+    The ``has_parked_context`` probe is used only as a logged fallback
+    for the degenerate case where the just-decided approval cannot be
+    re-read (it should always be present here, since the caller
+    persisted the decision immediately before).
 
     Returns ``True`` when the mid-execution flow is responsible for
     this approval so the caller does not also run the review-gate

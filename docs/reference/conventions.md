@@ -863,6 +863,50 @@ Active preview opt-ins:
 When adding a new preview rule, list it in `extend-select` and keep
 the `explicit-preview-rules = true` flag; never remove that flag.
 
+## 32. `<service>_of(app_state)` slice accessors
+
+Each feature package exposes module-level `<service>_of(app_state)`
+helpers (e.g. `cost_tracker_of` in `budget/state.py`) that resolve a
+wired collaborator off its `BaseFeatureStateSlice` or raise a 503 when
+it is absent. Controllers and MCP handlers call these accessors rather
+than reaching into `app_state.slice(XStateSlice).field` directly: the
+accessor centralises the "not wired yet" failure into one typed 503 and
+keeps the slice's internal field shape private to its owning package.
+Name the accessor `<noun>_of` after the service it returns.
+
+## 33. `_wire_*` vs `_try_wire_*` startup wiring naming
+
+On-startup wiring helpers follow a two-name contract:
+
+* `_wire_<x>` MUST succeed: a failure is a wiring bug and propagates,
+  failing the boot.
+* `_try_wire_<x>` is best-effort and idempotent: it attaches durable
+  collaborators that only exist once a backend is connected (e.g.
+  `_try_wire_performance_persistence` attaches metric repos to the
+  construction-phase tracker), logs an `_UNAVAILABLE` event and returns
+  cleanly when its dependency is absent so a persistence-less boot
+  (tests / dev) degrades instead of crashing.
+
+Pick the prefix by whether a missing dependency is a defect (`_wire_`)
+or an expected degraded mode (`_try_wire_`).
+
+## 34. `set_slice` / `swap_slice` / `wire` semantics
+
+`AppState` composes feature state slices under one lock with three
+distinct write seams:
+
+* `set_slice(slice)` -- install a slice **once** at boot; raises if a
+  slice of that type is already composed. Use for the initial
+  construction-phase install.
+* `swap_slice(slice)` -- hot-**replace** a whole slice atomically (the
+  next `slice()` read returns the new one; readers holding the old
+  reference keep it). Use when an entire slice is rebuilt at runtime.
+* `wire(SliceType, field=service)` -- field-level swap: read-copy-update
+  a single field on the (possibly absent) slice atomically. Use to
+  install one service into its owning slice without disturbing siblings
+  already wired onto it. `set_field_once` / `wire_if_field_absent` are
+  the once-only and if-absent variants for race-sensitive single fields.
+
 ## See also
 
 * [persistence-boundary.md](persistence-boundary.md): repository /

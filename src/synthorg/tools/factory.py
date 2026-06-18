@@ -956,10 +956,9 @@ def build_default_tools_from_config(  # noqa: PLR0913
     # Trust the resolved ``web_request_timeout`` the caller passed;
     # the registry resolution + ``settings.value.resolved`` audit log
     # already fired upstream at the ``ConfigResolver`` boundary.
-    # ``config.web.request_timeout`` is the legacy YAML knob that the
-    # bridge composer still reads, but the registry value wins so a
-    # runtime tuning of the setting takes effect without needing the
-    # YAML edit.
+    # ``config.web.request_timeout`` is the YAML-sourced value that the
+    # bridge composer reads, but the registry value wins so a runtime
+    # tuning of the setting takes effect without needing the YAML edit.
     web_policy: NetworkPolicy | None = (
         config.web.network_policy if config.web is not None else None
     )

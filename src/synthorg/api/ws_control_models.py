@@ -43,9 +43,9 @@ class WsAuthMessage(BaseModel):
 class WsSubscribeMessage(BaseModel):
     """Subscribe to a list of channels with optional filter overrides.
 
-    Filter semantics mirror the legacy dict-based contract:
-    ``filters=None`` (key absent) leaves existing filters untouched,
-    ``filters={}`` clears them, ``filters={...}`` replaces them.
+    Filter semantics: ``filters=None`` (key absent) leaves existing
+    filters untouched, ``filters={}`` clears them, ``filters={...}``
+    replaces them.
 
     Attributes:
         action: Discriminator literal (always ``"subscribe"``).
