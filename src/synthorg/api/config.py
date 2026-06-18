@@ -157,6 +157,7 @@ class RateLimitConfig(BaseModel):
             namespace=SettingNamespace.API,
             key="max_rpm_default",
             parse=parse_int,
+            only_if_env_set=True,
         ),
     )
 

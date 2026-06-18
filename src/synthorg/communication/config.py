@@ -305,6 +305,7 @@ class MeetingsConfig(BaseModel):
             namespace=SettingNamespace.COMMUNICATION,
             key="meetings_enabled",
             parse=parse_bool,
+            only_if_env_set=True,
         ),
     )
 

@@ -100,41 +100,48 @@ class SecurityConfig(BaseModel):
             namespace=SettingNamespace.SECURITY,
             key="enabled",
             parse=parse_bool,
+            only_if_env_set=True,
         ),
         MirrorField(
             field="audit_enabled",
             namespace=SettingNamespace.SECURITY,
             key="audit_enabled",
             parse=parse_bool,
+            only_if_env_set=True,
         ),
         MirrorField(
             field="post_tool_scanning_enabled",
             namespace=SettingNamespace.SECURITY,
             key="post_tool_scanning_enabled",
             parse=parse_bool,
+            only_if_env_set=True,
         ),
         MirrorField(
             field="output_scan_policy_type",
             namespace=SettingNamespace.SECURITY,
             key="output_scan_policy_type",
+            only_if_env_set=True,
         ),
         MirrorField(
             field="audit_retention_days",
             namespace=SettingNamespace.SECURITY,
             key="audit_retention_days",
             parse=parse_int,
+            only_if_env_set=True,
         ),
         MirrorField(
             field="audit_retention_loop_enabled",
             namespace=SettingNamespace.SECURITY,
             key="audit_retention_loop_enabled",
             parse=parse_bool,
+            only_if_env_set=True,
         ),
         MirrorField(
             field="audit_retention_tick_seconds",
             namespace=SettingNamespace.SECURITY,
             key="audit_retention_tick_seconds",
             parse=parse_float,
+            only_if_env_set=True,
         ),
     )
 
