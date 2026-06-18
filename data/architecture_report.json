@@ -1058,8 +1058,8 @@
     },
     "src/synthorg/providers/base.py": {
       "cap": 500,
-      "loc": 502,
-      "ratio": 1.004,
+      "loc": 490,
+      "ratio": 0.98,
       "tier": "code"
     },
     "src/synthorg/providers/cassette/store.py": {
@@ -1271,7 +1271,7 @@
     "synthorg.core.autonomy_enums": 36,
     "synthorg.core.boundary": 27,
     "synthorg.core.clock": 170,
-    "synthorg.core.critical_errors": 523,
+    "synthorg.core.critical_errors": 524,
     "synthorg.core.domain_errors": 210,
     "synthorg.core.effective_autonomy": 22,
     "synthorg.core.error_taxonomy": 61,
@@ -1322,7 +1322,7 @@
     "synthorg.meta.mcp.registry": 30,
     "synthorg.meta.mcp.tool_builder": 22,
     "synthorg.meta.models": 64,
-    "synthorg.observability": 1586,
+    "synthorg.observability": 1587,
     "synthorg.observability.background_tasks": 21,
     "synthorg.observability.events.api": 169,
     "synthorg.observability.events.chief_of_staff": 29,
@@ -1337,7 +1337,7 @@
     "synthorg.observability.events.memory": 55,
     "synthorg.observability.events.meta": 56,
     "synthorg.observability.events.ontology": 21,
-    "synthorg.observability.events.provider": 37,
+    "synthorg.observability.events.provider": 38,
     "synthorg.observability.events.security": 72,
     "synthorg.observability.events.settings": 35,
     "synthorg.observability.events.tool": 24,
