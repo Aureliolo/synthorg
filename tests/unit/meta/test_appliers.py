@@ -106,29 +106,77 @@ def _proposal_architecture(
 # -- ConfigApplier ----------------------------------------------
 
 
+class _FakeSettingValue:
+    def __init__(self, value: str) -> None:
+        self.value = value
+
+
+class _FakeSettingsWriter:
+    """In-memory settings double recording set() calls."""
+
+    def __init__(self, *, fail_on: tuple[str, str] | None = None) -> None:
+        self.store: dict[tuple[str, str], str] = {}
+        self._fail_on = fail_on
+        self.sets: list[tuple[str, str, str]] = []
+
+    async def get(self, namespace: str, key: str) -> object:
+        return _FakeSettingValue(self.store.get((namespace, key), ""))
+
+    async def set(self, namespace: str, key: str, value: str) -> object:
+        if self._fail_on == (namespace, key):
+            msg = f"boom on {namespace}/{key}"
+            raise ValueError(msg)
+        self.store[(namespace, key)] = value
+        self.sets.append((namespace, key, value))
+        return _FakeSettingValue(value)
+
+
 class TestConfigApplier:
     def test_altitude(self) -> None:
         assert ConfigApplier().altitude == ProposalAltitude.CONFIG_TUNING
 
-    async def test_apply_success(self) -> None:
+    async def test_apply_without_writer_rejects(self) -> None:
         applier = ConfigApplier()
         proposal = _proposal_config(
-            ConfigChange(
-                path="a.b",
-                old_value=1,
-                new_value=2,
-                description="d",
-            ),
-            ConfigChange(
-                path="c.d",
-                old_value=3,
-                new_value=4,
-                description="d",
-            ),
+            ConfigChange(path="a.b", old_value=1, new_value=2, description="d"),
+        )
+        result = await applier.apply(proposal)
+        assert not result.success
+        assert "settings writer" in (result.error_message or "")
+
+    async def test_apply_persists_each_change(self) -> None:
+        writer = _FakeSettingsWriter()
+        applier = ConfigApplier(settings_writer=writer)
+        proposal = _proposal_config(
+            ConfigChange(path="a.b", old_value=1, new_value=2, description="d"),
+            ConfigChange(path="c.d", old_value=3, new_value=4, description="d"),
         )
         result = await applier.apply(proposal)
         assert result.success
         assert result.changes_applied == 2
+        assert writer.store[("a", "b")] == "2"
+        assert writer.store[("c", "d")] == "4"
+
+    async def test_apply_rolls_back_on_failure(self) -> None:
+        writer = _FakeSettingsWriter(fail_on=("c", "d"))
+        writer.store[("a", "b")] = "1"
+        applier = ConfigApplier(settings_writer=writer)
+        proposal = _proposal_config(
+            ConfigChange(path="a.b", old_value=1, new_value=2, description="d"),
+            ConfigChange(path="c.d", old_value=3, new_value=4, description="d"),
+        )
+        result = await applier.apply(proposal)
+        assert not result.success
+        # The first change was applied then rolled back to its prior value.
+        assert writer.store[("a", "b")] == "1"
+
+    async def test_apply_rejects_non_namespaced_path(self) -> None:
+        applier = ConfigApplier(settings_writer=_FakeSettingsWriter())
+        proposal = _proposal_config(
+            ConfigChange(path="flat", new_value=1, description="d"),
+        )
+        result = await applier.apply(proposal)
+        assert not result.success
 
     async def test_dry_run_without_provider_rejects(self) -> None:
         applier = ConfigApplier()

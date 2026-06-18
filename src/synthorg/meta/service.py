@@ -16,7 +16,10 @@ from synthorg.meta._service_config import _SECRET_PATHS, _redact_secrets
 from synthorg.meta._service_lifecycle import SelfImprovementLifecycleMixin
 from synthorg.meta._service_rollout import SelfImprovementRolloutMixin
 from synthorg.meta.appliers.architecture_applier import ArchitectureApplierContext
-from synthorg.meta.appliers.config_applier import ConfigProvider
+from synthorg.meta.appliers.config_applier import (
+    ConfigProvider,
+    SettingsWritePort,
+)
 from synthorg.meta.appliers.prompt_applier import PromptApplierContext
 from synthorg.meta.chief_of_staff.outcome_store import MemoryBackendOutcomeStore
 from synthorg.meta.chief_of_staff.protocol import ConfidenceAdjuster
@@ -130,6 +133,7 @@ class SelfImprovementService(
         memory_backend: MemoryBackend | None = None,
         provider: BaseCompletionProvider | None = None,
         config_provider: ConfigProvider | None = None,
+        settings_writer: SettingsWritePort | None = None,
         prompt_context: PromptApplierContext | None = None,
         architecture_context: ArchitectureApplierContext | None = None,
         clock: Clock | None = None,
@@ -167,6 +171,7 @@ class SelfImprovementService(
         self._appliers = build_appliers(
             config,
             config_provider=config_provider,
+            settings_writer=settings_writer,
             prompt_context=prompt_context,
             architecture_context=architecture_context,
         )

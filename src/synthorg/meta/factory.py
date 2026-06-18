@@ -20,6 +20,7 @@ from synthorg.meta.appliers.architecture_applier import (
 from synthorg.meta.appliers.config_applier import (
     ConfigApplier,
     ConfigProvider,
+    SettingsWritePort,
 )
 from synthorg.meta.appliers.prompt_applier import (
     PromptApplier,
@@ -205,6 +206,7 @@ def build_appliers(
     config: SelfImprovementConfig | None = None,
     *,
     config_provider: ConfigProvider | None = None,
+    settings_writer: SettingsWritePort | None = None,
     prompt_context: PromptApplierContext | None = None,
     architecture_context: ArchitectureApplierContext | None = None,
 ) -> Mapping[ProposalAltitude, ProposalApplier]:
@@ -218,6 +220,9 @@ def build_appliers(
             ``RootConfig``.  Required for ``ConfigApplier.dry_run``
             to validate changes; callers that do not provide it get
             an applier whose ``dry_run`` returns an explicit error.
+        settings_writer: Settings read/write seam threaded into the
+            ``ConfigApplier`` so its ``apply`` persists changes; ``None``
+            leaves ``apply`` rejecting proposals with an explicit error.
         prompt_context: Read-only view of prompt-scope targets.
             Required for ``PromptApplier.dry_run``.
         architecture_context: Read-only view of role / department /
@@ -230,6 +235,7 @@ def build_appliers(
     appliers: dict[ProposalAltitude, ProposalApplier] = {
         ProposalAltitude.CONFIG_TUNING: ConfigApplier(
             config_provider=config_provider,
+            settings_writer=settings_writer,
         ),
         ProposalAltitude.ARCHITECTURE: ArchitectureApplier(
             context=architecture_context,
