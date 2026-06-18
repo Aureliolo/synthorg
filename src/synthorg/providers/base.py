@@ -39,7 +39,7 @@ from ._call_instrumentation import (
     record_call_success,
     record_cost_if_in_scope,
 )
-from ._resilience import rate_limited_call, resilient_execute
+from ._resilience import aclose_quietly, rate_limited_call, resilient_execute
 from ._validation import validate_messages, validate_model
 from .capabilities import ModelCapabilities
 from .enums import StreamEventType
@@ -383,24 +383,7 @@ class BaseCompletionProvider(ABC):
                     usage = chunk.usage
                 yield chunk
         finally:
-            inner_aclose = getattr(iterator, "aclose", None)
-            if inner_aclose is not None:
-                try:
-                    await inner_aclose()
-                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                    # The inner close is cleanup-only and the slot release
-                    # already runs in the rate-limit wrapper's own
-                    # ``finally``; a failure here must not mask the
-                    # in-flight ``GeneratorExit`` (early close) nor the
-                    # natural stream-exhaustion path.
-                    reraise_critical(exc)
-                    logger.warning(
-                        PROVIDER_STREAM_USAGE_EXPECTED,
-                        model=model,
-                        note="inner stream aclose failed during cleanup",
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
-                    )
+            await aclose_quietly(iterator, model=model)
         if usage is not None:
             await record_cost_if_in_scope(
                 # Usage-only synthetic: the streamed content is not

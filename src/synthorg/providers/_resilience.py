@@ -10,9 +10,43 @@ functions the base class delegates to from ``complete`` / ``stream`` /
 
 from collections.abc import AsyncIterator, Callable, Coroutine
 
+from synthorg.core.critical_errors import reraise_critical
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.provider import PROVIDER_STREAM_CLOSE_FAILED
+
 from .errors import RateLimitError
 from .resilience.rate_limiter import RateLimiter
 from .resilience.retry import RetryHandler
+
+logger = get_logger(__name__)
+
+
+async def aclose_quietly(iterator: object, *, model: str) -> None:
+    """Close *iterator* if it supports ``aclose``, swallowing non-critical errors.
+
+    Cleanup-only helper for the cost-recording stream wrapper: the slot
+    release already runs in :func:`rate_limited_call`'s own ``finally``,
+    so a failure here must not mask the in-flight ``GeneratorExit`` (early
+    consumer close) nor the natural stream-exhaustion path. Critical
+    errors still propagate; everything else is logged.
+
+    Args:
+        iterator: The object whose ``aclose`` to drive when present.
+        model: Model identifier for the close-failure log context.
+    """
+    inner_aclose = getattr(iterator, "aclose", None)
+    if inner_aclose is None:
+        return
+    try:
+        await inner_aclose()
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            PROVIDER_STREAM_CLOSE_FAILED,
+            model=model,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
 
 
 async def resilient_execute[T](
