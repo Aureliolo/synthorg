@@ -39,14 +39,13 @@ from synthorg.providers.errors import (
     ProviderValidationError,
 )
 from synthorg.providers.management._capability_helpers import (
-    SYSTEM_ACTOR,
     credentials_update_fields,
+    provider_actor_from_context,
 )
 from synthorg.providers.management.audit_service import ProviderAuditService
 from synthorg.providers.management.capability_dtos import (
     AddModelRequest,
     CredentialsRotateRequest,
-    ProviderAuditActor,
     ProviderAuditEventType,
     RateLimitsResponse,
     RateLimitsUpdateRequest,
@@ -152,13 +151,15 @@ class ProviderCapabilitiesMixin:
         *,
         provider_name: str,
         event_type: ProviderAuditEventType,
-        actor: ProviderAuditActor | None = None,
         payload: dict[str, JsonValue] | None = None,
     ) -> None:
         """Emit one provider audit event if the audit service is wired.
 
-        No-op when ``self._audit_service is None`` so legacy bootstrap
-        paths keep working unchanged.  Audit failures NEVER propagate
+        The acting identity is resolved from the actor-context seam
+        (``provider_actor_from_context``): a human mutation binds its
+        actor at the HTTP boundary, and background paths fall back to
+        the system sentinel. No-op when ``self._audit_service is None``
+        so bootstrap paths run unchanged. Audit failures NEVER propagate
         out of a mutation: the mutation has already succeeded by the
         time we reach here, and a downstream audit row failing must
         not roll back the persisted provider change.  Failures are
@@ -172,7 +173,7 @@ class ProviderCapabilitiesMixin:
             await self._audit_service.record(
                 provider_name=provider_name,
                 event_type=event_type,
-                actor=actor or SYSTEM_ACTOR,
+                actor=provider_actor_from_context(),
                 payload=dict(payload) if payload else {},
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
@@ -189,8 +190,6 @@ class ProviderCapabilitiesMixin:
         self: _ServiceProtocol,
         name: str,
         request: AddModelRequest,
-        *,
-        actor: ProviderAuditActor | None = None,
     ) -> ProviderConfig:
         """Add a single ``ProviderModelConfig`` to the persisted list.
 
@@ -244,7 +243,6 @@ class ProviderCapabilitiesMixin:
         await self._audit(  # type: ignore[attr-defined]
             provider_name=name,
             event_type="model_added",
-            actor=actor,
             payload={"model_id": new_model.id, "alias": new_model.alias},
         )
         return updated
@@ -253,8 +251,6 @@ class ProviderCapabilitiesMixin:
         self: _ServiceProtocol,
         name: str,
         request: SyncModelsRequest,
-        *,
-        actor: ProviderAuditActor | None = None,
     ) -> SyncModelsResponse:
         """Re-run discovery + pricing enrichment and merge with persisted.
 
@@ -386,7 +382,6 @@ class ProviderCapabilitiesMixin:
         await self._audit(  # type: ignore[attr-defined]
             provider_name=name,
             event_type="models_synced",
-            actor=actor,
             payload={
                 "added_count": len(added),
                 "removed_count": len(removed),
@@ -426,7 +421,6 @@ class ProviderCapabilitiesMixin:
         flagged_at: datetime,
         last_seen: date | None = None,
         successor_model_id: str | None = None,
-        actor: ProviderAuditActor | None = None,
     ) -> ProviderConfig:
         """Mark configured models stale without deleting them.
 
@@ -446,7 +440,6 @@ class ProviderCapabilitiesMixin:
             last_seen: Last date the ids were observed, when known.
             successor_model_id: Suggested replacement applied to each
                 flagged id, when one was identified.
-            actor: Audit actor; defaults to the system actor.
 
         Returns:
             The updated ``ProviderConfig`` (unchanged when nothing
@@ -501,7 +494,6 @@ class ProviderCapabilitiesMixin:
         await self._audit(  # type: ignore[attr-defined]
             provider_name=name,
             event_type="model_flagged_stale",
-            actor=actor,
             payload={
                 "reason": reason,
                 "model_ids": sorted(flagged),
@@ -513,8 +505,6 @@ class ProviderCapabilitiesMixin:
         self: _ServiceProtocol,
         name: str,
         request: CredentialsRotateRequest,
-        *,
-        actor: ProviderAuditActor | None = None,
     ) -> ProviderConfig:
         """Rotate the secret credentials on an existing provider.
 
@@ -568,7 +558,6 @@ class ProviderCapabilitiesMixin:
         await self._audit(  # type: ignore[attr-defined]
             provider_name=name,
             event_type="provider_credentials_rotated",
-            actor=actor,
             payload={
                 "auth_type": existing.auth_type.value,
                 "masked_secret": masked_secret,
@@ -597,8 +586,6 @@ class ProviderCapabilitiesMixin:
         self: _ServiceProtocol,
         name: str,
         request: RateLimitsUpdateRequest,
-        *,
-        actor: ProviderAuditActor | None = None,
     ) -> RateLimitsResponse:
         """Apply a partial update to a provider's rate-limit config.
 
@@ -653,7 +640,6 @@ class ProviderCapabilitiesMixin:
         await self._audit(  # type: ignore[attr-defined]
             provider_name=name,
             event_type="provider_rate_limits_updated",
-            actor=actor,
             payload={
                 "fields_changed": sorted(updates.keys()),
                 **updates,

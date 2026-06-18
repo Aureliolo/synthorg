@@ -170,6 +170,27 @@ def resolve_decided_by(explicit: str | None = None) -> str:
     return actor.label or actor.actor_id
 
 
+def resolve_actor_label(default: str) -> str:
+    """Return the bound actor's display identity, or *default* if unbound.
+
+    The non-raising counterpart of :func:`resolve_decided_by`: a leaf
+    that attributes provenance but tolerates a human-less background
+    path (e.g. an automated apply loop) gets *default* instead of an
+    exception. The bound actor's ``label`` (else ``actor_id``) is used
+    so the value matches what callers historically threaded.
+
+    Args:
+        default: Attribution to use when no actor is bound.
+
+    Returns:
+        The bound actor's display identity, or *default*.
+    """
+    actor = _actor_var.get()
+    if actor is None:
+        return default
+    return actor.label or actor.actor_id
+
+
 def clear_actor() -> None:
     """Remove any bound actor from the current context."""
     _actor_var.set(None)
