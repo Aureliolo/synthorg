@@ -11,14 +11,14 @@ conflicts instead of raw persistence-layer constraint strings.
 
 from typing import NoReturn
 
-from synthorg.core.domain_errors import ConflictError
-from synthorg.core.persistence_errors import ConstraintViolationError
-from synthorg.persistence.constraint_tokens import (
+from synthorg.core.constraint_tokens import (
     IDX_SINGLE_CEO,
     LAST_CEO_TRIGGER,
     LAST_OWNER_TRIGGER,
     USERS_USERNAME_UNIQUE,
 )
+from synthorg.core.domain_errors import ConflictError
+from synthorg.core.persistence_errors import ConstraintViolationError
 
 
 class DuplicateUsernameError(ConflictError):

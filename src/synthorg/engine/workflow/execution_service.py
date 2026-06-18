@@ -13,6 +13,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from synthorg.core.pagination import DEFAULT_LIST_LIMIT
 from synthorg.core.registry import (
     StrategyFactoryNotFoundError,
 )
@@ -76,7 +77,6 @@ from synthorg.observability.events.workflow_execution import (
     WORKFLOW_EXEC_SUBWORKFLOW_FRAME_PUSHED,
     WORKFLOW_EXEC_SUBWORKFLOW_NODE_COMPLETED,
 )
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 if TYPE_CHECKING:
     from synthorg.persistence.workflow_definition_protocol import (

@@ -8,6 +8,7 @@ persistence to the injected repository.
 
 from datetime import UTC, datetime
 
+from synthorg.core.pagination import DEFAULT_LIST_LIMIT
 from synthorg.core.persistence_errors import (
     PersistenceVersionConflictError,
     RecordNotFoundError,
@@ -44,7 +45,6 @@ from synthorg.observability.events.workflow_execution import (
 )
 from synthorg.observability.metrics_hub import record_workflow_execution
 from synthorg.observability.tracing.instrumentation import get_tracer
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 from synthorg.persistence.workflow_execution_protocol import (
     WorkflowExecutionFilterSpec,
     WorkflowExecutionRepository,

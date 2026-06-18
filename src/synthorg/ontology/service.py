@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.pagination import collect_all_mapping
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
     ONTOLOGY_BOOTSTRAP_COMPLETED,
@@ -20,7 +21,6 @@ from synthorg.ontology.models import (
     EntitySource,
     EntityTier,
 )
-from synthorg.persistence._shared import collect_all_mapping
 from synthorg.persistence.ontology_protocol import OntologyEntityRepository
 from synthorg.versioning.models import VersionSnapshot
 from synthorg.versioning.service import VersioningService

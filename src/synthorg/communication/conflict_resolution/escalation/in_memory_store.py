@@ -20,6 +20,7 @@ from synthorg.communication.conflict_resolution.escalation.models import (
 from synthorg.communication.conflict_resolution.escalation.protocol import (
     EscalationQueueStore,
 )
+from synthorg.core.iso_datetime import parse_iso_utc
 from synthorg.observability import get_logger
 from synthorg.observability.events.conflict import (
     CONFLICT_ESCALATION_CANCELLED,
@@ -28,7 +29,6 @@ from synthorg.observability.events.conflict import (
     CONFLICT_ESCALATION_RESOLVED,
     CONFLICT_ESCALATION_STATUS_TRANSITIONED,
 )
-from synthorg.persistence._shared import parse_iso_utc
 
 logger = get_logger(__name__)
 

@@ -14,6 +14,7 @@ chain.
 from synthorg.api.auth.user_constraints import raise_for_user_constraint
 from synthorg.core.auth.models import User
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.pagination import DEFAULT_LIST_LIMIT
 from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -27,7 +28,6 @@ from synthorg.observability.events.security import (
     SECURITY_USER_DELETED,
     SECURITY_USER_UPDATED,
 )
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 from synthorg.persistence.auth_protocol import RefreshTokenRepository
 from synthorg.persistence.user_protocol import UserRepository
 
