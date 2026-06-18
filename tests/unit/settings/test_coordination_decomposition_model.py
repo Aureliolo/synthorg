@@ -34,12 +34,12 @@ def service() -> SettingsService:
 def test_decomposition_model_registered_mutable() -> None:
     defn = get_registry().get("coordination", "decomposition_model")
     assert defn is not None
-    assert defn.default == ""
+    assert defn.default == "example-medium-001"
     assert defn.read_only_post_init is False
     assert defn.restart_required is False
 
 
-async def test_decomposition_model_falls_back_to_unset_default(
+async def test_decomposition_model_falls_back_to_default(
     service: SettingsService,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -48,7 +48,7 @@ async def test_decomposition_model_falls_back_to_unset_default(
         raising=False,
     )
     value = await service.get("coordination", "decomposition_model")
-    assert value.value == ""
+    assert value.value == "example-medium-001"
 
 
 async def test_decomposition_model_resolves_through_env(

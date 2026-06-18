@@ -58,15 +58,16 @@ _r.register(
         namespace=SettingNamespace.COORDINATION,
         key="decomposition_model",
         type=SettingType.STRING,
-        default="",
+        default="example-medium-001",
         description=(
             "LLM model identifier the coordinator's task decomposition"
             " strategy invokes against the first registered provider."
-            " Empty (the default) is unset: the operator must configure a"
-            " real model before enabling the coordinator. Boot validation"
-            " rejects an empty value when coordination middleware is"
-            " enabled. Resolved at boot; a runtime change applies on the"
-            " next coordinator rebuild (provider re-init)."
+            " Must be non-blank: a provider-present boot builds the"
+            " coordinator eagerly and the decomposition strategy rejects"
+            " an empty model, so the default is a vendor-agnostic"
+            " placeholder operators override for their model catalogue."
+            " Resolved at boot; a runtime change applies on the next"
+            " coordinator rebuild (provider re-init)."
         ),
         group="General",
     )

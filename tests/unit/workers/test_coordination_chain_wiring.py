@@ -41,19 +41,13 @@ class TestBuildCoordinationChain:
         assert _build_coordination_chain(_app_state(section)) is None
 
     def test_enabled_builds_full_default_chain(self) -> None:
-        section = CoordinationSectionConfig(
-            enable_coordination_middleware=True,
-            decomposition_model="example-medium-001",
-        )
+        section = CoordinationSectionConfig(enable_coordination_middleware=True)
         chain = _build_coordination_chain(_app_state(section))
         assert chain is not None
         assert chain.names == DEFAULT_COORDINATION_CHAIN
 
     def test_noop_replan_is_safe_default(self) -> None:
-        section = CoordinationSectionConfig(
-            enable_coordination_middleware=True,
-            decomposition_model="example-medium-001",
-        )
+        section = CoordinationSectionConfig(enable_coordination_middleware=True)
         chain = _build_coordination_chain(_app_state(section))
         assert chain is not None
         assert isinstance(_replan_hook(chain), NoOpReplanHook)
@@ -62,16 +56,7 @@ class TestBuildCoordinationChain:
         section = CoordinationSectionConfig(
             enable_coordination_middleware=True,
             replan_strategy="magentic",
-            decomposition_model="example-medium-001",
         )
         chain = _build_coordination_chain(_app_state(section))
         assert chain is not None
         assert isinstance(_replan_hook(chain), MagenticReplanHook)
-
-    def test_enabled_without_decomposition_model_raises(self) -> None:
-        section = CoordinationSectionConfig(
-            enable_coordination_middleware=True,
-            decomposition_model="",
-        )
-        with pytest.raises(ValueError, match="decomposition_model must be set"):
-            _build_coordination_chain(_app_state(section))
