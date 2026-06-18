@@ -35,8 +35,11 @@ from synthorg.observability.events.workers import (
     WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED,
     WORKERS_TASK_QUEUE_CLAIM_PARSE_FAILED,
     WORKERS_TASK_QUEUE_CONNECT_FAILED,
+    WORKERS_TASK_QUEUE_CONSUMER_SETUP_FAILED,
+    WORKERS_TASK_QUEUE_DEAD_CONSUMER_SETUP_FAILED,
     WORKERS_TASK_QUEUE_DRAIN_FAILED,
     WORKERS_TASK_QUEUE_PUBLISH_TIMEOUT,
+    WORKERS_TASK_QUEUE_STREAM_SETUP_FAILED,
     WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED,
 )
 from synthorg.workers.config import QueueConfig
@@ -225,6 +228,11 @@ class JetStreamTaskQueue:
                     "JetStreamTaskQueue is unrestartable: prior stop() "
                     "exceeded the drain timeout; construct a fresh instance"
                 )
+                logger.warning(
+                    WORKERS_QUEUE_START_REJECTED,
+                    reason="unrestartable",
+                    error_type=BusUnrestartableError.__name__,
+                )
                 raise BusUnrestartableError(msg)
             if self._running:
                 logger.warning(
@@ -374,6 +382,11 @@ class JetStreamTaskQueue:
 
         if self._js is None:
             msg = "JetStream context not initialized"
+            logger.warning(
+                WORKERS_TASK_QUEUE_STREAM_SETUP_FAILED,
+                reason="jetstream_not_initialized",
+                error_type=BusStreamError.__name__,
+            )
             raise BusStreamError(msg)
 
         stream_config = StreamConfig(
@@ -399,6 +412,12 @@ class JetStreamTaskQueue:
                 f"Failed to set up task queue stream "
                 f"{self._queue_config.stream_name}: {safe_error_description(exc)}"
             )
+            logger.warning(
+                WORKERS_TASK_QUEUE_STREAM_SETUP_FAILED,
+                stream_name=self._queue_config.stream_name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise BusStreamError(
                 msg,
                 context={"stream": self._queue_config.stream_name},
@@ -420,6 +439,11 @@ class JetStreamTaskQueue:
 
         if self._js is None:
             msg = "JetStream context not initialized"
+            logger.warning(
+                WORKERS_TASK_QUEUE_CONSUMER_SETUP_FAILED,
+                reason="jetstream_not_initialized",
+                error_type=BusStreamError.__name__,
+            )
             raise BusStreamError(msg)
 
         subject = f"{self._queue_config.ready_subject_prefix}.>"
@@ -439,6 +463,13 @@ class JetStreamTaskQueue:
             )
         except NatsError as exc:
             msg = f"Failed to create task queue consumer {self._durable_name}: {safe_error_description(exc)}"  # noqa: E501
+            logger.warning(
+                WORKERS_TASK_QUEUE_CONSUMER_SETUP_FAILED,
+                consumer=self._durable_name,
+                stream_name=self._queue_config.stream_name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise BusStreamError(
                 msg,
                 context={
@@ -506,6 +537,10 @@ class JetStreamTaskQueue:
             BusStreamError: When the publish exceeds the deadline.
         """
         if self._js is None:
+            logger.warning(
+                WORKERS_QUEUE_NOT_RUNNING,
+                operation="publish_with_timeout",
+            )
             msg = "Task queue is not running"
             raise BusStreamError(msg)
         try:
@@ -670,6 +705,11 @@ class JetStreamTaskQueue:
 
         if self._js is None:
             msg = "JetStream context not initialized"
+            logger.warning(
+                WORKERS_TASK_QUEUE_DEAD_CONSUMER_SETUP_FAILED,
+                reason="jetstream_not_initialized",
+                error_type=BusStreamError.__name__,
+            )
             raise BusStreamError(msg)
 
         subject = f"{self._queue_config.dead_subject_prefix}.>"
@@ -692,6 +732,13 @@ class JetStreamTaskQueue:
             msg = (
                 f"Failed to create dead-letter consumer {durable}: "
                 f"{safe_error_description(exc)}"
+            )
+            logger.warning(
+                WORKERS_TASK_QUEUE_DEAD_CONSUMER_SETUP_FAILED,
+                consumer=durable,
+                stream_name=self._queue_config.stream_name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise BusStreamError(
                 msg,
