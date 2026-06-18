@@ -28,6 +28,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
     COMMUNICATION_MESSAGE_DELETE_FAILED,
 )
+from synthorg.persistence._shared.pagination import collect_all
 from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)
@@ -72,8 +73,13 @@ class MessageController(Controller):
         """
         app_state: AppState = state.app_state
         if channel is not None:
-            messages = await persistence_of(app_state).messages.get_history(
-                channel,
+            repo = persistence_of(app_state).messages
+            messages = await collect_all(
+                lambda fetch_limit, fetch_offset: repo.get_history(
+                    NotBlankStr(channel),
+                    limit=fetch_limit,
+                    offset=fetch_offset,
+                ),
             )
         else:
             messages = ()

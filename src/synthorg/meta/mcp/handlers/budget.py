@@ -14,6 +14,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.budget.state import budget_versions_service_of, cost_tracker_of
+from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.core.agent import (
     AgentIdentity,
 )
@@ -102,7 +103,8 @@ async def _budget_list_records(
         return err(exc)
 
     try:
-        records = await cost_tracker_of(app_state).get_records(
+        records = await collect_all_records(
+            cost_tracker_of(app_state),
             agent_id=args.agent_id,
             task_id=args.task_id,
         )

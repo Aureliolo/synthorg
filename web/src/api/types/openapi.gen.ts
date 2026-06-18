@@ -7405,19 +7405,6 @@ export type components = {
              */
             readonly success: boolean;
         };
-        /** ApiResponse[tuple[UpgradeRecommendationDTO, ...]] */
-        readonly "ApiResponse_tuple_UpgradeRecommendationDTO_..._": {
-            readonly data: readonly components["schemas"]["UpgradeRecommendationDTO"][] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
-            readonly success: boolean;
-        };
         /** ApiResponse[tuple[WebhookReceipt, ...]] */
         readonly "ApiResponse_tuple_WebhookReceipt_..._": {
             readonly data: readonly components["schemas"]["WebhookReceipt"][] | null;
@@ -13142,6 +13129,26 @@ export type components = {
         readonly PaginatedResponse_ThresholdRecommendation_: {
             /** @default [] */
             readonly data: readonly components["schemas"]["ThresholdRecommendation"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** PaginatedResponse[UpgradeRecommendationDTO] */
+        readonly PaginatedResponse_UpgradeRecommendationDTO_: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["UpgradeRecommendationDTO"][];
             /**
              * @description Data sources that failed gracefully (partial data)
              * @default []
@@ -25617,6 +25624,10 @@ export interface operations {
     readonly ApiV1ProvidersModelRefreshRecommendationsListRecommendations: {
         readonly parameters: {
             readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
                 readonly status?: "pending" | "approved" | "rejected" | "auto_applied" | null;
             };
             readonly header?: never;
@@ -25631,7 +25642,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_tuple_UpgradeRecommendationDTO_..._"];
+                    readonly "application/json": components["schemas"]["PaginatedResponse_UpgradeRecommendationDTO_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

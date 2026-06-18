@@ -317,6 +317,26 @@ class TestMessageRepository:
         history = await backend.messages.get_history("chan1", limit=2)
         assert len(history) == 2
 
+    async def test_get_history_offset_pages_deeper(
+        self, backend: PersistenceBackend
+    ) -> None:
+        for i in range(5):
+            await backend.messages.append(
+                make_message(
+                    msg_id=uuid4(),
+                    channel="chan1",
+                    content=f"m{i}",
+                    timestamp=datetime(2026, 4, 10, 12, i, tzinfo=UTC),
+                )
+            )
+        first = await backend.messages.get_history("chan1", limit=2, offset=0)
+        second = await backend.messages.get_history("chan1", limit=2, offset=2)
+        third = await backend.messages.get_history("chan1", limit=2, offset=4)
+        # Newest-first, so offsets walk from m4 down to m0 without overlap.
+        assert [m.text for m in first] == ["m4", "m3"]
+        assert [m.text for m in second] == ["m2", "m1"]
+        assert [m.text for m in third] == ["m0"]
+
     async def test_get_history_filters_by_channel(
         self, backend: PersistenceBackend
     ) -> None:

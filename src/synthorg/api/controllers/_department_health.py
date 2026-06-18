@@ -20,6 +20,7 @@ from synthorg.budget.currency import (
     assert_currencies_match,
 )
 from synthorg.budget.state import BudgetStateSlice
+from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.budget.trends import BucketSize, TrendDataPoint, bucket_cost_records
 from synthorg.config.agent_schema import AgentConfig
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
@@ -439,7 +440,8 @@ async def assemble_department_health(
                 _resolve_active_count(app_state, dept_name),
             )
             t_cost = tg.create_task(
-                cost_tracker.get_records(
+                collect_all_records(
+                    cost_tracker,
                     start=seven_days_ago,
                     end=now,
                 ),

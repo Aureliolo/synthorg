@@ -141,8 +141,9 @@ class PostgresMessageRepository:
         channel: str,
         *,
         limit: int = DEFAULT_LIST_LIMIT,
+        offset: int = 0,
     ) -> tuple[Message, ...]:
-        """Retrieve message history for a channel, newest first.
+        """Retrieve a bounded page of message history, newest first.
 
         Returns:
             Tuple of matching rows; empty when no rows match.
@@ -160,6 +161,14 @@ class PostgresMessageRepository:
                 error=msg,
             )
             raise QueryError(msg)
+        if offset < 0:
+            msg = f"offset must be non-negative, got {offset!r}"
+            logger.warning(
+                PERSISTENCE_MESSAGE_HISTORY_FAILED,
+                channel=channel,
+                error=msg,
+            )
+            raise QueryError(msg)
         sql = (
             'SELECT id, timestamp, sender, "to", type, priority, '
             "channel, content, attachments, metadata "
@@ -171,6 +180,9 @@ class PostgresMessageRepository:
         if limit is not None:
             sql += " LIMIT %s"
             params.append(limit)
+        if offset:
+            sql += " OFFSET %s"
+            params.append(offset)
 
         try:
             async with (

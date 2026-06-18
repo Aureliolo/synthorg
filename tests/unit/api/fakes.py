@@ -200,16 +200,20 @@ class FakeMessageRepository:
         channel: NotBlankStr,
         *,
         limit: int = 100,
+        offset: int = 0,
     ) -> tuple[Message, ...]:
         if limit < 1:
             msg = f"limit must be a positive integer, got {limit}"
+            raise QueryError(msg)
+        if offset < 0:
+            msg = f"offset must be non-negative, got {offset}"
             raise QueryError(msg)
         result = sorted(
             (m for m in self._messages if m.channel == channel),
             key=lambda m: m.timestamp,
             reverse=True,
         )
-        return tuple(result[:limit])
+        return tuple(result[offset : offset + limit])
 
     async def get_by_id(
         self,

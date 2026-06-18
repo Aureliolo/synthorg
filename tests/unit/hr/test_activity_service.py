@@ -202,18 +202,24 @@ def _perf_tracker(metrics: list[TaskMetricRecord]) -> PerformanceTracker:
 def _cost_tracker(records: list[CostRecord]) -> CostTrackerProtocol:
     """Autospec cost tracker filtering *records* by query window."""
 
-    async def _get(
+    async def _get(  # noqa: PLR0913 -- mirrors CostTrackerProtocol.get_records
         *,
-        agent_id: str | None,
+        agent_id: str | None = None,
+        task_id: str | None = None,
+        provider: str | None = None,
         start: datetime,
         end: datetime,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[CostRecord, ...]:
-        return tuple(
+        _ = (task_id, provider)
+        matched = tuple(
             r
             for r in records
             if (agent_id is None or str(r.agent_id) == agent_id)
             and start <= r.timestamp <= end
         )
+        return matched[offset : offset + limit]
 
     tracker: CostTrackerProtocol = mock_of[CostTrackerProtocol](
         get_records=AsyncMock(side_effect=_get)

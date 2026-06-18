@@ -30,6 +30,7 @@ from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY, assert_currencies_match
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.budget.state import BudgetStateSlice
+from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -354,9 +355,10 @@ class BudgetController(Controller):
         """
         app_state: AppState = state.app_state
         currency = await config_resolver_of(app_state).get_str("budget", "currency")
-        records = await require_service(
-            app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
-        ).get_records(
+        records = await collect_all_records(
+            require_service(
+                app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
+            ),
             agent_id=agent_id,
             task_id=task_id,
         )

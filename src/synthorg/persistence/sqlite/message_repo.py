@@ -187,8 +187,9 @@ INSERT INTO messages (
         channel: str,
         *,
         limit: int = DEFAULT_LIST_LIMIT,
+        offset: int = 0,
     ) -> tuple[Message, ...]:
-        """Retrieve message history for a channel, newest first.
+        """Retrieve a bounded page of message history, newest first.
 
         Returns:
             Tuple of matching rows; empty when no rows match.
@@ -198,6 +199,9 @@ INSERT INTO messages (
         """
         if limit is not None and limit < 1:
             msg = f"limit must be a positive integer, got {limit}"
+            raise QueryError(msg)
+        if offset < 0:
+            msg = f"offset must be non-negative, got {offset}"
             raise QueryError(msg)
         sql = """\
 SELECT id, timestamp, sender, "to", type, priority,
@@ -209,6 +213,11 @@ ORDER BY timestamp DESC"""
         if limit is not None:
             sql += " LIMIT ?"
             params.append(limit)
+        # SQLite requires a LIMIT clause before OFFSET; the protocol
+        # default keeps ``limit`` present so the OFFSET always has one.
+        if offset:
+            sql += " OFFSET ?"
+            params.append(offset)
 
         try:
             async with self._db.execute(sql, params) as cursor:

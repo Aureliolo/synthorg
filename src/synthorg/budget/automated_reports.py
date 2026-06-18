@@ -30,6 +30,7 @@ from synthorg.budget.reports import ReportGenerator
 from synthorg.budget.risk_record import RiskRecord
 from synthorg.budget.risk_tracker import RiskTracker
 from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.hr.performance.tracker import PerformanceTracker
@@ -119,7 +120,8 @@ class AutomatedReportService:
             since=start,
             until=end,
         )
-        cost_records = await self._cost_tracker.get_records(
+        cost_records = await collect_all_records(
+            self._cost_tracker,
             start=start,
             end=end,
         )
@@ -169,7 +171,8 @@ class AutomatedReportService:
                 generated_at=now,
             )
         # Fallback: cost records imply the task ran.
-        records = await self._cost_tracker.get_records(
+        records = await collect_all_records(
+            self._cost_tracker,
             start=start,
             end=end,
         )

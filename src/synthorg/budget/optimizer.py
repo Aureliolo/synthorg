@@ -35,6 +35,7 @@ from synthorg.budget.optimizer_models import (
     SpendingAnomaly,
 )
 from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.observability import get_logger
 from synthorg.observability.events.cfo import (
@@ -142,7 +143,8 @@ class CostOptimizer(_CostOptimizerRoutingMixin):
             raise ValueError(msg)
 
         now = datetime.now(UTC)
-        records = await self._cost_tracker.get_records(
+        records = await collect_all_records(
+            self._cost_tracker,
             start=start,
             end=end,
         )
@@ -228,7 +230,8 @@ class CostOptimizer(_CostOptimizerRoutingMixin):
             msg = f"start ({start.isoformat()}) must be before end ({end.isoformat()})"
             raise ValueError(msg)
 
-        records = await self._cost_tracker.get_records(
+        records = await collect_all_records(
+            self._cost_tracker,
             start=start,
             end=end,
         )

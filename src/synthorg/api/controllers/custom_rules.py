@@ -51,6 +51,7 @@ from synthorg.observability.events.security import (
     SECURITY_CUSTOM_RULE_TOGGLED,
     SECURITY_CUSTOM_RULE_UPDATED,
 )
+from synthorg.persistence._shared.pagination import collect_all
 from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)
@@ -98,7 +99,17 @@ class CustomRuleController(Controller):
         Returns:
             Paginated custom rule definitions.
         """
-        rules, _total = await _service(state).list_rules()
+        service = _service(state)
+
+        async def _fetch(
+            page_limit: int, page_offset: int
+        ) -> tuple[CustomRuleDefinition, ...]:
+            page_rules, _ = await service.list_rules(
+                limit=page_limit, offset=page_offset
+            )
+            return page_rules
+
+        rules = await collect_all(_fetch)
         entries = tuple(rule_to_dict(r) for r in rules)
         page, meta = paginate_cursor(
             entries,

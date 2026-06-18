@@ -89,15 +89,23 @@ class MessageRepository(
         channel: NotBlankStr,
         *,
         limit: int = DEFAULT_LIST_LIMIT,
+        offset: int = 0,
     ) -> tuple[Message, ...]:
-        """Retrieve message history for a channel (dashboard hot path).
+        """Retrieve a bounded page of message history for a channel.
+
+        Dashboard hot path. Returns one ``limit``-sized page
+        newest-first; callers needing the complete history (deep
+        cursor walks) drain successive pages via ``offset`` or
+        :func:`synthorg.persistence._shared.collect_all`.
 
         Args:
             channel: Channel name to query.
             limit: Maximum number of messages to return (newest first).
+            offset: Messages to skip from the newest end, for deep
+                pagination beyond the first page.
 
         Returns:
-            Messages ordered by timestamp descending.
+            Messages ordered by timestamp descending (one page).
 
         Raises:
             PersistenceError: If the operation fails.

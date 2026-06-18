@@ -19,6 +19,7 @@ from synthorg.api.guards import require_read_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.budget.state import BudgetStateSlice
+from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.budget.trends import project_daily_spend
 from synthorg.observability import get_logger
 from synthorg.observability.events.analytics import ANALYTICS_FORECAST_QUERIED
@@ -70,9 +71,10 @@ class AnalyticsForecastController(Controller):
         now = datetime.now(UTC)
         lookback_start = now - timedelta(days=horizon_days)
 
-        records = await require_service(
-            app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
-        ).get_records(
+        records = await collect_all_records(
+            require_service(
+                app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
+            ),
             start=lookback_start,
             end=now,
         )

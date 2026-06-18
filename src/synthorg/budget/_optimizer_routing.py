@@ -30,6 +30,7 @@ from synthorg.budget.optimizer_models import (
     RoutingSuggestion,
 )
 from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.observability import get_logger
 from synthorg.observability.events.cfo import (
@@ -99,7 +100,7 @@ class _CostOptimizerRoutingMixin:
 
         async with asyncio.TaskGroup() as tg:
             records_task = tg.create_task(
-                self._cost_tracker.get_records(start=start, end=end),
+                collect_all_records(self._cost_tracker, start=start, end=end),
             )
             pressure_task = tg.create_task(self._compute_budget_pressure())
 
@@ -182,7 +183,8 @@ class _CostOptimizerRoutingMixin:
                 agents_analyzed=0,
             )
 
-        records = await self._cost_tracker.get_records(
+        records = await collect_all_records(
+            self._cost_tracker,
             start=start,
             end=end,
         )

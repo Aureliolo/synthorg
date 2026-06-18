@@ -20,7 +20,10 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
-from synthorg.budget.tracker_protocol import CostTrackerProtocol
+from synthorg.budget.tracker_protocol import (
+    CostTrackerProtocol,
+    collect_all_records,
+)
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.hr._activity_validation import (
@@ -391,7 +394,7 @@ class ActivityFeedService:
         if self._cost_tracker is None:
             return ()
         try:
-            return await self._cost_tracker.get_records(start=since, end=now)
+            return await collect_all_records(self._cost_tracker, start=since, end=now)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
@@ -557,7 +560,8 @@ class ActivityFeedService:
         if self._cost_tracker is None:
             return ()
         try:
-            return await self._cost_tracker.get_records(
+            return await collect_all_records(
+                self._cost_tracker,
                 agent_id=agent_id,
                 start=since,
                 end=now,

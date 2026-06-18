@@ -59,6 +59,7 @@ from synthorg.observability.events.budget import (
     BUDGET_TRACKER_CREATED,
 )
 from synthorg.observability.metrics_hub import record_budget_query
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence.project_cost_aggregate_protocol import (
     ProjectCostAggregateRepository,
 )
@@ -673,7 +674,7 @@ class CostTracker(CostTrackerSummaryMixin):
         async with self._get_lock():
             return len(self._records)
 
-    async def get_records(
+    async def get_records(  # noqa: PLR0913 -- orthogonal filters + pagination
         self,
         *,
         agent_id: str | None = None,
@@ -681,10 +682,16 @@ class CostTracker(CostTrackerSummaryMixin):
         provider: NotBlankStr | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[CostRecord, ...]:
-        """Return filtered cost records.
+        """Return a bounded page of filtered cost records.
 
-        Returns an immutable snapshot of records matching the filters.
+        Returns one ``limit``-sized page of records matching the
+        filters in insertion order (oldest-first), so a cursor walk is
+        repeatable. Callers needing every matching record drain
+        successive pages via
+        :func:`synthorg.persistence._shared.collect_all`.
 
         Args:
             agent_id: Filter by agent.
@@ -692,9 +699,11 @@ class CostTracker(CostTrackerSummaryMixin):
             provider: Filter by provider name.
             start: Inclusive lower bound on ``timestamp``.
             end: Exclusive upper bound on ``timestamp``.
+            limit: Maximum records to return.
+            offset: Records to skip from the head of the ordering.
 
         Returns:
-            Immutable tuple of matching cost records.
+            Immutable tuple of matching cost records (one page).
 
         Raises:
             ValueError: If both *start* and *end* are given and
@@ -710,7 +719,7 @@ class CostTracker(CostTrackerSummaryMixin):
             end=end,
         )
         snapshot = await self._snapshot()
-        return _filter_records(
+        matched = _filter_records(
             snapshot,
             agent_id=agent_id,
             task_id=task_id,
@@ -718,6 +727,7 @@ class CostTracker(CostTrackerSummaryMixin):
             start=start,
             end=end,
         )
+        return matched[offset : offset + limit]
 
     async def get_provider_usage(
         self,

@@ -421,6 +421,7 @@ export type SinkInfoResponsePage = components['schemas']['PaginatedResponse_Sink
 export type SubworkflowSummaryPage = components['schemas']['PaginatedResponse_SubworkflowSummary_']
 export type TaskPage = components['schemas']['PaginatedResponse_Task_']
 export type ThresholdRecommendationPage = components['schemas']['PaginatedResponse_ThresholdRecommendation_']
+export type UpgradeRecommendationDTOPage = components['schemas']['PaginatedResponse_UpgradeRecommendationDTO_']
 export type UserResponsePage = components['schemas']['PaginatedResponse_UserResponse_']
 export type VersionSnapshot_AgentIdentityPage = components['schemas']['PaginatedResponse_VersionSnapshot_AgentIdentity_']
 export type VersionSnapshot_BudgetConfigPage = components['schemas']['PaginatedResponse_VersionSnapshot_BudgetConfig_']

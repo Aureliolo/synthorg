@@ -212,6 +212,7 @@ class _FakeMessageRepository:
         channel: str,
         *,
         limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[Message, ...]:
         return ()
 

@@ -10,7 +10,7 @@ Endpoints under ``/providers/model-refresh``:
 * ``GET /status`` -- current refresh mode / cadence / auto-apply flag.
 """
 
-from typing import Annotated
+from typing import Annotated, Final
 from uuid import UUID
 
 from litestar import Controller, get, post
@@ -18,13 +18,19 @@ from litestar.datastructures import State
 from litestar.params import QueryParameter
 
 from synthorg.api.api_core_state import org_mutation_service_of
-from synthorg.api.dto import ApiResponse
+from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_model_refresh import (
     RefreshCycleReportDTO,
     RefreshStatusDTO,
     UpgradeRecommendationDTO,
 )
 from synthorg.api.guards import require_ceo_or_manager, require_write_access
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    paginate_cursor,
+)
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.services.upgrade_recommendation_service import (
@@ -35,15 +41,18 @@ from synthorg.core.actor_context import resolve_decided_by
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import PROVIDER_MODEL_REFRESH_CYCLE_FAILED
+from synthorg.persistence._shared.pagination import collect_all
 from synthorg.providers.enums import RecommendationStatus
 from synthorg.providers.management.refresh_config import (
     RefreshMode,
     load_model_refresh_config,
 )
 from synthorg.providers.management.refresh_state import ModelRefreshStateSlice
+from synthorg.providers.management.upgrade_models import StoredUpgradeRecommendation
 from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
 
 def _recommendation_service(state: State) -> UpgradeRecommendationService:
@@ -79,17 +88,38 @@ class ModelRefreshController(Controller):
         self,
         state: State,
         status: Annotated[RecommendationStatus | None, QueryParameter()] = None,
-    ) -> ApiResponse[tuple[UpgradeRecommendationDTO, ...]]:
+        cursor: CursorParam = None,
+        limit: CursorLimit = _DEFAULT_LIMIT,
+    ) -> PaginatedResponse[UpgradeRecommendationDTO]:
         """List upgrade recommendations, optionally filtered by status.
 
+        Args:
+            state: Application state.
+            status: Optional status filter.
+            cursor: Opaque pagination cursor from the previous page.
+            limit: Page size.
+
         Returns:
-            The matching recommendations, newest-first.
+            Paginated recommendations, newest-first.
         """
         service = _recommendation_service(state)
-        rows = await service.list_recommendations(status=status)
-        return ApiResponse(
-            data=tuple(UpgradeRecommendationDTO.from_entity(r) for r in rows),
+
+        async def _fetch(
+            page_limit: int, page_offset: int
+        ) -> tuple[StoredUpgradeRecommendation, ...]:
+            return await service.list_recommendations(
+                status=status, limit=page_limit, offset=page_offset
+            )
+
+        rows = await collect_all(_fetch)
+        entries = tuple(UpgradeRecommendationDTO.from_entity(r) for r in rows)
+        page, meta = paginate_cursor(
+            entries,
+            limit=limit,
+            cursor=cursor,
+            secret=cursor_secret_of(state.app_state),
         )
+        return PaginatedResponse(data=page, pagination=meta)
 
     @post(
         "/recommendations/{rec_id:str}/approve",
