@@ -24,6 +24,7 @@ from synthorg.observability.events.meta import (
 logger = get_logger(__name__)
 _DEFAULT_MAX_PROPOSALS: Final[int] = 10
 _DEFAULT_WINDOW_HOURS: Final[int] = 24
+_SECONDS_PER_HOUR: Final[float] = 3600.0
 
 
 class RateLimitGuard:
@@ -90,7 +91,8 @@ class RateLimitGuard:
         if len(self._timestamps) >= self._max_proposals:
             reason = (
                 f"Rate limit exceeded: {len(self._timestamps)} "
-                f"proposals in last {self._window.total_seconds() / 3600:.0f}h "
+                f"proposals in last "
+                f"{self._window.total_seconds() / _SECONDS_PER_HOUR:.0f}h "
                 f"(max {self._max_proposals})"
             )
             logger.info(

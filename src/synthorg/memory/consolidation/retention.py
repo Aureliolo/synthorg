@@ -7,6 +7,7 @@ company-level defaults.
 
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
@@ -24,6 +25,9 @@ from synthorg.observability.events.consolidation import (
 )
 
 logger = get_logger(__name__)
+
+# Per-category page size when draining expired memories for deletion.
+_RETENTION_BATCH_LIMIT: Final[int] = 1000
 
 
 class RetentionEnforcer:
@@ -226,7 +230,7 @@ class RetentionEnforcer:
                 query = MemoryQuery(
                     categories=frozenset({category}),
                     until=cutoff,
-                    limit=1000,
+                    limit=_RETENTION_BATCH_LIMIT,
                 )
                 expired = await self._backend.retrieve(agent_id, query)
                 for entry in expired:

@@ -287,6 +287,8 @@ func startDetached(ctx context.Context, info docker.Info, safeDir string, state 
 
 	if !startNoWait {
 		sp = out.StartSpinner("Waiting for backend to become healthy...")
+		// localhost is correct: the CLI polls the docker-compose backend
+		// it just started on the same host, via the published port.
 		healthURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", state.BackendPort)
 		if err := health.WaitForHealthy(ctx, healthURL, healthTimeout, healthPollInterval, healthInitialDelay); err != nil {
 			sp.Error("Health check failed")
@@ -303,6 +305,8 @@ func startDetached(ctx context.Context, info docker.Info, safeDir string, state 
 	}
 
 	out.Blank()
+	// localhost is correct: the started stack publishes these ports on
+	// the operator's own host via docker-compose.
 	readyLines := []string{
 		fmt.Sprintf("%-16s%s", "Dashboard", fmt.Sprintf("http://localhost:%d", state.WebPort)),
 		fmt.Sprintf("%-16s%s", "API", fmt.Sprintf("http://localhost:%d", state.BackendPort)),

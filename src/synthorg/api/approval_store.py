@@ -57,6 +57,7 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_STATUS_TRANSITIONED,
 )
 from synthorg.observability.metrics_hub import record_approval_decision
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 from synthorg.persistence.approval_protocol import (
     ApprovalFilterSpec,
     ApprovalRepository,
@@ -398,7 +399,7 @@ class ApprovalStore(ApprovalExpirationMixin):
             if status in {None, ApprovalStatus.PENDING, ApprovalStatus.EXPIRED}
             else status
         )
-        page_size = 100
+        page_size = DEFAULT_LIST_LIMIT
         result: list[ApprovalItem] = []
         offset = 0
         # lint-allow: long-running-loop-kill-switch -- bounded paginated scan

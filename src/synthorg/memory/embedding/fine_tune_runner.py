@@ -187,6 +187,9 @@ def _start_health_server() -> http.server.HTTPServer | None:
     """
     port = resolve_health_port()
     try:
+        # Bind 0.0.0.0 deliberately: this health server runs inside the
+        # fine-tune subprocess/container and must be reachable from the
+        # orchestrator on the container network, not just loopback.
         server = http.server.HTTPServer(("0.0.0.0", port), _HealthHandler)  # noqa: S104
     except OSError:
         logger.warning(

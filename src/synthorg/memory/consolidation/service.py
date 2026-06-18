@@ -174,7 +174,7 @@ class MemoryConsolidationService:
         logger.info(CONSOLIDATION_START, agent_id=agent_id)
 
         try:
-            query = MemoryQuery(limit=1000)
+            query = MemoryQuery(limit=_MEMORY_QUERY_MAX_LIMIT)
             entries = await self._backend.retrieve(agent_id, query)
 
             result = await self._strategy.consolidate(

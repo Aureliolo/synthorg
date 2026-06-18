@@ -2,7 +2,7 @@
 
 import asyncio
 import contextlib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.backup.errors import BackupUnrestartableError
 from synthorg.backup.models import BackupTrigger
@@ -25,6 +25,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_SECONDS_PER_HOUR: Final[int] = 3600
+
 
 class BackupScheduler:
     """Background asyncio task that triggers periodic backups.
@@ -36,7 +38,7 @@ class BackupScheduler:
 
     def __init__(self, service: BackupService, interval_hours: int) -> None:
         self._service = service
-        self._interval_seconds = interval_hours * 3600
+        self._interval_seconds = interval_hours * _SECONDS_PER_HOUR
         self._task: asyncio.Task[None] | None = None
         # Loop-bound asyncio primitives are deferred until ``start()``
         # so the scheduler can be safely re-started on a different
@@ -167,7 +169,7 @@ class BackupScheduler:
             )
             logger.info(
                 BACKUP_SCHEDULER_STARTED,
-                interval_hours=self._interval_seconds // 3600,
+                interval_hours=self._interval_seconds // _SECONDS_PER_HOUR,
             )
 
     async def stop(self) -> None:
@@ -299,7 +301,7 @@ class BackupScheduler:
         if interval_hours < 1:
             msg = "interval_hours must be >= 1"
             raise ValueError(msg)
-        self._interval_seconds = interval_hours * 3600
+        self._interval_seconds = interval_hours * _SECONDS_PER_HOUR
         if self._wake_event is not None:
             self._wake_event.set()
         logger.info(

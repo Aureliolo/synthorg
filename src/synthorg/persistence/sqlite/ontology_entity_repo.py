@@ -362,14 +362,10 @@ class SQLiteOntologyEntityRepository:
     ) -> tuple[EntityDefinition, ...]:
         """List entities, optionally filtered by tier and paginated.
 
-        The legacy hard cap of 1000 rows applies when *limit* is
-        ``None`` so callers that haven't migrated to pagination still
-        receive a bounded result set.
-
         Returns:
             The matching entities.
         """
-        effective_limit = 1000 if limit is None else int(limit)
+        effective_limit = int(limit)
         effective_offset = max(0, int(offset))
         sql: str
         params: dict[str, object]

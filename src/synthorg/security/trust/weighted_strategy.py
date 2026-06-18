@@ -24,6 +24,9 @@ logger = get_logger(__name__)
 # ceiling (capped at 1.0). 100 completed tasks saturates the factor.
 _TASK_VOLUME_SATURATION: Final[float] = 100.0
 
+# Quality scores are reported on a 0-10 axis; normalise to [0, 1].
+_QUALITY_SCORE_SCALE: Final[float] = 10.0
+
 
 class WeightedTrustStrategy:
     """Trust strategy using a single weighted score.
@@ -130,7 +133,7 @@ class WeightedTrustStrategy:
         """
         # Quality score normalized to [0, 1]
         difficulty_factor = (
-            snapshot.overall_quality_score / 10.0
+            snapshot.overall_quality_score / _QUALITY_SCORE_SCALE
             if snapshot.overall_quality_score is not None
             else 0.0
         )

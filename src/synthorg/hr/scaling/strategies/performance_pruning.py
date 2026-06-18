@@ -8,6 +8,7 @@ adaptation.
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
+from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -25,6 +26,9 @@ logger = get_logger(__name__)
 
 _NAME = NotBlankStr("performance_pruning")
 _ACTION_TYPES = frozenset({ScalingActionType.PRUNE})
+
+# Confidence stamped on an emitted prune decision.
+_PRUNE_ACTION_CONFIDENCE: Final[float] = 0.8
 
 
 def _benchmark_regressing(context: ScalingContext) -> bool:
@@ -173,7 +177,7 @@ class PerformancePruningStrategy:
                                 "; ".join(str(r) for r in evaluation.reasons)
                                 or "performance below threshold"
                             ),
-                            confidence=0.8,
+                            confidence=_PRUNE_ACTION_CONFIDENCE,
                             signals=agent_signals,
                             created_at=now,
                         ),

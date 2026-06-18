@@ -12,6 +12,9 @@ from synthorg.observability.events.client import CLIENT_REVIEW_COMPLETED
 logger = get_logger(__name__)
 _DEFAULT_PASSING_SCORE: Final[float] = 0.7
 
+# Hash buckets for the deterministic fallback-score spread.
+_HASH_BUCKET_COUNT: Final[int] = 1000
+
 
 class ScoredFeedback:
     """Per-criterion scoring feedback strategy.
@@ -142,7 +145,7 @@ class ScoredFeedback:
             digest_size=8,
         ).digest()
         (hash_val,) = struct.unpack(">Q", digest)
-        fraction = (hash_val % 1000) / 1000
+        fraction = (hash_val % _HASH_BUCKET_COUNT) / _HASH_BUCKET_COUNT
         return float(
             self._MIN_FALLBACK_SCORE + fraction * self._FALLBACK_SCORE_RANGE,
         )

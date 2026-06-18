@@ -8,6 +8,7 @@ log tag and baseline-capture semantics.
 """
 
 from collections.abc import Awaitable, Callable
+from typing import Final
 
 from synthorg.core.clock import Clock
 from synthorg.meta.models import (
@@ -36,6 +37,8 @@ from synthorg.observability.events.meta import (
 type RolloutSnapshotBuilder = Callable[[], Awaitable[OrgSignalSnapshot]]
 
 logger = get_logger(__name__)
+
+_SECONDS_PER_HOUR: Final[float] = 3600.0
 
 
 def validate_window_and_interval(
@@ -184,7 +187,7 @@ async def observe_until_verdict(  # noqa: PLR0913
     while elapsed < observation_hours:
         remaining = observation_hours - elapsed
         step_hours = min(check_interval_hours, remaining)
-        await clock.sleep(step_hours * 3600.0)
+        await clock.sleep(step_hours * _SECONDS_PER_HOUR)
         elapsed += step_hours
         current = await snapshot_builder()
         result = await detector.check(

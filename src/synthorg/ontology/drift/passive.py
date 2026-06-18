@@ -26,6 +26,9 @@ _NOTIFY_THRESHOLD: Final[float] = 0.5
 _RETRAIN_THRESHOLD: Final[float] = 0.7
 _DEFAULT_DRIFT_DETECT_THRESHOLD: Final[float] = 0.3
 
+# Per-agent memory sample size when scoring passive entity drift.
+_DRIFT_MEMORY_SAMPLE_LIMIT: Final[int] = 20
+
 
 def _recommend(score: float, threshold: float) -> DriftAction:
     """Map divergence score to recommendation.
@@ -122,7 +125,7 @@ class PassiveMonitorStrategy:
         for agent_id in sample_agents:
             query = MemoryQuery(
                 tags=(f"entity:{entity_name}",),
-                limit=20,
+                limit=_DRIFT_MEMORY_SAMPLE_LIMIT,
             )
             entries = await self._memory.retrieve(agent_id, query)
             if not entries:

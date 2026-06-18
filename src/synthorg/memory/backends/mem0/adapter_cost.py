@@ -11,7 +11,7 @@ attributes declared on the concrete class:
 import asyncio
 import builtins
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
@@ -29,6 +29,9 @@ if TYPE_CHECKING:
     from synthorg.budget.tracker import CostTracker
 
 logger = get_logger(__name__)
+
+# Per-1K-token pricing divisor (costs are quoted per 1000 tokens).
+_TOKENS_PER_1K: Final[float] = 1000.0
 
 
 class Mem0AdapterCostMixin:
@@ -68,7 +71,7 @@ class Mem0AdapterCostMixin:
                 operation=operation,
                 model=model,
             )
-        cost = input_tokens * cost_per_1k / 1000.0
+        cost = input_tokens * cost_per_1k / _TOKENS_PER_1K
         budget_cfg = self._cost_tracker.budget_config
         currency = budget_cfg.currency if budget_cfg is not None else DEFAULT_CURRENCY
         record = CostRecord(

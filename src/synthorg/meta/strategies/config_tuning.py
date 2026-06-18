@@ -7,6 +7,7 @@ context; once the service orchestrator owns providers, the same
 entry point will use LLM analysis to author the proposal bodies.
 """
 
+from typing import Final
 from uuid import uuid4
 
 from pydantic import JsonValue
@@ -26,6 +27,21 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.meta import META_PROPOSAL_GENERATED
 
 logger = get_logger(__name__)
+
+# Per-rule proposal confidences.
+_CONFIDENCE_QUALITY_DECLINING: Final[float] = 0.7
+_CONFIDENCE_SUCCESS_RATE_DROP: Final[float] = 0.65
+_CONFIDENCE_BUDGET_OVERRUN: Final[float] = 0.8
+_CONFIDENCE_COORDINATION_COST_RATIO: Final[float] = 0.75
+_CONFIDENCE_COORDINATION_OVERHEAD: Final[float] = 0.7
+_CONFIDENCE_SCALING_FAILURE: Final[float] = 0.6
+
+# Budget auto-downgrade trigger threshold (utilisation fraction).
+_DEFAULT_BUDGET_DOWNGRADE_THRESHOLD: Final[float] = 0.85
+
+# Scaling cooldown: default one hour, doubled to damp churn.
+_DEFAULT_COOLDOWN_SECONDS: Final[int] = 3600
+_DOUBLED_COOLDOWN_SECONDS: Final[int] = 7200
 
 
 class ConfigTuningStrategy:
@@ -160,7 +176,7 @@ class ConfigTuningStrategy:
                 ),
                 validation_check="quality_weight_ci equals 0.5",
             ),
-            confidence=0.7,
+            confidence=_CONFIDENCE_QUALITY_DECLINING,
             source_rule="quality_declining",
         )
 
@@ -190,7 +206,7 @@ class ConfigTuningStrategy:
             config_changes=(
                 ConfigChange(
                     path="task_engine.auto_loop.budget_downgrade_threshold",
-                    old_value=0.85,
+                    old_value=_DEFAULT_BUDGET_DOWNGRADE_THRESHOLD,
                     new_value=0.75,
                     description="Lower budget downgrade threshold",
                 ),
@@ -200,13 +216,13 @@ class ConfigTuningStrategy:
                     RollbackOperation(
                         operation_type="revert_config",
                         target="task_engine.auto_loop.budget_downgrade_threshold",
-                        previous_value=0.85,
+                        previous_value=_DEFAULT_BUDGET_DOWNGRADE_THRESHOLD,
                         description="Revert downgrade threshold",
                     ),
                 ),
                 validation_check="budget_downgrade_threshold equals 0.85",
             ),
-            confidence=0.65,
+            confidence=_CONFIDENCE_SUCCESS_RATE_DROP,
             source_rule="success_rate_drop",
         )
 
@@ -257,7 +273,7 @@ class ConfigTuningStrategy:
                 ),
                 validation_check="default_tier equals large",
             ),
-            confidence=0.8,
+            confidence=_CONFIDENCE_BUDGET_OVERRUN,
             source_rule="budget_overrun",
         )
 
@@ -304,7 +320,7 @@ class ConfigTuningStrategy:
                 ),
                 validation_check="max_parallel_tasks equals 5",
             ),
-            confidence=0.75,
+            confidence=_CONFIDENCE_COORDINATION_COST_RATIO,
             source_rule="coordination_cost_ratio",
         )
 
@@ -349,7 +365,7 @@ class ConfigTuningStrategy:
                 ),
                 validation_check="sas_success_rate_threshold equals 0.7",
             ),
-            confidence=0.7,
+            confidence=_CONFIDENCE_COORDINATION_OVERHEAD,
             source_rule="coordination_overhead",
         )
 
@@ -383,8 +399,8 @@ class ConfigTuningStrategy:
             config_changes=(
                 ConfigChange(
                     path="hr.scaling.cooldown_seconds",
-                    old_value=3600,
-                    new_value=7200,
+                    old_value=_DEFAULT_COOLDOWN_SECONDS,
+                    new_value=_DOUBLED_COOLDOWN_SECONDS,
                     description="Double scaling cooldown period",
                 ),
             ),
@@ -393,12 +409,12 @@ class ConfigTuningStrategy:
                     RollbackOperation(
                         operation_type="revert_config",
                         target="hr.scaling.cooldown_seconds",
-                        previous_value=3600,
+                        previous_value=_DEFAULT_COOLDOWN_SECONDS,
                         description="Revert cooldown to 1 hour",
                     ),
                 ),
                 validation_check="cooldown_seconds equals 3600",
             ),
-            confidence=0.6,
+            confidence=_CONFIDENCE_SCALING_FAILURE,
             source_rule="scaling_failure",
         )

@@ -8,6 +8,7 @@ import math
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta
+from typing import Final
 
 from synthorg.budget.call_category import OrchestrationAlertLevel
 from synthorg.budget.category_analytics import (
@@ -42,7 +43,7 @@ from synthorg.observability.events.budget import (
     BUDGET_SUMMARY_BUILT,
 )
 
-_COST_WINDOW_HOURS = 24 * 30
+_COST_WINDOW_HOURS: Final[int] = 720
 
 logger = get_logger(__name__)
 

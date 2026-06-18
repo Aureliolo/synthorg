@@ -13,7 +13,7 @@ defined here.
 import math
 from datetime import datetime
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -25,6 +25,8 @@ if TYPE_CHECKING:
     from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 
 logger = get_logger(__name__)
+
+_SECONDS_PER_HOUR: Final[float] = 3600.0
 
 
 class FusionStrategy(StrEnum):
@@ -123,7 +125,7 @@ def compute_recency_score(
     age_seconds = (now - created_at).total_seconds()
     if age_seconds <= 0:
         return 1.0
-    age_hours = age_seconds / 3600.0
+    age_hours = age_seconds / _SECONDS_PER_HOUR
     return math.exp(-decay_rate * age_hours)
 
 

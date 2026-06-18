@@ -84,6 +84,9 @@ SCALING_STRATEGY_PRIORITY_FALLBACK: Final[int] = 999
 
 # ── Server (bootstrap-only) ──────────────────────────────────────
 
+# The 127.0.0.1 default is the safe local-dev bind; production
+# deployments override it (e.g. 0.0.0.0 behind a reverse proxy) via the
+# SYNTHORG_API_SERVER_HOST env var resolved by RootConfig at startup.
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.API,

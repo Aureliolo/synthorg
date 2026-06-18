@@ -104,6 +104,10 @@ candidate prefixes natively; any future prefix (e.g. ``MODAL_``,
 """
 
 
+_SECONDS_PER_HOUR: float = 3600.0
+"""Seconds in an hour, for the heartbeat-interval and uptime conversions."""
+
+
 _DEPLOYMENT_ID_LOAD_TIMEOUT_SECONDS: float = 5.0
 """Hard deadline for the deployment-id ``asyncio.to_thread`` boundary.
 
@@ -699,7 +703,7 @@ class TelemetryCollector:
     def _uptime_hours(self) -> float:
         """Return elapsed hours since collector was initialised."""
         delta = datetime.now(UTC) - self._started_at
-        return delta.total_seconds() / 3600
+        return delta.total_seconds() / _SECONDS_PER_HOUR
 
     def _build_event(
         self,
@@ -849,7 +853,7 @@ class TelemetryCollector:
             asyncio.CancelledError: Propagated when the loop task is
                 cancelled, so shutdown can await it cleanly.
         """
-        interval = self._config.heartbeat_interval_hours * 3600
+        interval = self._config.heartbeat_interval_hours * _SECONDS_PER_HOUR
         # lint-allow: long-running-loop-kill-switch -- stop()/cancel drives shutdown.
         while True:
             try:

@@ -502,6 +502,9 @@ _OLLAMA = LocalPreset(
     driver="litellm",
     litellm_provider="ollama",
     auth_type=AuthType.NONE,
+    # Local-dev defaults: Ollama runs on the operator's own machine, so
+    # the localhost default and the docker-bridge candidate URLs are
+    # correct for local discovery (not a deployment hardcode).
     default_base_url="http://localhost:11434",
     requires_base_url=True,
     candidate_urls=(
@@ -521,6 +524,9 @@ _LM_STUDIO = LocalPreset(
     driver="litellm",
     litellm_provider="openai",
     auth_type=AuthType.NONE,
+    # Local-dev defaults: LM Studio runs on the operator's own machine,
+    # so the localhost default and docker-bridge candidate URLs are
+    # correct for local discovery (not a deployment hardcode).
     default_base_url="http://localhost:1234/v1",
     requires_base_url=True,
     candidate_urls=(
@@ -537,6 +543,9 @@ _VLLM = LocalPreset(
     driver="litellm",
     litellm_provider="openai",
     auth_type=AuthType.NONE,
+    # Local-dev default: vLLM runs on the operator's own machine, so the
+    # localhost default is correct for local use (not a deployment
+    # hardcode).
     default_base_url="http://localhost:8000/v1",
     requires_base_url=True,
     # candidate_urls intentionally empty: vLLM's default port (8000)

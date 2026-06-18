@@ -50,6 +50,9 @@ from synthorg.providers.errors import ProviderError
 
 logger = get_logger(__name__)
 
+# Confidence for an autonomous code-modification proposal.
+_CONFIDENCE_CODE_MODIFICATION: Final[float] = 0.5
+
 _SYSTEM_PROMPT = """\
 You are a framework improvement analyst for SynthOrg, a framework \
 for building synthetic organizations. Your task is to propose \
@@ -282,7 +285,7 @@ class CodeModificationStrategy:
                     f"Branch '{branch_name}' deleted and no changes merged to main"
                 ),
             ),
-            confidence=0.5,
+            confidence=_CONFIDENCE_CODE_MODIFICATION,
             source_rule=rule_match.rule_name,
         )
 
