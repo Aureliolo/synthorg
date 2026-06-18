@@ -21,6 +21,7 @@ from typeguard import suppress_type_checks
 
 from synthorg.integrations.connections.models import (
     Connection,
+    ConnectionHealth,
     ConnectionStatus,
     ConnectionType,
     HealthReport,
@@ -55,7 +56,9 @@ class _FakeCatalog:
     ) -> None:
         self.updates.append((name, status))
         conn = self._connections[name]
-        self._connections[name] = conn.model_copy(update={"health_status": status})
+        self._connections[name] = conn.model_copy(
+            update={"health": ConnectionHealth(status=status, last_check_at=checked_at)}
+        )
 
 
 class _ScriptedChecker:

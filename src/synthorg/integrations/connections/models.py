@@ -82,6 +82,25 @@ class SecretRef(BaseModel):
     key_version: int = Field(default=1, ge=1)
 
 
+class ConnectionHealth(BaseModel):
+    """Last-known health snapshot for a connection.
+
+    Groups the two runtime health-observation fields so the cohesive
+    sub-concept travels together. ``health_check_enabled`` stays a
+    top-level ``Connection`` field because it is configuration (whether
+    to probe), not an observation.
+
+    Attributes:
+        status: Last-known health status.
+        last_check_at: Timestamp of the most recent check.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    status: ConnectionStatus = ConnectionStatus.UNKNOWN
+    last_check_at: AwareDatetime | None = None
+
+
 class Connection(BaseModel):
     """A configured external service connection.
 
@@ -94,8 +113,7 @@ class Connection(BaseModel):
         secret_refs: Tuple of opaque secret references.
         rate_limiter: Optional per-connection rate limit config.
         health_check_enabled: Whether background probes run.
-        health_status: Last-known health status.
-        last_health_check_at: Timestamp of most recent check.
+        health: Last-known health snapshot (status + check timestamp).
         metadata: User-provided tags and notes.
         webhook_receipt_retention_days: Per-connection override for the
             webhook-receipt retention window (days). ``None`` falls back
@@ -118,8 +136,7 @@ class Connection(BaseModel):
     secret_refs: tuple[SecretRef, ...] = Field(default=(), exclude=True)
     rate_limiter: RateLimiterConfig | None = None
     health_check_enabled: bool = True
-    health_status: ConnectionStatus = ConnectionStatus.UNKNOWN
-    last_health_check_at: AwareDatetime | None = None
+    health: ConnectionHealth = Field(default_factory=ConnectionHealth)
     sensitive: bool = False
     metadata: dict[str, str] = Field(default_factory=dict)
     webhook_receipt_retention_days: WebhookRetentionDays = Field(

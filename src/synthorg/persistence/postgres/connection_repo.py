@@ -19,6 +19,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import (
     AuthMethod,
     Connection,
+    ConnectionHealth,
     ConnectionStatus,
     ConnectionType,
     SecretRef,
@@ -81,9 +82,13 @@ def _row_to_connection(row: DictRow) -> Connection:
         secret_refs=secret_refs,
         rate_limiter=rate_limiter,
         health_check_enabled=bool(row["health_check_enabled"]),
-        health_status=ConnectionStatus(row["health_status"]),
-        last_health_check_at=(
-            coerce_row_timestamp(last_health_check_at) if last_health_check_at else None
+        health=ConnectionHealth(
+            status=ConnectionStatus(row["health_status"]),
+            last_check_at=(
+                coerce_row_timestamp(last_health_check_at)
+                if last_health_check_at
+                else None
+            ),
         ),
         metadata=metadata,
         webhook_receipt_retention_days=safe_int(retention, default=None),
@@ -128,10 +133,10 @@ class PostgresConnectionRepository:
             rate_limit_rpm,
             rate_limit_concurrent,
             connection.health_check_enabled,
-            connection.health_status.value,
+            connection.health.status.value,
             (
-                normalize_utc(connection.last_health_check_at)
-                if connection.last_health_check_at is not None
+                normalize_utc(connection.health.last_check_at)
+                if connection.health.last_check_at is not None
                 else None
             ),
             Jsonb(connection.metadata),

@@ -23,6 +23,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import (
     AuthMethod,
     Connection,
+    ConnectionHealth,
     ConnectionStatus,
     ConnectionType,
     SecretRef,
@@ -51,7 +52,7 @@ def _connection(name: str = "c1") -> Connection:
                 backend=NotBlankStr("memory"),
             ),
         ),
-        health_status=ConnectionStatus.UNKNOWN,
+        health=ConnectionHealth(status=ConnectionStatus.UNKNOWN),
     )
 
 

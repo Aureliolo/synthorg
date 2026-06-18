@@ -39,7 +39,7 @@ async def check_connection_health(
     now = datetime.now(UTC)
 
     if checker is None:
-        # Surface ``UNKNOWN`` instead of ``conn.health_status`` so an
+        # Surface ``UNKNOWN`` instead of ``conn.health.status`` so an
         # on-demand caller never sees a stale persisted status (which
         # could otherwise report a long-dead integration as
         # ``HEALTHY``). The missing checker is logged so operators can

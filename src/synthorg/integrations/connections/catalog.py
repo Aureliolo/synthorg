@@ -27,6 +27,7 @@ from synthorg.integrations.connections._credential_resolver import (
 from synthorg.integrations.connections._oauth_rotation import OAuthRotationMixin
 from synthorg.integrations.connections.models import (
     Connection,
+    ConnectionHealth,
     ConnectionStatus,
     ConnectionType,
 )
@@ -434,8 +435,8 @@ class ConnectionCatalog(
         """Update a connection's health status.
 
         Returns:
-            The updated ``Connection`` row with the new ``health_status``
-            and ``last_health_check_at`` persisted.
+            The updated ``Connection`` row with the new health snapshot
+            (status + check timestamp) persisted.
 
         Raises:
             ConnectionNotFoundError: If the connection does not exist.
@@ -444,8 +445,10 @@ class ConnectionCatalog(
             existing = await self.get_or_raise(name)
             updated = existing.model_copy(
                 update={
-                    "health_status": status,
-                    "last_health_check_at": checked_at,
+                    "health": ConnectionHealth(
+                        status=status,
+                        last_check_at=checked_at,
+                    ),
                     "updated_at": datetime.now(UTC),
                 },
             )
@@ -454,11 +457,11 @@ class ConnectionCatalog(
             # Log the transition only when it actually changed, so a
             # quiet health prober cycling the same status does not
             # flood the log stream.
-            if existing.health_status != status:
+            if existing.health.status != status:
                 logger.info(
                     HEALTH_STATUS_TRANSITIONED,
                     connection_name=name,
-                    previous_status=existing.health_status.value,
+                    previous_status=existing.health.status.value,
                     new_status=status.value,
                 )
             return updated
