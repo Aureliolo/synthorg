@@ -14,6 +14,7 @@ from typing import ClassVar, Final, cast, override
 
 from pydantic import BaseModel, JsonValue
 
+from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
@@ -115,76 +116,19 @@ class EmailSenderTool(BaseCommunicationTool):
                 is_error=True,
             )
 
-        to_raw = arguments.get("to")
-        if not isinstance(to_raw, (list, tuple)) or any(
-            not isinstance(addr, str) for addr in to_raw
-        ):
-            logger.warning(
-                COMM_TOOL_EMAIL_VALIDATION_FAILED,
-                reason="invalid_to",
-            )
-            return ToolExecutionResult(
-                content="'to' must be a list of email addresses.",
-                is_error=True,
-            )
-        # Direct callers (bypassing the invoker's args_model validation)
-        # can still send non-list cc/bcc, which would raise TypeError on
-        # the recipient concatenation below.  Reject the container shape
-        # AND the element types here; otherwise the
-        # ``_UNSAFE_ADDR_RE.search(addr)`` call later would raise
-        # ``TypeError`` and bypass the structured envelope.
-        cc_raw = arguments.get("cc")
-        if cc_raw is not None and (
-            not isinstance(cc_raw, (list, tuple))
-            or any(not isinstance(addr, str) for addr in cc_raw)
-        ):
-            logger.warning(
-                COMM_TOOL_EMAIL_VALIDATION_FAILED,
-                reason="invalid_cc",
-            )
-            return ToolExecutionResult(
-                content="'cc' must be a list of email addresses.",
-                is_error=True,
-            )
-        bcc_raw = arguments.get("bcc")
-        if bcc_raw is not None and (
-            not isinstance(bcc_raw, (list, tuple))
-            or any(not isinstance(addr, str) for addr in bcc_raw)
-        ):
-            logger.warning(
-                COMM_TOOL_EMAIL_VALIDATION_FAILED,
-                reason="invalid_bcc",
-            )
-            return ToolExecutionResult(
-                content="'bcc' must be a list of email addresses.",
-                is_error=True,
-            )
-        to_addrs = [addr for addr in to_raw if isinstance(addr, str)]
-        cc_addrs = [addr for addr in (cc_raw or []) if isinstance(addr, str)]
-        bcc_addrs = [addr for addr in (bcc_raw or []) if isinstance(addr, str)]
-        subject = arguments.get("subject")
-        if not isinstance(subject, str):
-            logger.warning(
-                COMM_TOOL_EMAIL_VALIDATION_FAILED,
-                reason="invalid_subject",
-            )
-            return ToolExecutionResult(
-                content="'subject' must be a string.",
-                is_error=True,
-            )
-        body = cast("str", arguments.get("body", ""))
-        body_is_html = cast("bool", arguments.get("body_is_html", False))
+        # ``parse_typed`` enforces a non-empty ``to`` and the loose
+        # RFC 5322 address shape (which already excludes CR/LF and the
+        # other header-injection characters) on every recipient, plus
+        # the tuple element types and a non-blank ``subject``.
+        args = parse_typed("tool.email_sender", arguments, EmailSenderArgs)
+        to_addrs = list(args.to)
+        cc_addrs = list(args.cc)
+        bcc_addrs = list(args.bcc)
+        subject = args.subject
+        body = args.body
+        body_is_html = args.body_is_html
 
         all_recipients = to_addrs + cc_addrs + bcc_addrs
-        if not all_recipients:
-            logger.warning(
-                COMM_TOOL_EMAIL_VALIDATION_FAILED,
-                reason="no_recipients",
-            )
-            return ToolExecutionResult(
-                content="At least one recipient is required.",
-                is_error=True,
-            )
 
         if len(all_recipients) > self._config.max_recipients:
             logger.warning(
@@ -201,17 +145,18 @@ class EmailSenderTool(BaseCommunicationTool):
                 is_error=True,
             )
 
-        # Reject addresses with newlines (header injection prevention).
-        for addr in [*all_recipients, email_config.from_address]:
-            if _UNSAFE_ADDR_RE.search(addr):
-                logger.warning(
-                    COMM_TOOL_EMAIL_VALIDATION_FAILED,
-                    reason="unsafe_address",
-                )
-                return ToolExecutionResult(
-                    content="Email address contains invalid characters.",
-                    is_error=True,
-                )
+        # The recipient addresses are regex-validated above; the
+        # ``from_address`` is config-sourced, so guard it against header
+        # injection here.
+        if _UNSAFE_ADDR_RE.search(email_config.from_address):
+            logger.warning(
+                COMM_TOOL_EMAIL_VALIDATION_FAILED,
+                reason="unsafe_address",
+            )
+            return ToolExecutionResult(
+                content="Email address contains invalid characters.",
+                is_error=True,
+            )
 
         logger.info(
             COMM_TOOL_EMAIL_SEND_START,

@@ -3,6 +3,7 @@
 from typing import cast
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.communication.notification_sender import (
@@ -70,7 +71,7 @@ class TestNotificationSenderTool:
         assert notif.source == "deploy-agent"
 
     @pytest.mark.parametrize(
-        ("args", "expected_msg"),
+        ("args", "match"),
         [
             (
                 {
@@ -79,7 +80,7 @@ class TestNotificationSenderTool:
                     "title": "Test",
                     "source": "test",
                 },
-                "Invalid category",
+                "category",
             ),
             (
                 {
@@ -88,7 +89,7 @@ class TestNotificationSenderTool:
                     "title": "Test",
                     "source": "test",
                 },
-                "Invalid severity",
+                "severity",
             ),
         ],
         ids=["invalid_category", "invalid_severity"],
@@ -97,12 +98,13 @@ class TestNotificationSenderTool:
         self,
         mock_dispatcher: MockNotificationDispatcher,
         args: dict[str, object],
-        expected_msg: str,
+        match: str,
     ) -> None:
         tool = NotificationSenderTool(dispatcher=mock_dispatcher)
-        result = await tool.execute(arguments=args)
-        assert result.is_error
-        assert expected_msg in result.content
+        # The notification enums reject out-of-set category/severity at
+        # the typed boundary before the dispatcher is touched.
+        with pytest.raises(ValidationError, match=match):
+            await tool.execute(arguments=args)
 
     async def test_execute_dispatch_error(
         self,
