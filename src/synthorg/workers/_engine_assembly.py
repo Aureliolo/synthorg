@@ -1,4 +1,4 @@
-# module-kind: code
+# module-kind: orchestrator
 """Boot ``AgentEngine`` assembly for the runtime-services builder.
 
 Owns the engine-side construction steps behind
