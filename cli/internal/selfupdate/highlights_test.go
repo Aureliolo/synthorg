@@ -86,7 +86,7 @@ func TestExtractHighlights(t *testing.T) {
 		},
 		{
 			name:   "crlf_line_endings",
-			body:   "<!-- HIGHLIGHTS_START -->\r\n## Highlights\r\n\r\n> _AI-generated summary (model: `example-provider/example-medium-001` via GitHub Models). Commit-based changelog below._\r\n\r\n### What's new\r\n\r\n- CRLF body should parse identically to LF.\r\n\r\n<!-- HIGHLIGHTS_END -->\r\n\r\n## [0.0.1] (2026-01-01)\r\n\r\n### Features\r\n* something\r\n",
+			body:   "<!-- HIGHLIGHTS_START -->\r\n## Highlights\r\n\r\n> _AI-generated summary (model: `example-provider/example-medium-001` via Mistral). Commit-based changelog below._\r\n\r\n### What's new\r\n\r\n- CRLF body should parse identically to LF.\r\n\r\n<!-- HIGHLIGHTS_END -->\r\n\r\n## [0.0.1] (2026-01-01)\r\n\r\n### Features\r\n* something\r\n",
 			wantOK: true,
 			wantContains: []string{
 				"### What's new",

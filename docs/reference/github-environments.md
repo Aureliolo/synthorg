@@ -214,9 +214,13 @@ installation token (valid ≤1 hour) via the
    from the App's settings page) and `RELEASE_BOT_APP_PRIVATE_KEY`
    (full PEM contents).
 7. Confirm the action allowlist includes
-   `actions/create-github-app-token@*` (SHA-pinned in-workflow)
-   and `actions/ai-inference@*` (used by the release-notes
-   Highlights step in `release.yml`).
+   `actions/create-github-app-token@*` (SHA-pinned in-workflow).
+8. Add the `MISTRAL_API_KEY` repository secret (a Mistral API key on
+   the free Experiment tier). The release-notes Highlights step in
+   `release.yml` and the `test-highlights.yml` dry-run read it; a
+   repository-level secret is visible to the `release` environment
+   job. The step is best-effort, so a missing or invalid key only
+   skips the Highlights block -- it never fails the release.
 
 **No rotation schedule**. Installation tokens are ephemeral:
 minted per workflow run and valid for at most one hour, then
