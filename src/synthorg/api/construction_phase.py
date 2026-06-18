@@ -436,6 +436,7 @@ def build_construction_services(
         effective_config,
         resolved_db_path=boot.resolved_db_path,
         resolved_config_path=boot.resolved_config_path,
+        config_resolver=config_resolver,
     )
     # ``_build_settings_dispatcher`` wires the timeout-check subscriber onto the
     # scheduler, so the scheduler must exist before the dispatcher is built.

@@ -21,6 +21,7 @@ from synthorg.backup.service import BackupService
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 if TYPE_CHECKING:
     # Cycle breaker: ``config.schema`` sits on the eager-init config
@@ -103,6 +104,7 @@ def build_backup_service(
     *,
     resolved_db_path: Path | None = None,
     resolved_config_path: Path | None = None,
+    config_resolver: ConfigResolverProtocol | None = None,
 ) -> BackupService | None:
     """Create backup service from config.
 
@@ -122,6 +124,9 @@ def build_backup_service(
             backend (SQLite only). Falls back to the config value.
         resolved_config_path: Actual company YAML path loaded at
             startup (falls back to ``company.yaml`` when absent).
+        config_resolver: Optional resolver so the retention manager reads
+            the live ``backup.retention_days`` setting (DB > env > code
+            default) at prune time instead of only the static config.
 
     Returns:
         Configured backup service, or ``None`` if handler construction
@@ -138,7 +143,11 @@ def build_backup_service(
             resolved_db_path=resolved_db_path,
             resolved_config_path=resolved_config_path,
         )
-        return BackupService(backup_config, handlers)
+        return BackupService(
+            backup_config,
+            handlers,
+            config_resolver=config_resolver,
+        )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
