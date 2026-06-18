@@ -37,6 +37,7 @@ from synthorg.observability.events.event_stream import (
     EVENT_STREAM_HUB_JANITOR_PRUNED,
     EVENT_STREAM_HUB_PUBLISH_DEDUPED,
     EVENT_STREAM_HUB_PUBLISH_FAILED,
+    EVENT_STREAM_HUB_START_REJECTED,
     EVENT_STREAM_HUB_STARTED,
     EVENT_STREAM_HUB_STOP_TIMEOUT,
     EVENT_STREAM_HUB_STOPPED,
@@ -332,6 +333,11 @@ class EventStreamHub:
                 msg = (
                     "EventStreamHub cannot restart after a timed-out"
                     " stop(); construct a fresh instance"
+                )
+                logger.warning(
+                    EVENT_STREAM_HUB_START_REJECTED,
+                    reason="unrestartable",
+                    error_type=EventStreamHubUnrestartableError.__name__,
                 )
                 raise EventStreamHubUnrestartableError(msg)
             if self._running:

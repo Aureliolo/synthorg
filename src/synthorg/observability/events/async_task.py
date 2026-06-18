@@ -6,6 +6,7 @@ from typing import Final
 ASYNC_TASK_STARTED: Final[str] = "async_task.started"
 ASYNC_TASK_START_FAILED: Final[str] = "async_task.start_failed"
 ASYNC_TASK_CHECKED: Final[str] = "async_task.checked"
+ASYNC_TASK_NOT_FOUND: Final[str] = "async_task.not_found"
 ASYNC_TASK_UPDATED: Final[str] = "async_task.updated"
 ASYNC_TASK_UPDATE_FAILED: Final[str] = "async_task.update_failed"
 ASYNC_TASK_CANCELLED: Final[str] = "async_task.cancelled"

@@ -183,6 +183,12 @@ def decode_kv_channel(
     """
     if entry.value is None:
         msg = f"KV entry for channel {channel_name!r} has no value"
+        logger.warning(
+            COMM_BUS_KV_READ_FAILED,
+            channel=channel_name,
+            reason="entry_has_no_value",
+            error_type=BusStreamError.__name__,
+        )
         raise BusStreamError(msg, context={"channel": channel_name})
     try:
         data = json.loads(entry.value.decode("utf-8"))

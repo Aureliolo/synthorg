@@ -37,6 +37,7 @@ from synthorg.observability.events.backup import (
     BACKUP_COMPLETED,
     BACKUP_FAILED,
     BACKUP_IN_PROGRESS,
+    BACKUP_MANIFEST_INVALID,
     BACKUP_MANIFEST_WRITTEN,
     BACKUP_RESTORE_COMPLETED,
     BACKUP_RESTORE_FAILED,
@@ -447,6 +448,12 @@ class BackupService(BackupServiceArchiveMixin):
             msg = (
                 f"Checksum mismatch for backup {manifest.backup_id}: "
                 f"expected {expected}, got {actual}"
+            )
+            logger.warning(
+                BACKUP_MANIFEST_INVALID,
+                backup_id=manifest.backup_id,
+                reason="checksum_mismatch",
+                error_type=ManifestError.__name__,
             )
             raise ManifestError(msg)
 

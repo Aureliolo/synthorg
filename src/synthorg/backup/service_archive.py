@@ -495,6 +495,11 @@ class BackupServiceArchiveMixin:
             for member in tar.getmembers():
                 if member.name.startswith("/") or ".." in Path(member.name).parts:
                     msg = f"Unsafe path in archive: {member.name}"
+                    logger.warning(
+                        BACKUP_MANIFEST_INVALID,
+                        reason="unsafe_archive_member_path",
+                        error_type=ManifestError.__name__,
+                    )
                     raise ManifestError(msg)
                 if member.issym() or member.islnk():
                     linkname = member.linkname
@@ -502,6 +507,11 @@ class BackupServiceArchiveMixin:
                         msg = (
                             f"Unsafe symlink target in archive: "
                             f"{member.name} -> {linkname}"
+                        )
+                        logger.warning(
+                            BACKUP_MANIFEST_INVALID,
+                            reason="unsafe_archive_symlink_target",
+                            error_type=ManifestError.__name__,
                         )
                         raise ManifestError(msg)
             tar.extractall(target_dir, filter="data")

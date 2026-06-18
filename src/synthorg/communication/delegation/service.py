@@ -36,6 +36,7 @@ from synthorg.observability.events.delegation import (
     DELEGATION_CREATED,
     DELEGATION_LOOP_ESCALATED,
     DELEGATION_RECORD_STORE_FAILED,
+    DELEGATION_REQUEST_INVALID,
     DELEGATION_REQUESTED,
     DELEGATION_RESULT_SENT,
     DELEGATION_SUB_TASK_FAILED,
@@ -197,11 +198,21 @@ class DelegationService:
                 f"request.delegator_id {request.delegator_id!r} does not "
                 f"match delegator.name {delegator.name!r}"
             )
+            logger.warning(
+                DELEGATION_REQUEST_INVALID,
+                reason="delegator_id_mismatch",
+                error_type=ValueError.__name__,
+            )
             raise ValueError(msg)
         if request.delegatee_id != delegatee.name:
             msg = (
                 f"request.delegatee_id {request.delegatee_id!r} does not "
                 f"match delegatee.name {delegatee.name!r}"
+            )
+            logger.warning(
+                DELEGATION_REQUEST_INVALID,
+                reason="delegatee_id_mismatch",
+                error_type=ValueError.__name__,
             )
             raise ValueError(msg)
 
