@@ -1058,8 +1058,8 @@
     },
     "src/synthorg/providers/base.py": {
       "cap": 500,
-      "loc": 492,
-      "ratio": 0.984,
+      "loc": 502,
+      "ratio": 1.004,
       "tier": "code"
     },
     "src/synthorg/providers/cassette/store.py": {
