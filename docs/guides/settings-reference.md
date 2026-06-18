@@ -5,7 +5,7 @@ description: How SynthOrg settings resolve, the runtime-editable namespaces, how
 
 # Settings Reference
 
-SynthOrg has over 300 individually-resolved settings across <!--RS:settings_namespaces-->28<!--/RS--> namespaces, split between user-facing namespaces (visible in the dashboard) and operator-only namespaces (operator-tunable, hidden from the basic UI). Each setting is typed (`STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`) and has a clearly-documented default. This guide covers how resolution works, which namespaces are user-facing vs operator-only, and how to edit settings at runtime.
+SynthOrg has over 300 individually-resolved settings across <!--RS:settings_namespaces-->28<!--/RS--> namespaces, split between user-facing namespaces (visible in the dashboard) and operator-only namespaces (operator-tunable, hidden from the basic UI). Each setting is typed (`STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`) and has a clearly-documented default. This guide covers how resolution works, which namespaces are user-facing vs operator-only, and how to edit settings at runtime. <!-- lint-allow: doc-numeric-macros -- approximate floor; total settings count is not a tracked runtime stat -->
 
 ---
 

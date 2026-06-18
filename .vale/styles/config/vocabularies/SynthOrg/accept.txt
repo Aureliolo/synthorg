@@ -372,6 +372,7 @@ combinable
 commitizen
 comms
 company_wide
+complex_service
 composable
 conditional_false
 conditional_true
