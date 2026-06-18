@@ -442,6 +442,7 @@ def build_construction_services(
     # scheduler, so the scheduler must exist before the dispatcher is built.
     approval_timeout_scheduler = build_default_approval_timeout_scheduler(
         approval_store=approval_store,
+        approval_timeout_config=effective_config.config.approval_timeout,
     )
     settings_dispatcher = _build_settings_dispatcher(
         message_bus,
