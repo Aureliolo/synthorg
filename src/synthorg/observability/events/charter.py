@@ -22,6 +22,11 @@ CHARTER_INTERVIEW_FAILED: Final[str] = "charter.interview.failed"
 CHARTER_EDITED: Final[str] = "charter.edited"
 CHARTER_STATUS_TRANSITIONED: Final[str] = "charter.status_transitioned"
 CHARTER_OWNERSHIP_DENIED: Final[str] = "charter.ownership_denied"
+CHARTER_NOT_FOUND: Final[str] = "charter.not_found"
+CHARTER_NOT_EDITABLE: Final[str] = "charter.not_editable"
+CHARTER_ALREADY_DECIDED: Final[str] = "charter.already_decided"
+CHARTER_CONVERSATION_NOT_FOUND: Final[str] = "charter.conversation.not_found"
+CHARTER_CONVERSATION_CLOSED: Final[str] = "charter.conversation.closed"
 
 # -- Approval to spine dispatch ----------------------------------------
 

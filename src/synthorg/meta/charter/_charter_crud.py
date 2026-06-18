@@ -21,6 +21,8 @@ from synthorg.meta.errors import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.charter import (
+    CHARTER_NOT_EDITABLE,
+    CHARTER_NOT_FOUND,
     CHARTER_OWNERSHIP_DENIED,
     CHARTER_STATE_INCONSISTENT,
     CHARTER_STATUS_TRANSITIONED,
@@ -67,6 +69,11 @@ class CharterCrudMixin:
         """
         charter = await self._charter_repo.get(charter_id)
         if charter is None:
+            logger.warning(
+                CHARTER_NOT_FOUND,
+                charter_id=charter_id,
+                error_type=CharterNotFoundError.__name__,
+            )
             raise CharterNotFoundError(charter_id=charter_id)
         if requested_by is not None and charter.created_by != requested_by:
             logger.warning(
@@ -121,6 +128,13 @@ class CharterCrudMixin:
         """
         charter = await self.get(charter_id, requested_by=edited_by)
         if charter.status is not CharterStatus.DRAFTED:
+            logger.warning(
+                CHARTER_NOT_EDITABLE,
+                charter_id=charter_id,
+                status=charter.status.value,
+                operation="edit",
+                error_type=CharterNotEditableError.__name__,
+            )
             raise CharterNotEditableError(charter_id=charter_id)
         updates = self._edit_updates(args)
         updated = charter.model_copy(
@@ -186,6 +200,13 @@ class CharterCrudMixin:
             charter_id, requested_by=cancelled_by if enforce_ownership else None
         )
         if charter.status is not CharterStatus.DRAFTED:
+            logger.warning(
+                CHARTER_NOT_EDITABLE,
+                charter_id=charter_id,
+                status=charter.status.value,
+                operation="cancel",
+                error_type=CharterNotEditableError.__name__,
+            )
             raise CharterNotEditableError(charter_id=charter_id)
         now = self._clock.now()
         transitioned = await self._charter_repo.transition_if(
@@ -195,6 +216,13 @@ class CharterCrudMixin:
             updated_at=now,
         )
         if not transitioned:
+            logger.warning(
+                CHARTER_NOT_EDITABLE,
+                charter_id=charter_id,
+                operation="cancel_transition",
+                reason="cas_transition_lost",
+                error_type=CharterNotEditableError.__name__,
+            )
             raise CharterNotEditableError(charter_id=charter_id)
         await self._close_conversation(charter.conversation_id, now)
         logger.info(

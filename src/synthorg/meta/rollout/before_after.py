@@ -27,6 +27,7 @@ from synthorg.meta.rollout._observation import (
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_ROLLOUT_FAILED,
+    META_ROLLOUT_PRECONDITION_FAILED,
     META_ROLLOUT_STARTED,
 )
 from synthorg.providers.errors import ProviderError
@@ -50,6 +51,11 @@ async def _default_snapshot_builder() -> OrgSignalSnapshot:
         "snapshot_builder is not wired: rollouts cannot observe without "
         "a real OrgSignalSnapshot source. Pass snapshot_builder=... to "
         "the rollout strategy (or to SelfImprovementService)."
+    )
+    logger.warning(
+        META_ROLLOUT_PRECONDITION_FAILED,
+        reason="snapshot_builder_not_wired",
+        error_type=RuntimeError.__name__,
     )
     raise RuntimeError(msg)
 

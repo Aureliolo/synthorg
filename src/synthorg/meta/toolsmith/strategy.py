@@ -42,6 +42,7 @@ from synthorg.observability.events.toolsmith import (
     TOOLSMITH_AUTHOR_COMPLETED,
     TOOLSMITH_AUTHOR_FAILED,
     TOOLSMITH_AUTHOR_STARTED,
+    TOOLSMITH_PROPOSAL_GUARD_REJECTED,
 )
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.cost_recording import cost_recording_scope
@@ -118,6 +119,12 @@ class LLMToolBlueprintGenerator:
         capability = gap.signature
         if capability not in self._config.allowed_capabilities:
             msg = f"capability {capability!r} is not in the toolsmith allowlist"
+            logger.warning(
+                TOOLSMITH_PROPOSAL_GUARD_REJECTED,
+                capability=capability,
+                reason="capability_not_allowlisted",
+                error_type=ToolCapabilityNotAllowedError.__name__,
+            )
             raise ToolCapabilityNotAllowedError(msg)
         logger.info(TOOLSMITH_AUTHOR_STARTED, capability=capability)
         try:
@@ -189,6 +196,11 @@ class LLMToolBlueprintGenerator:
         content = response.content
         if not content:
             msg = "authoring model returned an empty response"
+            logger.warning(
+                TOOLSMITH_AUTHOR_FAILED,
+                reason="empty_model_response",
+                error_type=ToolAuthoringError.__name__,
+            )
             raise ToolAuthoringError(msg)
         return content
 
@@ -233,9 +245,20 @@ class LLMToolBlueprintGenerator:
             payload = json.loads(text)
         except (ValueError, TypeError) as exc:
             msg = "authoring response is not valid JSON"
+            logger.warning(
+                TOOLSMITH_AUTHOR_FAILED,
+                reason="response_not_valid_json",
+                error_type=ToolAuthoringError.__name__,
+                error=safe_error_description(exc),
+            )
             raise ToolAuthoringError(msg) from exc
         if not isinstance(payload, dict):
             msg = "authoring response must be a JSON object"
+            logger.warning(
+                TOOLSMITH_AUTHOR_FAILED,
+                reason="response_not_json_object",
+                error_type=ToolAuthoringError.__name__,
+            )
             raise ToolAuthoringError(msg)
         try:
             args = parse_typed("toolsmith.authoring", payload, _AuthoredBlueprintArgs)

@@ -19,6 +19,7 @@ from typing import Final
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.meta import META_REGRESSION_INPUT_INVALID
 
 logger = get_logger(__name__)
 
@@ -85,6 +86,13 @@ def welch_t_test(
     n_b = len(b)
     if n_a < _MIN_SAMPLES_PER_ARM or n_b < _MIN_SAMPLES_PER_ARM:
         msg = f"need >=2 samples per arm; got n_a={n_a}, n_b={n_b}"
+        logger.warning(
+            META_REGRESSION_INPUT_INVALID,
+            reason="insufficient_samples",
+            n_a=n_a,
+            n_b=n_b,
+            error_type=InsufficientDataError.__name__,
+        )
         raise InsufficientDataError(msg)
 
     mean_a = math.fsum(a) / n_a
@@ -103,6 +111,11 @@ def welch_t_test(
             f"Welch requires positive se_sq and df_den; "
             f"got se_sq={se_sq}, df_den={df_den} "
             f"(var_a={var_a}, var_b={var_b})"
+        )
+        logger.warning(
+            META_REGRESSION_INPUT_INVALID,
+            reason="zero_variance",
+            error_type=ZeroVarianceError.__name__,
         )
         raise ZeroVarianceError(msg)
 
