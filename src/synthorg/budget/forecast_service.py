@@ -25,9 +25,12 @@ from synthorg.observability.events.budget import (
     BUDGET_FORECAST_APPROVED,
     BUDGET_FORECAST_GENERATED,
     BUDGET_FORECAST_REJECTED,
+    BUDGET_HARD_CEILING_RAISE_REJECTED,
     BUDGET_HARD_CEILING_RAISED,
 )
 from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
+
+logger = get_logger(__name__)
 
 
 def _raise_not_found(forecast_id: UUID, *, suffix: str = "") -> NoReturn:
@@ -65,7 +68,6 @@ class BudgetForecastService:
         self._forecaster = forecaster
         self._budget_config = budget_config
         self._clock: ClockFn = clock if clock is not None else utc_now
-        self._logger = get_logger(__name__)
 
     async def generate(
         self,
@@ -89,7 +91,7 @@ class BudgetForecastService:
         )
         forecast = await self._forecaster.forecast(signal)
         await self._repo.save(forecast)
-        self._logger.info(
+        logger.info(
             BUDGET_FORECAST_GENERATED,
             forecast_id=str(forecast.forecast_id),
             brief_hash=forecast.brief_hash,
@@ -136,7 +138,7 @@ class BudgetForecastService:
         if not transitioned:
             _raise_not_found(forecast_id, suffix="(pending)")
         forecast = await self.get_or_404(forecast_id)
-        self._logger.info(
+        logger.info(
             BUDGET_FORECAST_APPROVED,
             forecast_id=str(forecast_id),
             decided_by=decided_by,
@@ -167,7 +169,7 @@ class BudgetForecastService:
         if not transitioned:
             _raise_not_found(forecast_id, suffix="(pending)")
         forecast = await self.get_or_404(forecast_id)
-        self._logger.info(
+        logger.info(
             BUDGET_FORECAST_REJECTED,
             forecast_id=str(forecast_id),
             decided_by=decided_by,
@@ -197,6 +199,14 @@ class BudgetForecastService:
                 f"new_ceiling {new_ceiling} must be strictly greater"
                 f" than accumulated_cost {accumulated_cost}"
             )
+            logger.warning(
+                BUDGET_HARD_CEILING_RAISE_REJECTED,
+                forecast_id=str(forecast_id),
+                reason="ceiling_too_low",
+                new_ceiling=new_ceiling,
+                accumulated_cost=accumulated_cost,
+                error_type=RunHardCeilingTooLowError.__name__,
+            )
             raise RunHardCeilingTooLowError(
                 msg,
                 requested_ceiling=new_ceiling,
@@ -208,6 +218,12 @@ class BudgetForecastService:
             msg = (
                 f"Forecast {forecast_id} is not in a halted state; there is"
                 f" no parked run to resume by raising the ceiling"
+            )
+            logger.warning(
+                BUDGET_HARD_CEILING_RAISE_REJECTED,
+                forecast_id=str(forecast_id),
+                reason="not_halted",
+                error_type=ConflictError.__name__,
             )
             raise ConflictError(msg)
         now = self._clock()
@@ -227,6 +243,12 @@ class BudgetForecastService:
                 f"Forecast {forecast_id} is no longer in a halted state; a"
                 f" concurrent resume won the race to raise the ceiling"
             )
+            logger.warning(
+                BUDGET_HARD_CEILING_RAISE_REJECTED,
+                forecast_id=str(forecast_id),
+                reason="concurrent_resume",
+                error_type=ConflictError.__name__,
+            )
             raise ConflictError(msg)
         updated = forecast.model_copy(
             update={
@@ -235,7 +257,7 @@ class BudgetForecastService:
                 "updated_at": now,
             },
         )
-        self._logger.info(
+        logger.info(
             BUDGET_HARD_CEILING_RAISED,
             forecast_id=str(forecast_id),
             new_ceiling=new_ceiling,

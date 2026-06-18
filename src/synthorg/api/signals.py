@@ -21,7 +21,7 @@ from collections.abc import Callable
 from types import FrameType
 
 from synthorg.api.state import AppState
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_SHUTDOWN_HANDLER_SKIPPED,
     API_SHUTDOWN_SIGNAL_RECEIVED,
@@ -145,10 +145,23 @@ def _install_win32_handlers(
     for sig in _POSIX_SIGNALS:
         try:
             signal.signal(sig, _make_win32_handler(sig, app_state, loop))
-        except ValueError, OSError, RuntimeError:
+        except ValueError, OSError:
             # ``ValueError`` when not on the main thread (belt-and-braces
             # with the guard above), ``OSError`` for a signal the host
             # cannot deliver. uvicorn's own handler covers production.
+            skipped.append(sig.name)
+        except RuntimeError as exc:
+            # ``signal.signal`` does not document ``RuntimeError``; an
+            # unexpected one is more likely a real defect than a benignly
+            # undeliverable signal, so surface it at WARNING rather than
+            # silently demoting it to the DEBUG "refused" bucket.
+            logger.warning(
+                API_SHUTDOWN_HANDLER_SKIPPED,
+                reason="win32-signal-unexpected-error",
+                signal=sig.name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             skipped.append(sig.name)
     if skipped:
         logger.debug(

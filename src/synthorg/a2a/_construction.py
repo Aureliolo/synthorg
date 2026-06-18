@@ -92,12 +92,13 @@ def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
                 timeout_seconds=a2a_client_timeout,
             )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
         # If the client was built but never handed to a committed
         # A2AClient (this branch skips the slice swap below), close it so
-        # the orphaned connection pool does not leak.
+        # the orphaned connection pool does not leak. Run this before
+        # ``reraise_critical`` so a critical error still releases the pool.
         if a2a_client_obj is None and a2a_http_client is not None:
             _close_orphaned_async_client(a2a_http_client)
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
             note="A2A gateway auto-wire failed (non-fatal)",

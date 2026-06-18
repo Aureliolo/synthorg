@@ -103,12 +103,22 @@ def _quote_identifier(identifier: str) -> str:
     """Return a SQLite-double-quoted identifier with embedded quotes escaped.
 
     Args:
-        identifier: A table or column name (already validated by the
-            caller's identifier allowlist; quoting is defence-in-depth).
+        identifier: A table or column name. The caller's identifier
+            allowlist is the primary gate; this function is the
+            self-defending second layer (rejects empty / control-char
+            names that double-quoting alone cannot neutralise, then
+            doubles any embedded ``"``).
 
     Returns:
         The identifier wrapped in double quotes, with any ``"`` doubled.
+
+    Raises:
+        QueryError: If the identifier is empty or contains a NUL / control
+            character, which no legitimate SQLite identifier carries.
     """
+    if not identifier or any(ch < " " for ch in identifier):
+        msg = "External table identifier is empty or contains control characters"
+        raise QueryError(msg)
     escaped = identifier.replace('"', '""')
     return f'"{escaped}"'
 

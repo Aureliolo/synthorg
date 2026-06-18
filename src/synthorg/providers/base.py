@@ -385,7 +385,22 @@ class BaseCompletionProvider(ABC):
         finally:
             inner_aclose = getattr(iterator, "aclose", None)
             if inner_aclose is not None:
-                await inner_aclose()
+                try:
+                    await inner_aclose()
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                    # The inner close is cleanup-only and the slot release
+                    # already runs in the rate-limit wrapper's own
+                    # ``finally``; a failure here must not mask the
+                    # in-flight ``GeneratorExit`` (early close) nor the
+                    # natural stream-exhaustion path.
+                    reraise_critical(exc)
+                    logger.warning(
+                        PROVIDER_STREAM_USAGE_EXPECTED,
+                        model=model,
+                        note="inner stream aclose failed during cleanup",
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
         if usage is not None:
             await record_cost_if_in_scope(
                 # Usage-only synthetic: the streamed content is not

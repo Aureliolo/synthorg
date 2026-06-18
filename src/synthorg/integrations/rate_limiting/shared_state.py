@@ -35,6 +35,7 @@ from synthorg.observability.events.integrations import (
 logger = get_logger(__name__)
 
 _DEFAULT_MAX_RPM: Final[int] = 60
+_RPM_WINDOW_SECONDS: Final[float] = 60.0
 
 _RATELIMIT_CHANNEL = Channel(name="#ratelimit", type=ChannelType.TOPIC)
 _POLL_TIMEOUT: Final[float] = 0.5
@@ -229,8 +230,8 @@ class SharedRateLimitCoordinator:
             await self._publish_acquire(now)
 
     def _evict_old(self, now: float) -> None:
-        """Remove entries older than 60 seconds."""
-        cutoff = now - 60.0
+        """Remove entries older than the RPM sliding window."""
+        cutoff = now - _RPM_WINDOW_SECONDS
         while self._window and self._window[0] < cutoff:
             self._window.popleft()
 

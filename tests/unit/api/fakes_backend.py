@@ -552,6 +552,7 @@ class _FakePresetOverrideRepo:
     async def save_if_unchanged(
         self,
         entity: PresetOverride,
+        /,
         *,
         expected_updated_at: datetime | None,
     ) -> bool:

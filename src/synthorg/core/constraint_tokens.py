@@ -5,8 +5,7 @@ are a cross-layer contract: the persistence backends (SQLite, Postgres)
 emit them, and the API translates them into typed domain conflicts. They
 are pure dependency-free string identifiers, so they live in ``core`` as
 the single source of truth that both layers may import without crossing
-the persistence boundary. ``persistence/constraint_tokens.py`` re-exports
-them so the backend repositories keep their existing import surface.
+the persistence boundary.
 """
 
 from typing import Final

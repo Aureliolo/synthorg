@@ -42,6 +42,8 @@ from synthorg.providers.management.service import ProviderManagementService
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 
+pytestmark = pytest.mark.unit
+
 
 class _FakeAuditRepo:
     def __init__(self) -> None:
@@ -95,6 +97,7 @@ class _FakeOverrideRepo:
     async def save_if_unchanged(
         self,
         override: PresetOverride,
+        /,
         *,
         expected_updated_at: datetime | None,
     ) -> bool:

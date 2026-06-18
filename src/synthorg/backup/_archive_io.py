@@ -74,6 +74,8 @@ def extract_tar(archive_path: Path, target_dir: Path) -> None:
                 logger.warning(
                     BACKUP_MANIFEST_INVALID,
                     reason="unsafe_archive_member_path",
+                    archive_path=str(archive_path),
+                    member=member.name,
                     error_type=ManifestError.__name__,
                 )
                 raise ManifestError(msg)
@@ -86,6 +88,9 @@ def extract_tar(archive_path: Path, target_dir: Path) -> None:
                     logger.warning(
                         BACKUP_MANIFEST_INVALID,
                         reason="unsafe_archive_symlink_target",
+                        archive_path=str(archive_path),
+                        member=member.name,
+                        link_target=linkname,
                         error_type=ManifestError.__name__,
                     )
                     raise ManifestError(msg)

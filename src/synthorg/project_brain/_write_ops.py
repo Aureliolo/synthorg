@@ -215,7 +215,21 @@ class RevisionOps:
                     error_type=BrainEntryValidationError.__name__,
                 )
                 raise BrainEntryValidationError(msg)
-            severity = current.payload.severity  # type: ignore[union-attr]
+            if not isinstance(current.payload, BlockerPayload):
+                msg = (
+                    f"blocker entry {entry_id!r} is missing its"
+                    f" BlockerPayload; cannot derive a severity to clear"
+                )
+                logger.warning(
+                    BRAIN_ENTRY_VALIDATION_FAILED,
+                    project_id=project_id,
+                    entry_id=entry_id,
+                    entry_kind=current.entry_kind.value,
+                    operation="clear",
+                    error_type=BrainEntryValidationError.__name__,
+                )
+                raise BrainEntryValidationError(msg)
+            severity = current.payload.severity
             payload = BlockerPayload(severity=severity, resolution=resolution)
             revised = apply_overrides(
                 current,
