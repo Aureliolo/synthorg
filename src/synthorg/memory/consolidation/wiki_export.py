@@ -7,12 +7,12 @@ three-view filesystem tree: ``raw/``, ``wiki/``, and ``index.md``.
 import asyncio
 import builtins
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.iso_datetime import now_iso_utc
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.consolidation.config import WikiExportConfig
 from synthorg.memory.models import MemoryQuery
@@ -355,7 +355,7 @@ class WikiExporter:
             MemoryError: If the related operation fails.
             RecursionError: If the related operation fails.
         """
-        now = datetime.now(UTC).isoformat()
+        now = now_iso_utc()
         index_content = (
             f"# Memory Wiki Export\n\n"
             f"**Exported at:** {now}\n\n"

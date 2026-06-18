@@ -21,7 +21,6 @@ import hashlib
 import json
 import re
 import shutil
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import (
     ClassVar,
@@ -38,6 +37,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.iso_datetime import now_iso_utc
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.browser import (
     BROWSER_ARGS_VALIDATION_FAILED,
@@ -1002,7 +1002,7 @@ class BrowserTool(BaseTool):
             ),
             file_size_bytes=int(ss_payload.get("file_size_bytes", 0)),
             full_page=bool(ss_payload.get("full_page", False)),
-            captured_at_iso=datetime.now(UTC).isoformat(),
+            captured_at_iso=now_iso_utc(),
             sha256=sha,
         )
 

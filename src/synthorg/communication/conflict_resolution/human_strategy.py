@@ -53,6 +53,7 @@ from synthorg.communication.conflict_resolution.models import (
     DissentRecord,
 )
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.iso_datetime import now_iso_utc
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
@@ -363,7 +364,7 @@ class HumanEscalationResolver:
             )
         try:
             await asyncio.shield(
-                self._store.mark_expired(datetime.now(UTC).isoformat()),
+                self._store.mark_expired(now_iso_utc()),
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)

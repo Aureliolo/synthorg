@@ -31,7 +31,7 @@ from synthorg.observability.events.persistence.project_cost_agg import (
     PERSISTENCE_PROJECT_COST_AGG_INCREMENT_FAILED,
     PERSISTENCE_PROJECT_COST_AGG_INCREMENTED,
 )
-from synthorg.persistence._shared import parse_iso_utc
+from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
 from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
@@ -342,7 +342,7 @@ class SQLiteProjectCostAggregateRepository:
                     project_id=project_id,
                 )
 
-            now = datetime.now(UTC).isoformat()
+            now = format_iso_utc(datetime.now(UTC))
             db_committed = False
             try:
                 # Run the write inside write_context and validate the

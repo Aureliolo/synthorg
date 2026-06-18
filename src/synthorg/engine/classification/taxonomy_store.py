@@ -22,6 +22,7 @@ from typing import Final
 
 from synthorg.budget.coordination_config import ErrorCategory
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.datetime_guards import validate_time_window
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.classification.models import (
     ClassificationResult,
@@ -131,7 +132,7 @@ class InMemoryErrorTaxonomyStore:
         Ordered newest-first.  Results outside the window are filtered
         out; findings from results inside the window are concatenated.
         """
-        _validate_window(since, until)
+        validate_time_window(since, until)
         async with self._lock:
             snapshot = tuple(self._results)
         in_window = [
@@ -165,7 +166,7 @@ class InMemoryErrorTaxonomyStore:
             per-category summaries (with trend), and the most-severe
             category; an empty summary when the window is empty.
         """
-        _validate_window(since, until)
+        validate_time_window(since, until)
         async with self._lock:
             snapshot = tuple(self._results)
         in_window = tuple(
@@ -194,24 +195,6 @@ class InMemoryErrorTaxonomyStore:
         """Drop all stored results."""
         async with self._lock:
             self._results.clear()
-
-
-def _validate_window(since: datetime, until: datetime) -> None:
-    """Reject inverted or naive windows before any scan happens.
-
-    Raises:
-        ValueError: When ``since`` / ``until`` are naive datetimes
-            or when ``since >= until`` (inverted window).
-    """
-    if since.tzinfo is None or until.tzinfo is None:
-        msg = "since/until must be timezone-aware"
-        raise ValueError(msg)
-    if since >= until:
-        msg = (
-            f"since ({since.isoformat()}) must be earlier than until "
-            f"({until.isoformat()})"
-        )
-        raise ValueError(msg)
 
 
 def _in_window(ts: datetime, since: datetime, until: datetime) -> bool:

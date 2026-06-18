@@ -13,7 +13,10 @@ from collections.abc import Callable, Sequence
 from typing import Final, Protocol, runtime_checkable
 from urllib.parse import urlsplit
 
-from synthorg.core.normalization import normalize_ascii_lowercase
+from synthorg.core.normalization import (
+    normalize_ascii_lowercase,
+    strip_trailing_slash,
+)
 from synthorg.research.constants import (
     RESEARCH_DEDUP_JACCARD_THRESHOLD,
     RESEARCH_DEDUP_SHINGLE_SIZE,
@@ -46,7 +49,7 @@ def _canonical_url(uri: str) -> str:
     raw = uri.strip()
     parts = urlsplit(raw)
     netloc = normalize_ascii_lowercase(parts.netloc)
-    host_path = f"{netloc}{parts.path}".rstrip("/")
+    host_path = strip_trailing_slash(f"{netloc}{parts.path}")
     return host_path or normalize_ascii_lowercase(raw)
 
 
