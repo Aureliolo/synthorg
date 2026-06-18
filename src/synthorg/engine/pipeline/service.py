@@ -53,10 +53,15 @@ from synthorg.observability.events.chief_of_staff import (
 from synthorg.observability.events.pipeline import (
     PIPELINE_PHASE_COMPLETED,
     PIPELINE_PHASE_FAILED,
+    PIPELINE_PROJECT_NOT_FOUND,
+    PIPELINE_ROUTING_UNDECIDABLE,
     PIPELINE_RUN_COMPLETED,
     PIPELINE_RUN_FAILED,
     PIPELINE_RUN_STARTED,
     PIPELINE_SOLO_AGENT_SELECTED,
+    PIPELINE_TASK_MISSING,
+    PIPELINE_TEAM_PATH_UNAVAILABLE,
+    PIPELINE_WORK_INTAKE_REJECTED,
 )
 from synthorg.observability.events.stakes_routing import STAKES_ASSESSED
 from synthorg.persistence.project_protocol import ProjectRepository
@@ -328,13 +333,32 @@ class DefaultWorkPipeline:
         _, result = await self._intake_engine.process(request)
         if not result.accepted:
             reason = result.rejection_reason or "intake rejected the request"
+            logger.warning(
+                PIPELINE_WORK_INTAKE_REJECTED,
+                project=work_item.project,
+                reason=reason,
+                error_type=WorkIntakeRejectedError.__name__,
+            )
             raise WorkIntakeRejectedError(reason)
         if result.task_id is None:
             msg = "intake accepted the request but produced no task id"
+            logger.warning(
+                PIPELINE_WORK_INTAKE_REJECTED,
+                project=work_item.project,
+                reason="no_task_id",
+                error_type=WorkIntakeRejectedError.__name__,
+            )
             raise WorkIntakeRejectedError(msg)
         task = await self._task_engine.get_task(result.task_id)
         if task is None:
             msg = f"intake reported task {result.task_id!r} but it is not persisted"
+            logger.warning(
+                PIPELINE_WORK_INTAKE_REJECTED,
+                project=work_item.project,
+                task_id=str(result.task_id),
+                reason="task_not_persisted",
+                error_type=WorkIntakeRejectedError.__name__,
+            )
             raise WorkIntakeRejectedError(msg)
         task = await self._stamp_requester(task, work_item)
         task = await self._link_forecast(task, work_item)
@@ -430,6 +454,11 @@ class DefaultWorkPipeline:
         """
         project = await self._project_repository.get(work_item.project)
         if project is None:
+            logger.warning(
+                PIPELINE_PROJECT_NOT_FOUND,
+                project=work_item.project,
+                error_type=ProjectNotFoundError.__name__,
+            )
             raise ProjectNotFoundError(project_id=work_item.project)
 
     async def _decompose(
@@ -499,6 +528,13 @@ class DefaultWorkPipeline:
         """
         if not agents:
             msg = "no active agents available for solo execution"
+            logger.warning(
+                PIPELINE_ROUTING_UNDECIDABLE,
+                task_id=str(task.id),
+                reason="no_active_agents",
+                path="solo",
+                error_type=WorkRoutingUndecidableError.__name__,
+            )
             raise WorkRoutingUndecidableError(msg)
         proxy = SubtaskDefinition(
             id=str(task.id),
@@ -512,6 +548,14 @@ class DefaultWorkPipeline:
             msg = (
                 "no agent scored above the routing threshold "
                 f"({self._scorer.min_score}) for solo execution"
+            )
+            logger.warning(
+                PIPELINE_ROUTING_UNDECIDABLE,
+                task_id=str(task.id),
+                reason="no_agent_above_threshold",
+                min_score=self._scorer.min_score,
+                candidate_count=len(candidates),
+                error_type=WorkRoutingUndecidableError.__name__,
             )
             raise WorkRoutingUndecidableError(msg)
         best = max(
@@ -548,9 +592,21 @@ class DefaultWorkPipeline:
         """
         del work_item
         if self._coordinator is None:
+            logger.warning(
+                PIPELINE_TEAM_PATH_UNAVAILABLE,
+                task_id=str(task.id),
+                error_type=WorkPipelineTeamPathUnavailableError.__name__,
+            )
             raise WorkPipelineTeamPathUnavailableError
         if not agents:
             msg = "no active agents available for team coordination"
+            logger.warning(
+                PIPELINE_ROUTING_UNDECIDABLE,
+                task_id=str(task.id),
+                reason="no_active_agents",
+                path="team",
+                error_type=WorkRoutingUndecidableError.__name__,
+            )
             raise WorkRoutingUndecidableError(msg)
         await self._coordinator.coordinate(
             CoordinationContext(task=task, available_agents=agents)
@@ -558,6 +614,12 @@ class DefaultWorkPipeline:
         post = await self._task_engine.get_task(str(task.id))
         if post is None:
             msg = f"task {str(task.id)!r} missing after coordination"
+            logger.warning(
+                PIPELINE_TASK_MISSING,
+                task_id=str(task.id),
+                phase="post_coordination",
+                error_type=WorkPipelineError.__name__,
+            )
             raise WorkPipelineError(msg)
         return post.status
 
