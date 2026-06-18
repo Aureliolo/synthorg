@@ -13,6 +13,7 @@ from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.workers import (
+    WORKERS_MAIN_INVALID_WORKER_COUNT,
     WORKERS_POOL_STARTED,
     WORKERS_POOL_STOP_FAILED,
 )
@@ -62,6 +63,10 @@ async def run_worker_pool(  # noqa: PLR0913 -- canonical worker-pool entry point
     """
     if worker_count < 1:
         msg = f"worker_count must be a positive int, got {worker_count}"
+        logger.warning(
+            WORKERS_MAIN_INVALID_WORKER_COUNT,
+            worker_count=worker_count,
+        )
         raise ValueError(msg)
     workers = [
         Worker(
