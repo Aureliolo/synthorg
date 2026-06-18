@@ -46,6 +46,7 @@ from synthorg.memory.config import CompanyMemoryConfig
 from synthorg.memory.org.config import OrgMemoryConfig
 from synthorg.notifications.config import NotificationConfig
 from synthorg.observability import get_logger
+from synthorg.observability.audit_chain.config import AuditChainConfig
 from synthorg.observability.config import LogConfig
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 from synthorg.ontology.config import OntologyConfig
@@ -96,6 +97,8 @@ class RootConfig(BaseModel):
         stakes_routing: Stakes-aware model routing configuration (strategy
             discriminator, per-stakes quality floors, coordination nudge).
         logging: Logging configuration (``None`` to use platform defaults).
+        audit_chain: Quantum-safe audit-chain sink configuration (opt-in,
+            disabled by default).
         graceful_shutdown: Graceful shutdown configuration.
         workflow_handoffs: Cross-department workflow handoffs.
         escalation_paths: Cross-department escalation paths.
@@ -187,6 +190,10 @@ class RootConfig(BaseModel):
     logging: LogConfig | None = Field(
         default=None,
         description="Logging configuration",
+    )
+    audit_chain: AuditChainConfig = Field(
+        default_factory=AuditChainConfig,
+        description="Quantum-safe audit-chain sink configuration (opt-in)",
     )
     graceful_shutdown: GracefulShutdownConfig = Field(
         default_factory=GracefulShutdownConfig,

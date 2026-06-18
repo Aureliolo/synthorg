@@ -155,6 +155,14 @@ def wire_observability_callbacks(app_state: AppState) -> None:
     Args:
         app_state: The configured :class:`AppState`.
     """
+    from synthorg.observability.audit_chain.factory import (  # noqa: PLC0415
+        install_audit_chain_sink,
+    )
+
+    # Attach the audit-chain sink BEFORE wiring Prometheus callbacks so the
+    # collector hookup below finds the freshly-installed sink. No-op when
+    # ``audit_chain.enabled`` is False (the default).
+    install_audit_chain_sink(app_state.config.audit_chain, clock=app_state.clock)
     if app_state.slice(ObservabilityStateSlice).trace_handler is None:
         handler = build_trace_handler(_load_trace_config())
         app_state.swap_slice(

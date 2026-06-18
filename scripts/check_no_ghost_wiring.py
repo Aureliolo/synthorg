@@ -69,6 +69,11 @@ RUNTIME_PREFIXES: Final[tuple[str, ...]] = (
     "src/synthorg/budget/",
     "src/synthorg/security/",
     "src/synthorg/meta/",
+    # observability/ holds the audit-chain sink + signer, wired at boot by
+    # observability/startup_wiring.py::wire_observability_callbacks (called
+    # from api/lifecycle_runner_startup.py); counting its construction lets
+    # the manifest track the audit-chain sink's wiring (#2404).
+    "src/synthorg/observability/",
     # infrastructure/ holds the read / MCP facade family; its services are
     # constructed at boot by the facades feature construction_wirer
     # (infrastructure/_construction.py) via run_construction_wiring.

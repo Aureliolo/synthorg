@@ -32,3 +32,10 @@ AUDIT_CHAIN_RECORD_SHAPE_UNKNOWN: Final[str] = "audit_chain.record_shape_unknown
 
 # Config validation
 AUDIT_CHAIN_CONFIG_INVALID_PRESET: Final[str] = "audit_chain.config.invalid_preset"
+
+# Signer key management + sink installation (audit_chain.* prefix so a
+# failure logged here cannot recurse into the sink's own emit path).
+AUDIT_CHAIN_SIGNER_KEY_LOADED: Final[str] = "audit_chain.signer.key_loaded"
+AUDIT_CHAIN_SIGNER_KEY_GENERATED: Final[str] = "audit_chain.signer.key_generated"
+AUDIT_CHAIN_SINK_INSTALLED: Final[str] = "audit_chain.sink.installed"
+AUDIT_CHAIN_SINK_DISABLED: Final[str] = "audit_chain.sink.disabled"
