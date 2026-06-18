@@ -255,9 +255,9 @@ class TestBudgetSummaries:
 class TestBuildSummariesCurrencyInvariant:
     """Same-currency invariant in ``_build_summaries``.
 
-    Audit finding 126: cost summation across currencies is meaningless
-    without an FX policy and must be rejected at the aggregator
-    boundary.  ``_build_summaries`` raises
+    Cost summation across currencies is meaningless without an FX policy
+    and must be rejected at the aggregator boundary.  ``_build_summaries``
+    raises
     ``MixedCurrencyAggregationError`` when any record's currency
     differs from the requested ``currency`` (or when records span
     multiple currencies).

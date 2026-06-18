@@ -15,7 +15,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import PurePath, PurePosixPath, PureWindowsPath
 from types import MappingProxyType
-from typing import Final, Self
+from typing import Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -58,7 +58,7 @@ class _SinkTypeDescriptor:
         require_json: Whether the sink type must carry ``json_format``.
     """
 
-    owns: str | None
+    owns: Literal["file", "syslog", "http", "otlp"] | None
     require_json: bool = False
 
 

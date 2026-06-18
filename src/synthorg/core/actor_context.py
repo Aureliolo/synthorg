@@ -238,8 +238,9 @@ def with_actor(
         Synchronous functions only. Applying it to an ``async def``
         raises :exc:`TypeError`; use :func:`with_actor_async`. The
         sync/async decorator split is intentional: production code binds
-        the actor via the :func:`actor_scope` context manager, and these
-        decorators exist for the narrower decorator-style call sites.
+        the actor via the :func:`actor_scope` context manager; these
+        decorators are provided for decorator-style use (currently the
+        test suite), not for any current production call site.
 
     Args:
         actor: The identity to bind around each call.

@@ -4,6 +4,7 @@ package health
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -33,18 +34,26 @@ func (e *RateLimitedError) Error() string {
 	return "health endpoint rate-limited"
 }
 
-// parseRetryAfterSeconds reads a delta-seconds Retry-After header into a
-// duration. Only the integer-seconds form is honoured; an HTTP-date or a
-// malformed value yields zero so the caller falls back to its own cadence.
+// parseRetryAfterSeconds reads a Retry-After header into a duration,
+// honouring both forms RFC 9110 10.2.3 permits: an integer delta-seconds
+// and an HTTP-date. A past HTTP-date, a negative delta, or a malformed
+// value yields zero so the caller falls back to its own cadence.
 func parseRetryAfterSeconds(header string) time.Duration {
 	if header == "" {
 		return 0
 	}
-	secs, err := strconv.Atoi(header)
-	if err != nil || secs < 0 {
-		return 0
+	if secs, err := strconv.Atoi(header); err == nil {
+		if secs < 0 {
+			return 0
+		}
+		return time.Duration(secs) * time.Second
 	}
-	return time.Duration(secs) * time.Second
+	if when, err := http.ParseTime(header); err == nil {
+		if delay := time.Until(when); delay > 0 {
+			return delay
+		}
+	}
+	return 0
 }
 
 // WaitForHealthy polls the health endpoint until it returns status "ok" or the
@@ -74,6 +83,17 @@ func WaitForHealthy(ctx context.Context, url string, timeout, interval, initialD
 		case <-ticker.C:
 			if err := checkOnce(ctx, url); err != nil {
 				lastErr = err
+				// Honour a 429 Retry-After hint: wait the server-requested
+				// delay (bounded by the deadline) before the next probe
+				// instead of hammering at the fixed poll interval.
+				var rle *RateLimitedError
+				if errors.As(err, &rle) && rle.RetryAfter > 0 {
+					select {
+					case <-time.After(rle.RetryAfter):
+					case <-ctx.Done():
+						return fmt.Errorf("health check timed out (last error: %w)", lastErr)
+					}
+				}
 				continue
 			}
 			return nil

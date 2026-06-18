@@ -19,12 +19,12 @@ export interface UseConnectionsDataReturn {
   checkingHealth: readonly string[]
 }
 
-const HEALTH_ORDER: Record<ConnectionHealthStatus, number> = {
+const HEALTH_ORDER = {
   unhealthy: 0,
   degraded: 1,
   unknown: 2,
   healthy: 3,
-}
+} as const satisfies Record<ConnectionHealthStatus, number>
 
 function _effectiveHealth(
   conn: Connection,

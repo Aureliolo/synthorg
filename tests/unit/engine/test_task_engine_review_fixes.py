@@ -117,8 +117,8 @@ class TestMutationDictImmutability:
             task_id="task-1",
             updates={"title": "New title"},
         )
-        # Runtime type differs from annotation (dict -> MappingProxyType via __init__)
-        assert type(mutation.updates) is MappingProxyType  # type: ignore[comparison-overlap,unreachable]
+        # The model_validator wraps the Mapping field in a MappingProxyType.
+        assert type(mutation.updates) is MappingProxyType
 
     def test_update_mutation_updates_is_immutable(self) -> None:
         mutation = UpdateTaskMutation(
@@ -128,7 +128,7 @@ class TestMutationDictImmutability:
             updates={"title": "New title"},
         )
         with pytest.raises(TypeError):
-            mutation.updates["hacked"] = "value"
+            mutation.updates["hacked"] = "value"  # type: ignore[index]
 
     def test_transition_mutation_overrides_is_mapping_proxy(self) -> None:
         mutation = TransitionTaskMutation(
@@ -139,8 +139,8 @@ class TestMutationDictImmutability:
             reason="Assigning",
             overrides={"assigned_to": "bob"},
         )
-        # Runtime type differs from annotation (dict -> MappingProxyType via __init__)
-        assert type(mutation.overrides) is MappingProxyType  # type: ignore[comparison-overlap,unreachable]
+        # The model_validator wraps the Mapping field in a MappingProxyType.
+        assert type(mutation.overrides) is MappingProxyType
 
     def test_transition_mutation_overrides_is_immutable(self) -> None:
         mutation = TransitionTaskMutation(
@@ -152,7 +152,7 @@ class TestMutationDictImmutability:
             overrides={"assigned_to": "bob"},
         )
         with pytest.raises(TypeError):
-            mutation.overrides["hacked"] = "value"
+            mutation.overrides["hacked"] = "value"  # type: ignore[index]
 
     def test_update_mutation_deep_copies_input(self) -> None:
         """Original dict is not affected by mutation construction."""

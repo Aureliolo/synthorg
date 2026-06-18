@@ -311,7 +311,9 @@ class TestRegisterObserver:
             requested_by="test",
         )
         assert task1 is not None
+        assert task1.title == "Task 1"
         assert task2 is not None
+        assert task2.title == "Task 2"
         # Unblock the observer for clean teardown
         gate.set()
         await _flush_observers(started_engine)

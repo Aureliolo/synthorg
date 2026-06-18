@@ -421,12 +421,14 @@ class ConfigResolver:
             return fallback
         try:
             return build(raw)
-        except ValidationError:
+        except ValidationError as exc:
             logger.warning(
                 SETTINGS_FETCH_FAILED,
                 namespace=namespace,
                 key=key,
                 reason="invalid_schema_fallback",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return fallback
 

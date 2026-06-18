@@ -50,10 +50,11 @@ class DefaultTokenEstimator:
     """Heuristic token estimator backed by :func:`approx_tokens`.
 
     The single canonical text-only estimator: ``engine.token_estimation``
-    and ``memory.injection`` both build on this one heuristic instead of
-    each redefining the ``approx_tokens`` delegation. The conversation-
-    aware superset lives in ``engine.token_estimation`` because it couples
-    to the provider ``ChatMessage`` shape, which ``core`` does not import.
+    and the memory subsystem (``memory.retriever``, ``memory.self_editing``)
+    build on this one heuristic instead of each redefining the
+    ``approx_tokens`` delegation. The conversation-aware superset lives in
+    ``engine.token_estimation`` because it couples to the provider
+    ``ChatMessage`` shape, which ``core`` does not import.
     Suitable for rough budget enforcement when a model-specific tokenizer
     is unavailable.
     """

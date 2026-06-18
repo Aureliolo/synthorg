@@ -389,14 +389,14 @@ class _BaseSemanticDetector(ABC):
 class SemanticContradictionDetector(_BaseSemanticDetector):
     """LLM-backed detector for logical contradictions."""
 
-    @override
     @property
+    @override
     def category(self) -> ErrorCategory:
         """Error category this detector targets."""
         return ErrorCategory.LOGICAL_CONTRADICTION
 
-    @override
     @property
+    @override
     def supported_scopes(self) -> frozenset[DetectionScope]:
         """Detection scopes this detector can operate on."""
         return frozenset({DetectionScope.SAME_TASK})
@@ -420,14 +420,14 @@ class SemanticContradictionDetector(_BaseSemanticDetector):
 class SemanticNumericalVerificationDetector(_BaseSemanticDetector):
     """LLM-backed detector for numerical inconsistencies."""
 
-    @override
     @property
+    @override
     def category(self) -> ErrorCategory:
         """Error category this detector targets."""
         return ErrorCategory.NUMERICAL_DRIFT
 
-    @override
     @property
+    @override
     def supported_scopes(self) -> frozenset[DetectionScope]:
         """Detection scopes this detector can operate on."""
         return frozenset(
@@ -453,14 +453,14 @@ class SemanticNumericalVerificationDetector(_BaseSemanticDetector):
 class SemanticMissingReferenceDetector(_BaseSemanticDetector):
     """LLM-backed detector for missing entity references."""
 
-    @override
     @property
+    @override
     def category(self) -> ErrorCategory:
         """Error category this detector targets."""
         return ErrorCategory.CONTEXT_OMISSION
 
-    @override
     @property
+    @override
     def supported_scopes(self) -> frozenset[DetectionScope]:
         """Detection scopes this detector can operate on."""
         return frozenset(
@@ -486,14 +486,14 @@ class SemanticMissingReferenceDetector(_BaseSemanticDetector):
 class SemanticCoordinationDetector(_BaseSemanticDetector):
     """LLM-backed detector for coordination breakdowns."""
 
-    @override
     @property
+    @override
     def category(self) -> ErrorCategory:
         """Error category this detector targets."""
         return ErrorCategory.COORDINATION_FAILURE
 
-    @override
     @property
+    @override
     def supported_scopes(self) -> frozenset[DetectionScope]:
         """Detection scopes this detector can operate on."""
         return frozenset({DetectionScope.TASK_TREE})

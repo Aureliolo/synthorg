@@ -1,4 +1,4 @@
-# module-kind: declarative
+# module-kind: code
 """Shared task-filter WHERE-clause builder for the task repositories.
 
 Both backends' ``query`` and ``count`` translate the same

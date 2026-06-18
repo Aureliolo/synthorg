@@ -1,4 +1,4 @@
-# module-kind: repository
+# module-kind: code
 """Shared cost-record aggregation helpers.
 
 Both backend cost-record repositories run the same single-snapshot
@@ -54,6 +54,7 @@ def resolve_currency_aggregate(
         logger.error(
             PERSISTENCE_COST_RECORD_AGGREGATE_FAILED,
             agent_id=agent_id,
+            task_id=task_id,
             error=msg,
         )
         raise QueryError(msg)

@@ -1124,8 +1124,8 @@
     },
     "src/synthorg/settings/resolver.py": {
       "cap": 1100,
-      "loc": 1075,
-      "ratio": 0.977,
+      "loc": 1077,
+      "ratio": 0.979,
       "tier": "complex_service"
     },
     "src/synthorg/settings/service.py": {
@@ -1195,10 +1195,10 @@
       "tier": "code"
     },
     "src/synthorg/workers/_engine_assembly.py": {
-      "cap": 500,
+      "cap": 600,
       "loc": 511,
-      "ratio": 1.022,
-      "tier": "code"
+      "ratio": 0.852,
+      "tier": "orchestrator"
     },
     "src/synthorg/workers/claim.py": {
       "cap": 700,
@@ -1251,7 +1251,7 @@
     "synthorg.core.auth.models": 31,
     "synthorg.core.auth.roles": 29,
     "synthorg.core.autonomy_enums": 36,
-    "synthorg.core.boundary": 36,
+    "synthorg.core.boundary": 37,
     "synthorg.core.clock": 165,
     "synthorg.core.critical_errors": 522,
     "synthorg.core.domain_errors": 206,
@@ -1517,7 +1517,7 @@
     },
     "synthorg.settings.resolver:ConfigResolver": {
       "lcom4": 1,
-      "loc": 1010
+      "loc": 1012
     },
     "synthorg.settings.service:SettingsService": {
       "lcom4": 1,

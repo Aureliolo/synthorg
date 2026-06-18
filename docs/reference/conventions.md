@@ -883,12 +883,19 @@ On-startup wiring helpers follow a two-name contract:
 * `_try_wire_<x>` is best-effort and idempotent: it attaches durable
   collaborators that only exist once a backend is connected (e.g.
   `_try_wire_performance_persistence` attaches metric repos to the
-  construction-phase tracker), logs an `_UNAVAILABLE` event and returns
-  cleanly when its dependency is absent so a persistence-less boot
-  (tests / dev) degrades instead of crashing.
+  construction-phase tracker), logs an `API_APP_STARTUP` warning and
+  returns cleanly when its dependency is absent so a persistence-less
+  boot (tests / dev) degrades instead of crashing.
 
 Pick the prefix by whether a missing dependency is a defect (`_wire_`)
 or an expected degraded mode (`_try_wire_`).
+
+The MUST-succeed contract binds the functions registered **directly** as
+startup hooks. An inner builder called only from a `_try_wire_*` wrapper
+may itself carry degradation guards even when it keeps the `_wire_`
+prefix (e.g. `_wire_cockpit_services`, `_wire_knowledge_engine` return
+early when their backend is absent); the wrapping `_try_wire_*` owns the
+degraded-mode contract for that chain.
 
 ## 34. `set_slice` / `swap_slice` / `wire` semantics
 
@@ -906,6 +913,10 @@ distinct write seams:
   install one service into its owning slice without disturbing siblings
   already wired onto it. `set_field_once` / `wire_if_field_absent` are
   the once-only and if-absent variants for race-sensitive single fields.
+* `swap_field_returning_previous(SliceType, field=service)` -- like
+  `wire`, but returns the previous field value under the same lock
+  acquisition. Use when the caller must stop or close the service it is
+  replacing before the swap takes effect.
 
 ## See also
 

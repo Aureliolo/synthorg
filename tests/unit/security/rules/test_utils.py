@@ -1,10 +1,45 @@
-"""Tests for walk_string_values utility."""
+"""Tests for the shared security-rule utilities."""
 
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from synthorg.security.rules._utils import walk_string_values
+from synthorg.approval.enums import ApprovalRiskLevel
+from synthorg.security.models import SecurityVerdictType
+from synthorg.security.rules._utils import build_deny_verdict, walk_string_values
+
+
+@pytest.mark.unit
+class TestBuildDenyVerdict:
+    """The shared DENY-verdict factory both detectors delegate to."""
+
+    def test_builds_deny_with_matched_rule(self) -> None:
+        verdict = build_deny_verdict(
+            reason="credential detected",
+            risk_level=ApprovalRiskLevel.HIGH,
+            rule_name="aws_secret_key",
+        )
+        assert verdict.verdict is SecurityVerdictType.DENY
+        assert verdict.reason == "credential detected"
+        assert verdict.risk_level is ApprovalRiskLevel.HIGH
+        assert verdict.matched_rules == ("aws_secret_key",)
+
+    def test_timing_is_placeholder_zero(self) -> None:
+        verdict = build_deny_verdict(
+            reason="x",
+            risk_level=ApprovalRiskLevel.LOW,
+            rule_name="r",
+        )
+        # The engine overwrites timing downstream; the factory stamps 0.0.
+        assert verdict.evaluation_duration_ms == 0.0
+
+    def test_evaluated_at_is_timezone_aware(self) -> None:
+        verdict = build_deny_verdict(
+            reason="x",
+            risk_level=ApprovalRiskLevel.LOW,
+            rule_name="r",
+        )
+        assert verdict.evaluated_at.tzinfo is not None
 
 
 @pytest.mark.unit

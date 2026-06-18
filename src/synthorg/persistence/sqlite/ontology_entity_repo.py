@@ -402,7 +402,7 @@ class SQLiteOntologyEntityRepository:
         """
         escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"
-        effective_limit = 1000 if limit is None else int(limit)
+        effective_limit = int(limit)
         effective_offset = max(0, int(offset))
         async with self._db.execute(
             """SELECT * FROM entity_definitions

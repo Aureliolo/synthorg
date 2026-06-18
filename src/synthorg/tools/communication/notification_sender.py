@@ -104,6 +104,10 @@ class NotificationSenderTool(BaseCommunicationTool):
 
         Returns:
             A ``ToolExecutionResult`` with dispatch status.
+
+        Raises:
+            ValidationError: If the arguments fail typed-boundary
+                validation (the invoker boundary handles it).
         """
         if self._dispatcher is None:
             logger.warning(
@@ -121,10 +125,22 @@ class NotificationSenderTool(BaseCommunicationTool):
         # ``parse_typed`` validates ``category`` / ``severity`` against
         # the notification enums and enforces non-blank ``title`` /
         # ``source``, so the membership and isinstance checks below are
-        # handled once at the typed boundary.
-        args = parse_typed(
-            "tool.notification_sender", arguments, NotificationSenderArgs
-        )
+        # handled once at the typed boundary. Emit the tool-specific
+        # failure event before re-raising so a validation failure is
+        # observable under this tool's event (not only the generic invoker
+        # error), while the invoker boundary still owns ValidationError.
+        try:
+            args = parse_typed(
+                "tool.notification_sender", arguments, NotificationSenderArgs
+            )
+        except ValidationError as exc:
+            logger.warning(
+                COMM_TOOL_NOTIFICATION_SEND_FAILED,
+                reason="invalid_arguments",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
         category_str = args.category.value
         severity_str = args.severity.value
         title = args.title

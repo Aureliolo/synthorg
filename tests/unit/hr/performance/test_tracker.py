@@ -379,10 +379,13 @@ class TestGetSnapshot:
     async def test_snapshot_uses_current_time_when_now_none(self) -> None:
         tracker = _make_tracker()
 
+        before = datetime.now(UTC)
         snapshot = await tracker.get_snapshot(NotBlankStr("agent-001"))
+        after = datetime.now(UTC)
 
-        # Should be close to current time
-        assert snapshot.computed_at is not None
+        # With no injected clock the snapshot stamps the wall-clock now,
+        # so it must fall within the window the call spanned.
+        assert before <= snapshot.computed_at <= after
 
 
 @pytest.mark.unit

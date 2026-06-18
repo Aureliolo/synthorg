@@ -2,6 +2,7 @@
 
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from typing import Final
 
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.observability import get_logger
@@ -10,7 +11,7 @@ from synthorg.security.models import SecurityVerdict, SecurityVerdictType
 
 logger = get_logger(__name__)
 
-_MAX_RECURSION_DEPTH: int = 20
+_MAX_RECURSION_DEPTH: Final[int] = 20
 
 
 def build_deny_verdict(

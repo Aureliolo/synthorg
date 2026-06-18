@@ -87,7 +87,7 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	if startDryRun {
 		return printStartDryRun(out, state, opts)
 	}
-	return startContainers(cmd, ctx, state, safeDir, out, errOut, healthTimeout)
+	return startContainers(ctx, cmd, state, safeDir, out, errOut, healthTimeout)
 }
 
 func parseStartTimeout() (time.Duration, error) {
@@ -188,7 +188,7 @@ func printStartDryRun(out *ui.UI, state config.State, opts *GlobalOpts) error {
 	return nil
 }
 
-func startContainers(cmd *cobra.Command, ctx context.Context, state config.State, safeDir string, out, errOut *ui.UI, healthTimeout time.Duration) error {
+func startContainers(ctx context.Context, cmd *cobra.Command, state config.State, safeDir string, out, errOut *ui.UI, healthTimeout time.Duration) error {
 	if os.Getenv("SYNTHORG_NO_LOGO") == "" {
 		out.Logo(version.Version)
 	}
@@ -208,7 +208,7 @@ func startContainers(cmd *cobra.Command, ctx context.Context, state config.State
 	}
 
 	if !startNoPull {
-		refreshed, err := verifyAndPullStartImages(cmd, ctx, info, state, safeDir, out, errOut)
+		refreshed, err := verifyAndPullStartImages(ctx, cmd, info, state, safeDir, out, errOut)
 		if err != nil {
 			return err
 		}
@@ -224,7 +224,7 @@ func startContainers(cmd *cobra.Command, ctx context.Context, state config.State
 	return startDetached(ctx, info, safeDir, state, out, errOut, healthTimeout)
 }
 
-func verifyAndPullStartImages(cmd *cobra.Command, ctx context.Context, info docker.Info, state config.State, safeDir string, out, errOut *ui.UI) (config.State, error) {
+func verifyAndPullStartImages(ctx context.Context, cmd *cobra.Command, info docker.Info, state config.State, safeDir string, out, errOut *ui.UI) (config.State, error) {
 	if GetGlobalOpts(ctx).SkipVerify {
 		errOut.Warn("Image verification skipped (--skip-verify). Containers are NOT verified.")
 		out.Blank()
