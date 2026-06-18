@@ -6,10 +6,11 @@ the results into human-readable reports in text, markdown, or JSON.
 
 import asyncio
 import json
-from typing import ClassVar, Final, cast, override
+from typing import ClassVar, Final, override
 
 from pydantic import BaseModel, JsonValue
 
+from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.analytics import (
@@ -28,19 +29,6 @@ from synthorg.tools.analytics.data_aggregator import (
 from synthorg.tools.base import ToolExecutionResult
 
 logger = get_logger(__name__)
-
-_REPORT_TYPES: Final[frozenset[str]] = frozenset(
-    {
-        "budget_summary",
-        "performance",
-        "trend_analysis",
-        "cost_breakdown",
-    }
-)
-
-_OUTPUT_FORMATS: Final[frozenset[str]] = frozenset({"text", "markdown", "json"})
-
-_VALID_PERIODS: Final[frozenset[str]] = frozenset({"7d", "30d", "90d", "ytd"})
 
 _REPORT_METRICS: Final[dict[str, list[str]]] = {
     "budget_summary": ["total_cost", "budget_remaining", "burn_rate"],
@@ -133,69 +121,14 @@ class ReportGeneratorTool(BaseAnalyticsTool):
                 is_error=True,
             )
 
-        report_type = arguments.get("report_type")
-        period = arguments.get("period")
-        if not isinstance(report_type, str):
-            logger.warning(
-                ANALYTICS_TOOL_REPORT_FAILED,
-                error="missing_or_invalid_report_type",
-            )
-            return ToolExecutionResult(
-                content="'report_type' must be a string.",
-                is_error=True,
-            )
-        if not isinstance(period, str):
-            logger.warning(
-                ANALYTICS_TOOL_REPORT_FAILED,
-                error="missing_or_invalid_period",
-            )
-            return ToolExecutionResult(
-                content="'period' must be a string.",
-                is_error=True,
-            )
-        output_format = cast("str", arguments.get("format", "markdown"))
-
-        if report_type not in _REPORT_TYPES:
-            logger.warning(
-                ANALYTICS_TOOL_REPORT_FAILED,
-                error="invalid_report_type",
-                report_type=report_type,
-            )
-            return ToolExecutionResult(
-                content=(
-                    f"Invalid report_type: {report_type!r}. "
-                    f"Must be one of: {sorted(_REPORT_TYPES)}"
-                ),
-                is_error=True,
-            )
-
-        if period not in _VALID_PERIODS:
-            logger.warning(
-                ANALYTICS_TOOL_REPORT_FAILED,
-                error="invalid_period",
-                period=period,
-            )
-            return ToolExecutionResult(
-                content=(
-                    f"Invalid period: {period!r}. "
-                    f"Must be one of: {sorted(_VALID_PERIODS)}"
-                ),
-                is_error=True,
-            )
-
-        if output_format not in _OUTPUT_FORMATS:
-            logger.warning(
-                ANALYTICS_TOOL_REPORT_FAILED,
-                error="invalid_output_format",
-                output_format=output_format,
-            )
-            return ToolExecutionResult(
-                content=(
-                    f"Invalid format: {output_format!r}. "
-                    f"Must be one of: {sorted(_OUTPUT_FORMATS)}"
-                ),
-                is_error=True,
-            )
+        # ``parse_typed`` validates ``report_type`` / ``period`` /
+        # ``format`` against their Literal contracts, so an out-of-set
+        # value is rejected at the boundary and the lookups below are
+        # total.
+        args = parse_typed("tool.report_generator", arguments, ReportGeneratorArgs)
+        report_type = args.report_type
+        period = args.period
+        output_format = args.format
 
         metrics = list(_REPORT_METRICS.get(report_type, []))
 

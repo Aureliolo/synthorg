@@ -4,6 +4,7 @@ import json
 from typing import cast
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.analytics.report_generator import ReportGeneratorTool
@@ -112,29 +113,29 @@ class TestReportGeneratorTool:
         mock_provider: MockAnalyticsProvider,
     ) -> None:
         tool = ReportGeneratorTool(provider=mock_provider)
-        result = await tool.execute(
-            arguments={
-                "report_type": "invalid",
-                "period": "7d",
-            }
-        )
-        assert result.is_error
-        assert "Invalid report_type" in result.content
+        # The ReportType literal rejects an out-of-set report_type at the
+        # typed boundary before the provider is queried.
+        with pytest.raises(ValidationError, match="report_type"):
+            await tool.execute(
+                arguments={
+                    "report_type": "invalid",
+                    "period": "7d",
+                }
+            )
 
     async def test_execute_invalid_format(
         self,
         mock_provider: MockAnalyticsProvider,
     ) -> None:
         tool = ReportGeneratorTool(provider=mock_provider)
-        result = await tool.execute(
-            arguments={
-                "report_type": "budget_summary",
-                "period": "7d",
-                "format": "csv",
-            }
-        )
-        assert result.is_error
-        assert "Invalid format" in result.content
+        with pytest.raises(ValidationError, match="format"):
+            await tool.execute(
+                arguments={
+                    "report_type": "budget_summary",
+                    "period": "7d",
+                    "format": "csv",
+                }
+            )
 
     async def test_execute_provider_error(
         self,
