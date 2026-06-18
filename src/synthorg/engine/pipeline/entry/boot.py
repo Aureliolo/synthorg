@@ -50,6 +50,7 @@ from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.knowledge.state import KnowledgeStateSlice
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.brownfield import BROWNFIELD_ENTRY_WIRED
+from synthorg.observability.events.budget import BUDGET_FORECAST_UNAVAILABLE
 from synthorg.observability.events.client import CLIENT_SIMULATION_RUNTIME_WIRED
 from synthorg.observability.events.objectives import OBJECTIVE_ENTRY_WIRED
 from synthorg.persistence.state import PersistenceStateSlice, persistence_of
@@ -111,6 +112,11 @@ def _forecast_gate_for(app_state: AppState) -> ForecastGate | None:
                 "budget.forecast_required is enabled but the cost-dial"
                 " forecaster/repository did not wire; refusing to dispatch"
                 " work past a required pre-flight forecast gate"
+            )
+            logger.warning(
+                BUDGET_FORECAST_UNAVAILABLE,
+                reason="forecaster_not_wired_but_required",
+                error_type=ServiceUnavailableError.__name__,
             )
             raise ServiceUnavailableError(msg)
         return None

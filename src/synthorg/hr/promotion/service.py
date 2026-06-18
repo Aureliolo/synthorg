@@ -287,6 +287,7 @@ class PromotionService:
                 PROMOTION_COOLDOWN_ACTIVE,
                 agent_id=agent_id,
                 until=str(until),
+                error_type=PromotionCooldownError.__name__,
             )
             raise PromotionCooldownError(msg)
 
