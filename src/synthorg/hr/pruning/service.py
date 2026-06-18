@@ -15,11 +15,13 @@ machine to its own owner with its own lock, which would just move
 the complexity without reducing it.
 
 Note:
-    ``_pending_requests`` and ``_processed_approval_ids`` are in-memory
-    only. If the service restarts, already-decided approvals may be
-    reprocessed.  The ``pruning_request_id`` stored in approval metadata
-    mitigates data loss for the audit trail, but full durability requires
-    a persistent backend (planned).
+    ``_processed_approval_ids`` is a same-process fast path; the durable
+    dedup anchor is the ``pruning_processed`` marker stamped into each
+    decided approval's metadata (via the approval store), so a restart
+    cannot re-offboard an already-handled approval. ``_pending_requests``
+    is in-memory only and rebuilt from the store's PENDING items on
+    restart; the ``pruning_request_id`` carried in approval metadata
+    keeps the completion audit trail intact when it is empty.
 """
 
 import asyncio
@@ -67,6 +69,14 @@ from synthorg.observability.events.hr import (
 logger = get_logger(__name__)
 
 _ACTION_TYPE = "hr:prune"
+# Durable dedup marker written into the approval item's metadata once a
+# decided pruning approval has been offboarded / rejected. The in-memory
+# ``_processed_approval_ids`` set is a same-process fast path; this marker
+# survives a restart so a redelivered APPROVED item is not re-offboarded
+# (the audit's data-integrity fix, persisted via approvals.metadata rather
+# than a bespoke pruning_requests table).
+_PROCESSED_META_KEY = "pruning_processed"
+_PROCESSED_META_VALUE = "true"
 
 
 class PruningService:
@@ -551,6 +561,53 @@ class PruningService:
 
     # ── Approval Processing ───────────────────────────────────
 
+    @staticmethod
+    def _already_processed_durably(item: ApprovalItem) -> bool:
+        """Return ``True`` when the approval carries the durable marker.
+
+        The marker survives a restart, so a redelivered decided approval
+        whose offboarding / rejection already landed is skipped without
+        relying on the in-memory ``_processed_approval_ids`` set (empty
+        after a restart).
+
+        Returns:
+            ``True`` if the durable processed marker is present.
+        """
+        return item.metadata.get(_PROCESSED_META_KEY) == _PROCESSED_META_VALUE
+
+    async def _mark_processed(self, item: ApprovalItem) -> None:
+        """Mark a decided approval processed in memory and durably.
+
+        Writes the dedup marker into the approval item's metadata via the
+        store (best-effort: a write failure logs but keeps the in-memory
+        mark so the same process still dedups; the next restart simply
+        re-derives from the store). Idempotent: a no-op when the marker
+        is already present.
+        """
+        self._processed_approval_ids.add(str(item.id))
+        if self._already_processed_durably(item):
+            return
+        try:
+            await self._approval_store.save(
+                item.model_copy(
+                    update={
+                        "metadata": {
+                            **item.metadata,
+                            _PROCESSED_META_KEY: _PROCESSED_META_VALUE,
+                        }
+                    }
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                HR_PRUNING_POLICY_ERROR,
+                approval_id=str(item.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="durable_processed_mark_failed",
+            )
+
     async def _process_decided_approvals(self) -> None:
         """Poll for decided approvals and process them."""
         approved_items = await self._approval_store.list_items(
@@ -558,6 +615,9 @@ class PruningService:
             status=ApprovalStatus.APPROVED,
         )
         for item in approved_items:
+            if self._already_processed_durably(item):
+                self._processed_approval_ids.add(str(item.id))
+                continue
             if not await self._try_claim(str(item.id)):
                 continue
             try:
@@ -570,10 +630,13 @@ class PruningService:
             status=ApprovalStatus.REJECTED,
         )
         for item in rejected_items:
+            if self._already_processed_durably(item):
+                self._processed_approval_ids.add(str(item.id))
+                continue
             if not await self._try_claim(str(item.id)):
                 continue
             try:
-                self._handle_rejected(item)
+                await self._handle_rejected(item)
             finally:
                 await self._release_claim(str(item.id))
 
@@ -610,7 +673,7 @@ class PruningService:
                 approval_id=str(item.id),
                 error="Missing agent_id in approval metadata",
             )
-            self._processed_approval_ids.add(str(item.id))
+            await self._mark_processed(item)
             return
 
         agent = await self._registry.get(NotBlankStr(agent_id))
@@ -622,7 +685,7 @@ class PruningService:
                 error="Agent not found in registry after approval",
             )
             self._pending_requests.pop(agent_id, None)
-            self._processed_approval_ids.add(str(item.id))
+            await self._mark_processed(item)
             return
 
         # State-transition log for the pruning request itself; the
@@ -713,7 +776,7 @@ class PruningService:
         """Create PruningRecord and notify after successful offboard."""
         agent_id = str(agent.id)
         pending_request = self._pending_requests.pop(agent_id, None)
-        self._processed_approval_ids.add(str(item.id))
+        await self._mark_processed(item)
 
         if pending_request is not None:
             request_id = NotBlankStr(str(pending_request.id))
@@ -766,7 +829,7 @@ class PruningService:
                     error=safe_error_description(exc),
                 )
 
-    def _handle_rejected(self, item: ApprovalItem) -> None:
+    async def _handle_rejected(self, item: ApprovalItem) -> None:
         """Clean up after a rejected approval."""
         agent_id = item.metadata.get("agent_id")
         if not agent_id:
@@ -775,11 +838,11 @@ class PruningService:
                 approval_id=str(item.id),
                 error="Missing agent_id in rejected approval metadata",
             )
-            self._processed_approval_ids.add(str(item.id))
+            await self._mark_processed(item)
             return
 
         request = self._pending_requests.pop(agent_id, None)
-        self._processed_approval_ids.add(str(item.id))
+        await self._mark_processed(item)
         logger.info(
             PRUNING_REQUEST_STATUS_TRANSITIONED,
             request_id=str(request.id) if request is not None else None,
