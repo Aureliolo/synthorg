@@ -15,7 +15,7 @@ Zero real LLM spend: every provider is scripted/deterministic.
 """
 
 from collections.abc import AsyncGenerator
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from uuid import uuid4, uuid5
 
@@ -239,6 +239,22 @@ class _FakeCharterRepo:
         ]
         return tuple(rows[offset : offset + limit])
 
+    async def save_edit_if_version(
+        self,
+        entity: ProjectCharter,
+        *,
+        expected_version: int,
+    ) -> bool:
+        cur = self.items.get(entity.id)
+        if (
+            cur is None
+            or cur.version != expected_version
+            or cur.status is not CharterStatus.DRAFTED
+        ):
+            return False
+        self.items[entity.id] = entity
+        return True
+
     async def transition_if(
         self,
         entity_id: str,
@@ -293,6 +309,25 @@ class _FakeForecastRepo:
         if cur is None or cur.decision is not from_state:
             return False
         self.items[str(entity_id)] = cur.model_copy(update={"decision": to_state})
+        return True
+
+    async def raise_ceiling_if_halted(
+        self,
+        entity_id: object,
+        *,
+        new_ceiling: float,
+        updated_at: datetime,
+    ) -> bool:
+        cur = self.items.get(str(entity_id))
+        if cur is None or cur.halt_context is None:
+            return False
+        self.items[str(entity_id)] = cur.model_copy(
+            update={
+                "ceiling_amount": new_ceiling,
+                "halt_context": None,
+                "updated_at": updated_at,
+            },
+        )
         return True
 
     async def query(

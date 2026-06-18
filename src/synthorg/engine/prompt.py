@@ -196,8 +196,8 @@ def build_system_prompt(  # noqa: PLR0913
         model_tier=model_tier,
     )
 
-    # SEC-1: the untrusted-content directive is appended after trimming
-    # (so it survives) but still counts toward the real token budget, so
+    # The untrusted-content directive is appended after trimming (so it
+    # survives) but still counts toward the real token budget, so
     # reserve its upper-bound cost before trimming. The maximal tag set
     # is derived from the inputs; trimming only removes sections, so the
     # directive actually appended (derived from surviving sections) is a
@@ -275,7 +275,7 @@ def build_system_prompt(  # noqa: PLR0913
         msg = f"Error injecting async task state for agent '{agent.name}': {detail}"
         raise PromptBuildError(msg) from exc
 
-    # SEC-1: append the untrusted-content directive naming every fence
+    # Append the untrusted-content directive naming every fence
     # tag still present in the final content, after trimming so it is
     # never trimmed away from the content it governs. Tags are derived
     # from the surviving sections (a section the trimmer dropped no

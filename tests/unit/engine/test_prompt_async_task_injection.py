@@ -41,7 +41,7 @@ class TestAsyncTaskPromptInjection:
         assert "worker-1" in prompt.content
         assert "running" in prompt.content
         assert "async_tasks" in prompt.sections
-        # SEC-1: the agent-set task_id / agent_name are fenced and the
+        # The agent-set task_id / agent_name are fenced and the
         # untrusted-content directive names the task-data tag even when
         # there is no task on the prompt.
         assert "<task-data>" in prompt.content

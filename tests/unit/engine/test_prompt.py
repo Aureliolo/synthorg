@@ -322,7 +322,7 @@ class TestBuildSystemPrompt:
 
 @pytest.mark.unit
 class TestUntrustedContentDirectiveInjection:
-    """SEC-1: the untrusted-content directive accompanies fenced content."""
+    """The untrusted-content directive must accompany fenced content."""
 
     def test_task_prompt_fences_and_directs(
         self,

@@ -194,7 +194,7 @@ def append_untrusted_content_directive(
     tags: tuple[str, ...],
     estimator: PromptTokenEstimator,
 ) -> SystemPrompt:
-    """Append the SEC-1 untrusted-content directive for *tags*.
+    """Append the untrusted-content directive for *tags*.
 
     Appended after trimming (like the async-task section) so the
     directive that tells the model to treat fenced ``<tag>`` blocks as

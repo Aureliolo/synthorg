@@ -86,7 +86,7 @@ class TestSteerHandlers:
         assert body["status"] == "ok"
         assert body["data"]["kind"] == "redirect"
         assert body["data"]["directive_id"]
-        # SEC-1 audit: exactly one signed admin-op event for the issued
+        # Audit chain: exactly one signed admin-op event for the issued
         # directive.
         audit = [e for e in logs if e.get("event") == MCP_ADMIN_OP_EXECUTED]
         assert len(audit) == 1

@@ -240,7 +240,7 @@ def inject_async_task_section(
 
     The ``task_id`` and ``agent_name`` fields originate from agent-set
     state and are attacker-controllable string values, so they are
-    fenced with the ``<task-data>`` tag (SEC-1); the governing
+    fenced with the ``<task-data>`` tag; the governing
     untrusted-content directive is appended by the caller. Status and
     the two ISO-8601 timestamps are enum/datetime-derived and not
     fenced.

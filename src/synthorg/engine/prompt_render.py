@@ -100,8 +100,8 @@ def build_template_context(  # noqa: PLR0913
     context["formatted_budget_limit"] = (
         format_cost(budget_limit, currency) if budget_limit > 0 else ""
     )
-    # SEC-1: org policies are operator-configured but injected verbatim
-    # into the system prompt; fence each so a policy string cannot smuggle
+    # Org policies are operator-configured but injected verbatim into the
+    # system prompt; fence each so a policy string cannot smuggle
     # instructions, and the appended directive treats the block as data.
     context["org_policies"] = tuple(
         wrap_untrusted(TAG_CONFIG_VALUE, policy) for policy in org_policies
@@ -116,11 +116,11 @@ def build_template_context(  # noqa: PLR0913
     inject_strategy_context(context, agent, strategy_config)
 
     if task is not None:
-        # SEC-1: title / description / acceptance criteria are
-        # client-supplied free text injected into the system prompt;
-        # fence each with TAG_TASK_DATA so an injected ``</task-data>``
-        # cannot break out and the appended directive marks the block as
-        # data the model must not obey as instructions.
+        # Title / description / acceptance criteria are client-supplied
+        # free text injected into the system prompt; fence each with
+        # TAG_TASK_DATA so an injected ``</task-data>`` cannot break out
+        # and the appended directive marks the block as data the model
+        # must not obey as instructions.
         context["task"] = {
             "title": wrap_untrusted(TAG_TASK_DATA, task.title),
             "description": wrap_untrusted(TAG_TASK_DATA, task.description),

@@ -148,7 +148,7 @@ class TestDocsWrite:
         assert payload["status"] == "ok"
         assert payload["data"]["slug"] == "q2-status"
         assert svc.write_called is True
-        # SEC-1 audit: exactly one signed admin-op event, with the
+        # Audit chain: exactly one signed admin-op event, with the
         # target id of the written doc.
         audit = [e for e in logs if e.get("event") == MCP_ADMIN_OP_EXECUTED]
         assert len(audit) == 1
