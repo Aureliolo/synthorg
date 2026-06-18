@@ -229,6 +229,7 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "scaling.update_strategy": (30, 60),
     # security
     "security.audit_query": (30, 60),
+    "security.ssrf_resolve": (20, 60),
     # settings
     "settings.delete": (60, 60),
     "settings.import": (5, 3600),

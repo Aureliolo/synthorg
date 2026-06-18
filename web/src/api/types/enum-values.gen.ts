@@ -865,6 +865,13 @@ export const SOURCE_TYPE_VALUES = [
 ] as const
 export type SourceType = (typeof SOURCE_TYPE_VALUES)[number]
 
+export const SSRF_VIOLATION_STATUS_VALUES = [
+    'pending',
+    'allowed',
+    'denied',
+] as const
+export type SsrfViolationStatus = (typeof SSRF_VIOLATION_STATUS_VALUES)[number]
+
 export const STAKES_VALUES = [
     'low',
     'normal',

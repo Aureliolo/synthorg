@@ -21,6 +21,7 @@ from urllib.parse import urlparse
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import SECURITY_OUTBOUND_DNS_UNPINNED
 from synthorg.tools._dns_pinning import PinnedDnsTransport
+from synthorg.tools._ssrf_recording import record_ssrf_violation
 from synthorg.tools.network_validator import (
     DnsValidationOk,
     NetworkPolicy,
@@ -31,6 +32,23 @@ logger = get_logger(__name__)
 
 _ALLOWED_SCHEMES: Final[frozenset[str]] = frozenset({"http", "https"})
 _BLOCKED_HOSTS: Final[frozenset[str]] = frozenset({"localhost", "127.0.0.1", "::1"})
+_DEFAULT_PORTS: Final[dict[str, int]] = {"http": 80, "https": 443}
+
+
+def _host_and_port(url: str) -> tuple[str, int]:
+    """Extract ``(hostname, port)`` from a URL for violation recording.
+
+    Returns:
+        The hostname (empty string when unparseable) and the explicit or
+        scheme-default port (``443`` as a final fallback).
+    """
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    try:
+        port = parsed.port or _DEFAULT_PORTS.get(parsed.scheme, 443)
+    except ValueError:
+        port = _DEFAULT_PORTS.get(parsed.scheme, 443)
+    return host, port
 
 
 def validate_outbound_url_scheme(url: str, field: str) -> None:
@@ -112,6 +130,8 @@ async def resolve_outbound_target(
         # The isinstance is a success/error discriminant on the
         # validator's union return, not argument type-validation, so the
         # rejection is a value error, not a TypeError.
+        host, port = _host_and_port(url)
+        await record_ssrf_violation(url=url, hostname=host or field, port=port)
         msg = f"{field} rejected by SSRF policy: {result}"
         raise ValueError(msg)  # noqa: TRY004 -- value rejection, not a type mismatch
     if (
@@ -132,6 +152,8 @@ async def resolve_outbound_target(
             hostname=result.hostname,
             reason="allowlisted_host_dns_unresolved_no_pin",
         )
+        _, port = _host_and_port(url)
+        await record_ssrf_violation(url=url, hostname=result.hostname, port=port)
         msg = (
             f"{field}: allowlisted host {result.hostname!r} could not be "
             "resolved for DNS pinning"

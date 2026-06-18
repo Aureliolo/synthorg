@@ -3838,6 +3838,40 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/providers/ssrf-violations": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListViolations */
+        readonly get: operations["ApiV1ProvidersSsrfViolationsListViolations"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/providers/ssrf-violations/{violation_id}/resolve": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** ResolveViolation */
+        readonly post: operations["ApiV1ProvidersSsrfViolationsViolationIdResolveResolveViolation"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/readyz": {
         readonly parameters: {
             readonly query?: never;
@@ -6979,6 +7013,19 @@ export type components = {
         /** ApiResponse[SimulationStatusResponse] */
         readonly ApiResponse_SimulationStatusResponse_: {
             readonly data: components["schemas"]["SimulationStatusResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[SsrfViolationDTO] */
+        readonly ApiResponse_SsrfViolationDTO_: {
+            readonly data: components["schemas"]["SsrfViolationDTO"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /**
@@ -13065,6 +13112,26 @@ export type components = {
              */
             readonly success: boolean;
         };
+        /** PaginatedResponse[SsrfViolationDTO] */
+        readonly PaginatedResponse_SsrfViolationDTO_: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["SsrfViolationDTO"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
         /** PaginatedResponse[str] */
         readonly PaginatedResponse_str_: {
             /** @default [] */
@@ -14668,6 +14735,10 @@ export type components = {
                 readonly [key: string]: unknown;
             } | boolean | number;
         };
+        /** ResolveSsrfViolationRequest */
+        readonly ResolveSsrfViolationRequest: {
+            readonly status: components["schemas"]["SsrfViolationStatus"];
+        };
         /** RestoreRequest */
         readonly RestoreRequest: {
             readonly backup_id: string;
@@ -15483,6 +15554,42 @@ export type components = {
          * @enum {string}
          */
         readonly SourceType: "pdf" | "web" | "repo" | "ticket" | "design_doc";
+        /** SsrfViolationDTO */
+        readonly SsrfViolationDTO: {
+            /** @description CIDR range that triggered the block, when known. */
+            readonly blocked_range: string | null;
+            /** @description Hostname extracted from the URL. */
+            readonly hostname: string;
+            /** @description Unique violation identifier. */
+            readonly id: string;
+            /** @description Destination port. */
+            readonly port: number;
+            /** @description Provider preset that triggered the block, when known. */
+            readonly provider_name: string | null;
+            /**
+             * Format: date-time
+             * @description When the violation was resolved, when resolved.
+             */
+            readonly resolved_at: string | null;
+            /** @description Operator who resolved the violation, when resolved. */
+            readonly resolved_by: string | null;
+            /** @description IP the hostname resolved to, when known. */
+            readonly resolved_ip: string | null;
+            readonly status: components["schemas"]["SsrfViolationStatus"];
+            /**
+             * Format: date-time
+             * @description When the outbound request was blocked.
+             */
+            readonly timestamp: string;
+            /** @description The blocked URL (credentials redacted). */
+            readonly url: string;
+        };
+        /**
+         * SsrfViolationStatus
+         * @description Status of an SSRF violation record.
+         * @enum {string}
+         */
+        readonly SsrfViolationStatus: "pending" | "allowed" | "denied";
         /** StageDecisionPayload */
         readonly StageDecisionPayload: {
             /** @description Rationale for the decision */
@@ -25906,6 +26013,73 @@ export interface operations {
             readonly 400: components["responses"]["BadRequest"];
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersSsrfViolationsListViolations: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
+                readonly status?: "pending" | "allowed" | "denied" | null;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PaginatedResponse_SsrfViolationDTO_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersSsrfViolationsViolationIdResolveResolveViolation: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly violation_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ResolveSsrfViolationRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_SsrfViolationDTO_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
             readonly 409: components["responses"]["Conflict"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
