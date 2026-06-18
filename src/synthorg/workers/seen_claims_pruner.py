@@ -20,6 +20,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workers import (
     WORKERS_SEEN_CLAIMS_PRUNE_FAILED,
     WORKERS_SEEN_CLAIMS_PRUNED,
+    WORKERS_SEEN_CLAIMS_PRUNER_START_REJECTED,
     WORKERS_SEEN_CLAIMS_PRUNER_STARTED,
     WORKERS_SEEN_CLAIMS_PRUNER_STOPPED,
 )
@@ -71,6 +72,11 @@ class SeenClaimsPruner:
         async with self._lifecycle_lock:
             if self._running:
                 msg = "SeenClaimsPruner is already running"
+                logger.warning(
+                    WORKERS_SEEN_CLAIMS_PRUNER_START_REJECTED,
+                    reason="already_running",
+                    error_type=RuntimeError.__name__,
+                )
                 raise RuntimeError(msg)
             self._running = True
             self._stop_event.clear()

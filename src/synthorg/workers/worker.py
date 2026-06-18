@@ -43,6 +43,7 @@ from synthorg.observability.events.workers import (
     WORKERS_HEARTBEAT_SENT,
     WORKERS_POOL_STARTED,
     WORKERS_POOL_STOP_FAILED,
+    WORKERS_WORKER_START_REJECTED,
     WORKERS_WORKER_STARTED,
     WORKERS_WORKER_STOPPED,
 )
@@ -188,6 +189,12 @@ class Worker:
         async with self._lifecycle_lock:
             if self._running:
                 msg = f"Worker {self._worker_id} is already running"
+                logger.warning(
+                    WORKERS_WORKER_START_REJECTED,
+                    worker_id=self._worker_id,
+                    reason="already_running",
+                    error_type=RuntimeError.__name__,
+                )
                 raise RuntimeError(msg)
             self._running = True
             self._stop_event.clear()
