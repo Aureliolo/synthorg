@@ -125,8 +125,9 @@ class WeightedTrustStrategy:
         - completion: success rate from latest window
         - error: 1 - (tasks_failed / data_point_count), distinct from
           success_rate because data_point_count includes non-task events
-        - feedback: task volume ratio (tasks/100, capped at 1.0);
-          placeholder for human feedback signals
+        - task_volume: task volume ratio (tasks / saturation, capped at
+          1.0); weighted by the ``human_feedback`` weight slot, which a
+          real human-feedback signal would later replace this factor in
 
         Returns:
             The weighted trust score in ``[0.0, 1.0]``.
@@ -153,12 +154,12 @@ class WeightedTrustStrategy:
                 break
 
         # Task volume ratio (tasks completed / _TASK_VOLUME_SATURATION,
-        # capped at 1.0) -- placeholder for human feedback until that
-        # signal is available.
-        feedback_factor = 0.0
+        # capped at 1.0). Weighted by the ``human_feedback`` weight slot
+        # until a real human-feedback signal replaces this factor.
+        task_volume_factor = 0.0
         for window in snapshot.windows:
             if window.tasks_completed > 0:
-                feedback_factor = min(
+                task_volume_factor = min(
                     window.tasks_completed / _TASK_VOLUME_SATURATION, 1.0
                 )
                 break
@@ -167,7 +168,7 @@ class WeightedTrustStrategy:
             self._weights.task_difficulty * difficulty_factor
             + self._weights.completion_rate * completion_factor
             + self._weights.error_rate * error_factor
-            + self._weights.human_feedback * feedback_factor
+            + self._weights.human_feedback * task_volume_factor
         )
         return round(min(max(score, 0.0), 1.0), 4)
 
