@@ -49,7 +49,9 @@ from synthorg.tools.sandbox.factory import build_sandbox_backends
 from synthorg.tools.sandbox.lifecycle.factory import create_lifecycle_strategy
 from synthorg.workers._agent_engine_collaborators import (
     boot_brain_tool_factory_provider,
+    boot_docs_tool_factory_provider,
     boot_knowledge_tool_factory_provider,
+    boot_research_tool_factory_provider,
     boot_steering_inbox,
 )
 
@@ -520,6 +522,8 @@ def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
         external_api_runtime=external_api_runtime,
         brain_tool_factory_provider=boot_brain_tool_factory_provider(app_state),
         knowledge_tool_factory_provider=boot_knowledge_tool_factory_provider(app_state),
+        docs_tool_factory_provider=boot_docs_tool_factory_provider(app_state),
+        research_tool_factory_provider=boot_research_tool_factory_provider(app_state),
         flight_recorder_sink=flight_recorder_sink,
         steering_inbox=boot_steering_inbox(app_state),
         stagnation_detector=create_stagnation_detector(app_state.config.stagnation),

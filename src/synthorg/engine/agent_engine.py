@@ -13,6 +13,7 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.execution_identity import run_identity_scope
 from synthorg.core.types import NotBlankStr
+from synthorg.docs_engine.tool_factory import DocsToolFactory
 from synthorg.engine._agent_engine_run import AgentEngineRunMixin
 from synthorg.engine._validation import (
     validate_agent,
@@ -61,6 +62,7 @@ from synthorg.observability.events.session import (
 from synthorg.observability.tracing.instrumentation import get_tracer
 from synthorg.project_brain.tool_factory import ProjectBrainToolFactory
 from synthorg.providers.models import ChatMessage
+from synthorg.research.tool_factory import ResearchToolFactory
 from synthorg.security.audit import AuditLog
 
 if TYPE_CHECKING:
@@ -169,6 +171,22 @@ capturing a ``None`` at construction); it returns ``None`` until the
 substrate is wired, or forever when it is disabled."""
 
 
+type DocsToolFactoryProvider = Callable[[], DocsToolFactory | None]
+"""Provider reading the live living-docs tool factory at per-task time.
+
+The docs engine wires after the boot engine is built, so the factory is
+resolved through this provider; it returns ``None`` until the docs engine
+is wired, or forever when it is disabled."""
+
+
+type ResearchToolFactoryProvider = Callable[[], ResearchToolFactory | None]
+"""Provider reading the live research tool factory at per-task time.
+
+The research subsystem wires after the boot engine is built, so the
+factory is resolved through this provider; it returns ``None`` until
+research is wired, or forever when it is disabled."""
+
+
 type BrainToolFactoryProvider = Callable[[], ProjectBrainToolFactory | None]
 """Provider reading the live project-brain tool factory at per-task time.
 
@@ -246,6 +264,8 @@ class AgentEngine(
         external_api_runtime: ExternalApiRuntime | None = None,
         brain_tool_factory_provider: BrainToolFactoryProvider | None = None,
         knowledge_tool_factory_provider: KnowledgeToolFactoryProvider | None = None,
+        docs_tool_factory_provider: DocsToolFactoryProvider | None = None,
+        research_tool_factory_provider: ResearchToolFactoryProvider | None = None,
         stakes_router: StakesRouter | None = None,
         flight_recorder_sink: FlightRecorderSink | None = None,
         clock: Clock | None = None,
@@ -271,6 +291,8 @@ class AgentEngine(
         self._external_api_runtime = external_api_runtime
         self._brain_tool_factory_provider = brain_tool_factory_provider
         self._knowledge_tool_factory_provider = knowledge_tool_factory_provider
+        self._docs_tool_factory_provider = docs_tool_factory_provider
+        self._research_tool_factory_provider = research_tool_factory_provider
         self._parked_context_repo = parked_context_repo
         self._cost_forecast_repo = cost_forecast_repo
         # The boot path constructs one ApprovalGate (backed by the

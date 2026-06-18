@@ -43,7 +43,9 @@ if TYPE_CHECKING:
     from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine.agent_engine import (
         BrainToolFactoryProvider,
+        DocsToolFactoryProvider,
         KnowledgeToolFactoryProvider,
+        ResearchToolFactoryProvider,
     )
     from synthorg.engine.compaction.protocol import CompactionCallback
     from synthorg.engine.hybrid_models import HybridLoopConfig
@@ -77,6 +79,8 @@ class AgentEngineFactoriesMixin:
     _external_api_runtime: ExternalApiRuntime | None
     _brain_tool_factory_provider: BrainToolFactoryProvider | None
     _knowledge_tool_factory_provider: KnowledgeToolFactoryProvider | None
+    _docs_tool_factory_provider: DocsToolFactoryProvider | None
+    _research_tool_factory_provider: ResearchToolFactoryProvider | None
     _parked_context_repo: ParkedContextRepository | None
     _event_stream_hub: EventStreamHub | None
     _interrupt_store: InterruptStore | None
@@ -371,6 +375,45 @@ class AgentEngineFactoriesMixin:
             if knowledge_tools:
                 registry = _KnowledgeToolRegistry(
                     [*registry.all_tools(), *knowledge_tools],
+                )
+        # Living-docs tools bind both project_id AND author_agent_id from the
+        # task context, so they are added only when a project scope exists.
+        docs_tool_factory = (
+            self._docs_tool_factory_provider()
+            if self._docs_tool_factory_provider is not None
+            else None
+        )
+        if docs_tool_factory is not None and project_id is not None:
+            from synthorg.core.types import NotBlankStr  # noqa: PLC0415
+            from synthorg.tools.registry import (  # noqa: PLC0415
+                ToolRegistry as _DocsToolRegistry,
+            )
+
+            docs_tools = docs_tool_factory.build_tools(
+                project_id=NotBlankStr(project_id),
+                author_agent_id=NotBlankStr(str(identity.id)),
+            )
+            if docs_tools:
+                registry = _DocsToolRegistry([*registry.all_tools(), *docs_tools])
+        # The research tool binds an optional project scope + the acting agent.
+        research_tool_factory = (
+            self._research_tool_factory_provider()
+            if self._research_tool_factory_provider is not None
+            else None
+        )
+        if research_tool_factory is not None:
+            from synthorg.core.types import NotBlankStr  # noqa: PLC0415
+            from synthorg.tools.registry import (  # noqa: PLC0415
+                ToolRegistry as _ResearchToolRegistry,
+            )
+
+            research_tools = research_tool_factory.build_tools(
+                project_id=NotBlankStr(project_id) if project_id is not None else None,
+                created_by=NotBlankStr(str(identity.id)),
+            )
+            if research_tools:
+                registry = _ResearchToolRegistry(
+                    [*registry.all_tools(), *research_tools],
                 )
         if self._memory_injection_strategy is not None:
             from synthorg.memory.tools import (  # noqa: PLC0415
