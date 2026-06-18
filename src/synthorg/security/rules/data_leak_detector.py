@@ -1,7 +1,6 @@
 """Data leak detector rule -- finds sensitive file paths and PII."""
 
 import re
-from datetime import UTC, datetime
 from typing import Final
 
 from synthorg.approval.enums import ApprovalRiskLevel
@@ -10,9 +9,8 @@ from synthorg.observability.events.security import SECURITY_DATA_LEAK_DETECTED
 from synthorg.security.models import (
     SecurityContext,
     SecurityVerdict,
-    SecurityVerdictType,
 )
-from synthorg.security.rules._utils import walk_string_values
+from synthorg.security.rules._utils import build_deny_verdict, walk_string_values
 
 logger = get_logger(__name__)
 
@@ -108,11 +106,8 @@ class DataLeakDetector:
             tool_name=context.tool_name,
             finding_count=len(unique),
         )
-        return SecurityVerdict(
-            verdict=SecurityVerdictType.DENY,
+        return build_deny_verdict(
             reason=f"Data leak risk: {', '.join(unique)}",
             risk_level=ApprovalRiskLevel.HIGH,
-            matched_rules=(_RULE_NAME,),
-            evaluated_at=datetime.now(UTC),
-            evaluation_duration_ms=0.0,
+            rule_name=_RULE_NAME,
         )

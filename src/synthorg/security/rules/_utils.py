@@ -1,13 +1,46 @@
 """Shared utilities for security rule detectors."""
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 
+from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import SECURITY_SCAN_DEPTH_EXCEEDED
+from synthorg.security.models import SecurityVerdict, SecurityVerdictType
 
 logger = get_logger(__name__)
 
 _MAX_RECURSION_DEPTH: int = 20
+
+
+def build_deny_verdict(
+    *,
+    reason: str,
+    risk_level: ApprovalRiskLevel,
+    rule_name: str,
+) -> SecurityVerdict:
+    """Build a DENY :class:`SecurityVerdict` for a matched rule.
+
+    Centralises the verdict shape the credential and data-leak detectors
+    duplicated: a DENY tagged with the matching rule, stamped now, with a
+    zero evaluation-duration (the engine overwrites timing downstream).
+
+    Args:
+        reason: Human-readable denial reason.
+        risk_level: Severity of the match.
+        rule_name: Name of the rule that matched.
+
+    Returns:
+        The DENY verdict.
+    """
+    return SecurityVerdict(
+        verdict=SecurityVerdictType.DENY,
+        reason=reason,
+        risk_level=risk_level,
+        matched_rules=(rule_name,),
+        evaluated_at=datetime.now(UTC),
+        evaluation_duration_ms=0.0,
+    )
 
 
 def walk_string_values(
