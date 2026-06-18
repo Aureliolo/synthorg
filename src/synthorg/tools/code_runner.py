@@ -3,10 +3,11 @@
 Supports Python, JavaScript, and Bash via configurable sandbox backends.
 """
 
-from typing import ClassVar, Final, Literal, cast, override
+from typing import ClassVar, Final, Literal, override
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.boundary import parse_typed
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.execution_identity import current_execution_identity
@@ -15,7 +16,6 @@ from synthorg.observability.events.code_runner import (
     CODE_RUNNER_EXECUTE_FAILED,
     CODE_RUNNER_EXECUTE_START,
     CODE_RUNNER_EXECUTE_SUCCESS,
-    CODE_RUNNER_INVALID_LANGUAGE,
 )
 from synthorg.observability.events.deliverable_receipts import (
     TEST_RUN_RECORD_FAILED,
@@ -135,21 +135,14 @@ class CodeRunnerTool(BaseTool):
         Returns:
             A ``ToolExecutionResult`` with execution output.
         """
-        code = cast("str", arguments["code"])
-        language = cast("str", arguments["language"])
-        timeout = cast("float | None", arguments.get("timeout"))
-        purpose = cast("str", arguments.get("purpose", "general"))
-
-        if language not in _LANGUAGE_COMMANDS:
-            logger.warning(
-                CODE_RUNNER_INVALID_LANGUAGE,
-                language=language,
-            )
-            return ToolExecutionResult(
-                content=f"Unsupported language: {language!r}. "
-                f"Supported: {sorted(_LANGUAGE_COMMANDS)}",
-                is_error=True,
-            )
+        # ``parse_typed`` validates ``language`` against the
+        # ``CodeRunnerLanguage`` literal, so an out-of-set language is
+        # rejected at the boundary and the command lookup below is total.
+        args = parse_typed("tool.code_runner", arguments, CodeRunnerArgs)
+        code = args.code
+        language = args.language
+        timeout = args.timeout
+        purpose = args.purpose
 
         command, flag = _LANGUAGE_COMMANDS[language]
 

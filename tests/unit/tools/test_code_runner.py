@@ -4,6 +4,7 @@ from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.code_runner import CodeRunnerTool
@@ -171,13 +172,12 @@ class TestCodeRunnerErrors:
         sandbox = _make_mock_sandbox()
         tool = CodeRunnerTool(sandbox=sandbox)
 
-        result = await tool.execute(
-            arguments={"code": "puts 'hi'", "language": "ruby"},
-        )
-
-        assert result.is_error
-        assert "Unsupported language" in result.content
-        assert "ruby" in result.content
+        # The CodeRunnerLanguage literal rejects an out-of-set language at
+        # the typed boundary before the sandbox is touched.
+        with pytest.raises(ValidationError, match="language"):
+            await tool.execute(
+                arguments={"code": "puts 'hi'", "language": "ruby"},
+            )
         sandbox.execute.assert_not_awaited()
 
 
@@ -224,7 +224,7 @@ class TestCodeRunnerMissingParams:
         sandbox = _make_mock_sandbox()
         tool = CodeRunnerTool(sandbox=sandbox)
 
-        with pytest.raises(KeyError, match="code"):
+        with pytest.raises(ValidationError, match="code"):
             await tool.execute(
                 arguments={"language": "python"},
             )
@@ -233,7 +233,7 @@ class TestCodeRunnerMissingParams:
         sandbox = _make_mock_sandbox()
         tool = CodeRunnerTool(sandbox=sandbox)
 
-        with pytest.raises(KeyError, match="language"):
+        with pytest.raises(ValidationError, match="language"):
             await tool.execute(
                 arguments={"code": "print(1)"},
             )

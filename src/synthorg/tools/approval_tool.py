@@ -10,10 +10,11 @@ from datetime import UTC, datetime
 from typing import ClassVar, override
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.core.validation import is_valid_action_type
@@ -117,26 +118,10 @@ class RequestHumanApprovalTool(BaseTool):
             metadata on success, or an error result on failure.
         """
         try:
-            action_type = arguments["action_type"]
-            title = arguments["title"]
-            description = arguments["description"]
-        except KeyError as exc:
-            return ToolExecutionResult(
-                content=(
-                    f"Missing required argument: {safe_error_description(exc)}. "
-                    f"Required: action_type, title, description"
-                ),
-                is_error=True,
+            args = parse_typed(
+                "tool.request_human_approval", arguments, RequestHumanApprovalArgs
             )
-
-        if (
-            not isinstance(action_type, str)
-            or not isinstance(title, str)
-            or not isinstance(description, str)
-            or not action_type.strip()
-            or not title.strip()
-            or not description.strip()
-        ):
+        except ValidationError:
             return ToolExecutionResult(
                 content=(
                     "Arguments action_type, title, and description "
@@ -145,9 +130,9 @@ class RequestHumanApprovalTool(BaseTool):
                 is_error=True,
             )
 
-        action_type = action_type.strip()
-        title = title.strip()
-        description = description.strip()
+        action_type = args.action_type.strip()
+        title = args.title.strip()
+        description = args.description.strip()
 
         validation_error = self._validate_action_type(action_type)
         if validation_error is not None:
