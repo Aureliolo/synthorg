@@ -1,5 +1,7 @@
+import { useEffect } from 'react'
 import { AnimatePresence } from 'motion/react'
 import { Trash2 } from 'lucide-react'
+import { useRecommendationsStore } from '@/stores/recommendations'
 import { BulkActionBar } from '@/components/ui/bulk-action-bar'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -10,6 +12,7 @@ import { formatNumber } from '@/utils/format'
 import { AgentsSkeleton } from './agents/AgentsSkeleton'
 import { AgentFilters } from './agents/AgentFilters'
 import { AgentGridView } from './agents/AgentGridView'
+import { RecommendationsLink } from './agents/RecommendationsLink'
 import {
   useAgentsPageController,
   type AgentsPageController,
@@ -18,6 +21,13 @@ import {
 export default function AgentsPage() {
   const ctrl = useAgentsPageController()
   const { data } = ctrl
+  const fetchRecommendations = useRecommendationsStore((s) => s.fetchRecommendations)
+
+  // Populate the pending-upgrade badge in the header; RecommendationsLink
+  // is a pure display component fed by this fetch.
+  useEffect(() => {
+    void fetchRecommendations()
+  }, [fetchRecommendations])
 
   if (data.loading && data.totalAgents === 0) return <AgentsSkeleton />
 
@@ -28,7 +38,12 @@ export default function AgentsPage() {
 
   return (
     <div className="space-y-section-gap">
-      <ListHeader title="Agents" count={data.filteredAgents.length} countLabel={countLabel} />
+      <ListHeader
+        title="Agents"
+        count={data.filteredAgents.length}
+        countLabel={countLabel}
+        secondaryActions={<RecommendationsLink />}
+      />
       <AgentsBanners ctrl={ctrl} />
       <AgentFilters />
       <AgentGridView

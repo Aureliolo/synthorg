@@ -1,6 +1,11 @@
 import { AlertTriangle, Check } from 'lucide-react'
+import { InfoTooltip } from '@/components/ui/info-tooltip'
 import { cn, FOCUS_RING } from '@/lib/utils'
 import type { WizardStep } from '@/stores/setup-wizard'
+
+const REVALIDATION_EXPLANATION =
+  'An earlier step changed since you completed this step. Re-visit it to ' +
+  'confirm your selections are still valid.'
 
 const STEP_LABELS: Record<WizardStep, string> = {
   account: 'Account',
@@ -76,6 +81,14 @@ function StepConnector({ isComplete }: { isComplete: boolean }) {
   )
 }
 
+function StepCircleSlot({ view }: { view: StepView }) {
+  const circle = (
+    <StepCircle visual={view.visual} isComplete={view.isComplete} index={view.index} />
+  )
+  if (!view.showWarning) return circle
+  return <InfoTooltip content={REVALIDATION_EXPLANATION}>{circle}</InfoTooltip>
+}
+
 function StepIndicator({
   view,
   onStepClick,
@@ -83,7 +96,7 @@ function StepIndicator({
   view: StepView
   onStepClick: (step: WizardStep) => void
 }) {
-  const { key, label, index, isActive, isAccessible, isComplete, showWarning, visual, isLast } = view
+  const { key, label, isActive, isAccessible, isComplete, showWarning, visual, isLast } = view
   return (
     <div className="flex items-center">
       <button
@@ -100,11 +113,11 @@ function StepIndicator({
           !isAccessible && 'cursor-not-allowed opacity-50',
         )}
       >
-        <StepCircle visual={visual} isComplete={isComplete} index={index} />
+        <StepCircleSlot view={view} />
         <span className={cn('text-compact', LABEL_CLASS[visual])}>{label}</span>
         {showWarning && (
           <span id={`${key}-needs-revalidation`} className="sr-only">
-            Needs review: upstream changes may have invalidated this step.
+            {REVALIDATION_EXPLANATION}
           </span>
         )}
       </button>

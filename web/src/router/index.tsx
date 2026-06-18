@@ -22,6 +22,7 @@ const MetaPage = lazy(() => import('@/pages/MetaPage'))
 const CharterInterviewPage = lazy(() => import('@/pages/CharterInterviewPage'))
 const AgentsPage = lazy(() => import('@/pages/AgentsPage'))
 const AgentDetailPage = lazy(() => import('@/pages/AgentDetailPage'))
+const ModelRecommendationsPage = lazy(() => import('@/pages/ModelRecommendationsPage'))
 const TrainingPage = lazy(() => import('@/pages/TrainingPage'))
 const MessagesPage = lazy(() => import('@/pages/MessagesPage'))
 const MeetingsPage = lazy(() => import('@/pages/MeetingsPage'))
@@ -154,6 +155,10 @@ export const router = createBrowserRouter([
                 element: <CharterInterviewPage />,
               },
               { path: 'agents', element: <AgentsPage /> },
+              {
+                path: 'agents/model-recommendations',
+                element: <ModelRecommendationsPage />,
+              },
               { path: 'agents/:agentId', element: <AgentDetailPage /> },
               { path: ROUTES.TRAINING.slice(1), element: <TrainingPage /> },
               { path: 'messages', element: <MessagesPage /> },

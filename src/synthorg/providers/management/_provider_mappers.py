@@ -127,4 +127,6 @@ def to_provider_model_response(
         supports_streaming=(
             capabilities.supports_streaming if capabilities is not None else True
         ),
+        family=config.metadata.family,
+        stale=config.stale,
     )

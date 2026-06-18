@@ -34,6 +34,7 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
   careerHistory: [],
   detailLoading: false,
   detailError: null,
+  updatingModel: false,
 
   // Runtime statuses
   runtimeStatuses: {},

@@ -85,6 +85,7 @@ from synthorg.api.controllers.messages import MessageController
 from synthorg.api.controllers.meta import MetaController
 from synthorg.api.controllers.meta_analytics import MetaAnalyticsController
 from synthorg.api.controllers.metrics import MetricsController
+from synthorg.api.controllers.model_refresh import ModelRefreshController
 from synthorg.api.controllers.oauth import OAuthController
 from synthorg.api.controllers.objectives import ObjectiveController
 from synthorg.api.controllers.ontology.admin import OntologyAdminController
@@ -204,6 +205,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     CharterController,
     BudgetController,
     ForecastBudgetController,
+    ModelRefreshController,
     AnalyticsOverviewController,
     AnalyticsTrendsController,
     AnalyticsForecastController,
@@ -408,6 +410,7 @@ __all__ = [
     "MetaAnalyticsController",
     "MetaController",
     "MetricsController",
+    "ModelRefreshController",
     "OAuthController",
     "OntologyAdminController",
     "OntologyController",

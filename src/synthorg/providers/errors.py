@@ -12,8 +12,22 @@ from typing import ClassVar, Final, Literal, override
 
 from pydantic import JsonValue
 
-from synthorg.core.domain_errors import ConflictError, DomainError
+from synthorg.core.domain_errors import ConflictError, DomainError, NotFoundError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+
+
+class UpgradeRecommendationNotFoundError(NotFoundError):
+    """Raised when an upgrade-recommendation lookup fails (404)."""
+
+    default_message: ClassVar[str] = "Upgrade recommendation not found"
+    error_code: ClassVar[ErrorCode] = ErrorCode.UPGRADE_RECOMMENDATION_NOT_FOUND
+
+
+class UpgradeRecommendationAlreadyDecidedError(ConflictError):
+    """Raised when approving/rejecting an already-decided recommendation (409)."""
+
+    default_message: ClassVar[str] = "Upgrade recommendation already decided"
+    error_code: ClassVar[ErrorCode] = ErrorCode.UPGRADE_RECOMMENDATION_ALREADY_DECIDED
 
 
 class ProviderLifecycleConflictError(ConflictError):

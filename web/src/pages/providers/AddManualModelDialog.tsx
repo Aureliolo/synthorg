@@ -77,6 +77,7 @@ function buildManualModel(v: ParsedModelValues): ProviderModelConfig {
       release_date: null,
       metadata_source: "unknown",
     },
+    stale: null,
   };
 }
 

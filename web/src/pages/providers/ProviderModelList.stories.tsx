@@ -17,6 +17,8 @@ const models: ProviderModelResponse[] = [
     supports_tools: true,
     supports_vision: true,
     supports_streaming: true,
+    family: null,
+    stale: null,
   },
   {
     id: 'example-medium-001',
@@ -30,6 +32,8 @@ const models: ProviderModelResponse[] = [
     supports_tools: true,
     supports_vision: false,
     supports_streaming: true,
+    family: null,
+    stale: null,
   },
   {
     id: 'example-small-001',
@@ -43,6 +47,8 @@ const models: ProviderModelResponse[] = [
     supports_tools: false,
     supports_vision: false,
     supports_streaming: true,
+    family: null,
+    stale: null,
   },
 ]
 
@@ -78,6 +84,8 @@ export const NoCapabilities: Story = {
       supports_tools: false,
       supports_vision: false,
       supports_streaming: false,
+      family: null,
+      stale: null,
     }],
   },
 }

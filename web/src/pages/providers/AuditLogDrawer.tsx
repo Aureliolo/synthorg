@@ -29,6 +29,7 @@ const EVENT_LABEL: Record<ProviderAuditEventType, string> = {
   model_config_updated: 'Model config',
   model_pulled: 'Model pulled',
   models_synced: 'Models synced',
+  model_flagged_stale: 'Model flagged stale',
 }
 
 type AuditPayload = NonNullable<ProviderAuditEvent['payload']>
@@ -65,6 +66,7 @@ const EVENT_SUMMARISERS: Partial<
   model_config_updated: summariseFieldsChanged,
   provider_updated: summariseFieldsChanged,
   models_synced: summariseSyncCounts,
+  model_flagged_stale: summariseModelId,
   provider_credentials_rotated: summariseCredentials,
 }
 

@@ -114,6 +114,9 @@ domain-specific startup event (e.g. `API_APP_STARTUP`,
 | `observability.log_level_console` | `SYNTHORG_LOG_LEVEL` | Mutable; overrides the console sink only. |
 | `telemetry.enabled` | `SYNTHORG_TELEMETRY_ENABLED` | Mutable; the collector reads the env var at boot for the fast-path, then honours runtime DB mutations on the next process restart. |
 | `engine.timeout_enforcement_enabled` | `SYNTHORG_ENGINE_TIMEOUT_ENFORCEMENT_ENABLED` | Mutable kill-switch. |
+| `providers.model_refresh_mode` | `SYNTHORG_PROVIDERS_MODEL_REFRESH_MODE` | Config discriminator for the periodic model-refresh subsystem (`off` / `manual_only` / `detect_only` / `reconcile_recommend`); `off` is the safe default. The scheduler re-reads it every tick (fail-safe to `off`), so mode changes apply without a restart. |
+| `providers.model_refresh_interval_seconds` | `SYNTHORG_PROVIDERS_MODEL_REFRESH_INTERVAL_SECONDS` | Cadence between automatic reconcile cycles (60s..604800s). Baked into the scheduler at wiring time; changing it needs a restart. |
+| `providers.model_refresh_auto_apply_within_family` | `SYNTHORG_PROVIDERS_MODEL_REFRESH_AUTO_APPLY_WITHIN_FAMILY` | Opt-in (default off) auto-apply of strictly in-family upgrades; re-read every cycle. |
 
 ### Category 2 examples (env > default; DB bypassed)
 

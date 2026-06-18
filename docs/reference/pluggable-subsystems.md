@@ -200,6 +200,12 @@ Domain errors live at `meta/errors.py::RollbackMutationDeniedError` (409) and `U
 - `engine/workspace/environment/factory.py::build_environment_strategy()`: `StrategyRegistry[EnvironmentStrategy]` keyed on `EnvironmentType`; the devcontainer strategy falls back to the default `SubprocessImageBuilder` (host `docker build`) when no builder is injected.
 - `engine/workspace/environment/service.py::EnvironmentService`: provisions once per `(project_id, declaration_hash)` (persisted `project_environments` row is the durable cache), scaffolds + commits the declaration (`GitWorkspaceCommitter`), and is fail-loud. Wired at boot in `api/app.py::_install_runtime_services` alongside `ProjectWorkspaceService`. The result threads to the agent's sandbox via the ambient `tools/sandbox/active_environment.py::ActiveSandboxEnvironment` contextvar (image override + env additions), set per task in `workers/execution_service.py`.
 
+### Model-refresh strategy (cadence-mode seam)
+
+- `providers/management/refresh_strategy.py`: `RefreshStrategy` `@runtime_checkable` Protocol (`reconcile(provider_name, provider) -> ProviderRefreshOutcome`).
+- `DetectOnlyStrategy` (probe the live catalogue and flag removed models stale; never persists new models or recommends) and `ReconcileRecommendStrategy` (additionally persists newly-discovered models and produces in-family upgrade recommendations).
+- `providers/management/refresh_strategy.py::build_refresh_strategy()`: keyed on the `RefreshMode` discriminator; returns `None` for `OFF` / `MANUAL_ONLY` so the scheduler skips construction entirely (the off-by-cadence safe default), matching the `build_trust_strategy()` precedent.
+
 ## Services are a distinct pattern (not pluggable subsystems)
 
 A **service** wraps one or more repositories to keep controllers thin and centralise audit logging, and MAY orchestrate multiple repositories (e.g. `WorkflowService` spans `workflow_definitions` + `workflow_versions`; `MemoryService` spans fine-tune checkpoints + runs + settings).

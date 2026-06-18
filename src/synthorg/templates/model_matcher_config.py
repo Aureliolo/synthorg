@@ -24,7 +24,7 @@ class ModelMatcherConfig(BaseModel):
 
     Field defaults mirror the registered defaults in
     :mod:`synthorg.settings.definitions.engine`. Runtime callers passing
-    ``matcher_config=None`` fall back to ``_DEFAULT_MATCHER_CONFIG``,
+    ``matcher_config=None`` fall back to ``DEFAULT_MATCHER_CONFIG``,
     projected from a default ``EngineBridgeConfig`` so the canonical
     settings registration is the single source of truth.
     """
@@ -89,7 +89,7 @@ def _build_default_matcher_config() -> ModelMatcherConfig:
     return ModelMatcherConfig.from_bridge_config(EngineBridgeConfig())
 
 
-_DEFAULT_MATCHER_CONFIG = _build_default_matcher_config()
+DEFAULT_MATCHER_CONFIG = _build_default_matcher_config()
 
 
 def derive_tier(model: ProviderModelConfig, config: ModelMatcherConfig) -> ModelTier:

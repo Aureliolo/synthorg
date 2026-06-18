@@ -43,6 +43,7 @@ function makeProvider(name: string): ProviderWithName {
           release_date: null,
           metadata_source: "unknown",
         },
+        stale: null,
       },
     ],
     has_api_key: true,
@@ -74,6 +75,8 @@ const testModels: ProviderModelResponse[] = [
     supports_tools: true,
     supports_vision: false,
     supports_streaming: true,
+    family: null,
+    stale: null,
   },
 ];
 

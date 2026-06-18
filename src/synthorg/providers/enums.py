@@ -13,6 +13,20 @@ class AuthType(StrEnum):
     NONE = "none"
 
 
+class RecommendationStatus(StrEnum):
+    """Lifecycle state of an upgrade recommendation.
+
+    ``PENDING`` awaits a human decision; ``APPROVED`` / ``REJECTED`` are
+    operator decisions; ``AUTO_APPLIED`` was applied automatically by the
+    in-family auto-apply flow without human review.
+    """
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    AUTO_APPLIED = "auto_applied"
+
+
 class MessageRole(StrEnum):
     """Role of a message participant in a chat completion."""
 

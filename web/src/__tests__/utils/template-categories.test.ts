@@ -19,6 +19,7 @@ const makeTemplate = (
   department_count: 3,
   autonomy_level: 'semi',
   workflow: 'agile_kanban',
+  posture: null,
   ...overrides,
 })
 

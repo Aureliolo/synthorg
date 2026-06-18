@@ -11,6 +11,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from synthorg.budget.quota import DegradationConfig, SubscriptionConfig
 from synthorg.config.model_metadata import ModelMetadata
+from synthorg.config.model_staleness import ModelStaleness
 from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
@@ -78,6 +79,13 @@ class ProviderModelConfig(BaseModel):
     metadata: ModelMetadata = Field(
         default_factory=ModelMetadata,
         description="Capability and family/generation metadata (enriched at ingest)",
+    )
+    stale: ModelStaleness | None = Field(
+        default=None,
+        description=(
+            "Set by the periodic model-refresh service when the id is no "
+            "longer advertised by its provider; None means current."
+        ),
     )
 
 

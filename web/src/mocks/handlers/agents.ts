@@ -10,6 +10,7 @@ import type {
   listAgents,
   rollbackAgentIdentity,
   setAutonomy,
+  updateAgentModel,
 } from '@/api/endpoints/agents'
 import type {
   VersionHistoryClient,
@@ -191,6 +192,11 @@ export const agentsHandlers = [
   http.get('/api/v1/agents/:agentId', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getAgent>(buildAgent({ id: String(params['agentId']) })),
+    ),
+  ),
+  http.patch('/api/v1/agents/:agentId', ({ params }) =>
+    HttpResponse.json(
+      successFor<typeof updateAgentModel>(buildAgent({ id: String(params['agentId']) })),
     ),
   ),
   http.get('/api/v1/agents/:agentId/autonomy', ({ params }) =>

@@ -18,6 +18,13 @@ export interface WizardNavigationProps {
   nextDisabledReason?: string | null
   nextLabel?: string
   loading?: boolean
+  /**
+   * Suppress the Next button (e.g. the mode step auto-advances on
+   * selection, so a Next button would be a no-op). Back is still
+   * rendered so a step reached from a prior step keeps a Back
+   * affordance.
+   */
+  hideNext?: boolean
 }
 
 interface WizardNextButtonProps {
@@ -60,16 +67,20 @@ export function WizardNavigation({
   nextDisabledReason,
   nextLabel,
   loading,
+  hideNext,
 }: WizardNavigationProps) {
   const rawIdx = stepOrder.indexOf(currentStep)
   const currentIdx = rawIdx === -1 ? 0 : rawIdx
   const isFirst = currentIdx === 0
   const isLast = currentIdx === stepOrder.length - 1
+  const showNext = !isLast && !hideNext
   // Stable id for the disabled-reason caption so the Next button can
   // associate it via aria-describedby. Only attached on the button
   // when the caption is actually rendered.
   const reasonId = useId()
-  const showReason = Boolean(nextDisabled) && Boolean(nextDisabledReason) && !isLast
+  // Gate on showNext (not just !isLast) so the disabled-reason caption
+  // never renders orphaned when the Next control itself is hidden.
+  const showReason = showNext && Boolean(nextDisabled) && Boolean(nextDisabledReason)
 
   return (
     <div className="flex flex-col gap-2 border-t border-border px-2 pt-4">
@@ -84,7 +95,7 @@ export function WizardNavigation({
           <ArrowLeft className="size-4" />
           Back
         </Button>
-        {!isLast && (
+        {showNext && (
           <WizardNextButton
             onNext={onNext}
             nextDisabled={nextDisabled}

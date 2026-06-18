@@ -60,6 +60,8 @@ export const modelsHandlers = [
         supports_tools: false,
         supports_vision: false,
         supports_streaming: false,
+        family: null,
+        stale: null,
       }),
     )
   }),
@@ -76,6 +78,8 @@ export const modelsHandlers = [
       supports_tools: false,
       supports_vision: false,
       supports_streaming: false,
+      family: null,
+      stale: null,
     }
     return HttpResponse.json(
       successFor<typeof addProviderModel>(

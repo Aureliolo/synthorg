@@ -59,6 +59,28 @@ export const Disabled: Story = {
   args: { label: 'Currency', options: currencies, value: DEFAULT_CURRENCY, onChange: () => {}, disabled: true },
 }
 
+export const Grouped: Story = {
+  args: {
+    label: 'Model',
+    value: '',
+    onChange: () => {},
+    placeholder: 'Select a model...',
+    groups: [
+      {
+        label: 'example-provider · example-large',
+        options: [
+          { value: 'p::example-large-002', label: 'example-large-002 (200k · tools)' },
+          { value: 'p::example-large-001', label: 'example-large-001 (200k)' },
+        ],
+      },
+      {
+        label: 'example-provider · example-small',
+        options: [{ value: 'p::example-small-001', label: 'example-small-001 (32k)' }],
+      },
+    ],
+  },
+}
+
 function InteractiveSelect() {
   const [value, setValue] = useState<string>(DEFAULT_CURRENCY)
   return <SelectField label="Currency" options={currencies} value={value} onChange={setValue} />

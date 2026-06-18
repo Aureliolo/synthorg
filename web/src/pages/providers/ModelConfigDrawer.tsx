@@ -2,8 +2,14 @@ import { useState } from 'react'
 import { Drawer } from '@/components/ui/drawer'
 import { InputField } from '@/components/ui/input-field'
 import { Button } from '@/components/ui/button'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { useProvidersStore } from '@/stores/providers'
 import type { LocalModelParams, ProviderModelResponse } from '@/api/types/providers'
+
+const STALE_REASON_LABEL: Record<'removed_from_catalog' | 'deprecated', string> = {
+  removed_from_catalog: 'removed from the provider catalogue',
+  deprecated: 'deprecated by the provider',
+}
 
 interface ModelConfigDrawerProps {
   providerName: string
@@ -143,6 +149,7 @@ function ModelConfigForm({
   onClose: () => void
 }) {
   const updateModelConfig = useProvidersStore((s) => s.updateModelConfig)
+  const saving = useProvidersStore((s) => s.updatingModelConfig)
   const initial = initialModelParams(model.local_params)
 
   const [numCtx, setNumCtx] = useState(initial.numCtx)
@@ -150,18 +157,27 @@ function ModelConfigForm({
   const [numThreads, setNumThreads] = useState(initial.numThreads)
   const [numBatch, setNumBatch] = useState(initial.numBatch)
   const [repeatPenalty, setRepeatPenalty] = useState(initial.repeatPenalty)
-  const [saving, setSaving] = useState(false)
 
   const handleSave = async () => {
-    setSaving(true)
     const newParams = buildLocalParams({ numCtx, numGpuLayers, numThreads, numBatch, repeatPenalty })
     const success = await updateModelConfig(providerName, model.id, newParams)
-    setSaving(false)
     if (success) onClose()
   }
 
   return (
     <div className="flex flex-col gap-section-gap">
+      {model.stale != null && (
+        <ErrorBanner
+          variant="section"
+          severity="warning"
+          title="This model is stale"
+          description={`${model.id} was ${STALE_REASON_LABEL[model.stale.reason]}.${
+            model.stale.successor_model_id != null
+              ? ` Consider switching to ${model.stale.successor_model_id}.`
+              : ' Consider switching to a current model.'
+          }`}
+        />
+      )}
       <ModelConfigFields
         numCtx={numCtx}
         setNumCtx={setNumCtx}

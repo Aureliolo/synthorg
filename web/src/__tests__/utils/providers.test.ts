@@ -173,6 +173,7 @@ describe("sortProviders", () => {
             release_date: null,
             metadata_source: "unknown",
           },
+          stale: null,
         },
       ],
     }),
@@ -197,6 +198,7 @@ describe("sortProviders", () => {
             release_date: null,
             metadata_source: "unknown",
           },
+          stale: null,
         },
         {
           id: "m2",
@@ -216,6 +218,7 @@ describe("sortProviders", () => {
             release_date: null,
             metadata_source: "unknown",
           },
+          stale: null,
         },
       ],
     }),

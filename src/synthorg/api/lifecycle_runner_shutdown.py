@@ -302,6 +302,30 @@ async def _run_shutdown(  # noqa: PLR0913
         app_state.swap_slice(
             toolsmith.model_copy(update={"service": None, "cycle_scheduler": None}),
         )
+
+    from synthorg.providers.management.refresh_state import (  # noqa: PLC0415
+        ModelRefreshStateSlice,
+    )
+
+    model_refresh = app_state.slice(ModelRefreshStateSlice)
+    if model_refresh.service is not None:
+        # ``manual_only`` mode wires a service with no scheduler, so gate the
+        # teardown on ``service`` (not ``scheduler``): otherwise the stale
+        # service survives into the next lifespan and wire_model_refresh's
+        # idempotency guard short-circuits, leaking the prior DB handle.
+        if model_refresh.scheduler is not None:
+            await _try_stop(
+                model_refresh.scheduler.stop(),
+                API_APP_SHUTDOWN,
+                "Failed to stop model-refresh scheduler",
+            )
+        # Clear service + scheduler so wire_model_refresh re-wires on the
+        # next lifespan entry (its idempotency guard checks ``service``).
+        app_state.swap_slice(
+            model_refresh.model_copy(
+                update={"service": None, "scheduler": None},
+            ),
+        )
     # Stop every cached rate-limit coordinator and clear the module-level
     # factory so background poll tasks and bus subscriptions cannot outlive the
     # app (matters for hot-reload / test teardown where ``create_app`` runs

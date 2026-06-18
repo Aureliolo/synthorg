@@ -191,6 +191,7 @@ beforeEach(() => {
     careerHistory: [],
     detailLoading: false,
     detailError: null,
+    updatingModel: false,
     runtimeStatuses: {},
   })
 })
@@ -785,5 +786,30 @@ describe('personality.trimmed toast dispatch', () => {
     })
 
     expect(useToastStore.getState().toasts).toHaveLength(0)
+  })
+})
+
+describe('updateAgentModel', () => {
+  it('updates the model and clears updatingModel on success', async () => {
+    installAgentHandlers()
+    useAgentsStore.setState({ selectedAgent: makeAgent({ id: 'agent-001' }) })
+    const ok = await useAgentsStore
+      .getState()
+      .updateAgentModel('agent-001', 'example-provider', 'example-large-002')
+    expect(ok).toBe(true)
+    expect(useAgentsStore.getState().updatingModel).toBe(false)
+  })
+
+  it('returns false and clears updatingModel on failure', async () => {
+    server.use(
+      http.patch('/api/v1/agents/:agentId', () =>
+        HttpResponse.json(apiError('conflict'), { status: 409 }),
+      ),
+    )
+    const ok = await useAgentsStore
+      .getState()
+      .updateAgentModel('agent-001', 'example-provider', 'example-large-002')
+    expect(ok).toBe(false)
+    expect(useAgentsStore.getState().updatingModel).toBe(false)
   })
 })

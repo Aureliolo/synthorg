@@ -58,8 +58,7 @@ describe('WizardProgress', () => {
         onStepClick={() => {}}
       />,
     )
-    const buttons = screen.getAllByRole('button')
-    const companyButton = buttons.find((b) => b.textContent.includes('Company'))
+    const companyButton = screen.getByRole('button', { name: /Company/i })
     expect(companyButton).toHaveAttribute('aria-current', 'step')
   })
 
@@ -76,8 +75,7 @@ describe('WizardProgress', () => {
         onStepClick={handleClick}
       />,
     )
-    const buttons = screen.getAllByRole('button')
-    const templateButton = buttons.find((b) => b.textContent.includes('Template'))!
+    const templateButton = screen.getByRole('button', { name: /Template/i })
     expect(templateButton).toBeInTheDocument()
     await user.click(templateButton)
     expect(handleClick).toHaveBeenCalledWith('template')
@@ -95,8 +93,7 @@ describe('WizardProgress', () => {
         onStepClick={() => {}}
       />,
     )
-    const buttons = screen.getAllByRole('button')
-    const companyButton = buttons.find((b) => b.textContent.includes('Company'))
+    const companyButton = screen.getByRole('button', { name: /Company/i })
     expect(companyButton).toBeDisabled()
   })
 
@@ -112,8 +109,7 @@ describe('WizardProgress', () => {
       />,
     )
     // Template step should have a checkmark (Check icon renders as svg)
-    const buttons = screen.getAllByRole('button')
-    const templateButton = buttons.find((b) => b.textContent.includes('Template'))!
+    const templateButton = screen.getByRole('button', { name: /Template/i })
     expect(templateButton).toBeInTheDocument()
     expect(templateButton.querySelector('svg')).toBeInTheDocument()
   })
@@ -129,11 +125,10 @@ describe('WizardProgress', () => {
         onStepClick={() => {}}
       />,
     )
-    const buttons = screen.getAllByRole('button')
-    const agentsButton = buttons.find((b) => b.textContent.includes('Agents'))!
+    const agentsButton = screen.getByRole('button', { name: /Agents/i })
     // The sr-only revalidation hint is referenced via aria-describedby.
     expect(agentsButton).toHaveAttribute('aria-describedby', 'agents-needs-revalidation')
-    expect(screen.getByText(/Needs review/i)).toBeInTheDocument()
+    expect(screen.getByText(/An earlier step changed/i)).toBeInTheDocument()
   })
 
   it('does NOT render the warning indicator on the active step (the user is fixing it)', () => {
@@ -147,8 +142,7 @@ describe('WizardProgress', () => {
         onStepClick={() => {}}
       />,
     )
-    const buttons = screen.getAllByRole('button')
-    const agentsButton = buttons.find((b) => b.textContent.includes('Agents'))!
+    const agentsButton = screen.getByRole('button', { name: /Agents/i })
     expect(agentsButton).not.toHaveAttribute('aria-describedby')
   })
 

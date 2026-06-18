@@ -1,6 +1,7 @@
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { StatPill } from '@/components/ui/stat-pill'
+import { PostureBadge } from './PostureBadge'
 import type { TemplateInfoResponse } from '@/api/types/setup'
 import { deriveCategoryFromTags, getCategoryLabel } from '@/utils/template-categories'
 import { Users, Building2, Shield, GitBranch } from 'lucide-react'
@@ -79,7 +80,7 @@ export function TemplateCard({
     <div
       className={cn(
         'flex flex-col gap-3 rounded-lg border bg-card p-card transition-colors',
-        selected ? 'border-accent shadow-[0_0_12px_color-mix(in_srgb,var(--so-accent)_15%,transparent)]' : 'border-border',
+        selected ? 'border-accent shadow-[var(--so-shadow-accent-glow)]' : 'border-border',
         'hover:bg-card-hover',
       )}
     >
@@ -110,6 +111,11 @@ export function TemplateCard({
           <StatPill value={category} className="text-compact" />
         </div>
         <p className="line-clamp-2 text-xs text-muted-foreground">{template.description}</p>
+        {template.posture != null && (
+          <div className="flex items-center gap-1.5 pt-0.5">
+            <PostureBadge posture={template.posture} />
+          </div>
+        )}
       </div>
 
       {/* Structural metadata */}

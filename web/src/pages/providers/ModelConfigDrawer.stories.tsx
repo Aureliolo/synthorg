@@ -16,6 +16,8 @@ const baseModel: ProviderModelResponse = {
   supports_tools: false,
   supports_vision: false,
   supports_streaming: true,
+  family: null,
+  stale: null,
 }
 
 const modelWithParams: ProviderModelResponse = {

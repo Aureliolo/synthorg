@@ -47,6 +47,7 @@ function model(
       release_date: null,
       metadata_source: "unknown",
     },
+    stale: null,
     ...overrides,
   };
 }

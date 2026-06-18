@@ -55,6 +55,8 @@ export interface AgentsState {
   careerHistory: readonly CareerEvent[]
   detailLoading: boolean
   detailError: string | null
+  /** True while a post-setup model change is in flight. */
+  updatingModel: boolean
 
   // Runtime statuses (org chart real-time)
   runtimeStatuses: Record<string, AgentRuntimeStatus>
@@ -70,6 +72,14 @@ export interface AgentsState {
   setSortBy: (key: AgentSortKey) => void
   setSortDirection: (dir: 'asc' | 'desc') => void
   clearDetail: () => void
+  /**
+   * Re-point an agent at a new provider/model after setup. Sends the
+   * update to the server, then re-fetches the agent detail to reflect
+   * the canonical model state (not optimistic; the opaque ``model`` dict
+   * makes a local patch unreliable). Returns false on failure (the store
+   * owns the error toast).
+   */
+  updateAgentModel: (agentId: string, provider: string, modelId: string) => Promise<boolean>
   updateRuntimeStatus: (agentId: string, status: AgentRuntimeStatus) => void
   updateFromWsEvent: (event: WsEvent) => void
 }

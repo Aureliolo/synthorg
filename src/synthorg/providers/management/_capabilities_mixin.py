@@ -1,4 +1,5 @@
-"""Mixin for the six new provider capability mutations.
+# module-kind: service
+"""Mixin for the provider capability mutations.
 
 Splits the ``ProviderManagementService`` body so the file owning the
 core CRUD logic stays under the project's 800-line ceiling.  The
@@ -8,10 +9,13 @@ the contract for mypy strict.
 """
 
 import asyncio
+from collections.abc import Sequence
+from datetime import date, datetime
 from typing import Protocol
 
 from pydantic import JsonValue
 
+from synthorg.config.model_staleness import ModelStaleness, StalenessReason
 from synthorg.config.provider_schema import (
     ProviderConfig,
     ProviderModelConfig,
@@ -23,6 +27,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_AUDIT_WRITE_FAILED,
     PROVIDER_CREDENTIALS_ROTATED,
     PROVIDER_MODEL_ADDED,
+    PROVIDER_MODEL_FLAGGED_STALE,
     PROVIDER_MODELS_SYNCED,
     PROVIDER_NOT_FOUND,
     PROVIDER_RATE_LIMITS_UPDATED,
@@ -411,6 +416,98 @@ class ProviderCapabilitiesMixin:
             updated=tuple(sorted(updated)),
             models=tuple(new_models),
         )
+
+    async def flag_models_stale(  # noqa: PLR0913 -- stale-flag dimensions are intrinsic
+        self: _ServiceProtocol,
+        name: str,
+        *,
+        stale_ids: Sequence[str],
+        reason: StalenessReason,
+        flagged_at: datetime,
+        last_seen: date | None = None,
+        successor_model_id: str | None = None,
+        actor: ProviderAuditActor | None = None,
+    ) -> ProviderConfig:
+        """Mark configured models stale without deleting them.
+
+        The periodic model-refresh service calls this when a configured
+        id is no longer advertised by its provider. Unlike
+        ``sync_models(replace_existing=True)`` it never removes a model:
+        it stamps a :class:`ModelStaleness` marker so an operator can
+        still see (and re-point away from) the absent model. Idempotent:
+        a model already flagged with the same reason is left untouched so
+        ``flagged_at`` does not churn on every cycle.
+
+        Args:
+            name: Provider whose models are being flagged.
+            stale_ids: Configured model ids to flag.
+            reason: Why they are stale.
+            flagged_at: Timestamp the caller (clock seam) stamps.
+            last_seen: Last date the ids were observed, when known.
+            successor_model_id: Suggested replacement applied to each
+                flagged id, when one was identified.
+            actor: Audit actor; defaults to the system actor.
+
+        Returns:
+            The updated ``ProviderConfig`` (unchanged when nothing
+            matched or every match was already flagged).
+
+        Raises:
+            ProviderNotFoundError: If the named provider does not exist.
+        """
+        flag_set = frozenset(stale_ids)
+        async with self._lock:
+            providers = await self._config_resolver.get_provider_configs()
+            existing = providers.get(name)
+            if existing is None:
+                msg = f"Provider {name!r} not found"
+                logger.warning(PROVIDER_NOT_FOUND, provider=name, error=msg)
+                raise ProviderNotFoundError(msg)
+
+            flagged: list[str] = []
+            new_models: list[ProviderModelConfig] = []
+            for model in existing.models:
+                already = model.stale is not None and model.stale.reason == reason
+                if model.id in flag_set and not already:
+                    new_models.append(
+                        model.model_copy(
+                            update={
+                                "stale": ModelStaleness(
+                                    reason=reason,
+                                    flagged_at=flagged_at,
+                                    last_seen=last_seen,
+                                    successor_model_id=successor_model_id,
+                                ),
+                            },
+                        ),
+                    )
+                    flagged.append(model.id)
+                else:
+                    new_models.append(model)
+
+            if not flagged:
+                return existing
+
+            updated = existing.model_copy(update={"models": tuple(new_models)})
+            new_providers = {**providers, name: updated}
+            await self._validate_and_persist(new_providers)
+
+        logger.info(
+            PROVIDER_MODEL_FLAGGED_STALE,
+            provider=name,
+            reason=reason,
+            flagged_count=len(flagged),
+        )
+        await self._audit(  # type: ignore[attr-defined]
+            provider_name=name,
+            event_type="model_flagged_stale",
+            actor=actor,
+            payload={
+                "reason": reason,
+                "model_ids": sorted(flagged),
+            },
+        )
+        return updated
 
     async def rotate_credentials(
         self: _ServiceProtocol,

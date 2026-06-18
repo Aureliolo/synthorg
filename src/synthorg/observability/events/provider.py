@@ -164,3 +164,24 @@ PROVIDER_MODEL_CONFIG_UPDATED: Final[str] = "provider.model.config_updated"
 PROVIDER_LOCAL_MANAGER_NOT_AVAILABLE: Final[str] = (
     "provider.local_manager.not_available"
 )
+
+# ── Periodic model refresh / reconcile ──────────────────────
+PROVIDER_MODEL_REFRESH_STARTED: Final[str] = "provider.model_refresh.started"
+PROVIDER_MODEL_REFRESH_STOPPED: Final[str] = "provider.model_refresh.stopped"
+PROVIDER_MODEL_REFRESH_CYCLE_RAN: Final[str] = "provider.model_refresh.cycle_ran"
+PROVIDER_MODEL_REFRESH_CYCLE_FAILED: Final[str] = "provider.model_refresh.cycle_failed"
+PROVIDER_MODEL_REFRESH_PROVIDER_FAILED: Final[str] = (
+    "provider.model_refresh.provider_failed"
+)
+PROVIDER_MODEL_REFRESH_MODE_RESOLVE_FAILED: Final[str] = (
+    "provider.model_refresh.mode_resolve_failed"
+)
+PROVIDER_MODEL_REFRESH_ADD_FAILED: Final[str] = "provider.model_refresh.add_failed"
+PROVIDER_MODEL_FLAGGED_STALE: Final[str] = "provider.model.flagged_stale"
+PROVIDER_MODEL_UPGRADE_RECOMMENDED: Final[str] = "provider.model.upgrade_recommended"
+PROVIDER_MODEL_UPGRADE_AUTO_APPLIED: Final[str] = "provider.model.upgrade_auto_applied"
+PROVIDER_MODEL_UPGRADE_APPROVED: Final[str] = "provider.model.upgrade_approved"
+PROVIDER_MODEL_UPGRADE_REJECTED: Final[str] = "provider.model.upgrade_rejected"
+PROVIDER_MODEL_UPGRADE_REASSIGN_FAILED: Final[str] = (
+    "provider.model.upgrade_reassign_failed"
+)

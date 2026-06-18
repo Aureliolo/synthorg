@@ -37,7 +37,7 @@ from synthorg.observability.events.template import (
     TEMPLATE_LOAD_SUCCESS,
     TEMPLATE_PASS1_FLOAT_FALLBACK,
 )
-from synthorg.templates.enums import SkillPattern
+from synthorg.templates.enums import PostureName, SkillPattern
 from synthorg.templates.errors import (
     TemplateNotFoundError,
     TemplateRenderError,
@@ -98,6 +98,7 @@ class TemplateInfo:
     department_count: int = 0
     autonomy_level: AutonomyLevel = AutonomyLevel.SEMI
     workflow: str = "agile_kanban"
+    posture: PostureName | None = None
 
 
 @dataclass(frozen=True)
@@ -144,6 +145,7 @@ def _template_info_from_loaded(
         department_count=len(tmpl.departments),
         autonomy_level=autonomy,
         workflow=tmpl.workflow,
+        posture=tmpl.posture,
     )
 
 
@@ -550,10 +552,9 @@ def _normalize_template_data(data: dict[str, object]) -> dict[str, object]:
         "workflow_handoffs": data.get("workflow_handoffs", ()),
         "escalation_paths": data.get("escalation_paths", ()),
     }
-    if "extends" in data:
-        result["extends"] = data["extends"]
-    if "posture" in data:
-        result["posture"] = data["posture"]
+    for opt_key in ("extends", "posture"):
+        if opt_key in data:
+            result[opt_key] = data[opt_key]
     if "uses_packs" in data:
         raw_packs = data["uses_packs"]
         if raw_packs is None:

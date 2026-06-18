@@ -8,7 +8,7 @@ from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.seniority import SeniorityLevel
-from synthorg.templates.enums import SkillPattern
+from synthorg.templates.enums import PostureName, SkillPattern
 from synthorg.templates.model_requirements import ModelTier
 
 
@@ -144,6 +144,10 @@ class TemplateInfoResponse(BaseModel):
     workflow: NotBlankStr = Field(
         default="agile_kanban",
         description="Workflow type (agile_kanban, kanban, etc.)",
+    )
+    posture: PostureName | None = Field(
+        default=None,
+        description="Named operating posture the template declares (or None)",
     )
 
 

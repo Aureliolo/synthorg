@@ -58,6 +58,11 @@ class ConfigFileFactory(Protocol):
 
 class ProviderModelConfigFactory(ModelFactory[ProviderModelConfig]):
     __model__ = ProviderModelConfig
+    # Pin the optional staleness record to ``None``: polyfactory otherwise
+    # builds a random ``ModelStaleness`` whose ``last_seen`` can land after
+    # ``flagged_at``, tripping the cross-field invariant. The invariant has
+    # dedicated coverage in ``tests/unit/config/test_model_staleness.py``.
+    stale = None
 
 
 class ProviderConfigFactory(ModelFactory[ProviderConfig]):

@@ -594,6 +594,16 @@ export const POLICY_FIELD_ORIGIN_VALUES = [
 ] as const
 export type PolicyFieldOrigin = (typeof POLICY_FIELD_ORIGIN_VALUES)[number]
 
+export const POSTURE_NAME_VALUES = [
+    'autonomous',
+    'supervised_client_facing',
+    'knowledge_heavy',
+    'cost_disciplined',
+    'security_hardened',
+    'research_autonomous',
+] as const
+export type PostureName = (typeof POSTURE_NAME_VALUES)[number]
+
 export const PRESET_SOURCE_VALUES = [
     'builtin',
     'custom',
@@ -662,6 +672,14 @@ export const REBALANCE_MODE_VALUES = [
 ] as const
 export type RebalanceMode = (typeof REBALANCE_MODE_VALUES)[number]
 
+export const RECOMMENDATION_STATUS_VALUES = [
+    'pending',
+    'approved',
+    'rejected',
+    'auto_applied',
+] as const
+export type RecommendationStatus = (typeof RECOMMENDATION_STATUS_VALUES)[number]
+
 export const RED_TEAM_ATTACK_SURFACE_VALUES = [
     'correctness',
     'security',
@@ -685,6 +703,14 @@ export const RED_TEAM_VERDICT_VALUES = [
     'block',
 ] as const
 export type RedTeamVerdict = (typeof RED_TEAM_VERDICT_VALUES)[number]
+
+export const REFRESH_MODE_VALUES = [
+    'off',
+    'manual_only',
+    'detect_only',
+    'reconcile_recommend',
+] as const
+export type RefreshMode = (typeof REFRESH_MODE_VALUES)[number]
 
 export const REPORT_PERIOD_VALUES = [
     'daily',
