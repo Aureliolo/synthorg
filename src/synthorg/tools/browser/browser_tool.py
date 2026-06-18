@@ -709,16 +709,30 @@ class BrowserTool(BaseTool):
                     "baseline_path": str(baseline_path),
                 },
             )
-        adopted = self._baselines.adopt_current_as_baseline(
-            spec_name=args.spec_name,
-            screenshot_name=args.screenshot_name,
-        )
-        self._baselines.write_sidecar(
-            spec_name=args.spec_name,
-            screenshot_name=args.screenshot_name,
-            png_bytes=adopted.read_bytes(),
-            chromium_image=self._settings.image_pin,
-        )
+        # Bind the asserted-non-None names into locals so the blocking
+        # closure keeps the ``str`` narrowing across the thread boundary.
+        spec_name = args.spec_name
+        screenshot_name = args.screenshot_name
+
+        def _adopt_and_write_sidecar() -> Path:
+            """Adopt the current screenshot and write its sidecar (blocking).
+
+            Returns:
+                The adopted baseline path.
+            """
+            adopted_path = self._baselines.adopt_current_as_baseline(
+                spec_name=spec_name,
+                screenshot_name=screenshot_name,
+            )
+            self._baselines.write_sidecar(
+                spec_name=spec_name,
+                screenshot_name=screenshot_name,
+                png_bytes=adopted_path.read_bytes(),
+                chromium_image=self._settings.image_pin,
+            )
+            return adopted_path
+
+        adopted = await asyncio.to_thread(_adopt_and_write_sidecar)
         logger.info(
             BROWSER_DIFF_SUCCESS,
             spec=args.spec_name,

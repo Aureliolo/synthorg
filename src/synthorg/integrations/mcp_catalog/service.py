@@ -4,6 +4,7 @@ Provides browsing, searching, and installation of curated
 MCP servers from the bundled catalog.
 """
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -82,6 +83,27 @@ class CatalogService:
         self._path = catalog_path or _BUNDLED_PATH
         self._entries: tuple[CatalogEntry, ...] = ()
         self._loaded = False
+        # Created lazily on first load to avoid binding an asyncio
+        # primitive to a specific event loop at construction time.
+        self._load_lock: asyncio.Lock | None = None
+
+    async def _ensure_loaded(self) -> None:
+        """Load the catalog off-thread once, serialised across callers.
+
+        The blocking JSON read + parse runs via ``asyncio.to_thread`` so
+        the event loop is never blocked; an ``asyncio.Lock`` (created on
+        first use) ensures only one coroutine performs the load while the
+        others await the same result.
+        """
+        if self._loaded:
+            return
+        if self._load_lock is None:
+            self._load_lock = asyncio.Lock()
+        async with self._load_lock:
+            # Re-check under the lock: a sibling coroutine may have loaded
+            # the catalog while this one awaited the lock.
+            if not self._loaded:
+                await asyncio.to_thread(self._load)
 
     def _load(self) -> None:
         """Load the catalog from disk (lazy, once).
@@ -174,7 +196,7 @@ class CatalogService:
         Returns:
             Tuple of all curated MCP server entries.
         """
-        self._load()
+        await self._ensure_loaded()
         logger.debug(MCP_CATALOG_BROWSED, count=len(self._entries))
         return self._entries
 
@@ -187,7 +209,7 @@ class CatalogService:
         Returns:
             Matching entries.
         """
-        self._load()
+        await self._ensure_loaded()
         q = query.lower()
         return tuple(
             e
@@ -206,7 +228,7 @@ class CatalogService:
         Raises:
             CatalogEntryNotFoundError: If the entry does not exist.
         """
-        self._load()
+        await self._ensure_loaded()
         for entry in self._entries:
             if entry.id == entry_id:
                 return entry
