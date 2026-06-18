@@ -213,7 +213,7 @@ def _get_test_password_hash(
         except RuntimeError:
             # No running loop -- safe to use asyncio.run directly.
             _TEST_PASSWORD_HASHES[role] = asyncio.run(
-                auth_service.hash_password_async("test-password-12chars"),
+                auth_service.hash_password("test-password-12chars"),
             )
         else:
             # Already inside a loop; run the hashing in a worker thread
@@ -225,7 +225,7 @@ def _get_test_password_hash(
                 try:
                     result.append(
                         asyncio.run(
-                            auth_service.hash_password_async(
+                            auth_service.hash_password(
                                 "test-password-12chars",
                             ),
                         ),

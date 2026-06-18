@@ -247,17 +247,14 @@ class PerformanceTracker:
         )
 
     def clear(self) -> None:
-        """Reset all recorded metrics for test isolation.
+        """Synchronously reset all recorded metrics for test isolation.
 
         Cancels pending background tasks via ``Task.cancel()`` but does
-        **not** await them.  This is a synchronous method intended for
-        use in sync test fixtures (where no running event loop is
-        available, or where the previous test's event loop is already
-        closed and awaiting would fail).  Any in-flight work in those
-        tasks is discarded.
-
-        For production shutdown where tasks must drain cleanly, use
-        :meth:`aclose` instead -- it cancels and awaits.
+        **not** await them. This is the test-only sync companion to
+        :meth:`aclear`, mirroring the uniform ``clear()`` sync-reset
+        surface the other trackers expose to the sync test-reset fixture
+        (where no running event loop is available). Production code uses
+        the async :meth:`aclear` / :meth:`aclose` instead.
         """
         tasks_cancelled = len(self._background_tasks)
         task_metrics_cleared = len(self._task_metrics)

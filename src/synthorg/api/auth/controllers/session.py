@@ -89,7 +89,7 @@ class AuthSessionController(Controller):
         # Account lockout check (still run dummy hash for timing safety)
         lockout_store = app_state.slice(ApiCoreStateSlice).lockout_store
         if lockout_store is not None and lockout_store.is_locked(data.username):
-            await auth_service.verify_password_async(data.password, _DUMMY_ARGON2_HASH)
+            await auth_service.verify_password(data.password, _DUMMY_ARGON2_HASH)
             logger.warning(
                 SECURITY_AUTH_FAILED,
                 reason="account_locked",
@@ -103,16 +103,16 @@ class AuthSessionController(Controller):
         if user is not None and is_system_user(user.id):
             # System user cannot log in -- run dummy hash for
             # constant-time rejection (prevent timing enumeration).
-            await auth_service.verify_password_async(data.password, _DUMMY_ARGON2_HASH)
+            await auth_service.verify_password(data.password, _DUMMY_ARGON2_HASH)
             password_valid = False
         elif user is not None:
-            password_valid = await auth_service.verify_password_async(
+            password_valid = await auth_service.verify_password(
                 data.password, user.password_hash
             )
         else:
             # Constant-time rejection: run verification against a
             # dummy hash to prevent timing-based username enumeration.
-            await auth_service.verify_password_async(data.password, _DUMMY_ARGON2_HASH)
+            await auth_service.verify_password(data.password, _DUMMY_ARGON2_HASH)
             password_valid = False
 
         if not password_valid or user is None:

@@ -165,7 +165,9 @@ class ApprovalStore(ApprovalExpirationMixin):
 
         Bypasses ``self._lock`` -- callers must guarantee no async
         operations are in flight. Production code MUST use the async
-        ``clear`` instead.
+        ``clear`` instead. This sync companion is intentional: it is
+        exposed only through the ``SyncResettableApprovalStore`` protocol
+        consumed by test fixtures, never by production wiring.
         """
         cleared_count = len(self._items)
         self._items.clear()

@@ -86,7 +86,7 @@ class TestSetup:
         user = User(
             id=str(as_uuid("existing-ceo")),
             username="existing",
-            password_hash=await svc.hash_password_async("test-password-12chars"),
+            password_hash=await svc.hash_password("test-password-12chars"),
             role=HumanRole.CEO,
             must_change_password=False,
             created_at=now,
@@ -610,7 +610,7 @@ class TestSystemUserBlocking:
         system_user = User(
             id=SYSTEM_USER_ID,
             username=SYSTEM_USERNAME,
-            password_hash=await svc.hash_password_async("irrelevant-password-12"),
+            password_hash=await svc.hash_password("irrelevant-password-12"),
             role=HumanRole.SYSTEM,
             must_change_password=False,
             created_at=now,
@@ -652,7 +652,7 @@ class TestSystemUserBlocking:
         system_user = User(
             id=SYSTEM_USER_ID,
             username=SYSTEM_USERNAME,
-            password_hash=await svc.hash_password_async("irrelevant-password-12"),
+            password_hash=await svc.hash_password("irrelevant-password-12"),
             role=HumanRole.SYSTEM,
             must_change_password=False,
             created_at=now,

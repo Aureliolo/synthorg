@@ -102,7 +102,7 @@ class AuthService:
     either offloading CPU-bound work via :func:`asyncio.to_thread`,
     or awaiting a repository write. Everything else stays sync.
 
-    - :meth:`hash_password_async` and :meth:`verify_password_async`
+    - :meth:`hash_password` and :meth:`verify_password`
       are async because Argon2id is CPU-bound (3 time-cost iterations
       over 64MiB of memory by default); :func:`asyncio.to_thread`
       keeps a single login from stalling every concurrent request
@@ -157,7 +157,7 @@ class AuthService:
             raise SecretNotConfiguredError(msg)
         return secret
 
-    async def hash_password_async(self, password: str) -> str:
+    async def hash_password(self, password: str) -> str:
         """Hash a password with Argon2id off the event loop.
 
         Argon2id is CPU-bound; ``asyncio.to_thread`` defers the work
@@ -172,7 +172,7 @@ class AuthService:
         """
         return await asyncio.to_thread(_hasher.hash, password)
 
-    async def verify_password_async(
+    async def verify_password(
         self,
         password: str,
         password_hash: str,
