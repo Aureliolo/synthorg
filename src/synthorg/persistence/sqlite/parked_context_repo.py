@@ -9,6 +9,7 @@ import aiosqlite
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import MalformedRowError, QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.execution.parked_context import ParkedContext
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.parked_context import (
@@ -81,7 +82,7 @@ INSERT OR REPLACE INTO parked_contexts (
                 )
                 raise QueryError(msg) from exc
 
-    async def get(self, parked_id: str) -> ParkedContext | None:
+    async def get(self, parked_id: NotBlankStr) -> ParkedContext | None:
         """Retrieve a parked context by ID.
 
         Returns:
@@ -240,7 +241,7 @@ INSERT OR REPLACE INTO parked_contexts (
         )
         return results
 
-    async def delete(self, parked_id: str) -> bool:
+    async def delete(self, parked_id: NotBlankStr) -> bool:
         """Delete a parked context by ID.
 
         Returns:
