@@ -384,6 +384,71 @@ class TestCeremonySchedulerTaskCompletion:
         assert scheduler.active_sprint is None
 
 
+class TestCeremonySchedulerEventHooks:
+    """on_task_added / on_task_blocked / on_budget_updated / on_external_event."""
+
+    @pytest.mark.unit
+    async def test_task_added_noop_when_not_running(self) -> None:
+        scheduler = CeremonyScheduler(
+            meeting_scheduler=_make_mock_meeting_scheduler(),
+        )
+        sprint = _make_sprint(task_count=10, completed_count=5)
+        result = await scheduler.on_task_added(sprint, "task-9")
+        assert result is sprint
+
+    @pytest.mark.unit
+    async def test_task_blocked_noop_when_not_running(self) -> None:
+        scheduler = CeremonyScheduler(
+            meeting_scheduler=_make_mock_meeting_scheduler(),
+        )
+        sprint = _make_sprint(task_count=10, completed_count=5)
+        result = await scheduler.on_task_blocked(sprint, "task-3")
+        assert result is sprint
+
+    @pytest.mark.unit
+    async def test_budget_updated_delegates_when_active(self) -> None:
+        scheduler = CeremonyScheduler(meeting_scheduler=_make_mock_meeting_scheduler())
+        sprint = _make_sprint(task_count=4, completed_count=1)
+        await scheduler.activate_sprint(sprint, _make_config(), TaskDrivenStrategy())
+        result = await scheduler.on_budget_updated(sprint, 0.5)
+        assert result.status is SprintStatus.ACTIVE
+
+    @pytest.mark.unit
+    async def test_external_event_fires_midpoint_one_shot(self) -> None:
+        mock_ms = _make_mock_meeting_scheduler()
+        scheduler = CeremonyScheduler(meeting_scheduler=mock_ms)
+        ceremony = _ceremony_with_trigger("midpoint_review", "sprint_midpoint")
+        config = _make_config(ceremonies=(ceremony,))
+        await scheduler.activate_sprint(
+            _make_sprint(task_count=4, completed_count=0),
+            config,
+            TaskDrivenStrategy(),
+        )
+        before = mock_ms.trigger_event.call_count
+        # A sprint at 50% completion crossing through an external event
+        # should fire the one-shot midpoint ceremony exactly once.
+        midpoint_sprint = _make_sprint(task_count=4, completed_count=2)
+        await scheduler.on_external_event(midpoint_sprint, "deploy", {})
+        assert mock_ms.trigger_event.call_count == before + 1
+
+    @pytest.mark.unit
+    async def test_external_event_propagates_memory_error(self) -> None:
+        mock_ms = _make_mock_meeting_scheduler()
+        mock_ms.trigger_event = AsyncMock(side_effect=MemoryError)
+        scheduler = CeremonyScheduler(meeting_scheduler=mock_ms)
+        ceremony = _ceremony_with_trigger("midpoint_review", "sprint_midpoint")
+        config = _make_config(ceremonies=(ceremony,))
+        await scheduler.activate_sprint(
+            _make_sprint(task_count=4, completed_count=0),
+            config,
+            TaskDrivenStrategy(),
+        )
+        with pytest.raises(MemoryError):
+            await scheduler.on_external_event(
+                _make_sprint(task_count=4, completed_count=2), "deploy", {}
+            )
+
+
 class TestCeremonySchedulerLockReleasedDuringFanout:
     """Regression (audit 39): the AI-backed ceremony fan-out must run
     with ``self._lock`` released so a meeting run that re-enters
