@@ -6,15 +6,19 @@ lifespan begins cancelling in-flight requests) and flag an
 ``AppState.shutdown_requested`` event that long-lived subsystems can
 poll or ``await`` to exit early instead of waiting for cancellation.
 
-Windows has no POSIX signals; the asyncio proactor event loop raises
-``NotImplementedError`` on :meth:`add_signal_handler`. The helper logs
-a DEBUG event and returns instead, so the app still boots.
+Windows's proactor event loop raises ``NotImplementedError`` on
+:meth:`add_signal_handler`, so on win32 the helper falls back to the C
+``signal.signal`` API (main thread only) and re-enters the loop via
+``call_soon_threadsafe``; a worker-thread lifespan logs a DEBUG event
+and returns, so the app still boots.
 """
 
 import asyncio
 import signal
 import sys
+import threading
 from collections.abc import Callable
+from types import FrameType
 
 from synthorg.api.state import AppState
 from synthorg.observability import get_logger
@@ -52,13 +56,6 @@ def install_shutdown_handlers(app_state: AppState) -> None:
     # variable so the runtime check survives type checking on either
     # platform.
     current_platform: str = sys.platform
-    if current_platform == "win32":
-        logger.debug(
-            API_SHUTDOWN_HANDLER_SKIPPED,
-            reason="non-posix-platform",
-            platform=current_platform,
-        )
-        return
 
     try:
         loop = asyncio.get_running_loop()
@@ -69,6 +66,15 @@ def install_shutdown_handlers(app_state: AppState) -> None:
             API_SHUTDOWN_HANDLER_SKIPPED,
             reason="no-running-loop",
         )
+        return
+
+    if current_platform == "win32":
+        # The proactor loop has no ``add_signal_handler``; fall back to
+        # the C ``signal.signal`` API, which delivers SIGTERM/SIGINT on
+        # the Windows main thread. The callback runs between bytecodes
+        # off-loop, so it re-enters the loop via ``call_soon_threadsafe``
+        # to flag shutdown on the loop's thread.
+        _install_win32_handlers(loop, app_state)
         return
 
     skipped: list[str] = []
@@ -114,6 +120,58 @@ def _make_handler(
 
     def handler() -> None:
         _on_signal(sig, app_state)
+
+    return handler
+
+
+def _install_win32_handlers(
+    loop: asyncio.AbstractEventLoop,
+    app_state: AppState,
+) -> None:
+    """Install ``signal.signal`` SIGTERM/SIGINT handlers on win32.
+
+    ``signal.signal`` only works on the interpreter's main thread, so a
+    lifespan driven from a worker thread (Litestar's ``TestClient``
+    portal) logs DEBUG and returns rather than raising. uvicorn owns the
+    signal in that case.
+    """
+    if threading.current_thread() is not threading.main_thread():
+        logger.debug(
+            API_SHUTDOWN_HANDLER_SKIPPED,
+            reason="non-main-thread-win32",
+        )
+        return
+    skipped: list[str] = []
+    for sig in _POSIX_SIGNALS:
+        try:
+            signal.signal(sig, _make_win32_handler(sig, app_state, loop))
+        except ValueError, OSError, RuntimeError:
+            # ``ValueError`` when not on the main thread (belt-and-braces
+            # with the guard above), ``OSError`` for a signal the host
+            # cannot deliver. uvicorn's own handler covers production.
+            skipped.append(sig.name)
+    if skipped:
+        logger.debug(
+            API_SHUTDOWN_HANDLER_SKIPPED,
+            reason="win32-signal-refused",
+            signals=tuple(skipped),
+        )
+
+
+def _make_win32_handler(
+    sig: signal.Signals,
+    app_state: AppState,
+    loop: asyncio.AbstractEventLoop,
+) -> Callable[[int, FrameType | None], None]:
+    """Bind a 2-arg C-signal handler that re-enters the loop thread.
+
+    Returns:
+        A ``signal.signal``-compatible ``(signum, frame)`` callback.
+    """
+
+    def handler(signum: int, frame: FrameType | None) -> None:
+        del signum, frame
+        loop.call_soon_threadsafe(_on_signal, sig, app_state)
 
     return handler
 
