@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -15,6 +16,35 @@ type healthResponse struct {
 	Data struct {
 		Status string `json:"status"`
 	} `json:"data"`
+}
+
+// RateLimitedError reports an HTTP 429 from the health endpoint. The
+// backend is alive but throttling, so callers should back off rather than
+// treat the probe as a hard failure. RetryAfter carries the server's
+// Retry-After hint (zero when absent or unparseable).
+type RateLimitedError struct {
+	RetryAfter time.Duration
+}
+
+func (e *RateLimitedError) Error() string {
+	if e.RetryAfter > 0 {
+		return fmt.Sprintf("health endpoint rate-limited; retry after %s", e.RetryAfter)
+	}
+	return "health endpoint rate-limited"
+}
+
+// parseRetryAfterSeconds reads a delta-seconds Retry-After header into a
+// duration. Only the integer-seconds form is honoured; an HTTP-date or a
+// malformed value yields zero so the caller falls back to its own cadence.
+func parseRetryAfterSeconds(header string) time.Duration {
+	if header == "" {
+		return 0
+	}
+	secs, err := strconv.Atoi(header)
+	if err != nil || secs < 0 {
+		return 0
+	}
+	return time.Duration(secs) * time.Second
 }
 
 // WaitForHealthy polls the health endpoint until it returns status "ok" or the
@@ -89,6 +119,12 @@ func checkOnce(ctx context.Context, url string) error {
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 	if err != nil {
 		return err
+	}
+
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return &RateLimitedError{
+			RetryAfter: parseRetryAfterSeconds(resp.Header.Get("Retry-After")),
+		}
 	}
 
 	if resp.StatusCode != http.StatusOK {

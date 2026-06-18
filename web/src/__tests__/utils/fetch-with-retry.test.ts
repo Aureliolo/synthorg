@@ -245,24 +245,30 @@ describe('fetchWithRetryAfter', () => {
 
   it('default sleep cancels immediately when AbortSignal fires mid-wait', async () => {
     // Exercise the built-in defaultSleep path (no ``sleep`` option) and
-    // verify that aborting during the timer interval short-circuits
-    // the retry without waiting out the full Retry-After budget.
-    const controller = new AbortController()
-    const fetchImpl = vi.fn(() => Promise.resolve(makeResponse(429, '1')))
-    const start = performance.now()
-    const promise = fetchWithRetryAfter(
-      'http://example.test/x',
-      { method: 'GET', signal: controller.signal },
-      { fetchImpl },
-    )
-    // Abort well before the 1000ms Retry-After window expires.
-    setTimeout(() => controller.abort(), 20)
-    const resp = await promise
-    const elapsed = performance.now() - start
-    expect(resp.status).toBe(429)
-    expect(fetchImpl).toHaveBeenCalledTimes(1)
-    // Round-up tolerance for scheduler jitter; we just need to prove
-    // the helper did NOT wait the full second.
-    expect(elapsed).toBeLessThan(500)
+    // verify that aborting during the wait short-circuits the retry
+    // without waiting out the full Retry-After budget. Fake timers make
+    // the abort deterministic: the wait is never advanced, so a passing
+    // test proves the abort -- not a timer -- ended the wait.
+    vi.useFakeTimers()
+    try {
+      const controller = new AbortController()
+      const fetchImpl = vi.fn(() => Promise.resolve(makeResponse(429, '1')))
+      const promise = fetchWithRetryAfter(
+        'http://example.test/x',
+        { method: 'GET', signal: controller.signal },
+        { fetchImpl },
+      )
+      // Let the first fetch resolve and the retry loop enter the
+      // 1000ms defaultSleep without advancing it.
+      await vi.advanceTimersByTimeAsync(0)
+      // Abort mid-wait: defaultSleep's abort listener fires synchronously
+      // and resolves the pending sleep immediately.
+      controller.abort()
+      const resp = await promise
+      expect(resp.status).toBe(429)
+      expect(fetchImpl).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

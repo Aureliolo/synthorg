@@ -130,10 +130,17 @@ describe('usePolling', () => {
     let concurrentCalls = 0
     let maxConcurrent = 0
 
+    // Gate each fn() on an explicit deferred the test resolves, so the
+    // "slow call" is controlled directly rather than via a timer sleep.
+    // With no-overlap only one fn is in flight at a time, so a single
+    // pending resolver is sufficient.
+    let releaseInFlight: () => void = () => {}
     const fn = vi.fn(async () => {
       concurrentCalls++
       maxConcurrent = Math.max(maxConcurrent, concurrentCalls)
-      await new Promise((r) => setTimeout(r, 2000))
+      await new Promise<void>((resolve) => {
+        releaseInFlight = resolve
+      })
       concurrentCalls--
     })
 
@@ -144,15 +151,16 @@ describe('usePolling', () => {
       await vi.advanceTimersByTimeAsync(5000)
     })
 
-    // setTimeout-based scheduling prevents overlap
+    // The hook schedules the next tick only after the previous fn settles,
+    // so a still-in-flight call prevents overlap.
     expect(maxConcurrent).toBeLessThanOrEqual(1)
 
-    // Stop polling and let any in-flight fn() settle so its internal
-    // setTimeout(r, 2000) Promise resolves before teardown. Without
-    // this, the pending fake-timer-backed Timeout outlives the test
+    // Stop polling and release the in-flight fn() so its promise settles
+    // before teardown. Without this the pending await outlives the test
     // boundary and the active-handle gate fails the test.
     await act(async () => {
       result.current.stop()
+      releaseInFlight()
       await vi.advanceTimersByTimeAsync(5000)
     })
   })

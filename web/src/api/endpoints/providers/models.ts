@@ -2,6 +2,7 @@ import { createLogger } from '@/lib/logger'
 import { getCsrfToken } from '@/utils/csrf'
 import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
 import { fetchWithRetryAfter } from '@/utils/fetch-with-retry'
+import { parseRetryAfterMs, RateLimitedError } from '@/utils/retry-after'
 import { apiClient, unwrap, unwrapVoid } from '../../client'
 import type {
   AddModelRequest,
@@ -98,6 +99,18 @@ async function _handlePullUnauthorized(): Promise<void> {
   mod.useAuthStore.getState().handleUnauthorized()
 }
 
+async function _raisePullFailure(response: Response): Promise<never> {
+  if (response.status === 401) await _handlePullUnauthorized()
+  if (response.status === 429) {
+    // The retry budget is exhausted; surface a typed rate-limit error
+    // carrying the server's Retry-After hint so the caller can show a
+    // precise back-off instead of a generic HTTP 429.
+    const retryAfter = response.headers.get('retry-after') ?? undefined
+    throw new RateLimitedError(parseRetryAfterMs(retryAfter, null))
+  }
+  throw new Error(`Pull failed: HTTP ${response.status}`)
+}
+
 async function _openPullStream(
   name: string,
   modelName: string,
@@ -126,8 +139,7 @@ async function _openPullStream(
   )
 
   if (!response.ok || !response.body) {
-    if (response.status === 401) await _handlePullUnauthorized()
-    throw new Error(`Pull failed: HTTP ${response.status}`)
+    await _raisePullFailure(response)
   }
   return response
 }

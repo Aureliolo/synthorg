@@ -22,7 +22,10 @@
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import { sanitizeWsString } from '@/utils/ws-sanitize'
-import { SSE_MAX_RECONNECT_ATTEMPTS } from '@/utils/ws-constants'
+import {
+  SSE_MAX_RECONNECT_ATTEMPTS,
+  SSE_RECONNECT_WINDOW_MS,
+} from '@/utils/ws-constants'
 import type { WsChannel, WsEvent } from '@/api/types/websocket'
 
 const log = createLogger('sse-client')
@@ -109,17 +112,28 @@ export function openSseFallback(callbacks: SseClientCallbacks): SseClient {
   // indefinitely on its own) gives up at SSE_MAX_RECONNECT_ATTEMPTS instead
   // of flooding the backend with reconnect traffic. Reset on a clean re-open.
   let errorCount = 0
+  // Timestamp (ms) of the last error counted against the budget. Errors
+  // arriving within SSE_RECONNECT_WINDOW_MS of this collapse to a single
+  // attempt so a multi-fire transient outage cannot exhaust prematurely.
+  let lastCountedErrorAt = 0
   // Last server-sent event id. The browser auto-sends it as `Last-Event-ID`
   // on reconnect once the server emits `id:` lines, so missed events can be
   // replayed; we also surface it for debugging.
   let lastEventId = ''
 
+  // The server names every SSE frame with its AG-UI event type (the
+  // ``event:`` field), so the unnamed ``onmessage`` handler would never
+  // fire. Register the shared handler for each mappable type instead.
+  const mappedTypes = Object.keys(AGUI_EVENT_MAP)
+
   // Null handlers before closing so closure captures release promptly; some
   // engines do not free EventSource handlers on .close() alone.
   function teardown(): void {
     source.onopen = null
-    source.onmessage = null
     source.onerror = null
+    for (const aguiType of mappedTypes) {
+      source.removeEventListener(aguiType, handleFrame)
+    }
     source.close()
   }
 
@@ -132,7 +146,7 @@ export function openSseFallback(callbacks: SseClientCallbacks): SseClient {
     callbacks.onOpen?.()
   }
 
-  source.onmessage = (event: MessageEvent) => {
+  function handleFrame(event: MessageEvent): void {
     if (event.lastEventId) {
       // Clamp the server-supplied id before we store / log it: it is
       // attacker-influenced and otherwise uncapped (control chars, bidi
@@ -159,8 +173,19 @@ export function openSseFallback(callbacks: SseClientCallbacks): SseClient {
     callbacks.onEvent(mapped)
   }
 
+  for (const aguiType of mappedTypes) {
+    source.addEventListener(aguiType, handleFrame)
+  }
+
   source.onerror = () => {
-    errorCount += 1
+    // Collapse a burst of errors within one reconnect window to a single
+    // budgeted attempt so a transient outage that fires onerror several
+    // times does not exhaust the reconnect budget prematurely.
+    const now = Date.now()
+    if (now - lastCountedErrorAt >= SSE_RECONNECT_WINDOW_MS) {
+      errorCount += 1
+      lastCountedErrorAt = now
+    }
     if (errorCount >= SSE_MAX_RECONNECT_ATTEMPTS) {
       log.error('SSE fallback exhausted its reconnect budget; closing')
       teardown()

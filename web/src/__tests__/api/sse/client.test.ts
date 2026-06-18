@@ -2,27 +2,44 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openSseFallback } from '@/api/sse/client'
 import type { WsEvent } from '@/api/types/websocket'
 
-interface MockEventSource {
-  url: string
-  onopen: ((ev: Event) => void) | null
-  onmessage: ((ev: MessageEvent) => void) | null
-  onerror: ((ev: Event) => void) | null
-  close: () => void
-}
+type SseListener = (ev: MessageEvent) => void
 
-let lastEventSource: MockEventSource | null = null
+let lastEventSource: FakeEventSource | null = null
 
-class FakeEventSource implements MockEventSource {
+class FakeEventSource {
   readonly url: string
   onopen: ((ev: Event) => void) | null = null
-  onmessage: ((ev: MessageEvent) => void) | null = null
   onerror: ((ev: Event) => void) | null = null
+  private readonly listeners = new Map<string, Set<SseListener>>()
 
   constructor(url: string) {
     this.url = url
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
-    const ref: FakeEventSource = this
-    lastEventSource = ref
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- test spy needs the latest instance
+    lastEventSource = this
+  }
+
+  addEventListener(type: string, handler: SseListener): void {
+    const set = this.listeners.get(type) ?? new Set<SseListener>()
+    set.add(handler)
+    this.listeners.set(type, set)
+  }
+
+  removeEventListener(type: string, handler: SseListener): void {
+    this.listeners.get(type)?.delete(handler)
+  }
+
+  /** Test helper: dispatch a named SSE frame to its registered listeners. */
+  emit(type: string, ev: MessageEvent): void {
+    for (const handler of this.listeners.get(type) ?? []) {
+      handler(ev)
+    }
+  }
+
+  /** Test helper: number of listeners registered across all event types. */
+  listenerCount(): number {
+    let total = 0
+    for (const set of this.listeners.values()) total += set.size
+    return total
   }
 
   close(): void {
@@ -64,8 +81,11 @@ describe('openSseFallback', () => {
       onError: () => {},
     })
     expect(lastEventSource).not.toBeNull()
-    lastEventSource!.onmessage?.(
-      new MessageEvent('message', {
+    // The server names the frame with its AG-UI type (the SSE ``event:``
+    // field), so the client receives it via the named listener.
+    lastEventSource!.emit(
+      'run_started',
+      new MessageEvent('run_started', {
         data: JSON.stringify({
           id: 'evt-1',
           type: 'run_started',
@@ -81,14 +101,17 @@ describe('openSseFallback', () => {
     expect(events[0]!.payload).toEqual({ task_id: 't-1' })
   })
 
-  it('drops AG-UI events that have no internal mapping', () => {
+  it('does not subscribe to AG-UI types that have no internal mapping', () => {
     const events: WsEvent[] = []
     openSseFallback({
       onEvent: (e) => events.push(e),
       onError: () => {},
     })
-    lastEventSource!.onmessage?.(
-      new MessageEvent('message', {
+    // No listener is registered for an unmapped type, so even if the
+    // server emitted it the read-only fallback would never receive it.
+    lastEventSource!.emit(
+      'tool_call_args',
+      new MessageEvent('tool_call_args', {
         data: JSON.stringify({
           id: 'evt-2',
           type: 'tool_call_args',
@@ -106,8 +129,9 @@ describe('openSseFallback', () => {
       onEvent: (e) => events.push(e),
       onError: () => {},
     })
-    lastEventSource!.onmessage?.(
-      new MessageEvent('message', { data: '{not-json' }),
+    lastEventSource!.emit(
+      'run_started',
+      new MessageEvent('run_started', { data: '{not-json' }),
     )
     expect(events).toHaveLength(0)
   })
@@ -146,19 +170,19 @@ describe('openSseFallback', () => {
     expect(opened).toBe(true)
   })
 
-  it('nulls the EventSource handlers on close() to release closures', () => {
+  it('releases handlers + listeners on close()', () => {
     const handle = openSseFallback({
       onEvent: () => {},
       onError: () => {},
       onOpen: () => {},
     })
-    // Sanity check: handlers were wired up.
+    // Sanity check: handlers + named listeners were wired up.
     expect(lastEventSource!.onopen).not.toBeNull()
-    expect(lastEventSource!.onmessage).not.toBeNull()
     expect(lastEventSource!.onerror).not.toBeNull()
+    expect(lastEventSource!.listenerCount()).toBeGreaterThan(0)
     handle.close()
     expect(lastEventSource!.onopen).toBeNull()
-    expect(lastEventSource!.onmessage).toBeNull()
     expect(lastEventSource!.onerror).toBeNull()
+    expect(lastEventSource!.listenerCount()).toBe(0)
   })
 })
