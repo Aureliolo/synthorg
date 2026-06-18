@@ -27,7 +27,11 @@ from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.types import NotBlankStr
 from synthorg.infrastructure.services._shared import _DEFAULT_LIMIT, _require_callable
 from synthorg.integrations.health.prober import HealthProberService
+from synthorg.observability import get_logger
+from synthorg.observability.events.infrastructure import INFRA_CAPABILITY_UNSUPPORTED
 from synthorg.security.audit import AuditLog
+
+logger = get_logger(__name__)
 
 
 class SetupFacadeService:
@@ -58,6 +62,11 @@ class SetupFacadeService:
             CapabilityNotSupportedError: Always; initialisation is driven
                 through the setup controller and CLI wizard, not over MCP.
         """
+        logger.warning(
+            INFRA_CAPABILITY_UNSUPPORTED,
+            capability="setup_initialize",
+            error_type=CapabilityNotSupportedError.__name__,
+        )
         raise CapabilityNotSupportedError(
             "setup_initialize",
             "initialisation is driven through the setup controller + CLI wizard",
@@ -126,6 +135,11 @@ class SimulationFacadeService:
             CapabilityNotSupportedError: Always; simulation scenarios are
                 loaded from config at start-up, not created over MCP.
         """
+        logger.warning(
+            INFRA_CAPABILITY_UNSUPPORTED,
+            capability="simulation_create",
+            error_type=CapabilityNotSupportedError.__name__,
+        )
         raise CapabilityNotSupportedError(
             "simulation_create",
             "simulation scenarios are loaded from config at start-up",
@@ -163,6 +177,11 @@ class AuditReadService:
             raise ValueError(msg)
         fn = getattr(self._audit, "list_entries", None)
         if not callable(fn):
+            logger.warning(
+                INFRA_CAPABILITY_UNSUPPORTED,
+                capability="audit_list",
+                error_type=CapabilityNotSupportedError.__name__,
+            )
             raise CapabilityNotSupportedError(
                 "audit_list",
                 "AuditLog does not expose list_entries",
@@ -208,6 +227,11 @@ class EventsReadService:
             raise ValueError(msg)
         fn = getattr(self._hub, "recent_events", None)
         if not callable(fn):
+            logger.warning(
+                INFRA_CAPABILITY_UNSUPPORTED,
+                capability="events_list",
+                error_type=CapabilityNotSupportedError.__name__,
+            )
             raise CapabilityNotSupportedError(
                 "events_list",
                 "EventStreamHub does not expose recent_events",
@@ -236,6 +260,11 @@ class IntegrationHealthFacadeService:
         """
         fn = getattr(self._prober, "snapshot", None)
         if not callable(fn):
+            logger.warning(
+                INFRA_CAPABILITY_UNSUPPORTED,
+                capability="integration_health_list",
+                error_type=CapabilityNotSupportedError.__name__,
+            )
             raise CapabilityNotSupportedError(
                 "integration_health_list",
                 "HealthProberService does not expose snapshot",

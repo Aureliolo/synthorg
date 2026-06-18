@@ -57,6 +57,9 @@ KNOWLEDGE_CITATION_UNRESOLVED: Final[str] = "knowledge.citation.unresolved"
 KNOWLEDGE_SOURCE_LOADED: Final[str] = "knowledge.source.loaded"
 """Emitted at DEBUG after a loader produces a RawDocument."""
 
+KNOWLEDGE_SOURCE_UNAVAILABLE: Final[str] = "knowledge.source.unavailable"
+"""Emitted at WARNING before a loader rejects an unreachable source."""
+
 KNOWLEDGE_LOAD_FAILED: Final[str] = "knowledge.load.failed"
 """Emitted at WARNING when a loader cannot produce a RawDocument."""
 

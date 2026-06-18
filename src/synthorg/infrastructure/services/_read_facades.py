@@ -34,6 +34,9 @@ from synthorg.observability.events.backup import (
     BACKUP_DELETED_VIA_MCP,
     BACKUP_RESTORE_TRIGGERED_VIA_MCP,
 )
+from synthorg.observability.events.infrastructure import (
+    INFRA_CAPABILITY_UNSUPPORTED,
+)
 from synthorg.observability.events.settings import (
     SETTINGS_VALUE_DELETED,
     SETTINGS_VALUE_SET,
@@ -335,6 +338,11 @@ class UserFacadeService:
             CapabilityNotSupportedError: Always; users are provisioned via
                 the onboarding flow, not over MCP.
         """
+        logger.warning(
+            INFRA_CAPABILITY_UNSUPPORTED,
+            capability="user_create",
+            error_type=CapabilityNotSupportedError.__name__,
+        )
         raise CapabilityNotSupportedError(
             "user_create",
             "users are provisioned via the onboarding flow, not MCP",
@@ -353,6 +361,11 @@ class UserFacadeService:
             CapabilityNotSupportedError: Always; user mutations go through
                 the auth controller, not over MCP.
         """
+        logger.warning(
+            INFRA_CAPABILITY_UNSUPPORTED,
+            capability="user_update",
+            error_type=CapabilityNotSupportedError.__name__,
+        )
         raise CapabilityNotSupportedError(
             "user_update",
             "user mutations go through the auth controller, not MCP",
@@ -371,6 +384,11 @@ class UserFacadeService:
             CapabilityNotSupportedError: Always; user deletion is a
                 protected operator workflow, not an MCP operation.
         """
+        logger.warning(
+            INFRA_CAPABILITY_UNSUPPORTED,
+            capability="user_delete",
+            error_type=CapabilityNotSupportedError.__name__,
+        )
         raise CapabilityNotSupportedError(
             "user_delete",
             "user deletion is a protected operator workflow",
