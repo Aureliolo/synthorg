@@ -6,7 +6,8 @@ reporting ``HEALTHY`` from metadata presence alone.
 """
 
 import asyncio
-from collections.abc import AsyncIterator
+import socket
+from collections.abc import AsyncIterator, Iterator
 
 import pytest
 
@@ -48,26 +49,22 @@ async def listening_port() -> AsyncIterator[int]:
 
 
 @pytest.fixture
-async def refused_port() -> int:
-    """An ephemeral loopback port with nothing listening on it.
+def refused_port() -> Iterator[int]:
+    """An ephemeral loopback port bound but never listening.
 
-    Binds port 0 to claim a free port, then closes the server so a connect
-    deterministically refuses. Avoids the environment-dependent assumption
-    that a hardcoded port (e.g. 1) is always closed.
+    Holding the socket bound (without ``listen``) for the test's whole
+    duration keeps the port claimed so no concurrent xdist worker can
+    rebind and start listening on it, while connects are refused
+    immediately (no accept queue exists). Closing the port instead would
+    free it for reuse and flake the probe to HEALTHY.
     """
-
-    async def _noop(
-        reader: asyncio.StreamReader,
-        writer: asyncio.StreamWriter,
-    ) -> None:  # pragma: no cover - server is closed before any connect
-        del reader
-        writer.close()
-
-    server = await asyncio.start_server(_noop, host="127.0.0.1", port=0)
-    port = int(server.sockets[0].getsockname()[1])
-    server.close()
-    await server.wait_closed()
-    return port
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(("127.0.0.1", 0))
+    port = int(sock.getsockname()[1])
+    try:
+        yield port
+    finally:
+        sock.close()
 
 
 @pytest.mark.unit

@@ -56,6 +56,23 @@ func parseRetryAfterSeconds(header string) time.Duration {
 	return 0
 }
 
+// honourRetryAfter waits for a 429 Retry-After hint carried by err,
+// bounded by ctx. It returns nil when there is no hint or the wait
+// completes, and ctx.Err() if the deadline elapses during the wait so
+// the caller can stop polling.
+func honourRetryAfter(ctx context.Context, err error) error {
+	var rle *RateLimitedError
+	if !errors.As(err, &rle) || rle.RetryAfter <= 0 {
+		return nil
+	}
+	select {
+	case <-time.After(rle.RetryAfter):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 // WaitForHealthy polls the health endpoint until it returns status "ok" or the
 // context is cancelled.
 func WaitForHealthy(ctx context.Context, url string, timeout, interval, initialDelay time.Duration) error {
@@ -83,16 +100,8 @@ func WaitForHealthy(ctx context.Context, url string, timeout, interval, initialD
 		case <-ticker.C:
 			if err := checkOnce(ctx, url); err != nil {
 				lastErr = err
-				// Honour a 429 Retry-After hint: wait the server-requested
-				// delay (bounded by the deadline) before the next probe
-				// instead of hammering at the fixed poll interval.
-				var rle *RateLimitedError
-				if errors.As(err, &rle) && rle.RetryAfter > 0 {
-					select {
-					case <-time.After(rle.RetryAfter):
-					case <-ctx.Done():
-						return fmt.Errorf("health check timed out (last error: %w)", lastErr)
-					}
+				if waitErr := honourRetryAfter(ctx, err); waitErr != nil {
+					return fmt.Errorf("health check timed out (last error: %w)", lastErr)
 				}
 				continue
 			}
