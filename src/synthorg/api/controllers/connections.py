@@ -76,6 +76,8 @@ _DEFAULT_LIMIT: Final[int] = 50
 
 _MAX_BASE_URL_LEN: Final[int] = 2048
 _MAX_CRED_VALUE_LEN: Final[int] = 8192
+_MAX_METADATA_KEY_LEN: Final[int] = 128
+_MAX_METADATA_VALUE_LEN: Final[int] = 1024
 
 
 class CreateConnectionRequest(BaseModel):
@@ -107,17 +109,42 @@ class CreateConnectionRequest(BaseModel):
     credentials: dict[
         NotBlankStr,
         Annotated[str, Field(max_length=_MAX_CRED_VALUE_LEN)],
-    ] = Field(default_factory=dict)
+    ] = Field(
+        default_factory=dict,
+        description="Credential field-name to value map sent to the secret backend.",
+    )
     base_url: Annotated[NotBlankStr, Field(max_length=_MAX_BASE_URL_LEN)] | None = None
-    metadata: dict[NotBlankStr, str] | None = None
-    health_check_enabled: bool = True
+    metadata: (
+        dict[
+            Annotated[NotBlankStr, Field(max_length=_MAX_METADATA_KEY_LEN)],
+            Annotated[str, Field(max_length=_MAX_METADATA_VALUE_LEN)],
+        ]
+        | None
+    ) = None
+    health_check_enabled: bool = Field(
+        default=True,
+        description="Whether periodic health checks run against the connection.",
+    )
     # Per-connection override for the webhook-receipt cleanup window.
     # ``None`` falls back to the global ``integrations.webhook_receipt_retention_days``
     # setting; ``0`` opts this connection out of the sweep entirely.
-    webhook_receipt_retention_days: int | None = Field(default=None, ge=0)
+    webhook_receipt_retention_days: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Per-connection webhook-receipt retention window in days; "
+            "None uses the global default, 0 opts out of the sweep."
+        ),
+    )
     # Marks the connection sensitive so the governed external-access
     # tool routes every call against it (read or write) to approval.
-    sensitive: bool = False
+    sensitive: bool = Field(
+        default=False,
+        description=(
+            "Marks the connection sensitive so every external-access call "
+            "against it routes to approval."
+        ),
+    )
 
     @field_validator("name")
     @classmethod
@@ -145,18 +172,40 @@ class UpdateConnectionRequest(BaseModel):
     # in the catalog / health-check path, and ``NotBlankStr`` keys
     # block blank/whitespace-only metadata field names from reaching
     # the catalog.
-    metadata: dict[NotBlankStr, str] | None = None
-    health_check_enabled: bool | None = None
+    metadata: (
+        dict[
+            Annotated[NotBlankStr, Field(max_length=_MAX_METADATA_KEY_LEN)],
+            Annotated[str, Field(max_length=_MAX_METADATA_VALUE_LEN)],
+        ]
+        | None
+    ) = None
+    health_check_enabled: bool | None = Field(
+        default=None,
+        description="Whether periodic health checks run against the connection.",
+    )
     # Same tri-state semantics as ``CreateConnectionRequest``:
     # ``None`` clears the override (falls back to global default),
     # an int sets the override, omitting the field keeps the existing
     # stored value (handled via ``model_fields_set`` below).
-    webhook_receipt_retention_days: int | None = Field(default=None, ge=0)
+    webhook_receipt_retention_days: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Per-connection webhook-receipt retention window in days; "
+            "None uses the global default, 0 opts out of the sweep."
+        ),
+    )
     # Omitting keeps the stored value; setting true/false toggles whether
     # external-access calls against this connection require approval.
     # Explicit ``null`` is rejected (see ``_reject_null_sensitive``) so a
     # malformed PATCH cannot be silently ACKed as an omission.
-    sensitive: bool | None = None
+    sensitive: bool | None = Field(
+        default=None,
+        description=(
+            "Marks the connection sensitive so every external-access call "
+            "against it routes to approval."
+        ),
+    )
 
     @field_validator("sensitive")
     @classmethod

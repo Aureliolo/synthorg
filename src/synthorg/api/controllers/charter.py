@@ -31,7 +31,7 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     encode_countless_seek_meta,
 )
-from synthorg.api.path_params import PathId
+from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.core.actor_context import require_actor
@@ -63,9 +63,18 @@ class InterviewTurnRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    message: NotBlankStr = Field(max_length=4000)
-    conversation_id: NotBlankStr | None = Field(default=None)
-    project: NotBlankStr | None = Field(default=None)
+    message: NotBlankStr = Field(
+        max_length=4000,
+        description="Human message for this charter-interview turn.",
+    )
+    conversation_id: NotBlankStr | None = Field(
+        default=None,
+        description="Existing interview conversation to continue; None starts one.",
+    )
+    project: NotBlankStr | None = Field(
+        default=None,
+        description="Project the interview is scoped to, if any.",
+    )
 
 
 class CharterEditRequest(BaseModel):
@@ -73,13 +82,34 @@ class CharterEditRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    title: NotBlankStr | None = Field(default=None)
-    brief: NotBlankStr | None = Field(default=None)
-    goals: tuple[NotBlankStr, ...] | None = Field(default=None)
-    constraints: tuple[NotBlankStr, ...] | None = Field(default=None)
-    success_criteria: tuple[NotBlankStr, ...] | None = Field(default=None)
-    scope: ScopeBoundaries | None = Field(default=None)
-    envelope: BudgetEnvelope | None = Field(default=None)
+    title: NotBlankStr | None = Field(
+        default=None,
+        description="Replacement charter title.",
+    )
+    brief: NotBlankStr | None = Field(
+        default=None,
+        description="Replacement charter brief.",
+    )
+    goals: tuple[NotBlankStr, ...] | None = Field(
+        default=None,
+        description="Replacement set of charter goals.",
+    )
+    constraints: tuple[NotBlankStr, ...] | None = Field(
+        default=None,
+        description="Replacement set of charter constraints.",
+    )
+    success_criteria: tuple[NotBlankStr, ...] | None = Field(
+        default=None,
+        description="Replacement set of charter success criteria.",
+    )
+    scope: ScopeBoundaries | None = Field(
+        default=None,
+        description="Replacement scope boundaries.",
+    )
+    envelope: BudgetEnvelope | None = Field(
+        default=None,
+        description="Replacement budget envelope.",
+    )
 
 
 class _DecisionRequest(BaseModel):
@@ -143,6 +173,11 @@ class CharterController(Controller):
 
         Returns:
             ``ApiResponse[InterviewTurnResult]`` instance.
+
+        Raises:
+            ServiceUnavailableError: 503 when the charter substrate is not
+                configured (interview disabled, no provider, or persistence
+                not connected).
         """
         service = self._service(state)
         actor = require_actor()
@@ -163,7 +198,10 @@ class CharterController(Controller):
         self,
         state: State,
         status: Annotated[CharterStatus | None, QueryParameter()] = None,
-        project_id: Annotated[str | None, QueryParameter()] = None,
+        project_id: Annotated[
+            str | None,
+            QueryParameter(max_length=QUERY_MAX_LENGTH),
+        ] = None,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_PAGE_SIZE,
     ) -> PaginatedResponse[ProjectCharter]:

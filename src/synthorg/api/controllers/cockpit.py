@@ -29,6 +29,7 @@ from synthorg.api.pagination import (
     encode_countless_seek_meta,
 )
 from synthorg.api.path_params import PathId
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
@@ -92,6 +93,10 @@ class CockpitController(Controller):
 
         Returns:
             ``ApiResponse[LiveActivitySnapshot]`` instance.
+
+        Raises:
+            ServiceUnavailableError: 503 when the cockpit service is not
+                configured.
         """
         app_state: AppState = state.app_state
         resolver = config_resolver_of(app_state)
@@ -204,7 +209,13 @@ class CockpitController(Controller):
         record = await recorder.get_red_team_report(execution_id)
         return ApiResponse(data=record)
 
-    @post("/interventions/pause", guards=[require_write_access])
+    @post(
+        "/interventions/pause",
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("cockpit.intervention_pause", key="user"),
+        ],
+    )
     async def pause(
         self,
         state: State,
@@ -236,7 +247,13 @@ class CockpitController(Controller):
         )
         return ApiResponse(data=task)
 
-    @post("/interventions/kill", guards=[require_write_access])
+    @post(
+        "/interventions/kill",
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("cockpit.intervention_kill", key="user"),
+        ],
+    )
     async def kill(
         self,
         state: State,

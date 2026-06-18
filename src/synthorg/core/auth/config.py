@@ -14,6 +14,16 @@ from synthorg.settings.mirrors import (
 )
 
 MIN_SECRET_LENGTH: Final[int] = 32
+MIN_SECRET_LENGTH_HS384: Final[int] = 48
+MIN_SECRET_LENGTH_HS512: Final[int] = 64
+# RFC 7518 wants an HMAC key at least as long as the hash output: 32 bytes
+# for HS256, 48 for HS384, 64 for HS512. A key shorter than the output is
+# silently truncated/weakened, so the floor is keyed to the chosen algorithm.
+_MIN_SECRET_LENGTH_BY_ALG: Final[dict[str, int]] = {
+    "HS256": MIN_SECRET_LENGTH,
+    "HS384": MIN_SECRET_LENGTH_HS384,
+    "HS512": MIN_SECRET_LENGTH_HS512,
+}
 DEFAULT_COOKIE_NAME = "session"
 DEFAULT_CSRF_COOKIE_NAME = "csrf_token"
 DEFAULT_CSRF_HEADER_NAME = "x-csrf-token"
@@ -32,21 +42,18 @@ DEFAULT_REFRESH_COOKIE_PATH = "/api/v1/auth/refresh"
 AUTH_REVALIDATE_INTERVAL_SECONDS: int = 10 * 60
 
 
-def _require_valid_secret(secret: str) -> None:
+def _require_valid_secret(secret: str, min_length: int = MIN_SECRET_LENGTH) -> None:
     """Raise ``ValueError`` if *secret* is non-empty but too short.
 
     Args:
         secret: JWT signing secret to validate.
+        min_length: Minimum byte length required for the active algorithm.
 
     Raises:
-        ValueError: If *secret* is non-empty and shorter than
-            ``MIN_SECRET_LENGTH``.
+        ValueError: If *secret* is non-empty and shorter than ``min_length``.
     """
-    if secret and len(secret) < MIN_SECRET_LENGTH:
-        msg = (
-            f"jwt_secret must be at least {MIN_SECRET_LENGTH} "
-            f"characters (got {len(secret)})"
-        )
+    if secret and len(secret) < min_length:
+        msg = f"jwt_secret must be at least {min_length} characters (got {len(secret)})"
         raise ValueError(msg)
 
 
@@ -109,10 +116,14 @@ class AuthConfig(BaseModel):
         ),
     )
     jwt_expiry_minutes: int = Field(
-        default=1440,
+        default=60,
         ge=1,
         le=43200,
-        description="Token lifetime in minutes (default 24h)",
+        description=(
+            "Access-token lifetime in minutes (default 1h). Short by design: "
+            "refresh-token rotation keeps sessions alive without long-lived "
+            "bearer tokens."
+        ),
     )
     min_password_length: int = Field(
         default=12,
@@ -184,7 +195,7 @@ class AuthConfig(BaseModel):
 
     # Refresh tokens
     jwt_refresh_enabled: bool = Field(
-        default=False,
+        default=True,
         description="Enable refresh token rotation",
     )
     jwt_refresh_expiry_minutes: int = Field(
@@ -242,9 +253,13 @@ class AuthConfig(BaseModel):
 
         Raises:
             ValueError: If ``jwt_secret`` is non-empty but shorter than
-                the minimum length (via ``_require_valid_secret``).
+                the algorithm-specific minimum length (via
+                ``_require_valid_secret``).
         """
-        _require_valid_secret(self.jwt_secret)
+        min_length = _MIN_SECRET_LENGTH_BY_ALG.get(
+            self.jwt_algorithm, MIN_SECRET_LENGTH
+        )
+        _require_valid_secret(self.jwt_secret, min_length)
         return self
 
     @model_validator(mode="after")

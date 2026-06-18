@@ -43,6 +43,7 @@ from synthorg.observability.events.client import (
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
+_FMT_MAX_LENGTH: Final[int] = 32
 
 
 class StartSimulationPayload(BaseModel):
@@ -58,14 +59,34 @@ class SimulationStatusResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    simulation_id: NotBlankStr
-    status: NotBlankStr
+    simulation_id: NotBlankStr = Field(
+        description="Unique identifier for the simulation run.",
+    )
+    status: NotBlankStr = Field(
+        description=(
+            "Lifecycle status of the run, one of: pending, running, completed, "
+            "failed, cancelled."
+        ),
+    )
     config: SimulationConfig
     metrics: SimulationMetrics
-    progress: float = Field(ge=0.0, le=1.0)
-    started_at: AwareDatetime | None = None
-    completed_at: AwareDatetime | None = None
-    error: str | None = None
+    progress: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Fractional completion progress in the range 0 to 1.",
+    )
+    started_at: AwareDatetime | None = Field(
+        default=None,
+        description="When the run started, if it has started.",
+    )
+    completed_at: AwareDatetime | None = Field(
+        default=None,
+        description="When the run finished, if it has finished.",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error description when the run failed, otherwise null.",
+    )
 
 
 def _to_response(record: SimulationRecord) -> SimulationStatusResponse:
@@ -120,8 +141,12 @@ class SimulationController(Controller):
     ) -> PaginatedResponse[SimulationStatusResponse]:
         """List all known simulation runs.
 
+        Uses opaque cursor pagination: pass the previous response's
+        ``next_cursor`` plus ``limit`` to walk the catalogue newest-first.
+
         Returns:
-            Result matching the declared return annotation.
+            A cursor page of ``SimulationStatusResponse`` rows with
+            ``next_cursor`` / ``has_more`` pagination metadata.
         """
         app_state: AppState = state.app_state
         sim_state = client_simulation_state_of(app_state)
@@ -358,7 +383,7 @@ class SimulationController(Controller):
         self,
         state: State,
         simulation_id: PathId,
-        fmt: Annotated[str, QueryParameter()] = "summary",
+        fmt: Annotated[str, QueryParameter(max_length=_FMT_MAX_LENGTH)] = "summary",
     ) -> ApiResponse[dict[str, object]]:
         """Return a generated report for a simulation run.
 

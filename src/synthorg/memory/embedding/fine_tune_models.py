@@ -182,6 +182,12 @@ class FineTuneRequest(BaseModel):
                     "or drive letters)"
                 )
                 raise ValueError(msg)
+            if PurePosixPath(val).is_absolute():
+                msg = (
+                    f"{field_name} must be a workspace-relative path "
+                    "(absolute paths are rejected)"
+                )
+                raise ValueError(msg)
         return self
 
     @model_validator(mode="after")

@@ -365,12 +365,30 @@ class CreateProjectRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    name: NotBlankStr = Field(max_length=256)
-    description: str = Field(default="", max_length=4096)
-    team: tuple[NotBlankStr, ...] = Field(default=(), max_length=50)
-    lead: NotBlankStr | None = None
-    deadline: str | None = None
-    budget: float = Field(default=0.0, ge=0.0)
+    name: NotBlankStr = Field(max_length=256, description="Project display name.")
+    description: str = Field(
+        default="",
+        max_length=4096,
+        description="Detailed project description.",
+    )
+    team: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        max_length=50,
+        description="Agent IDs assigned to the project.",
+    )
+    lead: NotBlankStr | None = Field(
+        default=None,
+        description="Agent ID of the project lead.",
+    )
+    deadline: str | None = Field(
+        default=None,
+        description="Optional deadline as an ISO 8601 string.",
+    )
+    budget: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Total project budget in the configured base currency.",
+    )
 
     @model_validator(mode="after")
     def _validate_request(self) -> Self:
@@ -413,15 +431,22 @@ class CreateTaskRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    title: NotBlankStr = Field(max_length=256)
-    description: NotBlankStr = Field(max_length=4096)
+    title: NotBlankStr = Field(max_length=256, description="Short task title.")
+    description: NotBlankStr = Field(
+        max_length=4096,
+        description="Detailed task description.",
+    )
     type: TaskType
     priority: Priority = Priority.MEDIUM
     project: NotBlankStr
     created_by: NotBlankStr
     assigned_to: NotBlankStr | None = None
     estimated_complexity: Complexity = Complexity.MEDIUM
-    budget_limit: float = Field(default=0.0, ge=0.0)
+    budget_limit: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Maximum spend for the task in the configured base currency.",
+    )
 
 
 class UpdateTaskRequest(BaseModel):
@@ -440,11 +465,23 @@ class UpdateTaskRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    title: NotBlankStr | None = Field(default=None, max_length=256)
-    description: NotBlankStr | None = Field(default=None, max_length=4096)
+    title: NotBlankStr | None = Field(
+        default=None,
+        max_length=256,
+        description="New task title.",
+    )
+    description: NotBlankStr | None = Field(
+        default=None,
+        max_length=4096,
+        description="New task description.",
+    )
     priority: Priority | None = None
     assigned_to: NotBlankStr | None = None
-    budget_limit: float | None = Field(default=None, ge=0.0)
+    budget_limit: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="New maximum spend for the task in the base currency.",
+    )
     expected_version: int | None = Field(
         default=None,
         ge=1,
@@ -681,7 +718,11 @@ class ApproveRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    comment: NotBlankStr | None = Field(default=None, max_length=4096)
+    comment: NotBlankStr | None = Field(
+        default=None,
+        max_length=4096,
+        description="Optional comment explaining the approval decision.",
+    )
 
 
 class RejectRequest(BaseModel):
@@ -693,7 +734,10 @@ class RejectRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    reason: NotBlankStr = Field(max_length=4096)
+    reason: NotBlankStr = Field(
+        max_length=4096,
+        description="Mandatory reason explaining the rejection.",
+    )
 
 
 # ── Coordination request/response DTOs ────────────────────────
@@ -719,13 +763,24 @@ class CoordinateTaskRequest(BaseModel):
         max_length=50,
         description="Agent names to coordinate with (None = all active)",
     )
-    max_subtasks: int = Field(default=10, ge=1, le=50)
+    max_subtasks: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Maximum number of subtasks the decomposition may produce.",
+    )
     max_concurrency_per_wave: int | None = Field(
         default=None,
         ge=1,
         le=50,
+        description="Override for the maximum agents run concurrently per wave.",
     )
-    fail_fast: bool | None = None
+    fail_fast: bool | None = Field(
+        default=None,
+        description=(
+            "Override for fail-fast behaviour; None uses the section config default."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_unique_agent_names(self) -> Self:
@@ -799,10 +854,21 @@ class CoordinationResultResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    parent_task_id: NotBlankStr = Field(max_length=128)
-    topology: NotBlankStr
-    total_duration_seconds: float = Field(ge=0.0)
-    total_cost: float = Field(ge=0.0)
+    parent_task_id: NotBlankStr = Field(
+        max_length=128,
+        description="ID of the parent task that was coordinated.",
+    )
+    topology: NotBlankStr = Field(
+        description="Resolved coordination topology for the run.",
+    )
+    total_duration_seconds: float = Field(
+        ge=0.0,
+        description="Total wall-clock duration of the coordination run in seconds.",
+    )
+    total_cost: float = Field(
+        ge=0.0,
+        description="Total cost across all waves in the configured currency.",
+    )
     currency: str = Field(
         default=DEFAULT_CURRENCY,
         min_length=3,
@@ -810,8 +876,14 @@ class CoordinationResultResponse(BaseModel):
         pattern=r"^[A-Z]{3}$",
         description="ISO 4217 currency code",
     )
-    phases: tuple[CoordinationPhaseResponse, ...] = Field(min_length=1)
-    wave_count: int = Field(ge=0)
+    phases: tuple[CoordinationPhaseResponse, ...] = Field(
+        min_length=1,
+        description="Phase results in execution order.",
+    )
+    wave_count: int = Field(
+        ge=0,
+        description="Number of execution waves in the coordination run.",
+    )
 
     @computed_field(  # type: ignore[prop-decorator]
         description="Whether all phases succeeded",

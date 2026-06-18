@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.path_params import PathId
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.budget.forecast_models import Forecast
 from synthorg.budget.forecast_service import BudgetForecastService
@@ -123,7 +124,14 @@ class ForecastBudgetController(Controller):
     guards = (require_read_access,)
     tags = ("budget", "forecast")
 
-    @post("/forecast", status_code=201, guards=[require_write_access])
+    @post(
+        "/forecast",
+        status_code=201,
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("budget.forecast_create", key="user"),
+        ],
+    )
     async def create_forecast(
         self,
         data: ForecastRequest,
@@ -159,7 +167,13 @@ class ForecastBudgetController(Controller):
         service = _require_service(state)
         return await service.get_or_404(UUID(forecast_id))
 
-    @post("/forecasts/{forecast_id:str}/approve", guards=[require_write_access])
+    @post(
+        "/forecasts/{forecast_id:str}/approve",
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("budget.forecast_decide", key="user"),
+        ],
+    )
     async def approve_forecast(
         self,
         forecast_id: PathId,
@@ -178,7 +192,13 @@ class ForecastBudgetController(Controller):
             ceiling_amount=data.ceiling_amount,
         )
 
-    @post("/forecasts/{forecast_id:str}/reject", guards=[require_write_access])
+    @post(
+        "/forecasts/{forecast_id:str}/reject",
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("budget.forecast_decide", key="user"),
+        ],
+    )
     async def reject_forecast(
         self,
         forecast_id: PathId,
@@ -193,7 +213,13 @@ class ForecastBudgetController(Controller):
         service = _require_service(state)
         return await service.reject(UUID(forecast_id), decided_by=data.decided_by)
 
-    @post("/forecasts/{forecast_id:str}/raise_ceiling", guards=[require_write_access])
+    @post(
+        "/forecasts/{forecast_id:str}/raise_ceiling",
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("budget.forecast_raise_ceiling", key="user"),
+        ],
+    )
     async def raise_ceiling(
         self,
         forecast_id: PathId,

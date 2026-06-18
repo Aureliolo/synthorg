@@ -47,9 +47,18 @@ class ChatRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    question: NotBlankStr = Field(max_length=2000)
-    proposal_id: UUID | None = Field(default=None)
-    alert_id: UUID | None = Field(default=None)
+    question: NotBlankStr = Field(
+        max_length=2000,
+        description="Free-text question for the Chief of Staff agent.",
+    )
+    proposal_id: UUID | None = Field(
+        default=None,
+        description="Improvement proposal the question is scoped to, if any.",
+    )
+    alert_id: UUID | None = Field(
+        default=None,
+        description="Proactive alert the question is scoped to, if any.",
+    )
 
 
 class ConversationalProposeRequest(BaseModel):
@@ -57,9 +66,18 @@ class ConversationalProposeRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    message: NotBlankStr = Field(max_length=2000)
-    conversation_id: NotBlankStr | None = Field(default=None)
-    project: NotBlankStr | None = Field(default=None)
+    message: NotBlankStr = Field(
+        max_length=2000,
+        description="Human message for the clarify-and-propose turn.",
+    )
+    conversation_id: NotBlankStr | None = Field(
+        default=None,
+        description="Existing conversation to append to; None starts a new one.",
+    )
+    project: NotBlankStr | None = Field(
+        default=None,
+        description="Project the proposal should be scoped to, if any.",
+    )
 
 
 logger = get_logger(__name__)

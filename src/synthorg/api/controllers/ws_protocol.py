@@ -37,6 +37,7 @@ from synthorg.observability.events.api import (
     API_WS_UNSUBSCRIBE,
     API_WS_USER_CHANNEL_DENIED,
 )
+from synthorg.observability.redaction import scrub_secret_tokens
 
 logger = get_logger(__name__)
 
@@ -171,7 +172,10 @@ def _parse_ws_message(data: str) -> dict[str, object] | str:
     try:
         msg = json.loads(data)
     except json.JSONDecodeError:
-        logger.warning(API_WS_INVALID_MESSAGE, data_preview=str(data)[:100])
+        logger.warning(
+            API_WS_INVALID_MESSAGE,
+            data_preview=scrub_secret_tokens(str(data)[:100]),
+        )
         return json.dumps({"error": "Invalid JSON"})
     except TypeError:
         logger.error(

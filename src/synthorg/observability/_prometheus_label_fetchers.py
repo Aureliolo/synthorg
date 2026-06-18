@@ -148,6 +148,35 @@ def fetch_provider_names(app_state: AppState) -> frozenset[str] | None:
         return None
 
 
+def fetch_model_ids(app_state: AppState) -> frozenset[str] | None:
+    """Pull the configured model-id set from the model router's resolver.
+
+    Unlike the other fetchers this returns ``None`` (preserve previous,
+    do NOT seed) when the router is unwired OR resolves to an empty set:
+    seeding ``model_ids`` with an empty frozenset would flip
+    ``model_ids_seeded`` True and fold every real model label to
+    ``__unknown__``. The fold only activates once a non-empty configured
+    model set is genuinely available.
+
+    Returns:
+        The live frozenset of configured model-id strings on success, or
+        ``None`` when the router is unwired, resolves to no models, or the
+        fetch raises (so the merge step preserves the previous allowlist).
+    """
+    try:
+        router = app_state.slice(ProvidersStateSlice).model_router
+        if router is None:
+            return None
+        ids = frozenset(m.model_id for m in router.resolver.all_models())
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        log_exception_redacted(
+            logger, METRICS_SCRAPE_FAILED, exc, component="model_router"
+        )
+        return None
+    return ids or None
+
+
 async def fetch_tool_names(app_state: AppState) -> frozenset[str] | None:
     """Pull the registered tool-name set from the tool registry.
 

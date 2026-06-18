@@ -22,6 +22,7 @@ from synthorg.api.pagination import (
     paginate_cursor,
 )
 from synthorg.api.path_params import QUERY_MAX_LENGTH
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.budget.coordination_store import CoordinationMetricsRecord
 from synthorg.coordination.state import CoordinationStateSlice
 from synthorg.core.critical_errors import reraise_critical
@@ -95,7 +96,12 @@ class CoordinationMetricsController(Controller):
     tags = ("coordination",)
     guards = [require_read_access]  # noqa: RUF012
 
-    @get()
+    @get(
+        guards=[
+            require_read_access,
+            per_op_rate_limit_from_policy("coordination.metrics_query", key="user"),
+        ],
+    )
     async def list_coordination_metrics(  # noqa: PLR0913
         self,
         state: State,

@@ -15,7 +15,7 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     paginate_cursor,
 )
-from synthorg.api.path_params import PathId
+from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.communication.channel import Channel
@@ -47,7 +47,10 @@ class MessageController(Controller):
         state: State,
         channel: Annotated[
             str | None,
-            QueryParameter(description="Filter to messages on this channel."),
+            QueryParameter(
+                max_length=QUERY_MAX_LENGTH,
+                description="Filter to messages on this channel.",
+            ),
         ] = None,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,

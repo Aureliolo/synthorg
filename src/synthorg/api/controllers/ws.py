@@ -104,6 +104,47 @@ _WS_CLOSE_FORBIDDEN: int = 4003
 # value is rejected at the boundary instead of being passed to the store.
 _MAX_TICKET_QUERY_LEN: int = 172
 
+# Max concurrent unauthenticated (accepted-but-not-yet-authed) first-message
+# connections from a single client IP. The first-message path must
+# ``accept()`` before it can read the auth frame, so without this an attacker
+# can open many sockets and never send auth, exhausting server resources
+# before any credential check. RFC 6455 1008 (policy violation) is sent on
+# rejection so a legitimate client can retry once below the cap.
+_MAX_PREAUTH_CONNECTIONS_PER_IP: int = 10
+_WS_CLOSE_POLICY_VIOLATION: int = 1008
+
+# Process-local per-IP pre-auth connection counter. A slot is held only for
+# the accept -> first-message-auth window and released the moment auth
+# resolves (success or failure), so it bounds in-flight handshakes, not
+# established authenticated connections.
+_preauth_ip_counts: dict[str, int] = {}
+_preauth_ip_lock: asyncio.Lock = asyncio.Lock()
+
+
+async def _acquire_preauth_slot(client_ip: str) -> bool:
+    """Reserve a pre-auth handshake slot for *client_ip*.
+
+    Returns:
+        ``True`` when a slot was reserved, ``False`` when the IP is at the
+        concurrent pre-auth cap.
+    """
+    async with _preauth_ip_lock:
+        count = _preauth_ip_counts.get(client_ip, 0)
+        if count >= _MAX_PREAUTH_CONNECTIONS_PER_IP:
+            return False
+        _preauth_ip_counts[client_ip] = count + 1
+        return True
+
+
+async def _release_preauth_slot(client_ip: str) -> None:
+    """Release a previously reserved pre-auth slot for *client_ip*."""
+    async with _preauth_ip_lock:
+        count = _preauth_ip_counts.get(client_ip, 0)
+        if count <= 1:
+            _preauth_ip_counts.pop(client_ip, None)
+        else:
+            _preauth_ip_counts[client_ip] = count - 1
+
 
 async def _validate_ticket(
     socket: WebSocket[object, object, State],
@@ -605,9 +646,26 @@ async def _authenticate_ws(
             return None
         return user, False
 
-    # First-message path: must accept before reading
-    await socket.accept()
-    user = await _auth_from_first_message(socket)
+    # First-message path: must accept before reading the auth frame, so cap
+    # concurrent pre-auth handshakes per client IP to bound a flood of
+    # accepted-but-never-authenticated sockets.
+    client_ip = socket.client.host if socket.client is not None else "unknown"
+    if not await _acquire_preauth_slot(client_ip):
+        logger.warning(
+            API_WS_AUTH_STAGE,
+            stage="preauth_ip_limit",
+            client=str(socket.client),
+        )
+        await socket.close(
+            code=_WS_CLOSE_POLICY_VIOLATION,
+            reason="Too many pending connections",
+        )
+        return None
+    try:
+        await socket.accept()
+        user = await _auth_from_first_message(socket)
+    finally:
+        await _release_preauth_slot(client_ip)
     if user is None:
         return None
     return user, True

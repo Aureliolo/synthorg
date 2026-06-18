@@ -89,10 +89,19 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "auth.api_keys_issue": (10, 60),
     "auth.api_keys_list": (30, 60),
     "auth.api_keys_revoke": (30, 60),
+    # brain (project brain)
+    "brain.search": (30, 60),
     # brownfield
     "brownfield.import": (10, 60),
+    # budget (forecast controller)
+    "budget.forecast_create": (5, 60),
+    "budget.forecast_decide": (20, 60),
+    "budget.forecast_raise_ceiling": (10, 60),
     # clients
     "clients.create": (10, 60),
+    # cockpit
+    "cockpit.intervention_kill": (10, 60),
+    "cockpit.intervention_pause": (30, 60),
     # collaboration
     "collaboration.override": (20, 60),
     # company
@@ -102,6 +111,8 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "connections.create": (20, 60),
     "connections.delete": (10, 60),
     "connections.update": (30, 60),
+    # coordination
+    "coordination.metrics_query": (30, 60),
     # custom_rules
     "custom_rules.create": (20, 60),
     "custom_rules.delete": (20, 60),
@@ -115,6 +126,8 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "departments.reorder_agents": (30, 60),
     "departments.update": (20, 60),
     "departments.update_ceremony_policy": (20, 60),
+    # docs (project docs)
+    "docs.search": (30, 60),
     # escalations
     "escalations.cancel": (30, 60),
     "escalations.decide": (30, 60),
@@ -125,8 +138,13 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
         EVENTS_STREAM_RATE_LIMIT_MAX_REQUESTS,
         EVENTS_STREAM_RATE_LIMIT_WINDOW_SECONDS,
     ),
+    # integrations (health controller)
+    "integrations.health_aggregate": (30, 60),
+    "integrations.health_single": (60, 60),
     # interrupts
     "interrupts.resume": (60, 60),
+    # knowledge
+    "knowledge.search": (30, 60),
     # learning
     "learning.curve": (30, 60),
     # meetings
@@ -182,6 +200,8 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "providers.delete_model": (20, 60),
     "providers.delete_preset_override": (10, 60),
     "providers.discover_models": (5, 60),
+    "providers.model_refresh_decide": (20, 60),
+    "providers.model_refresh_trigger": (2, 300),
     "providers.probe_local": (20, 60),
     "providers.pull_model": (5, 300),
     "providers.rotate_credentials": (5, 60),
@@ -207,6 +227,8 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "scaling.trigger_evaluation": (10, 60),
     "scaling.update_priority": (30, 60),
     "scaling.update_strategy": (30, 60),
+    # security
+    "security.audit_query": (30, 60),
     # settings
     "settings.delete": (60, 60),
     "settings.import": (5, 3600),
@@ -216,6 +238,9 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     # simulations
     "simulations.cancel": (30, 60),
     "simulations.create": (30, 3600),
+    # subworkflows
+    "subworkflows.create": (20, 60),
+    "subworkflows.delete_version": (10, 60),
     # experiments (A/B test registry)
     "experiments.register": (50, 60),
     "experiments.assign": (500, 60),
@@ -227,6 +252,11 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "tasks.execute": (200, 60),
     "tasks.transition": (100, 60),
     "tasks.update": (100, 60),
+    # teams
+    "teams.create": (10, 60),
+    "teams.delete": (5, 60),
+    "teams.reorder": (30, 60),
+    "teams.update": (20, 60),
     # training
     "training.create_plan": (30, 3600),
     "training.execute": (20, 3600),

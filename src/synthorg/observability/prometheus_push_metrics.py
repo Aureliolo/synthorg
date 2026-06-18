@@ -163,10 +163,14 @@ class PushMetrics:
         )
 
         # -- Agent identity change counter ---------------------------
+        # ``agent_id`` is a UUID and would blow up series cardinality as
+        # one label dimension, so it is carried as an OpenMetrics exemplar
+        # (per-agent attribution available on scrape) rather than a label.
+        # Only ``change_type`` (bounded) remains a label.
         self.agent_identity_changes = PromCounter(
             f"{prefix}_agent_identity_version_changes_total",
             "Agent identity version changes",
-            ["agent_id", "change_type"],
+            ["change_type"],
             registry=registry,
         )
 

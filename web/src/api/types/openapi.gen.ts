@@ -7766,6 +7766,7 @@ export type components = {
         readonly ApprovalStatus: "pending" | "approved" | "rejected" | "expired";
         /** ApproveRequest */
         readonly ApproveRequest: {
+            /** @description Optional comment explaining the approval decision. */
             readonly comment?: string | null;
         };
         /** Artifact */
@@ -8543,12 +8544,19 @@ export type components = {
         };
         /** CharterEditRequest */
         readonly CharterEditRequest: {
+            /** @description Replacement charter brief. */
             readonly brief?: string | null;
+            /** @description Replacement set of charter constraints. */
             readonly constraints?: readonly string[] | null;
+            /** @description Replacement budget envelope. */
             readonly envelope?: components["schemas"]["BudgetEnvelope"] | null;
+            /** @description Replacement set of charter goals. */
             readonly goals?: readonly string[] | null;
+            /** @description Replacement scope boundaries. */
             readonly scope?: components["schemas"]["ScopeBoundaries"] | null;
+            /** @description Replacement set of charter success criteria. */
             readonly success_criteria?: readonly string[] | null;
+            /** @description Replacement charter title. */
             readonly title?: string | null;
         };
         /**
@@ -8585,16 +8593,26 @@ export type components = {
         };
         /** ChatActRequest */
         readonly ChatActRequest: {
+            /** @description ID of the agent that should act on the instruction. */
             readonly agent: string;
+            /** @description Existing conversation to act within; None starts a new one. */
             readonly conversation_id?: string | null;
+            /** @description Natural-language instruction for the agent to act on. */
             readonly instruction: string;
         };
         /** ChatRequest */
         readonly ChatRequest: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Proactive alert the question is scoped to, if any.
+             */
             readonly alert_id?: string | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Improvement proposal the question is scoped to, if any.
+             */
             readonly proposal_id?: string | null;
+            /** @description Free-text question for the Chief of Staff agent. */
             readonly question: string;
         };
         /** CheckpointRecord */
@@ -9022,8 +9040,11 @@ export type components = {
         };
         /** ConversationalProposeRequest */
         readonly ConversationalProposeRequest: {
+            /** @description Existing conversation to append to; None starts a new one. */
             readonly conversation_id?: string | null;
+            /** @description Human message for the clarify-and-propose turn. */
             readonly message: string;
+            /** @description Project the proposal should be scoped to, if any. */
             readonly project?: string | null;
         };
         /** ConversationParticipant */
@@ -9064,9 +9085,14 @@ export type components = {
         readonly CoordinateTaskRequest: {
             /** @description Agent names to coordinate with (None = all active) */
             readonly agent_names?: readonly string[] | null;
+            /** @description Override for fail-fast behaviour; None uses the section config default. */
             readonly fail_fast?: boolean | null;
+            /** @description Override for the maximum agents run concurrently per wave. */
             readonly max_concurrency_per_wave?: number | null;
-            /** @default 10 */
+            /**
+             * @description Maximum number of subtasks the decomposition may produce.
+             * @default 10
+             */
             readonly max_subtasks: number;
         };
         /** CoordinationEfficiency */
@@ -9163,11 +9189,17 @@ export type components = {
             readonly currency: string;
             /** @description Whether all phases succeeded */
             readonly is_success: boolean;
+            /** @description ID of the parent task that was coordinated. */
             readonly parent_task_id: string;
+            /** @description Phase results in execution order. */
             readonly phases: readonly components["schemas"]["CoordinationPhaseResponse"][];
+            /** @description Resolved coordination topology for the run. */
             readonly topology: string;
+            /** @description Total cost across all waves in the configured currency. */
             readonly total_cost: number;
+            /** @description Total wall-clock duration of the coordination run in seconds. */
             readonly total_duration_seconds: number;
+            /** @description Number of execution waves in the coordination run. */
             readonly wave_count: number;
         };
         /**
@@ -9336,17 +9368,25 @@ export type components = {
             readonly auth_method?: components["schemas"]["AuthMethod"];
             readonly base_url?: string | null;
             readonly connection_type: components["schemas"]["ConnectionType"];
+            /** @description Credential field-name to value map sent to the secret backend. */
             readonly credentials?: {
                 readonly [key: string]: string;
             };
-            /** @default true */
+            /**
+             * @description Whether periodic health checks run against the connection.
+             * @default true
+             */
             readonly health_check_enabled: boolean;
             readonly metadata?: {
                 readonly [key: string]: string;
             } | null;
             readonly name: string;
-            /** @default false */
+            /**
+             * @description Marks the connection sensitive so every external-access call against it routes to approval.
+             * @default false
+             */
             readonly sensitive: boolean;
+            /** @description Per-connection webhook-receipt retention window in days; None uses the global default, 0 opts out of the sweep. */
             readonly webhook_receipt_retention_days?: number | null;
         };
         /** CreateCustomRuleRequest */
@@ -9432,40 +9472,76 @@ export type components = {
         };
         /** CreatePresetRequest */
         readonly CreatePresetRequest: {
-            /** @default 0.5 */
+            /**
+             * @description Big Five agreeableness score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly agreeableness: number;
             readonly collaboration?: components["schemas"]["CollaborationPreference"];
-            /** @default neutral */
+            /**
+             * @description Communication style label.
+             * @default neutral
+             */
             readonly communication_style: string;
             readonly conflict_approach?: components["schemas"]["ConflictApproach"];
-            /** @default 0.5 */
+            /**
+             * @description Big Five conscientiousness score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly conscientiousness: number;
             readonly creativity?: components["schemas"]["CreativityLevel"];
             readonly decision_making?: components["schemas"]["DecisionMakingStyle"];
-            /** @default  */
+            /**
+             * @description Preset description.
+             * @default
+             */
             readonly description: string;
-            /** @default 0.5 */
+            /**
+             * @description Big Five extraversion score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly extraversion: number;
             readonly name: string;
-            /** @default 0.5 */
+            /**
+             * @description Big Five openness score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly openness: number;
             readonly risk_tolerance?: components["schemas"]["RiskTolerance"];
-            /** @default 0.5 */
+            /**
+             * @description Stress-response (neuroticism) score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly stress_response: number;
-            /** @default [] */
+            /**
+             * @description Personality traits for the preset.
+             * @default []
+             */
             readonly traits: readonly string[];
             readonly verbosity?: components["schemas"]["CommunicationVerbosity"];
         };
         /** CreateProjectRequest */
         readonly CreateProjectRequest: {
-            /** @default 0 */
+            /**
+             * @description Total project budget in the configured base currency.
+             * @default 0
+             */
             readonly budget: number;
+            /** @description Optional deadline as an ISO 8601 string. */
             readonly deadline?: string | null;
-            /** @default  */
+            /**
+             * @description Detailed project description.
+             * @default
+             */
             readonly description: string;
+            /** @description Agent ID of the project lead. */
             readonly lead?: string | null;
+            /** @description Project display name. */
             readonly name: string;
-            /** @default [] */
+            /**
+             * @description Agent IDs assigned to the project.
+             * @default []
+             */
             readonly team: readonly string[];
         };
         /** CreateProviderRequest */
@@ -9531,13 +9607,18 @@ export type components = {
         /** CreateTaskRequest */
         readonly CreateTaskRequest: {
             readonly assigned_to?: string | null;
-            /** @default 0 */
+            /**
+             * @description Maximum spend for the task in the configured base currency.
+             * @default 0
+             */
             readonly budget_limit: number;
             readonly created_by: string;
+            /** @description Detailed task description. */
             readonly description: string;
             readonly estimated_complexity?: components["schemas"]["Complexity"];
             readonly priority?: components["schemas"]["Priority"];
             readonly project: string;
+            /** @description Short task title. */
             readonly title: string;
             readonly type: components["schemas"]["TaskType"];
         };
@@ -10190,6 +10271,7 @@ export type components = {
         };
         /** EscalationResponse */
         readonly EscalationResponse: {
+            /** @description ID of the conflict this escalation was raised for. */
             readonly conflict_id: string;
             readonly escalation: components["schemas"]["Escalation"];
             readonly status: components["schemas"]["EscalationStatus"];
@@ -10871,9 +10953,14 @@ export type components = {
         };
         /** GroupChatRequest */
         readonly GroupChatRequest: {
+            /** @description Existing conversation to append to; None starts a new one. */
             readonly conversation_id?: string | null;
+            /** @description Human message to broadcast to the group chat. */
             readonly message: string;
-            /** @default [] */
+            /**
+             * @description Agent IDs to enrol in the group chat for this turn.
+             * @default []
+             */
             readonly participants: readonly string[];
         };
         /**
@@ -11016,8 +11103,12 @@ export type components = {
         };
         /** InitiateOAuthFlowRequest */
         readonly InitiateOAuthFlowRequest: {
+            /** @description Name of the connection to initiate the OAuth flow for. */
             readonly connection_name: string;
-            /** @default [] */
+            /**
+             * @description OAuth scopes to request for the connection.
+             * @default []
+             */
             readonly scopes: readonly string[];
         };
         /** InstalledEntry */
@@ -11105,8 +11196,11 @@ export type components = {
         readonly InterventionKind: "pause" | "kill" | "hint" | "redirect";
         /** InterviewTurnRequest */
         readonly InterviewTurnRequest: {
+            /** @description Existing interview conversation to continue; None starts one. */
             readonly conversation_id?: string | null;
+            /** @description Human message for this charter-interview turn. */
             readonly message: string;
+            /** @description Project the interview is scoped to, if any. */
             readonly project?: string | null;
         };
         /** InterviewTurnResult */
@@ -13522,30 +13616,57 @@ export type components = {
         };
         /** PresetDetailResponse */
         readonly PresetDetailResponse: {
-            /** @default 0.5 */
+            /**
+             * @description Big Five agreeableness score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly agreeableness: number;
             readonly collaboration: components["schemas"]["CollaborationPreference"];
-            /** @default neutral */
+            /**
+             * @description Default communication style label.
+             * @default neutral
+             */
             readonly communication_style: string;
             readonly conflict_approach: components["schemas"]["ConflictApproach"];
-            /** @default 0.5 */
+            /**
+             * @description Big Five conscientiousness score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly conscientiousness: number;
+            /** @description Creation timestamp as an ISO 8601 string, if known. */
             readonly created_at: string | null;
             readonly creativity: components["schemas"]["CreativityLevel"];
             readonly decision_making: components["schemas"]["DecisionMakingStyle"];
-            /** @default  */
+            /**
+             * @description Full preset description.
+             * @default
+             */
             readonly description: string;
-            /** @default 0.5 */
+            /**
+             * @description Big Five extraversion score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly extraversion: number;
+            /** @description Unique preset name. */
             readonly name: string;
-            /** @default 0.5 */
+            /**
+             * @description Big Five openness score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly openness: number;
             readonly risk_tolerance: components["schemas"]["RiskTolerance"];
             readonly source: components["schemas"]["PresetSource"];
-            /** @default 0.5 */
+            /**
+             * @description Stress-response (neuroticism) score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly stress_response: number;
-            /** @default [] */
+            /**
+             * @description Personality traits for the preset.
+             * @default []
+             */
             readonly traits: readonly string[];
+            /** @description Last-update timestamp as an ISO 8601 string, if known. */
             readonly updated_at: string | null;
             readonly verbosity: components["schemas"]["CommunicationVerbosity"];
         };
@@ -13584,11 +13705,18 @@ export type components = {
         readonly PresetSource: "builtin" | "custom";
         /** PresetSummaryResponse */
         readonly PresetSummaryResponse: {
-            /** @default  */
+            /**
+             * @description Short human-readable summary.
+             * @default
+             */
             readonly description: string;
+            /** @description Unique preset name. */
             readonly name: string;
             readonly source: components["schemas"]["PresetSource"];
-            /** @default [] */
+            /**
+             * @description Headline personality traits for the preset.
+             * @default []
+             */
             readonly traits: readonly string[];
         };
         /** PreviewRuleRequest */
@@ -14304,10 +14432,15 @@ export type components = {
         };
         /** RefreshCycleReportDTO */
         readonly RefreshCycleReportDTO: {
+            /** @description Number of newly-discovered models added during the cycle. */
             readonly added_count: number;
+            /** @description Number of recommendations auto-applied within their family. */
             readonly auto_applied_count: number;
+            /** @description Number of providers scanned during the refresh cycle. */
             readonly providers_scanned: number;
+            /** @description Number of upgrade recommendations produced during the cycle. */
             readonly recommended_count: number;
+            /** @description Number of models marked stale during the cycle. */
             readonly stale_count: number;
         };
         /**
@@ -14326,7 +14459,9 @@ export type components = {
         readonly RefreshMode: "off" | "manual_only" | "detect_only" | "reconcile_recommend";
         /** RefreshStatusDTO */
         readonly RefreshStatusDTO: {
+            /** @description Whether same-family upgrade recommendations are applied automatically. */
             readonly auto_apply_within_family: boolean;
+            /** @description Cadence between automatic refresh cycles in seconds. */
             readonly interval_seconds: number;
             readonly mode: components["schemas"]["RefreshMode"];
         };
@@ -14358,6 +14493,7 @@ export type components = {
         };
         /** RejectRequest */
         readonly RejectRequest: {
+            /** @description Mandatory reason explaining the rejection. */
             readonly reason: string;
         };
         /** RemoveAllowlistEntryRequest */
@@ -15098,13 +15234,18 @@ export type components = {
         /** SetupCompanyRequest */
         readonly SetupCompanyRequest: {
             /**
+             * @description Company display name.
              * @example Hooli
              * @example Pied Piper
              */
             readonly company_name: string;
-            /** @example Boutique consultancy specializing in agentic ops */
+            /**
+             * @description Optional company description.
+             * @example Boutique consultancy specializing in agentic ops
+             */
             readonly description?: string | null;
             /**
+             * @description Optional company template to apply; None creates a blank company.
              * @example consulting-firm
              * @example blank
              */
@@ -15136,6 +15277,7 @@ export type components = {
         };
         /** SetupNameLocalesRequest */
         readonly SetupNameLocalesRequest: {
+            /** @description Faker locale codes (1 to 100 entries), or the single special value ["__all__"] to select all Latin-script locales. */
             readonly locales: readonly string[];
         };
         /** SetupNameLocalesResponse */
@@ -15211,15 +15353,19 @@ export type components = {
              */
             readonly completed_at: string | null;
             readonly config: components["schemas"]["SimulationConfig"];
+            /** @description Error description when the run failed, otherwise null. */
             readonly error: string | null;
             readonly metrics: components["schemas"]["SimulationMetrics"];
+            /** @description Fractional completion progress in the range 0 to 1. */
             readonly progress: number;
+            /** @description Unique identifier for the simulation run. */
             readonly simulation_id: string;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
             readonly started_at: string | null;
+            /** @description Lifecycle status of the run, one of: pending, running, completed, failed, cancelled. */
             readonly status: string;
         };
         /** SinkInfoResponse */
@@ -16144,11 +16290,14 @@ export type components = {
         };
         /** UpdateAgentModelRequest */
         readonly UpdateAgentModelRequest: {
+            /** @description Model identifier from the named provider. */
             readonly model_id: string;
+            /** @description Provider name supplying the model. */
             readonly model_provider: string;
         };
         /** UpdateAgentNameRequest */
         readonly UpdateAgentNameRequest: {
+            /** @description New agent display name. */
             readonly name: string;
         };
         /** UpdateAgentOrgRequest */
@@ -16165,6 +16314,7 @@ export type components = {
         };
         /** UpdateAgentPersonalityRequest */
         readonly UpdateAgentPersonalityRequest: {
+            /** @description Personality preset name; must exist in PERSONALITY_PRESETS. */
             readonly personality_preset: string;
         };
         /** UpdateClientRequest */
@@ -16195,11 +16345,14 @@ export type components = {
         /** UpdateConnectionRequest */
         readonly UpdateConnectionRequest: {
             readonly base_url?: string | null;
+            /** @description Whether periodic health checks run against the connection. */
             readonly health_check_enabled?: boolean | null;
             readonly metadata?: {
                 readonly [key: string]: string;
             } | null;
+            /** @description Marks the connection sensitive so every external-access call against it routes to approval. */
             readonly sensitive?: boolean | null;
+            /** @description Per-connection webhook-receipt retention window in days; None uses the global default, 0 opts out of the sweep. */
             readonly webhook_receipt_retention_days?: number | null;
         };
         /** UpdateCustomRuleRequest */
@@ -16244,26 +16397,50 @@ export type components = {
         };
         /** UpdatePresetRequest */
         readonly UpdatePresetRequest: {
-            /** @default 0.5 */
+            /**
+             * @description Big Five agreeableness score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly agreeableness: number;
             readonly collaboration?: components["schemas"]["CollaborationPreference"];
-            /** @default neutral */
+            /**
+             * @description Communication style label.
+             * @default neutral
+             */
             readonly communication_style: string;
             readonly conflict_approach?: components["schemas"]["ConflictApproach"];
-            /** @default 0.5 */
+            /**
+             * @description Big Five conscientiousness score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly conscientiousness: number;
             readonly creativity?: components["schemas"]["CreativityLevel"];
             readonly decision_making?: components["schemas"]["DecisionMakingStyle"];
-            /** @default  */
+            /**
+             * @description Preset description.
+             * @default
+             */
             readonly description: string;
-            /** @default 0.5 */
+            /**
+             * @description Big Five extraversion score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly extraversion: number;
-            /** @default 0.5 */
+            /**
+             * @description Big Five openness score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly openness: number;
             readonly risk_tolerance?: components["schemas"]["RiskTolerance"];
-            /** @default 0.5 */
+            /**
+             * @description Stress-response (neuroticism) score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly stress_response: number;
-            /** @default [] */
+            /**
+             * @description Personality traits for the preset.
+             * @default []
+             */
             readonly traits: readonly string[];
             readonly verbosity?: components["schemas"]["CommunicationVerbosity"];
         };
@@ -16297,12 +16474,15 @@ export type components = {
         /** UpdateTaskRequest */
         readonly UpdateTaskRequest: {
             readonly assigned_to?: string | null;
+            /** @description New maximum spend for the task in the base currency. */
             readonly budget_limit?: number | null;
+            /** @description New task description. */
             readonly description?: string | null;
             /** @description Optimistic concurrency version guard */
             readonly expected_version?: number | null;
             /** @enum {string|null} */
             readonly priority?: "critical" | "high" | "medium" | "low" | null;
+            /** @description New task title. */
             readonly title?: string | null;
         };
         /** UpdateTeamRequest */
@@ -16356,6 +16536,7 @@ export type components = {
             readonly agent_ids: readonly string[];
             /** Format: date-time */
             readonly created_at: string;
+            /** @description Generation number of the currently-assigned model. */
             readonly current_generation: number;
             readonly current_model_id: string;
             /** Format: date-time */
@@ -16364,9 +16545,12 @@ export type components = {
             readonly family: string;
             readonly id: string;
             readonly provider_name: string;
+            /** @description Human-readable rationale for the upgrade recommendation. */
             readonly reason: string;
+            /** @description Generation number of the recommended replacement model. */
             readonly recommended_generation: number;
             readonly recommended_model_id: string;
+            /** @description Confidence score for the recommendation in the range 0 to 1. */
             readonly score: number;
             readonly status: components["schemas"]["RecommendationStatus"];
         };

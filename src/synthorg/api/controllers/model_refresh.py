@@ -26,6 +26,7 @@ from synthorg.api.dto_model_refresh import (
 )
 from synthorg.api.guards import require_ceo_or_manager, require_write_access
 from synthorg.api.path_params import PathId
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.services.upgrade_recommendation_service import (
     UpgradeRecommendationService,
 )
@@ -90,7 +91,13 @@ class ModelRefreshController(Controller):
             data=tuple(UpgradeRecommendationDTO.from_entity(r) for r in rows),
         )
 
-    @post("/recommendations/{rec_id:str}/approve")
+    @post(
+        "/recommendations/{rec_id:str}/approve",
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy("providers.model_refresh_decide", key="user"),
+        ],
+    )
     async def approve_recommendation(
         self,
         rec_id: PathId,
@@ -108,7 +115,13 @@ class ModelRefreshController(Controller):
         updated = await service.approve(UUID(rec_id), decided_by=resolve_decided_by())
         return ApiResponse(data=UpgradeRecommendationDTO.from_entity(updated))
 
-    @post("/recommendations/{rec_id:str}/reject")
+    @post(
+        "/recommendations/{rec_id:str}/reject",
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy("providers.model_refresh_decide", key="user"),
+        ],
+    )
     async def reject_recommendation(
         self,
         rec_id: PathId,
@@ -126,7 +139,15 @@ class ModelRefreshController(Controller):
         updated = await service.reject(UUID(rec_id), decided_by=resolve_decided_by())
         return ApiResponse(data=UpgradeRecommendationDTO.from_entity(updated))
 
-    @post("/refresh", guards=[require_ceo_or_manager])
+    @post(
+        "/refresh",
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy(
+                "providers.model_refresh_trigger", key="user"
+            ),
+        ],
+    )
     async def trigger_refresh(self, state: State) -> ApiResponse[RefreshCycleReportDTO]:
         """Run one reconcile+recommend cycle on demand.
 

@@ -22,7 +22,8 @@ from synthorg.api.controllers.setup._runtime_wiring import AGENT_LOCK as _AGENT_
 from synthorg.api.controllers.template_packs import _read_setting_list
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
-from synthorg.api.path_params import PathName
+from synthorg.api.path_params import QUERY_MAX_LENGTH, PathName
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.core.domain_errors import ValidationError
 from synthorg.core.normalization import normalize_identifier
@@ -124,7 +125,10 @@ class TeamController(Controller):
     @post(
         "/",
         status_code=HTTP_201_CREATED,
-        guards=[require_ceo_or_manager],
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy("teams.create", key="user"),
+        ],
     )
     async def create_team(
         self,
@@ -178,7 +182,10 @@ class TeamController(Controller):
 
     @patch(
         "/reorder",
-        guards=[require_ceo_or_manager],
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy("teams.reorder", key="user"),
+        ],
     )
     async def reorder_teams(
         self,
@@ -297,7 +304,10 @@ class TeamController(Controller):
 
     @patch(
         "/{team_name:str}",
-        guards=[require_ceo_or_manager],
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy("teams.update", key="user"),
+        ],
     )
     async def update_team(
         self,
@@ -365,14 +375,20 @@ class TeamController(Controller):
     @delete(
         "/{team_name:str}",
         status_code=HTTP_204_NO_CONTENT,
-        guards=[require_ceo_or_manager],
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy("teams.delete", key="user"),
+        ],
     )
     async def delete_team(
         self,
         state: State,
         dept_name: PathName,
         team_name: PathName,
-        reassign_to: Annotated[NotBlankStr | None, QueryParameter()] = None,
+        reassign_to: Annotated[
+            NotBlankStr | None,
+            QueryParameter(max_length=QUERY_MAX_LENGTH),
+        ] = None,
     ) -> None:
         """Delete a team from a department.
 

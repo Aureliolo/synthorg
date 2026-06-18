@@ -11,6 +11,7 @@ controller module stays under the controller LOC cap.
 import asyncio
 import json as _json
 from collections.abc import AsyncIterator
+from contextlib import suppress
 from typing import Final
 
 from synthorg.api.api_core_state import ApiCoreStateSlice
@@ -381,6 +382,91 @@ async def _run_revalidation_tick(
             "data": _json.dumps({"reason": reason}),
         }
     return None
+
+
+async def _revalidate_once(
+    *,
+    app_state: AppState,
+    user: AuthenticatedUser,
+    failure_limiter: SlidingWindowEventLimiter,
+) -> dict[str, str] | None:
+    """One revalidation check for a session-less SSE stream.
+
+    Like :func:`_run_revalidation_tick` minus the task-session-ownership
+    check (these streams are not tied to a task session). Returns a
+    ``revoked`` frame on genuine revocation or limiter saturation, else
+    ``None``.
+
+    Returns:
+        The ``revoked`` frame dict, or ``None`` when the stream continues.
+    """
+    reason, ok = await _user_revocation_reason(app_state, user)
+    if not ok:
+        admitted = await failure_limiter.take(user.user_id)
+        if not admitted:
+            return {
+                "event": "revoked",
+                "data": _json.dumps({"reason": "backend_unavailable"}),
+            }
+        return None
+    if reason is not None:
+        return {"event": "revoked", "data": _json.dumps({"reason": reason})}
+    return None
+
+
+async def revalidated_sse_stream(
+    inner: AsyncIterator[dict[str, str]],
+    *,
+    app_state: AppState,
+    user: AuthenticatedUser,
+) -> AsyncIterator[dict[str, str]]:
+    """Wrap a session-less SSE event iterator with periodic auth revalidation.
+
+    Races *inner* against an ``AUTH_REVALIDATE_INTERVAL_SECONDS`` deadline
+    (the single cadence shared with the WS + events-hub revalidation loops)
+    so a long-lived stream (e.g. a model pull) is torn down within one
+    interval of the user being deleted / demoted / their session or API key
+    revoked. Transient persistence errors are absorbed by the shared
+    sliding-window limiter before escalating to ``backend_unavailable``.
+
+    Yields:
+        The inner stream's events, then a terminal ``revoked`` event if the
+        user's auth is revoked mid-stream.
+    """
+    failure_limiter = _build_revalidation_limiter(app_state)
+    clock = app_state.clock
+    next_revalidate_ts = clock.monotonic() + AUTH_REVALIDATE_INTERVAL_SECONDS
+    inner_iter = inner.__aiter__()
+    pending: asyncio.Task[dict[str, str]] | None = None
+    try:
+        while True:
+            timeout = max(0.0, next_revalidate_ts - clock.monotonic())
+            if pending is None:
+                pending = asyncio.ensure_future(anext(inner_iter))
+            try:
+                event = await asyncio.wait_for(asyncio.shield(pending), timeout)
+            except TimeoutError:
+                revoked = await _revalidate_once(
+                    app_state=app_state,
+                    user=user,
+                    failure_limiter=failure_limiter,
+                )
+                if revoked is not None:
+                    yield revoked
+                    return
+                next_revalidate_ts = (
+                    clock.monotonic() + AUTH_REVALIDATE_INTERVAL_SECONDS
+                )
+                continue
+            except StopAsyncIteration:
+                return
+            pending = None
+            yield event
+    finally:
+        if pending is not None and not pending.done():
+            pending.cancel()
+            with suppress(asyncio.CancelledError, StopAsyncIteration):
+                await pending
 
 
 async def _sse_event_stream(

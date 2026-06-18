@@ -21,6 +21,7 @@ from synthorg.api.pagination import (
     paginate_cursor,
 )
 from synthorg.api.path_params import PathName
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.connections.catalog import ConnectionCatalog
@@ -79,7 +80,10 @@ class IntegrationHealthController(Controller):
 
     @get(
         "/",
-        guards=[require_read_access],
+        guards=[
+            require_read_access,
+            per_op_rate_limit_from_policy("integrations.health_aggregate", key="user"),
+        ],
         summary="Aggregate health report across all connections",
     )
     async def aggregate_health(
@@ -129,7 +133,10 @@ class IntegrationHealthController(Controller):
 
     @get(
         "/{connection_name:str}",
-        guards=[require_read_access],
+        guards=[
+            require_read_access,
+            per_op_rate_limit_from_policy("integrations.health_single", key="user"),
+        ],
         summary="Health report for a single connection",
     )
     async def single_health(

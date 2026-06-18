@@ -259,6 +259,13 @@ SECURITY_OAUTH_STATE_PERSISTED: Final[str] = "security.oauth.state_persisted"
 # before the underlying repository exception re-raises so the audit
 # trail records the attempt even when the state row never lands.
 SECURITY_OAUTH_STATE_PERSIST_FAILED: Final[str] = "security.oauth.state_persist_failed"
+# Outbound SSRF pre-flight rejected an allowlisted host whose DNS could
+# not be resolved for pinning (fail-closed). Generic across every egress
+# site routed through the shared SSRF validator.
+SECURITY_OUTBOUND_DNS_UNPINNED: Final[str] = "security.outbound.dns_unpinned"
+# Outbound SSRF pre-flight blocked a target (bad scheme, blocked IP range,
+# or unresolvable host) before an outbound request was issued.
+SECURITY_OUTBOUND_SSRF_BLOCKED: Final[str] = "security.outbound.ssrf_blocked"
 
 # ── Custom signal rules (signed) ───────────────────────────────
 # Custom rules define automation triggers (control plane) and are

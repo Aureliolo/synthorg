@@ -117,7 +117,7 @@ class TestApiSettingsIntegration:
         assert result.rate_limit.auth_max_requests == 1000
         # Non-overridden fields keep code defaults
         assert result.rate_limit.time_unit.value == "minute"
-        assert result.auth.jwt_expiry_minutes == 1440
+        assert result.auth.jwt_expiry_minutes == 60
         assert result.auth.min_password_length == 12
 
     async def test_defaults_without_db_overrides(
@@ -134,7 +134,7 @@ class TestApiSettingsIntegration:
         assert result.rate_limit.unauth_max_requests == 20
         assert result.rate_limit.auth_max_requests == 6000
         assert result.rate_limit.time_unit.value == "minute"
-        assert result.auth.jwt_expiry_minutes == 1440
+        assert result.auth.jwt_expiry_minutes == 60
         assert result.auth.min_password_length == 12
 
     async def test_ws_auth_timeout_override_flows_through_bridge(

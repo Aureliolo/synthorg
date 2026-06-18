@@ -51,7 +51,7 @@ class _FakeAuthConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
     jwt_secret: str = ""
     jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
-    jwt_expiry_minutes: int = 1440
+    jwt_expiry_minutes: int = 60
     min_password_length: int = 12
     exclude_paths: tuple[str, ...] | None = None
 
@@ -635,7 +635,7 @@ def _api_get_side_effect(
         ("api", "rate_limit_unauth_max_requests"): "20",
         ("api", "rate_limit_auth_max_requests"): "6000",
         ("api", "rate_limit_time_unit"): "minute",
-        ("api", "jwt_expiry_minutes"): "1440",
+        ("api", "jwt_expiry_minutes"): "60",
         ("api", "min_password_length"): "12",
     }
     merged = {**defaults, **(overrides or {})}
@@ -662,7 +662,7 @@ class TestGetApiConfig:
 
         assert result.rate_limit.unauth_max_requests == 20
         assert result.rate_limit.time_unit == RateLimitTimeUnit.MINUTE
-        assert result.auth.jwt_expiry_minutes == 1440
+        assert result.auth.jwt_expiry_minutes == 60
         assert result.auth.min_password_length == 12
 
     async def test_db_overrides_take_precedence(
@@ -682,7 +682,7 @@ class TestGetApiConfig:
         assert result.auth.min_password_length == 16
         # Non-overridden fields keep defaults
         assert result.rate_limit.time_unit == RateLimitTimeUnit.MINUTE
-        assert result.auth.jwt_expiry_minutes == 1440
+        assert result.auth.jwt_expiry_minutes == 60
 
     async def test_preserves_unregistered_fields(
         self,

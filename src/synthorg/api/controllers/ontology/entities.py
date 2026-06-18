@@ -27,7 +27,7 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     paginate_cursor,
 )
-from synthorg.api.path_params import PathName
+from synthorg.api.path_params import QUERY_MAX_LENGTH, PathName
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.core.domain_errors import NotFoundError, ValidationError
@@ -106,7 +106,10 @@ class OntologyController(Controller):
         limit: CursorLimit = _DEFAULT_LIMIT,
         tier: Annotated[
             str | None,
-            QueryParameter(description="Filter to entity definitions in this tier."),
+            QueryParameter(
+                max_length=QUERY_MAX_LENGTH,
+                description="Filter to entity definitions in this tier.",
+            ),
         ] = None,
     ) -> PaginatedResponse[EntityResponse]:
         """List all entity definitions, filterable by tier.

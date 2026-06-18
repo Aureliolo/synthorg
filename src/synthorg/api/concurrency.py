@@ -7,14 +7,19 @@ modification conflicts.  Strong ETags are required for
 """
 
 import hashlib
+from typing import Final
 
-from synthorg.core.domain_errors import VersionConflictError
+from synthorg.core.domain_errors import ValidationError, VersionConflictError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_CONCURRENCY_CONFLICT,
 )
 
 logger = get_logger(__name__)
+
+# An ``If-Match`` header longer than this is rejected before parsing so a
+# pathological value cannot drive unbounded split/serialisation work.
+_MAX_IF_MATCH_LENGTH: Final[int] = 512
 
 
 def compute_etag(value: str, updated_at: str) -> str:
@@ -58,10 +63,19 @@ def check_if_match(
         resource_name: For error messages and logging.
 
     Raises:
+        ValidationError: When the ``If-Match`` header exceeds the maximum
+            permitted length (HTTP 400).
         VersionConflictError: On ETag mismatch (HTTP 409).
     """
     if not request_etag:
         return
+
+    if len(request_etag) > _MAX_IF_MATCH_LENGTH:
+        msg = (
+            f"If-Match header too long for {resource_name}: "
+            f"{len(request_etag)} > {_MAX_IF_MATCH_LENGTH} characters"
+        )
+        raise ValidationError(msg)
 
     stripped = request_etag.strip()
 

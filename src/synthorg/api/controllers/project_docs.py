@@ -21,6 +21,7 @@ from synthorg.api.pagination import (
     encode_countless_seek_meta,
 )
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import (
@@ -135,7 +136,13 @@ class ProjectDocsController(Controller):
         )
         return PaginatedResponse[DocSummary](data=summaries[:limit], pagination=meta)
 
-    @get("/search", guards=[require_read_access])
+    @get(
+        "/search",
+        guards=[
+            require_read_access,
+            per_op_rate_limit_from_policy("docs.search", key="user"),
+        ],
+    )
     async def search_docs(
         self,
         state: State,

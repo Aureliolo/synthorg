@@ -582,6 +582,8 @@ class TestAuthMiddlewareSystemUser:
                 _SECRET,
                 algorithm="HS256",
             ),
+            audience="synthorg-backend",
+            issuer="synthorg-cli",
         )
 
         result = await _resolve_jwt_user(

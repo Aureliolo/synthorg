@@ -21,6 +21,8 @@ from synthorg.observability.events.integrations import (
     OAUTH_DEVICE_FLOW_TIMEOUT,
     OAUTH_TOKEN_EXCHANGE_FAILED,
 )
+from synthorg.tools.network_validator import NetworkPolicy
+from synthorg.tools.ssrf import build_pinned_transport, resolve_outbound_target
 
 logger = get_logger(__name__)
 _DEFAULT_EXPIRES_IN: Final[int] = 600
@@ -105,6 +107,7 @@ class DeviceFlow:
         http_timeout_seconds: float = _DEFAULT_HTTP_TIMEOUT_SECONDS,
         default_poll_interval_seconds: int = _DEFAULT_POLL_INTERVAL_SECONDS,
         clock: Clock | None = None,
+        network_policy: NetworkPolicy | None = None,
     ) -> None:
         # Strict numeric + finite + positive: reject ``bool`` (which is
         # an ``int`` subclass and would silently flow into
@@ -144,6 +147,12 @@ class DeviceFlow:
         self._http_timeout_seconds = float(http_timeout_seconds)
         self._default_poll_interval_seconds = default_poll_interval_seconds
         self._clock: Clock = clock if clock is not None else SystemClock()
+        # SSRF policy for the outbound device-authorization + token POSTs.
+        # Both endpoints are operator/provider-supplied, so each call is
+        # DNS-resolved + pinned before connecting (no redirects).
+        self._network_policy: NetworkPolicy = (
+            network_policy if network_policy is not None else NetworkPolicy()
+        )
 
     @property
     def grant_type(self) -> str:
@@ -180,17 +189,30 @@ class DeviceFlow:
             payload["scope"] = " ".join(scopes)
 
         try:
-            async with httpx.AsyncClient(timeout=self._http_timeout_seconds) as client:
+            # SSRF-validate + DNS-pin the provider-supplied endpoint before
+            # connecting; disable redirects so a 3xx cannot reach an
+            # internal host.
+            validation = await resolve_outbound_target(
+                device_authorization_url,
+                field="device_authorization_url",
+                policy=self._network_policy,
+            )
+            async with httpx.AsyncClient(
+                timeout=self._http_timeout_seconds,
+                follow_redirects=False,
+                transport=build_pinned_transport(validation),
+            ) as client:
                 resp = await client.post(
                     device_authorization_url,
                     data=payload,
                 )
                 resp.raise_for_status()
                 data = resp.json()
-        except (httpx.HTTPError, json.JSONDecodeError) as exc:
+        except (httpx.HTTPError, json.JSONDecodeError, ValueError) as exc:
             # Scrubbed + no traceback: the POST body may carry
             # ``client_id`` / scopes and some providers echo it back
-            # in error responses.
+            # in error responses. ``ValueError`` covers an SSRF rejection
+            # of ``device_authorization_url`` raised before network I/O.
             logger.warning(
                 OAUTH_TOKEN_EXCHANGE_FAILED,
                 error_type=type(exc).__name__,
@@ -374,15 +396,26 @@ class DeviceFlow:
                 break
 
             try:
+                # SSRF-validate + DNS-pin the provider token endpoint each
+                # poll; disable redirects so a 3xx cannot reach an internal
+                # host.
+                validation = await resolve_outbound_target(
+                    token_url,
+                    field="token_url",
+                    policy=self._network_policy,
+                )
                 async with httpx.AsyncClient(
-                    timeout=self._http_timeout_seconds
+                    timeout=self._http_timeout_seconds,
+                    follow_redirects=False,
+                    transport=build_pinned_transport(validation),
                 ) as client:
                     resp = await client.post(token_url, data=payload)
                     status_code = resp.status_code
                     data = resp.json()
-            except (httpx.HTTPError, json.JSONDecodeError) as exc:
+            except (httpx.HTTPError, json.JSONDecodeError, ValueError) as exc:
                 # The polling POST body carries the ``device_code``
                 # which is a credential until the user authorizes.
+                # ``ValueError`` covers an SSRF rejection of ``token_url``.
                 logger.warning(
                     OAUTH_TOKEN_EXCHANGE_FAILED,
                     error_type=type(exc).__name__,

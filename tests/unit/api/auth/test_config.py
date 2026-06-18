@@ -11,7 +11,7 @@ class TestAuthConfig:
         config = AuthConfig()
         assert config.jwt_secret == ""
         assert config.jwt_algorithm == "HS256"
-        assert config.jwt_expiry_minutes == 1440
+        assert config.jwt_expiry_minutes == 60
         assert config.exclude_paths is None
 
     def test_explicit_exclude_paths(self) -> None:
@@ -100,7 +100,7 @@ class TestAuthConfig:
 
     def test_refresh_defaults(self) -> None:
         config = AuthConfig()
-        assert config.jwt_refresh_enabled is False
+        assert config.jwt_refresh_enabled is True
         assert config.jwt_refresh_expiry_minutes == 10080
         assert config.refresh_cookie_name == "refresh_token"
         assert config.refresh_cookie_path == "/api/v1/auth/refresh"

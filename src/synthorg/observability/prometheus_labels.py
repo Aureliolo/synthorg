@@ -425,11 +425,13 @@ class _LabelSnapshot:
     departments: frozenset[str] = frozenset()
     tool_names: frozenset[str] = frozenset()
     providers: frozenset[str] = frozenset()
+    model_ids: frozenset[str] = frozenset()
     agent_ids_seeded: bool = False
     workflow_definition_ids_seeded: bool = False
     departments_seeded: bool = False
     tool_names_seeded: bool = False
     providers_seeded: bool = False
+    model_ids_seeded: bool = False
 
 
 _INITIAL_SNAPSHOT: Final[_LabelSnapshot] = _LabelSnapshot()
@@ -591,17 +593,24 @@ def normalize_model_label(value: str) -> str:
 
     Unlike ``provider``, the ``model`` label cannot be allowlisted: the
     usable model set is the open litellm namespace plus whatever a
-    self-hosted server reports at runtime, so a registry snapshot would
-    fold most legitimate ids to UNKNOWN and gut the metric. Model
-    strings already originate from provider config rather than request
-    bodies, so the residual cardinality risk is a misconfiguration
-    injecting a garbage value; a length plus charset cap bounds that
-    without rejecting real ids (``provider/model:tag`` forms included).
-    An empty, over-long, or out-of-charset value folds to UNKNOWN.
+    self-hosted server reports at runtime, so the primary guard is a
+    length plus charset cap (``provider/model:tag`` forms included)
+    rather than an allowlist. An empty, over-long, or out-of-charset
+    value folds to UNKNOWN.
+
+    Once the collector has seeded the configured model ids (the bounded
+    set the deployment can actually call), an in-charset value outside
+    that set also folds to UNKNOWN so a misconfiguration or a rogue
+    self-hosted id cannot mint unbounded per-model series. Before seeding
+    (bootstrap) the charset cap alone applies, so real ids are not gutted
+    while the snapshot is still empty.
     """
     if not value or len(value) > _MODEL_LABEL_MAX_LENGTH:
         return UNKNOWN_LABEL
     if _MODEL_LABEL_PATTERN.match(value) is None:
+        return UNKNOWN_LABEL
+    snapshot = _snapshot
+    if snapshot.model_ids_seeded and value not in snapshot.model_ids:
         return UNKNOWN_LABEL
     return value
 

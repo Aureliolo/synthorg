@@ -27,6 +27,7 @@ from synthorg.api.pagination import (
     paginate_cursor,
 )
 from synthorg.api.path_params import PathId
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import WorkflowDefinitionValidationError
@@ -355,7 +356,13 @@ class SubworkflowController(Controller):
             content=PaginatedResponse[ParentReference](data=page, pagination=meta),
         )
 
-    @post("", guards=[require_write_access])
+    @post(
+        "",
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("subworkflows.create", key="user"),
+        ],
+    )
     async def create_subworkflow(
         self,
         state: State,
@@ -405,7 +412,10 @@ class SubworkflowController(Controller):
 
     @delete(
         "/{subworkflow_id:str}/versions/{version:str}",
-        guards=[require_write_access],
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("subworkflows.delete_version", key="user"),
+        ],
         status_code=200,
     )
     async def delete_version(

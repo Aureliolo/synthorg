@@ -7,8 +7,10 @@ timestamps. All free text, UUIDs, and PII are dropped.
 """
 
 import hashlib
+import hmac
 from collections.abc import Collection
 from datetime import datetime
+from typing import Final
 
 from synthorg import __version__
 from synthorg.core.types import NotBlankStr
@@ -128,20 +130,33 @@ def anonymize_rollout(
     )
 
 
-def _compute_deployment_id(salt: str) -> str:
-    """Compute a SHA-256 hash of the deployment salt.
+_DEPLOYMENT_ID_HMAC_LABEL: Final[bytes] = b"synthorg.telemetry.deployment_id"
 
-    The hash is deterministic for a given salt, enabling
-    cross-event correlation within a deployment without
-    exposing the salt value itself.
+
+def _compute_deployment_id(salt: str) -> str:
+    """Derive a stable deployment id from the deployment salt via HMAC.
+
+    The salt keys an HMAC-SHA256 over a fixed domain-separation label
+    rather than being hashed directly. A bare ``sha256(salt)`` is
+    brute-forceable offline when the salt has low entropy (a guessable
+    deployment name); the HMAC construction forces an attacker to know
+    the salt itself to reproduce the id, so it stays a one-way, salt-
+    keyed correlation token that never exposes the salt.
+
+    The result is deterministic for a given salt, enabling cross-event
+    correlation within a deployment.
 
     Args:
-        salt: Deployment-specific secret salt string.
+        salt: Deployment-specific secret salt string (the HMAC key).
 
     Returns:
-        64-character lowercase hex SHA-256 digest.
+        64-character lowercase hex HMAC-SHA256 digest.
     """
-    return hashlib.sha256(salt.encode("utf-8")).hexdigest()
+    return hmac.new(
+        salt.encode("utf-8"),
+        _DEPLOYMENT_ID_HMAC_LABEL,
+        hashlib.sha256,
+    ).hexdigest()
 
 
 def _classify_rule(
