@@ -136,4 +136,19 @@ class TestProjectCostAggregate:
             ) -> None:
                 _ = currency
 
+            async def increment_if_unseen(  # noqa: PLR0913 -- mirrors protocol
+                self,
+                project_id: str,
+                cost: float,
+                input_tokens: int,
+                output_tokens: int,
+                *,
+                currency: str,
+                claim_id: str,
+                now: datetime,
+                ttl_seconds: float,
+            ) -> tuple[None, bool]:
+                _ = (currency, claim_id, now, ttl_seconds)
+                return None, True
+
         assert isinstance(_RepoStub(), ProjectCostAggregateRepository)

@@ -238,3 +238,74 @@ class TestSQLiteProjectCostAggregateRepository:
             await repo.increment(
                 "proj-1", cost, input_tokens, output_tokens, currency="USD"
             )
+
+    async def test_increment_if_unseen_dedups_atomically(
+        self,
+        migrated_db: aiosqlite.Connection,
+    ) -> None:
+        from datetime import UTC, datetime
+
+        repo = SQLiteProjectCostAggregateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
+        now = datetime.now(UTC)
+        first, first_new = await repo.increment_if_unseen(
+            "proj-1",
+            1.0,
+            10,
+            5,
+            currency="USD",
+            claim_id="claim-x",
+            now=now,
+            ttl_seconds=3600.0,
+        )
+        assert first_new is True
+        assert first is not None
+        assert first.record_count == 1
+
+        # Redelivery of the same claim is a no-op: no second bill.
+        second, second_new = await repo.increment_if_unseen(
+            "proj-1",
+            1.0,
+            10,
+            5,
+            currency="USD",
+            claim_id="claim-x",
+            now=now,
+            ttl_seconds=3600.0,
+        )
+        assert second_new is False
+        assert second is None
+
+        after = await repo.get("proj-1")
+        assert after is not None
+        assert after.total_cost == pytest.approx(1.0)
+        assert after.record_count == 1
+
+    async def test_increment_if_unseen_distinct_claims_accumulate(
+        self,
+        migrated_db: aiosqlite.Connection,
+    ) -> None:
+        from datetime import UTC, datetime
+
+        repo = SQLiteProjectCostAggregateRepository(
+            migrated_db, write_context=make_private_write_context()
+        )
+        now = datetime.now(UTC)
+        for claim in ("a", "b", "c"):
+            _, was_new = await repo.increment_if_unseen(
+                "proj-1",
+                0.5,
+                10,
+                5,
+                currency="USD",
+                claim_id=claim,
+                now=now,
+                ttl_seconds=3600.0,
+            )
+            assert was_new is True
+
+        after = await repo.get("proj-1")
+        assert after is not None
+        assert after.total_cost == pytest.approx(1.5)
+        assert after.record_count == 3

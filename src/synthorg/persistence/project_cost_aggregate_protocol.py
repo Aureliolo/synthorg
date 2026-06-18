@@ -15,6 +15,7 @@ validate that the project's existing currency (if any) matches the
 incoming currency and raise on mismatch.
 """
 
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from synthorg.budget.currency import CurrencyCode
@@ -65,6 +66,48 @@ class ProjectCostAggregateRepository(Protocol):
 
         Returns:
             The updated aggregate after the increment.
+
+        Raises:
+            MixedCurrencyAggregationError: If the project already has
+                an aggregate row in a different currency.
+        """
+        ...
+
+    async def increment_if_unseen(  # noqa: PLR0913 -- aggregate + dedup params
+        self,
+        project_id: NotBlankStr,
+        cost: float,
+        input_tokens: int,
+        output_tokens: int,
+        *,
+        currency: CurrencyCode,
+        claim_id: NotBlankStr,
+        now: datetime,
+        ttl_seconds: float,
+    ) -> tuple[ProjectCostAggregate | None, bool]:
+        """Atomically dedup-and-increment in one transaction.
+
+        Inserts the ``claim_id`` dedup row and, only when it is new,
+        increments the project aggregate -- both in a single
+        transaction so a crash between the two writes cannot leave the
+        aggregate incremented without its dedup row (which would
+        re-bill the claim on redelivery). When the claim was already
+        recorded the increment is skipped.
+
+        Args:
+            project_id: Project to increment.
+            cost: Cost amount denominated in ``currency``.
+            input_tokens: Input token count to add.
+            output_tokens: Output token count to add.
+            currency: ISO 4217 currency for ``cost``.
+            claim_id: Idempotency key for the cost record.
+            now: Timestamp the dedup row is stamped with.
+            ttl_seconds: Retention window for the dedup row.
+
+        Returns:
+            ``(aggregate, True)`` when the claim was new and the
+            increment was applied; ``(None, False)`` when the claim was
+            already recorded and the increment was skipped.
 
         Raises:
             MixedCurrencyAggregationError: If the project already has

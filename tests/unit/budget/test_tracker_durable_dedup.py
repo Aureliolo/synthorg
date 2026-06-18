@@ -22,24 +22,32 @@ from .conftest import make_cost_record
 pytestmark = pytest.mark.unit
 
 
-class _FakeClaimSeenRepo:
-    """In-memory dedup store simulating durability across a tracker restart.
+class _FakeDurableStore:
+    """Shared durable backing simulating the DB tables across a restart.
 
-    A single instance is shared between the "pre-restart" and
-    "post-restart" trackers so the rows survive the (simulated) process
-    boundary, exactly as the SQLite/Postgres tables do.
+    The atomic ``increment_if_unseen`` writes both the dedup row and the
+    aggregate in one transaction; a single store instance shared between
+    the "pre-restart" and "post-restart" fake repos models how the rows
+    survive the (simulated) process boundary, exactly as the
+    SQLite/Postgres tables do.
     """
 
     def __init__(self) -> None:
-        self.rows: dict[str, str] = {}
-        self.fail_has_seen = False
-        self.fail_mark_seen = False
+        self.seen: set[str] = set()
+        self.increment_calls: int = 0
+        self.fail_atomic = False
+
+
+class _FakeClaimSeenRepo:
+    """Presence-only stand-in; the durable path no longer calls it directly.
+
+    The tracker requires a claim-seen repo to be wired to take the atomic
+    dedup path, but with the combined ``increment_if_unseen`` the dedup
+    write lives on the aggregate repo, so this fake only needs to exist.
+    """
 
     async def has_seen(self, *, claim_id: NotBlankStr) -> bool:
-        if self.fail_has_seen:
-            msg = "lookup down"
-            raise QueryError(msg)
-        return str(claim_id) in self.rows
+        return False
 
     async def mark_seen(
         self,
@@ -49,31 +57,37 @@ class _FakeClaimSeenRepo:
         now: datetime,
         ttl_seconds: float,
     ) -> bool:
-        if self.fail_mark_seen:
-            msg = "write down"
-            raise QueryError(msg)
-        key = str(claim_id)
-        if key in self.rows:
-            return False
-        self.rows[key] = str(project_id)
         return True
 
     async def prune_expired(self, now: datetime) -> int:
         return 0
 
 
-def _make_increment_repo() -> _FakeAggregateRepo:
-    return _FakeAggregateRepo()
-
-
 class _FakeAggregateRepo:
-    """Records each ``increment`` call so the test can count durable bills."""
+    """Implements the atomic ``increment_if_unseen`` over a shared store."""
 
-    def __init__(self) -> None:
-        self.increment_calls: int = 0
+    def __init__(self, store: _FakeDurableStore) -> None:
+        self._store = store
+
+    @property
+    def increment_calls(self) -> int:
+        return self._store.increment_calls
 
     async def get(self, project_id: str) -> ProjectCostAggregate | None:
         return None
+
+    def _aggregate(
+        self, project_id: str, cost: float, in_tok: int, out_tok: int
+    ) -> ProjectCostAggregate:
+        return ProjectCostAggregate(
+            project_id=project_id,
+            total_cost=cost,
+            currency=DEFAULT_CURRENCY,
+            total_input_tokens=in_tok,
+            total_output_tokens=out_tok,
+            record_count=self._store.increment_calls,
+            last_updated=datetime.now(UTC),
+        )
 
     async def increment(
         self,
@@ -84,82 +98,92 @@ class _FakeAggregateRepo:
         *,
         currency: str,
     ) -> ProjectCostAggregate:
-        self.increment_calls += 1
-        return ProjectCostAggregate(
-            project_id=project_id,
-            total_cost=cost,
-            currency=DEFAULT_CURRENCY,
-            total_input_tokens=input_tokens,
-            total_output_tokens=output_tokens,
-            record_count=self.increment_calls,
-            last_updated=datetime.now(UTC),
-        )
+        self._store.increment_calls += 1
+        return self._aggregate(project_id, cost, input_tokens, output_tokens)
+
+    async def increment_if_unseen(  # noqa: PLR0913 -- mirrors the real signature
+        self,
+        project_id: str,
+        cost: float,
+        input_tokens: int,
+        output_tokens: int,
+        *,
+        currency: str,
+        claim_id: NotBlankStr,
+        now: datetime,
+        ttl_seconds: float,
+    ) -> tuple[ProjectCostAggregate | None, bool]:
+        if self._store.fail_atomic:
+            msg = "atomic write down"
+            raise QueryError(msg)
+        if str(claim_id) in self._store.seen:
+            return None, False
+        self._store.seen.add(str(claim_id))
+        self._store.increment_calls += 1
+        return self._aggregate(project_id, cost, input_tokens, output_tokens), True
 
 
 async def test_restart_does_not_double_bill() -> None:
     """A redelivery after a restart re-bills only if the durable guard is absent."""
-    claim_seen = _FakeClaimSeenRepo()
+    store = _FakeDurableStore()
     record = make_cost_record(project_id="proj-1", cost=1.0)
 
-    repo1 = _make_increment_repo()
-    tracker1 = CostTracker(project_cost_repo=repo1, claim_seen_repo=claim_seen)
+    tracker1 = CostTracker(
+        project_cost_repo=_FakeAggregateRepo(store),
+        claim_seen_repo=_FakeClaimSeenRepo(),
+    )
     await tracker1.record(record)
-    assert repo1.increment_calls == 1
+    assert store.increment_calls == 1
 
     # Restart: a fresh tracker has an empty in-memory LRU but shares the
-    # durable dedup store, so the redelivered record is recognised.
-    repo2 = _make_increment_repo()
-    tracker2 = CostTracker(project_cost_repo=repo2, claim_seen_repo=claim_seen)
+    # durable store, so the redelivered record is recognised atomically.
+    tracker2 = CostTracker(
+        project_cost_repo=_FakeAggregateRepo(store),
+        claim_seen_repo=_FakeClaimSeenRepo(),
+    )
     await tracker2.record(record)
-    assert repo2.increment_calls == 0
+    assert store.increment_calls == 1
 
 
 async def test_restart_double_bills_without_durable_guard() -> None:
-    """Control: without the durable repo, the restart hole re-bills (the bug)."""
+    """Control: without the dedup repo, the restart hole re-bills (the bug)."""
     record = make_cost_record(project_id="proj-1", cost=1.0)
 
-    repo1 = _make_increment_repo()
-    await CostTracker(project_cost_repo=repo1).record(record)
-    assert repo1.increment_calls == 1
+    store1 = _FakeDurableStore()
+    await CostTracker(project_cost_repo=_FakeAggregateRepo(store1)).record(record)
+    assert store1.increment_calls == 1
 
-    repo2 = _make_increment_repo()
-    await CostTracker(project_cost_repo=repo2).record(record)
+    store2 = _FakeDurableStore()
+    await CostTracker(project_cost_repo=_FakeAggregateRepo(store2)).record(record)
     # No durable guard, fresh LRU -> the duplicate re-increments.
-    assert repo2.increment_calls == 1
+    assert store2.increment_calls == 1
 
 
-async def test_mark_seen_failure_is_fail_open() -> None:
-    """A durable mark_seen failure must not roll back the applied increment."""
-    claim_seen = _FakeClaimSeenRepo()
-    claim_seen.fail_mark_seen = True
-    repo = _make_increment_repo()
-    tracker = CostTracker(project_cost_repo=repo, claim_seen_repo=claim_seen)
+async def test_atomic_failure_is_fail_open() -> None:
+    """An atomic dedup+increment failure must not block the in-memory record."""
+    store = _FakeDurableStore()
+    store.fail_atomic = True
+    tracker = CostTracker(
+        project_cost_repo=_FakeAggregateRepo(store),
+        claim_seen_repo=_FakeClaimSeenRepo(),
+    )
 
     await tracker.record(make_cost_record(project_id="proj-1", cost=1.0))
 
-    assert repo.increment_calls == 1
+    # Fail-open: the durable write failed but the in-memory record stands.
+    assert store.increment_calls == 0
     assert await tracker.get_record_count() == 1
-
-
-async def test_has_seen_failure_is_fail_open() -> None:
-    """A durable lookup failure must not block a legitimate first record."""
-    claim_seen = _FakeClaimSeenRepo()
-    claim_seen.fail_has_seen = True
-    repo = _make_increment_repo()
-    tracker = CostTracker(project_cost_repo=repo, claim_seen_repo=claim_seen)
-
-    await tracker.record(make_cost_record(project_id="proj-1", cost=1.0))
-
-    assert repo.increment_calls == 1
 
 
 async def test_no_durable_dedup_without_project_id() -> None:
     """Records without a project_id never touch the durable store."""
-    claim_seen = _FakeClaimSeenRepo()
-    repo = _make_increment_repo()
-    tracker = CostTracker(project_cost_repo=repo, claim_seen_repo=claim_seen)
+    store = _FakeDurableStore()
+    tracker = CostTracker(
+        project_cost_repo=_FakeAggregateRepo(store),
+        claim_seen_repo=_FakeClaimSeenRepo(),
+    )
 
     await tracker.record(make_cost_record(project_id=None, cost=1.0))
 
-    assert repo.increment_calls == 0
-    assert claim_seen.rows == {}
+    assert store.increment_calls == 0
+    assert store.seen == set()

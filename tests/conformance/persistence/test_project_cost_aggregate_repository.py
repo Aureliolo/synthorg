@@ -6,12 +6,16 @@ Postgres. PST-1 adds ``project_cost_aggregates`` to the
 backends behind the same fixture.
 """
 
+from datetime import UTC, datetime
+
 import pytest
 
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.protocol import PersistenceBackend
 
 pytestmark = pytest.mark.integration
+
+_TTL_SECONDS = 3600.0
 
 
 class TestProjectCostAggregateRepository:
@@ -132,3 +136,77 @@ class TestProjectCostAggregateRepository:
         assert after.total_input_tokens == 10
         assert after.total_output_tokens == 5
         assert after.record_count == 1
+
+    async def test_increment_if_unseen_first_call_applies(
+        self, backend: PersistenceBackend
+    ) -> None:
+        aggregate, was_new = await backend.project_cost_aggregates.increment_if_unseen(
+            NotBlankStr("uns-001"),
+            cost=0.40,
+            input_tokens=20,
+            output_tokens=10,
+            currency="USD",
+            claim_id=NotBlankStr("claim-a"),
+            now=datetime.now(UTC),
+            ttl_seconds=_TTL_SECONDS,
+        )
+        assert was_new is True
+        assert aggregate is not None
+        assert aggregate.total_cost == pytest.approx(0.40)
+        assert aggregate.record_count == 1
+
+    async def test_increment_if_unseen_duplicate_skips(
+        self, backend: PersistenceBackend
+    ) -> None:
+        first, first_new = await backend.project_cost_aggregates.increment_if_unseen(
+            NotBlankStr("uns-002"),
+            cost=0.40,
+            input_tokens=20,
+            output_tokens=10,
+            currency="USD",
+            claim_id=NotBlankStr("claim-dup"),
+            now=datetime.now(UTC),
+            ttl_seconds=_TTL_SECONDS,
+        )
+        assert first_new is True
+        assert first is not None
+
+        # A redelivery of the same claim must not re-bill.
+        second, second_new = await backend.project_cost_aggregates.increment_if_unseen(
+            NotBlankStr("uns-002"),
+            cost=0.40,
+            input_tokens=20,
+            output_tokens=10,
+            currency="USD",
+            claim_id=NotBlankStr("claim-dup"),
+            now=datetime.now(UTC),
+            ttl_seconds=_TTL_SECONDS,
+        )
+        assert second_new is False
+        assert second is None
+
+        fetched = await backend.project_cost_aggregates.get(NotBlankStr("uns-002"))
+        assert fetched is not None
+        assert fetched.total_cost == pytest.approx(0.40)
+        assert fetched.record_count == 1
+
+    async def test_increment_if_unseen_distinct_claims_accumulate(
+        self, backend: PersistenceBackend
+    ) -> None:
+        for claim in ("c1", "c2"):
+            _, was_new = await backend.project_cost_aggregates.increment_if_unseen(
+                NotBlankStr("uns-003"),
+                cost=0.10,
+                input_tokens=5,
+                output_tokens=5,
+                currency="USD",
+                claim_id=NotBlankStr(claim),
+                now=datetime.now(UTC),
+                ttl_seconds=_TTL_SECONDS,
+            )
+            assert was_new is True
+
+        fetched = await backend.project_cost_aggregates.get(NotBlankStr("uns-003"))
+        assert fetched is not None
+        assert fetched.total_cost == pytest.approx(0.20)
+        assert fetched.record_count == 2

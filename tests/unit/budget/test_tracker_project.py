@@ -153,6 +153,7 @@ class _PinningRepo:
     def __init__(self) -> None:
         self.pinned: dict[str, str] = {}
         self._totals: dict[str, tuple[float, int, int, int]] = {}
+        self._seen: set[str] = set()
 
     async def get(self, project_id: str) -> ProjectCostAggregate | None:
         if project_id not in self.pinned:
@@ -210,6 +211,27 @@ class _PinningRepo:
             record_count=new_totals[3],
             last_updated=datetime.now(UTC),
         )
+
+    async def increment_if_unseen(  # noqa: PLR0913 -- mirrors the real signature
+        self,
+        project_id: str,
+        cost: float,
+        input_tokens: int,
+        output_tokens: int,
+        *,
+        currency: str,
+        claim_id: str,
+        now: datetime,
+        ttl_seconds: float,
+    ) -> tuple[ProjectCostAggregate | None, bool]:
+        _ = (now, ttl_seconds)
+        if claim_id in self._seen:
+            return None, False
+        self._seen.add(claim_id)
+        aggregate = await self.increment(
+            project_id, cost, input_tokens, output_tokens, currency=currency
+        )
+        return aggregate, True
 
 
 @pytest.mark.unit

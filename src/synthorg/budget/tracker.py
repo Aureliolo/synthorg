@@ -39,13 +39,10 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.budget import (
     BUDGET_AGENT_COST_QUERIED,
-    BUDGET_CLAIM_DEDUP_LOOKUP_FAILED,
     BUDGET_CLAIM_DEDUP_MARK_FAILED,
     BUDGET_DEPARTMENT_RESOLVE_FAILED,
     BUDGET_MIXED_CURRENCY_REJECTED,
     BUDGET_PENDING_RECORD_DRAIN_UNEXPECTED,
-    BUDGET_PROJECT_COST_AGGREGATED,
-    BUDGET_PROJECT_COST_AGGREGATION_FAILED,
     BUDGET_PROJECT_COST_QUERIED,
     BUDGET_PROJECT_RECORDS_QUERIED,
     BUDGET_PROVIDER_USAGE_QUERIED,
@@ -328,26 +325,27 @@ class CostTracker(CostTrackerSummaryMixin):
                 return
             self._inflight_claims.add(cost_record.claim_id)
 
-        # Durable restart-survival guard. The in-memory LRU above is
-        # empty after a crash/OOM/container restart, so a JetStream
-        # redelivery of an already-billed record would otherwise pass
-        # the memory check and re-increment the durable aggregate. The
-        # durable store survives the restart: a hit here means the
-        # claim was already applied in a prior process, so skip the
-        # increment but promote the claim to the in-memory LRU so the
-        # next same-process redelivery short-circuits without a DB read.
-        # The in-flight reservation is held across this DB read, so any
-        # failure or cancellation must release it -- otherwise the claim_id
-        # stays pinned in ``_inflight_claims`` forever and every retry is
-        # falsely deduped. ``except Exception`` would miss CancelledError
-        # (timeout / shutdown), so catch BaseException and re-raise.
+        # Durable restart-survival guard, applied atomically. The
+        # in-memory LRU above is empty after a crash/OOM/container
+        # restart, so a JetStream redelivery of an already-billed
+        # record would otherwise pass the memory check and re-increment
+        # the durable aggregate. ``increment_if_unseen`` records the
+        # dedup row and increments the aggregate in ONE transaction, so
+        # a crash between the two can never leave the aggregate
+        # incremented without its dedup row (the gap that previously
+        # let a redelivery double-bill). A duplicate returns
+        # ``was_new=False`` and skips the increment. The in-flight
+        # reservation is held across this DB call, so any failure or
+        # cancellation must release it -- ``except Exception`` would
+        # miss CancelledError (timeout / shutdown), so catch
+        # BaseException and re-raise.
         try:
-            already_billed = await self._durable_claim_already_billed(cost_record)
+            was_new = await self._durable_increment_if_unseen(cost_record)
         except BaseException:
             async with self._get_lock():
                 self._inflight_claims.discard(cost_record.claim_id)
             raise
-        if already_billed:
+        if not was_new:
             async with self._get_lock():
                 self._inflight_claims.discard(cost_record.claim_id)
                 self._promote_seen_claim(cost_record.claim_id)
@@ -362,34 +360,6 @@ class CostTracker(CostTrackerSummaryMixin):
                 reason="durable",
             )
             return
-
-        # Run the durable aggregate update OUTSIDE the lock -- DB I/O
-        # must not block concurrent in-memory readers/writers. Any
-        # failure releases the in-flight reservation so a retry with
-        # the same claim_id is not falsely deduped.
-        try:
-            await self._update_project_aggregate(cost_record)
-        except BaseException:
-            async with self._get_lock():
-                self._inflight_claims.discard(cost_record.claim_id)
-            raise
-
-        # Record the durable dedup row AFTER a successful increment so a
-        # later redelivery (lost ack, post-restart replay) observes it
-        # and skips re-billing. Best-effort and fail-open: a write
-        # failure logs but does not roll back the increment (the
-        # in-memory LRU still guards same-process duplicates), mirroring
-        # the aggregate path's best-effort contract. The reservation is
-        # still held here, so a cancellation crossing this await must
-        # release it -- otherwise the claim_id stays pinned and a retry
-        # is falsely deduped (``except Exception`` would miss
-        # CancelledError, so catch BaseException).
-        try:
-            await self._mark_durable_claim_billed(cost_record)
-        except BaseException:
-            async with self._get_lock():
-                self._inflight_claims.discard(cost_record.claim_id)
-            raise
 
         async with self._get_lock():
             # Promote the reservation to a finalised LRU entry under
@@ -420,59 +390,57 @@ class CostTracker(CostTrackerSummaryMixin):
         while len(self._seen_claims) > self._claim_lru_capacity:
             self._seen_claims.popitem(last=False)
 
-    async def _durable_claim_already_billed(self, cost_record: CostRecord) -> bool:
-        """Return ``True`` if the durable store already recorded this claim.
+    async def _durable_increment_if_unseen(self, cost_record: CostRecord) -> bool:
+        """Atomically dedup + increment the durable aggregate.
 
-        Fail-open: a lookup failure returns ``False`` so a transient DB
-        blip never blocks a legitimate first record (the in-memory LRU
-        still guards same-process duplicates). Only consulted when a
-        durable increment would actually happen (project + repo present).
+        When both the aggregate and dedup repos are wired, records the
+        dedup row and increments the project aggregate in a single
+        repository transaction (closing the crash window where the
+        aggregate could be incremented without its dedup row, which
+        re-billed the claim on redelivery). When only the aggregate repo
+        is wired (no dedup store), falls back to a plain increment with
+        no durable dedup -- the in-memory LRU still guards same-process
+        duplicates.
+
+        Fail-open on a transient DB error: returns ``True`` (treat as a
+        new record and proceed to the in-memory append) so a blip never
+        blocks a legitimate first record. Returns ``True`` (no durable
+        aggregate) when no aggregate repo or project scope is
+        configured. ``MixedCurrencyAggregationError`` is a
+        caller-contract violation and propagates.
 
         Returns:
-            ``True`` if a durable dedup row exists for the claim.
-        """
-        if (
-            self._claim_seen_repo is None
-            or self._project_cost_repo is None
-            or cost_record.project_id is None
-        ):
-            return False
-        try:
-            return await self._claim_seen_repo.has_seen(
-                claim_id=cost_record.claim_id,
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                BUDGET_CLAIM_DEDUP_LOOKUP_FAILED,
-                claim_id=cost_record.claim_id,
-                project_id=cost_record.project_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return False
+            ``True`` when the record is new and should be appended;
+            ``False`` when the durable store already recorded the claim.
 
-    async def _mark_durable_claim_billed(self, cost_record: CostRecord) -> None:
-        """Record the durable dedup row after a successful increment.
-
-        Best-effort and fail-open: a write failure logs at WARNING but is
-        swallowed so it never surfaces to the caller or rolls back the
-        already-applied increment, mirroring the aggregate path's
-        best-effort contract.
+        Raises:
+            MixedCurrencyAggregationError: On a currency-pin mismatch.
         """
-        if (
-            self._claim_seen_repo is None
-            or self._project_cost_repo is None
-            or cost_record.project_id is None
-        ):
-            return
+        if self._project_cost_repo is None or cost_record.project_id is None:
+            return True
         try:
-            await self._claim_seen_repo.mark_seen(
+            if self._claim_seen_repo is None:
+                # No durable dedup store: plain increment, no claim row.
+                await self._project_cost_repo.increment(
+                    cost_record.project_id,
+                    cost_record.cost,
+                    cost_record.input_tokens,
+                    cost_record.output_tokens,
+                    currency=cost_record.currency,
+                )
+                return True
+            _, was_new = await self._project_cost_repo.increment_if_unseen(
+                cost_record.project_id,
+                cost_record.cost,
+                cost_record.input_tokens,
+                cost_record.output_tokens,
+                currency=cost_record.currency,
                 claim_id=cost_record.claim_id,
-                project_id=cost_record.project_id,
                 now=self._clock.now(),
                 ttl_seconds=self._claim_seen_ttl_seconds,
             )
+        except MixedCurrencyAggregationError:
+            raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
@@ -482,6 +450,9 @@ class CostTracker(CostTrackerSummaryMixin):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            return True
+        else:
+            return was_new
 
     async def prune_expired(self, *, now: datetime | None = None) -> int:
         """Remove records older than the 168-hour (7-day) cost window.
@@ -877,60 +848,6 @@ class CostTracker(CostTrackerSummaryMixin):
             raise asyncio.CancelledError
 
     # ── Private helpers ──────────────────────────────────────────────
-
-    async def _update_project_aggregate(
-        self,
-        cost_record: CostRecord,
-    ) -> None:
-        """Best-effort update of the durable project cost aggregate.
-
-        No-op when the record has no ``project_id`` or no repository
-        is configured.  Failures (other than
-        :class:`MixedCurrencyAggregationError`, which propagates as a
-        data-integrity error the caller must see) are logged at
-        WARNING and swallowed.
-
-        Raises:
-            MixedCurrencyAggregationError: If the related operation fails.
-        """
-        if self._project_cost_repo is None or cost_record.project_id is None:
-            return
-
-        try:
-            await self._project_cost_repo.increment(
-                cost_record.project_id,
-                cost_record.cost,
-                cost_record.input_tokens,
-                cost_record.output_tokens,
-                currency=cost_record.currency,
-            )
-            logger.debug(
-                BUDGET_PROJECT_COST_AGGREGATED,
-                project_id=cost_record.project_id,
-                cost=cost_record.cost,
-                currency=cost_record.currency,
-            )
-        except MixedCurrencyAggregationError as exc:
-            # Mixed-currency increments are a caller-contract violation;
-            # surface to the caller rather than silently swallowing --
-            # but log first so operators see the rejection in telemetry
-            # alongside successful aggregations.
-            logger.warning(
-                BUDGET_PROJECT_COST_AGGREGATION_FAILED,
-                project_id=cost_record.project_id,
-                cost=cost_record.cost,
-                currency=cost_record.currency,
-                error_type=type(exc).__qualname__,
-                reason="mixed_currency_aggregation",
-            )
-            raise
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                BUDGET_PROJECT_COST_AGGREGATION_FAILED,
-                project_id=cost_record.project_id,
-                cost=cost_record.cost,
-            )
 
     @override
     async def _snapshot(
