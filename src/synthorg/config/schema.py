@@ -42,6 +42,7 @@ from synthorg.hr.performance.config import PerformanceConfig
 from synthorg.hr.promotion.config import PromotionConfig
 from synthorg.hr.training.config import TrainingConfig
 from synthorg.integrations.config import IntegrationsConfig
+from synthorg.knowledge.config import KnowledgeConfig
 from synthorg.memory.config import CompanyMemoryConfig
 from synthorg.memory.org.config import OrgMemoryConfig
 from synthorg.notifications.config import NotificationConfig
@@ -123,6 +124,7 @@ class RootConfig(BaseModel):
         coordination: Multi-agent coordination configuration.
         stagnation: Intra-loop stagnation detection selector and sub-configs.
         strategy: Strategy and trendslop mitigation configuration.
+        knowledge: Knowledge-substrate configuration (opt-in, off by default).
         git_clone: Git clone SSRF prevention network policy.
         backup: Backup and restore configuration.
         workflow: Workflow type configuration.
@@ -283,6 +285,10 @@ class RootConfig(BaseModel):
     strategy: StrategyConfig = Field(
         default_factory=StrategyConfig,
         description="Strategy and trendslop mitigation configuration",
+    )
+    knowledge: KnowledgeConfig = Field(
+        default_factory=KnowledgeConfig,
+        description="Knowledge-substrate configuration (opt-in, off by default)",
     )
     git_clone: GitCloneNetworkPolicy = Field(
         default_factory=GitCloneNetworkPolicy,

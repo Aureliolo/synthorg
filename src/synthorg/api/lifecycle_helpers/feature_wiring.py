@@ -209,6 +209,14 @@ async def _wire_knowledge_engine(app_state: AppState) -> None:
         return
     if app_state.slice(KnowledgeStateSlice).service is not None:
         return
+    config = app_state.config.knowledge
+    if not config.enabled:
+        logger.info(
+            API_APP_STARTUP,
+            service="knowledge_engine",
+            note="knowledge substrate disabled (knowledge.enabled=false); skipped",
+        )
+        return
     if app_state.slice(MemoryStateSlice).backend is None:
         logger.info(
             API_APP_STARTUP,
@@ -216,7 +224,6 @@ async def _wire_knowledge_engine(app_state: AppState) -> None:
             note="memory backend not wired; knowledge engine wiring skipped",
         )
         return
-    from synthorg.knowledge.config import KnowledgeConfig  # noqa: PLC0415
     from synthorg.knowledge.factory import build_knowledge_service  # noqa: PLC0415
     from synthorg.knowledge.tool_factory import (  # noqa: PLC0415
         build_knowledge_tool_factory,
@@ -225,7 +232,7 @@ async def _wire_knowledge_engine(app_state: AppState) -> None:
     service = build_knowledge_service(
         memory_backend=memory_backend_of(app_state),
         persistence=persistence_of(app_state),
-        config=KnowledgeConfig(enabled=True),
+        config=config,
         clock=app_state.clock,
     )
     tool_factory = build_knowledge_tool_factory(service=service)
