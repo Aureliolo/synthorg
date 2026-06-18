@@ -17,7 +17,6 @@ process.
 """
 
 import asyncio
-import hashlib
 import json
 import re
 import shutil
@@ -83,6 +82,11 @@ from synthorg.tools.browser._models import (
     SpecResult,
 )
 from synthorg.tools.browser._protocols import ScreenshotDiffer
+from synthorg.tools.browser._result_helpers import (
+    error_result,
+    map_executor_error,
+    ok_result,
+)
 from synthorg.tools.browser._settings import BrowserSettings
 from synthorg.tools.browser._ssim_differ import SSIMDiffer
 from synthorg.tools.browser.errors import (
@@ -92,7 +96,6 @@ from synthorg.tools.browser.errors import (
     BrowserDiffError,
     BrowserDomainError,
     BrowserLaunchError,
-    BrowserNavigationError,
     BrowserScreenshotError,
     BrowserStartCommandError,
 )
@@ -278,7 +281,7 @@ class BrowserTool(BaseTool):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return _error_result(BrowserArgumentError, exc)
+            return error_result(BrowserArgumentError, exc)
 
         try:
             await self._ensure_deployed_assets()
@@ -298,7 +301,7 @@ class BrowserTool(BaseTool):
                 case _ as unhandled:
                     assert_never(unhandled)
         except BrowserDomainError as exc:
-            return _error_result(type(exc), exc)
+            return error_result(type(exc), exc)
 
     async def cleanup(self) -> None:
         """Release sandbox resources tied to this tool's owner."""
@@ -347,7 +350,7 @@ class BrowserTool(BaseTool):
             )
             raise
         logger.debug(BROWSER_NAVIGATE_SUCCESS, url=navigation.final_url)
-        return _ok_result(navigation)
+        return ok_result(navigation)
 
     async def _mode_screenshot(
         self,
@@ -415,7 +418,7 @@ class BrowserTool(BaseTool):
             url=url,
             saved_path=metadata.saved_path,
         )
-        return _ok_result(metadata)
+        return ok_result(metadata)
 
     async def _mode_accessibility_scan(
         self,
@@ -453,7 +456,7 @@ class BrowserTool(BaseTool):
                 "Accessibility scan failed",
                 context={"error_type": type(exc).__name__},
             ) from exc
-        return _ok_result(a11y)
+        return ok_result(a11y)
 
     async def _mode_diff(
         self,
@@ -501,7 +504,7 @@ class BrowserTool(BaseTool):
                 args=args,
                 current_path=screenshot_host,
             )
-        return _ok_result(diff)
+        return ok_result(diff)
 
     async def _mode_spec(
         self,
@@ -581,7 +584,7 @@ class BrowserTool(BaseTool):
             passed=result.passed_all_checks,
             ssim=diff.ssim_score,
         )
-        return _ok_result(result)
+        return ok_result(result)
 
     # ---------------------------------------------------------------
     # Diff computation (host-side)
@@ -831,7 +834,7 @@ class BrowserTool(BaseTool):
 
         Raises:
             BrowserLaunchError: If the related operation fails.
-            _map_executor_error: Raised when the relevant invariant fails.
+            map_executor_error: Raised when the relevant invariant fails.
             BrowserDomainError: If the related operation fails.
         """
         executor_container = (
@@ -919,7 +922,7 @@ class BrowserTool(BaseTool):
         if decoded.get("status") != "ok":
             err_type = decoded.get("error_type", "BrowserDomainError")
             message = decoded.get("message", "executor returned an error")
-            raise _map_executor_error(err_type, str(message), operation)
+            raise map_executor_error(err_type, str(message), operation)
 
         return cast("_ExecutorResult", decoded)
 
@@ -1213,79 +1216,3 @@ class BrowserTool(BaseTool):
             shutil.copyfile(source, target)
             return True
         return False
-
-
-# ---------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------
-
-
-def _ok_result(model: BaseModel) -> ToolExecutionResult:
-    """Ok result.
-
-    Returns:
-        Result of type ``ToolExecutionResult``.
-    """
-    payload = model.model_dump(mode="json")
-    return ToolExecutionResult(
-        content=json.dumps(payload),
-        is_error=False,
-        metadata=payload,
-    )
-
-
-def _error_result(
-    error_cls: type[BrowserDomainError],
-    exc: Exception,
-) -> ToolExecutionResult:
-    """Error result.
-
-    Returns:
-        Result of type ``ToolExecutionResult``.
-    """
-    msg = safe_error_description(exc)
-    return ToolExecutionResult(
-        content=msg,
-        is_error=True,
-        metadata={"error_type": error_cls.__name__},
-    )
-
-
-_EXECUTOR_ERROR_MAP: Final[dict[str, type[BrowserDomainError]]] = {
-    "BrowserNavigationError": BrowserNavigationError,
-    "BrowserLaunchError": BrowserLaunchError,
-    "BrowserScreenshotError": BrowserScreenshotError,
-    "BrowserAccessibilityError": BrowserAccessibilityError,
-    "BrowserDiffError": BrowserDiffError,
-    "BrowserBaselineNotFoundError": BrowserBaselineNotFoundError,
-    "BrowserStartCommandError": BrowserStartCommandError,
-    "BrowserArgumentError": BrowserArgumentError,
-    # ``asyncio.wait_for`` raises TimeoutError when the executor's
-    # launch budget is exceeded; navigation timeouts come back as
-    # PlaywrightTimeoutError from page.goto.
-    "TimeoutError": BrowserLaunchError,
-    "PlaywrightTimeoutError": BrowserNavigationError,
-    "FileNotFoundError": BrowserAccessibilityError,
-}
-
-
-def _map_executor_error(
-    err_type: str,
-    message: str,
-    operation: str,
-) -> BrowserDomainError:
-    """Map executor error.
-
-    Returns:
-        Result of type ``BrowserDomainError``.
-    """
-    cls = _EXECUTOR_ERROR_MAP.get(err_type, BrowserDomainError)
-    return cls(
-        message,
-        context={"operation": operation, "executor_error_type": err_type},
-    )
-
-
-# A small constant to keep `hashlib.sha256` reachable via this module (used
-# by historical helpers; retained for stable import paths in tests).
-_ = hashlib.sha256

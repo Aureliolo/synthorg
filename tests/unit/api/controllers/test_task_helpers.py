@@ -60,14 +60,14 @@ class TestTaskEngineErrorMetadata:
     def test_not_running_metadata(self) -> None:
         exc = TaskEngineNotRunningError("not running")
         assert exc.status_code == 503
-        assert exc.error_code is ErrorCode.SERVICE_UNAVAILABLE
+        assert exc.error_code is ErrorCode.TASK_ENGINE_NOT_RUNNING
         assert exc.error_category is ErrorCategory.INTERNAL
         assert exc.retryable is True
 
     def test_queue_full_metadata(self) -> None:
         exc = TaskEngineQueueFullError("queue full")
         assert exc.status_code == 503
-        assert exc.error_code is ErrorCode.SERVICE_UNAVAILABLE
+        assert exc.error_code is ErrorCode.TASK_ENGINE_QUEUE_FULL
         assert exc.error_category is ErrorCategory.INTERNAL
         assert exc.retryable is True
 

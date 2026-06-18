@@ -215,11 +215,17 @@ def test_non_persistence_paths_are_outside_boundary(rel: str) -> None:
 # ── allowlist covers documented exceptions ──────────────────────
 
 
-def test_allowlist_contains_tools_database_modules() -> None:
-    """The two agent-facing SQL tools must remain allowlisted -- issue #1457."""
+def test_tools_database_modules_not_allowlisted() -> None:
+    """The agent-facing SQL tools route through the persistence adapter.
+
+    They no longer import a raw driver directly, so they are NOT on the
+    boundary allowlist: the ``persistence.external_sql`` adapter owns the
+    sanctioned driver access and the tools stay inside the boundary like
+    any other application module.
+    """
     allowlist = _MODULE._ALLOWLIST  # type: ignore[attr-defined]
-    assert "src/synthorg/tools/database/schema_inspect.py" in allowlist
-    assert "src/synthorg/tools/database/sql_query.py" in allowlist
+    assert "src/synthorg/tools/database/schema_inspect.py" not in allowlist
+    assert "src/synthorg/tools/database/sql_query.py" not in allowlist
 
 
 def test_self_is_allowlisted() -> None:

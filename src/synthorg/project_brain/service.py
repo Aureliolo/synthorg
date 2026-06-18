@@ -23,12 +23,12 @@ from synthorg.observability.events.project_brain import (
     BRAIN_ENTRY_INDEX_FAILED,
     BRAIN_ENTRY_NOT_FOUND,
     BRAIN_ENTRY_REVISED,
-    BRAIN_ENTRY_VALIDATION_FAILED,
     BRAIN_SEARCH_COMPLETE,
     BRAIN_SNAPSHOT_FAILED,
 )
 from synthorg.persistence.project_brain_protocol import ProjectBrainRepository
 from synthorg.project_brain._locks import PerKeyLockRegistry
+from synthorg.project_brain._write_ops import RevisionOps
 from synthorg.project_brain.chunker import BrainChunker
 from synthorg.project_brain.constants import (
     BRAIN_BRANCH_NAME,
@@ -43,10 +43,8 @@ from synthorg.project_brain.constants import (
 )
 from synthorg.project_brain.errors import (
     BrainEntryNotFoundError,
-    BrainEntryValidationError,
 )
 from synthorg.project_brain.models import (
-    BlockerPayload,
     BrainEntry,
     BrainEntryKind,
     BrainEntryStatus,
@@ -55,7 +53,6 @@ from synthorg.project_brain.models import (
     BrainSearchHit,
     BrainSummary,
     Citation,
-    OpenQuestionPayload,
 )
 from synthorg.project_brain.mutation import apply_overrides, build_entry
 from synthorg.project_brain.query import (
@@ -77,11 +74,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_REVISABLE_BY_RESOLVE = frozenset(
-    {BrainEntryKind.OPEN_QUESTION, BrainEntryKind.DEPENDENCY}
-)
-_SUPERSEDABLE = frozenset({BrainEntryKind.DECISION, BrainEntryKind.PLAN_REVISION})
-
 
 class ProjectBrainService:
     """Public entry point for project-brain operations."""
@@ -92,6 +84,7 @@ class ProjectBrainService:
         "_clock",
         "_indexer",
         "_repo",
+        "_revisions",
         "_workspace_service",
         "_write_locks",
         "_writer",
@@ -116,6 +109,12 @@ class ProjectBrainService:
         self._backend = backend
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._write_locks = PerKeyLockRegistry()
+        self._revisions = RevisionOps(
+            write_locks=self._write_locks,
+            require_current=self._require_current,
+            clock=self._clock,
+            append_revision=self._append_revision,
+        )
 
     async def append_entry(  # noqa: PLR0913 -- envelope fields are explicit
         self,
@@ -256,15 +255,6 @@ class ProjectBrainService:
     ) -> BrainEntry:
         """Resolve an open question or a dependency.
 
-        For an open question the optional ``answer`` is recorded on the payload;
-        for a dependency the status alone moves to ``RESOLVED``.
-
-        Args:
-            project_id: Owning project.
-            entry_id: Logical entry id.
-            author: Who resolved it.
-            answer: The answer text (open questions only).
-
         Returns:
             The persisted resolved revision.
 
@@ -272,31 +262,12 @@ class ProjectBrainService:
             BrainEntryNotFoundError: If the entry does not exist.
             BrainEntryValidationError: If the entry kind cannot be resolved.
         """
-        lock = await self._write_locks.acquire_for(project_id)
-        async with lock:
-            current = await self._require_current(project_id, entry_id)
-            if current.entry_kind not in _REVISABLE_BY_RESOLVE:
-                msg = f"cannot resolve a {current.entry_kind.value!r} entry"
-                logger.warning(
-                    BRAIN_ENTRY_VALIDATION_FAILED,
-                    project_id=project_id,
-                    entry_id=entry_id,
-                    entry_kind=current.entry_kind.value,
-                    operation="resolve",
-                    error_type=BrainEntryValidationError.__name__,
-                )
-                raise BrainEntryValidationError(msg)
-            payload: BrainPayloadValue | None = None
-            if current.entry_kind is BrainEntryKind.OPEN_QUESTION:
-                payload = OpenQuestionPayload(answer=answer)
-            revised = apply_overrides(
-                current,
-                now=self._clock.now(),
-                author=author,
-                status=BrainEntryStatus.RESOLVED,
-                payload=payload,
-            )
-            return await self._append_revision(revised, event=BRAIN_ENTRY_REVISED)
+        return await self._revisions.resolve(
+            project_id=project_id,
+            entry_id=entry_id,
+            author=author,
+            answer=answer,
+        )
 
     async def supersede(
         self,
@@ -308,15 +279,6 @@ class ProjectBrainService:
     ) -> BrainEntry:
         """Mark a decision or plan revision superseded and link the successor.
 
-        The target moves to ``SUPERSEDED`` and ``by_entry_id`` is added to its
-        ``related_entry_ids`` as the forward link to its replacement.
-
-        Args:
-            project_id: Owning project.
-            entry_id: The entry being superseded.
-            by_entry_id: The successor entry id.
-            author: Who superseded it.
-
         Returns:
             The persisted superseded revision.
 
@@ -324,31 +286,12 @@ class ProjectBrainService:
             BrainEntryNotFoundError: If the entry does not exist.
             BrainEntryValidationError: If the entry kind cannot be superseded.
         """
-        lock = await self._write_locks.acquire_for(project_id)
-        async with lock:
-            current = await self._require_current(project_id, entry_id)
-            if current.entry_kind not in _SUPERSEDABLE:
-                msg = f"cannot supersede a {current.entry_kind.value!r} entry"
-                logger.warning(
-                    BRAIN_ENTRY_VALIDATION_FAILED,
-                    project_id=project_id,
-                    entry_id=entry_id,
-                    entry_kind=current.entry_kind.value,
-                    operation="supersede",
-                    error_type=BrainEntryValidationError.__name__,
-                )
-                raise BrainEntryValidationError(msg)
-            links = current.related_entry_ids
-            if by_entry_id not in links:
-                links = (*links, by_entry_id)
-            revised = apply_overrides(
-                current,
-                now=self._clock.now(),
-                author=author,
-                status=BrainEntryStatus.SUPERSEDED,
-                related_entry_ids=links,
-            )
-            return await self._append_revision(revised, event=BRAIN_ENTRY_REVISED)
+        return await self._revisions.supersede(
+            project_id=project_id,
+            entry_id=entry_id,
+            by_entry_id=by_entry_id,
+            author=author,
+        )
 
     async def clear_blocker(
         self,
@@ -360,12 +303,6 @@ class ProjectBrainService:
     ) -> BrainEntry:
         """Clear a blocker, recording how it was resolved.
 
-        Args:
-            project_id: Owning project.
-            entry_id: The blocker entry id.
-            author: Who cleared it.
-            resolution: How the blocker was cleared.
-
         Returns:
             The persisted cleared revision.
 
@@ -373,30 +310,12 @@ class ProjectBrainService:
             BrainEntryNotFoundError: If the entry does not exist.
             BrainEntryValidationError: If the entry is not a blocker.
         """
-        lock = await self._write_locks.acquire_for(project_id)
-        async with lock:
-            current = await self._require_current(project_id, entry_id)
-            if current.entry_kind is not BrainEntryKind.BLOCKER:
-                msg = f"cannot clear a {current.entry_kind.value!r} entry"
-                logger.warning(
-                    BRAIN_ENTRY_VALIDATION_FAILED,
-                    project_id=project_id,
-                    entry_id=entry_id,
-                    entry_kind=current.entry_kind.value,
-                    operation="clear",
-                    error_type=BrainEntryValidationError.__name__,
-                )
-                raise BrainEntryValidationError(msg)
-            severity = current.payload.severity  # type: ignore[union-attr]
-            payload = BlockerPayload(severity=severity, resolution=resolution)
-            revised = apply_overrides(
-                current,
-                now=self._clock.now(),
-                author=author,
-                status=BrainEntryStatus.CLEARED,
-                payload=payload,
-            )
-            return await self._append_revision(revised, event=BRAIN_ENTRY_REVISED)
+        return await self._revisions.clear_blocker(
+            project_id=project_id,
+            entry_id=entry_id,
+            author=author,
+            resolution=resolution,
+        )
 
     async def get_entry(
         self,

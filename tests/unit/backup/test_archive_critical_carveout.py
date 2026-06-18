@@ -137,9 +137,8 @@ class TestArchiveManifestProbes:
             raise RuntimeError(msg)
 
         monkeypatch.setattr(
-            BackupService,
-            "_read_manifest_from_archive",
-            staticmethod(_boom),
+            "synthorg.backup.service_archive.read_manifest_from_archive",
+            _boom,
         )
         assert await service.list_backups() == ()
 
@@ -155,9 +154,8 @@ class TestArchiveManifestProbes:
             raise MemoryError
 
         monkeypatch.setattr(
-            BackupService,
-            "_read_manifest_from_archive",
-            staticmethod(_boom),
+            "synthorg.backup.service_archive.read_manifest_from_archive",
+            _boom,
         )
         with pytest.raises(MemoryError):
             await service.list_backups()
@@ -174,9 +172,8 @@ class TestArchiveManifestProbes:
             raise RecursionError
 
         monkeypatch.setattr(
-            BackupService,
-            "_read_manifest_from_archive",
-            staticmethod(_boom),
+            "synthorg.backup.service_archive.read_manifest_from_archive",
+            _boom,
         )
         with pytest.raises(RecursionError):
             await service.list_backups()
@@ -194,9 +191,8 @@ class TestArchiveManifestProbes:
             raise RuntimeError(msg)
 
         monkeypatch.setattr(
-            BackupService,
-            "_read_manifest_from_archive",
-            staticmethod(_boom),
+            "synthorg.backup.service_archive.read_manifest_from_archive",
+            _boom,
         )
         assert service._archive_matches_backup(archive_entry, "other") is False
 
@@ -212,9 +208,8 @@ class TestArchiveManifestProbes:
             raise MemoryError
 
         monkeypatch.setattr(
-            BackupService,
-            "_read_manifest_from_archive",
-            staticmethod(_boom),
+            "synthorg.backup.service_archive.read_manifest_from_archive",
+            _boom,
         )
         with pytest.raises(MemoryError):
             service._archive_matches_backup(archive_entry, "other")
@@ -231,9 +226,8 @@ class TestArchiveManifestProbes:
             raise RecursionError
 
         monkeypatch.setattr(
-            BackupService,
-            "_read_manifest_from_archive",
-            staticmethod(_boom),
+            "synthorg.backup.service_archive.read_manifest_from_archive",
+            _boom,
         )
         with pytest.raises(RecursionError):
             service._archive_matches_backup(archive_entry, "other")

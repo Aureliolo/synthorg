@@ -19,23 +19,24 @@ the legacy synchronous behaviour.
 import asyncio
 import contextlib
 from collections import OrderedDict
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import ClassVar, Final
 from uuid import uuid4
 
+from synthorg.communication.event_stream._janitor import (
+    _Subscriber,
+    janitor_loop,
+    prune_idle_subscribers,
+)
 from synthorg.communication.event_stream.types import (
     AgUiEventType,
     StreamEvent,
 )
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.events.event_stream import (
-    EVENT_STREAM_HUB_JANITOR_FAILED,
-    EVENT_STREAM_HUB_JANITOR_PRUNED,
     EVENT_STREAM_HUB_PUBLISH_DEDUPED,
     EVENT_STREAM_HUB_PUBLISH_FAILED,
     EVENT_STREAM_HUB_START_REJECTED,
@@ -69,26 +70,6 @@ class EventStreamHubUnrestartableError(ConflictError):
     error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
     error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
     status_code: ClassVar[int] = 409
-
-
-# Intentionally NOT frozen: ``last_active`` is mutated in-place under
-# ``EventStreamHub._lock`` per the docstring below. CLAUDE.md "Frozen
-# by default" deviation is justified because allocating a fresh
-# ``_Subscriber`` on every successful publish would churn the hot
-# fan-out path.
-@dataclass(slots=True)
-class _Subscriber:
-    """Per-subscriber bookkeeping owned by ``EventStreamHub``.
-
-    ``last_active`` carries the monotonic timestamp of the most recent
-    activity (subscribe call or successful publish to this subscriber).
-    The janitor reads ``last_active`` to evict idle subscribers; the
-    field is mutated in-place under ``EventStreamHub._lock`` so all
-    reads / writes happen-before each other through the lock.
-    """
-
-    queue: asyncio.Queue[StreamEvent] = field()
-    last_active: float = field()
 
 
 class EventStreamSubscription:
@@ -360,9 +341,16 @@ class EventStreamHub:
                 return
             self._running = True
             self._janitor_task = asyncio.create_task(
-                self._janitor_loop(
-                    idle_ttl_seconds=idle_ttl_seconds,
+                janitor_loop(
+                    clock=self._clock,
                     janitor_interval_seconds=janitor_interval_seconds,
+                    prune=lambda: prune_idle_subscribers(
+                        clock=self._clock,
+                        idle_ttl_seconds=idle_ttl_seconds,
+                        subscribers=self._subscribers,
+                        seen_event_ids=self._seen_event_ids,
+                        lock=self._lock_for_current_loop(),
+                    ),
                 ),
                 name="event-stream-hub-janitor",
             )
@@ -414,70 +402,6 @@ class EventStreamHub:
                 )
                 return
             logger.info(EVENT_STREAM_HUB_STOPPED)
-
-    async def _janitor_loop(
-        self,
-        *,
-        idle_ttl_seconds: float,
-        janitor_interval_seconds: float,
-    ) -> None:
-        """Periodically prune subscribers idle past ``idle_ttl_seconds``.
-
-        A prune failure (lock acquisition error, clock failure, dict-
-        mutation race) must not kill the loop -- otherwise the hub
-        silently stops reclaiming memory and the original leak the
-        janitor was added to fix returns. Re-raise only the system-
-        level errors (``CancelledError``, ``MemoryError``,
-        ``RecursionError``); log every other exception and continue.
-
-        Raises:
-            asyncio.CancelledError: Propagated on shutdown so the janitor
-                task stops cleanly.
-        """
-        # lint-allow: long-running-loop-kill-switch -- stop()/cancel drives shutdown.
-        while True:
-            await self._clock.sleep(janitor_interval_seconds)
-            try:
-                await self._prune_idle_subscribers(idle_ttl_seconds)
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                logger.warning(
-                    EVENT_STREAM_HUB_JANITOR_FAILED,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-
-    async def _prune_idle_subscribers(self, idle_ttl_seconds: float) -> None:
-        """Drop subscribers whose ``last_active`` is older than the TTL.
-
-        Public-ish: also exercised directly from tests so the prune
-        invariant can be asserted without driving the janitor task.
-        """
-        now = self._clock.monotonic()
-        cutoff = now - idle_ttl_seconds
-        pruned = 0
-        async with self._lock_for_current_loop():
-            for session_id in list(self._subscribers):
-                kept = [
-                    sub
-                    for sub in self._subscribers[session_id]
-                    if sub.last_active >= cutoff
-                ]
-                pruned += len(self._subscribers[session_id]) - len(kept)
-                if kept:
-                    self._subscribers[session_id] = kept
-                else:
-                    del self._subscribers[session_id]
-                    self._seen_event_ids.pop(session_id, None)
-        if pruned > 0:
-            logger.info(
-                EVENT_STREAM_HUB_JANITOR_PRUNED,
-                pruned_subscribers=pruned,
-                remaining_sessions=len(self._subscribers),
-                idle_ttl_seconds=idle_ttl_seconds,
-            )
 
     # ── Subscribe / unsubscribe / publish ────────────────────────
 

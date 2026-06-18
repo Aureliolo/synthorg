@@ -12,11 +12,11 @@ import pytest
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.types import NotBlankStr
+from synthorg.organization._team_service import TeamService
 from synthorg.organization.services import (
     CompanyReadService,
     DepartmentService,
     RoleVersionService,
-    TeamService,
 )
 
 pytestmark = pytest.mark.unit

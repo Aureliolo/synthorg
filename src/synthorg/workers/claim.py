@@ -18,9 +18,7 @@ from uuid import uuid4
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from synthorg.communication.bus import redact_url
 from synthorg.communication.bus.errors import (
-    BusConnectionError,
     BusStopTimeoutError,
     BusStreamError,
     BusUnrestartableError,
@@ -34,14 +32,12 @@ from synthorg.observability.events.workers import (
     WORKERS_QUEUE_START_REJECTED,
     WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED,
     WORKERS_TASK_QUEUE_CLAIM_PARSE_FAILED,
-    WORKERS_TASK_QUEUE_CONNECT_FAILED,
-    WORKERS_TASK_QUEUE_CONSUMER_SETUP_FAILED,
     WORKERS_TASK_QUEUE_DEAD_CONSUMER_SETUP_FAILED,
     WORKERS_TASK_QUEUE_DRAIN_FAILED,
     WORKERS_TASK_QUEUE_PUBLISH_TIMEOUT,
-    WORKERS_TASK_QUEUE_STREAM_SETUP_FAILED,
     WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED,
 )
+from synthorg.workers._stream_setup import connect, ensure_consumer, ensure_stream
 from synthorg.workers.config import QueueConfig
 
 if TYPE_CHECKING:
@@ -242,9 +238,12 @@ class JetStreamTaskQueue:
                 msg = "JetStreamTaskQueue.start() called while already running"
                 raise RuntimeError(msg)
             try:
-                await self._connect()
-                await self._ensure_stream()
-                await self._ensure_consumer()
+                client, js = await connect(self._nats_config)
+                self._client, self._js = client, js
+                await ensure_stream(js, self._queue_config)
+                self._sub = await ensure_consumer(
+                    js, self._queue_config, self._durable_name
+                )
             except BaseException:
                 # Stream or consumer creation failed (or we were cancelled).
                 # Drop the partially-initialized client so the caller does
@@ -331,152 +330,6 @@ class JetStreamTaskQueue:
                 )
             self._client = None
             self._js = None
-
-    async def _connect(self) -> None:
-        """Open the NATS connection, translating failures to domain errors.
-
-        Raises:
-            BusConnectionError: When the NATS connection cannot be
-                established.
-        """
-        import nats  # noqa: PLC0415
-        from nats.errors import NoServersError  # noqa: PLC0415
-
-        try:
-            self._client = await nats.connect(
-                servers=[self._nats_config.url],
-                reconnect_time_wait=self._nats_config.reconnect_time_wait_seconds,
-                max_reconnect_attempts=self._nats_config.max_reconnect_attempts,
-                connect_timeout=self._nats_config.connect_timeout_seconds,
-                user_credentials=self._nats_config.credentials_path,
-            )
-        except (TimeoutError, NoServersError, OSError) as exc:
-            safe_url = redact_url(self._nats_config.url)
-            msg = f"Failed to connect to NATS at {safe_url} for task queue: {safe_error_description(exc)}"  # noqa: E501
-            logger.warning(
-                WORKERS_TASK_QUEUE_CONNECT_FAILED,
-                url=safe_url,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise BusConnectionError(
-                msg,
-                context={"url": safe_url},
-            ) from exc
-        self._js = self._client.jetstream()
-
-    async def _ensure_stream(self) -> None:
-        """Create the work-queue stream if it does not already exist.
-
-        Raises:
-            BusStreamError: When JetStream is uninitialised or the stream
-                setup fails.
-        """
-        from nats.errors import Error as NatsError  # noqa: PLC0415
-        from nats.js.api import (  # noqa: PLC0415
-            RetentionPolicy,
-            StorageType,
-            StreamConfig,
-        )
-        from nats.js.errors import NotFoundError  # noqa: PLC0415
-
-        if self._js is None:
-            msg = "JetStream context not initialized"
-            logger.warning(
-                WORKERS_TASK_QUEUE_STREAM_SETUP_FAILED,
-                reason="jetstream_not_initialized",
-                error_type=BusStreamError.__name__,
-            )
-            raise BusStreamError(msg)
-
-        stream_config = StreamConfig(
-            name=self._queue_config.stream_name,
-            subjects=[
-                f"{self._queue_config.ready_subject_prefix}.>",
-                f"{self._queue_config.dead_subject_prefix}.>",
-            ],
-            retention=RetentionPolicy.WORK_QUEUE,
-            storage=StorageType.FILE,
-            max_msgs=self._queue_config.stream_max_msgs,
-            max_bytes=self._queue_config.stream_max_bytes,
-        )
-        try:
-            try:
-                await self._js.stream_info(self._queue_config.stream_name)
-            except NotFoundError:
-                await self._js.add_stream(stream_config)
-            else:
-                await self._js.update_stream(stream_config)
-        except NatsError as exc:
-            msg = (
-                f"Failed to set up task queue stream "
-                f"{self._queue_config.stream_name}: {safe_error_description(exc)}"
-            )
-            logger.warning(
-                WORKERS_TASK_QUEUE_STREAM_SETUP_FAILED,
-                stream_name=self._queue_config.stream_name,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise BusStreamError(
-                msg,
-                context={"stream": self._queue_config.stream_name},
-            ) from exc
-
-    async def _ensure_consumer(self) -> None:
-        """Create the shared durable pull consumer for all workers.
-
-        Passes ``ack_wait`` and ``max_deliver`` from
-        :class:`QueueConfig` so redelivery and dead-letter routing
-        behave as documented in the Distributed Runtime design page.
-
-        Raises:
-            BusStreamError: When JetStream is uninitialised or the
-                consumer cannot be created.
-        """
-        from nats.errors import Error as NatsError  # noqa: PLC0415
-        from nats.js.api import ConsumerConfig  # noqa: PLC0415
-
-        if self._js is None:
-            msg = "JetStream context not initialized"
-            logger.warning(
-                WORKERS_TASK_QUEUE_CONSUMER_SETUP_FAILED,
-                reason="jetstream_not_initialized",
-                error_type=BusStreamError.__name__,
-            )
-            raise BusStreamError(msg)
-
-        subject = f"{self._queue_config.ready_subject_prefix}.>"
-        consumer_config = ConsumerConfig(
-            durable_name=self._durable_name,
-            ack_wait=float(self._queue_config.ack_wait_seconds),
-            max_deliver=self._queue_config.max_deliver,
-            max_ack_pending=self._queue_config.max_ack_pending,
-            filter_subject=subject,
-        )
-        try:
-            self._sub = await self._js.pull_subscribe(
-                subject=subject,
-                durable=self._durable_name,
-                stream=self._queue_config.stream_name,
-                config=consumer_config,
-            )
-        except NatsError as exc:
-            msg = f"Failed to create task queue consumer {self._durable_name}: {safe_error_description(exc)}"  # noqa: E501
-            logger.warning(
-                WORKERS_TASK_QUEUE_CONSUMER_SETUP_FAILED,
-                consumer=self._durable_name,
-                stream_name=self._queue_config.stream_name,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise BusStreamError(
-                msg,
-                context={
-                    "stream": self._queue_config.stream_name,
-                    "consumer": self._durable_name,
-                },
-            ) from exc
 
     async def publish_claim(self, claim: TaskClaim) -> None:
         """Enqueue a claim for workers to pull.
