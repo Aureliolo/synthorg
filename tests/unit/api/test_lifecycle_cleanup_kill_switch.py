@@ -49,16 +49,10 @@ def _suppress_typeguard_for_store_protocols() -> Iterator[None]:
         yield
 
 
-def _no_arg_sync() -> object:
-    """Spec target for ``create_autospec(...)`` substitutes that stand in
-    for synchronous zero-arg cleanup methods (e.g.
-    ``WsTicketStore.cleanup_expired``)."""
-    return None
-
-
 async def _no_arg_async() -> object:
     """Spec target for ``create_autospec(...)`` substitutes that stand in
-    for async zero-arg cleanup methods."""
+    for async zero-arg cleanup methods (e.g.
+    ``WsTicketStore.cleanup_expired``)."""
     return None
 
 
@@ -83,7 +77,7 @@ def _build_app_state(*, enabled: bool) -> AppState:
     """
     ticket_store = SimpleNamespace(
         cleanup_expired=create_autospec(
-            _no_arg_sync,
+            _no_arg_async,
             spec_set=True,
             return_value=None,
         ),
@@ -171,7 +165,7 @@ class TestLifecycleCleanupKillSwitch:
         await _run_loop_ticks(app_state, ticks=2, monkeypatch=monkeypatch)
 
         assert (
-            cast(AsyncMock, ticket_store_of(app_state).cleanup_expired).call_count == 2
+            cast(AsyncMock, ticket_store_of(app_state).cleanup_expired).await_count == 2
         )
         assert (
             cast(AsyncMock, session_store_of(app_state).cleanup_expired).await_count
@@ -198,7 +192,7 @@ class TestLifecycleCleanupKillSwitch:
         await _run_loop_ticks(app_state, ticks=3, monkeypatch=monkeypatch)
 
         assert (
-            cast(AsyncMock, ticket_store_of(app_state).cleanup_expired).call_count == 0
+            cast(AsyncMock, ticket_store_of(app_state).cleanup_expired).await_count == 0
         )
         assert (
             cast(AsyncMock, session_store_of(app_state).cleanup_expired).await_count
@@ -255,7 +249,7 @@ class TestRunCleanupTickExceptionIsolation:
         """``ticket_store.cleanup_expired`` raising still runs session + lockout."""
         ticket_store = SimpleNamespace(
             cleanup_expired=create_autospec(
-                _no_arg_sync,
+                _no_arg_async,
                 spec_set=True,
                 side_effect=RuntimeError("ticket exploded"),
             ),
@@ -286,7 +280,7 @@ class TestRunCleanupTickExceptionIsolation:
 
         await lifecycle_helpers._run_cleanup_tick(app_state)
         # Ticket raised -- but session and lockout still ran to completion.
-        ticket_store.cleanup_expired.assert_called_once()
+        ticket_store.cleanup_expired.assert_awaited_once()
         session_store.cleanup_expired.assert_awaited_once()
         lockout_store.cleanup_expired.assert_awaited_once()
 
@@ -294,7 +288,7 @@ class TestRunCleanupTickExceptionIsolation:
         """``session_store.cleanup_expired`` raising still runs lockout cleanup."""
         ticket_store = SimpleNamespace(
             cleanup_expired=create_autospec(
-                _no_arg_sync,
+                _no_arg_async,
                 spec_set=True,
                 return_value=None,
             ),
@@ -324,7 +318,7 @@ class TestRunCleanupTickExceptionIsolation:
         )
 
         await lifecycle_helpers._run_cleanup_tick(app_state)
-        ticket_store.cleanup_expired.assert_called_once()
+        ticket_store.cleanup_expired.assert_awaited_once()
         session_store.cleanup_expired.assert_awaited_once()
         lockout_store.cleanup_expired.assert_awaited_once()
 
@@ -332,7 +326,7 @@ class TestRunCleanupTickExceptionIsolation:
         """``MemoryError`` escapes the cleanup tick -- OOM must not be swallowed."""
         ticket_store = SimpleNamespace(
             cleanup_expired=create_autospec(
-                _no_arg_sync,
+                _no_arg_async,
                 spec_set=True,
                 side_effect=MemoryError,
             ),

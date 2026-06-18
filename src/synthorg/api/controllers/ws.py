@@ -137,7 +137,7 @@ async def _validate_ticket(
     ticket_store = require_service(
         app_state.slice(ApiCoreStateSlice).ticket_store, "WS Ticket Store"
     )
-    user: AuthenticatedUser | None = ticket_store.validate_and_consume(
+    user: AuthenticatedUser | None = await ticket_store.validate_and_consume(
         ticket,
     )
     if user is None:
@@ -249,7 +249,7 @@ async def _auth_from_first_message(
     ticket_store = require_service(
         app_state.slice(ApiCoreStateSlice).ticket_store, "WS Ticket Store"
     )
-    user: AuthenticatedUser | None = ticket_store.validate_and_consume(
+    user: AuthenticatedUser | None = await ticket_store.validate_and_consume(
         ticket,
     )
     if user is None:
@@ -994,7 +994,7 @@ async def _receive_loop(  # noqa: PLR0913 -- optional backpressure + clock + tim
     conn_user: AuthenticatedUser,
     outbound_queue: asyncio.Queue[bytes],
     *,
-    frame_timeout_seconds: int | None = None,
+    frame_timeout_seconds: float | None = None,
     backpressure: _BackpressureTracker | None = None,
     clock: Clock | None = None,
 ) -> None:

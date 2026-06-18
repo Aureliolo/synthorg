@@ -1,5 +1,7 @@
 """Prometheus metrics scrape endpoint."""
 
+import asyncio
+
 from litestar import Controller, Response, get
 from litestar.datastructures import State
 from prometheus_client import generate_latest
@@ -51,7 +53,10 @@ class MetricsController(Controller):
 
         try:
             await collector.refresh(app_state)
-            body = generate_latest(collector.registry)
+            # ``generate_latest`` serialises the whole registry
+            # synchronously; offload it so a large registry does not
+            # block the event loop during a scrape.
+            body = await asyncio.to_thread(generate_latest, collector.registry)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(

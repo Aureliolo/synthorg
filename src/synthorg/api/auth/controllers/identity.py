@@ -136,7 +136,7 @@ class AuthIdentityController(Controller):
         )
         ticket_store = ticket_store_of(app_state)
         try:
-            ticket = ticket_store.create(ws_user)
+            ticket = await ticket_store.create(ws_user)
         except TicketLimitExceededError:
             logger.warning(
                 SECURITY_AUTH_FAILED,

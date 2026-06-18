@@ -218,7 +218,10 @@ class AuditController(Controller):
         audit_log = require_service(
             app_state.slice(SecurityStateSlice).audit_log, "Audit Log"
         )
-        entries = audit_log.query(
+        # The audit log query reads/scans synchronously; offload it so a
+        # large capped scan does not block the event loop.
+        entries = await asyncio.to_thread(
+            audit_log.query,
             agent_id=agent_id,
             tool_name=tool_name,
             action_type=action_type,

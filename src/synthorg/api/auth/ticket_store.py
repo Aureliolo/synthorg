@@ -6,12 +6,11 @@ uses ``time.monotonic()`` for expiry so it is immune to wall-clock
 adjustments.
 
 The mutating methods (``create``, ``validate_and_consume``,
-``cleanup_expired``) hold a ``threading.Lock`` so the store is safe
-under both single-threaded asyncio handlers and Litestar's threadpool
-dispatch.  The lock spans count-and-insert, pop-and-validate, and
-bulk eviction blocks where a thread switch between the read and the
-mutating step would otherwise let a racing caller exceed the per-user
-cap or observe a half-mutated dict.
+``cleanup_expired``) are async and hold an ``asyncio.Lock`` so the
+store is safe under concurrent event-loop handlers.  The lock spans
+count-and-insert, pop-and-validate, and bulk eviction blocks where an
+``await`` between the read and the mutating step would otherwise let a
+racing caller exceed the per-user cap or observe a half-mutated dict.
 
 .. note::
 
@@ -21,9 +20,9 @@ cap or observe a half-mutated dict.
    (the default) for ticket auth to work correctly.
 """
 
+import asyncio
 import math
 import secrets
-import threading
 from typing import ClassVar, Final
 
 from pydantic import BaseModel, ConfigDict
@@ -124,7 +123,19 @@ class WsTicketStore:
         self._max_pending = max_pending_per_user
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._tickets: dict[str, _TicketEntry] = {}
-        self._lock = threading.Lock()
+        # Created lazily on first mutating call to avoid binding the
+        # asyncio primitive to a specific event loop at construction.
+        self._lock: asyncio.Lock | None = None
+
+    def _get_lock(self) -> asyncio.Lock:
+        """Return the store lock, creating it on first use.
+
+        Returns:
+            The event-loop-bound ``asyncio.Lock`` guarding the ticket dict.
+        """
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     @property
     def ttl_seconds(self) -> float:
@@ -158,7 +169,7 @@ class WsTicketStore:
             raise ValueError(msg)
         self._max_pending = value
 
-    def create(self, user: AuthenticatedUser) -> str:
+    async def create(self, user: AuthenticatedUser) -> str:
         """Issue a new single-use ticket for *user*.
 
         Args:
@@ -170,7 +181,7 @@ class WsTicketStore:
         Raises:
             TicketLimitExceededError: Raised on the corresponding failure path.
         """
-        with self._lock:
+        async with self._get_lock():
             now = self._clock.monotonic()
             user_pending = sum(
                 1
@@ -205,11 +216,11 @@ class WsTicketStore:
         )
         return ticket
 
-    def validate_and_consume(self, ticket: str) -> AuthenticatedUser | None:
+    async def validate_and_consume(self, ticket: str) -> AuthenticatedUser | None:
         """Validate and consume a ticket (single-use).
 
         Atomically removes the ticket via ``dict.pop`` before
-        checking expiry, holding ``self._lock`` so concurrent threads
+        checking expiry, holding ``self._lock`` so concurrent callers
         racing on the same ticket cannot both succeed.
 
         Args:
@@ -218,7 +229,7 @@ class WsTicketStore:
         Returns:
             The bound ``AuthenticatedUser``, or ``None``.
         """
-        with self._lock:
+        async with self._get_lock():
             entry = self._tickets.pop(ticket, None)
         if entry is None:
             logger.warning(API_WS_TICKET_INVALID, reason="not_found")
@@ -240,7 +251,7 @@ class WsTicketStore:
         )
         return entry.user
 
-    def cleanup_expired(self) -> int:
+    async def cleanup_expired(self) -> int:
         """Remove expired tickets.
 
         Called periodically by a background task to prevent
@@ -252,7 +263,7 @@ class WsTicketStore:
         Returns:
             Number of entries removed.
         """
-        with self._lock:
+        async with self._get_lock():
             now = self._clock.monotonic()
             expired = [k for k, v in self._tickets.items() if now > v.expires_at]
             for k in expired:

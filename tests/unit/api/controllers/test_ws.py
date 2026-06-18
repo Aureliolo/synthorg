@@ -295,7 +295,7 @@ class TestWsTicketAuth:
         ticket = response.json()["data"]["ticket"]
 
         app_state = async_test_client.app.state["app_state"]
-        user = ticket_store_of(app_state).validate_and_consume(ticket)
+        user = await ticket_store_of(app_state).validate_and_consume(ticket)
         assert user is not None
         assert user.auth_method == AuthMethod.WS_TICKET
 
@@ -308,8 +308,8 @@ class TestWsTicketAuth:
         ticket = response.json()["data"]["ticket"]
 
         app_state = async_test_client.app.state["app_state"]
-        first = ticket_store_of(app_state).validate_and_consume(ticket)
-        second = ticket_store_of(app_state).validate_and_consume(ticket)
+        first = await ticket_store_of(app_state).validate_and_consume(ticket)
+        second = await ticket_store_of(app_state).validate_and_consume(ticket)
         assert first is not None
         assert second is None
 
@@ -322,7 +322,7 @@ class TestWsTicketAuth:
         ticket = response.json()["data"]["ticket"]
 
         app_state = async_test_client.app.state["app_state"]
-        user = ticket_store_of(app_state).validate_and_consume(ticket)
+        user = await ticket_store_of(app_state).validate_and_consume(ticket)
         assert user is not None
         assert user.role == HumanRole.CEO
         assert user.username == "test-ceo"
@@ -464,7 +464,11 @@ class TestWsTicketAuth:
             auth_method=AuthMethod.WS_TICKET,
             must_change_password=False,
         )
-        ticket = ticket_store_of(app_state).create(user)
+        # ``create`` is async; run it on the client's blocking portal so
+        # the store lock binds to the same loop the WS handler consumes on.
+        ticket = ws_test_client.blocking_portal.call(
+            ticket_store_of(app_state).create, user
+        )
 
         with ws_test_client.websocket_connect(
             f"/api/v1/ws?ticket={ticket}",
@@ -497,7 +501,9 @@ class TestWsTicketAuth:
             auth_method=AuthMethod.WS_TICKET,
             must_change_password=False,
         )
-        ticket = ticket_store_of(app_state).create(user)
+        ticket = ws_test_client.blocking_portal.call(
+            ticket_store_of(app_state).create, user
+        )
 
         with ws_test_client.websocket_connect("/api/v1/ws") as ws:
             ws.send_text(json.dumps({"action": "auth", "ticket": ticket}))
@@ -519,7 +525,9 @@ class TestWsTicketAuth:
             auth_method=AuthMethod.WS_TICKET,
             must_change_password=False,
         )
-        ticket = ticket_store_of(app_state).create(user)
+        ticket = ws_test_client.blocking_portal.call(
+            ticket_store_of(app_state).create, user
+        )
 
         with ws_test_client.websocket_connect(
             f"/api/v1/ws?ticket={ticket}",

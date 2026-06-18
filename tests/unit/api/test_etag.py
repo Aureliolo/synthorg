@@ -141,7 +141,7 @@ class TestETagMiddleware:
         body = b'{"value":1}'
         mw = ETagMiddleware(_ok_app_factory(body))
         recorder = _Recorder()
-        await mw(_http_scope(path="/api/v1/tasks"), _empty_receive, recorder)
+        await mw(_http_scope(path="/api/v1/webhooks"), _empty_receive, recorder)
         headers = dict(recorder.messages[0]["headers"])
         assert b"etag" not in headers
         assert recorder.messages[1]["body"] == body

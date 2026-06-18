@@ -578,12 +578,12 @@ class TestWsTicket:
         ticket = data["ticket"]
 
         app_state = async_test_client.app.state["app_state"]
-        user = ticket_store_of(app_state).validate_and_consume(ticket)
+        user = await ticket_store_of(app_state).validate_and_consume(ticket)
         assert user is not None
         assert user.auth_method.value == "ws_ticket"
 
         # Single-use: second consume fails
-        assert ticket_store_of(app_state).validate_and_consume(ticket) is None
+        assert await ticket_store_of(app_state).validate_and_consume(ticket) is None
 
 
 @pytest.mark.unit
