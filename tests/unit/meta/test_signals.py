@@ -299,10 +299,46 @@ class TestBudgetSignalAggregator:
 class TestCoordinationSignalAggregator:
     """Coordination aggregator tests."""
 
-    async def test_returns_coordination_summary(self) -> None:
+    async def test_returns_empty_summary_without_store(self) -> None:
         agg = CoordinationSignalAggregator()
         result = await agg.aggregate(since=_week_ago(), until=_now())
         assert isinstance(result, OrgCoordinationSummary)
+        assert result.sample_count == 0
+
+    async def test_averages_metrics_from_store(self) -> None:
+        from synthorg.budget.coordination_metric_models import (
+            CoordinationEfficiency,
+            CoordinationMetrics,
+        )
+        from synthorg.budget.coordination_store import (
+            CoordinationMetricsRecord,
+            CoordinationMetricsStore,
+        )
+
+        store = CoordinationMetricsStore()
+        store.record(
+            CoordinationMetricsRecord(
+                task_id="task-1",
+                computed_at=datetime(2026, 6, 1, 12, 0, tzinfo=UTC),
+                team_size=3,
+                metrics=CoordinationMetrics(
+                    efficiency=CoordinationEfficiency(
+                        success_rate=0.9,
+                        turns_mas=4.0,
+                        turns_sas=2.0,
+                    ),
+                ),
+            )
+        )
+        agg = CoordinationSignalAggregator(store=store)
+        result = await agg.aggregate(
+            since=datetime(2026, 5, 1, tzinfo=UTC),
+            until=datetime(2026, 7, 1, tzinfo=UTC),
+        )
+        assert result.sample_count == 1
+        assert result.coordination_efficiency == pytest.approx(0.45)
+        # No overhead metric was recorded, so it stays None.
+        assert result.coordination_overhead_pct is None
 
 
 class TestScalingSignalAggregator:

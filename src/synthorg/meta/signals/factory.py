@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.cost_record import CostRecord
 from synthorg.engine.classification.taxonomy_store_protocol import ErrorTaxonomyStore
 from synthorg.hr.performance.tracker import PerformanceTracker
@@ -60,6 +61,7 @@ def build_signals_service(  # noqa: PLR0913 -- keyword-only collaborator DI
     telemetry_counter: TelemetryEventCounter | None = None,
     budget_total_monthly: float = 0.0,
     cost_record_provider: CostRecordProvider | None = None,
+    coordination_metrics_store: CoordinationMetricsStore | None = None,
     benchmark_history_dir: Path | None = None,
 ) -> SignalsService:
     """Compose a :class:`SignalsService` from live runtime collaborators.
@@ -80,6 +82,8 @@ def build_signals_service(  # noqa: PLR0913 -- keyword-only collaborator DI
         cost_record_provider: Async window -> cost-records provider for the
             budget aggregator; ``None`` falls back to an empty provider so
             the budget domain degrades to an empty summary.
+        coordination_metrics_store: Store queried by the coordination
+            aggregator; ``None`` degrades that domain to an empty summary.
         benchmark_history_dir: Optional golden-benchmark history dir.
 
     Returns:
@@ -93,7 +97,7 @@ def build_signals_service(  # noqa: PLR0913 -- keyword-only collaborator DI
         cost_record_provider=cost_record_provider or _empty_cost_records,
         budget_total_monthly=budget_total_monthly,
     )
-    coordination = CoordinationSignalAggregator()
+    coordination = CoordinationSignalAggregator(store=coordination_metrics_store)
     scaling = (
         ScalingSignalAggregator(service=scaling_service)
         if scaling_service is not None

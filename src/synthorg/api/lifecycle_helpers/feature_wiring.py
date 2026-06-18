@@ -466,6 +466,9 @@ async def _wire_signals_service(
     from synthorg.budget.tracker_protocol import (  # noqa: PLC0415
         collect_all_records,
     )
+    from synthorg.coordination.state import (  # noqa: PLC0415
+        CoordinationStateSlice,
+    )
     from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
     from synthorg.meta.signals.budget import CostRecordProvider  # noqa: PLC0415
     from synthorg.meta.signals.factory import build_signals_service  # noqa: PLC0415
@@ -512,6 +515,9 @@ async def _wire_signals_service(
             error_store=app_state.slice(EngineStateSlice).error_taxonomy_store,
             budget_total_monthly=budget_total_monthly,
             cost_record_provider=cost_record_provider,
+            coordination_metrics_store=app_state.slice(
+                CoordinationStateSlice
+            ).metrics_store,
         )
         app_state.wire(MetaStateSlice, signals_service=signals_service)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
