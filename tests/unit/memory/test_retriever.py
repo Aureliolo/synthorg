@@ -7,16 +7,14 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.core.memory_enums import MemoryCategory
+from synthorg.core.text_estimation import DefaultTokenEstimator
 from synthorg.engine.prompt_safety import TAG_MEMORY_ENTRY
 from synthorg.memory.errors import MemoryRetrievalError
 from synthorg.memory.filter import (
     NON_INFERABLE_TAG,
     TagBasedMemoryFilter,
 )
-from synthorg.memory.injection import (
-    DefaultTokenEstimator,
-    MemoryInjectionStrategy,
-)
+from synthorg.memory.injection import MemoryInjectionStrategy
 from synthorg.memory.models import MemoryEntry, MemoryMetadata, MemoryQuery
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.ranking import ScoredMemory

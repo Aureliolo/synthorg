@@ -4,6 +4,8 @@ Extracted from ``strategies.py`` to keep strategy classes focused on
 selection logic.
 """
 
+from collections.abc import Sequence
+
 from pydantic import JsonValue
 
 from synthorg.config.agent_schema import RoutingConfig, RoutingRuleConfig
@@ -166,6 +168,54 @@ def _within_budget(
     return model.total_cost_per_1k <= remaining_budget
 
 
+def _pick_within_budget(
+    candidates: Sequence[ResolvedModel],
+    remaining_budget: float | None,
+    *,
+    source: str,
+) -> tuple[ResolvedModel, bool]:
+    """Pick the first candidate within budget, else the top candidate.
+
+    Args:
+        candidates: Models already ordered by selection preference
+            (cheapest-first or fastest-first); must be non-empty.
+        remaining_budget: Remaining spend ceiling, or ``None`` for no cap.
+        source: Selection-source label, used only for logging.
+
+    Returns:
+        Tuple of ``(model, budget_exceeded)``. When every candidate
+        exceeds the budget, the top-preference candidate is returned with
+        ``budget_exceeded=True``.
+
+    Raises:
+        NoAvailableModelError: If *candidates* is empty.
+    """
+    if not candidates:
+        logger.warning(
+            ROUTING_FALLBACK_EXHAUSTED,
+            source=source,
+            reason="no models registered",
+        )
+        msg = "No models registered in resolver"
+        raise NoAvailableModelError(msg)
+
+    if remaining_budget is None:
+        return candidates[0], False
+
+    for model in candidates:
+        if model.total_cost_per_1k <= remaining_budget:
+            return model, False
+
+    top = candidates[0]
+    logger.warning(
+        ROUTING_BUDGET_EXCEEDED,
+        remaining_budget=remaining_budget,
+        model_cost=top.total_cost_per_1k,
+        model=top.model_id,
+    )
+    return top, True
+
+
 def _cheapest_within_budget(
     resolver: ModelResolver,
     remaining_budget: float | None,
@@ -179,31 +229,11 @@ def _cheapest_within_budget(
     Raises:
         NoAvailableModelError: If no models are registered at all.
     """
-    all_models = resolver.all_models_sorted_by_cost()
-    if not all_models:
-        logger.warning(
-            ROUTING_FALLBACK_EXHAUSTED,
-            source="cheapest_within_budget",
-            reason="no models registered",
-        )
-        msg = "No models registered in resolver"
-        raise NoAvailableModelError(msg)
-
-    if remaining_budget is None:
-        return all_models[0], False
-
-    for model in all_models:
-        if model.total_cost_per_1k <= remaining_budget:
-            return model, False
-
-    cheapest = all_models[0]
-    cheapest_cost = cheapest.total_cost_per_1k
-    logger.warning(
-        ROUTING_BUDGET_EXCEEDED,
-        remaining_budget=remaining_budget,
-        model_cost=cheapest_cost,
+    return _pick_within_budget(
+        resolver.all_models_sorted_by_cost(),
+        remaining_budget,
+        source="cheapest_within_budget",
     )
-    return cheapest, True
 
 
 def _fastest_within_budget(
@@ -239,22 +269,11 @@ def _fastest_within_budget(
         )
         return _cheapest_within_budget(resolver, remaining_budget)
 
-    if remaining_budget is None:
-        return models_with_latency[0], False
-
-    for model in models_with_latency:
-        if model.total_cost_per_1k <= remaining_budget:
-            return model, False
-
-    fastest = models_with_latency[0]
-    fastest_cost = fastest.total_cost_per_1k
-    logger.warning(
-        ROUTING_BUDGET_EXCEEDED,
-        remaining_budget=remaining_budget,
-        model_cost=fastest_cost,
-        model=fastest.model_id,
+    return _pick_within_budget(
+        models_with_latency,
+        remaining_budget,
+        source="fastest_within_budget",
     )
-    return fastest, True
 
 
 def _try_task_type_rules(

@@ -23,6 +23,7 @@ from synthorg.observability.events.persistence.task import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import validate_pagination_args
+from synthorg.persistence._shared._task_filters import build_task_filter_clauses
 from synthorg.persistence.task_protocol import TaskFilterSpec
 
 logger = get_logger(__name__)
@@ -311,17 +312,7 @@ class PostgresTaskRepository:
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_TASK_LIST_FAILED
         )
-        clauses: list[str] = []
-        params: list[object] = []
-        if filter_spec.status is not None:
-            clauses.append("status = %s")
-            params.append(filter_spec.status.value)
-        if filter_spec.assigned_to is not None:
-            clauses.append("assigned_to = %s")
-            params.append(filter_spec.assigned_to)
-        if filter_spec.project is not None:
-            clauses.append("project = %s")
-            params.append(filter_spec.project)
+        clauses, params = build_task_filter_clauses(filter_spec, placeholder="%s")
 
         query = f"SELECT {self._TASK_COLUMNS} FROM tasks"  # noqa: S608
         if clauses:
@@ -357,17 +348,7 @@ class PostgresTaskRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        clauses: list[str] = []
-        params: list[object] = []
-        if filter_spec.status is not None:
-            clauses.append("status = %s")
-            params.append(filter_spec.status.value)
-        if filter_spec.assigned_to is not None:
-            clauses.append("assigned_to = %s")
-            params.append(filter_spec.assigned_to)
-        if filter_spec.project is not None:
-            clauses.append("project = %s")
-            params.append(filter_spec.project)
+        clauses, params = build_task_filter_clauses(filter_spec, placeholder="%s")
 
         query = "SELECT COUNT(*) AS c FROM tasks"
         if clauses:

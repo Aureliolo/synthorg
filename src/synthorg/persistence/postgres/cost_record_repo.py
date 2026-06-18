@@ -9,13 +9,10 @@ from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
 from synthorg.budget.cost_record import CostRecord
-from synthorg.budget.errors import MixedCurrencyAggregationError
-from synthorg.core.normalization import parse_comma_list
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.cost_record import (
     PERSISTENCE_COST_RECORD_AGGREGATE_FAILED,
-    PERSISTENCE_COST_RECORD_AGGREGATED,
     PERSISTENCE_COST_RECORD_QUERIED,
     PERSISTENCE_COST_RECORD_QUERY_FAILED,
     PERSISTENCE_COST_RECORD_SAVE_FAILED,
@@ -23,9 +20,10 @@ from synthorg.observability.events.persistence.cost_record import (
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
     normalize_utc,
-    safe_float,
-    safe_int,
     validate_pagination_args,
+)
+from synthorg.persistence._shared._cost_record_helpers import (
+    resolve_currency_aggregate,
 )
 from synthorg.persistence.cost_record_protocol import CostRecordFilterSpec
 
@@ -208,39 +206,7 @@ class PostgresCostRecordRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        if row is None:
-            msg = "aggregate query returned no rows"
-            logger.error(
-                PERSISTENCE_COST_RECORD_AGGREGATE_FAILED,
-                agent_id=agent_id,
-                error=msg,
-            )
-            raise QueryError(msg)
-        distinct_count = safe_int(row[0], default=0)
-        currencies_csv = row[1]
-        total = safe_float(row[2], default=0.0)
-        if distinct_count > 1:
-            distinct = frozenset(parse_comma_list(currencies_csv))
-            logger.error(
-                PERSISTENCE_COST_RECORD_AGGREGATE_FAILED,
-                agent_id=agent_id,
-                task_id=task_id,
-                currencies=sorted(distinct),
-                error="mixed-currency aggregation rejected",
-            )
-            mixed_msg = "Cannot aggregate costs across mixed currencies"
-            raise MixedCurrencyAggregationError(
-                mixed_msg,
-                currencies=distinct,
-                agent_id=agent_id,
-                task_id=task_id,
-            )
-        logger.debug(
-            PERSISTENCE_COST_RECORD_AGGREGATED,
-            agent_id=agent_id,
-            total_cost=total,
-        )
-        return total
+        return resolve_currency_aggregate(row, agent_id=agent_id, task_id=task_id)
 
     async def purge_before(self, threshold: datetime) -> int:
         """Delete cost records with timestamp before threshold (retention).

@@ -2,8 +2,8 @@
 
 import pytest
 
+from synthorg.core.text_estimation import DefaultTokenEstimator
 from synthorg.memory.injection import (
-    DefaultTokenEstimator,
     InjectionPoint,
     InjectionStrategy,
     MemoryInjectionStrategy,

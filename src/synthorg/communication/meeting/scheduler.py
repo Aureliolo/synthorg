@@ -36,6 +36,7 @@ from synthorg.communication.meeting.orchestrator import (
 from synthorg.communication.meeting.participant import (
     ParticipantResolver,
 )
+from synthorg.core.concurrency import rebind_lock_for_loop
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
@@ -196,18 +197,11 @@ class MeetingScheduler:
            current running loop so the next ``await`` does not raise
            "loop is closed".
         """
-        try:
-            current = asyncio.get_running_loop()
-        except RuntimeError:
-            if self._lifecycle_lock is None:
-                self._lifecycle_lock = asyncio.Lock()
-            return self._lifecycle_lock
-        if self._lifecycle_lock is None or (
-            self._lifecycle_lock_loop is not None
-            and self._lifecycle_lock_loop is not current
-        ):
-            self._lifecycle_lock = asyncio.Lock()
-            self._lifecycle_lock_loop = current
+        self._lifecycle_lock, self._lifecycle_lock_loop = rebind_lock_for_loop(
+            self._lifecycle_lock,
+            self._lifecycle_lock_loop,
+            preserve_preseeded=True,
+        )
         return self._lifecycle_lock
 
     def _cooldown_lock_for_current_loop(self) -> asyncio.Lock:
@@ -220,15 +214,10 @@ class MeetingScheduler:
         the safe path in tests where pytest-asyncio creates a fresh
         loop per test.
         """
-        try:
-            current = asyncio.get_running_loop()
-        except RuntimeError:
-            if self._cooldown_lock is None:
-                self._cooldown_lock = asyncio.Lock()
-            return self._cooldown_lock
-        if self._cooldown_lock is None or self._cooldown_lock_loop is not current:
-            self._cooldown_lock = asyncio.Lock()
-            self._cooldown_lock_loop = current
+        self._cooldown_lock, self._cooldown_lock_loop = rebind_lock_for_loop(
+            self._cooldown_lock,
+            self._cooldown_lock_loop,
+        )
         return self._cooldown_lock
 
     async def _hydrate_cooldowns_from_repo(self) -> None:
