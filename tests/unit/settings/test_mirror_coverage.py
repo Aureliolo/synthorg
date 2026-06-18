@@ -103,6 +103,7 @@ _ENV_VALUE_OVERRIDES: Final[dict[tuple[str, str], str]] = {
     ("BudgetConfig", "currency"): "GBP",
     ("BudgetConfig", "benchmark_provider"): "measured",
     ("CompanyMemoryConfig", "backend"): "inmemory",
+    ("NatsConfig", "url"): "nats://override.example:4222",
 }
 
 

@@ -404,7 +404,7 @@ class TestDeepCopyIsolation:
 
     def test_update_mutation_isolates_updates(self) -> None:
         """Mutating the original dict after construction has no effect."""
-        original = {"title": "Original"}
+        original: dict[str, object] = {"title": "Original"}
         mutation = UpdateTaskMutation(
             request_id="req-1",
             requested_by="alice",
