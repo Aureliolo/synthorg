@@ -240,7 +240,7 @@ async function fetchMoreActivityImpl(
   } catch (err) {
     const message = getErrorMessage(err)
     set({ activityLoading: false, detailError: message })
-    log.warn('Failed to load more activity', sanitizeForLog(message))
+    log.warn('Failed to load more activity', { error: sanitizeForLog(message) })
   }
 }
 
@@ -283,7 +283,7 @@ async function updateAgentModelImpl(
     await fetchAgentDetailImpl(set, agentId)
     return true
   } catch (err) {
-    log.error('updateAgentModel:', sanitizeForLog(getErrorMessage(err)))
+    log.error('updateAgentModel', { error: sanitizeForLog(getErrorMessage(err)) })
     useToastStore.getState().add({
       variant: 'error',
       ...getCrudErrorTitle(err, 'Could not update model'),

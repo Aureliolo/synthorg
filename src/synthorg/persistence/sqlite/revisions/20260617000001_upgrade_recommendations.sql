@@ -5,12 +5,8 @@
 -- are JSON; status is a scalar column so the review surface can filter.
 CREATE TABLE upgrade_recommendations (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
-    recommendation_json TEXT NOT NULL CHECK (
-        LENGTH(TRIM(recommendation_json)) > 0 AND JSON_VALID(recommendation_json)
-    ),
-    agent_ids_json TEXT NOT NULL CHECK (
-        LENGTH(TRIM(agent_ids_json)) > 0 AND JSON_VALID(agent_ids_json)
-    ),
+    recommendation_json TEXT NOT NULL CHECK (LENGTH(TRIM(recommendation_json)) > 0),
+    agent_ids_json TEXT NOT NULL CHECK (LENGTH(TRIM(agent_ids_json)) > 0),
     status TEXT NOT NULL DEFAULT 'pending' CHECK (
         status IN ('pending', 'approved', 'rejected', 'auto_applied')
     ),
