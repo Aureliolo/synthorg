@@ -21,7 +21,9 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.project_brain import (
     BRAIN_ENTRY_APPENDED,
     BRAIN_ENTRY_INDEX_FAILED,
+    BRAIN_ENTRY_NOT_FOUND,
     BRAIN_ENTRY_REVISED,
+    BRAIN_ENTRY_VALIDATION_FAILED,
     BRAIN_SEARCH_COMPLETE,
     BRAIN_SNAPSHOT_FAILED,
 )
@@ -275,6 +277,14 @@ class ProjectBrainService:
             current = await self._require_current(project_id, entry_id)
             if current.entry_kind not in _REVISABLE_BY_RESOLVE:
                 msg = f"cannot resolve a {current.entry_kind.value!r} entry"
+                logger.warning(
+                    BRAIN_ENTRY_VALIDATION_FAILED,
+                    project_id=project_id,
+                    entry_id=entry_id,
+                    entry_kind=current.entry_kind.value,
+                    operation="resolve",
+                    error_type=BrainEntryValidationError.__name__,
+                )
                 raise BrainEntryValidationError(msg)
             payload: BrainPayloadValue | None = None
             if current.entry_kind is BrainEntryKind.OPEN_QUESTION:
@@ -319,6 +329,14 @@ class ProjectBrainService:
             current = await self._require_current(project_id, entry_id)
             if current.entry_kind not in _SUPERSEDABLE:
                 msg = f"cannot supersede a {current.entry_kind.value!r} entry"
+                logger.warning(
+                    BRAIN_ENTRY_VALIDATION_FAILED,
+                    project_id=project_id,
+                    entry_id=entry_id,
+                    entry_kind=current.entry_kind.value,
+                    operation="supersede",
+                    error_type=BrainEntryValidationError.__name__,
+                )
                 raise BrainEntryValidationError(msg)
             links = current.related_entry_ids
             if by_entry_id not in links:
@@ -360,6 +378,14 @@ class ProjectBrainService:
             current = await self._require_current(project_id, entry_id)
             if current.entry_kind is not BrainEntryKind.BLOCKER:
                 msg = f"cannot clear a {current.entry_kind.value!r} entry"
+                logger.warning(
+                    BRAIN_ENTRY_VALIDATION_FAILED,
+                    project_id=project_id,
+                    entry_id=entry_id,
+                    entry_kind=current.entry_kind.value,
+                    operation="clear",
+                    error_type=BrainEntryValidationError.__name__,
+                )
                 raise BrainEntryValidationError(msg)
             severity = current.payload.severity  # type: ignore[union-attr]
             payload = BlockerPayload(severity=severity, resolution=resolution)
@@ -397,6 +423,13 @@ class ProjectBrainService:
         entry = await self._repo.get((project_id, entry_id, revision))
         if entry is None:
             msg = f"brain entry {entry_id!r} revision {revision} not found"
+            logger.warning(
+                BRAIN_ENTRY_NOT_FOUND,
+                project_id=project_id,
+                entry_id=entry_id,
+                revision=revision,
+                error_type=BrainEntryNotFoundError.__name__,
+            )
             raise BrainEntryNotFoundError(msg)
         return entry
 
@@ -539,6 +572,13 @@ class ProjectBrainService:
         )
         if not rows:
             msg = f"brain entry {entry_id!r} not found"
+            logger.warning(
+                BRAIN_ENTRY_NOT_FOUND,
+                project_id=project_id,
+                entry_id=entry_id,
+                operation="history",
+                error_type=BrainEntryNotFoundError.__name__,
+            )
             raise BrainEntryNotFoundError(msg)
         return rows
 
@@ -586,6 +626,13 @@ class ProjectBrainService:
         current = await self._repo.get_current(project_id, entry_id)
         if current is None:
             msg = f"brain entry {entry_id!r} not found"
+            logger.warning(
+                BRAIN_ENTRY_NOT_FOUND,
+                project_id=project_id,
+                entry_id=entry_id,
+                operation="require_current",
+                error_type=BrainEntryNotFoundError.__name__,
+            )
             raise BrainEntryNotFoundError(msg)
         return current
 

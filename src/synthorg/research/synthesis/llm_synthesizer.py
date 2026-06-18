@@ -22,7 +22,10 @@ from synthorg.engine.prompt_safety import (
     wrap_untrusted,
 )
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.research import RESEARCH_LLM_OUTPUT_INVALID
+from synthorg.observability.events.research import (
+    RESEARCH_LLM_OUTPUT_INVALID,
+    RESEARCH_SYNTHESIS_FAILED,
+)
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.research._args import SynthesisOutput
 from synthorg.research._llm import complete_text, extract_json_object
@@ -94,6 +97,11 @@ class LlmSynthesizer:
         """
         if not sources:
             msg = "no sources retained after triage; cannot synthesise a report"
+            logger.warning(
+                RESEARCH_SYNTHESIS_FAILED,
+                reason="no_sources_after_triage",
+                error_type=ResearchSynthesisError.__name__,
+            )
             raise ResearchSynthesisError(msg)
         items_by_ref = {item.ref_id: item for item in sources}
         content, cost = await complete_text(
