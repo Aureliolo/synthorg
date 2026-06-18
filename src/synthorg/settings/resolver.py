@@ -20,7 +20,7 @@ single audit chokepoint for fragmented resolution paths.
 
 import asyncio
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from enum import StrEnum
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -364,22 +364,37 @@ class ConfigResolver:
             msg = f"Setting {namespace}/{key} has an invalid JSON value"
             raise ValueError(msg) from exc
 
-    async def _resolve_list_setting[ModelT: BaseModel](
+    async def _resolve_json_setting[ContainerT](  # noqa: PLR0913 -- generic seam
         self,
         namespace: str,
         key: str,
-        model_cls: type[ModelT],
-        fallback: tuple[ModelT, ...],
-    ) -> tuple[ModelT, ...]:
-        """Resolve a JSON list setting to a tuple of validated models.
+        *,
+        expected_type: type,
+        expected_reason: str,
+        build: Callable[[object], ContainerT],
+        fallback: ContainerT,
+    ) -> ContainerT:
+        """Resolve a JSON container setting to a validated container.
 
-        Falls back to *fallback* on ``None``, invalid JSON, wrong
-        shape, or schema validation failure.
+        Shared body for :meth:`_resolve_list_setting` and
+        :meth:`_resolve_dict_setting`: fetch the JSON value, fall back on
+        ``None`` / invalid JSON / wrong container shape, then hand the
+        raw container to *build* (which validates each element and may
+        raise ``ValidationError``).
+
+        Args:
+            namespace: Setting namespace.
+            key: Setting key.
+            expected_type: Runtime container type the value must be
+                (``list`` or ``dict``).
+            expected_reason: ``SETTINGS_FETCH_FAILED`` reason logged on a
+                shape mismatch.
+            build: Validates the raw container into the typed result;
+                raises ``pydantic.ValidationError`` on a schema failure.
+            fallback: Value returned on any fetch/shape/schema failure.
 
         Returns:
-            A tuple of validated model instances parsed from the JSON
-            list, or *fallback* on any parse or schema-validation
-            failure.
+            The built container, or *fallback* on any failure.
         """
         from pydantic import ValidationError  # noqa: PLC0415
 
@@ -395,17 +410,17 @@ class ConfigResolver:
             return fallback
         if raw is None:
             return fallback
-        if not isinstance(raw, list):
+        if not isinstance(raw, expected_type):
             logger.warning(
                 SETTINGS_FETCH_FAILED,
                 namespace=namespace,
                 key=key,
-                reason="expected_list_fallback",
+                reason=expected_reason,
                 value_type=type(raw).__name__,
             )
             return fallback
         try:
-            return tuple(model_cls.model_validate(item) for item in raw)
+            return build(raw)
         except ValidationError:
             logger.warning(
                 SETTINGS_FETCH_FAILED,
@@ -414,6 +429,31 @@ class ConfigResolver:
                 reason="invalid_schema_fallback",
             )
             return fallback
+
+    async def _resolve_list_setting[ModelT: BaseModel](
+        self,
+        namespace: str,
+        key: str,
+        model_cls: type[ModelT],
+        fallback: tuple[ModelT, ...],
+    ) -> tuple[ModelT, ...]:
+        """Resolve a JSON list setting to a tuple of validated models.
+
+        Returns:
+            A tuple of validated model instances parsed from the JSON
+            list, or *fallback* on any parse or schema-validation
+            failure.
+        """
+        return await self._resolve_json_setting(
+            namespace,
+            key,
+            expected_type=list,
+            expected_reason="expected_list_fallback",
+            build=lambda raw: tuple(
+                model_cls.model_validate(item) for item in cast("list[object]", raw)
+            ),
+            fallback=fallback,
+        )
 
     async def _resolve_dict_setting[ModelT: BaseModel](
         self,
@@ -424,47 +464,22 @@ class ConfigResolver:
     ) -> dict[str, ModelT]:
         """Resolve a JSON dict setting to a dict of validated models.
 
-        Falls back to *fallback* on ``None``, invalid JSON, wrong
-        shape, or schema validation failure.
-
         Returns:
             A dict mapping names to validated model instances parsed
             from the JSON dict, or *fallback* on any parse or
             schema-validation failure.
         """
-        from pydantic import ValidationError  # noqa: PLC0415
-
-        try:
-            raw = await self.get_json(namespace, key)
-        except ValueError:
-            logger.warning(
-                SETTINGS_FETCH_FAILED,
-                namespace=namespace,
-                key=key,
-                reason="invalid_json_fallback",
-            )
-            return fallback
-        if raw is None:
-            return fallback
-        if not isinstance(raw, dict):
-            logger.warning(
-                SETTINGS_FETCH_FAILED,
-                namespace=namespace,
-                key=key,
-                reason="expected_dict_fallback",
-                value_type=type(raw).__name__,
-            )
-            return fallback
-        try:
-            return {name: model_cls.model_validate(conf) for name, conf in raw.items()}
-        except ValidationError:
-            logger.warning(
-                SETTINGS_FETCH_FAILED,
-                namespace=namespace,
-                key=key,
-                reason="invalid_schema_fallback",
-            )
-            return fallback
+        return await self._resolve_json_setting(
+            namespace,
+            key,
+            expected_type=dict,
+            expected_reason="expected_dict_fallback",
+            build=lambda raw: {
+                name: model_cls.model_validate(conf)
+                for name, conf in cast("dict[str, object]", raw).items()
+            },
+            fallback=fallback,
+        )
 
     async def get_agents(self) -> tuple[AgentConfig, ...]:
         """Resolve agent configurations from settings.

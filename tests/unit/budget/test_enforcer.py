@@ -145,6 +145,12 @@ def _patch_periods() -> Iterator[None]:
             "synthorg.budget.enforcer.billing_period_start",
             return_value=_BILLING_START,
         ),
+        # The utilization path resolves the period start through the
+        # shared ``_utilization`` helper, so patch its binding too.
+        patch(
+            "synthorg.budget._utilization.billing_period_start",
+            return_value=_BILLING_START,
+        ),
         patch(
             "synthorg.budget.enforcer.daily_period_start",
             return_value=_DAY_START,
