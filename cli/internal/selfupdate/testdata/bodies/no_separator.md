@@ -1,7 +1,7 @@
 <!-- HIGHLIGHTS_START -->
 ## Highlights
 
-> _AI-generated summary (model: `example-provider/example-medium-001` via GitHub Models). Commit-based changelog below._
+> _AI-generated summary (model: `example-provider/example-medium-001` via Mistral). Commit-based changelog below._
 
 ### What's new
 
