@@ -4,8 +4,6 @@ Determines the appropriate level of strategic analysis (minimal,
 moderate, generous) based on decision impact scoring.
 """
 
-from typing import Protocol, runtime_checkable
-
 from synthorg.engine.strategy.models import (
     CostTierPreset,
     ImpactScore,
@@ -15,49 +13,6 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.strategy import STRATEGY_TIER_RESOLVED
 
 logger = get_logger(__name__)
-
-
-# 2 impls (FixedTierResolver, ProgressiveTierResolver) + get_tier_resolver()
-# factory in this file.
-@runtime_checkable
-class CostTierResolver(Protocol):
-    """Protocol for resolving cost tiers."""
-
-    def resolve(
-        self,
-        *,
-        impact: ImpactScore | None,
-        config: StrategyConfig,
-    ) -> CostTierPreset:
-        """Resolve the cost tier for a strategic decision.
-
-        Args:
-            impact: Impact score (None for fixed resolution).
-            config: Strategy configuration.
-
-        Returns:
-            Resolved cost tier preset.
-        """
-        ...
-
-
-class FixedTierResolver:
-    """Always returns the configured default cost tier."""
-
-    def resolve(
-        self,
-        *,
-        impact: ImpactScore | None,  # noqa: ARG002
-        config: StrategyConfig,
-    ) -> CostTierPreset:
-        """Return the default tier from config."""
-        tier = config.cost_tier
-        logger.debug(
-            STRATEGY_TIER_RESOLVED,
-            resolver="fixed",
-            tier=tier,
-        )
-        return tier
 
 
 class ProgressiveTierResolver:
@@ -109,20 +64,3 @@ class ProgressiveTierResolver:
             tier=tier,
         )
         return tier
-
-
-def get_tier_resolver(config: StrategyConfig) -> CostTierResolver:  # noqa: ARG001
-    """Factory for cost tier resolvers.
-
-    Currently always returns :class:`ProgressiveTierResolver`, which
-    falls back to the config's default tier when no impact score is
-    available (covering the ``FixedTierResolver`` use case).
-
-    Args:
-        config: Strategy configuration (reserved for future
-            resolver selection logic).
-
-    Returns:
-        A :class:`ProgressiveTierResolver` instance.
-    """
-    return ProgressiveTierResolver()

@@ -68,7 +68,7 @@ class _LensStrategyConfig(Protocol):
     """
 
     @property
-    def default_lenses(self) -> object:
+    def default_lenses(self) -> tuple[str, ...]:
         """The configured default lens collection."""
         ...
 
@@ -83,7 +83,7 @@ class _LensAssigner(Protocol):
     def assign(
         self,
         participant_ids: tuple[str, ...],
-        lenses: object,
+        available_lenses: tuple[str, ...],
     ) -> dict[str, str]:
         """Assign a lens to each participant."""
         ...

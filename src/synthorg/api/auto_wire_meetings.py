@@ -18,6 +18,8 @@ from synthorg.communication.meeting.participant import ParticipantResolver
 from synthorg.communication.meeting.protocol import AgentCaller, MeetingProtocol
 from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.config.schema import RootConfig
+from synthorg.engine.strategy.lens_assignment import DiversityMaximizingAssigner
+from synthorg.engine.strategy.models import StrategyConfig
 from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger, log_exception_redacted
@@ -99,6 +101,7 @@ def auto_wire_meetings(  # noqa: PLR0913 -- meeting wiring needs the full dep se
         meeting_orchestrator = _wire_meeting_orchestrator(
             agent_registry=agent_registry,
             provider_registry=provider_registry,
+            strategy_config=effective_config.strategy,
         )
         if meeting_scheduler is not None:
             logger.warning(
@@ -245,6 +248,7 @@ def _wire_meeting_orchestrator(
     *,
     agent_registry: AgentRegistryService | None,
     provider_registry: ProviderRegistry | None,
+    strategy_config: StrategyConfig,
 ) -> MeetingOrchestrator:
     """Create a MeetingOrchestrator wired to real LLM dispatch.
 
@@ -254,9 +258,15 @@ def _wire_meeting_orchestrator(
     but any attempt to invoke an agent raises
     :class:`MeetingAgentCallerNotConfiguredError` at call time.
 
+    The diversity-maximising lens assigner is wired with the strategy
+    config's default lenses so each meeting distributes distinct strategic
+    viewpoints across participants.
+
     Args:
         agent_registry: Source of truth for agent identity lookup, or ``None``.
         provider_registry: Source of truth for LLM providers, or ``None``.
+        strategy_config: Strategy configuration supplying the default lenses
+            for participant lens assignment.
 
     Returns:
         A configured ``MeetingOrchestrator``.
@@ -291,6 +301,8 @@ def _wire_meeting_orchestrator(
         orchestrator = MeetingOrchestrator(
             protocol_registry=protocol_registry,
             agent_caller=agent_caller,
+            strategy_config=strategy_config,
+            lens_assigner=DiversityMaximizingAssigner(),
         )
     except Exception as exc:
         log_exception_redacted(

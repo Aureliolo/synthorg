@@ -4,18 +4,7 @@ import pytest
 
 from synthorg.engine.strategy.lens_assignment import (
     DiversityMaximizingAssigner,
-    LensAssigner,
 )
-
-
-class TestLensAssigner:
-    """Tests for the LensAssigner protocol."""
-
-    @pytest.mark.unit
-    def test_is_runtime_checkable(self) -> None:
-        """Verify LensAssigner is a runtime_checkable protocol."""
-        assigner = DiversityMaximizingAssigner()
-        assert isinstance(assigner, LensAssigner)
 
 
 class TestDiversityMaximizingAssigner:

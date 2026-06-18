@@ -8,33 +8,8 @@ from synthorg.engine.strategy.models import (
     StrategyConfig,
 )
 from synthorg.engine.strategy.tiers import (
-    FixedTierResolver,
     ProgressiveTierResolver,
-    get_tier_resolver,
 )
-
-
-class TestFixedTierResolver:
-    """Tests for FixedTierResolver."""
-
-    @pytest.mark.unit
-    def test_returns_config_tier(self) -> None:
-        config = StrategyConfig(cost_tier=CostTierPreset.GENEROUS)
-        resolver = FixedTierResolver()
-        result = resolver.resolve(impact=None, config=config)
-        assert result == CostTierPreset.GENEROUS
-
-    @pytest.mark.unit
-    def test_ignores_impact_score(self) -> None:
-        config = StrategyConfig(cost_tier=CostTierPreset.MINIMAL)
-        impact = ImpactScore(
-            dimensions={"budget_impact": 0.9},
-            composite=0.95,
-            tier=CostTierPreset.GENEROUS,
-        )
-        resolver = FixedTierResolver()
-        result = resolver.resolve(impact=impact, config=config)
-        assert result == CostTierPreset.MINIMAL
 
 
 class TestProgressiveTierResolver:
@@ -74,13 +49,3 @@ class TestProgressiveTierResolver:
         resolver = ProgressiveTierResolver()
         result = resolver.resolve(impact=impact, config=config)
         assert result == expected
-
-
-class TestGetTierResolver:
-    """Tests for get_tier_resolver factory."""
-
-    @pytest.mark.unit
-    def test_returns_progressive(self) -> None:
-        config = StrategyConfig()
-        resolver = get_tier_resolver(config)
-        assert isinstance(resolver, ProgressiveTierResolver)

@@ -13,6 +13,7 @@ from synthorg.communication.meeting.participant import (
 )
 from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.config.schema import RootConfig
+from synthorg.engine.strategy.models import StrategyConfig
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.providers.registry import ProviderRegistry
 from tests._shared import mock_of
@@ -61,10 +62,34 @@ class TestWireMeetingOrchestrator:
         orchestrator = _wire_meeting_orchestrator(
             agent_registry=agent_registry,
             provider_registry=provider_registry,
+            strategy_config=StrategyConfig(),
         )
 
         assert isinstance(orchestrator, MeetingOrchestrator)
         assert orchestrator.get_records() == ()
+
+    def test_wires_lens_assigner_for_diverse_lenses(self) -> None:
+        from synthorg.api.auto_wire_meetings import _wire_meeting_orchestrator
+
+        agent_registry, provider_registry = _fake_registries()
+        orchestrator = _wire_meeting_orchestrator(
+            agent_registry=agent_registry,
+            provider_registry=provider_registry,
+            strategy_config=StrategyConfig(
+                default_lenses=("contrarian", "risk_focused"),
+            ),
+        )
+
+        assignments = orchestrator._compute_lens_assignments(
+            ("agent_1", "agent_2", "agent_3"),
+        )
+
+        assert assignments is not None
+        assert assignments == {
+            "agent_1": "contrarian",
+            "agent_2": "risk_focused",
+            "agent_3": "contrarian",
+        }
 
 
 @pytest.mark.unit
@@ -82,6 +107,7 @@ class TestWireMeetingScheduler:
         orchestrator = _wire_meeting_orchestrator(
             agent_registry=agent_registry,
             provider_registry=provider_registry,
+            strategy_config=StrategyConfig(),
         )
         registry = MagicMock()
 
@@ -101,6 +127,7 @@ class TestWireMeetingScheduler:
         orchestrator = _wire_meeting_orchestrator(
             agent_registry=agent_registry,
             provider_registry=provider_registry,
+            strategy_config=StrategyConfig(),
         )
 
         scheduler = _wire_meeting_scheduler(config, orchestrator, None)
@@ -408,6 +435,7 @@ class TestWireMeetingOrchestratorError:
             _wire_meeting_orchestrator(
                 agent_registry=agent_registry,
                 provider_registry=provider_registry,
+                strategy_config=StrategyConfig(),
             )
 
     def test_scheduler_creation_failure_propagates(self) -> None:
@@ -421,6 +449,7 @@ class TestWireMeetingOrchestratorError:
         orchestrator = _wire_meeting_orchestrator(
             agent_registry=agent_registry,
             provider_registry=provider_registry,
+            strategy_config=StrategyConfig(),
         )
 
         with (
