@@ -44,7 +44,7 @@ from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.engine.stakes import build_stakes_assessor
 from synthorg.engine.stakes.protocol import StakesAssessor
 from synthorg.engine.task_engine import TaskEngine
-from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.registry_protocol import AgentRegistryProtocol
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.chief_of_staff import (
     COS_NARRATIVE_GENERATION_FAILED,
@@ -125,7 +125,7 @@ class DefaultWorkPipeline:
         scorer: AgentTaskScorer,
         worker_execution_service: WorkerExecutionService,
         coordinator: MultiAgentCoordinator | None,
-        agent_registry: AgentRegistryService,
+        agent_registry: AgentRegistryProtocol,
         clock: Clock | None = None,
         stakes_assessor: StakesAssessor | None = None,
     ) -> None:

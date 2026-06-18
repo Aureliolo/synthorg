@@ -38,7 +38,7 @@ from synthorg.observability.events.meta import (
     META_CUSTOM_RULE_LIST_FAILED,
 )
 from synthorg.persistence.state import persistence_of
-from synthorg.settings.service import SettingsService
+from synthorg.settings.service_protocol import SettingsServiceProtocol
 from synthorg.settings.state import SettingsStateSlice
 
 
@@ -67,7 +67,7 @@ logger = get_logger(__name__)
 _DEFAULT_PAGE_SIZE: Final[int] = 50
 
 
-def _settings_service_from_state(state: State) -> SettingsService | None:
+def _settings_service_from_state(state: State) -> SettingsServiceProtocol | None:
     """Return the settings service from the app state, or ``None``.
 
     Centralises the ``has_settings_service`` guard used by every

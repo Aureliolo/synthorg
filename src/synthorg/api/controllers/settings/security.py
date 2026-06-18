@@ -27,7 +27,7 @@ from synthorg.observability.events.security import SECURITY_SETTINGS_IMPORTED
 from synthorg.observability.events.settings import SETTINGS_NOT_FOUND
 from synthorg.security.config import SecurityConfig
 from synthorg.settings.enums import SettingNamespace, SettingsImportSource
-from synthorg.settings.service import SettingsService
+from synthorg.settings.service_protocol import SettingsServiceProtocol
 from synthorg.settings.state import SettingsStateSlice
 
 logger = get_logger(__name__)
@@ -60,7 +60,7 @@ class SecurityConfigImportRequest(BaseModel):
 
 
 async def _persist_security_settings(
-    svc: SettingsService,
+    svc: SettingsServiceProtocol,
     config: SecurityConfig,
     *,
     import_source: SettingsImportSource,

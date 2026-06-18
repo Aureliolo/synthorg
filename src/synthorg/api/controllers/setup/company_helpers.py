@@ -30,7 +30,7 @@ from synthorg.observability.events.setup import (
 )
 from synthorg.settings.enums import SettingSource
 from synthorg.settings.errors import SettingNotFoundError
-from synthorg.settings.service import SettingsService
+from synthorg.settings.service_protocol import SettingsServiceProtocol
 from synthorg.templates.loader import LoadedTemplate
 from synthorg.templates.schema import CompanyTemplate
 
@@ -48,7 +48,7 @@ LOCALE_RAW_PREVIEW_LIMIT: Final[int] = 200
 
 
 async def check_has_company(
-    settings_svc: SettingsService,
+    settings_svc: SettingsServiceProtocol,
     *,
     strict: bool = False,
 ) -> bool:
@@ -138,7 +138,7 @@ def validate_locale_selection(
 
 
 async def check_has_name_locales(
-    settings_svc: SettingsService,
+    settings_svc: SettingsServiceProtocol,
 ) -> bool:
     """Check whether name locales have been configured.
 
@@ -174,7 +174,7 @@ async def check_has_name_locales(
 
 
 async def resolve_min_password_length(
-    settings_svc: SettingsService,
+    settings_svc: SettingsServiceProtocol,
 ) -> int:
     """Resolve the minimum password length from settings.
 
@@ -255,7 +255,7 @@ def parse_locale_json(raw: str) -> list[str] | None:
 
 
 async def read_name_locales(
-    settings_svc: SettingsService,
+    settings_svc: SettingsServiceProtocol,
     *,
     resolve: bool = True,
 ) -> list[str] | None:
@@ -302,7 +302,7 @@ async def read_name_locales(
 
 
 async def is_setup_complete(
-    settings_svc: SettingsService,
+    settings_svc: SettingsServiceProtocol,
 ) -> bool:
     """Check whether setup has been completed.
 
@@ -336,7 +336,7 @@ async def is_setup_complete(
 
 
 async def check_setup_not_complete(
-    settings_svc: SettingsService,
+    settings_svc: SettingsServiceProtocol,
 ) -> None:
     """Raise ConflictError if setup has already been completed.
 
@@ -381,7 +381,7 @@ def resolve_template(template_name: str | None) -> TemplateResult:
 
 
 async def persist_company_settings(
-    settings_svc: SettingsService,
+    settings_svc: SettingsServiceProtocol,
     company_name: str,
     description: str | None,
     departments_json: str,
