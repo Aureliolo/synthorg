@@ -57,11 +57,12 @@ class EntrySelector(Protocol):
 
 @runtime_checkable
 class ConsolidationOp(Protocol):
+    async def prepare(self, agent_id: NotBlankStr) -> ConsolidationContext: ...
+
     async def consolidate(
         self,
-        to_remove: tuple[MemoryEntry, ...],
+        group: SelectionGroup,
         *,
-        category: MemoryCategory,
         context: ConsolidationContext,
     ) -> OpResult: ...
 ```

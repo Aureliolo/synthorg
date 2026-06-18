@@ -103,12 +103,12 @@ The append-only log enables point-in-time queries:
 snapshot = await store.snapshot_at(timestamp=datetime(2026, 3, 1, tzinfo=UTC))
 
 # Full audit trail for a specific fact
-log = await store.get_operation_log(fact_id="policy-jwt-auth")
+log = await store.get_operation_log("policy-jwt-auth")
 ```
 
-These methods are defined on the `OrgFactStore` protocol (the organisational fact persistence
-layer). The MVCC implementation lives in `SQLiteOrgFactStore`. Both read and write operations
-go through the `OrgFactStore` interface.
+These methods are defined on the `OrgFactRepository` protocol (the organisational fact persistence
+layer). The MVCC implementation lives in `SQLiteOrgFactRepository`. Both read and write operations
+go through the `OrgFactRepository` interface.
 
 ---
 

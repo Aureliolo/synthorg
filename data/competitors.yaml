@@ -21,6 +21,11 @@
 #   "true"    - can run entirely on your own infrastructure
 #   "false"   - cloud/SaaS only, no self-hosting option
 #   "partial" - self-hosting available but with reduced features vs cloud
+#
+# Optional per-entry field:
+#   source_verified_at: "YYYY-MM-DD" - the date a maintainer last checked
+#     this entry's claims against the project's own docs/repo. Omit when
+#     unverified. Advisory provenance only; not rendered into the table.
 
 meta:
   # last_updated is auto-derived from this file's most recent git commit
@@ -99,6 +104,7 @@ competitors:
     slug: synthorg
     url: "https://synthorg.io"
     repo: "https://github.com/Aureliolo/synthorg"
+    source_verified_at: "2026-06-18"
     description: "An autonomous product studio you operate: a self-hostable platform for synthetic organisations of role-based AI agents. Platform, infrastructure, and subsystem libraries are built and tested; the agent runtime that executes the organisation is in active development."
     license: "BUSL-1.1"
     language: "Python"
@@ -108,7 +114,7 @@ competitors:
     is_synthorg: true
     features:
       org_structure: {support: planned, note: "Departments, hierarchy, seniority levels, reporting lines, HR are modelled and unit-tested as components; exercised once the agent runtime lands (in active development)"}
-      multi_agent: {support: planned, note: "Assignment strategies, coordination dispatchers, and conflict resolution are written and tested; multi-agent coordination is not wired into a running product yet (the /coordinate path is not active)"}
+      multi_agent: {support: partial, note: "The /coordinate path runs decompose, route, parallel execution, then rollup end to end behind the provider-present switch, exercised by a deterministic e2e harness with a scripted provider; assignment strategies, coordination dispatchers, and conflict resolution ship; real-provider acceptance is in active development"}
       task_delegation: {support: planned, note: "DAG decomposition, assignment strategies, and delegation chains are implemented and tested; they run via the agent runtime, which is in active development"}
       memory: {support: planned, note: "Pluggable backends and memory types with hybrid retrieval exist as tested code; the memory pipeline runs only inside a live agent, which is in active development"}
       tool_use: {support: planned, note: "MCP protocol, sandbox isolation, and invocation tracking are implemented; tool execution runs via the agent runtime (in active development)"}
@@ -1227,11 +1233,12 @@ competitors:
       workflow_types: { support: partial, note: "Sequential, parallel, routing, orchestrator-worker documented; no Kanban" }
       template_system: { support: none, note: "" }
 
-  - name: "Llama Stack"
-    slug: llama-stack
-    url: "https://llamastack.github.io/"
-    repo: "https://github.com/meta-llama/llama-stack"
-    description: "Meta's composable building blocks for LLM apps with unified APIs for inference, agents, safety, and tools"
+  - name: "OGX"
+    slug: ogx
+    url: "https://ogx-ai.github.io/"
+    repo: "https://github.com/ogx-ai/ogx"
+    source_verified_at: "2026-06-18"
+    description: "Open GenAI Stack (formerly Meta's Llama Stack): a model-agnostic server with unified APIs for inference, agents, safety, and tools"
     license: "MIT"
     language: "Python"
     category: developer_tool

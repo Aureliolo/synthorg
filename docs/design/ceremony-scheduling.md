@@ -71,14 +71,13 @@ level.
 
 ## Architecture Overview
 
-```text
-TaskEngine  --[TaskStateChanged]--> CeremonyScheduler
-                                         |
-Sprint lifecycle <--[auto-transition]----+
-                                         |
-SprintCeremonyConfig --[bridge]--> MeetingTypeConfig
-                                         |
-                          MeetingScheduler.trigger_event()
+```mermaid
+flowchart TD
+    TE["TaskEngine"] -->|TaskStateChanged| CS["CeremonyScheduler"]
+    CS -->|auto-transition| SL["Sprint lifecycle"]
+    SCC["SprintCeremonyConfig"] -->|bridge| MTC["MeetingTypeConfig"]
+    CS --> MS["MeetingScheduler.trigger_event()"]
+    MTC --> MS
 ```
 
 The **CeremonyScheduler** is a coordination layer in `engine/workflow/` that:
@@ -716,7 +715,7 @@ Event constants in `synthorg.observability.events.workflow`:
 - `BudgetVelocityCalculator`: `pts/<DEFAULT_CURRENCY>` with budget-weighted rolling averages
 - Observability event constants (`SPRINT_CEREMONY_EVENT_DEBOUNCE_NOT_MET`, `SPRINT_CEREMONY_EVENT_COUNTER_INCREMENTED`, `SPRINT_CEREMONY_BUDGET_THRESHOLD_CROSSED`, `SPRINT_CEREMONY_BUDGET_THRESHOLD_ALREADY_FIRED`, `SPRINT_AUTO_TRANSITION_BUDGET`, `VELOCITY_BUDGET_NO_BUDGET_CONSUMED`)
 
-> **Note:** The `CeremonyScheduler` does not yet wire all lifecycle hooks (`on_task_added`, `on_task_blocked`, `on_budget_updated`, `on_external_event`). Until scheduler integration is complete, these strategies' event counters will not increment for those event types. Scheduler integration is tracked in follow-up work.
+> **Note:** The `CeremonyScheduler` does not yet wire all lifecycle hooks (`on_task_added`, `on_task_blocked`, `on_budget_updated`, `on_external_event`). Until scheduler integration of those hooks is complete, these strategies' event counters will not increment for those event types.
 
 ### Implemented in #973 + #974 (Throughput-Adaptive + External-Trigger Strategies, integration pending)
 
@@ -724,7 +723,7 @@ Event constants in `synthorg.observability.events.workflow`:
 - `ExternalTriggerStrategy`: ceremony firing on named external signals (webhooks, git events, MCP invocations). Event matching via `context.external_events` and `on_external_event` lifecycle hook buffer. Source registration is declarative. Default velocity calculator: `PointsPerSprintVelocityCalculator`.
 - Observability event constants (`SPRINT_CEREMONY_THROUGHPUT_BASELINE_SET`, `SPRINT_CEREMONY_THROUGHPUT_DROP_DETECTED`, `SPRINT_CEREMONY_THROUGHPUT_SPIKE_DETECTED`, `SPRINT_CEREMONY_THROUGHPUT_COLD_START`, `SPRINT_CEREMONY_EXTERNAL_EVENT_RECEIVED`, `SPRINT_CEREMONY_EXTERNAL_EVENT_MATCHED`, `SPRINT_CEREMONY_EXTERNAL_SOURCE_REGISTERED`, `SPRINT_CEREMONY_EXTERNAL_SOURCE_CLEARED`)
 
-> **Note:** Like #971 + #972, the `CeremonyScheduler` does not yet wire all lifecycle hooks for these strategies. Scheduler integration is tracked in follow-up work.
+> **Note:** The `CeremonyScheduler` does not yet wire all lifecycle hooks for these strategies, so their event-driven counters stay dormant until that integration lands.
 
 ### Shipped in #975 + #976 + #980 (Milestone-Driven + Template Defaults + Department Overrides)
 
@@ -733,7 +732,7 @@ Event constants in `synthorg.observability.events.workflow`:
 - Per-department `ceremony_policy` override in `TemplateDepartmentConfig` and `Department` models. Department-level overrides merge field-by-field with project default via `resolve_ceremony_policy()`.
 - Observability event constants (`SPRINT_CEREMONY_MILESTONE_ASSIGNED`, `SPRINT_CEREMONY_MILESTONE_UNASSIGNED`, `SPRINT_CEREMONY_MILESTONE_COMPLETED`, `SPRINT_CEREMONY_MILESTONE_NOT_READY`, `SPRINT_AUTO_TRANSITION_MILESTONE`)
 
-> **Note:** Like #973 + #974, the `CeremonyScheduler` does not yet wire all lifecycle hooks for the milestone-driven strategy. Scheduler integration is tracked in follow-up work.
+> **Note:** The `CeremonyScheduler` does not yet wire all lifecycle hooks for the milestone-driven strategy, so its event-driven counters stay dormant until that integration lands.
 
 ### Shipped in #978 (Strategy Migration UX)
 

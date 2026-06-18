@@ -657,7 +657,7 @@ external audiences; use SynthOrg terms in implementation discussions.
 | Parallel Composition | `ParallelExecutor`, `CoordinationWave`, `asyncio.TaskGroup` | Strong | Fan-out/fan-in with DAG wave execution |
 | Resource Constraints | `BudgetEnforcer`, quota degradation, `ContextBudget` | Strong | Richer than ACG: 3-layer enforcement + in-flight |
 | Graph Mutation | Hybrid replanning, stagnation correction injection | Partial | Runtime; not exposed as first-class graph mutation |
-| Termination Conditions | `TerminationReason` enum (7 reasons) | Strong | Explicit enumeration covers all exit paths |
+| Termination Conditions | `TerminationReason` enum (8 reasons) | Strong | Explicit enumeration covers all exit paths |
 | Node Cost | `TurnRecord.cost`, `TokenUsage` | Strong | Per-turn cost attribution |
 
 **SynthOrg concepts not captured by ACG**: agent personality, episodic and procedural
@@ -690,41 +690,10 @@ reasoning artifacts.
 - Summarization quality is significantly below LLM-based approaches (LangChain uses
   LLM-based summarization; SynthOrg uses concatenation).
 
-### Planned Improvements
-
-**Phase 1 (MVP)**: Agent-controlled compaction tool + epistemic marker preservation.
-
-- Add `compress_context` tool following the `registry_with_memory_tools()` pattern.
-  Parameters: `{ strategy: "summarize"|"archive", preserve_markers: bool, reason: str }`.
-- **Architecture**: Tools cannot mutate `AgentContext` (frozen Pydantic). The tool returns
-  a `metadata["compaction_directive"]` flag; the loop detects it after the tool batch
-  and calls `invoke_compaction()`, preserving the immutable context pattern.
-- Dual-threshold safety net: 80% soft (agent-guided, system prompt indicator already
-  exists) / 95% hard (system auto-compact fallback). New `CompactionConfig` fields:
-  `agent_controlled: bool`, `safety_threshold_percent: float = 95.0`.
-- Epistemic marker detection in `_build_summary()`: regex patterns for hesitation,
-  self-correction, and uncertainty markers; messages above a density threshold are
-  promoted from "archivable" to "preserved".
-
-**Phase 2**: LLM-based summarization + memory offloading.
-
-- Replace concatenation with a lightweight LLM summarization call
-  (counted as `LLMCallCategory.SYSTEM`).
-- Offload archived turns to `MemoryBackend` (episodic storage) instead of discarding.
-- Task-complexity-adaptive compaction policy using `task.estimated_complexity`:
-  SIMPLE = aggressive; COMPLEX/EPIC = conservative with high marker preservation.
-
-**Phase 3**: Evaluate surprisal-based token cost (arXiv:2603.08462): per-token cost
-weighted by surprisal under a frozen base model. Empirical results: 41% token reduction,
-<1.5% accuracy drop. **Not recommended for Phase 1/2**: inference cost (forward pass
-per token) is not justified until Phase 2 data validates the need.
-
-If semantic token cost is needed before Phase 3, the recommended lighter proxy is
-**TF-IDF importance weighting**: build a TF-IDF corpus from the current context turns,
-score each token, and treat low-scoring tokens (below a tunable percentile threshold)
-as compressible filler. The resulting importance map can drive selective truncation in
-`_build_summary()` without any additional model inference; a significantly cheaper
-approximation of the surprisal signal.
+Future direction for this subsystem (agent-guided compaction tool, LLM summarisation,
+memory offload, and semantic token-cost weighting) is tracked on the
+[Roadmap](../roadmap/future-vision.md) with the design exploration in
+[Agent-Controlled Compaction](../research/agent-controlled-compaction.md).
 
 ---
 

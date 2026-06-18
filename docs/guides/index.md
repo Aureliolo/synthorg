@@ -135,4 +135,124 @@ Practical guides for configuring, operating, and extending your synthetic organi
 
     [:octicons-arrow-right-24: Contributing](contributing.md)
 
+-   :material-server-plus:{ .lg .middle } **Adding a Provider**
+
+    ---
+
+    Configure LLM providers, models, and connection secrets.
+
+    [:octicons-arrow-right-24: Adding a Provider](adding-a-provider.md)
+
+-   :material-check-decagram:{ .lg .middle } **Approval Workflow**
+
+    ---
+
+    Approve or reject parked agent actions through the API and dashboard.
+
+    [:octicons-arrow-right-24: Approval Workflow](approval-workflow.md)
+
+-   :material-lan-connect:{ .lg .middle } **A2A Federation**
+
+    ---
+
+    Federate agents across organisations with the agent-to-agent protocol.
+
+    [:octicons-arrow-right-24: A2A Federation](a2a-federation.md)
+
+-   :material-calendar-clock:{ .lg .middle } **Ceremony Scheduling Tuning**
+
+    ---
+
+    Tune sprint ceremonies, cadences, and scheduling strategies.
+
+    [:octicons-arrow-right-24: Ceremony Scheduling](ceremony-scheduling-tuning.md)
+
+-   :material-chart-pie:{ .lg .middle } **Cost Attribution**
+
+    ---
+
+    Attribute spend to agents, projects, and tasks for chargeback.
+
+    [:octicons-arrow-right-24: Cost Attribution](cost-attribution.md)
+
+-   :material-server-network:{ .lg .middle } **Custom MCP Server Development**
+
+    ---
+
+    Build your own MCP server to expose bespoke tools to agents.
+
+    [:octicons-arrow-right-24: Custom MCP Server](custom-mcp-server-dev.md)
+
+-   :material-cog-sync:{ .lg .middle } **Custom Rules & Meta-Loop**
+
+    ---
+
+    Author declarative signal rules that drive the self-improvement loop.
+
+    [:octicons-arrow-right-24: Custom Rules](custom-rules-and-meta-loop.md)
+
+-   :material-sort-variant:{ .lg .middle } **Dynamic Scoring**
+
+    ---
+
+    Configure candidate ranking and model-selection scoring strategies.
+
+    [:octicons-arrow-right-24: Dynamic Scoring](dynamic-scoring.md)
+
+-   :material-source-fork:{ .lg .middle } **Fork Setup**
+
+    ---
+
+    Stand up your own fork with CI environments and required secrets.
+
+    [:octicons-arrow-right-24: Fork Setup](fork-setup.md)
+
+-   :material-monitor-dashboard:{ .lg .middle } **Monitoring & Dashboards**
+
+    ---
+
+    Observe health, metrics, and live agent activity.
+
+    [:octicons-arrow-right-24: Monitoring](monitoring.md)
+
+-   :material-graph:{ .lg .middle } **Ontology Extension**
+
+    ---
+
+    Define entity types and extend the semantic ontology.
+
+    [:octicons-arrow-right-24: Ontology Extension](ontology-extension.md)
+
+-   :material-database-sync:{ .lg .middle } **Persistence Migrations**
+
+    ---
+
+    Manage schema revisions across the SQLite and Postgres backends.
+
+    [:octicons-arrow-right-24: Persistence Migrations](persistence-migrations.md)
+
+-   :material-api:{ .lg .middle } **REST API Examples**
+
+    ---
+
+    Copy-paste curl recipes for common REST API operations.
+
+    [:octicons-arrow-right-24: REST API Examples](rest-api-examples.md)
+
+-   :material-webhook:{ .lg .middle } **Webhook Management**
+
+    ---
+
+    Register, verify, and observe inbound and outbound webhooks.
+
+    [:octicons-arrow-right-24: Webhook Management](webhook-management.md)
+
+-   :material-cog-play:{ .lg .middle } **Workers & Background Tasks**
+
+    ---
+
+    Run the worker pool and the background task queue.
+
+    [:octicons-arrow-right-24: Workers & Background Tasks](workers-and-background-tasks.md)
+
 </div>

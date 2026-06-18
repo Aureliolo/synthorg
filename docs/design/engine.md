@@ -43,6 +43,8 @@ stateDiagram-v2
 
     IN_REVIEW --> COMPLETED : approved
     IN_REVIEW --> IN_PROGRESS : rework
+    IN_REVIEW --> BLOCKED : blocked
+    IN_REVIEW --> CANCELLED : cancelled
 
     AUTH_REQUIRED --> ASSIGNED : approved
     AUTH_REQUIRED --> CANCELLED : denied/timeout
@@ -244,6 +246,7 @@ A **WorkflowDefinition** is a design-time blueprint: a visual directed graph tha
 | `parallel_split` | Fan-out to 2+ parallel branches |
 | `parallel_join` | Fan-in with configurable join strategy (all/any) |
 | `subworkflow` | Invokes a versioned reusable workflow component from the subworkflow registry with typed input/output contracts (see [Subworkflows](#subworkflows) below). |
+| `verification` | Quality-gate step routing to pass / fail / refer outgoing edges based on a grader verdict |
 
 ### Edge Types (`WorkflowEdgeType`)
 
@@ -252,6 +255,7 @@ A **WorkflowDefinition** is a design-time blueprint: a visual directed graph tha
 | `sequential` | Default linear flow |
 | `conditional_true` / `conditional_false` | Boolean branch from conditional nodes |
 | `parallel_branch` | From parallel split to branch targets |
+| `verification_pass` / `verification_fail` / `verification_refer` | Three-way branch from a verification node on the grader verdict |
 
 ### Validation
 

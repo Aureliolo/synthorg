@@ -88,7 +88,7 @@ config.
 
 | Enum | Values | Purpose |
 |------|--------|---------|
-| `MemoryCategory` | WORKING, EPISODIC, SEMANTIC, PROCEDURAL, SOCIAL, PROJECT_DOC | Memory type categories |
+| `MemoryCategory` | WORKING, EPISODIC, SEMANTIC, PROCEDURAL, SOCIAL, PROJECT_DOC, KNOWLEDGE, PROJECT_BRAIN | Memory type categories |
 | `MemoryLevel` | PERSISTENT, PROJECT, SESSION, NONE | Persistence level per agent |
 | `ConsolidationInterval` | HOURLY, DAILY, WEEKLY, NEVER | How often old memories are compressed |
 
@@ -172,7 +172,7 @@ class SharedKnowledgeStore(Protocol):
 ```
 
 See [Multi-Agent Memory Consistency](memory-consistency.md) for the consistency model used
-when multiple agents share a `SharedKnowledgeStore`, including MVCC snapshot reads,
+when multiple agents share the `OrgFactRepository`, including MVCC snapshot reads,
 append-only write semantics, and conflict handling.
 
 ### Error Hierarchy
@@ -333,15 +333,17 @@ When `enabled=True`, both `checkpoint_path` and `base_model` are required
 (enforced by model validation).  Path traversal (`..`) and Windows-style
 paths are rejected to prevent container path escapes.
 
-The `FineTuningPipeline` protocol formalises the five stages:
+`run_fine_tune_stages` (`memory/embedding/fine_tune_pipeline.py`) drives the
+`FineTuneStage` lifecycle over the stage functions in `fine_tune.py`, skipping
+already-completed stages on resume:
 
-```python
-class FineTuningPipeline(Protocol):
-    async def generate_training_data(self, source_dir: str) -> Path: ...
-    async def mine_hard_negatives(self, training_data: Path) -> Path: ...
-    async def fine_tune(self, training_data: Path, base_model: str) -> Path: ...
-    async def evaluate(self, checkpoint: Path, base_model: str, validation_data: Path) -> EvalMetrics: ...
+```text
+generating_data -> mining_negatives -> training -> evaluating -> deploying -> complete
 ```
+
+Each stage is a module-level coroutine (`generate_training_data`,
+`mine_hard_negatives`, the trainer, and the evaluator); `FineTuneOrchestrator`
+coordinates a run end to end with cancellation and checkpoint persistence.
 
 See [Embedding Evaluation](../reference/embedding-evaluation.md) for the full pipeline
 design and expected improvement metrics.
@@ -429,7 +431,7 @@ trajectory context for downstream consolidation. The helper is non-critical:
 non-system failures log at WARNING and return `None`; system errors
 (`builtins.MemoryError`, `RecursionError`) propagate.
 
-Downstream, `LLMConsolidationStrategy` picks these entries up by tag query
+Downstream, `LLMSynthesisOp` picks these entries up by tag query
 when synthesising category groups, embedding the trajectory summaries and
 outcomes in the synthesis system prompt so the LLM has context about what the
 agent was trying to accomplish when the memories it is merging were created.

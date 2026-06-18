@@ -27,22 +27,25 @@ Details: [docs/reference/typed-boundaries.md](../reference/typed-boundaries.md) 
 
 Connection records are stored per integration via `WebhookConnectionRepository`. Each connection carries `signing_secret`, `nonce_header`, `signature_header`, and a per-integration retry policy.
 
-## Worked example: register and POST
+## Worked example: configure and POST
 
-Register a receiver for a `github` connection:
+Inbound webhooks are verified against a `signing_secret` credential stored on an
+integration connection (there is no standalone webhook-registration call). Create the
+connection through `POST /api/v1/connections` with the secret as a credential; the
+inbound endpoint then resolves to `/webhooks/{connection_type}/{connection_name}`:
 
-```python
-from synthorg.integrations.webhooks.activity_service import WebhookActivityService
-
-service = WebhookActivityService(...)
-await service.register(
-    connection_type="github",
-    connection_name="primary",
-    signing_secret="whsec_PROVIDED_BY_GITHUB",
-    nonce_header="X-GitHub-Delivery",
-    signature_header="X-Hub-Signature-256",
-)
+```bash
+curl -s -b cookies.txt -X POST http://localhost:8000/api/v1/connections \
+  -H "Content-Type: application/json" \
+  --data '{
+    "name": "primary",
+    "connection_type": "github",
+    "credentials": {"signing_secret": "whsec_PROVIDED_BY_GITHUB"}
+  }'
 ```
+
+`WebhookActivityService.list_activity(...)` then surfaces the receipt log for that
+connection.
 
 POST a sample payload from the command line:
 

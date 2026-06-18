@@ -21,7 +21,7 @@ critical risk. The framework enforces multiple safeguards:
 | **Max delegation depth** | Hard limit on chain length (A->B->C->D stops at depth N) | 5 |
 | **Message rate limit** | Max messages per agent pair within a time window | 10 per minute |
 | **Identical request dedup** | Detects and rejects duplicate task delegations within a window | 60s window |
-| **Circuit breaker** | If an agent pair exceeds error/bounce threshold, block further messages until manual reset or cooldown | 3 bounces, 5min cooldown |
+| **Circuit breaker** | If an agent pair exceeds the bounce threshold, block further messages until manual reset or cooldown; the cooldown grows by exponential backoff on repeated trips | 3 bounces, 5min initial cooldown (capped at 1hr) |
 | **Task ancestry tracking** | Every delegated task carries its full delegation chain; agents cannot delegate back to any ancestor in the chain | Always on |
 
 ???+ example "Loop prevention configuration"
@@ -435,7 +435,7 @@ All four conflict resolution strategies terminate with bounded resource use:
   terminal ``ConflictResolution``. Operators collect and decide via the
   ``/conflicts/escalations`` REST surface (#1418).
 
-    **Multi-worker wake-up (#1444):** ``PendingFuturesRegistry`` is
+    **Multi-worker wake-up (PR #1444):** ``PendingFuturesRegistry`` is
     process-local by design. When the API runs across multiple workers
     or pods sharing a Postgres backend, a decision submitted through
     worker B must still wake a resolver blocked on worker A. The queue

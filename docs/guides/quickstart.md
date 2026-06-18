@@ -84,7 +84,7 @@ The wizard will prompt you to configure infrastructure settings:
 3. **Web dashboard port**: port for the web UI (default: 3000).
 4. **Enable agent code sandbox**: optionally mount the Docker socket for sandboxed code execution.
 
-`synthorg init` generates the required secrets (`SYNTHORG_JWT_SECRET` and `SYNTHORG_SETTINGS_KEY`) and writes the configuration automatically. Company setup (name, LLM provider, template) happens in the web dashboard after containers start (see [Step 4](#step-4-explore-the-dashboard)).
+`synthorg init` generates the four required secrets (`SYNTHORG_JWT_SECRET`, `SYNTHORG_SETTINGS_KEY`, `SYNTHORG_MASTER_KEY`, and `SYNTHORG_PAGINATION_CURSOR_SECRET`) and writes the configuration automatically. Company setup (name, LLM provider, template) happens in the web dashboard after containers start (see [Step 4](#step-4-explore-the-dashboard)).
 
 ---
 
@@ -110,7 +110,7 @@ You should see both containers (`backend` and `web`) reporting healthy.
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-On a fresh install, the **setup wizard** appears. Pick **Guided Setup** and step through:
+On a fresh install, the **setup wizard** appears. First, **choose a setup mode**: pick **Guided Setup** (the **Quick Setup** path is described below). Guided Setup then steps through:
 
 1. **Select a template**: choose **Solo Builder** (the minimal 2-agent template).
 2. **Add an LLM provider**: enter your provider's API key. Local providers like Ollama are auto-detected.

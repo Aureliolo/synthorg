@@ -88,7 +88,7 @@ Higher-seniority agents can delegate tasks to lower-seniority agents within thei
 
 ## Built-in Roles
 
-SynthOrg ships with 50+ built-in roles organised by department:
+SynthOrg ships with 30+ built-in roles organised by department:
 
 | Department | Roles |
 |-----------|-------|
@@ -106,11 +106,12 @@ Define custom roles when the built-in catalog does not cover your needs:
 
 ```yaml
 custom_roles:
-  - role: "Compliance Officer"
+  - name: "Compliance Officer"
+    department: "operations"
     system_prompt_template: |
       You are a compliance officer responsible for ensuring
       all outputs meet regulatory requirements.
-    skills:
+    required_skills:
       - "regulatory_analysis"
       - "policy_review"
     authority_level: "senior"

@@ -24,7 +24,7 @@ Colours are **state-driven**, not decorative. Every coloured element answers: "w
 | Token | Purpose | Example hex | When to use |
 |-------|---------|-------------|-------------|
 | `accent` | Brand, interactive elements, links, focus rings, active nav | `#38bdf8` (warm soft blue, tunable) | Default state, clickable things, brand identity |
-| `accent-dim` | Muted brand, secondary interactive, onboarding | Derived from accent | Hover states, secondary info, less prominent interactive |
+| `accent-dim` | Muted brand, secondary interactive, onboarding | `#0ea5e9` (fixed per-theme `--so-accent-dim`) | Hover states, secondary info, less prominent interactive |
 | `success` | Rising, improving, healthy, completed | `#10b981` (emerald) | Metrics trending up, tasks completed, agents active |
 | `warning` | Declining, degrading, attention needed | `#f59e0b` (amber) | Metrics trending down, budget nearing limit, stale tasks |
 | `danger` | Critical, error, immediate action | `#ef4444` (red) | Agent errors, budget exceeded, failed tasks |
@@ -143,13 +143,14 @@ This gives users full control without combinatorial explosion in theme definitio
 
 ### Implementation Pattern
 
-```text
-ThemeProvider (React context)
-  |-- sets CSS custom properties on wrapper div (--theme-accent, --theme-bg-base, etc.)
-  |-- Tailwind @theme block maps --theme-* to Tailwind utility classes
-  |-- Components use Tailwind classes (text-accent, bg-bg-card, border-border)
-  |-- Density/animation read from theme context object
-  |-- Sidebar mode selects which sidebar component to render
+```mermaid
+flowchart TD
+    TP["ThemeProvider (React context)"]
+    TP --> P1["Sets CSS custom properties on wrapper div (--theme-accent, --theme-bg-base, ...)"]
+    TP --> P2["Tailwind @theme block maps --theme-* to utility classes"]
+    TP --> P3["Components use Tailwind classes (text-accent, bg-bg-card, border-border)"]
+    TP --> P4["Density / animation read from theme context object"]
+    TP --> P5["Sidebar mode selects which sidebar component to render"]
 ```
 
 ### Critical Implementation Note: Tailwind v4 CSS Layers
@@ -327,7 +328,7 @@ A PostToolUse hook (`scripts/check_web_design_system.py`) runs automatically on 
 | Resource | Location |
 |----------|----------|
 | Design exploration mockups (5 variations) | `feat/765-design-exploration` branch, `mockups-v2/` (exploration artifacts, not production code) |
-| Original winning prototype (C+D direction) | `research/762-ux-mockups` branch, `mockups/direction-cd/` |
+| Original winning prototype (Mission Control / C+D direction) | `research/762-ux-mockups` branch, `mockups/direction-cd/` |
 | UX research document | `research/762-ux-mockups` branch, `docs/design/ux-research.md` |
 | Page structure and information architecture | [Page Structure & IA](page-structure.md) |
 | UX design guidelines (implementation specs) | [UX Guidelines](ux-guidelines.md) |

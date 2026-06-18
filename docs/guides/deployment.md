@@ -204,9 +204,9 @@ The `synthorg-data` Docker volume persists all application data:
 ### Backup
 
 ```bash
-synthorg backup             # create a backup
-synthorg backup --list       # list available backups
-synthorg backup --restore    # restore from backup
+synthorg backup                          # create a backup
+synthorg backup list                     # list available backups
+synthorg backup restore <id> --confirm   # restore from a backup
 ```
 
 For manual Docker Compose deployments, back up the `synthorg-data` volume directly.

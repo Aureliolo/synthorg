@@ -15,30 +15,57 @@ organisational throughput, and quality metrics without real external clients.
 
 ## Architecture Overview
 
-```text
-ClientPool                    IntakeEngine              TaskEngine
-  |                              |                         |
-  +-- AIClient ----+             |                         |
-  +-- HumanClient -+-- submit -->+-- IntakeStrategy ------>+-- CREATED
-  +-- HybridClient +             |   (direct/agent)        |     |
-                                 |                         |   ASSIGNED
-RequirementGenerator             |                         |     |
-  +-- TemplateGenerator          |                         |   IN_PROGRESS
-  +-- LLMGenerator               |                         |     |
-  +-- DatasetGenerator           |                    ReviewPipeline
-  +-- HybridGenerator            |                      |        |
-  +-- ProceduralGenerator        |                      +-- InternalReviewStage
-                                 |                      +-- ClientReviewStage
-FeedbackStrategy                 |                         |
-  +-- BinaryFeedback             |                       COMPLETED
-  +-- ScoredFeedback             |                         |
-  +-- CriteriaCheckFeedback      |                    SimulationRunner
-  +-- AdversarialFeedback        |                      |
-                                 |                    ReportStrategy
-                                 |                      +-- DetailedReport
-                                 |                      +-- SummaryReport
-                                 |                      +-- MetricsOnly
-                                 |                      +-- JsonExport
+```d2
+direction: right
+
+clients: "ClientPool" {
+  ai: "AIClient"
+  human: "HumanClient"
+  hybrid: "HybridClient"
+}
+reqgen: "RequirementGenerator" {
+  template: "TemplateGenerator"
+  llm: "LLMGenerator"
+  dataset: "DatasetGenerator"
+  hybrid: "HybridGenerator"
+  procedural: "ProceduralGenerator"
+}
+feedback: "FeedbackStrategy" {
+  binary: "BinaryFeedback"
+  scored: "ScoredFeedback"
+  criteria: "CriteriaCheckFeedback"
+  adversarial: "AdversarialFeedback"
+}
+intake: "IntakeEngine" {
+  strategy: "IntakeStrategy\n(direct / agent)"
+}
+engine: "TaskEngine" {
+  created: "CREATED"
+  assigned: "ASSIGNED"
+  inprogress: "IN_PROGRESS"
+  created -> assigned -> inprogress
+}
+review: "ReviewPipeline" {
+  internal: "InternalReviewStage"
+  client: "ClientReviewStage"
+}
+completed: "COMPLETED"
+runner: "SimulationRunner"
+report: "ReportStrategy" {
+  detailed: "DetailedReport"
+  summary: "SummaryReport"
+  metrics: "MetricsOnly"
+  json: "JsonExport"
+}
+
+reqgen -> clients: "generates requirements"
+clients -> intake: "submit"
+intake -> engine
+feedback -> review: "scores"
+engine -> review
+review -> completed
+completed -> runner
+runner -> report
 ```
 
 ---

@@ -635,10 +635,10 @@ evolution:
 ```
 
 !!! note "Runtime wiring status"
-    The evolution config, service, and factory are implemented. As of today,
-    ``build_evolution_service()`` has no production callers; the service is
-    wired in tests and designed for app-init integration. REST API + dashboard
-    for runtime evolution management are planned.
+    The evolution config, service, and factory are implemented and wired:
+    ``build_evolution_service()`` is called from the worker engine assembly
+    (``workers/_engine_assembly.py``). REST API + dashboard for runtime
+    evolution management are planned.
 
 ## Five-Pillar Evaluation Framework
 
@@ -696,27 +696,6 @@ the need for more human labels.
     All metrics toggleable via `EvaluationConfig` per-pillar sub-configs. Weight
     redistribution follows the `BehavioralTelemetryStrategy` pattern. Pull-based
     evaluation (no background daemon).
-
----
-
-## Client Agents
-
-Client agents are synthetic or real external actors that submit task requirements
-and review deliverables. Unlike internal agents (which execute tasks), client agents
-drive the organisation from the outside, generating workloads and evaluating outputs.
-
-All client types implement `ClientInterface` from `synthorg.client.protocols`:
-
-- **AIClient**: LLM-backed persona that generates requirements and reviews
-  deliverables autonomously.
-- **HumanClient**: delegates decisions to a human via the API/dashboard.
-- **HybridClient**: AI drafts, human confirms.
-
-Client behaviour is configured via `ClientProfile` (persona, expertise domains,
-strictness level) and driven by pluggable strategies for requirement generation
-and feedback evaluation.
-
-See [Client Simulation](client-simulation.md) for the full architecture.
 
 ---
 

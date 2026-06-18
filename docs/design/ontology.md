@@ -115,7 +115,7 @@ ontology:
   injection:
     strategy: "hybrid"                 # hybrid | full | summary | none
     core_token_budget: 2000
-    tool_name: "get_entity_definition"
+    tool_name: "lookup_entity"
   drift_detection:
     strategy: "passive"                # passive | active | none
     check_interval: 300

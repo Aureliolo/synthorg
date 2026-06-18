@@ -29,9 +29,10 @@ The approval gate is SynthOrg's human-in-the-loop control surface: certain actio
 The agent emits a pre-tool escalation:
 
 ```python
+from synthorg.approval.state import ApprovalStateSlice
 from synthorg.engine.approval_gate import ApprovalGate
 
-gate: ApprovalGate = app_state.approval_gate
+gate: ApprovalGate = app_state.slice(ApprovalStateSlice).gate
 parked = await gate.park_context(
     escalation=escalation,
     context=task_context,
@@ -41,13 +42,12 @@ parked = await gate.park_context(
 print(parked.id, parked.approval_id)
 ```
 
-The dashboard at `/dashboard/approvals` lists pending requests. Reviewer clicks `Approve`; the API persists a verdict:
+The dashboard at `/dashboard/approvals` lists pending requests. Reviewer clicks `Approve`; the API persists a verdict via the dedicated `/approve` (or `/reject`) endpoint with an optional `comment`:
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/approvals/7c9e6679-7425-40de-944b-e07fc1f90ae7/decide \
-  -H "Authorization: Bearer $TOKEN" \
+curl -s -b cookies.txt -X POST http://localhost:8000/api/v1/approvals/7c9e6679-7425-40de-944b-e07fc1f90ae7/approve \
   -H "Content-Type: application/json" \
-  --data '{"verdict": "approve", "rationale": "Looks good; canary signal is clean."}'
+  --data '{"comment": "Looks good; canary signal is clean."}'
 ```
 
 The gate unparks the context and resumes the agent loop. The audit chain records:
@@ -65,7 +65,7 @@ The approvals page surfaces pending requests with:
 - One-click `Approve` / `Reject` / `Request changes` actions; rejection requires a rationale.
 - Filters on `action_type`, `agent`, `actor` (last reviewer).
 
-For terminal automation, the MCP tool `approvals.decide` accepts the same verdict payload.
+For terminal automation, the MCP `approvals` domain exposes `approve` and `reject` tools that take the same approval id plus an optional comment.
 
 ## Observability
 
@@ -80,15 +80,11 @@ The `synthorg_approval_decisions_total` counter has bounded label `outcome` in `
 
 Every verdict is appended to the audit chain via the typed-boundary `audit_chain` (see [docs/reference/typed-boundaries.md](../reference/typed-boundaries.md)). The chain is hash-linked so a tampered verdict breaks downstream verification.
 
-Operator verification:
+Operators query the recorded security audit trail (filterable by `agent_id`, `tool_name`, `action_type`, `verdict`):
 
 ```bash
-curl -s http://localhost:8000/api/v1/audit-chain/verify \
-  -H "Authorization: Bearer $TOKEN" | jq
-# {"status": "valid", "appends_total": 4271, "depth": 4271}
+curl -s -b cookies.txt "http://localhost:8000/api/v1/security/audit?verdict=APPROVED" | jq
 ```
-
-A `broken` status surfaces the first divergent index plus the diverging append; either repair via the documented `audit_chain.repair` workflow or restore from a signed backup.
 
 ## Threat model
 

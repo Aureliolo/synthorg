@@ -90,16 +90,16 @@ Run these before pushing to ensure CI will pass:
 ### Python
 
 ```bash
-uv run ruff check src/ tests/              # lint
-uv run ruff format --check src/ tests/     # format check
-uv run mypy --num-workers=4 src/ tests/    # type check (strict)
+uv run ruff check .                                              # lint
+uv run ruff format --check .                                     # format check
+uv run mypy --num-workers=4 src/ tests/ evals/ docker/ d2_fence.py  # type check (strict)
 ```
 
 Auto-fix issues:
 
 ```bash
-uv run ruff check src/ tests/ --fix        # auto-fix lint
-uv run ruff format src/ tests/             # auto-format
+uv run ruff check . --fix                  # auto-fix lint
+uv run ruff format .                        # auto-format
 ```
 
 ### Web Dashboard
@@ -135,7 +135,7 @@ uv run python -m pytest tests/ -m integration -n 8
 uv run python -m pytest tests/ -m e2e -n 8
 
 # Full suite with coverage
-uv run python -m pytest tests/ -n 8 --cov=synthorg --cov-fail-under=80
+uv run python -m pytest tests/ --ignore=tests/benchmarks/ --cov=synthorg --cov-fail-under=80
 ```
 
 ### Testing Rules
@@ -176,7 +176,7 @@ Key conventions (see [CLAUDE.md](https://github.com/Aureliolo/synthorg/blob/main
 - **Docstrings** in Google style on all public classes and functions
 - **Immutability**: frozen Pydantic models for config, `model_copy(update=...)` for runtime state
 - **Line length**: 88 characters (ruff)
-- **Functions**: < 50 lines, files < 800 lines
+- **Functions**: < 50 lines. **Files**: tiered module-size budget keyed by a `# module-kind:` header (controller 400, service/orchestrator 600, complex_service 1100, repository 500, adapter/integration 700, feature 100, default code 500, tests 800; declarative and generated exempt). See [ADR-0006](https://github.com/Aureliolo/synthorg/blob/main/docs/decisions/0006-tiered-module-size-policy.md).
 - **Errors**: handle explicitly, never silently swallow
 - **Logging**: use `from synthorg.observability import get_logger` (never `import logging` or `print()`)
 - **No `from __future__ import annotations`**: Python 3.14 has PEP 649

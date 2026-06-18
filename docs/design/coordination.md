@@ -18,6 +18,7 @@ implemented behind a `RecoveryStrategy` protocol, making the system pluggable.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `recover` | `async def recover(*, task_execution, error_message, context) -> RecoveryResult` | Apply recovery to a failed task execution |
+| `finalize` | `async def finalize(execution_id) -> None` | Post-resume cleanup hook called after a successful (non-ERROR) resume; clears strategy-specific state. No-op by default |
 | `get_strategy_type` | `def get_strategy_type() -> str` | Return strategy type identifier (must not be empty) |
 
 ### RecoveryResult Model
@@ -523,6 +524,7 @@ coordination:
     sequential_override: "sas"
     parallel_default: "centralized"
     mixed_default: "context_dependent"
+    parallel_artifact_threshold: 4      # parallel tasks above this use decentralized topology
   max_concurrency_per_wave: null        # None = unlimited
   max_delegation_rounds: 3             # soft cap; hard abort at 2x (6)
   fail_fast: false
@@ -531,7 +533,10 @@ coordination:
 ```
 
 The auto-selector uses task structure, artifact count, and (when available from
-the memory subsystem) historical single-agent success rate as inputs. Kim et al.
+the memory subsystem) historical single-agent success rate as inputs. A `parallel`
+task with more than `parallel_artifact_threshold` expected artifacts resolves to
+**decentralised** (high-entropy, many-output work benefits from peer exploration);
+at or below the threshold it uses `parallel_default`. Kim et al.
 achieved 87% accuracy predicting optimal architecture from task properties
 across held-out configurations.
 

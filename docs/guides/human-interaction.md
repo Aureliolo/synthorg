@@ -69,11 +69,14 @@ API -> CLI
 | `/api/v1/approvals` | Pending human approvals queue |
 | `/api/v1/analytics` | `GET /overview` (metrics summary), `GET /trends?period=7d\|30d\|90d` (bucketed time-series), `GET /forecast?horizon_days=1..90` (budget projection) |
 | `POST /api/v1/reports/generate`, `GET /api/v1/reports/periods` | On-demand report generation (spending, performance, task completion, risk trends) |
-| `/api/v1/settings` | Runtime-editable configuration (17 namespaces), schema discovery |
+| `/api/v1/settings` | Runtime-editable configuration (28 namespaces), schema discovery |
 | `GET /api/v1/settings/security/export`, `POST /api/v1/settings/security/import` | Security policy export/import |
 | `GET /api/v1/security/audit` | Audit log query with filters |
 | `GET /api/v1/coordination/metrics` | Coordination metrics query (9 Kim et al. metrics) |
 | `/api/v1/providers/*` | Provider CRUD, presets, model discovery, discovery SSRF allowlist, local model management (pull with SSE progress, delete, per-model config) |
+| `/api/v1/providers/model-refresh/*` | Upgrade recommendations (`GET /recommendations`, approve/reject), manual `POST /refresh` (CEO/manager), `GET /status` |
+| `/api/v1/agents/{agent_id}/training/*` | Per-agent training mode: create/list training plans, plan detail, results |
+| `GET /api/v1/projects/{project_id}/docs/{slug}/receipt` | Deliverable receipt with provenance; `/receipt/validate` re-checks integrity |
 | `/api/v1/setup/*` | First-run setup wizard |
 | `/api/v1/personalities/*` | Personality preset discovery and custom preset CRUD |
 | `/api/v1/users` | CEO-only user CRUD |

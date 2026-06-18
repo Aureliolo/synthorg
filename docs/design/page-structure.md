@@ -7,7 +7,7 @@ description: Validated page list, navigation hierarchy, URL routing map, WebSock
 
 ## Overview
 
-This document defines the information architecture for the web dashboard. It was validated against the backend API surface (32 controllers, 9 WebSocket channels) and the design decisions from #762 (Mission Control direction, 4 differentiators) and #765 (Warm Ops identity).
+This document defines the information architecture for the web dashboard. It was validated against the backend API surface (108+ controllers, 21 WebSocket channels) and the design decisions from #762 (Mission Control direction, 4 differentiators) and #765 (Warm Ops identity).
 
 **Guiding principle**: every page maps to a real backend domain with live data. No user-facing placeholder pages or "Coming Soon" stubs. ProjectController and ArtifactController have full persistence backends (#612) and dashboard pages (#946).
 
@@ -487,24 +487,9 @@ The density system (Dense/Balanced/Medium/Sparse from [Brand & UX](brand-and-ux.
 
 ---
 
-## Resolved Questions
-
-### Activity feed: Dashboard widget (not global drawer)
-
-The activity feed is a Dashboard widget, not a persistent global element. Rationale:
-
-- A persistent drawer competes with page content for attention (violates principle #3: "navigation recedes, content shines")
-- The Dashboard is the natural home for activity summaries; users who want more detail click through to the relevant page (principle #5: progressive disclosure)
-- Linear, Vercel, and Grafana all use dashboard widgets for activity, not persistent drawers
-- The Dashboard already subscribes to all WS channels for its health indicators; the activity widget is a natural aggregation
-
-### Messages: Own page (not drawer)
-
-Messages have a dedicated API (`/messages` + channel filtering) and WebSocket channel; this is a first-class domain. Agent-to-agent communications require investigation (delegation chains, coordination audits), which needs filters, scrolling, and context that a drawer cannot provide. The channel filtering model maps naturally to a page with a channel sidebar and message feed.
-
-### Org Chart + Company: Merged with mode separation
-
-Both deal with the same data domain (departments, teams, agents, reporting lines). The default is an interactive visualization with two view modes: hierarchy (dagre, with drag-drop agent reassignment as an inline mutating action) and communication (d3-force). An "Edit Organisation" button enters form-based edit mode using the sub-tab structure (General, Agents, Departments) as a panel overlay for bulk configuration changes.
+The rationale for the activity-feed widget, the dedicated Messages page, and the merged
+Org Chart / Company view lives in the
+[Architecture Decision Log](../architecture/decisions.md#dashboard-page-structure).
 
 ---
 

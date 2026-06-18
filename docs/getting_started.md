@@ -106,23 +106,23 @@ Run these before pushing to make sure CI will pass:
 
 ```bash
 # Lint
-uv run ruff check src/ tests/
+uv run ruff check .
 
 # Format check (no changes, just verify)
-uv run ruff format --check src/ tests/
+uv run ruff format --check .
 
 # Type check
-uv run mypy --num-workers=4 src/ tests/
+uv run mypy --num-workers=4 src/ tests/ evals/ docker/ d2_fence.py
 
 # Tests with coverage
-uv run python -m pytest tests/ -n 8 --cov=synthorg --cov-fail-under=80
+uv run python -m pytest tests/ --ignore=tests/benchmarks/ --cov=synthorg --cov-fail-under=80
 ```
 
 To auto-fix lint issues and reformat:
 
 ```bash
-uv run ruff check src/ tests/ --fix
-uv run ruff format src/ tests/
+uv run ruff check . --fix
+uv run ruff format .
 ```
 
 ## Project Layout

@@ -24,7 +24,7 @@ into three categories:
 |---|---|---|
 | `SYNTHORG_DATABASE_URL` | unset | Postgres connection URL. Format `postgresql://user:pass@host:port/db`.  No query parameters allowed; use `SYNTHORG_POSTGRES_SSL_MODE` for ssl overrides. |
 | `SYNTHORG_DB_PATH` | unset | SQLite database file path. Mutually exclusive with `SYNTHORG_DATABASE_URL` -- if both are set, Postgres wins. Consumed by `synthorg.api.app:create_app`. |
-| `SYNTHORG_POSTGRES_SSL_MODE` | unset (driver default) | Optional override for the Postgres SSL mode (`disable` / `require` / `verify-ca` / `verify-full`).  Validated at startup. |
+| `SYNTHORG_POSTGRES_SSL_MODE` | `require` | Override for the Postgres SSL mode (`disable` / `require` / `verify-ca` / `verify-full`).  Validated at startup; the `require` default refuses an unencrypted connection. |
 
 ## Bootstrap secrets (init-time only)
 
@@ -32,6 +32,7 @@ into three categories:
 |---|---|---|
 | `SYNTHORG_JWT_SECRET` | unset | JWT signing secret. Required for multi-instance deployments so a token issued by one replica verifies on another. Consumed by `synthorg.api.auth.secret`. |
 | `SYNTHORG_MASTER_KEY` | unset | Master key for the encrypted secret backends and integration credential storage. Consumed by `synthorg.persistence.secret_backends`. |
+| `SYNTHORG_SETTINGS_KEY` | unset | Fernet key used to encrypt sensitive settings at rest. Consumed by `synthorg.settings.encryption`. |
 | `SYNTHORG_PAGINATION_CURSOR_SECRET` | unset | HMAC secret for paginated cursor signing. Falls back to a process-ephemeral secret (cursors invalidate on restart) when unset. |
 
 ## Filesystem (init-time, some with registry discoverability)
@@ -40,15 +41,15 @@ into three categories:
 |---|---|---|---|
 | `SYNTHORG_LOG_DIR` | unset | `observability/log_directory` (read-only) | Log output directory. Path-traversal rejected at boot. |
 | `SYNTHORG_ARTIFACT_DIR` | `/data` | n/a | Filesystem artifact storage root. Must be absolute and free of `..` components. |
-| `SYNTHORG_MEMORY_DIR` | tmp fallback | n/a | On-disk memory backend root for the local Mem0 backend. |
+| `SYNTHORG_MEMORY_DIR` | `/data/memory` | n/a | On-disk memory backend root for the local Mem0 backend. Falls back to `/data/memory` (with a warning) when unset or invalid. |
 | `SYNTHORG_CONFIG_PATH` | `company.yaml` | n/a | Path to the company YAML config used by the backup factory. |
 
 ## Sandbox / fine-tune images (init-time only)
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `SYNTHORG_SANDBOX_IMAGE` | `ghcr.io/aureliolo/synthorg-sandbox:latest` | Sandbox container image; CLI sets the digest-pinned variant after cosign verification. |
-| `SYNTHORG_SIDECAR_IMAGE` | `ghcr.io/aureliolo/synthorg-sidecar:latest` | Sidecar (network-proxy) container image. |
+| `SYNTHORG_SANDBOX_IMAGE` | `ghcr.io/aureliolo/synthorg-sandbox:v<release>` | Sandbox container image (version-pinned to the running release); CLI sets the digest-pinned variant after cosign verification. |
+| `SYNTHORG_SIDECAR_IMAGE` | `ghcr.io/aureliolo/synthorg-sidecar:v<release>` | Sidecar (network-proxy) container image (version-pinned to the running release). |
 | `SYNTHORG_FINE_TUNE_IMAGE` | unset | Override for the embedding fine-tune image (CLI publishes `-gpu` and `-cpu` variants). |
 | `SYNTHORG_FINE_TUNE_HEALTH_PORT` | `15002` | Port the fine-tune container's health probe listens on. |
 
@@ -56,7 +57,7 @@ into three categories:
 
 | Variable | Default | Registry key | Purpose |
 |---|---|---|---|
-| `SYNTHORG_TELEMETRY_ENABLED` | unset | `telemetry/enabled` | Master opt-in for product telemetry. Accepts `true` / `false` / `1` / `0` / `yes` / `no`. |
+| `SYNTHORG_TELEMETRY_ENABLED` | `false` | `telemetry/enabled` | Master opt-in for product telemetry. Accepts `true` / `false` / `1` / `0` / `yes` / `no`. `restart_required`: the collector is built at construction time, so a DB edit needs a process restart. |
 | `SYNTHORG_TELEMETRY_ENV` | unset | n/a | Operator override for the deployment environment tag (`prod` / `dev` / `pre-release` / custom).  Wins over CI auto-detection and the Dockerfile-baked default. |
 | `SYNTHORG_TELEMETRY_ENV_BAKED` | (image-baked) | n/a | Dockerfile-baked deployment environment. CI sets this in published images; operators normally don't touch it. |
 
@@ -73,7 +74,7 @@ into three categories:
 | Variable | Default | Registry key | Purpose |
 |---|---|---|---|
 | `SYNTHORG_NATS_URL` | `nats://nats:4222` | `communication/nats_url` (read-only) | NATS server URL. Bus driver opens its connection once at boot. |
-| `SYNTHORG_DEFAULT_NATS_URL` | unset | n/a | Compose-template default that flows into `communication.nats.url` when no operator value is set. |
+| `SYNTHORG_NATS_STREAM_PREFIX` | `SYNTHORG` | n/a | Prefix for the JetStream stream names the worker pool creates and consumes. Read once at worker-process start. |
 
 ## Logging (mutable runtime override)
 
@@ -86,6 +87,7 @@ into three categories:
 | Variable | Default | Registry key | Purpose |
 |---|---|---|---|
 | `SYNTHORG_WORKERS` | `1` | `workers/count` (read-only) | Uvicorn worker process count. |
+| `SYNTHORG_WORKER_HTTP_TIMEOUT_SECONDS` | `60.0` | `workers/http_timeout_seconds` (read-only) | HTTP client timeout (seconds) the distributed worker uses when calling the backend task-transition API. Read once at worker-process start; range 1.0-600.0. |
 
 ## Generic registry override
 

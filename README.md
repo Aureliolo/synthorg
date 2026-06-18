@@ -26,7 +26,7 @@ It is provider-agnostic (<!--RS:providers_via_litellm-->90+<!--/RS--> LLM provid
 A tested platform you can run, inspect, and build on:
 
 - **REST + WebSocket API** (Litestar) and a **React 19 dashboard** (org chart, task board, agent detail, budget tracking, provider management, workflow editor, ceremony settings, setup wizard) with live WebSocket / SSE updates.
-- **Go CLI** for Docker orchestration: `init`, `start`, `stop`, `status`, `doctor`, `config`, `wipe`, `cleanup`, `worker`, `backup`, with cosign signature and SLSA provenance verification at pull time.
+- **Go CLI** for Docker orchestration: `init`, `start`, `stop`, `status`, `logs`, `update`, `doctor`, `uninstall`, `version`, `config`, `wipe`, `cleanup`, `worker`, `backup`, with cosign signature and SLSA provenance verification at pull time.
 - **Dual-backend persistence**: SQLite (single-node default) and PostgreSQL (multi-instance), conformance-tested for parity, with in-process yoyo schema migrations and ISO 4217 currency stamping on every cost-bearing row.
 - **Provider layer**: any LLM via LiteLLM with built-in retry and rate-limit handling; local model management for Ollama and LM Studio; periodic model-refresh that flags removed models stale, surfaces in-family upgrade recommendations for review, and optionally auto-applies within-family upgrades.
 - **Configuration and templates**: define a company in YAML; importable/shareable agent, department, and company templates with personality presets.
@@ -34,17 +34,17 @@ A tested platform you can run, inspect, and build on:
 - **Multi-agent coordinator + work pipeline spine**: `/coordinate` runs decompose, route, parallel execution, then rollup end to end behind the provider-present switch. The shared work pipeline (intake to projects to decompose to solo/team to execute to coordination metrics) is the single integration point every entry adapter feeds, with solo-vs-team decided internally by decomposition.
 - **Entry adapters**: real work-entry paths for the intake engine (`POST /requests/{id}/approve`), the task board (`POST /tasks`), and stated objectives (`POST /objectives`), all driving the pipeline spine.
 - **Sandbox lifecycle dispatch**: `DockerSandbox.execute()` honours `owner_id` and dispatches to the configured per-call / per-agent / per-task lifecycle strategy, with grace-period teardown.
-- **Operations**: structured logging with redaction and correlation, Prometheus metrics and OTLP, HttpOnly-cookie multi-user sessions with CSRF protection, Chainguard distroless images with Trivy + Grype scanning, cosign signatures, and SLSA L3 provenance.
+- **Operations**: structured logging with redaction and correlation, Prometheus metrics and OTLP, HttpOnly-cookie multi-user sessions with CSRF protection, Wolfi apko-composed distroless images with Trivy + Grype scanning, cosign signatures, and SLSA L3 provenance.
 - **Distributed dispatch**: NATS JetStream queue, worker pool, dead-letter consumer, dedup pruner, and heartbeat subscriber, validated under multi-worker synthetic load (no loss, no duplication).
 - **Conversational org interface**: talk to the company in natural language. Clarify-and-propose against the Chief of Staff (clarifies an underspecified request, then parks concrete `WorkItem`s in the human approval queue; on approval they run through the work pipeline), per-turn concern-routing to the best-fit role agent, multi-agent group chat, human-consented agent-initiated invites, and direct MCP acting under trust (sensitive actions approval-gated; fail-closed when security governance is inactive). All modes opt-in, default off; exercised by deterministic e2e harnesses with a scripted provider.
+- **Product studio substrate**: persistent project workspace with pluggable git, brownfield codebase intake, living documentation, and a deep requirements interview.
+- **Operate tier**: a golden-company benchmark, mission control with run replay, a cost forecast / kill-switch dial, a measurable learning curve, deterministic replay, run narratives, and an adversarial red-team.
+- **Agent capability layer**: knowledge and provenance retrieval substrate, research mode, continual improvement, governed external API access, headless-browser and virtual-desktop testing.
 
 ## In active development
 
 The runtime, coordinator, intake, work pipeline, sandbox dispatch, and distributed-path consumers are wired and exercised by deterministic harnesses. What remains in flight is the operator-facing maturity that turns the wired runtime into a polished autonomous studio:
 
-- **Autonomous product studio substrate**: persistent project workspace with pluggable git, brownfield codebase intake, living documentation, and a deep requirements interview.
-- **Best-in-class operate tier**: a golden-company benchmark, mission control with run replay, a cost forecast / kill-switch dial, a measurable learning curve, deterministic replay, run narratives, and an adversarial red-team.
-- **Agent capability layer**: knowledge and provenance retrieval substrate, research mode, continual improvement, governed external API access, headless-browser and virtual-desktop testing.
 - **Self-improvement loop**: company-wide signals from existing subsystems producing deployment and product-level improvement proposals through a rule-first hybrid pipeline with mandatory human approval. Components built and unit-tested; live end-to-end run pending.
 - **Real-provider acceptance**: the e2e harness drives the runtime against a deterministic scripted provider, not a real LLM. A real-provider golden-company benchmark and run narrative arrive with the operate tier.
 

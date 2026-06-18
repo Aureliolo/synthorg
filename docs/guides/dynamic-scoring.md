@@ -1,130 +1,126 @@
 ---
 title: Dynamic Scoring
-description: Register a custom scoring strategy, surface hyperparameters in settings, observe score drift.
+description: Register a custom candidate ranker, surface hyperparameters in settings, observe assignment decisions.
 ---
 
 # Dynamic Scoring
 
-Scoring drives every "what to do next" decision in SynthOrg: which task to assign, which agent to pick, which strategy to apply. The scoring layer at `synthorg.engine.assignment.scoring` is pluggable: each strategy is a `ScoringStrategy` implementation registered in the strategy registry. This guide shows how to add a custom strategy, expose its hyperparameters, and observe its outputs.
+Task assignment in SynthOrg runs a **filter -> score -> rank** pipeline. The
+`ScoringBasedAssignmentStrategy` (`src/synthorg/engine/assignment/scoring_based.py`, a
+single module, not a package) composes three collaborators: a `CandidatePoolFilter`
+that narrows the eligible agents, a scorer that scores each candidate, and a
+`CandidateRanker` that orders the scored candidates and picks the winner. The ranker is
+the pluggable axis of variation: every scoring-based strategy filters and scores
+identically and differs only in how it orders the result. This guide shows how to add a
+custom ranker, expose its hyperparameters, and observe its outputs.
 
-## Strategy contract
+## Ranker contract
 
 ```python
-from synthorg.engine.assignment.scoring.protocol import (
-    ScoringStrategy,
-    ScoringContext,
-    ScoreResult,
+from collections.abc import Sequence
+
+from synthorg.engine.assignment.models import (
+    AssignmentCandidate,
+    AssignmentRequest,
+)
+from synthorg.engine.assignment.ranker_protocol import (
+    CandidateRanker,
+    RankingResult,
 )
 
 
-class FreshnessBoostedScorer:
-    name = "freshness_boosted"
+class TopScoreRanker:
+    """Selects the highest-scoring candidate above a configurable floor.
 
-    def __init__(self, *, boost_factor: float = 0.2) -> None:
-        self._boost = boost_factor
+    Candidates arrive already sorted by score descending. A real custom
+    ranker would consult ``request`` for secondary keys (workload, cost,
+    project context); this version drops anyone below ``score_floor`` and
+    then trusts the score ordering.
+    """
 
-    async def score(self, context: ScoringContext) -> ScoreResult:
-        base = await context.base_score()
-        recency_bonus = self._recency_term(context)
-        return ScoreResult(
-            value=base + self._boost * recency_bonus,
-            details={"base": base, "recency_bonus": recency_bonus},
+    def __init__(self, *, score_floor: float = 0.0) -> None:
+        self._score_floor = score_floor
+
+    @property
+    def name(self) -> str:
+        return "top_score"
+
+    def rank(
+        self,
+        candidates: Sequence[AssignmentCandidate],
+        request: AssignmentRequest,
+    ) -> RankingResult:
+        eligible = [c for c in candidates if c.score >= self._score_floor]
+        ordered = eligible or list(candidates)
+        selected, *alternatives = ordered
+        return RankingResult(
+            selected=selected,
+            alternatives=tuple(alternatives),
+            reason=f"top score {selected.score:.3f}",
         )
-
-    def _recency_term(self, context: ScoringContext) -> float:
-        elapsed = context.now - context.candidate.last_active
-        return max(0.0, 1.0 - (elapsed.total_seconds() / 86400))
 ```
 
-## Registering the strategy
+`rank` is synchronous and receives candidates already sorted by score descending. A
+structural check (`isinstance(ranker, CandidateRanker)`) holds because the protocol is
+`@runtime_checkable`.
 
-Add to the registry:
+## Registering the ranker
+
+Rankers are registered as `(strategy_name, ranker_factory)` pairs in the single source
+of truth, `src/synthorg/engine/assignment/registry.py`
+(`_SCORING_STRATEGY_SPECS`), alongside the built-ins (`ScoreDescendingRanker`,
+`WorkloadAscendingRanker`, `CostDescendingRanker`, `AuctionBidRanker`):
 
 ```python
-# src/synthorg/engine/assignment/scoring/__init__.py
-from synthorg.core.registry.strategy import StrategyRegistry
-from synthorg.engine.assignment.scoring.freshness_boosted import (
-    FreshnessBoostedScorer,
-)
-from synthorg.engine.assignment.scoring.protocol import ScoringStrategy
-
-SCORING_STRATEGY_REGISTRY: StrategyRegistry[ScoringStrategy] = StrategyRegistry(
-    {
-        FreshnessBoostedScorer.name: FreshnessBoostedScorer,
-    },
-    kind="scoring_strategy",
+# src/synthorg/engine/assignment/registry.py
+_SCORING_STRATEGY_SPECS: tuple[tuple[str, Callable[[], CandidateRanker]], ...] = (
+    (STRATEGY_NAME_ROLE_BASED, ScoreDescendingRanker),
+    # ...
+    ("top_score", TopScoreRanker),
 )
 ```
 
 ## Hyperparameter surface
 
-Strategies that carry tunable hyperparameters expose them through the settings system so operators can adjust without redeploying:
+Tunable hyperparameters are exposed through the settings system so operators can adjust
+without redeploying. Register a `SettingDefinition` under the relevant namespace, then
+read the resolved value through a `ConfigResolver` (the typed accessors
+`get_float` / `get_int` / `get_str` live on `ConfigResolver`, not on `SettingsService`,
+whose `get()` returns the raw `SettingValue`):
 
 ```python
-# src/synthorg/settings/definitions/scoring.py
-from synthorg.settings import SettingDefinition
+from synthorg.settings.resolver import ConfigResolver
 
-SCORING_DEFINITIONS = (
-    SettingDefinition(
-        namespace="scoring",
-        key="freshness_boost_factor",
-        default=0.2,
-        validator=lambda v: 0.0 <= v <= 1.0,
-        description="Multiplier on the freshness bonus term.",
-    ),
-)
+
+async def build_top_score(resolver: ConfigResolver) -> TopScoreRanker:
+    floor = await resolver.get_float("assignment", "score_floor")
+    return TopScoreRanker(score_floor=floor)
 ```
 
-The factory reads the resolved value at strategy construction time:
+## Worked example: unit-test a ranker
 
 ```python
-async def build_freshness_boosted(
-    settings: SettingsService,
-) -> FreshnessBoostedScorer:
-    factor = await settings.get_float(
-        "scoring", "freshness_boost_factor"
-    )
-    return FreshnessBoostedScorer(boost_factor=factor)
-```
-
-## Configuration
-
-Pick the active strategy via the `scoring.strategy` setting:
-
-```yaml
-scoring:
-  strategy: freshness_boosted
-  freshness_boost_factor: 0.3
-```
-
-The setting is hot-reloadable: a change via `synthorg config set scoring.strategy <name>` swaps the active strategy on the next assignment decision.
-
-## Worked example: end-to-end test
-
-```python
-# tests/unit/engine/scoring/test_freshness_boosted.py
 import pytest
-
-from synthorg.engine.assignment.scoring.freshness_boosted import (
-    FreshnessBoostedScorer,
-)
 
 
 @pytest.mark.unit
-async def test_recent_candidate_outscores_stale(
-    scoring_context_factory,
+def test_top_score_selected_and_not_in_alternatives(
+    scored_candidates_factory, request_factory
 ) -> None:
-    scorer = FreshnessBoostedScorer(boost_factor=0.5)
-    recent = await scorer.score(scoring_context_factory(hours_idle=0))
-    stale = await scorer.score(scoring_context_factory(hours_idle=72))
-    assert recent.value > stale.value
-    assert recent.details["recency_bonus"] > stale.details["recency_bonus"]
+    ranker = TopScoreRanker(score_floor=0.2)
+    result = ranker.rank(
+        scored_candidates_factory(scores=[0.9, 0.6, 0.1]),
+        request_factory(),
+    )
+    assert result.selected.score == 0.9
+    assert result.selected.agent_identity.id not in {
+        a.agent_identity.id for a in result.alternatives
+    }
 ```
 
-The `scoring_context_factory` fixture lives in `tests/unit/engine/scoring/conftest.py`.
+## Where this fits
 
-## Observability
-
-Every score emission fires `scoring.score.computed` with `strategy`, `score`, and the `details` payload. The dashboard `Scoring` panel charts the rolling p50/p95/p99 score per strategy so operators can detect drift.
-
-For the operator-tunable weights and thresholds across every shipped scorer, see [docs/reference/scoring-hyperparameters.md](../reference/scoring-hyperparameters.md).
+The ranker only orders candidates; it never mutates state. The
+`ScoringBasedAssignmentStrategy` returns an `AssignmentResult` whose `reason` is the
+ranker's explanation, which the engine logs for diagnostics. For the assignment
+subsystem overview see [docs/design/engine.md](../design/engine.md).

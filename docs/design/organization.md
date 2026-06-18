@@ -37,7 +37,7 @@ org chart. See [Operating Postures](#operating-postures).
     registry default **5**; **3-4 recommended** per research, adoption tracked
     on R1 #1250); an Enterprise Org with 50 agents does not run 50-agent
     coordination waves. See
-    [Task Decomposability & Coordination Topology](engine.md#coordination-group-size-bounds)
+    [Task Decomposability & Coordination Topology](coordination.md#task-decomposability--coordination-topology)
     for the full bounds and [S1 Multi-Agent Architecture Decision §2](../research/s1-multi-agent-decision.md#section-2-team-size-bounds).
 
 See the [Template System](#template-system) section for details on how templates are defined,
@@ -139,7 +139,7 @@ graph TD
 ```
 
 Each node in the hierarchy corresponds to an [agent](agents.md) with a defined
-[seniority level](agents.md#seniority-authority-levels) that determines their authority,
+[seniority level](hr-lifecycle.md#seniority--authority-levels) that determines their authority,
 delegation rights, and typical model tier.
 
 ---
@@ -214,7 +214,7 @@ Each department defines:
 The company can dynamically grow or shrink through several mechanisms:
 
 - **Auto-scale**: the HR agent detects workload increases and proposes new
-  [hires](agents.md#hiring-process)
+  [hires](hr-lifecycle.md#hiring-process)
 - **Manual scale**: a human adds or removes agents via config or UI
 - **Budget-driven**: the CFO agent caps headcount based on budget constraints
 - **Skill-gap**: HR analyses team capabilities, identifies missing skills, and proposes
@@ -539,31 +539,7 @@ wipes all data, and optionally restarts the stack to re-open the wizard).
 
 ## MCP Service Facades
 
-The organisation domain exposes four service facades on `AppState` for
-MCP handler shims:
-
-| Facade | Module | Tools shimmed |
-|---|---|---|
-| `CompanyReadService` | `synthorg.organization.services` | `synthorg_company_get`/`_update`/`_list_departments`/`_reorder_departments`/`_versions_list`/`_versions_get` |
-| `DepartmentService` | `synthorg.organization.services` | `synthorg_departments_list`/`_get`/`_create`/`_update`/`_delete`/`_get_health` |
-| `TeamService` | `synthorg.organization.services` | `synthorg_teams_list`/`_get`/`_create`/`_update`/`_delete` |
-| `RoleVersionService` | `synthorg.organization.services` | `synthorg_role_versions_list`/`_get` |
-
-`CompanyReadService` and `RoleVersionService` wrap the existing
-`OrgMutationService` read surface; `DepartmentService` and `TeamService`
-use in-memory stores pending durable repositories. Writes emit
-`organization.*_via_mcp` audit events from the facade layer.
-
-The MCP args contract follows the same conventions as the rest of the
-tool surface:
-
-- Entity reads key by UUID: `synthorg_departments_{get,update,delete,get_health}`
-  take `department_id`; `synthorg_teams_{get,update,delete}` take `team_id`;
-  `synthorg_company_versions_get` and `synthorg_role_versions_get` take a
-  string `version_id`. `synthorg_teams_create` accepts an optional
-  `department_id` to attach the new team.
-- `synthorg_departments_delete` and `synthorg_teams_delete` are
-  `admin_tool`s: they enforce the guardrail triple (`confirm` + `reason` +
-  actor) and emit `MCP_ADMIN_OP_EXECUTED` on a successful delete.
-- `synthorg_role_versions_list` paginates through `offset`/`limit` and
-  reports the unfiltered `total` in the envelope's pagination block.
+The organisation domain exposes service facades on `AppState` for MCP handler shims
+(`CompanyReadService`, `DepartmentService`, `TeamService`, `RoleVersionService`). The
+facade inventory and the MCP args contract live in the
+[MCP Handler Contract reference](../reference/mcp-handler-contract.md#organisation-domain-service-facades).
