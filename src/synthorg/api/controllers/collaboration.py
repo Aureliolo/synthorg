@@ -14,16 +14,15 @@ from pydantic import (
 )
 
 from synthorg._core.features import require_service
+from synthorg.api.auth.controller_helpers import require_authenticated_user
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
-from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.domain_errors import (
     NotFoundError,
     ServiceUnavailableError,
-    UnauthorizedError,
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.collaboration_override_store import (
@@ -271,16 +270,7 @@ class CollaborationController(Controller):
         )
 
         # Extract user identity from the authenticated request.
-        auth_user = request.scope.get("user")
-        if not isinstance(auth_user, AuthenticatedUser):
-            logger.error(
-                API_REQUEST_ERROR,
-                path="collaboration/override",
-                reason="user_identity_extraction_failed",
-                agent_id=agent_id,
-            )
-            msg = "Authentication required"
-            raise UnauthorizedError(msg)
+        auth_user = require_authenticated_user(request)
 
         override = CollaborationOverride(
             agent_id=NotBlankStr(agent_id),

@@ -8,6 +8,7 @@ from litestar import Controller, Request, post
 from litestar.datastructures import State
 
 from synthorg._core.features import require_service
+from synthorg.api.auth.controller_helpers import require_authenticated_user
 from synthorg.api.controllers.approvals._notify import (
     _decided_attribution,
     _publish_approval_event,
@@ -37,11 +38,8 @@ from synthorg.api.ws_models import WsEventType
 from synthorg.approval.enums import ApprovalStatus
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.auth.models import AuthenticatedUser
-from synthorg.core.domain_errors import UnauthorizedError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APPROVAL_CREATED
-from synthorg.observability.events.security import SECURITY_AUTH_FAILED
 
 logger = get_logger(__name__)
 
@@ -81,15 +79,7 @@ class ApprovalsDecisionsController(Controller):
         Raises:
             UnauthorizedError: If the user is missing from the request scope.
         """
-        auth_user = request.scope.get("user")
-        if not isinstance(auth_user, AuthenticatedUser):
-            msg = "Authentication required"
-            logger.warning(
-                SECURITY_AUTH_FAILED,
-                endpoint="create_approval",
-                note="No authenticated user in request scope",
-            )
-            raise UnauthorizedError(msg)
+        auth_user = require_authenticated_user(request)
 
         app_state: AppState = state.app_state
         now = datetime.now(UTC)

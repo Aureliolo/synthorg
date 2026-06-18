@@ -34,10 +34,12 @@ from synthorg.core.auth.models import AuthenticatedUser, User
 from synthorg.core.auth.session import Session
 from synthorg.core.auth.token_size import get_auth_token_bytes
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import UnauthorizedError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_AUTH_CONFIG_FALLBACK,
     API_AUTH_GUARD_SKIPPED,
+    API_REQUEST_ERROR,
     API_SESSION_CREATE_FAILED,
 )
 from synthorg.observability.events.security import (
@@ -126,6 +128,36 @@ async def make_session_cookies(  # noqa: PLR0913
                 make_refresh_cookie(refresh_token, refresh_max_age, config),
             )
     return cookies
+
+
+def require_authenticated_user(
+    request: Request[object, object, State],
+) -> AuthenticatedUser:
+    """Return the authenticated user bound to the request scope or 401.
+
+    The single request-coupled auth guard for controllers: the auth
+    middleware populates ``request.scope["user"]`` with an
+    :class:`AuthenticatedUser`; a missing or wrong-typed value means the
+    caller is unauthenticated. Distinct from
+    :func:`synthorg.api.auth.context.get_authenticated_user`, which reads
+    the contextvar and raises a 500 on a binding gap (server fault); this
+    helper raises a 401 (client fault).
+
+    Args:
+        request: The inbound Litestar request.
+
+    Returns:
+        The authenticated user.
+
+    Raises:
+        UnauthorizedError: When no ``AuthenticatedUser`` is on the scope.
+    """
+    user = request.scope.get("user")
+    if not isinstance(user, AuthenticatedUser):
+        logger.warning(API_REQUEST_ERROR, reason="request_unauthenticated")
+        msg = "Authentication required"
+        raise UnauthorizedError(msg)
+    return user
 
 
 def require_password_changed(

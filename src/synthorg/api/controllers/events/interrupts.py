@@ -7,11 +7,11 @@ from litestar import Controller, Request, get, post
 from litestar.datastructures import State
 from litestar.params import QueryParameter
 
+from synthorg.api.auth.controller_helpers import require_authenticated_user
 from synthorg.api.controllers.events._shared import (
     _SESSION_ID_PATTERN,
     InterruptResponse,
     ResumeInterruptRequest,
-    _require_auth,
     _require_interrupt_store,
     _resolve_interrupt,
 )
@@ -116,7 +116,7 @@ class InterruptController(Controller):
         """
         app_state: AppState = state.app_state
         store = _require_interrupt_store(app_state)
-        auth_user = _require_auth(request)
+        auth_user = require_authenticated_user(request)
         return await _resolve_interrupt(
             store,
             interrupt_id,
