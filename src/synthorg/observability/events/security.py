@@ -204,6 +204,9 @@ SECURITY_AUTONOMY_PROMOTION_REQUESTED: Final[str] = (
 )
 SECURITY_AUTONOMY_PROMOTION_DENIED: Final[str] = "security.autonomy.promotion.denied"
 SECURITY_AUTONOMY_PROMOTION_GRANTED: Final[str] = "security.autonomy.promotion.granted"
+SECURITY_AUTONOMY_STRATEGY_CONFIG_INVALID: Final[str] = (
+    "security.autonomy.strategy.config_invalid"
+)
 SECURITY_AUTONOMY_PROMOTION_AUDIT_FAILED: Final[str] = (
     "security.autonomy.promotion.audit_failed"
 )
