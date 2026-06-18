@@ -27,6 +27,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
     PROVIDER_PRESET_OVERRIDE_DELETED,
     PROVIDER_PRESET_OVERRIDE_UPDATED,
+    PROVIDER_VALIDATION_FAILED,
 )
 from synthorg.persistence.preset_override_protocol import PresetOverrideRepo
 from synthorg.providers.errors import ProviderValidationError
@@ -104,6 +105,12 @@ class PresetOverrideService:
         preset = get_preset(preset_name)
         if preset is None:
             msg = f"Unknown preset {preset_name!r}; cannot author override"
+            logger.warning(
+                PROVIDER_VALIDATION_FAILED,
+                preset_name=preset_name,
+                reason="unknown_preset",
+                error_type=ProviderValidationError.__name__,
+            )
             raise ProviderValidationError(msg)
 
         existing = await self._repo.get(preset_name)
@@ -212,10 +219,22 @@ class PresetOverrideService:
                 f"Preset {override.preset_name!r} is a cloud preset; "
                 "candidate_urls overrides are illegal"
             )
+            logger.warning(
+                PROVIDER_VALIDATION_FAILED,
+                preset_name=override.preset_name,
+                reason="candidate_urls_on_cloud_preset",
+                error_type=ProviderValidationError.__name__,
+            )
             raise ProviderValidationError(msg)
         if not is_cloud and override.base_url is not None:
             msg = (
                 f"Preset {override.preset_name!r} is a local preset; "
                 "base_url overrides are illegal"
+            )
+            logger.warning(
+                PROVIDER_VALIDATION_FAILED,
+                preset_name=override.preset_name,
+                reason="base_url_on_local_preset",
+                error_type=ProviderValidationError.__name__,
             )
             raise ProviderValidationError(msg)
