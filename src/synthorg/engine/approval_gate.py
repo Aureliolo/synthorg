@@ -32,7 +32,11 @@ from synthorg.engine.errors import ExecutionStateError
 from synthorg.engine.park_service import ParkService
 from synthorg.execution.parked_context import ParkedContext
 from synthorg.notifications.dispatcher import NotificationDispatcher
-from synthorg.observability import get_logger, log_exception_redacted
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_CONTEXT_PARK_FAILED,
     APPROVAL_GATE_CONTEXT_PARKED,
@@ -228,6 +232,8 @@ class ApprovalGate:
                     APPROVAL_GATE_NOTIFICATION_FAILED,
                     approval_id=escalation.approval_id,
                     note="Failed to create interrupt in store",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
         if self._event_hub is None or interrupt_id is None:
@@ -253,6 +259,8 @@ class ApprovalGate:
                 APPROVAL_GATE_NOTIFICATION_FAILED,
                 approval_id=escalation.approval_id,
                 note="Failed to publish APPROVAL_INTERRUPT event",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
         return interrupt_id
@@ -292,6 +300,8 @@ class ApprovalGate:
             logger.warning(
                 APPROVAL_GATE_NOTIFICATION_FAILED,
                 approval_id=escalation.approval_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     def _serialize_context(
@@ -437,6 +447,8 @@ class ApprovalGate:
                     APPROVAL_GATE_NOTIFICATION_FAILED,
                     approval_id=approval_id,
                     note="Failed to publish APPROVAL_RESUMED event",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
         return context, str(parked.id)
@@ -465,6 +477,8 @@ class ApprovalGate:
                 APPROVAL_GATE_NOTIFICATION_FAILED,
                 approval_id=parked.approval_id,
                 note="Failed to resolve interrupt on resume",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     async def _load_parked(

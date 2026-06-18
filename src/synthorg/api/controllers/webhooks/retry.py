@@ -17,6 +17,7 @@ from synthorg.api.path_params import PathId
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.core.types import NotBlankStr
+from synthorg.integrations.errors import WebhookProcessingError
 from synthorg.observability import get_logger
 from synthorg.observability.events.idempotency import IDEMPOTENCY_CLAIM_IN_FLIGHT
 from synthorg.observability.events.integrations import WEBHOOK_RECEIPT_NOT_FOUND
@@ -68,7 +69,8 @@ class WebhooksRetryController(Controller):
         Raises:
             NotFoundError: Raised on the corresponding failure path.
             ConflictError: Raised on the corresponding failure path.
-            TypeError: Raised on the corresponding failure path.
+            WebhookProcessingError: If the cached idempotent response is
+                not a JSON object (corrupt cache entry).
         """
         persistence = persistence_of(state["app_state"])
         receipt = await persistence.webhook_receipts.get(NotBlankStr(receipt_id))
@@ -133,5 +135,5 @@ class WebhooksRetryController(Controller):
                 cached_type=type(cached).__name__,
             )
             msg = "Cached retry response was not a JSON object"
-            raise TypeError(msg)
+            raise WebhookProcessingError(msg)
         return ApiResponse(data=cached)

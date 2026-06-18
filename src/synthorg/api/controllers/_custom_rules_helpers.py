@@ -9,6 +9,7 @@ for the existing patch target.
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from synthorg.core.domain_errors import DomainError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     OrgBudgetSummary,
@@ -227,7 +228,9 @@ def _build_preview_snapshot(
         ``OrgSignalSnapshot`` instance.
 
     Raises:
-        ValueError: Raised on the corresponding failure path.
+        ValueError: If ``metric_path`` is not dot-notation.
+        DomainError: If the metric domain is not handled by the builder
+            (an internal invariant violation, surfaced as a 500).
     """
     if "." not in metric_path:
         msg = (
@@ -286,7 +289,7 @@ def _build_preview_snapshot(
             f"Internal error: metric domain '{domain}' "
             "not handled in preview snapshot builder"
         )
-        raise ValueError(msg)
+        raise DomainError(msg)
     # Validate the injected value against the target summary's field
     # constraints, then assemble the snapshot via model_copy. Re-validating
     # the *whole* snapshot would choke on computed fields:

@@ -26,7 +26,6 @@ from synthorg.core.domain_errors import (
     NotFoundError,
     ServiceUnavailableError,
 )
-from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import (
     FineTuneRequest,
     FineTuneStatus,
@@ -184,13 +183,18 @@ class MemoryFineTuneController(Controller):
 
         Returns:
             ``ApiResponse[FineTuneStatus]`` instance.
+
+        Raises:
+            ServiceUnavailableError: When the fine-tune orchestrator is
+                not wired. A 503 is honest about the unwired subsystem;
+                a fabricated ``IDLE`` 200 would mislead a poller into
+                believing the pipeline is configured and quiescent.
         """
         app_state: AppState = state.app_state
         orchestrator = app_state.slice(MemoryStateSlice).fine_tune_orchestrator
         if orchestrator is None:
-            return ApiResponse(
-                data=FineTuneStatus(stage=FineTuneStage.IDLE),
-            )
+            msg = "Fine-tune orchestrator is not configured"
+            raise ServiceUnavailableError(msg)
         status = await orchestrator.get_status()
         return ApiResponse(data=status)
 

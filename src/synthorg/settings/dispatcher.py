@@ -609,6 +609,13 @@ class SettingsChangeDispatcher:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
+            logger.warning(
+                SETTINGS_DISPATCHER_RESOLVE_FAILED,
+                key="dispatcher_max_consecutive_errors",
+                fallback=bootstrap_default,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             return bootstrap_default
 
     async def _resolve_stop_drain_timeout(self) -> float:
@@ -646,6 +653,13 @@ class SettingsChangeDispatcher:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
+            logger.warning(
+                SETTINGS_DISPATCHER_RESOLVE_FAILED,
+                key="dispatcher_stop_drain_timeout_seconds",
+                fallback=bootstrap_default,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             return bootstrap_default
 
     async def _ensure_channel(self) -> None:

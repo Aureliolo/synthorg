@@ -30,6 +30,7 @@ from synthorg.core.domain_errors import (
 )
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import Connection, ConnectionType
+from synthorg.integrations.errors import WebhookProcessingError
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.integrations.webhooks.event_bus_bridge import publish_webhook_event
 from synthorg.integrations.webhooks.replay_protection import MAX_NONCE_CHARS
@@ -322,7 +323,8 @@ async def _publish_with_durable_idempotency(  # noqa: PLR0913
 
     Raises:
         ConflictError: Raised on the corresponding failure path.
-        TypeError: Raised on the corresponding failure path.
+        WebhookProcessingError: If the cached idempotent response is not
+            a JSON object (corrupt cache entry).
     """
     from synthorg.core.types import NotBlankStr  # noqa: PLC0415
 
@@ -392,5 +394,5 @@ async def _publish_with_durable_idempotency(  # noqa: PLR0913
             cached_type=type(cached).__name__,
         )
         msg = "Cached webhook response was not a JSON object"
-        raise TypeError(msg)
+        raise WebhookProcessingError(msg)
     return cached

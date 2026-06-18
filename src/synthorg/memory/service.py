@@ -104,7 +104,7 @@ class CheckpointNotFoundError(NotFoundError):
     __slots__ = ()
     is_retryable: bool = False  # deterministic: the checkpoint is absent
     status_code: ClassVar[int] = 404
-    error_code: ClassVar[ErrorCode] = ErrorCode.RECORD_NOT_FOUND
+    error_code: ClassVar[ErrorCode] = ErrorCode.CHECKPOINT_NOT_FOUND
     error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
     default_message: ClassVar[str] = "Checkpoint not found"
 
@@ -150,7 +150,7 @@ class FineTuneRunNotFoundError(NotFoundError):
     __slots__ = ()
     is_retryable: bool = False  # deterministic: the run is absent
     status_code: ClassVar[int] = 404
-    error_code: ClassVar[ErrorCode] = ErrorCode.RECORD_NOT_FOUND
+    error_code: ClassVar[ErrorCode] = ErrorCode.FINE_TUNE_RUN_NOT_FOUND
     error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
     default_message: ClassVar[str] = "Fine-tune run not found"
     # Wire-level ``domain_code`` so MCP handlers route via the shared

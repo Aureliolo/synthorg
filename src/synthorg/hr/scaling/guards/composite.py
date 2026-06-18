@@ -3,7 +3,7 @@
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.models import ScalingDecision
 from synthorg.hr.scaling.protocols import ScalingGuard
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import HR_SCALING_GUARD_APPLIED
 
 logger = get_logger(__name__)
@@ -58,12 +58,14 @@ class CompositeScalingGuard:
             before = len(current)
             try:
                 current = await guard.filter(current)
-            except Exception:
+            except Exception as exc:
                 logger.error(
                     HR_SCALING_GUARD_APPLIED,
                     guard=str(guard.name),
                     action="guard_error",
                     input_count=before,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
             logger.debug(
