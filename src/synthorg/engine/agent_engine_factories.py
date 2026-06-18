@@ -41,7 +41,10 @@ if TYPE_CHECKING:
     from synthorg.communication.event_stream.stream import EventStreamHub
     from synthorg.config.schema import ProviderConfig
     from synthorg.core.effective_autonomy import EffectiveAutonomy
-    from synthorg.engine.agent_engine import BrainToolFactoryProvider
+    from synthorg.engine.agent_engine import (
+        BrainToolFactoryProvider,
+        KnowledgeToolFactoryProvider,
+    )
     from synthorg.engine.compaction.protocol import CompactionCallback
     from synthorg.engine.hybrid_models import HybridLoopConfig
     from synthorg.engine.intervention.inbox import SteeringInbox
@@ -73,6 +76,7 @@ class AgentEngineFactoriesMixin:
     _approval_store: ApprovalStoreProtocol | None
     _external_api_runtime: ExternalApiRuntime | None
     _brain_tool_factory_provider: BrainToolFactoryProvider | None
+    _knowledge_tool_factory_provider: KnowledgeToolFactoryProvider | None
     _parked_context_repo: ParkedContextRepository | None
     _event_stream_hub: EventStreamHub | None
     _interrupt_store: InterruptStore | None
@@ -345,6 +349,29 @@ class AgentEngineFactoriesMixin:
                 project_id=project_id,
                 author_agent_id=str(identity.id),
             )
+        # The knowledge tool factory is wired late (memory-gated
+        # ``_wire_knowledge_engine`` runs after the boot engine is built),
+        # so it is resolved through a provider at per-task time; ``None``
+        # until the substrate is wired (or forever when disabled), in which
+        # case no knowledge tools are added.
+        knowledge_tool_factory = (
+            self._knowledge_tool_factory_provider()
+            if self._knowledge_tool_factory_provider is not None
+            else None
+        )
+        if knowledge_tool_factory is not None:
+            from synthorg.core.types import NotBlankStr  # noqa: PLC0415
+            from synthorg.tools.registry import (  # noqa: PLC0415
+                ToolRegistry as _KnowledgeToolRegistry,
+            )
+
+            knowledge_tools = knowledge_tool_factory.build_tools(
+                project_id=NotBlankStr(project_id) if project_id is not None else None,
+            )
+            if knowledge_tools:
+                registry = _KnowledgeToolRegistry(
+                    [*registry.all_tools(), *knowledge_tools],
+                )
         if self._memory_injection_strategy is not None:
             from synthorg.memory.tools import (  # noqa: PLC0415
                 registry_with_memory_tools,

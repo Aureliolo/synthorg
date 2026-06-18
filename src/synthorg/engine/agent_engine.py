@@ -38,6 +38,7 @@ from synthorg.engine.loop_protocol import make_budget_checker
 from synthorg.engine.loop_selector import AutoLoopConfig
 from synthorg.engine.recovery import FailAndReassignStrategy
 from synthorg.engine.run_result import AgentRunResult
+from synthorg.knowledge.tool_factory import KnowledgeToolFactory
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -159,6 +160,15 @@ type PersonalityTrimNotifier = Callable[[PersonalityTrimPayload], Awaitable[None
 """Async callback invoked when an agent's personality section is trimmed."""
 
 
+type KnowledgeToolFactoryProvider = Callable[[], KnowledgeToolFactory | None]
+"""Provider reading the live knowledge tool factory at per-task time.
+
+The memory-gated knowledge substrate wires after the boot engine is built,
+so the engine resolves the factory through this provider (rather than
+capturing a ``None`` at construction); it returns ``None`` until the
+substrate is wired, or forever when it is disabled."""
+
+
 type BrainToolFactoryProvider = Callable[[], ProjectBrainToolFactory | None]
 """Provider reading the live project-brain tool factory at per-task time.
 
@@ -235,6 +245,7 @@ class AgentEngine(
         approval_interrupt_timeout_seconds: float | None = None,
         external_api_runtime: ExternalApiRuntime | None = None,
         brain_tool_factory_provider: BrainToolFactoryProvider | None = None,
+        knowledge_tool_factory_provider: KnowledgeToolFactoryProvider | None = None,
         stakes_router: StakesRouter | None = None,
         flight_recorder_sink: FlightRecorderSink | None = None,
         clock: Clock | None = None,
@@ -259,6 +270,7 @@ class AgentEngine(
         self._approval_store = approval_store
         self._external_api_runtime = external_api_runtime
         self._brain_tool_factory_provider = brain_tool_factory_provider
+        self._knowledge_tool_factory_provider = knowledge_tool_factory_provider
         self._parked_context_repo = parked_context_repo
         self._cost_forecast_repo = cost_forecast_repo
         # The boot path constructs one ApprovalGate (backed by the
