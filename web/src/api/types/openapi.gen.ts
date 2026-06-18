@@ -25238,7 +25238,7 @@ export interface operations {
     readonly ApiV1PromotionAgentIdApplyApply: {
         readonly parameters: {
             readonly query?: {
-                /** @description Direction of a seniority level change. */
+                /** @description Whether to apply a promotion or demotion. */
                 readonly direction?: components["schemas"]["PromotionDirection"];
             };
             readonly header?: never;
@@ -25272,7 +25272,7 @@ export interface operations {
     readonly ApiV1PromotionAgentIdEvaluateEvaluate: {
         readonly parameters: {
             readonly query?: {
-                /** @description Direction of a seniority level change. */
+                /** @description Whether to apply a promotion or demotion. */
                 readonly direction?: components["schemas"]["PromotionDirection"];
             };
             readonly header?: never;

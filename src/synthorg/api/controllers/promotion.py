@@ -8,8 +8,11 @@ rate-limited; the service is wired by ``wire_promotion`` at startup, so
 a request before wiring honestly 503s via ``promotion_service_of``.
 """
 
+from typing import Annotated
+
 from litestar import Controller, get, post
 from litestar.datastructures import State
+from litestar.params import QueryParameter
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.dto_promotion import (
@@ -46,7 +49,10 @@ class PromotionController(Controller):
         self,
         state: State,
         agent_id: PathId,
-        direction: PromotionDirection = PromotionDirection.PROMOTION,
+        direction: Annotated[
+            PromotionDirection,
+            QueryParameter(description="Whether to evaluate a promotion or demotion."),
+        ] = PromotionDirection.PROMOTION,
     ) -> ApiResponse[PromotionEvaluationDTO]:
         """Evaluate an agent for promotion or demotion.
 
@@ -100,7 +106,10 @@ class PromotionController(Controller):
         self,
         state: State,
         agent_id: PathId,
-        direction: PromotionDirection = PromotionDirection.PROMOTION,
+        direction: Annotated[
+            PromotionDirection,
+            QueryParameter(description="Whether to apply a promotion or demotion."),
+        ] = PromotionDirection.PROMOTION,
     ) -> ApiResponse[PromotionApplyResultDTO]:
         """Evaluate, request, and apply a seniority change for one agent.
 
