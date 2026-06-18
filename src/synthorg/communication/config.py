@@ -127,15 +127,35 @@ class NatsConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    # Default points at a local-loopback NATS dev server. In-container
-    # deployments override via ``SYNTHORG_NATS_URL`` (read by
-    # ``workers/__main__.py``), or via the Go CLI's
-    # ``SYNTHORG_DEFAULT_NATS_URL`` which targets the docker-compose
-    # internal DNS name ``nats`` on port 4222.
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="url",
+            namespace=SettingNamespace.COMMUNICATION,
+            key="nats_url",
+            only_if_env_set=True,
+        ),
+    )
+
+    # Default matches the registered ``communication.nats_url`` setting
+    # (the worker entry point resolves the same key), i.e. the
+    # docker-compose internal DNS name ``nats`` on port 4222. The
+    # ``SYNTHORG_NATS_URL`` env override flows through the mirror; a
+    # local-from-source run that has no NATS on that DNS name sets the
+    # env var to its own URL.
     url: NotBlankStr = Field(
-        default="nats://localhost:4222",
+        default="nats://nats:4222",
         description="NATS server URL",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: object) -> object:
+        """Overlay setting-namespace mirrors onto the raw input.
+
+        Returns:
+            The input data with mirrored settings applied.
+        """
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @field_validator("url")
     @classmethod
