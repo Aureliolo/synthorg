@@ -35,7 +35,10 @@ from synthorg.observability import (
     log_exception_redacted,
     safe_error_description,
 )
-from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.api import (
+    API_APP_STARTUP,
+    API_SERVICE_AUTO_WIRED,
+)
 from synthorg.ontology.state import OntologyStateSlice
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
@@ -134,6 +137,39 @@ async def _wire_ontology_service(
     service = await auto_wire_ontology(app_state.config, persistence)
     if service is not None:
         app_state.wire(OntologyStateSlice, service=service)
+        await _wire_drift_detection(persistence, app_state)
+
+
+async def _wire_drift_detection(
+    persistence: PersistenceBackend,
+    app_state: AppState,
+) -> None:
+    """Wire the drift-detection service after the ontology service.
+
+    Best-effort: builds the report store + detection service over the
+    configured strategy and the agent-memory backend. Leaves the slice
+    fields ``None`` (the drift controller 503s) when drift is disabled or
+    no memory backend is wired.
+    """
+    from synthorg.memory.state import MemoryStateSlice  # noqa: PLC0415
+    from synthorg.ontology.drift.factory import (  # noqa: PLC0415
+        build_drift_detection_service,
+    )
+
+    if app_state.slice(OntologyStateSlice).drift_detection_service is not None:
+        return
+    store = persistence.ontology_drift
+    memory = app_state.slice(MemoryStateSlice).backend
+    detection = build_drift_detection_service(
+        ontology=persistence.ontology_entities,
+        memory=memory,
+        config=app_state.config.ontology.drift_detection,
+        store=store,
+    )
+    app_state.wire(OntologyStateSlice, drift_report_store=store)
+    if detection is not None:
+        app_state.wire(OntologyStateSlice, drift_detection_service=detection)
+        logger.info(API_SERVICE_AUTO_WIRED, service="drift_detection_service")
 
 
 async def _rebind_connection_catalog(
