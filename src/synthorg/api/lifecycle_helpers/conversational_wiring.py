@@ -40,6 +40,7 @@ async def wire_group_chat_service(
     provider_registry: ProviderRegistry | None,
     persistence: PersistenceBackend | None,
     cost_tracker: CostTracker | None,
+    si_config: SelfImprovementConfig,
 ) -> None:
     """Wire the multi-agent group chat behind group_chat_enabled + deps.
 
@@ -49,24 +50,19 @@ async def wire_group_chat_service(
     """
     from synthorg.approval.state import ApprovalStateSlice  # noqa: PLC0415
     from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
-    from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
     from synthorg.persistence.conversational_factory import (  # noqa: PLC0415
         build_conversational_repositories,
     )
-    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
     if app_state.slice(MetaStateSlice).group_chat_service is not None:
         return
     agent_registry = app_state.slice(HrStateSlice).agent_registry
     if provider_registry is None or agent_registry is None:
         return
-    meta_self_improvement = await load_self_improvement_config(
-        app_state.slice(SettingsStateSlice).settings_service,
-    )
     repositories = build_conversational_repositories(persistence)
     service = build_group_chat_service(
-        meta_self_improvement.chief_of_staff,
+        si_config.chief_of_staff,
         provider_registry=provider_registry,
         agent_registry=agent_registry,
         repositories=repositories,
@@ -82,7 +78,11 @@ async def wire_group_chat_service(
         )
 
 
-async def wire_conversational_actor(app_state: AppState) -> None:
+async def wire_conversational_actor(
+    app_state: AppState,
+    *,
+    si_config: SelfImprovementConfig,
+) -> None:
     """Wire the direct-MCP conversational actor behind direct_mcp_enabled.
 
     Reuses the SHARED boot ``AgentEngine`` (held by the
@@ -94,9 +94,7 @@ async def wire_conversational_actor(app_state: AppState) -> None:
     skips when already wired.
     """
     from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
-    from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
-    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
     from synthorg.workers.execution_service import (  # noqa: PLC0415
         AgentEngineExecutionService,
     )
@@ -115,11 +113,8 @@ async def wire_conversational_actor(app_state: AppState) -> None:
     service = app_state.slice(RuntimeStateSlice).worker_execution_service
     if not isinstance(service, AgentEngineExecutionService):
         return
-    meta_self_improvement = await load_self_improvement_config(
-        app_state.slice(SettingsStateSlice).settings_service,
-    )
     actor = build_conversational_actor(
-        meta_self_improvement.chief_of_staff,
+        si_config.chief_of_staff,
         engine=service.engine,
         agent_registry=agent_registry,
         autonomy_resolver=service.autonomy_resolver,
@@ -233,38 +228,6 @@ async def _wire_conversational_repositories_and_reconcile(
     return repositories
 
 
-async def _load_meta_and_guard_persistence(
-    app_state: AppState,
-    persistence: PersistenceBackend | None,
-    effective_approval_store: ApprovalStoreProtocol,
-) -> SelfImprovementConfig:
-    """Load the self-improvement config and fail fast on bad persistence.
-
-    The guard runs before the provider gate so an enabled propose/invite
-    over a persistent SQLite ``ApprovalStore`` fails the boot regardless
-    of whether a provider is configured yet -- the combination can never
-    durably persist conversational approvals, so it is rejected as an
-    unsupported configuration independent of provider presence.
-
-    Returns:
-        The loaded ``SelfImprovementConfig``.
-
-    Raises:
-        ServiceUnavailableError: When propose or invite is enabled against
-            a persistent SQLite ApprovalStore.
-    """
-    from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
-    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
-
-    meta_self_improvement = await load_self_improvement_config(
-        app_state.slice(SettingsStateSlice).settings_service,
-    )
-    _guard_conversational_persistence(
-        meta_self_improvement.chief_of_staff, persistence, effective_approval_store
-    )
-    return meta_self_improvement
-
-
 def _wire_role_router(
     app_state: AppState,
     config: ChiefOfStaffConfig,
@@ -307,13 +270,14 @@ def _wire_role_router(
     return role_router
 
 
-async def wire_chief_of_staff_proposer(
+async def wire_chief_of_staff_proposer(  # noqa: PLR0913 -- boot wiring deps
     app_state: AppState,
     *,
     provider_registry: ProviderRegistry | None,
     persistence: PersistenceBackend | None,
     cost_tracker: CostTracker | None,
     effective_approval_store: ApprovalStoreProtocol,
+    si_config: SelfImprovementConfig,
 ) -> None:
     """Wire the Chief of Staff proposer behind propose_enabled + persistence.
 
@@ -332,19 +296,19 @@ async def wire_chief_of_staff_proposer(
     # Validate the persistence invariant before the provider gate: an
     # unsupported persistent-SQLite conversational config must fail the
     # boot whether or not a provider is configured yet.
-    meta_self_improvement = await _load_meta_and_guard_persistence(
-        app_state, persistence, effective_approval_store
+    _guard_conversational_persistence(
+        si_config.chief_of_staff, persistence, effective_approval_store
     )
     if provider_registry is None:
         return
     role_router = _wire_role_router(
         app_state,
-        meta_self_improvement.chief_of_staff,
+        si_config.chief_of_staff,
         provider_registry=provider_registry,
         cost_tracker=cost_tracker,
     )
     proposer = build_chief_of_staff_proposer(
-        meta_self_improvement.chief_of_staff,
+        si_config.chief_of_staff,
         provider_registry=provider_registry,
         approval_store=effective_approval_store,
         repositories=repositories,

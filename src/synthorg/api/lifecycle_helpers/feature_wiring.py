@@ -36,6 +36,7 @@ from synthorg.api.state import AppState
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.meta.config import SelfImprovementConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.protocol import PersistenceBackend
@@ -437,22 +438,18 @@ async def _wire_chief_of_staff_chat(
     *,
     provider_registry: ProviderRegistry | None,
     cost_tracker: CostTracker | None,
+    si_config: SelfImprovementConfig,
 ) -> None:
     """Wire the Chief of Staff chat backend behind chief_of_staff.chat_enabled."""
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
-    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
     if app_state.slice(MetaStateSlice).chief_of_staff_chat is not None:
         return
     if provider_registry is None:
         return
-    from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
 
-    meta_self_improvement = await load_self_improvement_config(
-        app_state.slice(SettingsStateSlice).settings_service,
-    )
     chat_backend = build_chief_of_staff_chat(
-        meta_self_improvement.chief_of_staff,
+        si_config.chief_of_staff,
         provider_registry=provider_registry,
         cost_tracker=cost_tracker,
     )
@@ -470,6 +467,15 @@ async def wire_features_on_startup(
     effective_approval_store: ApprovalStoreProtocol,
 ) -> None:
     """Run every optional feature-engine wire in dependency order."""
+    from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
+    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
+
+    # Load the self-improvement config ONCE for the whole feature-wiring
+    # pass and thread it into every sibling helper; the slice is rewritten
+    # at runtime by ``/setup``, so this boot snapshot is not cached there.
+    si_config = await load_self_improvement_config(
+        app_state.slice(SettingsStateSlice).settings_service,
+    )
     await _wire_docs_engine(app_state)
     await _wire_project_brain(app_state)
     await _wire_steering_service(app_state, provider_registry=provider_registry)
@@ -482,17 +488,20 @@ async def wire_features_on_startup(
         provider_registry=provider_registry,
         persistence=persistence,
         cost_tracker=cost_tracker,
+        si_config=si_config,
     )
     await _wire_meta_features(
         app_state,
         provider_registry=provider_registry,
         cost_tracker=cost_tracker,
         effective_approval_store=effective_approval_store,
+        si_config=si_config,
     )
     await wire_run_narrator(
         app_state,
         provider_registry=provider_registry,
         cost_tracker=cost_tracker,
+        si_config=si_config,
     )
     await wire_chief_of_staff_proposer(
         app_state,
@@ -500,14 +509,16 @@ async def wire_features_on_startup(
         persistence=persistence,
         cost_tracker=cost_tracker,
         effective_approval_store=effective_approval_store,
+        si_config=si_config,
     )
     await wire_group_chat_service(
         app_state,
         provider_registry=provider_registry,
         persistence=persistence,
         cost_tracker=cost_tracker,
+        si_config=si_config,
     )
-    await wire_conversational_actor(app_state)
+    await wire_conversational_actor(app_state, si_config=si_config)
 
 
 async def _wire_meta_features(
@@ -516,6 +527,7 @@ async def _wire_meta_features(
     provider_registry: ProviderRegistry | None,
     cost_tracker: CostTracker | None,
     effective_approval_store: ApprovalStoreProtocol,
+    si_config: SelfImprovementConfig,
 ) -> None:
     """Wire the signals facade, its read-views, and chief-of-staff chat.
 
@@ -529,10 +541,11 @@ async def _wire_meta_features(
     )
     await _wire_analytics_service(app_state)
     await _wire_reports_service(app_state)
-    await _wire_org_inflection_monitor(app_state)
-    await _wire_analytics_collector(app_state)
+    await _wire_org_inflection_monitor(app_state, si_config=si_config)
+    await _wire_analytics_collector(si_config=si_config)
     await _wire_chief_of_staff_chat(
         app_state,
         provider_registry=provider_registry,
         cost_tracker=cost_tracker,
+        si_config=si_config,
     )

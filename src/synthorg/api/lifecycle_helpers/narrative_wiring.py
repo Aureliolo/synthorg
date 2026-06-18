@@ -10,6 +10,7 @@ already-built work pipeline; it is best-effort and idempotent.
 from synthorg.api.state import AppState
 from synthorg.budget.tracker import CostTracker
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
+from synthorg.meta.config import SelfImprovementConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.observability.events.chief_of_staff import COS_NARRATIVE_SKIPPED
@@ -23,6 +24,7 @@ async def wire_run_narrator(
     *,
     provider_registry: ProviderRegistry | None,
     cost_tracker: CostTracker | None,
+    si_config: SelfImprovementConfig,
 ) -> None:
     """Attach the post-run narrator to the pipeline behind narrative_enabled.
 
@@ -39,9 +41,7 @@ async def wire_run_narrator(
             reason.
     """
     from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
-    from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
     from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
-    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
     if (
         provider_registry is None
@@ -49,10 +49,7 @@ async def wire_run_narrator(
         or app_state.slice(EngineStateSlice).work_pipeline is None
     ):
         return
-    meta_self_improvement = await load_self_improvement_config(
-        app_state.slice(SettingsStateSlice).settings_service,
-    )
-    config = meta_self_improvement.chief_of_staff
+    config = si_config.chief_of_staff
     if not config.narrative_enabled:
         logger.debug(
             COS_NARRATIVE_SKIPPED,
