@@ -128,6 +128,37 @@ async function triggerMeetingImpl(
   }
 }
 
+async function deleteMeetingImpl(
+  set: MeetingsSet,
+  meetingId: string,
+): Promise<boolean> {
+  set({ deleting: true })
+  try {
+    await meetingsApi.deleteMeeting(meetingId)
+    set((s) => {
+      const nextMeetings = s.meetings.filter((m) => m.meeting_id !== meetingId)
+      return {
+        deleting: false,
+        meetings: nextMeetings,
+        total: nextMeetings.length,
+        selectedMeeting:
+          s.selectedMeeting?.meeting_id === meetingId ? null : s.selectedMeeting,
+      }
+    })
+    useToastStore.getState().add({ variant: 'success', title: 'Meeting deleted' })
+    return true
+  } catch (err) {
+    log.error('deleteMeeting failed:', getErrorMessage(err))
+    set({ deleting: false })
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, 'Could not delete meeting'),
+      description: getErrorMessage(err),
+    })
+    return false
+  }
+}
+
 export function createCrudActions(set: MeetingsSet, get: MeetingsGet) {
   return {
     fetchMeetings: (filters?: MeetingFilters) =>
@@ -135,5 +166,6 @@ export function createCrudActions(set: MeetingsSet, get: MeetingsGet) {
     fetchMeeting: (meetingId: string) => fetchMeetingImpl(set, get, meetingId),
     triggerMeeting: (data: TriggerMeetingRequest) =>
       triggerMeetingImpl(set, data),
+    deleteMeeting: (meetingId: string) => deleteMeetingImpl(set, meetingId),
   }
 }

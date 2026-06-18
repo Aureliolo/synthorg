@@ -5,7 +5,13 @@ import type {
   triggerMeeting,
 } from '@/api/endpoints/meetings'
 import type { MeetingResponse } from '@/api/types/meetings'
-import { apiError, emptyPage, paginatedFor, successFor } from './helpers'
+import {
+  apiError,
+  emptyPage,
+  paginatedFor,
+  successFor,
+  voidSuccess,
+} from './helpers'
 
 function buildMeeting(
   overrides: Partial<MeetingResponse> = {},
@@ -70,4 +76,7 @@ export const meetingsHandlers = [
       ]),
     )
   }),
+  http.delete('/api/v1/meetings/:id', () =>
+    HttpResponse.json(voidSuccess()),
+  ),
 ]

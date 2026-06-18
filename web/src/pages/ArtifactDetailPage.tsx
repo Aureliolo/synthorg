@@ -9,6 +9,12 @@ import { ArtifactDetailSkeleton } from './artifacts/ArtifactDetailSkeleton'
 import { ArtifactMetadata } from './artifacts/ArtifactMetadata'
 import { ArtifactContentPreview } from './artifacts/ArtifactContentPreview'
 import { useArtifactDetailPageController } from './artifacts/useArtifactDetailPageController'
+import type { Artifact } from '@/api/types/artifacts'
+
+/** Prefer the human-readable path for the breadcrumb, falling back to the id. */
+function artifactBreadcrumbLabel(artifact: Artifact): string {
+  return artifact.path || artifact.id
+}
 
 export default function ArtifactDetailPage() {
   const { artifactId } = useParams<{ artifactId: string }>()
@@ -36,7 +42,7 @@ export default function ArtifactDetailPage() {
         <Breadcrumbs
           items={[
             { label: 'Artifacts', to: ROUTES.ARTIFACTS },
-            { label: ctrl.artifact.id },
+            { label: artifactBreadcrumbLabel(ctrl.artifact) },
           ]}
         />
         <DetailNavBar

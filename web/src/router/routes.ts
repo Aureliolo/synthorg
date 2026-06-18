@@ -25,6 +25,7 @@ export const ROUTES = {
   CHARTERS: '/meta/charters',
   AGENTS: '/agents',
   AGENT_DETAIL: '/agents/:agentId',
+  MODEL_RECOMMENDATIONS: '/agents/model-recommendations',
   TRAINING: '/training',
   MESSAGES: '/messages',
   MEETINGS: '/meetings',

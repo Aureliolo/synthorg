@@ -6,6 +6,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { useAuthStore } from '@/stores/auth'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { getPasswordStrength } from '@/utils/password-strength'
+import { graphemeLength } from '@/utils/setup-validation'
 import { getSetupStatus } from '@/api/endpoints/setup'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
@@ -174,7 +175,11 @@ function useAccountForm(minPasswordLength: number): AccountForm {
       setError('Username is required')
       return
     }
-    if (password.length < minPasswordLength) {
+    // Count user-visible characters (grapheme clusters), not UTF-16 code
+    // units, so the client check matches the server's character-based
+    // policy: a multi-byte password would otherwise pass here and be
+    // rejected server-side (or vice versa).
+    if (graphemeLength(password) < minPasswordLength) {
       setError(`Password must be at least ${minPasswordLength} characters`)
       return
     }

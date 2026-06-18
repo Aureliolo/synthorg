@@ -8,6 +8,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { useToastStore } from '@/stores/toast'
 import { downloadTextFile } from '@/utils/download'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
+import { isObject } from '@/utils/type-guards'
 
 /** State + handlers for the security-config export / import actions. */
 function useSecurityConfigActions() {
@@ -47,10 +48,10 @@ function useSecurityConfigActions() {
     if (!file) return
     try {
       const parsed: unknown = JSON.parse(await file.text())
-      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      if (!isObject(parsed)) {
         throw new Error('Import file must contain a JSON object')
       }
-      setPendingConfig(parsed as Record<string, unknown>)
+      setPendingConfig(parsed)
     } catch (err) {
       toast({ variant: 'error', title: 'Could not read import file', description: getErrorMessage(err) })
     }

@@ -46,7 +46,7 @@ export function MetaProposalList({ proposals }: MetaProposalListProps) {
     return (
       <EmptyState
         icon={Brain}
-        title="No Proposals"
+        title="No proposals"
         description="Improvement proposals will appear here when the meta-loop detects actionable patterns."
       />
     )

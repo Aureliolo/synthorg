@@ -1,20 +1,21 @@
+import { memo } from 'react'
 import { Link } from 'react-router'
 import { ROUTES } from '@/router/routes'
 import { ContentTypeBadge } from '@/components/ui/content-type-badge'
 import { StatPill } from '@/components/ui/stat-pill'
 import { formatFileSize } from '@/utils/format'
-import { formatRelativeTime, formatLabel } from '@/utils/format'
+import { formatRelativeTime, formatLabel, formatDateTime } from '@/utils/format'
 import type { Artifact } from '@/api/types/artifacts'
 
 interface ArtifactCardProps {
   artifact: Artifact
 }
 
-export function ArtifactCard({ artifact }: ArtifactCardProps) {
+function ArtifactCardInner({ artifact }: ArtifactCardProps) {
   return (
     <Link
       to={ROUTES.ARTIFACT_DETAIL.replace(':artifactId', encodeURIComponent(artifact.id))}
-      className="block rounded-lg border border-border bg-card p-card transition-shadow hover:shadow-[var(--so-shadow-card-hover)]"
+      className="block rounded-lg border border-border bg-card p-card transition-all duration-200 hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]"
     >
       <div className="mb-2 truncate font-mono text-sm font-medium text-foreground">
         {artifact.path}
@@ -27,7 +28,9 @@ export function ArtifactCard({ artifact }: ArtifactCardProps) {
 
       <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span>{artifact.size_bytes > 0 ? formatFileSize(artifact.size_bytes) : 'No content'}</span>
-        <span>{formatRelativeTime(artifact.created_at)}</span>
+        <time dateTime={artifact.created_at ?? undefined} title={formatDateTime(artifact.created_at)}>
+          {formatRelativeTime(artifact.created_at)}
+        </time>
       </div>
 
       <div className="mt-1 text-xs text-text-muted">
@@ -36,3 +39,5 @@ export function ArtifactCard({ artifact }: ArtifactCardProps) {
     </Link>
   )
 }
+
+export const ArtifactCard = memo(ArtifactCardInner)

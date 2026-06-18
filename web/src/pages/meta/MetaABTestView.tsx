@@ -36,7 +36,7 @@ export function MetaABTestView({ tests }: MetaABTestViewProps) {
     return (
       <EmptyState
         icon={FlaskConical}
-        title="No Active A/B Tests"
+        title="No active A/B tests"
         description="A/B tests will appear here when a proposal uses the ab_test rollout strategy."
       />
     )
@@ -68,7 +68,7 @@ function ABTestCard({ test }: ABTestCardProps) {
         elapsed={test.observation_hours_elapsed}
         total={test.observation_hours_total}
       />
-      <div className="grid grid-cols-2 gap-grid-gap">
+      <div className="grid grid-cols-2 gap-grid-gap max-[767px]:grid-cols-1">
         <ABTestArmMetrics label="Control" metrics={test.control_metrics} />
         <ABTestArmMetrics label="Treatment" metrics={test.treatment_metrics} />
       </div>

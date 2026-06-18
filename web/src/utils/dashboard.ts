@@ -83,8 +83,11 @@ export function computeSpendTrend(
   points: readonly TrendDataPoint[],
 ): { value: number; direction: 'up' | 'down' } | undefined {
   if (points.length < 2) return undefined
-  const first = points[0]!.value
-  const last = points[points.length - 1]!.value
+  const firstPoint = points.at(0)
+  const lastPoint = points.at(-1)
+  if (!firstPoint || !lastPoint) return undefined
+  const first = firstPoint.value
+  const last = lastPoint.value
   if (first === 0) return undefined
   const pct = Math.round(Math.abs(((last - first) / first) * 100))
   if (pct === 0) return undefined

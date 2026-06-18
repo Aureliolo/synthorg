@@ -7,7 +7,7 @@ import type { Priority } from '@/api/types/enums'
 import type { DashboardTask } from '@/api/types/tasks'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatCurrency, formatDateTime } from '@/utils/format'
-import { getPriorityLabel, getTaskTypeLabel } from '@/utils/tasks'
+import { getPriorityLabel, getTaskTypeLabel, parsePriority } from '@/utils/tasks'
 
 const PRIORITIES: readonly Priority[] = ['critical', 'high', 'medium', 'low']
 
@@ -72,11 +72,13 @@ function PriorityField({ task }: TaskFieldProps) {
       options={PRIORITY_OPTIONS}
       value={task.priority}
       onChange={async (value) => {
+        const priority = parsePriority(value)
+        if (priority === null) return
         // Sentinel-return contract: the store owns the error toast. The select
         // re-binds to the latest priority via its ``value`` prop on the next
         // render after the store's ``upsertTask`` succeeds.
         await useTasksStore.getState().updateTask(task.id, {
-          priority: value as Priority,
+          priority,
           expected_version: task.version ?? null,
         })
       }}

@@ -7,6 +7,7 @@ import type {
   PeriodSummary,
 } from '../types/budget'
 import type {
+  AnalyticsAggregation,
   Forecast,
   ForecastRequest,
   ForecastApproveRequest,
@@ -107,6 +108,17 @@ export async function getAgentSpending(agentId: string): Promise<AgentSpending> 
 
 export async function getParetoFrontier(signal?: AbortSignal): Promise<ParetoFrontier> {
   const response = await apiClient.get<ApiResponse<ParetoFrontier>>('/budget/pareto', withSignal(signal))
+  return unwrap(response)
+}
+
+export async function getCallAnalytics(
+  filters?: { agent_id?: string; task_id?: string; provider?: string },
+  signal?: AbortSignal,
+): Promise<AnalyticsAggregation> {
+  const response = await apiClient.get<ApiResponse<AnalyticsAggregation>>(
+    '/budget/call-analytics',
+    withSignal(signal, { params: filters }),
+  )
   return unwrap(response)
 }
 

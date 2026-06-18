@@ -217,7 +217,7 @@ export function ProviderFormModal(props: ProviderFormModalProps) {
           <Dialog.Backdrop className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity duration-200 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
           <Dialog.Popup
             className={cn(
-              'fixed top-1/2 left-1/2 z-50 w-full max-w-3xl -translate-x-1/2 -translate-y-1/2',
+              'fixed top-1/2 left-1/2 z-50 w-[calc(100vw-2rem)] max-w-3xl -translate-x-1/2 -translate-y-1/2',
               'rounded-xl border border-border bg-card shadow-[var(--so-shadow-card-hover)]',
               'transition-[opacity,translate,scale] duration-200 ease-out',
               'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',

@@ -26,3 +26,9 @@ export async function triggerMeeting(
   const response = await apiClient.post<ApiResponse<MeetingResponse[]>>('/meetings/trigger', data)
   return unwrap(response)
 }
+
+export async function deleteMeeting(meetingId: string): Promise<void> {
+  await apiClient.delete<ApiResponse<null>>(
+    `/meetings/${encodeURIComponent(meetingId)}`,
+  )
+}

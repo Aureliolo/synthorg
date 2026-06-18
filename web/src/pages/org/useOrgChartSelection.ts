@@ -88,8 +88,8 @@ export function useOrgChartSelection(displayNodes: Node[]): OrgChartSelectionRes
   const confirmDelete = useCallback(() => {
     addToast({
       variant: 'info',
-      title: 'Delete is not yet available',
-      description: 'Backend API for this operation is pending',
+      title: "Deleting from the chart isn't available yet",
+      description: 'Remove agents from the Agents page; org-chart deletion lands in an upcoming release.',
     })
     setDeleteConfirm(null)
   }, [addToast])

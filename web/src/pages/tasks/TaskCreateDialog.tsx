@@ -224,7 +224,7 @@ function TitleDescriptionFields({ ctrl }: TaskCreateDialogBodyProps) {
 
 function TypePriorityRow({ ctrl }: TaskCreateDialogBodyProps) {
   return (
-    <div className="grid grid-cols-2 gap-grid-gap">
+    <div className="grid grid-cols-2 gap-grid-gap max-[479px]:grid-cols-1">
       <FormField label="Type">
         <select
           value={ctrl.form.type}

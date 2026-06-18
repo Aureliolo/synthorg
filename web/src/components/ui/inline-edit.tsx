@@ -18,6 +18,12 @@ export interface InlineEditProps {
   className?: string | undefined
   /** Whether editing is disabled. */
   disabled?: boolean | undefined
+  /**
+   * Stable id applied to the active control (the display button or the
+   * edit input). Lets a visible `<label htmlFor>` associate with the
+   * widget for screen readers, since only one of the two renders at a time.
+   */
+  id?: string | undefined
 }
 
 interface InlineEditMachine {
@@ -125,6 +131,7 @@ function InlineEditDisplay({
   renderDisplay,
   onClick,
   className,
+  id,
 }: {
   value: string
   placeholder: string | undefined
@@ -133,11 +140,13 @@ function InlineEditDisplay({
   renderDisplay: ((value: string) => React.ReactNode) | undefined
   onClick: () => void
   className?: string | undefined
+  id?: string | undefined
 }) {
   return (
     <div className={cn('inline-block', className)}>
       <button
         type="button"
+        id={id}
         onClick={onClick}
         disabled={disabled}
         data-inline-display=""
@@ -160,10 +169,12 @@ function InlineEditField({
   machine,
   type,
   className,
+  id,
 }: {
   machine: InlineEditMachine
   type: 'text' | 'number'
   className?: string | undefined
+  id?: string | undefined
 }) {
   const errorId = useId()
   const { state, editValue, error, inputRef } = machine
@@ -186,6 +197,7 @@ function InlineEditField({
       <div className="relative">
         <input
           ref={inputRef}
+          id={id}
           type={type}
           value={editValue}
           onChange={(e) => {
@@ -229,6 +241,7 @@ export function InlineEdit({
   type = 'text',
   className,
   disabled,
+  id,
 }: InlineEditProps) {
   const machine = useInlineEdit(value, onSave, validate, disabled)
   if (machine.state === 'display') {
@@ -241,8 +254,9 @@ export function InlineEdit({
         renderDisplay={renderDisplay}
         onClick={machine.startEditing}
         className={className}
+        id={id}
       />
     )
   }
-  return <InlineEditField machine={machine} type={type} className={className} />
+  return <InlineEditField machine={machine} type={type} className={className} id={id} />
 }

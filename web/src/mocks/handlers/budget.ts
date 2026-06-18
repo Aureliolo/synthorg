@@ -5,13 +5,14 @@ import type {
   createForecast,
   getAgentSpending,
   getBudgetConfig,
+  getCallAnalytics,
   getForecast,
   getParetoFrontier,
   raiseCeiling,
   rejectForecast,
 } from '@/api/endpoints/budget'
 import type { AgentSpending, BudgetConfig } from '@/api/types/budget'
-import type { Forecast, ParetoFrontier } from '@/api/types'
+import type { AnalyticsAggregation, Forecast, ParetoFrontier } from '@/api/types'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { successFor } from './helpers'
 
@@ -40,6 +41,29 @@ function buildParetoFrontier(): ParetoFrontier {
     source: 'stub:calibrated-v1',
     generated_at: '2026-05-20T12:00:00Z',
     baseline_window_size: 0,
+  }
+}
+
+function buildCallAnalytics(): AnalyticsAggregation {
+  return {
+    total_calls: 0,
+    success_count: 0,
+    failure_count: 0,
+    retry_count: 0,
+    retry_rate: 0,
+    cache_hit_count: 0,
+    cache_hit_rate: null,
+    avg_latency_ms: null,
+    p95_latency_ms: null,
+    by_finish_reason: [],
+    orchestration_ratio: {
+      alert_level: 'normal',
+      coordination_tokens: 0,
+      productive_tokens: 0,
+      ratio: 0,
+      system_tokens: 0,
+      total_tokens: 0,
+    },
   }
 }
 
@@ -178,6 +202,11 @@ export const budgetHandlers = [
           ceiling_amount: 2.5,
         }),
       ),
+    ),
+  ),
+  http.get('/api/v1/budget/call-analytics', () =>
+    HttpResponse.json(
+      successFor<typeof getCallAnalytics>(buildCallAnalytics()),
     ),
   ),
 ]

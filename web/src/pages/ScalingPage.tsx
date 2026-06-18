@@ -5,6 +5,7 @@ import { ListHeader } from '@/components/ui/list-header'
 import { useScalingData } from '@/hooks/useScalingData'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
+import { getErrorMessage } from '@/utils/errors'
 
 const log = createLogger('ScalingPage')
 
@@ -31,7 +32,11 @@ function useEvaluateNow(evaluateNow: EvaluateNow): () => Promise<void> {
       addToast(evaluationResultToast(results.length))
     } catch (err) {
       log.error('Evaluation failed', err)
-      addToast({ variant: 'error', title: 'Evaluation failed' })
+      addToast({
+        variant: 'error',
+        title: 'Could not evaluate scaling',
+        description: getErrorMessage(err),
+      })
     }
   }
 }
@@ -93,7 +98,7 @@ export default function ScalingPage() {
       </ErrorBoundary>
 
       {/* Signal gauges and strategy controls side by side */}
-      <div className="grid grid-cols-2 gap-grid-gap">
+      <div className="grid grid-cols-2 gap-grid-gap max-[1023px]:grid-cols-1">
         <ErrorBoundary level="section">
           <SignalGauges signals={signals} />
         </ErrorBoundary>

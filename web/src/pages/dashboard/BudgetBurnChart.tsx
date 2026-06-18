@@ -89,7 +89,7 @@ function ChartTooltipContent({ active, payload, label, currency }: {
 }) {
   if (!active || !payload?.length) return null
   return (
-    <div className="rounded-md border border-border bg-card px-3 py-2 text-xs shadow-md">
+    <div className="rounded-md border border-border bg-card px-3 py-2 text-xs shadow-[var(--so-shadow-card)]">
       <p className="mb-1 font-sans text-text-secondary">{label}</p>
       {payload.map((entry) => (
         <p key={entry.dataKey} className="font-mono text-foreground">

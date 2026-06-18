@@ -147,7 +147,11 @@ function useDepartmentsList(addToast: AddToast): { departments: readonly Departm
           description: 'Pagination cursor cycle detected. Refresh the page to retry.',
         })
       } else if (result.failed) {
-        addToast({ variant: 'error', title: 'Failed to load departments' })
+        addToast({
+          variant: 'error',
+          title: 'Could not load departments',
+          description: 'Check your connection and refresh the page to try again.',
+        })
       }
     }
     void load()
@@ -183,12 +187,20 @@ async function saveCeremonySettings(
 function useParseErrorToasts(addToast: AddToast, configParseError: boolean, overridesParseError: boolean): void {
   useEffect(() => {
     if (configParseError) {
-      addToast({ variant: 'warning', title: 'Failed to parse ceremony_strategy_config setting' })
+      addToast({
+        variant: 'warning',
+        title: 'Could not read the saved ceremony strategy configuration',
+        description: 'It will fall back to defaults until you save a valid configuration.',
+      })
     }
   }, [configParseError, addToast])
   useEffect(() => {
     if (overridesParseError) {
-      addToast({ variant: 'warning', title: 'Failed to parse ceremony_policy_overrides setting' })
+      addToast({
+        variant: 'warning',
+        title: 'Could not read the saved department ceremony overrides',
+        description: 'Department overrides will fall back to defaults until you save again.',
+      })
     }
   }, [overridesParseError, addToast])
 }
@@ -251,15 +263,19 @@ export function useCeremonyPolicyController(): CeremonyPolicyController {
     try {
       const failedCount = await saveCeremonySettings(updateSetting, form.form, overrides.overrides)
       if (failedCount > 0) {
-        setSaveError(`${failedCount} ceremony setting(s) failed to save`)
+        const plural = failedCount === 1 ? 'setting' : 'settings'
+        const message = `${failedCount} ceremony ${plural} could not be saved. Reapply your changes to retry.`
+        setSaveError(message)
+        addToast({ variant: 'error', title: 'Could not save ceremony policy', description: message })
         return
       }
       setIsDirty(false)
       void fetchResolvedPolicy()
+      addToast({ variant: 'success', title: 'Ceremony policy saved' })
     } finally {
       setSaving(false)
     }
-  }, [updateSetting, form.form, overrides.overrides, fetchResolvedPolicy])
+  }, [updateSetting, form.form, overrides.overrides, fetchResolvedPolicy, addToast])
 
   return {
     form,

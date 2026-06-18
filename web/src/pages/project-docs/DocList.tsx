@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { Skeleton } from '@/components/ui/skeleton'
 import { DOC_TYPE_VALUES, type DocSummary, type DocType } from '@/api/types'
 
 const DOC_TYPE_LABEL: Record<DocType, string> = {
@@ -25,6 +26,7 @@ export interface DocListProps {
   docs: readonly DocSummary[]
   selectedSlug: string | null
   filter: DocType | null
+  loading?: boolean
   onSelect: (slug: string) => void
   onFilterChange: (filter: DocType | null) => void
 }
@@ -33,6 +35,7 @@ export function DocList({
   docs,
   selectedSlug,
   filter,
+  loading = false,
   onSelect,
   onFilterChange,
 }: DocListProps) {
@@ -63,7 +66,13 @@ export function DocList({
           />
         ))}
       </div>
-      {filtered.length === 0 ? (
+      {loading && docs.length === 0 ? (
+        <div className="flex flex-col gap-1" aria-busy="true">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-12 w-full rounded" />
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
         <p className="text-muted-foreground text-sm">No matching documents.</p>
       ) : (
         <ul className="flex flex-col gap-1">

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
 import { listMessages } from '@/api/endpoints/messages'
 import { aggregateMessages, type CommunicationLink } from '@/pages/org/aggregate-messages'
 
@@ -17,6 +17,8 @@ export interface UseCommunicationEdgesReturn {
   error: string | null
   /** True when MAX_PAGES was reached before all messages were fetched. */
   truncated: boolean
+  /** Re-run the message fetch (e.g. from a banner Retry action). */
+  refetch: () => void
 }
 
 interface FetchState {
@@ -92,6 +94,8 @@ export function useCommunicationEdges(enabled = true): UseCommunicationEdgesRetu
     error: null,
     truncated: false,
   })
+  const [reloadToken, setReloadToken] = useState(0)
+  const refetch = useCallback(() => setReloadToken((t) => t + 1), [])
 
   useEffect(() => {
     if (!enabled) {
@@ -116,12 +120,12 @@ export function useCommunicationEdges(enabled = true): UseCommunicationEdgesRetu
     }
     void fetchAll()
     return () => { controller.abort() }
-  }, [enabled])
+  }, [enabled, reloadToken])
 
   const links = useMemo(
     () => (state.messages.length > 0 ? aggregateMessages(state.messages, DEFAULT_TIME_WINDOW_MS) : []),
     [state.messages],
   )
 
-  return { links, loading: state.loading, error: state.error, truncated: state.truncated }
+  return { links, loading: state.loading, error: state.error, truncated: state.truncated, refetch }
 }

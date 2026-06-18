@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import { ListHeader } from '@/components/ui/list-header'
 import { MetricCard } from '@/components/ui/metric-card'
 import { ErrorBanner } from '@/components/ui/error-banner'
@@ -67,11 +67,14 @@ export default function DashboardPage() {
     isRefetching,
   } = useDashboardData()
 
+  const metricCards = useMemo(
+    () => (overview ? computeMetricCards(overview, budgetConfig) : []),
+    [overview, budgetConfig],
+  )
+
   if (loading && !overview) {
     return <DashboardSkeleton />
   }
-
-  const metricCards = overview ? computeMetricCards(overview, budgetConfig) : []
 
   const dismissGuidance = (): void => {
     setShowGuidance(false)

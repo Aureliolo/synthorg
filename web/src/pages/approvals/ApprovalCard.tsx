@@ -194,7 +194,7 @@ function ApprovalCardHeader(props: ApprovalCardHeaderProps) {
         </button>
         <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-text-secondary">
           <span className="font-mono">{approval.action_type}</span>
-          <span aria-hidden="true">--</span>
+          <span aria-hidden="true">·</span>
           <span>{approval.requested_by}</span>
         </div>
       </div>
@@ -262,7 +262,7 @@ function ApprovalCardImpl({
       className={cn(
         'rounded-lg border bg-card p-card transition-all duration-200',
         selected ? 'border-bright ring-1 ring-accent/20' : 'border-border',
-        isPending && 'hover:bg-card-hover hover:-translate-y-px hover:shadow-md',
+        isPending && 'hover:bg-card-hover hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]',
         !isPending && 'opacity-70',
         className,
       )}

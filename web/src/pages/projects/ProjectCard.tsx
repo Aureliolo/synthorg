@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Link } from 'react-router'
 import { Users } from 'lucide-react'
 import { ROUTES } from '@/router/routes'
@@ -50,7 +51,7 @@ function ProjectCardFooter({
   )
 }
 
-export function ProjectCard({ project, onToggleSelect, selected = false }: ProjectCardProps) {
+function ProjectCardInner({ project, onToggleSelect, selected = false }: ProjectCardProps) {
   const { detailHref, status, taskCount, budget, teamSize } = deriveProjectCardData(project)
   return (
     <div className="relative">
@@ -69,7 +70,7 @@ export function ProjectCard({ project, onToggleSelect, selected = false }: Proje
     <Link
       to={detailHref}
       className={cn(
-        'block rounded-lg border bg-card p-card transition-shadow hover:shadow-[var(--so-shadow-card-hover)]',
+        'block rounded-lg border bg-card p-card transition-all duration-200 hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]',
         selected ? 'border-accent ring-2 ring-accent/30' : 'border-border',
         onToggleSelect && 'pl-8',
       )}
@@ -93,3 +94,5 @@ export function ProjectCard({ project, onToggleSelect, selected = false }: Proje
     </div>
   )
 }
+
+export const ProjectCard = memo(ProjectCardInner)

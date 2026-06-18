@@ -9,6 +9,7 @@ import {
   getPriorityLabel,
   getTaskStatusLabel,
   getTaskTypeLabel,
+  parsePriority,
 } from '@/utils/tasks'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatCurrency, formatDateTime } from '@/utils/format'
@@ -51,10 +52,14 @@ interface TaskUpdateProps {
 export function DescriptionEdit({ task, onUpdate }: TaskUpdateProps) {
   return (
     <div>
-      <label className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+      <label
+        htmlFor="task-description-edit"
+        className="text-[11px] font-semibold uppercase tracking-wider text-text-muted"
+      >
         Description
       </label>
       <InlineEdit
+        id="task-description-edit"
         value={task.description}
         onSave={async (value) => {
           await onUpdate(task.id, { description: value, expected_version: task.version ?? null })
@@ -68,21 +73,26 @@ export function DescriptionEdit({ task, onUpdate }: TaskUpdateProps) {
 export function PrioritySection({ task, onUpdate }: TaskUpdateProps) {
   return (
     <div>
-      <label className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+      <label
+        htmlFor="task-priority-select"
+        className="text-[11px] font-semibold uppercase tracking-wider text-text-muted"
+      >
         Priority
       </label>
       <div className="mt-1 flex items-center gap-2">
         <PriorityBadge priority={task.priority} />
         <select
+          id="task-priority-select"
           value={task.priority}
           onChange={(e) => {
+            const priority = parsePriority(e.target.value)
+            if (priority === null) return
             void onUpdate(task.id, {
-              priority: e.target.value as Priority,
+              priority,
               expected_version: task.version ?? null,
             })
           }}
           className="h-7 rounded border border-border bg-surface px-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
-          aria-label="Change priority"
         >
           {PRIORITIES.map((p) => (
             <option key={p} value={p}>
@@ -192,11 +202,13 @@ export function AcceptanceCriteriaList({ task }: TaskOnlyProps) {
             className="flex items-start gap-2 text-xs text-text-secondary"
           >
             <span
+              aria-hidden="true"
               className={cn(
                 'mt-0.5 size-3.5 shrink-0 rounded border',
                 criterion.met ? 'border-success bg-success/20' : 'border-border',
               )}
             />
+            <span className="sr-only">{criterion.met ? 'Met: ' : 'Not met: '}</span>
             {criterion.description}
           </li>
         ))}

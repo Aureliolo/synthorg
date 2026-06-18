@@ -48,11 +48,9 @@ function useEscapeToClose(onClose: () => void): void {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
-      if (
-        document.querySelector('[role="alertdialog"], [role="dialog"][aria-modal="true"]')
-      ) {
-        return
-      }
+      // A nested confirm dialog (cancel / delete) owns Escape while open; the
+      // panel's own ``role="dialog"`` is deliberately excluded from this guard.
+      if (document.querySelector('[role="alertdialog"]')) return
       onClose()
     }
     document.addEventListener('keydown', handleKeyDown)
@@ -100,12 +98,13 @@ export function TaskDetailPanel({
         onClick={onClose}
       />
       <motion.aside
-        className="fixed top-0 right-0 z-50 flex h-full w-full max-w-lg flex-col border-l border-border bg-base shadow-lg"
+        className="fixed top-0 right-0 z-50 flex h-full w-[var(--so-drawer-width-default)] max-w-[100vw] flex-col border-l border-border bg-base shadow-[var(--so-shadow-card-hover)]"
         variants={PANEL_VARIANTS}
         initial="initial"
         animate="animate"
         exit="exit"
         role="dialog"
+        aria-modal="true"
         aria-label={`Task detail: ${task.title}`}
       >
         <PanelHeader task={task} onClose={onClose} />

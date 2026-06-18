@@ -43,7 +43,7 @@ function RiskFilterMetricCard({ label, value, riskLevel, active, onToggle, class
       aria-pressed={active}
       aria-label={`Filter by ${label.toLowerCase()} risk (${value} pending)`}
       className={cn(
-        'block w-full text-left rounded-lg transition-shadow',
+        'block w-full text-left rounded-lg transition-all duration-200 hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
         active && 'ring-2 ring-accent',
       )}

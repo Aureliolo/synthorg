@@ -63,6 +63,11 @@ function getFooterAction(ns: SettingNamespace): React.ReactNode {
           title="Active Sessions"
           description="Review and revoke active sessions for your account"
         />
+        <SettingsActionCard
+          to={ROUTES.ADMIN_AUDIT_LOG}
+          title="Audit Log"
+          description="Review the immutable record of security-relevant actions"
+        />
         <SecurityConfigSection />
       </div>
     )

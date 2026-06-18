@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Server } from 'lucide-react'
 import { ProviderHealthBadge } from '@/components/ui/provider-health-badge'
 import { cn } from '@/lib/utils'
@@ -11,7 +12,7 @@ interface ProviderCardProps {
   className?: string
 }
 
-export function ProviderCard({ provider, health, className }: ProviderCardProps) {
+function ProviderCardInner({ provider, health, className }: ProviderCardProps) {
   const displayName = provider.name
   const subtitle = provider.litellm_provider ?? provider.driver
 
@@ -39,7 +40,7 @@ export function ProviderCard({ provider, health, className }: ProviderCardProps)
       <div className="mt-3 flex flex-col gap-1.5">
         <div className="flex items-center gap-2 text-xs text-text-secondary">
           <span className="truncate">{subtitle}</span>
-          <span className="text-text-muted">|</span>
+          <span className="text-text-muted">·</span>
           <span>{provider.auth_type.replaceAll('_', ' ')}</span>
         </div>
 
@@ -73,3 +74,5 @@ export function ProviderCard({ provider, health, className }: ProviderCardProps)
     </div>
   )
 }
+
+export const ProviderCard = memo(ProviderCardInner)

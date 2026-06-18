@@ -106,6 +106,7 @@ function CustomRuleCard({
 
 interface CustomRulesContentProps {
   loading: boolean
+  hasError: boolean
   rulesCount: number
   sortedRules: readonly CustomRule[]
   onToggle: (id: string) => void
@@ -116,6 +117,7 @@ interface CustomRulesContentProps {
 
 function CustomRulesContent({
   loading,
+  hasError,
   rulesCount,
   sortedRules,
   onToggle,
@@ -131,6 +133,12 @@ function CustomRulesContent({
         ))}
       </div>
     )
+  }
+  // When a fetch error already drives the ErrorBanner above, suppress the
+  // "no rules yet" empty state so the two don't render together and imply
+  // the list is genuinely empty rather than failed.
+  if (rulesCount === 0 && hasError) {
+    return null
   }
   if (rulesCount === 0) {
     return (
@@ -233,6 +241,7 @@ export default function CustomRulesPage() {
 
       <CustomRulesContent
         loading={loading}
+        hasError={Boolean(error)}
         rulesCount={rules.length}
         sortedRules={sortedRules}
         onToggle={(id) => {

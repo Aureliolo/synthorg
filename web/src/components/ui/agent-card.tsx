@@ -1,5 +1,6 @@
 import { useId } from 'react'
 import { cn, type AgentRuntimeStatus } from '@/lib/utils'
+import { formatDateTime } from '@/utils/format'
 import { Avatar } from './avatar'
 import { StatusBadge } from './status-badge'
 
@@ -9,7 +10,15 @@ export interface AgentCardProps {
   department: string
   status: AgentRuntimeStatus
   currentTask?: string | undefined
+  /** Human-readable (usually relative) timestamp text shown in the footer. */
   timestamp?: string | undefined
+  /**
+   * Machine-readable ISO datetime backing the footer timestamp. When set the
+   * footer renders a `<time>` element whose `title` exposes the absolute
+   * value, so a relative label like "3 days ago" still surfaces the exact
+   * instant on hover.
+   */
+  timestampIso?: string | undefined
   className?: string | undefined
   /** Inline style for flash animation (from useFlash). */
   flashStyle?: React.CSSProperties | undefined
@@ -22,6 +31,7 @@ export function AgentCard({
   status,
   currentTask,
   timestamp,
+  timestampIso,
   className,
   flashStyle,
 }: AgentCardProps) {
@@ -66,7 +76,17 @@ export function AgentCard({
         )}
         {timestamp && (
           <div className="mt-0.5 text-right">
-            <span className="font-mono text-micro text-muted-foreground">{timestamp}</span>
+            {timestampIso ? (
+              <time
+                dateTime={timestampIso}
+                title={formatDateTime(timestampIso)}
+                className="font-mono text-micro text-muted-foreground"
+              >
+                {timestamp}
+              </time>
+            ) : (
+              <span className="font-mono text-micro text-muted-foreground">{timestamp}</span>
+            )}
           </div>
         )}
       </div>

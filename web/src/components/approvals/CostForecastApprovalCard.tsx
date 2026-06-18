@@ -128,7 +128,7 @@ export function CostForecastApprovalCard({
       className={cn(
         'rounded-lg border bg-card p-card transition-all duration-[var(--so-transition-default)]',
         isPending
-          ? 'border-border hover:bg-card-hover hover:-translate-y-px hover:shadow-md'
+          ? 'border-border hover:bg-card-hover hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]'
           : 'border-border opacity-70',
         className,
       )}

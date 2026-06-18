@@ -186,6 +186,11 @@ function ClientSatisfactionSection({
               </li>
             ))}
           </ul>
+          {satisfaction.history.length > 10 && (
+            <p className="mt-2 text-xs text-text-secondary">
+              Showing the 10 most recent of {satisfaction.history.length} reviews.
+            </p>
+          )}
         </div>
       ) : (
         <p className="text-sm text-text-secondary">

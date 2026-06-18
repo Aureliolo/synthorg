@@ -33,7 +33,7 @@ function makeTest(overrides: Partial<ABTestSummary> = {}): ABTestSummary {
 describe('MetaABTestView', () => {
   it('renders empty state when no tests', () => {
     render(<MetaABTestView tests={[]} />)
-    expect(screen.getByText('No Active A/B Tests')).toBeInTheDocument()
+    expect(screen.getByText('No active A/B tests')).toBeInTheDocument()
   })
 
   it('renders proposal title for active test', () => {

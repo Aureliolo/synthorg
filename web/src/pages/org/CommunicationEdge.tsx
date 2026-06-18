@@ -36,11 +36,12 @@ function ensureKeyframe() {
 function CommunicationEdgeComponent(props: EdgeProps<CommunicationEdgeType>) {
   // ``EdgeProps.data`` is optional, so a partially-populated (or absent) edge
   // payload must not yield ``undefined`` metrics that propagate as ``NaN`` into
-  // the stroke/opacity/duration maths below.
-  const data = (props.data ?? {}) as Partial<CommunicationEdgeData>
-  const volume = data.volume ?? 1
-  const frequency = data.frequency ?? 1
-  const maxVolume = data.maxVolume ?? 1
+  // the stroke/opacity/duration maths below. ``data`` is already typed by
+  // ``EdgeProps<CommunicationEdgeType>``; optional-chain its fields instead
+  // of casting the whole payload.
+  const volume = props.data?.volume ?? 1
+  const frequency = props.data?.frequency ?? 1
+  const maxVolume = props.data?.maxVolume ?? 1
 
   const [edgePath] = getBezierPath({
     sourceX: props.sourceX,

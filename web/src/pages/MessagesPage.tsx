@@ -1,9 +1,12 @@
 import { AnimatePresence } from 'motion/react'
 import { MessageSquare } from 'lucide-react'
+import { Breadcrumbs } from '@/components/ui/breadcrumbs'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
+import { formatLabel } from '@/utils/format'
+import { ROUTES } from '@/router/routes'
 import { ChannelSidebar } from './messages/ChannelSidebar'
 import { MessageFilterBar } from './messages/MessageFilterBar'
 import { MessageList } from './messages/MessageList'
@@ -54,6 +57,14 @@ function MessagesMainContent({ ctrl }: MessagesMainContentProps) {
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-section-gap">
       <ListHeader title="Messages" />
+      {ctrl.activeChannel && (
+        <Breadcrumbs
+          items={[
+            { label: 'Messages', to: ROUTES.MESSAGES },
+            { label: `#${formatLabel(ctrl.activeChannel)}` },
+          ]}
+        />
+      )}
       <MessagesErrorBanners ctrl={ctrl} />
       {!ctrl.activeChannel && (
         <EmptyState

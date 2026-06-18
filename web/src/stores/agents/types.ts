@@ -71,6 +71,8 @@ export interface AgentsState {
   setStatusFilter: (s: AgentStatus | null) => void
   setSortBy: (key: AgentSortKey) => void
   setSortDirection: (dir: 'asc' | 'desc') => void
+  /** Reset every list filter (search + department + level + status) to its default. */
+  clearFilters: () => void
   clearDetail: () => void
   /**
    * Re-point an agent at a new provider/model after setup. Sends the

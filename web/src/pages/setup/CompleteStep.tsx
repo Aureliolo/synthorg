@@ -167,7 +167,21 @@ export function CompleteStep() {
     useCompleteStepActions(companyResponse, wizardCompleteSetup)
 
   if (!companyResponse) {
-    return <SkipWizardForm />
+    // Reaching Complete without a generated company means the Company step
+    // was never applied (e.g. direct navigation to /setup/complete, or the
+    // template was never confirmed). Explain that before offering the
+    // minimal skip-the-wizard path so the empty form isn't a surprise.
+    return (
+      <div className="space-y-section-gap">
+        <ErrorBanner
+          variant="section"
+          severity="info"
+          title="No company configured yet"
+          description="You reached the final step before a company was generated. Name your organisation below to finish with defaults, or go back to apply a template."
+        />
+        <SkipWizardForm />
+      </div>
+    )
   }
 
   return (

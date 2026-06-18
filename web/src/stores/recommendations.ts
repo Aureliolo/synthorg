@@ -18,6 +18,8 @@ interface RecommendationsState {
   listLoading: boolean
   listError: string | null
   status: RefreshStatusDTO | null
+  statusLoading: boolean
+  statusError: string | null
   refreshing: boolean
   /** Id of the recommendation whose approve/reject is in flight. */
   decidingId: string | null
@@ -32,12 +34,21 @@ interface RecommendationsState {
 
 const INITIAL: Pick<
   RecommendationsState,
-  'recommendations' | 'listLoading' | 'listError' | 'status' | 'refreshing' | 'decidingId'
+  | 'recommendations'
+  | 'listLoading'
+  | 'listError'
+  | 'status'
+  | 'statusLoading'
+  | 'statusError'
+  | 'refreshing'
+  | 'decidingId'
 > = {
   recommendations: [],
   listLoading: false,
   listError: null,
   status: null,
+  statusLoading: false,
+  statusError: null,
   refreshing: false,
   decidingId: null,
 }
@@ -66,11 +77,13 @@ export const useRecommendationsStore = create<RecommendationsState>((set, get) =
   },
 
   fetchStatus: async () => {
+    set({ statusLoading: true, statusError: null })
     try {
       const status = await getRefreshStatus()
-      set({ status })
+      set({ status, statusLoading: false })
     } catch (err) {
       log.error('fetchStatus:', getErrorMessage(err))
+      set({ statusLoading: false, statusError: getErrorMessage(err) })
     }
   },
 

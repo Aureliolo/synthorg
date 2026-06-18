@@ -143,7 +143,7 @@ function CustomRuleFields({
         onChange={(e) => update('metricPath', e.target.value)}
         required
       />
-      <div className="grid grid-cols-2 gap-grid-gap">
+      <div className="grid grid-cols-2 gap-grid-gap max-[479px]:grid-cols-1">
         <SelectField
           label="Comparator"
           value={form.comparator}

@@ -86,7 +86,7 @@ export function useCapabilities(): {
           // Deliberately do NOT call setCapabilities here: ``error``
           // is the distinct signal callers consume to render an error
           // banner instead of the disabled-capability empty state.
-          setError('Failed to load capability matrix.')
+          setError('Could not load the list of available features. Refresh to try again.')
           setLoading(false)
         }
       })

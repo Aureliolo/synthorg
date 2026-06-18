@@ -124,8 +124,14 @@ async function runDetailsFetch(
       log.warn('Failed to load subworkflow details', sanitizeForLog(err))
       setters.addToast({
         variant: 'error',
-        title: 'Failed to load details',
+        title: 'Could not load subworkflow details',
         description: getErrorMessage(err),
+        action: {
+          label: 'Retry',
+          onClick: () => {
+            void runDetailsFetch(subworkflow, setters, { cancelled: false })
+          },
+        },
       })
     }
   } finally {

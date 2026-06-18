@@ -1,7 +1,9 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { useParams } from 'react-router'
+import { Download } from 'lucide-react'
 import { useProjectDetailData } from '@/hooks/useProjectDetailData'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
+import { Button } from '@/components/ui/button'
 import { DetailNavBar } from '@/components/ui/detail-nav-bar'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
@@ -15,9 +17,11 @@ import { ProjectDetailSkeleton } from './projects/ProjectDetailSkeleton'
 import { ProjectHeader } from './projects/ProjectHeader'
 import { ProjectTeamSection } from './projects/ProjectTeamSection'
 import { ProjectTaskList } from './projects/ProjectTaskList'
+import { BrownfieldImportDialog } from './projects/BrownfieldImportDialog'
 
 export default function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>()
+  const [importOpen, setImportOpen] = useState(false)
   const {
     project,
     projectTasks,
@@ -71,6 +75,15 @@ export default function ProjectDetailPage() {
           onNext={goNext}
           position={nav.position}
         />
+        <Button
+          variant="outline"
+          size="sm"
+          className="ml-auto"
+          onClick={() => setImportOpen(true)}
+        >
+          <Download className="size-3.5" aria-hidden="true" />
+          Import codebase
+        </Button>
       </div>
 
       <ProjectDetailBanners error={error} wsConnected={wsConnected} loading={loading} wsSetupError={wsSetupError} />
@@ -88,6 +101,12 @@ export default function ProjectDetailPage() {
           <ProjectTaskList tasks={projectTasks} />
         </ErrorBoundary>
       </div>
+
+      <BrownfieldImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        projectId={project.id}
+      />
     </div>
   )
 }

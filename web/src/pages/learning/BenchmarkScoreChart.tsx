@@ -59,7 +59,7 @@ function ChartTooltipContent({
   if (!active || !datum) return null
   const deltaText = datum.delta > 0 ? `+${datum.delta}` : `${datum.delta}`
   return (
-    <div className="rounded-md border border-border bg-card px-3 py-2 text-xs shadow-md">
+    <div className="rounded-md border border-border bg-card px-3 py-2 text-xs shadow-[var(--so-shadow-card)]">
       <p className="mb-1 font-sans text-text-secondary">{datum.fullLabel}</p>
       <p className="font-mono text-foreground">
         Score: {datum.score} / {datum.maxTotal} ({Math.round(datum.fraction * 100)}%)

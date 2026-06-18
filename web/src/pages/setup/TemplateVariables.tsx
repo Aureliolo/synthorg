@@ -1,3 +1,4 @@
+import { InputField } from '@/components/ui/input-field'
 import { SliderField } from '@/components/ui/slider-field'
 import { ToggleField } from '@/components/ui/toggle-field'
 import type { TemplateVariable } from '@/api/types/setup'
@@ -87,8 +88,17 @@ function TemplateVariableField({
       />
     )
   }
-  // String and other types: not rendered as slider/toggle
-  return null
+  // String (and any unrecognised) types render as a free-text field so the
+  // value is editable and carried into the applied template instead of
+  // being silently dropped.
+  return (
+    <InputField
+      label={label}
+      value={typeof currentValue === 'string' ? currentValue : String(currentValue ?? '')}
+      onValueChange={(val) => onChange(variable.name, val)}
+      disabled={disabled}
+    />
+  )
 }
 
 export function TemplateVariables({

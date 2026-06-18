@@ -11,6 +11,8 @@ interface TaskHistoryProps {
   className?: string
 }
 
+const MAX_VISIBLE_TASKS = 20
+
 // Narrows to tasks with a parseable created_at so the sort comparator and
 // duration reducer below see `created_at: string` without per-use assertions.
 function hasCreatedAt(t: Task): t is Task & { created_at: string } {
@@ -50,13 +52,20 @@ export function TaskHistory({ tasks, className }: TaskHistoryProps) {
           description="Task history will appear here as tasks are assigned."
         />
       ) : (
-        <StaggerGroup className="space-y-1">
-          {sorted.slice(0, 20).map((task) => (
-            <StaggerItem key={task.id}>
-              <TaskHistoryBar task={task} maxDurationMs={maxDurationMs} />
-            </StaggerItem>
-          ))}
-        </StaggerGroup>
+        <>
+          <StaggerGroup className="space-y-1">
+            {sorted.slice(0, MAX_VISIBLE_TASKS).map((task) => (
+              <StaggerItem key={task.id}>
+                <TaskHistoryBar task={task} maxDurationMs={maxDurationMs} />
+              </StaggerItem>
+            ))}
+          </StaggerGroup>
+          {sorted.length > MAX_VISIBLE_TASKS && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Showing the {MAX_VISIBLE_TASKS} most recent of {sorted.length} tasks.
+            </p>
+          )}
+        </>
       )}
     </SectionCard>
   )

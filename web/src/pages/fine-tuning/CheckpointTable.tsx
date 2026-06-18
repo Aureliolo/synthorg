@@ -1,4 +1,5 @@
-import { memo, useState } from 'react'
+import { memo, useMemo, useState } from 'react'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 
 import type { CheckpointRecord } from '@/api/endpoints/fine-tuning'
@@ -6,8 +7,49 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
+import { cn } from '@/lib/utils'
 import { useFineTuningStore } from '@/stores/fine-tuning'
 import { formatDateOnly } from '@/utils/format'
+
+type CheckpointSortKey = 'created_at' | 'doc_count' | 'ndcg' | 'size_bytes'
+
+const SORT_VALUE: Record<CheckpointSortKey, (cp: CheckpointRecord) => number> = {
+  created_at: (cp) => new Date(cp.created_at).getTime(),
+  doc_count: (cp) => cp.doc_count,
+  ndcg: (cp) => cp.eval_metrics?.ndcg_at_10 ?? -1,
+  size_bytes: (cp) => cp.size_bytes,
+}
+
+interface SortHeaderProps {
+  label: string
+  sortKey: CheckpointSortKey
+  active: CheckpointSortKey
+  direction: 'asc' | 'desc'
+  onSort: (key: CheckpointSortKey) => void
+  className?: string
+}
+
+function SortHeader({ label, sortKey, active, direction, onSort, className }: SortHeaderProps) {
+  const isActive = active === sortKey
+  return (
+    <th className={cn('pb-2 pr-4', className)}>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className="inline-flex items-center gap-1 font-medium hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
+        aria-label={`Sort by ${label}`}
+      >
+        {label}
+        {isActive &&
+          (direction === 'asc' ? (
+            <ChevronUp className="size-3" aria-hidden="true" />
+          ) : (
+            <ChevronDown className="size-3" aria-hidden="true" />
+          ))}
+      </button>
+    </th>
+  )
+}
 
 interface CheckpointRowProps {
   checkpoint: CheckpointRecord
@@ -104,6 +146,23 @@ export function CheckpointTable() {
       deleteCheckpointAction: s.deleteCheckpointAction,
     })))
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [sortKey, setSortKey] = useState<CheckpointSortKey>('created_at')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+
+  const handleSort = (key: CheckpointSortKey) => {
+    if (key === sortKey) {
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortDir('desc')
+    }
+  }
+
+  const sortedCheckpoints = useMemo(() => {
+    const valueOf = SORT_VALUE[sortKey]
+    const factor = sortDir === 'asc' ? 1 : -1
+    return [...checkpoints].sort((a, b) => (valueOf(a) - valueOf(b)) * factor)
+  }, [checkpoints, sortKey, sortDir])
 
   if (checkpoints.length === 0) {
     return (
@@ -119,18 +178,18 @@ export function CheckpointTable() {
       <table className="w-full min-w-[40rem] text-sm">
         <thead>
           <tr className="border-b border-border text-left text-muted-foreground">
-            <th className="pb-2 pr-4">Date</th>
+            <SortHeader label="Date" sortKey="created_at" active={sortKey} direction={sortDir} onSort={handleSort} />
             <th className="pb-2 pr-4">Base Model</th>
-            <th className="pb-2 pr-4">Docs</th>
-            <th className="pb-2 pr-4">NDCG@10</th>
+            <SortHeader label="Docs" sortKey="doc_count" active={sortKey} direction={sortDir} onSort={handleSort} />
+            <SortHeader label="NDCG@10" sortKey="ndcg" active={sortKey} direction={sortDir} onSort={handleSort} />
             <th className="pb-2 pr-4">Recall@10</th>
-            <th className="pb-2 pr-4">Size</th>
+            <SortHeader label="Size" sortKey="size_bytes" active={sortKey} direction={sortDir} onSort={handleSort} />
             <th className="pb-2 pr-4">Status</th>
             <th className="pb-2">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {checkpoints.map((cp) => (
+          {sortedCheckpoints.map((cp) => (
             <CheckpointRow
               key={cp.id}
               checkpoint={cp}

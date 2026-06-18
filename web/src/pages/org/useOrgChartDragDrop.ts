@@ -174,7 +174,7 @@ export function useOrgChartDragDrop(args: UseOrgChartDragDropArgs): OrgChartDrag
         addToast({
           variant: 'error',
           title: 'Reassignment failed',
-          description: 'Invalid department target',
+          description: 'Drop the agent onto a department node to reassign it.',
         })
         return
       }

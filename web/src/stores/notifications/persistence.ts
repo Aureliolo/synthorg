@@ -16,6 +16,11 @@ const STORAGE_KEY_ITEMS = 'so_notifications'
 const STORAGE_KEY_PREFS = 'so_notification_prefs'
 
 const VALID_CATEGORIES = new Set(Object.keys(CATEGORY_CONFIGS))
+
+/** Narrow a raw key to ``NotificationCategory`` by membership in the config. */
+function isNotificationCategory(value: string): value is NotificationCategory {
+  return VALID_CATEGORIES.has(value)
+}
 const VALID_SEVERITIES: ReadonlySet<string> = new Set([
   'info',
   'warning',
@@ -90,12 +95,12 @@ function sanitizeRouteOverrides(
   const out: Partial<Record<NotificationCategory, readonly NotificationRoute[]>>
     = {}
   for (const [category, routes] of Object.entries(raw)) {
-    if (!VALID_CATEGORIES.has(category)) continue
+    if (!isNotificationCategory(category)) continue
     if (!Array.isArray(routes)) continue
     if (!routes.every((r) => typeof r === 'string' && VALID_ROUTES.has(r))) {
       continue
     }
-    out[category as NotificationCategory] = routes as readonly NotificationRoute[]
+    out[category] = routes as readonly NotificationRoute[]
   }
   return out
 }

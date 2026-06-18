@@ -27,6 +27,9 @@ const ROUTING_KEYS: readonly string[] = [
   'retry_max_attempts',
   'discovery_allowlist',
   'ollama_default_port',
+  'model_refresh_mode',
+  'model_refresh_interval_seconds',
+  'model_refresh_auto_apply_within_family',
   'cassette_mode',
   'cassette_path',
 ]

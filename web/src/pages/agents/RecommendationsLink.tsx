@@ -1,6 +1,7 @@
 import { Link } from 'react-router'
 import { Sparkles } from 'lucide-react'
 import { cn, FOCUS_RING } from '@/lib/utils'
+import { ROUTES } from '@/router/routes'
 import { useRecommendationsStore } from '@/stores/recommendations'
 
 /**
@@ -15,7 +16,7 @@ export function RecommendationsLink() {
   if (count === 0) return null
   return (
     <Link
-      to="/agents/model-recommendations"
+      to={ROUTES.MODEL_RECOMMENDATIONS}
       className={cn(
         'inline-flex items-center gap-1.5 rounded-md border border-accent/30 bg-accent/10',
         'px-2.5 py-1 text-compact font-medium text-accent transition-colors hover:bg-accent/20',

@@ -14,10 +14,19 @@ export interface SetupAgentCardProps {
   index: number
   providers: Readonly<Record<string, ProviderConfig>>
   personalityPresets: readonly PersonalityPresetInfo[]
+  /** Whether the personality presets are still being fetched. */
+  personalityPresetsLoading?: boolean | undefined
   onNameChange: (index: number, name: string) => Promise<void>
   onModelChange: (index: number, provider: string, modelId: string) => Promise<void>
   onRandomizeName: (index: number) => Promise<void>
   onPersonalityChange: (index: number, preset: string) => Promise<void>
+}
+
+/** Placeholder that tells apart a still-loading preset list from an empty one. */
+function personalityPlaceholder(loading: boolean, count: number): string {
+  if (loading) return 'Loading presets...'
+  if (count === 0) return 'No presets available'
+  return 'Select personality...'
 }
 
 interface SetupAgentNameControls {
@@ -68,6 +77,7 @@ export function SetupAgentCard({
   index,
   providers,
   personalityPresets,
+  personalityPresetsLoading = false,
   onNameChange,
   onModelChange,
   onRandomizeName,
@@ -125,7 +135,7 @@ export function SetupAgentCard({
           options={personalityOptions}
           value={agent.personality_preset ?? ''}
           onChange={(val) => { void onPersonalityChange(index, val) }}
-          placeholder={personalityPresets.length === 0 ? 'Loading presets...' : 'Select personality...'}
+          placeholder={personalityPlaceholder(personalityPresetsLoading, personalityPresets.length)}
         />
 
         {/* Model picker */}

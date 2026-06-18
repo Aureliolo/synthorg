@@ -4,6 +4,7 @@ export interface OrgChartBannersProps {
   error: string | null
   commError: string | null
   commTruncated: boolean
+  onRetryComm?: (() => void) | undefined
   wsConnected: boolean
   wsSetupError: string | null
 }
@@ -13,6 +14,7 @@ export function OrgChartBanners({
   error,
   commError,
   commTruncated,
+  onRetryComm,
   wsConnected,
   wsSetupError,
 }: OrgChartBannersProps) {
@@ -27,6 +29,7 @@ export function OrgChartBanners({
           severity="warning"
           title="Communication data unavailable"
           description={commError}
+          onRetry={onRetryComm}
         />
       )}
       {commTruncated && !commError && (

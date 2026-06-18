@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Layers, GitBranch, ArrowRightLeft } from 'lucide-react'
 import { SectionCard } from '@/components/ui/section-card'
 import type { SubworkflowSummary } from '@/api/types/workflows'
@@ -7,7 +8,7 @@ interface SubworkflowCardProps {
   onClick: (subworkflow: SubworkflowSummary) => void
 }
 
-export function SubworkflowCard({ subworkflow, onClick }: SubworkflowCardProps) {
+function SubworkflowCardInner({ subworkflow, onClick }: SubworkflowCardProps) {
   const versionBadge = (
     <span className="shrink-0 rounded-md bg-accent/10 px-1.5 py-0.5 text-xs font-medium text-accent">
       v{subworkflow.latest_version}
@@ -17,7 +18,7 @@ export function SubworkflowCard({ subworkflow, onClick }: SubworkflowCardProps) 
   return (
     <button
       type="button"
-      className="w-full text-left transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-lg"
+      className="w-full text-left rounded-lg transition-all duration-200 hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       onClick={() => onClick(subworkflow)}
       aria-label={`Subworkflow: ${subworkflow.name}`}
     >
@@ -44,3 +45,5 @@ export function SubworkflowCard({ subworkflow, onClick }: SubworkflowCardProps) 
     </button>
   )
 }
+
+export const SubworkflowCard = memo(SubworkflowCardInner)

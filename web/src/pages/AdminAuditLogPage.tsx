@@ -284,6 +284,7 @@ export default function AdminAuditLogPage() {
         title="Security audit log"
         description="Tool-call evaluations recorded by the runtime security policy."
         count={state.entries.length}
+        countLabel={state.hasMore ? `${state.entries.length}+ loaded` : undefined}
       />
 
       {error && (

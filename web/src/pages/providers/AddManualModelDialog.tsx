@@ -183,7 +183,7 @@ function ManualModelFields({
         value={values.alias}
         onChange={(e) => form.setAlias(e.target.value)}
       />
-      <div className="grid grid-cols-2 gap-grid-gap">
+      <div className="grid grid-cols-2 gap-grid-gap max-[479px]:grid-cols-1">
         <InputField
           label="Cost / 1k input tokens"
           hint={`${currency}; leave blank for 0`}

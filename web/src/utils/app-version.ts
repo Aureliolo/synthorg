@@ -13,8 +13,8 @@
  * (defaults to package.json#version; CI overrides with SYNTHORG_BUILD_ID).
  */
 
+import { apiClient } from '@/api/client'
 import { createLogger } from '@/lib/logger'
-import { fetchWithRetryAfter } from '@/utils/fetch-with-retry'
 import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('app-version')
@@ -119,20 +119,12 @@ async function callServerLogout(): Promise<void> {
     LOGOUT_TIMEOUT_MS,
   )
   try {
-    // Logout is replay-safe on the server (it just tears down whatever
-    // session token was attached, with no observable side effect on a
-    // second call) so opt into retry-after handling explicitly.
-    await fetchWithRetryAfter(
-      '/api/v1/auth/logout',
-      {
-        method: 'POST',
-        credentials: 'include',
-        signal: controller.signal,
-        // No CSRF header needed: /auth/logout is CSRF-exempt so clients
-        // can clear stale state even when the csrf_token cookie is gone.
-      },
-      { idempotent: true },
-    )
+    // Routed through the shared axios client so the boot path uses one HTTP
+    // stack. The 2s abort deadline above makes 429 retry-after handling moot
+    // (any honoured Retry-After would outlast the deadline), so a plain POST
+    // is sufficient. /auth/logout is CSRF-exempt, so it still clears stale
+    // state even when the csrf_token cookie is gone and no header is attached.
+    await apiClient.post('/auth/logout', null, { signal: controller.signal })
   } catch (err) {
     log.warn('Logout call failed during stale-state recovery', err)
   } finally {

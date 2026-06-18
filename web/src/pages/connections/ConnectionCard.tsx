@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Inbox, MoreVertical, Plug, RefreshCw, Trash2 } from 'lucide-react'
 import { Link } from 'react-router'
 import type { Connection, HealthReport } from '@/api/types/integrations'
@@ -105,7 +106,7 @@ function ConnectionCardMeta({
   )
 }
 
-export function ConnectionCard({
+function ConnectionCardInner({
   connection,
   report,
   checking,
@@ -147,3 +148,5 @@ export function ConnectionCard({
     </div>
   )
 }
+
+export const ConnectionCard = memo(ConnectionCardInner)

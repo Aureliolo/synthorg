@@ -9,6 +9,7 @@
  */
 import { useEffect, useState } from 'react'
 import { Loader2, TrendingUp } from 'lucide-react'
+import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
@@ -111,10 +112,11 @@ export default function LearningCurvePage() {
           </ErrorBoundary>
         </>
       ) : (
-        <div className="flex items-center justify-center py-12 text-text-muted">
-          <TrendingUp className="mr-2 size-5" />
-          No learning data available
-        </div>
+        <EmptyState
+          icon={TrendingUp}
+          title="No learning data available"
+          description="Benchmark scores will appear here once the golden-company evaluation has recorded at least one run."
+        />
       )}
     </div>
   )

@@ -26,7 +26,7 @@ export function SignalGauges({ signals }: SignalGaugesProps) {
 
   return (
     <SectionCard title="Signal Dashboard" icon={Activity}>
-      <div className="grid grid-cols-3 gap-card-gap">
+      <div className="grid grid-cols-3 gap-card-gap max-[639px]:grid-cols-1">
         <div className="flex flex-col items-center gap-2">
           <ProgressGauge value={clampGauge(utilization, 100)} max={100} />
           <span className="text-sm font-medium text-foreground">

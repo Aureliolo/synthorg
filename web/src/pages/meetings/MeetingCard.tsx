@@ -5,12 +5,10 @@ import { cn } from '@/lib/utils'
 import { formatLabel, formatRelativeTime, formatTokenCount } from '@/utils/format'
 import {
   formatMeetingDuration,
-  getMeetingStatusColor,
-  getMeetingStatusLabel,
   getProtocolLabel,
   computeTokenUsagePercent,
-  STATUS_BADGE_CLASSES,
 } from '@/utils/meetings'
+import { MeetingStatusBadge } from '@/components/ui/meeting-status-badge'
 import { ROUTES } from '@/router/routes'
 import type { MeetingResponse } from '@/api/types/meetings'
 
@@ -29,7 +27,6 @@ function tokenBarColorClass(percent: number): string {
 }
 
 function MeetingCardHeader({ meeting }: { meeting: MeetingResponse }) {
-  const badgeClass = STATUS_BADGE_CLASSES[getMeetingStatusColor(meeting.status)]
   return (
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-2 min-w-0">
@@ -40,14 +37,7 @@ function MeetingCardHeader({ meeting }: { meeting: MeetingResponse }) {
           {getProtocolLabel(meeting.protocol_type)}
         </span>
       </div>
-      <span
-        className={cn(
-          'shrink-0 rounded-full border px-2 py-0.5 text-micro font-medium',
-          badgeClass,
-        )}
-      >
-        {getMeetingStatusLabel(meeting.status)}
-      </span>
+      <MeetingStatusBadge status={meeting.status} />
     </div>
   )
 }

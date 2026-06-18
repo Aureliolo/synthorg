@@ -7,6 +7,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { EmptyState } from '@/components/ui/empty-state'
 import type { WorkflowNodeType } from '@/api/types/workflows'
+import { isObject } from '@/utils/type-guards'
 import { AgentAssignmentNode } from './workflow-editor/AgentAssignmentNode'
 import { ConditionalEdge } from './workflow-editor/ConditionalEdge'
 import { ConditionalNode } from './workflow-editor/ConditionalNode'
@@ -29,6 +30,12 @@ import { useWorkflowEditorState } from './workflow-editor/useWorkflowEditorState
 
 const log = createLogger('WorkflowEditor')
 
+// ``satisfies Partial<Record<WorkflowNodeType, unknown>>`` verifies at
+// compile time that every key is a member of the ``WorkflowNodeType`` union
+// (no stray keys), which makes the ``Object.keys`` narrowing below sound
+// without an unchecked ``as`` cast. ``Partial`` because the editor does not
+// render every node type yet (e.g. ``verification``). The component value
+// types are preserved for ReactFlow because ``satisfies`` does not widen.
 const nodeTypes = {
   start: StartNode,
   end: EndNode,
@@ -38,7 +45,7 @@ const nodeTypes = {
   parallel_split: ParallelSplitNode,
   parallel_join: ParallelJoinNode,
   subworkflow: SubworkflowNode,
-}
+} satisfies Partial<Record<WorkflowNodeType, unknown>>
 
 const SUPPORTED_NODE_TYPES: ReadonlySet<WorkflowNodeType> = new Set(
   Object.keys(nodeTypes) as WorkflowNodeType[],
@@ -118,8 +125,7 @@ function resolveSupportedNodeType(nodeType: string | undefined): WorkflowNodeTyp
 }
 
 function extractConfigObject(config: unknown): Record<string, unknown> {
-  if (config && typeof config === 'object') return config as Record<string, unknown>
-  return {}
+  return isObject(config) ? config : {}
 }
 
 function WorkflowEditorInner() {

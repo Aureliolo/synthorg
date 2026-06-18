@@ -1,6 +1,7 @@
 import { createLogger } from '@/lib/logger'
 import { sanitizeWsEnum, sanitizeWsString } from '@/utils/ws-sanitize'
 import { sanitizeForLog } from '@/utils/logging'
+import { isObject } from '@/utils/type-guards'
 import {
   MESSAGE_PRIORITY_VALUES,
   MESSAGE_TYPE_VALUES,
@@ -90,11 +91,12 @@ function sanitizeUriPart(part: Record<string, unknown>): WireMessagePart {
 }
 
 function sanitizeDataPart(part: Record<string, unknown>): WireMessagePart {
-  // ``isPartsShape`` already enforced ``data`` is an object literal;
-  // it is rendered as data, never interpolated, so passed through.
+  // ``data`` is rendered as structured data, never interpolated. Guard it
+  // to a plain object so a malformed payload degrades to an empty record
+  // rather than passing a non-object through an unchecked cast.
   return {
     type: 'data',
-    data: part['data'] as Readonly<Record<string, unknown>>,
+    data: isObject(part['data']) ? part['data'] : {},
   }
 }
 

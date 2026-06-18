@@ -1,6 +1,8 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { DndContext, DragOverlay, closestCorners } from '@dnd-kit/core'
 import { AnimatePresence } from 'motion/react'
+import { Target } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
@@ -14,6 +16,7 @@ import { TaskFilterBar } from './tasks/TaskFilterBar'
 import { TaskListView } from './tasks/TaskListView'
 import { TaskDetailPanel } from './tasks/TaskDetailPanel'
 import { TaskCreateDialog } from './tasks/TaskCreateDialog'
+import { SubmitObjectiveDialog } from './tasks/SubmitObjectiveDialog'
 import {
   useTaskBoardController,
   type TaskBoardController,
@@ -25,11 +28,12 @@ const TaskDependencyGraph = lazy(() =>
 
 export default function TaskBoardPage() {
   const ctrl = useTaskBoardController()
+  const [objectiveOpen, setObjectiveOpen] = useState(false)
   if (ctrl.data.loading && ctrl.data.tasks.length === 0) return <TaskBoardSkeleton />
 
   return (
     <div className="space-y-section-gap">
-      <TaskBoardHeader ctrl={ctrl} />
+      <TaskBoardHeader ctrl={ctrl} onSubmitObjective={() => setObjectiveOpen(true)} />
       <TaskBoardBanners ctrl={ctrl} />
       <TaskFilterBar
         filters={ctrl.filters}
@@ -70,6 +74,15 @@ export default function TaskBoardPage() {
         onOpenChange={ctrl.setCreateOpen}
         onCreate={(payload) => ctrl.data.createTask(payload)}
       />
+      <SubmitObjectiveDialog
+        open={objectiveOpen}
+        onOpenChange={setObjectiveOpen}
+        onSubmitted={(submissionId) => {
+          // Filter the board to the submission so the spawned root task
+          // surfaces here once the async decomposition materialises it.
+          ctrl.handleFiltersChange({ ...ctrl.filters, search: submissionId })
+        }}
+      />
     </div>
   )
 }
@@ -78,14 +91,29 @@ interface TaskBoardCtrlProps {
   ctrl: TaskBoardController
 }
 
-function TaskBoardHeader({ ctrl }: TaskBoardCtrlProps) {
+function TaskBoardHeader({
+  ctrl,
+  onSubmitObjective,
+}: TaskBoardCtrlProps & { onSubmitObjective: () => void }) {
   const filteredLen = ctrl.filteredTasks.length
   const totalLen = ctrl.data.tasks.length
   const countLabel =
     filteredLen === totalLen
       ? undefined
       : `${formatNumber(filteredLen)} of ${formatNumber(totalLen)}`
-  return <ListHeader title="Task Board" count={filteredLen} countLabel={countLabel} />
+  return (
+    <ListHeader
+      title="Task Board"
+      count={filteredLen}
+      countLabel={countLabel}
+      secondaryActions={
+        <Button variant="outline" size="sm" onClick={onSubmitObjective}>
+          <Target className="size-3.5" aria-hidden="true" />
+          Submit objective
+        </Button>
+      }
+    />
+  )
 }
 
 function TaskBoardBanners({ ctrl }: TaskBoardCtrlProps) {

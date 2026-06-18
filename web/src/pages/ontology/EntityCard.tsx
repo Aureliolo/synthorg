@@ -3,7 +3,7 @@
  */
 import { Menu } from '@base-ui/react/menu'
 import { MoreHorizontal, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import type { EntityResponse } from '@/api/endpoints/ontology'
@@ -37,7 +37,7 @@ export interface EntityCardProps {
   onDelete?: (name: string) => boolean | void | Promise<boolean | void>
 }
 
-export function EntityCard({ entity, onClick, onDelete }: EntityCardProps) {
+function EntityCardInner({ entity, onClick, onDelete }: EntityCardProps) {
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   return (
@@ -120,6 +120,8 @@ export function EntityCard({ entity, onClick, onDelete }: EntityCardProps) {
     </>
   )
 }
+
+export const EntityCard = memo(EntityCardInner)
 
 interface EntityCardMenuProps {
   entityName: string
