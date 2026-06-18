@@ -1619,7 +1619,7 @@ Read `roadmap.md`, all files matching `docs/*roadmap*`, `docs/future-vision*`,
 
 #### Evidence Requirement
 You MUST emit Bash output for every numeric/temporal claim you verify:
-- Test count: paste output of `uv run python -m pytest tests/ --collect-only -q | tail -1`
+- Test count: paste output of `uv run python -m pytest tests/ --collect-only -q` (read the trailing `N tests collected` line; do not pipe to `tail`/`head`)
 - Release list: paste output of `gh release list --limit 10`
 - Subagent file count (counts files in `.claude/agents/`, the on-disk dev subagents -- distinct from the codebase-audit skill's inline agent prompts): paste `ls .claude/agents | wc -l`
 - pyproject.toml version: paste the matching line
@@ -1660,7 +1660,7 @@ Roadmap, vision, comparison, architecture, design pages, blog posts all
 qualify -- do NOT limit to "landing-style" pages.
 
 For each number, verify against live source:
-- Test count via `uv run python -m pytest tests/ --collect-only -q | tail -1`
+- Test count via `uv run python -m pytest tests/ --collect-only -q` (read the trailing `N tests collected` line; do not pipe to `tail`/`head`)
 - Provider count via `providers/presets.py`
 - Backend count via `persistence/` subdirectories
 - Tool count via `tools/registry.py`
@@ -3090,7 +3090,7 @@ For each claim, verify against live source.
 #### Evidence Requirement
 You MUST emit Bash output for every numeric/temporal claim you verify.
 Do not assert "verified" without a corresponding Bash result. Examples:
-- Test count: paste output of `uv run python -m pytest tests/ --collect-only -q | tail -1`
+- Test count: paste output of `uv run python -m pytest tests/ --collect-only -q` (read the trailing `N tests collected` line; do not pipe to `tail`/`head`)
 - Release list: paste output of `gh release list --limit 10`
 - Subagent file count (counts files in `.claude/agents/`, the on-disk dev subagents -- distinct from the codebase-audit skill's inline agent prompts): paste `ls .claude/agents | wc -l`
 - File count: paste `find <path> -name "*.py" | wc -l`

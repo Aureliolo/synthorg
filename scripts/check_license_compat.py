@@ -7,7 +7,7 @@ image) must not statically pull in an AGPL or GPL (non-LGPL) dependency,
 and every weak-copyleft (LGPL) dependency that DOES ship must carry an
 attribution in the top-level ``NOTICE`` file.
 
-Three independent checks, each env-deterministic enough for a pre-push /
+Four independent checks, each env-deterministic enough for a pre-push /
 CI gate:
 
 1. **Hard denylist** -- ``pymupdf`` / ``fitz`` (AGPL) must not appear
@@ -21,7 +21,23 @@ CI gate:
    closure never enters ``cli/go.mod`` / ``cli/go.sum``. Fail if the name
    appears in either.
 
-3. **Direct-dependency copyleft scan** -- classify every DIRECT runtime
+   *Go transitive-licence scan gap (documented, not closed):* a full
+   ``go-licenses``-style classification of the CLI's module closure is
+   intentionally NOT run here. ``go.sum`` records module versions but no
+   licence metadata, so a real scan needs the Go toolchain to fetch every
+   module and inspect its ``LICENSE`` file -- too heavy and
+   network-dependent for a fast pre-push gate. The name denylist above is
+   the maintained mechanism; a periodic ``go-licenses report`` belongs in
+   a separate, opt-in CI job, not this gate.
+
+3. **Web JS copyleft scan** -- classify every package in the resolved
+   ``web/package-lock.json`` closure by its recorded SPDX ``license``
+   field. AGPL or GPL (non-LGPL) is a hard failure. The lockfile carries
+   the full transitive closure, so this is a transitive scan that needs
+   no ``node_modules`` on disk; an entry with no recorded licence is left
+   to the name-based mechanisms.
+
+4. **Direct-dependency copyleft scan** -- classify every DIRECT runtime
    + extras dependency declared in ``pyproject.toml``
    (``[project.dependencies]`` + ``[project.optional-dependencies]``; dev
    ``[dependency-groups]`` tools such as ``codespell`` / ``yamllint`` are
@@ -51,6 +67,7 @@ Exit codes:
 """
 
 import argparse
+import json
 import sys
 import tomllib
 from dataclasses import dataclass
@@ -391,6 +408,71 @@ def _check_direct_copyleft(
     return violations
 
 
+def _web_package_license_blob(entry: dict[str, object]) -> str:
+    """Lowercased licence text for one ``package-lock.json`` package entry.
+
+    npm records the SPDX id in ``license`` (a string) or the legacy
+    ``licenses`` array of ``{"type": ...}`` objects. Both are read so a
+    dependency declaring either form is classified.
+
+    Returns:
+        The joined, lowercased licence identifiers (empty when the entry
+        records none -- such packages cannot be classified here and are
+        left to the name-based mechanisms).
+    """
+    parts: list[str] = []
+    license_field = entry.get("license")
+    if isinstance(license_field, str):
+        parts.append(license_field)
+    licenses_field = entry.get("licenses")
+    if isinstance(licenses_field, list):
+        parts.extend(
+            str(item["type"])
+            for item in licenses_field
+            if isinstance(item, dict) and isinstance(item.get("type"), str)
+        )
+    return " ".join(parts).lower()
+
+
+def _check_web_copyleft(repo_root: Path) -> list[Violation]:
+    """Classify every JS dependency in ``web/package-lock.json`` by licence.
+
+    The lockfile (v2/v3) records the full resolved closure under
+    ``packages`` with a per-package SPDX ``license`` field, so this is a
+    transitive scan without needing ``node_modules`` on disk. A strong
+    copyleft (AGPL/GPL non-LGPL) JS dependency is a hard failure; an entry
+    with no recorded licence is skipped (it cannot be classified here).
+    A missing lockfile is tolerated -- the web app is an optional surface.
+    """
+    path = repo_root / "web" / "package-lock.json"
+    if not path.is_file():
+        return []
+    try:
+        lock = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        msg = f"could not read web/package-lock.json: {type(exc).__name__}: {exc}"
+        raise SetupError(msg) from exc
+    packages = lock.get("packages")
+    if not isinstance(packages, dict):
+        return []
+    violations: list[Violation] = []
+    for location, entry in sorted(packages.items()):
+        if not location or not isinstance(entry, dict):
+            # "" is the root project; skip it.
+            continue
+        family = _classify(_web_package_license_blob(entry))
+        if family in {"agpl", "gpl"}:
+            name = location.removeprefix("node_modules/")
+            violations.append(
+                Violation(
+                    "web/package-lock.json",
+                    f"JS dependency {name!r} is {family.upper()}-licensed;"
+                    " strong copyleft is incompatible with redistribution",
+                )
+            )
+    return violations
+
+
 def _check_known_lgpl_notice(notice: str) -> list[Violation]:
     """Assert every known-LGPL dep is attributed in NOTICE.
 
@@ -427,6 +509,7 @@ def run_checks(repo_root: Path) -> list[Violation]:
     violations.extend(_check_go_gpl(repo_root))
     violations.extend(_check_known_lgpl_notice(notice))
     violations.extend(_check_direct_copyleft(pyproject, notice))
+    violations.extend(_check_web_copyleft(repo_root))
     return violations
 
 

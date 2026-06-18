@@ -44,6 +44,7 @@ class _Competitor(TypedDict, total=False):
     pricing: str
     self_hosted: str
     is_synthorg: bool
+    source_verified_at: str
     features: dict[str, dict[str, str]]
 
 
@@ -83,7 +84,7 @@ SELF_HOSTED_LABELS = {
 # Thematic groupings for splitting the table
 TABLE_GROUPS = [
     {
-        "title": "Organization & Coordination",
+        "title": "Organisation & Coordination",
         "keys": ["org_structure", "multi_agent", "task_delegation", "human_in_loop"],
     },
     {

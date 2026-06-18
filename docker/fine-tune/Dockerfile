@@ -59,12 +59,20 @@ RUN rm -f /app/.venv/bin/python \
 FROM ${BASE_IMAGE}
 
 ARG FINE_TUNE_EXTRA
+# ``image.licenses`` is an SPDX expression covering the project's own
+# licence AND the licences of the heavy ML components this image bundles
+# (torch + sentence-transformers + transformers + numpy and their
+# permissive transitive set), so an image-licence scanner sees the full
+# redistribution picture rather than just BUSL-1.1. The
+# ``io.synthorg.bundled-licenses`` label enumerates the principal bundled
+# components and their licences for human attribution.
 LABEL org.opencontainers.image.title="synthorg-${FINE_TUNE_EXTRA}" \
       org.opencontainers.image.description="SynthOrg embedding fine-tuning pipeline (${FINE_TUNE_EXTRA})" \
       org.opencontainers.image.url="https://github.com/Aureliolo/synthorg" \
       org.opencontainers.image.source="https://github.com/Aureliolo/synthorg" \
-      org.opencontainers.image.licenses="BUSL-1.1" \
+      org.opencontainers.image.licenses="BUSL-1.1 AND BSD-3-Clause AND Apache-2.0 AND MIT AND PSF-2.0" \
       org.opencontainers.image.vendor="Aureliolo" \
+      io.synthorg.bundled-licenses="torch=BSD-3-Clause; sentence-transformers=Apache-2.0; transformers=Apache-2.0; numpy=BSD-3-Clause; tokenizers=Apache-2.0" \
       io.synthorg.fine-tune.variant="${FINE_TUNE_EXTRA}"
 
 WORKDIR /app
