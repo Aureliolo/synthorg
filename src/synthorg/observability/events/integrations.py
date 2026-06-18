@@ -7,6 +7,10 @@ catalog operations, and tunnel lifecycle.
 
 from typing import Final
 
+# -- Facade capability guards --------------------------------------------
+
+INTEGRATIONS_CAPABILITY_UNSUPPORTED: Final[str] = "integrations.capability.unsupported"
+
 # -- Connection lifecycle ------------------------------------------------
 
 CONNECTION_CREATED: Final[str] = "integrations.connection.created"

@@ -141,6 +141,7 @@ COMMUNICATION_CONNECTION_HEALTH_CHECKED: Final[str] = (
 COMMUNICATION_WEBHOOK_CREATED: Final[str] = "communication.webhook.created"
 COMMUNICATION_WEBHOOK_UPDATED: Final[str] = "communication.webhook.updated"
 COMMUNICATION_WEBHOOK_DELETED: Final[str] = "communication.webhook.deleted"
+COMMUNICATION_WEBHOOK_LIST_INVALID: Final[str] = "communication.webhook.list_invalid"
 COMMUNICATION_TUNNEL_CONNECTED: Final[str] = "communication.tunnel.connected"
 COMMUNICATION_TUNNEL_STATUS_CHECKED: Final[str] = "communication.tunnel.status_checked"
 COMMUNICATION_TUNNEL_PROVIDER_ERROR: Final[str] = "communication.tunnel.provider_error"

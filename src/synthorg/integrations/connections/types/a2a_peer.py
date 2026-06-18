@@ -51,6 +51,12 @@ class A2APeerAuthenticator:
                 f"Unsupported A2A auth scheme '{scheme}'. "
                 f"Valid schemes: {', '.join(sorted(_VALID_SCHEMES))}"
             )
+            logger.warning(
+                CONNECTION_VALIDATION_FAILED,
+                scheme=scheme,
+                reason="unsupported_auth_scheme",
+                error_type=InvalidConnectionAuthError.__name__,
+            )
             raise InvalidConnectionAuthError(msg)
         required = _SCHEME_REQUIRED_FIELDS.get(scheme, ())
         for field in required:

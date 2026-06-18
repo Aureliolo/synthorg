@@ -12,6 +12,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
     COMMUNICATION_WEBHOOK_CREATED,
     COMMUNICATION_WEBHOOK_DELETED,
+    COMMUNICATION_WEBHOOK_LIST_INVALID,
     COMMUNICATION_WEBHOOK_UPDATED,
 )
 
@@ -42,9 +43,21 @@ class WebhookService:
         """
         if offset < 0:
             msg = f"offset must be >= 0, got {offset}"
+            logger.warning(
+                COMMUNICATION_WEBHOOK_LIST_INVALID,
+                reason="negative_offset",
+                offset=offset,
+                error_type=ValueError.__name__,
+            )
             raise ValueError(msg)
         if limit is not None and limit < 1:
             msg = f"limit must be >= 1 when provided, got {limit}"
+            logger.warning(
+                COMMUNICATION_WEBHOOK_LIST_INVALID,
+                reason="non_positive_limit",
+                limit=limit,
+                error_type=ValueError.__name__,
+            )
             raise ValueError(msg)
         definitions = tuple(await self._store.list_definitions())
         total = len(definitions)

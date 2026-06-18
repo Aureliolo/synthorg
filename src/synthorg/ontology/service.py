@@ -10,6 +10,7 @@ from synthorg.observability.events.ontology import (
     ONTOLOGY_BOOTSTRAP_COMPLETED,
     ONTOLOGY_BOOTSTRAP_ENTITY_SKIPPED,
     ONTOLOGY_CONFIG_LOADED,
+    ONTOLOGY_ENTITY_NOT_FOUND,
     ONTOLOGY_VERSION_SNAPSHOT,
 )
 from synthorg.ontology.config import EntitiesConfig, OntologyConfig
@@ -205,6 +206,11 @@ class OntologyService:
         entity = await self._backend.get(name)
         if entity is None:
             msg = f"Entity '{name}' not found"
+            logger.warning(
+                ONTOLOGY_ENTITY_NOT_FOUND,
+                entity_name=name,
+                error_type=OntologyNotFoundError.__name__,
+            )
             raise OntologyNotFoundError(msg)
         return entity
 
