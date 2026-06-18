@@ -7,11 +7,24 @@ import pytest
 import respx
 
 from synthorg.a2a.client import A2AClient, A2AClientError
-from synthorg.a2a.models import A2ATaskState
+from synthorg.a2a.models import (
+    A2AMessage,
+    A2AMessageRole,
+    A2ATaskState,
+    A2ATextPart,
+)
 
 # Share the registered default so the tests never diverge from the
 # precedence contract if the registry default is ever re-tuned.
 _A2A_DEFAULT_TIMEOUT = 30.0
+
+
+def _make_message(text: str = "hi") -> A2AMessage:
+    """Build a minimal valid A2A message for send_message tests."""
+    return A2AMessage(
+        role=A2AMessageRole.USER,
+        parts=(A2ATextPart(text=text),),
+    )
 
 
 def _mock_catalog(
@@ -62,7 +75,7 @@ class TestA2AClient:
         catalog = _mock_catalog(base_url="")
         client = _make_client(catalog)
         with pytest.raises(A2AClientError, match="no base_url"):
-            await client.send_message("peer-a", {"test": True})
+            await client.send_message("peer-a", _make_message())
 
     @pytest.mark.unit
     @respx.mock
@@ -80,7 +93,7 @@ class TestA2AClient:
         )
         catalog = _mock_catalog()
         client = _make_client(catalog)
-        task = await client.send_message("peer-a", {"msg": "hi"})
+        task = await client.send_message("peer-a", _make_message())
 
         assert task.id == "task-99"
         assert task.state == A2ATaskState.SUBMITTED
@@ -158,7 +171,7 @@ class TestA2AClient:
         catalog = _mock_catalog()
         client = _make_client(catalog)
         with pytest.raises(A2AClientError, match="returned 500"):
-            await client.send_message("peer-a", {})
+            await client.send_message("peer-a", _make_message())
 
     @pytest.mark.unit
     @respx.mock
@@ -180,7 +193,7 @@ class TestA2AClient:
             credentials={"api_key": "secret-abc", "auth_scheme": "api_key"},
         )
         client = _make_client(catalog)
-        await client.send_message("peer-a", {})
+        await client.send_message("peer-a", _make_message())
 
         assert route.called
         req = route.calls[0].request
@@ -225,7 +238,7 @@ class TestA2AClient:
             },
         )
         client = _make_client(catalog)
-        await client.send_message("peer-a", {})
+        await client.send_message("peer-a", _make_message())
         assert route.called
         req = route.calls[0].request
         assert req.headers["authorization"] == "Bearer tok-123"
@@ -253,7 +266,7 @@ class TestA2AClient:
             },
         )
         client = _make_client(catalog)
-        await client.send_message("peer-a", {})
+        await client.send_message("peer-a", _make_message())
         assert route.called
         req = route.calls[0].request
         assert req.headers["authorization"] == "Bearer oauth-tok"
@@ -278,7 +291,7 @@ class TestA2AClient:
             credentials={"auth_scheme": "mtls"},
         )
         client = _make_client(catalog)
-        await client.send_message("peer-a", {})
+        await client.send_message("peer-a", _make_message())
         assert route.called
         req = route.calls[0].request
         assert "authorization" not in req.headers
@@ -301,7 +314,7 @@ class TestA2AClient:
         catalog = _mock_catalog()
         client = _make_client(catalog)
         with pytest.raises(A2AClientError, match="malformed response"):
-            await client.send_message("peer-a", {})
+            await client.send_message("peer-a", _make_message())
 
     @pytest.mark.unit
     @respx.mock
@@ -320,7 +333,7 @@ class TestA2AClient:
         catalog = _mock_catalog()
         client = _make_client(catalog)
         with pytest.raises(A2AClientError, match="malformed response"):
-            await client.send_message("peer-a", {})
+            await client.send_message("peer-a", _make_message())
 
     @pytest.mark.unit
     @respx.mock
@@ -336,7 +349,7 @@ class TestA2AClient:
         catalog = _mock_catalog()
         client = _make_client(catalog)
         with pytest.raises(A2AClientError, match="invalid JSON"):
-            await client.send_message("peer-a", {})
+            await client.send_message("peer-a", _make_message())
 
     @pytest.mark.unit
     @respx.mock
@@ -348,7 +361,7 @@ class TestA2AClient:
         catalog = _mock_catalog()
         client = _make_client(catalog)
         with pytest.raises(A2AClientError, match=r"Connection.*failed"):
-            await client.send_message("peer-a", {})
+            await client.send_message("peer-a", _make_message())
 
     @pytest.mark.unit
     async def test_aclose_closes_http_client(self) -> None:
@@ -395,7 +408,7 @@ class TestA2AClient:
             ),
             pytest.raises(A2AClientError, match="SSRF"),
         ):
-            await client.send_message("peer-a", {})
+            await client.send_message("peer-a", _make_message())
 
     @pytest.mark.unit
     async def test_ssrf_unparseable_url(self) -> None:
@@ -417,7 +430,7 @@ class TestA2AClient:
             ),
             pytest.raises(A2AClientError, match=r"SSRF.*cannot parse"),
         ):
-            await client.send_message("peer-a", {})
+            await client.send_message("peer-a", _make_message())
 
 
 class TestA2AClientTimeoutContract:
