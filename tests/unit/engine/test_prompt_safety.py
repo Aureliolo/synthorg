@@ -11,11 +11,16 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from synthorg.engine import prompt_safety
 from synthorg.engine.prompt_safety import (
+    ALL_FENCE_TAGS,
+    TAG_BRAIN_STATE,
     TAG_CODE_DIFF,
     TAG_CONFIG_VALUE,
     TAG_CRITERIA_JSON,
+    TAG_MEMORY_ENTRY,
     TAG_PEER_CONTRIBUTION,
+    TAG_RESEARCH_SOURCE,
     TAG_TASK_DATA,
     TAG_TASK_FACT,
     TAG_TOOL_ARGUMENTS,
@@ -274,6 +279,59 @@ class TestUntrustedContentDirective:
     def test_empty_tuple_raises(self) -> None:
         with pytest.raises(ValueError, match="tags"):
             untrusted_content_directive(())
+
+
+@pytest.mark.unit
+class TestFenceTagRegistry:
+    """``ALL_FENCE_TAGS`` is the auto-derived single source of truth."""
+
+    def test_registry_collects_every_tag_constant(self) -> None:
+        # Mirror the module introspection independently: every module
+        # global named ``TAG_*`` whose value is a string must appear.
+        expected = {
+            value
+            for name, value in vars(prompt_safety).items()
+            if name.startswith("TAG_") and isinstance(value, str)
+        }
+        assert frozenset(expected) == ALL_FENCE_TAGS
+
+    def test_registry_contains_known_tags(self) -> None:
+        for tag in (
+            TAG_TASK_DATA,
+            TAG_TASK_FACT,
+            TAG_TOOL_RESULT,
+            TAG_TOOL_ARGUMENTS,
+            TAG_UNTRUSTED_ARTIFACT,
+            TAG_CODE_DIFF,
+            TAG_CONFIG_VALUE,
+            TAG_CRITERIA_JSON,
+            TAG_PEER_CONTRIBUTION,
+            TAG_MEMORY_ENTRY,
+            TAG_RESEARCH_SOURCE,
+            TAG_BRAIN_STATE,
+        ):
+            assert tag in ALL_FENCE_TAGS
+
+    def test_every_registry_tag_is_valid(self) -> None:
+        # Every registered tag must itself round-trip through the
+        # wrapper (i.e. satisfy the tag-name grammar).
+        for tag in ALL_FENCE_TAGS:
+            out = wrap_untrusted(tag, "x")
+            assert out.startswith(f"<{tag}>\n")
+
+
+@pytest.mark.unit
+class TestFenceTagInjectionGuard:
+    """The injection-detection fence list stays in sync with the registry."""
+
+    def test_loop_tool_execution_covers_every_registry_tag(self) -> None:
+        # The import-time guard in ``loop_tool_execution`` raises if a
+        # registry tag is missing from ``_FENCE_TAGS``; importing the
+        # module here proves the guard passed, and we assert coverage
+        # directly so a regression is attributed precisely.
+        from synthorg.engine.loop_tool_execution import _FENCE_TAGS
+
+        assert set(_FENCE_TAGS) >= ALL_FENCE_TAGS
 
 
 @pytest.mark.unit

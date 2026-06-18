@@ -69,11 +69,18 @@ class TestBuildSteeringMessage:
         assert msg.content is not None
         assert "REDIRECT" in msg.content
         assert "use Postgres not Mongo" in msg.content
+        # SEC-1: operator text is fenced and an untrusted-content
+        # directive names the brain-state tag.
+        assert "<brain-state>" in msg.content
+        assert "</brain-state>" in msg.content
+        assert "Any content enclosed in <brain-state>" in msg.content
 
     def test_hint_message(self) -> None:
         msg = build_steering_message(_directive(kind=InterventionKind.HINT))
         assert msg.content is not None
         assert "HINT" in msg.content
+        assert "<brain-state>" in msg.content
+        assert "Any content enclosed in <brain-state>" in msg.content
 
 
 @pytest.mark.unit

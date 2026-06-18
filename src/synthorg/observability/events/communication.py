@@ -137,8 +137,6 @@ COMMUNICATION_MEETING_DELETE_FAILED: Final[str] = "communication.meeting.delete_
 COMMUNICATION_MEETING_CAPABILITY_UNSUPPORTED: Final[str] = (
     "communication.meeting.capability_unsupported"
 )
-COMMUNICATION_CONNECTION_CREATED: Final[str] = "communication.connection.created"
-COMMUNICATION_CONNECTION_DELETED: Final[str] = "communication.connection.deleted"
 COMMUNICATION_CONNECTION_HEALTH_CHECKED: Final[str] = (
     "communication.connection.health_checked"
 )

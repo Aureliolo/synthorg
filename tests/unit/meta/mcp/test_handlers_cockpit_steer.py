@@ -8,12 +8,14 @@ controller and routes through the same ``SteeringService``.
 import json
 
 import pytest
+import structlog.testing
 
 from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
 from synthorg.engine.cockpit.state import CockpitStateSlice
 from synthorg.engine.intervention import NoOpSupersessionProposer, SteeringService
 from synthorg.meta.mcp.handlers.cockpit import COCKPIT_HANDLERS
+from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 from tests._shared import make_app_state
 from tests._shared.steering import FakeBrainService
 from tests.unit.api.fakes import FakeProjectBrainRepository
@@ -68,21 +70,27 @@ class TestSteerHandlers:
     async def test_steer_issues_directive(self, actor: AgentIdentity) -> None:
         state = _state_with_steering()
         handler = COCKPIT_HANDLERS["synthorg_cockpit_steer"]
-        raw = await handler(
-            app_state=state,
-            arguments={
-                "project_id": "proj-1",
-                "kind": "redirect",
-                "text": "use Postgres not Mongo",
-                "reason": "operator redirect",
-                "confirm": True,
-            },
-            actor=actor,
-        )
+        with structlog.testing.capture_logs() as logs:
+            raw = await handler(
+                app_state=state,
+                arguments={
+                    "project_id": "proj-1",
+                    "kind": "redirect",
+                    "text": "use Postgres not Mongo",
+                    "reason": "operator redirect",
+                    "confirm": True,
+                },
+                actor=actor,
+            )
         body = json.loads(raw)
         assert body["status"] == "ok"
         assert body["data"]["kind"] == "redirect"
         assert body["data"]["directive_id"]
+        # SEC-1 audit: exactly one signed admin-op event for the issued
+        # directive.
+        audit = [e for e in logs if e.get("event") == MCP_ADMIN_OP_EXECUTED]
+        assert len(audit) == 1
+        assert audit[0]["target_id"] == body["data"]["directive_id"]
 
     async def test_steer_rejects_pause_kind(self, actor: AgentIdentity) -> None:
         # A non-steerable but valid InterventionKind is a bad argument at this

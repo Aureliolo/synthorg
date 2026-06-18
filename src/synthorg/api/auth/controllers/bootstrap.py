@@ -34,7 +34,9 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_AUTH_FAILED,
     SECURITY_AUTH_SETUP_COMPLETE,
+    SECURITY_AUTH_TOKEN_ISSUED,
     SECURITY_SESSION_LIMIT_ENFORCED,
+    SECURITY_USER_CREATED,
 )
 from synthorg.persistence.state import persistence_of
 
@@ -137,7 +139,24 @@ class AuthBootstrapController(Controller):
                 msg = "Setup already completed"
                 raise ConflictError(msg) from conflict
 
+        # Signed audit-chain record of first-CEO creation (the new CEO is
+        # their own principal at bootstrap), emitted after the write wins.
+        logger.info(
+            SECURITY_USER_CREATED,
+            user_id=user.id,
+            role=user.role.value,
+            principal=user.id,
+        )
+
         token, expires_in, session_id = auth_service.create_token(user)
+        # Signed audit-chain record of the credential exchange that
+        # completes bootstrap (the issued session token).
+        logger.info(
+            SECURITY_AUTH_TOKEN_ISSUED,
+            user_id=user.id,
+            session_id=session_id,
+            principal=user.id,
+        )
 
         await create_session_record(
             request,

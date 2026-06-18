@@ -18,7 +18,11 @@ from synthorg.engine.context import AgentContext
 from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.engine.intervention.inbox import SteeringInbox
 from synthorg.engine.intervention.models import ActiveSteeringDirective
-from synthorg.engine.prompt_safety import TAG_BRAIN_STATE, wrap_untrusted
+from synthorg.engine.prompt_safety import (
+    TAG_BRAIN_STATE,
+    untrusted_content_directive,
+    wrap_untrusted,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.cockpit import (
     STEERING_DIRECTIVE_ADOPTED,
@@ -44,7 +48,11 @@ _HINT_INSTRUCTION = (
 def build_steering_message(directive: ActiveSteeringDirective) -> ChatMessage:
     """Build the USER message that injects a directive into agent context.
 
-    The trusted instruction frames the fenced, untrusted operator text.
+    The trusted instruction frames the fenced, untrusted operator text:
+    the agent honours the constraint *described by* the fenced text (per
+    the trusted frame) while the appended untrusted-content directive
+    keeps it from obeying any meta-instructions an upstream attacker may
+    have embedded inside the brain entry.
 
     Returns:
         A USER-role :class:`ChatMessage` carrying the wrapped directive.
@@ -55,7 +63,11 @@ def build_steering_message(directive: ActiveSteeringDirective) -> ChatMessage:
         else _HINT_INSTRUCTION
     )
     fenced = wrap_untrusted(TAG_BRAIN_STATE, directive.text)
-    return ChatMessage(role=MessageRole.USER, content=f"{instruction}\n\n{fenced}")
+    guard = untrusted_content_directive((TAG_BRAIN_STATE,))
+    return ChatMessage(
+        role=MessageRole.USER,
+        content=f"{instruction}\n\n{fenced}\n\n{guard}",
+    )
 
 
 def resolve_steering_scope(

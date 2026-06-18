@@ -70,11 +70,16 @@ class HumanOnlyPromotionStrategy:
             agent_id=agent_id,
             target=target.value,
         )
+        # Signed audit-chain denial (security.* prefix). The requesting
+        # agent is the principal; this strategy holds no persisted state
+        # for promotions (it denies unconditionally), so the record is
+        # emitted at the decision point.
         logger.info(
             SECURITY_AUTONOMY_PROMOTION_DENIED,
             agent_id=agent_id,
             target=target.value,
             reason="human approval required",
+            principal=agent_id,
         )
         return False
 

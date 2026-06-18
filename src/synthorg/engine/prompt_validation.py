@@ -238,13 +238,21 @@ def inject_async_task_section(
 ) -> tuple[str, int]:
     """Append an async task state section to a rendered prompt content.
 
+    The ``task_id`` and ``agent_name`` fields originate from agent-set
+    state and are attacker-controllable string values, so they are
+    fenced with the ``<task-data>`` tag (SEC-1); the governing
+    untrusted-content directive is appended by the caller. Status and
+    the two ISO-8601 timestamps are enum/datetime-derived and not
+    fenced.
+
     Returns:
         Tuple of ``(new_content, new_token_count)``.
     """
     lines = [
         "\n\n## Active Async Tasks\n",
         *(
-            f"- **{r.task_id}** ({r.agent_name}): "
+            f"- **{wrap_untrusted(TAG_TASK_DATA, r.task_id)}** "
+            f"({wrap_untrusted(TAG_TASK_DATA, r.agent_name)}): "
             f"{r.status.value} "
             f"(started {r.created_at.isoformat()}, "
             f"updated {r.updated_at.isoformat()})"

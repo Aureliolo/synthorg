@@ -317,6 +317,80 @@ class TestBuildSystemPrompt:
         assert "company" not in result.sections
 
 
+# ── TestUntrustedContentDirectiveInjection ───────────────────────
+
+
+@pytest.mark.unit
+class TestUntrustedContentDirectiveInjection:
+    """SEC-1: the untrusted-content directive accompanies fenced content."""
+
+    def test_task_prompt_fences_and_directs(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """A task prompt fences task data and names the tag in a directive."""
+        result = build_system_prompt(
+            agent=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+
+        # The task fields are wrapped in <task-data> fences.
+        assert "<task-data>" in result.content
+        assert "</task-data>" in result.content
+        # The directive section is present and names the fence tag.
+        assert "untrusted_content_directive" in result.sections
+        assert "## Untrusted Content" in result.content
+        assert "Any content enclosed in <task-data>" in result.content
+
+    def test_no_directive_when_no_untrusted_sources(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """With no task / org policies, no directive section is appended."""
+        result = build_system_prompt(agent=sample_agent_with_personality)
+
+        assert "untrusted_content_directive" not in result.sections
+        assert "## Untrusted Content" not in result.content
+
+    def test_org_policies_fenced_and_directed(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """Org policies are config-value fenced with a matching directive."""
+        result = build_system_prompt(
+            agent=sample_agent_with_personality,
+            org_policies=("All responses must include a correlation id",),
+        )
+
+        assert "<config-value>" in result.content
+        assert "untrusted_content_directive" in result.sections
+        assert "<config-value>" in result.content.split("## Untrusted Content")[1]
+
+    def test_final_prompt_respects_budget_including_directive(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        sample_company: Company,
+    ) -> None:
+        """The directive cost is reserved so the final prompt fits the budget."""
+        full = build_system_prompt(
+            agent=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+            company=sample_company,
+        )
+        # A budget below the full size must yield a prompt that still
+        # fits once the (post-trim) directive has been appended.
+        budget = full.estimated_tokens - 5
+        trimmed = build_system_prompt(
+            agent=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+            company=sample_company,
+            max_tokens=budget,
+        )
+        assert trimmed.estimated_tokens <= budget
+
+
 # ── TestSeniorityAutonomy ────────────────────────────────────────
 
 

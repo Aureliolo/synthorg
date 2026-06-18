@@ -8,7 +8,7 @@ the 800-line budget.  Imports point directly at the extracted modules
 import contextlib
 from contextlib import AbstractAsyncContextManager
 from datetime import UTC, datetime
-from typing import Literal, override
+from typing import override
 from unittest.mock import AsyncMock, Mock
 
 from pydantic import AwareDatetime, BaseModel
@@ -33,7 +33,7 @@ from synthorg.persistence.integration_stubs import (
     InMemoryOAuthStateRepository,
     InMemoryWebhookReceiptRepository,
 )
-from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.protocol import PersistenceBackend, PersistenceBackendKind
 from synthorg.persistence.provider_audit_protocol import ProviderAuditFilterSpec
 from synthorg.persistence.training_protocol import TrainingPlanFilterSpec
 from synthorg.providers.management.capability_dtos import (
@@ -827,12 +827,12 @@ class FakePersistenceBackend(PersistenceBackend):
 
     @override
     @property
-    def kind(self) -> Literal["sqlite", "postgres"]:
+    def kind(self) -> PersistenceBackendKind:
         # FakePersistenceBackend has no real backend kind; callers that
         # branch on ``kind`` should not be using the fake. Return
-        # ``"sqlite"`` as the closest single-process analogue for the
+        # ``SQLITE`` as the closest single-process analogue for the
         # in-memory store the fake actually provides.
-        return "sqlite"
+        return PersistenceBackendKind.SQLITE
 
     @override
     @property

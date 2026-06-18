@@ -23,7 +23,6 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.meta.rules.service import CustomRulesService
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -56,14 +55,16 @@ from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_invoke_failed,
 )
 from synthorg.meta.rules.custom import CustomRuleResponse
-from synthorg.meta.state import MetaStateSlice, self_improvement_service_of
+from synthorg.meta.state import (
+    MetaStateSlice,
+    custom_rules_service_of,
+    self_improvement_service_of,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
     MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
-    MCP_HANDLER_LAZY_SERVICE_INIT,
 )
-from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)
 
@@ -72,34 +73,6 @@ _WHY_SELF_IMPROVEMENT = (
     "self-improvement service is not wired on app_state in this "
     "deployment; enable the meta loop to use this tool"
 )
-
-
-def _custom_rules_service(app_state: AppState) -> CustomRulesService:
-    """Return the custom-rules service facade.
-
-    Prefers ``app_state.custom_rules_service`` when bootstrap has wired
-    one; otherwise builds it per-call from
-    ``app_state.persistence.custom_rules`` and emits
-    ``MCP_HANDLER_LAZY_SERVICE_INIT`` so ops telemetry sees legacy
-    wiring.  The per-call fallback mirrors the controller layer in
-    ``api.controllers.custom_rules`` and is retained so handlers keep
-    working on ``AppState`` instances constructed before the
-    ``custom_rules_service`` slot was added; new bootstraps should
-    wire the service up front to skip the fallback log entirely.
-
-    Returns:
-        ``CustomRulesService`` instance.
-    """
-    cached = getattr(app_state, "custom_rules_service", None)
-    if cached is not None:
-        return cached  # type: ignore[no-any-return]
-    logger.debug(
-        MCP_HANDLER_LAZY_SERVICE_INIT,
-        tool_name="meta._custom_rules_service",
-        service="custom_rules_service",
-        reason="app_state.custom_rules_service not wired -- building per-call",
-    )
-    return CustomRulesService(repo=persistence_of(app_state).custom_rules)
 
 
 async def _meta_get_config(
@@ -145,7 +118,7 @@ async def _meta_list_rules(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
-        page, total = await _custom_rules_service(app_state).list_rules(
+        page, total = await custom_rules_service_of(app_state).list_rules(
             offset=offset,
             limit=limit,
         )

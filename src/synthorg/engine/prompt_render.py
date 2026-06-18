@@ -28,6 +28,11 @@ from synthorg.engine._prompt_helpers import PersonalityTrimInfo
 from synthorg.engine._prompt_helpers import build_core_context as _build_core_context
 from synthorg.engine.prompt_profiles import PromptProfile
 from synthorg.engine.prompt_result import SystemPrompt, build_prompt_result
+from synthorg.engine.prompt_safety import (
+    TAG_CONFIG_VALUE,
+    TAG_TASK_DATA,
+    wrap_untrusted,
+)
 from synthorg.engine.prompt_template import DEFAULT_TEMPLATE
 from synthorg.engine.prompt_validation import (
     log_trim_results,
@@ -95,7 +100,12 @@ def build_template_context(  # noqa: PLR0913
     context["formatted_budget_limit"] = (
         format_cost(budget_limit, currency) if budget_limit > 0 else ""
     )
-    context["org_policies"] = org_policies
+    # SEC-1: org policies are operator-configured but injected verbatim
+    # into the system prompt; fence each so a policy string cannot smuggle
+    # instructions, and the appended directive treats the block as data.
+    context["org_policies"] = tuple(
+        wrap_untrusted(TAG_CONFIG_VALUE, policy) for policy in org_policies
+    )
     context["context_budget"] = context_budget
 
     # Strategic analysis sections (conditional on config + agent eligibility).
@@ -106,11 +116,17 @@ def build_template_context(  # noqa: PLR0913
     inject_strategy_context(context, agent, strategy_config)
 
     if task is not None:
+        # SEC-1: title / description / acceptance criteria are
+        # client-supplied free text injected into the system prompt;
+        # fence each with TAG_TASK_DATA so an injected ``</task-data>``
+        # cannot break out and the appended directive marks the block as
+        # data the model must not obey as instructions.
         context["task"] = {
-            "title": task.title,
-            "description": task.description,
+            "title": wrap_untrusted(TAG_TASK_DATA, task.title),
+            "description": wrap_untrusted(TAG_TASK_DATA, task.description),
             "acceptance_criteria": tuple(
-                {"description": c.description} for c in task.acceptance_criteria
+                {"description": wrap_untrusted(TAG_TASK_DATA, c.description)}
+                for c in task.acceptance_criteria
             ),
             "budget_limit": task.budget_limit,
             "deadline": task.deadline,

@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from typing import override
 
 import pytest
+import structlog.testing
 
 from synthorg.api.state import AppState
 from synthorg.core.types import NotBlankStr
@@ -34,6 +35,7 @@ from synthorg.meta.mcp.handlers.docs import (
     _docs_search,
     _docs_write,
 )
+from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 from tests._shared import make_app_state
 from tests.unit.meta.mcp.conftest import make_test_actor
 
@@ -128,23 +130,30 @@ def _state(svc: _FakeDocsService) -> AppState:
 class TestDocsWrite:
     async def test_writes_with_admin_guardrails(self) -> None:
         svc = _FakeDocsService()
-        result = await _docs_write(
-            app_state=_state(svc),
-            arguments={
-                "confirm": True,
-                "reason": "operator authoring",
-                "project_id": "proj-1",
-                "title": "Q2 Status",
-                "doc_type": "status_report",
-                "author_agent_id": "agent_alice",
-                "body": [{"block_kind": "prose", "text": "body"}],
-            },
-            actor=make_test_actor(name="admin"),
-        )
+        with structlog.testing.capture_logs() as logs:
+            result = await _docs_write(
+                app_state=_state(svc),
+                arguments={
+                    "confirm": True,
+                    "reason": "operator authoring",
+                    "project_id": "proj-1",
+                    "title": "Q2 Status",
+                    "doc_type": "status_report",
+                    "author_agent_id": "agent_alice",
+                    "body": [{"block_kind": "prose", "text": "body"}],
+                },
+                actor=make_test_actor(name="admin"),
+            )
         payload = json.loads(result)
         assert payload["status"] == "ok"
         assert payload["data"]["slug"] == "q2-status"
         assert svc.write_called is True
+        # SEC-1 audit: exactly one signed admin-op event, with the
+        # target id of the written doc.
+        audit = [e for e in logs if e.get("event") == MCP_ADMIN_OP_EXECUTED]
+        assert len(audit) == 1
+        assert audit[0]["target_id"] == "q2-status"
+        assert audit[0]["reason"] == "operator authoring"
 
     async def test_guardrail_blocks_without_confirm(self) -> None:
         svc = _FakeDocsService()
