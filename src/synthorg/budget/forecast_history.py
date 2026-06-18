@@ -25,6 +25,7 @@ from synthorg.budget._cost_window import (
     utc_now,
 )
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.currency import assert_currencies_match
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.normalization import normalize_identifier
 from synthorg.hr.registry import AgentRegistryService
@@ -105,13 +106,21 @@ class CostTrackerHistoryLookup:
         role_by_agent = {
             str(agent.id): normalize_identifier(str(agent.role)) for agent in agents
         }
+        contributing = [
+            record
+            for record in records
+            if record.call_category not in _EXCLUDED_CATEGORIES
+            and record.cost > 0
+            and role_by_agent.get(str(record.agent_id)) is not None
+        ]
+        # Same-currency invariant: the per-turn costs about to be bucketed
+        # and averaged by the forecaster must share a currency, else the
+        # blended estimate is a meaningless mix. Raises (409) before any
+        # aggregation runs.
+        assert_currencies_match(record.currency for record in contributing)
         buckets: dict[tuple[str, str], list[float]] = defaultdict(list)
-        for record in records:
-            if record.call_category in _EXCLUDED_CATEGORIES or record.cost <= 0:
-                continue
-            role = role_by_agent.get(str(record.agent_id))
-            if role is None:
-                continue
+        for record in contributing:
+            role = role_by_agent[str(record.agent_id)]
             tier = tier_from_model_id(record.model) or _DEFAULT_TIER
             buckets[(tier, role)].append(record.cost)
         return {key: tuple(values) for key, values in buckets.items()}

@@ -8,6 +8,8 @@ unmounted. The heavy collaborators are imported lazily so a boot with a2a
 disabled never pays their import cost.
 """
 
+import asyncio
+import contextlib
 from typing import TYPE_CHECKING
 
 from synthorg.a2a.state import A2aStateSlice
@@ -28,6 +30,24 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+def _close_orphaned_async_client(client: object) -> None:
+    """Best-effort close of an ``httpx.AsyncClient`` orphaned mid-wiring.
+
+    The construction phase is synchronous and runs without a live event
+    loop, so the only way to drive ``aclose`` (an async method) is a
+    private loop. The client was never used (no request was issued
+    during wiring), so it holds no live connections; the close just
+    releases the pool and silences the ResourceWarning. Failures are
+    suppressed because cleanup must never mask the original wiring
+    error.
+    """
+    aclose = getattr(client, "aclose", None)
+    if aclose is None:
+        return
+    with contextlib.suppress(Exception):
+        asyncio.run(aclose())
+
+
 def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
     """Build + commit the a2a collaborators when a2a is enabled."""
     effective_config = deps.effective_config
@@ -37,6 +57,7 @@ def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
     a2a_card_builder = None
     a2a_peer_registry = None
     a2a_client_obj = None
+    a2a_http_client: object | None = None
     try:
         from synthorg.a2a.agent_card import AgentCardBuilder  # noqa: PLC0415
         from synthorg.a2a.models import A2AAuthSchemeInfo  # noqa: PLC0415
@@ -72,6 +93,11 @@ def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
             )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
+        # If the client was built but never handed to a committed
+        # A2AClient (this branch skips the slice swap below), close it so
+        # the orphaned connection pool does not leak.
+        if a2a_client_obj is None and a2a_http_client is not None:
+            _close_orphaned_async_client(a2a_http_client)
         logger.warning(
             API_APP_STARTUP,
             note="A2A gateway auto-wire failed (non-fatal)",

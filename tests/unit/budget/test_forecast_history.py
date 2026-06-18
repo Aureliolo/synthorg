@@ -30,9 +30,14 @@ def _record(
     model: str,
     cost: float,
     category: LLMCallCategory | None = LLMCallCategory.PRODUCTIVE,
+    currency: str = "USD",
 ) -> SimpleNamespace:
     return SimpleNamespace(
-        agent_id=agent_id, model=model, cost=cost, call_category=category
+        agent_id=agent_id,
+        model=model,
+        cost=cost,
+        call_category=category,
+        currency=currency,
     )
 
 
@@ -141,3 +146,19 @@ async def test_empty_for_unobserved_key() -> None:
     )
 
     assert await lookup("medium", "designer") == ()
+
+
+async def test_mixed_currency_contributing_records_rejected() -> None:
+    """Aggregating per-turn costs across currencies is a 409, not a silent blend."""
+    from synthorg.budget.errors import MixedCurrencyAggregationError
+
+    lookup = _lookup(
+        agents=(_agent("a1", "Backend Developer"),),
+        records=(
+            _record(agent_id="a1", model="example-large-001", cost=0.5, currency="USD"),
+            _record(agent_id="a1", model="example-large-001", cost=0.6, currency="EUR"),
+        ),
+    )
+
+    with pytest.raises(MixedCurrencyAggregationError):
+        await lookup("large", "backend developer")

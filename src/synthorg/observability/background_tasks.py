@@ -16,11 +16,11 @@ never see.
 
 import asyncio
 import copy
-import time
 from collections.abc import Callable, Coroutine, Mapping
 from types import MappingProxyType
 from typing import Any, Final
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.async_task import (
     BACKGROUND_TASKS_DRAIN_TIMEOUT,
@@ -54,11 +54,14 @@ class BackgroundTaskRegistry:
     Args:
         owner: Short identifier for the subsystem that owns this
             registry, used as a log field (e.g. ``"budget.enforcer"``).
+        clock: Clock seam for the drain-deadline arithmetic; tests
+            inject a ``FakeClock``. Defaults to ``SystemClock``.
     """
 
-    def __init__(self, *, owner: str) -> None:
+    def __init__(self, *, owner: str, clock: Clock | None = None) -> None:
         self._owner = owner
         self._tasks: set[asyncio.Task[object]] = set()
+        self._clock = clock or SystemClock()
 
     def spawn(
         self,
@@ -178,7 +181,7 @@ class BackgroundTaskRegistry:
         if not self._tasks:
             return
         pending = tuple(self._tasks)
-        start = time.monotonic()
+        start = self._clock.monotonic()
         _, still_pending = await asyncio.wait(pending, timeout=timeout_sec)
         if not still_pending:
             return
@@ -196,7 +199,7 @@ class BackgroundTaskRegistry:
         # ``2 * timeout_sec``. A task that catches ``CancelledError``
         # without re-raising still exits at most at the original
         # deadline.
-        elapsed = time.monotonic() - start
+        elapsed = self._clock.monotonic() - start
         remaining = max(0.0, timeout_sec - elapsed)
         await asyncio.wait(still_pending, timeout=remaining)
 

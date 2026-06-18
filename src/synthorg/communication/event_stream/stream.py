@@ -17,6 +17,7 @@ the legacy synchronous behaviour.
 """
 
 import asyncio
+import contextlib
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -241,6 +242,21 @@ class EventStreamHub:
         self._janitor_task: asyncio.Task[None] | None = None
         self._running = False
         self._stop_failed = False
+
+    def __del__(self) -> None:
+        """Cancel an orphaned janitor task if the hub is GC'd un-stopped.
+
+        The supported teardown path is ``stop()``; this is a defensive
+        safety net so a hub dropped without it (a caller that forgot, or
+        a failed wiring path) does not leave the janitor running forever
+        holding a reference to the hub. Best-effort and exception-safe:
+        ``cancel()`` is a no-op on a done task and may raise if the loop
+        is already closed, so the failure is suppressed.
+        """
+        task = getattr(self, "_janitor_task", None)
+        if task is not None and not task.done():
+            with contextlib.suppress(RuntimeError):
+                task.cancel()
 
     def _lock_for_current_loop(self) -> asyncio.Lock:
         """Operational lock bound to the running loop, rebinding if needed.
