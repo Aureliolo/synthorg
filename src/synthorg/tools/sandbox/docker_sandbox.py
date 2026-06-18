@@ -684,10 +684,20 @@ class DockerSandbox(
             )
             raise ValueError(msg)
         multipliers = {"k": 1024, "m": 1024**2, "g": 1024**3}
-        if limit_lower[-1] in multipliers:
-            result = int(limit_lower[:-1]) * multipliers[limit_lower[-1]]
-        else:
-            result = int(limit_lower)
+        try:
+            if limit_lower[-1] in multipliers:
+                result = int(limit_lower[:-1]) * multipliers[limit_lower[-1]]
+            else:
+                result = int(limit_lower)
+        except ValueError as exc:
+            logger.warning(
+                SANDBOX_MEMORY_LIMIT_INVALID,
+                reason="invalid_format",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = f"Memory limit format is invalid: {limit!r}"
+            raise ValueError(msg) from exc
         if result <= 0:
             msg = f"Memory limit must be positive, got: {limit!r}"
             logger.warning(

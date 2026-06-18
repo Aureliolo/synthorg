@@ -207,7 +207,14 @@ class TestCharterRepository:
         self, backend: PersistenceBackend
     ) -> None:
         repo = _repo(backend)
-        charter = _make_charter(status=CharterStatus.APPROVED)
+        charter = _make_charter(
+            status=CharterStatus.APPROVED,
+            approved_at=_NOW,
+            approved_by="user-1",
+            forecast_id=uuid4(),
+            correlation_id="conv-1",
+            task_id="task-1",
+        )
         await repo.save(charter)
 
         edited = charter.model_copy(

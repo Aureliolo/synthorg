@@ -172,7 +172,7 @@ async def _intervene_pause(
         task, _from = await task_engine_of(app_state).transition_task(
             pause_args.task_id,
             TaskStatus.INTERRUPTED,
-            requested_by=require_actor_id(actor),
+            requested_by=require_actor_id(resolved_actor),
             reason=reason,
         )
         logger.info(
@@ -210,7 +210,7 @@ async def _intervene_kill(
         kill_args = typed_args(arguments, InterveneArgs)
         task, _prior = await task_engine_of(app_state).cancel_task(
             kill_args.task_id,
-            requested_by=require_actor_id(actor),
+            requested_by=require_actor_id(resolved_actor),
             reason=reason,
         )
         logger.info(
@@ -263,7 +263,7 @@ async def _steer(
             project_id=steer_args.project_id,
             kind=steer_args.kind,
             text=steer_args.text,
-            author=NotBlankStr(require_actor_id(actor)),
+            author=NotBlankStr(require_actor_id(resolved_actor)),
             narrow_task_ids=steer_args.narrow_task_ids,
             narrow_agent_ids=steer_args.narrow_agent_ids,
             supersede_task_ids=steer_args.supersede_task_ids,
@@ -315,7 +315,7 @@ async def _steer_supersede(
             project_id=supersede_args.project_id,
             directive_id=supersede_args.directive_id,
             task_ids=supersede_args.task_ids,
-            author=NotBlankStr(require_actor_id(actor)),
+            author=NotBlankStr(require_actor_id(resolved_actor)),
         )
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool_name)
         log_handler_admin_op_executed(

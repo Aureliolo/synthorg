@@ -724,8 +724,8 @@ class BrowserTool(BaseTool):
             # success.
             logger.warning(
                 BROWSER_DIFF_FAILED,
-                spec_name=args.spec_name,
-                screenshot_name=args.screenshot_name,
+                spec=args.spec_name,
+                screenshot=args.screenshot_name,
                 reason="baseline_created_by_concurrent_writer",
                 error_type=BrowserDiffError.__name__,
             )
@@ -920,7 +920,7 @@ class BrowserTool(BaseTool):
                 context={"operation": operation},
             )
         if decoded.get("status") != "ok":
-            err_type = decoded.get("error_type", "BrowserDomainError")
+            err_type = str(decoded.get("error_type", "BrowserDomainError"))
             message = decoded.get("message", "executor returned an error")
             raise map_executor_error(err_type, str(message), operation)
 

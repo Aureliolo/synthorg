@@ -44,7 +44,7 @@ def parse_iso_utc(value: str) -> datetime:
             the ``Z`` suffix.  Naive timestamps are rejected.
 
     Returns:
-        A tz-aware datetime normalized to UTC via
+        A tz-aware datetime normalised to UTC via
         :py:meth:`~datetime.datetime.astimezone`.
 
     Raises:

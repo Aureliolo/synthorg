@@ -31,6 +31,17 @@ from synthorg.meta.rules.custom import (
 )
 
 
+class MetricDomainUnhandledError(DomainError):
+    """A metric domain has no branch in the preview-snapshot builder.
+
+    Concrete typed error (keeps the inherited ``INTERNAL_ERROR`` code, a
+    500) so the contract stays branchable rather than raising the bare
+    base ``DomainError``. Signals an internal invariant violation: a
+    metric path passed registry validation but its domain prefix is not
+    handled by the snapshot assembler.
+    """
+
+
 def _ensure_registered_metric_path(value: str) -> str:
     """Reject metric paths that do not name a registered snapshot metric.
 
@@ -229,8 +240,9 @@ def _build_preview_snapshot(
 
     Raises:
         ValueError: If ``metric_path`` is not dot-notation.
-        DomainError: If the metric domain is not handled by the builder
-            (an internal invariant violation, surfaced as a 500).
+        MetricDomainUnhandledError: If the metric domain is not handled
+            by the builder (an internal invariant violation, surfaced
+            as a 500).
     """
     if "." not in metric_path:
         msg = (
@@ -289,7 +301,7 @@ def _build_preview_snapshot(
             f"Internal error: metric domain '{domain}' "
             "not handled in preview snapshot builder"
         )
-        raise DomainError(msg)
+        raise MetricDomainUnhandledError(msg)
     # Validate the injected value against the target summary's field
     # constraints, then assemble the snapshot via model_copy. Re-validating
     # the *whole* snapshot would choke on computed fields:

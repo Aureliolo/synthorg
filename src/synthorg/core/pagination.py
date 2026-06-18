@@ -90,12 +90,18 @@ async def paginate[PageItemT](
     if isinstance(page_size, bool) or not isinstance(page_size, int) or page_size < 1:
         msg = f"page_size must be a positive int, got {page_size!r}"
         raise QueryError(msg)
-    for offset in count(0, page_size):
-        page = await fetch(page_size, offset)
+    # Repository read methods clamp ``limit`` to ``MAX_LIST_LIMIT``, so a
+    # requested page larger than the cap comes back short of ``page_size``
+    # even when more rows remain. Drain at the effective (clamped) size so
+    # the short-page termination check reflects what the backend can
+    # actually return, instead of stopping early and dropping rows.
+    effective_page_size = min(page_size, MAX_LIST_LIMIT)
+    for offset in count(0, effective_page_size):
+        page = await fetch(effective_page_size, offset)
         if not page:
             return
         yield page
-        if len(page) < page_size:
+        if len(page) < effective_page_size:
             return
 
 
@@ -174,13 +180,17 @@ async def collect_all_mapping[KeyT, ValT](
     if isinstance(page_size, bool) or not isinstance(page_size, int) or page_size < 1:
         msg = f"page_size must be a positive int, got {page_size!r}"
         raise QueryError(msg)
+    # Drain at the backend-clamped size (see :func:`paginate`) so a
+    # ``page_size`` above ``MAX_LIST_LIMIT`` does not read short and
+    # terminate early, silently dropping entries past the cap.
+    effective_page_size = min(page_size, MAX_LIST_LIMIT)
     merged: dict[KeyT, ValT] = {}
-    for offset in count(0, page_size):
-        page = await fetch(page_size, offset)
+    for offset in count(0, effective_page_size):
+        page = await fetch(effective_page_size, offset)
         if not page:
             return merged
         merged.update(page)
-        if len(page) < page_size:
+        if len(page) < effective_page_size:
             return merged
     return merged  # unreachable; count() is infinite
 

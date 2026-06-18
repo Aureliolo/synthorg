@@ -1,6 +1,5 @@
 """Delegation service orchestrating hierarchy, authority, and loop prevention."""
 
-import asyncio
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from uuid import uuid4
@@ -29,6 +28,7 @@ from synthorg.communication.loop_prevention.guard import (
     DelegationGuard,
 )
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.concurrency.refcounted_lock_map import RefcountedLockMap
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
@@ -63,7 +63,7 @@ class DelegationService:
     __slots__ = (
         "_audit_trail",
         "_authority_validator",
-        "_delegate_lock",
+        "_delegate_locks",
         "_entity_guard",
         "_guard",
         "_hierarchy",
@@ -89,9 +89,13 @@ class DelegationService:
         # record window so two concurrent ``delegate`` calls for the same
         # pair cannot both pass the rate-limit / dedup ``check`` (sync,
         # in-memory) before either ``record``s, blowing past the limit.
-        # The guard + audit-trail state are in-process, so an asyncio
-        # lock is the right serialisation primitive (Slot 39).
-        self._delegate_lock = asyncio.Lock()
+        # A per-pair keyed lock (not a single global lock) keeps unrelated
+        # delegation pairs concurrent across the entity-guard await. The
+        # key is direction-agnostic (sorted) so A->B and B->A serialise
+        # together, matching the circuit breaker's direction-agnostic
+        # bounce counter -- a direction-sensitive key would let opposite
+        # directions race on that shared counter.
+        self._delegate_locks: RefcountedLockMap[str] = RefcountedLockMap()
 
     async def delegate(
         self,
@@ -132,11 +136,13 @@ class DelegationService:
             )
 
         # Steps 2-4 form one check-and-record critical section over the
-        # in-process guard + audit-trail state. Serialise it so concurrent
-        # delegations cannot interleave between the sync ``check`` and the
-        # ``record`` (the await on the entity guard in step 3 is the
-        # interleaving window the lock closes).
-        async with self._delegate_lock:
+        # in-process guard + audit-trail state. Serialise it per pair so
+        # concurrent delegations for the same pair cannot interleave
+        # between the sync ``check`` and the ``record`` (the await on the
+        # entity guard in step 3 is the interleaving window the lock
+        # closes), while unrelated pairs proceed concurrently.
+        pair_key = ":".join(sorted((request.delegator_id, request.delegatee_id)))
+        async with self._delegate_locks.acquire(pair_key):
             # 2. Loop prevention checks
             guard_outcome = self._guard.check(
                 delegation_chain=request.task.delegation_chain,

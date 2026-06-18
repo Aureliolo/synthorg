@@ -149,14 +149,6 @@ class AuthBootstrapController(Controller):
         )
 
         token, expires_in, session_id = auth_service.create_token(user)
-        # Signed audit-chain record of the credential exchange that
-        # completes bootstrap (the issued session token).
-        logger.info(
-            SECURITY_AUTH_TOKEN_ISSUED,
-            user_id=user.id,
-            session_id=session_id,
-            principal=user.id,
-        )
 
         await create_session_record(
             request,
@@ -180,6 +172,25 @@ class AuthBootstrapController(Controller):
                     max_sessions=auth_config.max_concurrent_sessions,
                 )
 
+        session_cookies = await make_session_cookies(
+            token,
+            expires_in,
+            auth_config,
+            app_state=app_state,
+            session_id=session_id,
+            user_id=user.id,
+        )
+
+        # Signed audit-chain record of the credential exchange that
+        # completes bootstrap (the issued session token). Emitted only
+        # after the session record and cookies are successfully created
+        # so a failed bootstrap never records a token issuance.
+        logger.info(
+            SECURITY_AUTH_TOKEN_ISSUED,
+            user_id=user.id,
+            session_id=session_id,
+            principal=user.id,
+        )
         logger.info(
             SECURITY_AUTH_SETUP_COMPLETE,
             user_id=user.id,
@@ -194,12 +205,5 @@ class AuthBootstrapController(Controller):
                 ),
             ),
             status_code=201,
-            cookies=await make_session_cookies(
-                token,
-                expires_in,
-                auth_config,
-                app_state=app_state,
-                session_id=session_id,
-                user_id=user.id,
-            ),
+            cookies=session_cookies,
         )

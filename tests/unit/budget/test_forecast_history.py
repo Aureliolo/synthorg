@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.forecast_history import CostTrackerHistoryLookup
 from synthorg.budget.tracker import CostTracker
 from synthorg.hr.registry import AgentRegistryService
@@ -30,7 +31,7 @@ def _record(
     model: str,
     cost: float,
     category: LLMCallCategory | None = LLMCallCategory.PRODUCTIVE,
-    currency: str = "USD",
+    currency: str = DEFAULT_CURRENCY,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         agent_id=agent_id,

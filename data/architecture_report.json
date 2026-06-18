@@ -1058,8 +1058,8 @@
     },
     "src/synthorg/providers/base.py": {
       "cap": 500,
-      "loc": 490,
-      "ratio": 0.98,
+      "loc": 493,
+      "ratio": 0.986,
       "tier": "code"
     },
     "src/synthorg/providers/cassette/store.py": {
@@ -1270,7 +1270,7 @@
     "synthorg.core.auth.roles": 29,
     "synthorg.core.autonomy_enums": 36,
     "synthorg.core.boundary": 27,
-    "synthorg.core.clock": 170,
+    "synthorg.core.clock": 171,
     "synthorg.core.critical_errors": 524,
     "synthorg.core.domain_errors": 210,
     "synthorg.core.effective_autonomy": 22,
@@ -1470,7 +1470,7 @@
     },
     "synthorg.hr.registry:AgentRegistryService": {
       "lcom4": 2,
-      "loc": 657
+      "loc": 658
     },
     "synthorg.hr.scaling.service:ScalingService": {
       "lcom4": 1,
@@ -1558,7 +1558,7 @@
     },
     "synthorg.tools.sandbox.docker_sandbox:DockerSandbox": {
       "lcom4": 3,
-      "loc": 675
+      "loc": 685
     },
     "synthorg.tools.sandbox.docker_sandbox_exec:DockerSandboxExecMixin": {
       "lcom4": 4,

@@ -158,6 +158,7 @@ class BaseCompletionProvider(ABC):
             return await rate_limited_call(
                 self._rate_limiter,
                 self._do_complete,
+                model,
                 messages,
                 model,
                 tools=tools,
@@ -284,6 +285,7 @@ class BaseCompletionProvider(ABC):
             return await rate_limited_call(
                 self._rate_limiter,
                 self._do_stream,
+                model,
                 messages,
                 model,
                 tools=tools,
@@ -432,6 +434,7 @@ class BaseCompletionProvider(ABC):
             return await rate_limited_call(
                 self._rate_limiter,
                 self._do_get_model_capabilities,
+                model,
                 model,
             )
 

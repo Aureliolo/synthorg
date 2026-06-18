@@ -738,13 +738,18 @@ class AgentRegistryService:
             applied = live.model_copy(update={"autonomy_level": level})
             self._agents[key] = applied
         await self._snapshot(applied, saved_by=saved_by)
-        logger.info(
-            HR_AGENT_STATUS_TRANSITIONED,
-            agent_id=key,
-            from_status=prior_level.value if prior_level is not None else None,
-            to_status=level.value,
-            saved_by=saved_by,
-        )
+        # Only record a transition when the level actually changed from a
+        # concrete prior state. Emitting on a no-op set (prior == new) or a
+        # null prior would write a spurious transition into the audit
+        # stream that consumers cannot distinguish from a real change.
+        if prior_level is not None and prior_level != level:
+            logger.info(
+                HR_AGENT_STATUS_TRANSITIONED,
+                agent_id=key,
+                from_status=prior_level.value,
+                to_status=level.value,
+                saved_by=saved_by,
+            )
         return applied
 
     async def apply_autonomy_update_atomic(

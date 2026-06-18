@@ -9,9 +9,10 @@ sentinel this module reuses) so that module stays within its size budget.
 
 import asyncio
 import copy
-from datetime import UTC, datetime
+from datetime import datetime
 from uuid import UUID, uuid4
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.company import (
@@ -59,9 +60,10 @@ class TeamService:
     concurrent MCP handler calls cannot race on the in-memory dict.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, clock: Clock | None = None) -> None:
         self._teams: dict[UUID, _TeamRecord] = {}
         self._lock = asyncio.Lock()
+        self._clock = clock or SystemClock()
 
     async def list_teams(
         self,
@@ -89,7 +91,7 @@ class TeamService:
         async with self._lock:
             snapshot = tuple(copy.deepcopy(t) for t in self._teams.values())
         ordered = tuple(
-            sorted(snapshot, key=lambda t: t.created_at, reverse=True),
+            sorted(snapshot, key=lambda t: (t.created_at, t.id), reverse=True),
         )
         total = len(ordered)
         end = total if limit is None else offset + limit
@@ -126,7 +128,7 @@ class TeamService:
             id=uuid4(),
             name=name,
             department_id=department_id,
-            created_at=datetime.now(UTC),
+            created_at=self._clock.now(),
         )
         async with self._lock:
             self._teams[record.id] = record
@@ -167,7 +169,7 @@ class TeamService:
                 record.name = name
             if not isinstance(department_id, UnsetType):
                 record.department_id = department_id
-            record.updated_at = datetime.now(UTC)
+            record.updated_at = self._clock.now()
             returned = copy.deepcopy(record)
         logger.info(
             TEAM_UPDATED_VIA_MCP,

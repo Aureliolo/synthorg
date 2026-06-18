@@ -184,7 +184,18 @@ def _make_win32_handler(
 
     def handler(signum: int, frame: FrameType | None) -> None:
         del signum, frame
-        loop.call_soon_threadsafe(_on_signal, sig, app_state)
+        try:
+            loop.call_soon_threadsafe(_on_signal, sig, app_state)
+        except RuntimeError:
+            # The loop was already closed (teardown raced the signal):
+            # the ASGI lifespan shutdown is already underway, so the
+            # early-stop nudge is moot. Swallow rather than let the
+            # C-signal callback propagate an exception.
+            logger.debug(
+                API_SHUTDOWN_HANDLER_SKIPPED,
+                reason="loop-closed",
+                signals=(sig.name,),
+            )
 
     return handler
 

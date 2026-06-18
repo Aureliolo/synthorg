@@ -73,6 +73,7 @@ async def resilient_execute[T](
 async def rate_limited_call[**P, T](
     rate_limiter: RateLimiter | None,
     func: Callable[P, Coroutine[object, object, T]],
+    model_label: str,
     *args: P.args,
     **kwargs: P.kwargs,
 ) -> T:
@@ -85,6 +86,9 @@ async def rate_limited_call[**P, T](
         rate_limiter: Optional limiter; when ``None`` the call is
             unthrottled.
         func: The async provider call to wrap.
+        model_label: Model identifier used for stream-close-failure log
+            context when the streaming wrapper tears down the inner
+            iterator.
         *args: Positional arguments forwarded to ``func``.
         **kwargs: Keyword arguments forwarded to ``func``.
 
@@ -116,6 +120,11 @@ async def rate_limited_call[**P, T](
                     async for chunk in inner:
                         yield chunk
                 finally:
+                    # Close the inner stream before releasing the slot so an
+                    # early consumer break (GeneratorExit at the yield) returns
+                    # the underlying connection to the pool deterministically
+                    # rather than waiting for garbage collection.
+                    await aclose_quietly(inner, model=model_label)
                     rate_limiter.release()  # type: ignore[union-attr]
 
             return _hold_slot_for_stream(result)  # type: ignore[return-value]

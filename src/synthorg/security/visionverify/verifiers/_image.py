@@ -14,7 +14,7 @@ from typing import Final
 import numpy as np
 from PIL import Image, UnidentifiedImageError
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.vision_verify import VISION_SCREENSHOT_REJECTED
 from synthorg.security.visionverify.errors import VisionScreenshotError
 
@@ -87,6 +87,7 @@ def mean_rgb(path: Path) -> tuple[int, int, int]:
             VISION_SCREENSHOT_REJECTED,
             reason="decode_failed",
             error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise VisionScreenshotError(
             msg,

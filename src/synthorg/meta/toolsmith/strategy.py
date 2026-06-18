@@ -248,7 +248,7 @@ class LLMToolBlueprintGenerator:
             logger.warning(
                 TOOLSMITH_AUTHOR_FAILED,
                 reason="response_not_valid_json",
-                error_type=ToolAuthoringError.__name__,
+                error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise ToolAuthoringError(msg) from exc

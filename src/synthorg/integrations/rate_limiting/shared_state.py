@@ -230,10 +230,16 @@ class SharedRateLimitCoordinator:
             await self._publish_acquire(now)
 
     def _evict_old(self, now: float) -> None:
-        """Remove entries older than the RPM sliding window."""
+        """Remove every entry older than the RPM sliding window.
+
+        Filters the whole deque rather than only its prefix: ``_ingest``
+        appends remote acquire timestamps in bus-delivery order, not
+        chronological order, so an expired entry can sit behind a newer
+        one. A prefix-only ``popleft`` sweep would leave such stragglers
+        in place, inflating the window count and causing false denials.
+        """
         cutoff = now - _RPM_WINDOW_SECONDS
-        while self._window and self._window[0] < cutoff:
-            self._window.popleft()
+        self._window = deque(ts for ts in self._window if ts >= cutoff)
 
     async def _publish_acquire(self, acquired_at: float) -> None:
         """Publish an acquire event for other workers."""

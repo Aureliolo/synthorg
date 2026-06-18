@@ -54,7 +54,15 @@ async def run_worker_pool(  # noqa: PLR0913 -- canonical worker-pool entry point
             disabled; production callers must wire this from the
             persistence backend.
         clock: Optional clock seam forwarded to every spawned worker.
+
+    Raises:
+        ValueError: If ``worker_count`` is not a positive integer. A
+            zero or negative count would silently spawn an empty pool
+            that fetches nothing, masking a misconfiguration.
     """
+    if worker_count < 1:
+        msg = f"worker_count must be a positive int, got {worker_count}"
+        raise ValueError(msg)
     workers = [
         Worker(
             queue_config=queue_config,

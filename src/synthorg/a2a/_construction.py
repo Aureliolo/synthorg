@@ -9,7 +9,6 @@ disabled never pays their import cost.
 """
 
 import asyncio
-import contextlib
 from typing import TYPE_CHECKING
 
 from synthorg.a2a.state import A2aStateSlice
@@ -29,23 +28,45 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Strong references to fire-and-forget cleanup tasks scheduled on a live
+# loop, so the loop does not garbage-collect a pending task before it runs
+# (the documented CPython idiom for detached ``create_task`` calls). The
+# done-callback discards the entry once the close completes.
+_pending_cleanups: set[asyncio.Task[None]] = set()
+
 
 def _close_orphaned_async_client(client: object) -> None:
     """Best-effort close of an ``httpx.AsyncClient`` orphaned mid-wiring.
 
-    The construction phase is synchronous and runs without a live event
-    loop, so the only way to drive ``aclose`` (an async method) is a
-    private loop. The client was never used (no request was issued
-    during wiring), so it holds no live connections; the close just
-    releases the pool and silences the ResourceWarning. Failures are
-    suppressed because cleanup must never mask the original wiring
-    error.
+    The construction phase is synchronous and normally runs without a
+    live event loop, so the usual driver for ``aclose`` (an async
+    method) is a private loop via :func:`asyncio.run`. If construction
+    is ever driven from inside a running loop, ``asyncio.run`` would
+    raise, so the close is scheduled on the live loop instead. The
+    client was never used (no request was issued during wiring), so it
+    holds no live connections; the close just releases the pool and
+    silences the ResourceWarning. Failures are suppressed because
+    cleanup must never mask the original wiring error.
     """
     aclose = getattr(client, "aclose", None)
     if aclose is None:
         return
-    with contextlib.suppress(Exception):
-        asyncio.run(aclose())
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    try:
+        if loop is not None and loop.is_running():
+            task = loop.create_task(aclose())
+            _pending_cleanups.add(task)
+            task.add_done_callback(_pending_cleanups.discard)
+        else:
+            asyncio.run(aclose())
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # Cleanup must never mask the original wiring error, so a failed
+        # close is swallowed -- except genuine interpreter-state failures
+        # (MemoryError / RecursionError), which always propagate.
+        reraise_critical(exc)
 
 
 def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:

@@ -76,7 +76,7 @@ class TestSteerHandlers:
                 arguments={
                     "project_id": "proj-1",
                     "kind": "redirect",
-                    "text": "use Postgres not Mongo",
+                    "text": "use example-database-a not example-database-b",
                     "reason": "operator redirect",
                     "confirm": True,
                 },

@@ -194,6 +194,12 @@ class MemoryFineTuneController(Controller):
         orchestrator = app_state.slice(MemoryStateSlice).fine_tune_orchestrator
         if orchestrator is None:
             msg = "Fine-tune orchestrator is not configured"
+            logger.warning(
+                MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
+                operation="get_status",
+                reason="orchestrator_not_configured",
+                backend=persistence_backend_label(app_state),
+            )
             raise ServiceUnavailableError(msg)
         status = await orchestrator.get_status()
         return ApiResponse(data=status)
