@@ -75,13 +75,15 @@ INSERT INTO tasks (
     requested_by_user_id, assigned_to, status, estimated_complexity,
     budget_limit, deadline, max_retries, parent_task_id, task_structure,
     coordination_topology, reviewers, dependencies, artifacts_expected,
-    acceptance_criteria, delegation_chain
+    acceptance_criteria, delegation_chain,
+    hard_ceiling, forecast_id, source, middleware_override, metadata
 ) VALUES (
     :id, :title, :description, :type, :priority, :project, :created_by,
     :requested_by_user_id, :assigned_to, :status, :estimated_complexity,
     :budget_limit, :deadline, :max_retries, :parent_task_id, :task_structure,
     :coordination_topology, :reviewers, :dependencies, :artifacts_expected,
-    :acceptance_criteria, :delegation_chain
+    :acceptance_criteria, :delegation_chain,
+    :hard_ceiling, :forecast_id, :source, :middleware_override, :metadata
 )
 ON CONFLICT(id) DO UPDATE SET
     title=excluded.title,
@@ -104,7 +106,12 @@ ON CONFLICT(id) DO UPDATE SET
     dependencies=excluded.dependencies,
     artifacts_expected=excluded.artifacts_expected,
     acceptance_criteria=excluded.acceptance_criteria,
-    delegation_chain=excluded.delegation_chain
+    delegation_chain=excluded.delegation_chain,
+    hard_ceiling=excluded.hard_ceiling,
+    forecast_id=excluded.forecast_id,
+    source=excluded.source,
+    middleware_override=excluded.middleware_override,
+    metadata=excluded.metadata
 """
 
     @staticmethod
@@ -121,6 +128,14 @@ ON CONFLICT(id) DO UPDATE SET
         params["artifacts_expected"] = _json_list(task.artifacts_expected)
         params["acceptance_criteria"] = _json_list(task.acceptance_criteria)
         params["delegation_chain"] = _json_list(task.delegation_chain)
+        # metadata is a JSON object column; middleware_override is a nullable
+        # JSON-array column (None stays NULL rather than the string "null").
+        params["metadata"] = json.dumps(task.metadata)
+        params["middleware_override"] = (
+            _json_list(task.middleware_override)
+            if task.middleware_override is not None
+            else None
+        )
         return params
 
     async def save(self, task: Task) -> None:
@@ -168,14 +183,18 @@ ON CONFLICT(id) DO UPDATE SET
                 )
                 raise QueryError(msg) from exc
 
-    #: Fields stored as JSON strings that need deserialization.
+    #: Non-null fields stored as JSON strings that need deserialization.
     _JSON_FIELDS: tuple[str, ...] = (
         "reviewers",
         "dependencies",
         "artifacts_expected",
         "acceptance_criteria",
         "delegation_chain",
+        "metadata",
     )
+
+    #: Nullable fields stored as JSON strings (NULL stays None on read).
+    _NULLABLE_JSON_FIELDS: tuple[str, ...] = ("middleware_override",)
 
     def _row_to_task(self, row: aiosqlite.Row) -> Task:
         """Reconstruct a Task from a database row.
@@ -190,6 +209,10 @@ ON CONFLICT(id) DO UPDATE SET
             data = dict(row)
             for field in self._JSON_FIELDS:
                 data[field] = json.loads(data[field])
+            for field in self._NULLABLE_JSON_FIELDS:
+                raw = data.get(field)
+                if raw is not None:
+                    data[field] = json.loads(raw)
             return Task.model_validate(data)
         except (
             json.JSONDecodeError,
@@ -212,7 +235,8 @@ id, title, description, type, priority, project, created_by,
        requested_by_user_id, assigned_to, status, estimated_complexity,
        budget_limit, deadline, max_retries, parent_task_id, task_structure,
        coordination_topology, reviewers, dependencies, artifacts_expected,
-       acceptance_criteria, delegation_chain"""
+       acceptance_criteria, delegation_chain,
+       hard_ceiling, forecast_id, source, middleware_override, metadata"""
 
     async def get(self, task_id: str) -> Task | None:
         """Retrieve a task by its ID.

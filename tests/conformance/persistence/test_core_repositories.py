@@ -8,7 +8,7 @@ import pytest
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.communication.message import FilePart, Message, TextPart
 from synthorg.core.persistence_errors import QueryError
-from synthorg.core.task_enums import TaskStatus
+from synthorg.core.task_enums import TaskSource, TaskStatus
 from synthorg.persistence.message_protocol import MessageFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend
 from tests._shared import as_uuid, sid
@@ -45,6 +45,40 @@ class TestTaskRepository:
         fetched = await backend.tasks.get(sid("t-no-owner"))
         assert fetched is not None
         assert fetched.requested_by_user_id is None
+
+    async def test_budget_and_provenance_fields_round_trip(
+        self, backend: PersistenceBackend
+    ) -> None:
+        forecast_id = uuid4()
+        task = make_task(task_id="t-budget").model_copy(
+            update={
+                "hard_ceiling": 12.5,
+                "forecast_id": forecast_id,
+                "source": TaskSource.CLIENT,
+                "middleware_override": ("retry", "budget_guard"),
+                "metadata": {"label": "vip", "wave": 3},
+            }
+        )
+        await backend.tasks.save(task)
+        fetched = await backend.tasks.get(sid("t-budget"))
+        assert fetched is not None
+        assert fetched.hard_ceiling == 12.5
+        assert fetched.forecast_id == forecast_id
+        assert fetched.source is TaskSource.CLIENT
+        assert fetched.middleware_override == ("retry", "budget_guard")
+        assert fetched.metadata == {"label": "vip", "wave": 3}
+
+    async def test_budget_and_provenance_fields_default(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.tasks.save(make_task(task_id="t-budget-default"))
+        fetched = await backend.tasks.get(sid("t-budget-default"))
+        assert fetched is not None
+        assert fetched.hard_ceiling is None
+        assert fetched.forecast_id is None
+        assert fetched.source is None
+        assert fetched.middleware_override is None
+        assert fetched.metadata == {}
 
     async def test_upsert_updates_existing(self, backend: PersistenceBackend) -> None:
         task = make_task(task_id="t2", title="Original")
