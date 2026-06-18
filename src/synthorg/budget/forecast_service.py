@@ -210,14 +210,31 @@ class BudgetForecastService:
                 f" no parked run to resume by raising the ceiling"
             )
             raise ConflictError(msg)
+        now = self._clock()
+        # Optimistic-concurrency conditional write: the read above and
+        # the clear-halt write are separated by an await, so a concurrent
+        # raise_ceiling could resume the run between them. The repo guards
+        # on the row still being halted; a lost race surfaces the same
+        # not-halted conflict rather than silently double-resuming
+        # (Slot 39 CAS).
+        cleared = await self._repo.raise_ceiling_if_halted(
+            forecast_id,
+            new_ceiling=new_ceiling,
+            updated_at=now,
+        )
+        if not cleared:
+            msg = (
+                f"Forecast {forecast_id} is no longer in a halted state; a"
+                f" concurrent resume won the race to raise the ceiling"
+            )
+            raise ConflictError(msg)
         updated = forecast.model_copy(
             update={
                 "ceiling_amount": new_ceiling,
                 "halt_context": None,
-                "updated_at": self._clock(),
+                "updated_at": now,
             },
         )
-        await self._repo.save(updated)
         self._logger.info(
             BUDGET_HARD_CEILING_RAISED,
             forecast_id=str(forecast_id),

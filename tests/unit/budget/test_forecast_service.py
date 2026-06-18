@@ -72,6 +72,27 @@ class _FakeForecastRepo:
         )
         return True
 
+    async def raise_ceiling_if_halted(
+        self,
+        entity_id: UUID,
+        *,
+        new_ceiling: float,
+        updated_at: datetime,
+    ) -> bool:
+        existing = self.rows.get(str(entity_id))
+        if existing is None or existing.halt_context is None:
+            return False
+        cleared = existing.model_copy(
+            update={
+                "ceiling_amount": new_ceiling,
+                "halt_context": None,
+                "updated_at": updated_at,
+            },
+        )
+        self.rows[str(entity_id)] = cleared
+        self.saved.append(cleared)
+        return True
+
     async def query(
         self,
         filter_spec: CostForecastFilterSpec,
