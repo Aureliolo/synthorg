@@ -113,6 +113,7 @@
     {
       "controllers": [
         "BudgetController",
+        "BudgetCfoController",
         "ForecastBudgetController",
         "BudgetConfigVersionController",
         "ReportsController"
@@ -125,6 +126,7 @@
         "CompanyRoleSkeletonProvider",
         "CoordinationMetricsCollector",
         "CostForecaster",
+        "CostOptimizer",
         "CostTrackerHistoryLookup",
         "MeasuredBenchmarkScoreProvider",
         "ParetoAnalyzer",
@@ -158,7 +160,8 @@
         "pareto_analyzer",
         "benchmark_provider",
         "budget_config",
-        "report_service"
+        "report_service",
+        "cost_optimizer"
       ]
     },
     {
@@ -423,6 +426,7 @@
         "WorkflowExecutionController",
         "SubworkflowController",
         "EvaluationConfigVersionController",
+        "DecompositionController",
         "ObjectiveController",
         "BrownfieldController"
       ],
@@ -451,6 +455,7 @@
         "wire_real_brownfield_entry",
         "build_mcp_self_consumer",
         "build_coordinator",
+        "ManualDecompositionStrategy",
         "build_stakes_router",
         "build_work_pipeline",
         "ForecastGate"
@@ -1270,6 +1275,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-18T18:40:08.111069Z",
+  "generated_at": "2026-06-18T20:27:25.970356Z",
   "schema_version": 1
 }
