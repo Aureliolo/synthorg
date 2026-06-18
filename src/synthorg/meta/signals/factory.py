@@ -10,15 +10,20 @@ rather than blocking the whole facade, so the signals MCP handlers and
 """
 
 from collections.abc import Callable, Sequence
+from datetime import datetime
 from pathlib import Path
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.budget.cost_record import CostRecord
 from synthorg.engine.classification.taxonomy_store_protocol import ErrorTaxonomyStore
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.scaling.service import ScalingService
 from synthorg.meta.evolution.outcome_store_protocol import EvolutionOutcomeStore
 from synthorg.meta.signals.benchmark import BenchmarkSignalAggregator
-from synthorg.meta.signals.budget import BudgetSignalAggregator
+from synthorg.meta.signals.budget import (
+    BudgetSignalAggregator,
+    CostRecordProvider,
+)
 from synthorg.meta.signals.coordination import CoordinationSignalAggregator
 from synthorg.meta.signals.errors import ErrorSignalAggregator
 from synthorg.meta.signals.evolution import EvolutionSignalAggregator
@@ -30,13 +35,17 @@ from synthorg.meta.signals.telemetry import TelemetrySignalAggregator
 from synthorg.telemetry.event_counter_protocol import TelemetryEventCounter
 
 
-def _empty_cost_records() -> tuple[object, ...]:
-    """Placeholder cost-record provider (the budget aggregator is a stub).
+async def _empty_cost_records(
+    since: datetime,
+    until: datetime,
+) -> tuple[CostRecord, ...]:
+    """Fallback cost-record provider used when no cost tracker is wired.
 
     Returns:
-        An empty tuple; the budget aggregator ignores its providers until
-        the real implementation lands.
+        An empty tuple; the budget aggregator then degrades to an empty
+        summary rather than blocking the signals facade.
     """
+    del since, until
     return ()
 
 
@@ -50,6 +59,7 @@ def build_signals_service(  # noqa: PLR0913 -- keyword-only collaborator DI
     evolution_store: EvolutionOutcomeStore | None = None,
     telemetry_counter: TelemetryEventCounter | None = None,
     budget_total_monthly: float = 0.0,
+    cost_record_provider: CostRecordProvider | None = None,
     benchmark_history_dir: Path | None = None,
 ) -> SignalsService:
     """Compose a :class:`SignalsService` from live runtime collaborators.
@@ -67,6 +77,9 @@ def build_signals_service(  # noqa: PLR0913 -- keyword-only collaborator DI
         telemetry_counter: Optional telemetry event counter.
         budget_total_monthly: Monthly budget ceiling for the budget
             aggregator.
+        cost_record_provider: Async window -> cost-records provider for the
+            budget aggregator; ``None`` falls back to an empty provider so
+            the budget domain degrades to an empty summary.
         benchmark_history_dir: Optional golden-benchmark history dir.
 
     Returns:
@@ -77,7 +90,7 @@ def build_signals_service(  # noqa: PLR0913 -- keyword-only collaborator DI
         agent_ids_provider=agent_ids_provider,
     )
     budget = BudgetSignalAggregator(
-        cost_record_provider=_empty_cost_records,
+        cost_record_provider=cost_record_provider or _empty_cost_records,
         budget_total_monthly=budget_total_monthly,
     )
     coordination = CoordinationSignalAggregator()

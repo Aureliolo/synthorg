@@ -1,11 +1,13 @@
 """Tests for build_signals_service and the optional scaling domain."""
 
+from datetime import datetime
 from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.budget.cost_record import CostRecord
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.scaling.service import ScalingService
 from synthorg.meta.signal_models import OrgScalingSummary
@@ -16,6 +18,11 @@ from synthorg.meta.signals.snapshot import SnapshotBuilder
 from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
+
+
+async def _empty_provider(since: datetime, until: datetime) -> tuple[CostRecord, ...]:
+    del since, until
+    return ()
 
 
 def _tracker() -> PerformanceTracker:
@@ -92,7 +99,7 @@ class TestScalingDegradation:
             performance=PerformanceSignalAggregator(
                 tracker=_tracker(), agent_ids_provider=tuple
             ),
-            budget=BudgetSignalAggregator(cost_record_provider=tuple),
+            budget=BudgetSignalAggregator(cost_record_provider=_empty_provider),
             coordination=CoordinationSignalAggregator(),
             scaling=None,
             errors=ErrorSignalAggregator(),
