@@ -82,9 +82,9 @@ class OrgAgentMutationsMixin:
         raise NotImplementedError
 
     async def _snapshot_company(  # pragma: no cover - see concrete
-        self, saved_by: str
+        self,
     ) -> None:
-        """Record a company snapshot attributed to the saver."""
+        """Record a company snapshot attributed to the bound actor."""
         raise NotImplementedError
 
     def _find_department(  # pragma: no cover - see concrete
@@ -108,18 +108,19 @@ class OrgAgentMutationsMixin:
         """Validate that requested names are a permutation of current names."""
         raise NotImplementedError
 
-    def _roster_writer(self, *, saved_by: str) -> _RosterWriter:
+    def _roster_writer(self) -> _RosterWriter:
         """Return the shared CAS write step (persist + snapshot).
 
         Returns:
             A ``write(new_agents, version)`` coroutine factory shared by
             every agent mutation so the persist-then-snapshot step is
-            defined once.
+            defined once. The snapshot saver is resolved from the
+            actor-context seam at the leaf.
         """
 
         async def write(new_agents: _AgentRoster, version: str) -> None:
             await self._write_agents(new_agents, expected_updated_at=version)
-            await self._snapshot_company(saved_by=saved_by)
+            await self._snapshot_company()
 
         return write
 
@@ -138,8 +139,6 @@ class OrgAgentMutationsMixin:
     async def create_agent(
         self,
         data: CreateAgentOrgRequest,
-        *,
-        saved_by: str = "api",
     ) -> AgentConfig:
         """Create a new agent in the org config.
 
@@ -156,7 +155,7 @@ class OrgAgentMutationsMixin:
             return await self._create_agent_read(data, captured)
 
         await CASRetryHandler(resource="org_mutation").execute(
-            read, self._roster_writer(saved_by=saved_by)
+            read, self._roster_writer()
         )
 
         # Log post-commit values (the persisted model can normalise /
@@ -286,7 +285,6 @@ class OrgAgentMutationsMixin:
         data: UpdateAgentOrgRequest,
         *,
         if_match: str | None = None,
-        saved_by: str = "api",
     ) -> AgentConfig:
         """Update an existing agent.
 
@@ -305,7 +303,7 @@ class OrgAgentMutationsMixin:
             )
 
         await CASRetryHandler(resource="org_mutation").execute(
-            read, self._roster_writer(saved_by=saved_by)
+            read, self._roster_writer()
         )
 
         # Always log the post-commit canonical name; the row's stored
@@ -361,7 +359,7 @@ class OrgAgentMutationsMixin:
         captured["updated"] = updated
         return new_agents, version
 
-    async def delete_agent(self, name: str, *, saved_by: str = "api") -> None:
+    async def delete_agent(self, name: str) -> None:
         """Delete an agent from the org config.
 
         Raises:
@@ -374,7 +372,7 @@ class OrgAgentMutationsMixin:
             return await self._delete_agent_read(name, captured)
 
         await CASRetryHandler(resource="org_mutation").execute(
-            read, self._roster_writer(saved_by=saved_by)
+            read, self._roster_writer()
         )
         # Log the resolved agent's persisted identifier rather than the
         # caller-supplied ``name``; the lookup is case-insensitive so
@@ -425,8 +423,6 @@ class OrgAgentMutationsMixin:
         self,
         dept_name: str,
         data: ReorderAgentsRequest,
-        *,
-        saved_by: str = "api",
     ) -> _AgentRoster:
         """Reorder agents within a department.
 
@@ -442,7 +438,7 @@ class OrgAgentMutationsMixin:
             return await self._reorder_agents_read(dept_name, data, captured)
 
         await CASRetryHandler(resource="org_mutation").execute(
-            read, self._roster_writer(saved_by=saved_by)
+            read, self._roster_writer()
         )
 
         reordered_dept = captured["reordered_dept"]

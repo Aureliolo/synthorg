@@ -18,6 +18,7 @@ from synthorg.api.services._org_department_mutations import OrgDepartmentMutatio
 from synthorg.budget.config import BudgetConfig
 from synthorg.config.agent_schema import AgentConfig
 from synthorg.config.schema import ProviderConfig
+from synthorg.core.actor_context import resolve_actor_label
 from synthorg.core.company import Company
 from synthorg.core.company_departments import Department
 from synthorg.core.concurrency import CASRetryHandler
@@ -94,10 +95,12 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
 
     # ── Versioning helpers ────────────────────────────────────
 
-    async def _snapshot_budget_config(self, saved_by: str) -> None:
+    async def _snapshot_budget_config(self) -> None:
         """Snapshot the current BudgetConfig if content changed.
 
-        Best-effort: versioning failures are logged but do not
+        The saver is resolved from the actor-context seam bound at the
+        request boundary; background paths attribute the ``api``
+        default. Best-effort: versioning failures are logged but do not
         block the mutation.
         """
         if self._budget_versioning is None:
@@ -107,7 +110,7 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
             await self._budget_versioning.snapshot_if_changed(
                 entity_id="default",
                 snapshot=budget,
-                saved_by=saved_by,
+                saved_by=resolve_actor_label("api"),
             )
         except (PersistenceError, SettingNotFoundError, ValueError) as exc:
             log_exception_redacted(
@@ -119,8 +122,12 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
             )
 
     @override
-    async def _snapshot_company(self, saved_by: str) -> None:
-        """Snapshot the current Company structure if content changed."""
+    async def _snapshot_company(self) -> None:
+        """Snapshot the current Company structure if content changed.
+
+        The saver is resolved from the actor-context seam bound at the
+        request boundary; background paths attribute the ``api`` default.
+        """
         if self._company_versioning is None:
             return
         try:
@@ -133,7 +140,7 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
             await self._company_versioning.snapshot_if_changed(
                 entity_id="default",
                 snapshot=company,
-                saved_by=saved_by,
+                saved_by=resolve_actor_label("api"),
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
@@ -355,7 +362,6 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
         data: UpdateCompanyRequest,
         *,
         if_match: str | None = None,
-        saved_by: str = "api",
     ) -> tuple[dict[str, object], str]:
         """Update individual company scalar settings.
 
@@ -392,8 +398,8 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
             captured["updated"] = await self._apply_company_scalars(request)
             captured["new_etag"] = await self._company_snapshot_etag()
             if "budget_monthly" in captured["updated"]:
-                await self._snapshot_budget_config(saved_by=saved_by)
-            await self._snapshot_company(saved_by=saved_by)
+                await self._snapshot_budget_config()
+            await self._snapshot_company()
 
         await CASRetryHandler(resource="org_mutation").execute(read, write)
         logger.info(API_COMPANY_UPDATED, fields=list(captured["updated"].keys()))

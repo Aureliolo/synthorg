@@ -10,7 +10,6 @@ from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg._core.features import require_service
 from synthorg.api.api_core_state import ApiCoreStateSlice
-from synthorg.api.auth import get_authenticated_user_id
 from synthorg.api.channels import CHANNEL_DEPARTMENTS, publish_ws_event
 from synthorg.api.concurrency import compute_etag
 from synthorg.api.dto import ApiResponse, PaginatedResponse
@@ -133,7 +132,6 @@ class DepartmentController(Controller):
             "Org Mutation Service",
         ).create_department(
             data,
-            saved_by=get_authenticated_user_id(),
         )
         publish_ws_event(
             request,
@@ -178,7 +176,6 @@ class DepartmentController(Controller):
         ).update_department(
             name,
             data,
-            saved_by=get_authenticated_user_id(),
             if_match=if_match,
         )
         publish_ws_event(
@@ -228,7 +225,6 @@ class DepartmentController(Controller):
             "Org Mutation Service",
         ).delete_department(
             name,
-            saved_by=get_authenticated_user_id(),
         )
         publish_ws_event(
             request,

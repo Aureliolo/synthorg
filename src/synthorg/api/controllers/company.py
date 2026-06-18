@@ -7,7 +7,6 @@ from litestar.datastructures import State
 
 from synthorg._core.features import require_service
 from synthorg.api.api_core_state import ApiCoreStateSlice
-from synthorg.api.auth import get_authenticated_user_id
 from synthorg.api.channels import (
     CHANNEL_COMPANY,
     CHANNEL_DEPARTMENTS,
@@ -111,7 +110,6 @@ class CompanyController(Controller):
         ).update_company(
             data,
             if_match=if_match,
-            saved_by=get_authenticated_user_id(),
         )
         publish_ws_event(
             request,
@@ -157,7 +155,6 @@ class CompanyController(Controller):
             "Org Mutation Service",
         ).reorder_departments(
             data,
-            saved_by=get_authenticated_user_id(),
         )
         publish_ws_event(
             request,
