@@ -650,7 +650,7 @@ _r.register(
         namespace=SettingNamespace.API,
         key="max_lifecycle_events_per_query",
         type=SettingType.INTEGER,
-        default="10000",
+        default="1000",
         description=(
             "Maximum lifecycle events returned by the activities endpoint"
             " for a single query"
@@ -667,7 +667,7 @@ _r.register(
         namespace=SettingNamespace.API,
         key="max_audit_records_per_query",
         type=SettingType.INTEGER,
-        default="10000",
+        default="1000",
         description=(
             "Maximum audit records returned by the audit endpoint for a single query"
         ),
@@ -683,7 +683,7 @@ _r.register(
         namespace=SettingNamespace.API,
         key="max_metrics_per_query",
         type=SettingType.INTEGER,
-        default="10000",
+        default="1000",
         description=(
             "Maximum metrics records returned by the coordination metrics"
             " endpoint for a single query"

@@ -116,13 +116,19 @@ class GitLogTool(_BaseGitTool):
         *,
         workspace: Path,
         sandbox: SandboxBackend | None = None,
+        max_count_limit: int = _MAX_COUNT_LIMIT,
     ) -> None:
         """Initialize the git_log tool.
 
         Args:
             workspace: Absolute path to the workspace root.
             sandbox: Optional sandbox backend for subprocess isolation.
+            max_count_limit: Upper bound on returned commits; a per-call
+                ``max_count`` above this is clamped down. Resolved from
+                the ``tools.git_log_max_count`` setting at the wiring
+                boundary, defaulting to ``_MAX_COUNT_LIMIT``.
         """
+        self._max_count_limit = max_count_limit
         super().__init__(
             name="git_log",
             description=(
@@ -176,7 +182,7 @@ class GitLogTool(_BaseGitTool):
         """
         max_count = min(
             cast("int", arguments.get("max_count", 10)),
-            self._MAX_COUNT_LIMIT,
+            self._max_count_limit,
         )
         args = ["log", f"--max-count={max_count}"]
 

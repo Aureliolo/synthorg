@@ -201,10 +201,27 @@ def _build_coordination_chain(
     Returns:
         The composed :class:`CoordinationMiddlewareChain`, or ``None``
         when the pipeline is disabled.
+
+    Raises:
+        ValueError: When the pipeline is enabled but
+            ``coordination.decomposition_model`` is unset.
     """
     coord_section = app_state.config.coordination
     if not coord_section.enable_coordination_middleware:
         return None
+    if not coord_section.decomposition_model.strip():
+        msg = (
+            "coordination.decomposition_model must be set when "
+            "enable_coordination_middleware is true; configure a real "
+            "model id for the coordinator's decomposition strategy."
+        )
+        logger.error(
+            API_APP_STARTUP,
+            service="coordinator",
+            context="decomposition_model_unset",
+            note=msg,
+        )
+        raise ValueError(msg)
     register_coordination_defaults()
     replan_hook = create_replan_hook(
         coord_section.replan_strategy,

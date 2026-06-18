@@ -9,6 +9,8 @@ from datetime import UTC, datetime, timedelta, timezone
 import pytest
 
 from synthorg.core.iso_datetime import (
+    is_valid_iso_datetime,
+    now_iso_utc,
     parse_git_log_timestamp,
     parse_iso_assume_utc,
 )
@@ -59,3 +61,35 @@ class TestParseGitLogTimestamp:
         result = parse_git_log_timestamp("2026-06-15T12:00:00Z")
         assert result is not None
         assert result.utcoffset() == timedelta(0)
+
+
+@pytest.mark.unit
+class TestIsValidIsoDatetime:
+    """``is_valid_iso_datetime`` is a parseability probe."""
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "2026-06-15T12:00:00Z",
+            "2026-06-15T12:00:00+02:00",
+            "2026-06-15T12:00:00",
+            "2026-06-15",
+        ],
+    )
+    def test_parseable_values_return_true(self, value: str) -> None:
+        assert is_valid_iso_datetime(value) is True
+
+    @pytest.mark.parametrize("value", ["not-a-timestamp", "", "2026-13-99"])
+    def test_unparseable_values_return_false(self, value: str) -> None:
+        assert is_valid_iso_datetime(value) is False
+
+
+@pytest.mark.unit
+class TestNowIsoUtc:
+    """``now_iso_utc`` returns a UTC-offset ISO 8601 string."""
+
+    def test_returns_parseable_utc_string(self) -> None:
+        result = now_iso_utc()
+        parsed = datetime.fromisoformat(result)
+        assert parsed.tzinfo is not None
+        assert parsed.utcoffset() == timedelta(0)

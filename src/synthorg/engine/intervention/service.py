@@ -92,6 +92,7 @@ class SteeringService:
         proposer: SteeringSupersessionProposer,
         notifier: SteeringNotifier | None = None,
         clock: Clock | None = None,
+        propose_candidate_limit: int = _PROPOSE_CANDIDATE_LIMIT,
     ) -> None:
         self._brain = brain_service
         self._repo = brain_repo
@@ -99,6 +100,7 @@ class SteeringService:
         self._proposer = proposer
         self._notifier = notifier
         self._clock: Clock = clock if clock is not None else SystemClock()
+        self._propose_candidate_limit = propose_candidate_limit
 
     async def issue(  # noqa: PLR0913 -- explicit directive fields
         self,
@@ -414,13 +416,13 @@ class SteeringService:
             items, _total = await self._task_engine.list_tasks(
                 status=status,
                 project=project_id,
-                limit=_PROPOSE_CANDIDATE_LIMIT,
+                limit=self._propose_candidate_limit,
             )
             tasks.extend(items)
-        # The per-status queries each cap at _PROPOSE_CANDIDATE_LIMIT, so the
+        # The per-status queries each cap at the candidate limit, so the
         # union can be twice that. Cap the combined set the proposer LLM sees
         # so a busy project cannot blow past the prompt budget.
-        return tuple(tasks[:_PROPOSE_CANDIDATE_LIMIT])
+        return tuple(tasks[: self._propose_candidate_limit])
 
     async def _notify(self, event: str, payload: Mapping[str, object]) -> None:
         """Publish a steering WS event; best-effort, never raises.

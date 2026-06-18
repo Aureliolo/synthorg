@@ -34,19 +34,23 @@ class TestCoordinationSectionConfigDefaults:
         cfg = CoordinationSectionConfig()
         assert cfg.base_branch == "main"
 
-    def test_default_decomposition_model(self) -> None:
+    def test_default_decomposition_model_is_unset(self) -> None:
         cfg = CoordinationSectionConfig()
-        assert cfg.decomposition_model == "example-medium-001"
+        assert cfg.decomposition_model == ""
 
     def test_custom_decomposition_model(self) -> None:
         cfg = CoordinationSectionConfig(decomposition_model="example-large-001")
         assert cfg.decomposition_model == "example-large-001"
 
-    def test_decomposition_model_must_not_be_blank(self) -> None:
-        from pydantic import ValidationError
-
-        with pytest.raises(ValidationError):
-            CoordinationSectionConfig(decomposition_model="  ")
+    def test_blank_decomposition_model_allowed_at_construction(self) -> None:
+        # Construction always accepts a blank model; the "must be set when
+        # the coordinator is enabled" rule is enforced at coordinator
+        # assembly (see test_coordination_chain_wiring), not config shape.
+        cfg = CoordinationSectionConfig(
+            enable_coordination_middleware=True,
+            decomposition_model="",
+        )
+        assert cfg.decomposition_model == ""
 
     def test_decomposition_model_env_mirror(
         self,

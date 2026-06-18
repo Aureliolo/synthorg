@@ -62,6 +62,7 @@ class CodeRunnerTool(BaseTool):
         sandbox: SandboxBackend,
         code_execution_records: CodeExecutionRecordRepository | None = None,
         clock: Clock | None = None,
+        output_tail_limit: int = _OUTPUT_TAIL_LIMIT,
     ) -> None:
         """Initialize the code runner tool.
 
@@ -75,6 +76,10 @@ class CodeRunnerTool(BaseTool):
             clock: Clock seam for the capture record's ``executed_at``;
                 defaults to ``SystemClock`` and is overridden with a
                 ``FakeClock`` in tests.
+            output_tail_limit: Maximum characters of captured
+                stdout/stderr kept on a test record. Resolved from the
+                ``tools.code_runner_output_tail_limit`` setting at the
+                wiring boundary, defaulting to ``_OUTPUT_TAIL_LIMIT``.
         """
         super().__init__(
             name="code_runner",
@@ -88,6 +93,7 @@ class CodeRunnerTool(BaseTool):
         self._sandbox = sandbox
         self._code_execution_records = code_execution_records
         self._clock = clock or SystemClock()
+        self._output_tail_limit = output_tail_limit
 
     @override
     async def execute(
@@ -210,8 +216,12 @@ class CodeRunnerTool(BaseTool):
         if identity is None or identity.project_id is None:
             return
         command_repr = f"{command} {flag} {code}"[:_COMMAND_REPR_LIMIT]
-        stdout_tail = result.stdout[-_OUTPUT_TAIL_LIMIT:] if result.stdout else None
-        stderr_tail = result.stderr[-_OUTPUT_TAIL_LIMIT:] if result.stderr else None
+        stdout_tail = (
+            result.stdout[-self._output_tail_limit :] if result.stdout else None
+        )
+        stderr_tail = (
+            result.stderr[-self._output_tail_limit :] if result.stderr else None
+        )
         try:
             await self._code_execution_records.append(
                 CodeExecutionRecord(

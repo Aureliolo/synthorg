@@ -151,11 +151,16 @@ def _build_file_system_tools(
     )
 
 
+_DEFAULT_GIT_LOG_MAX_COUNT: Final[int] = 100
+_DEFAULT_CODE_RUNNER_OUTPUT_TAIL_LIMIT: Final[int] = 2000
+
+
 def _build_git_tools(
     *,
     workspace: Path,
     git_clone_policy: GitCloneNetworkPolicy | None,
     sandbox: SandboxBackend | None,
+    git_log_max_count: int = _DEFAULT_GIT_LOG_MAX_COUNT,
 ) -> tuple[BaseTool, ...]:
     """Instantiate the six built-in git tools.
 
@@ -164,7 +169,11 @@ def _build_git_tools(
     """
     return (
         GitStatusTool(workspace=workspace, sandbox=sandbox),
-        GitLogTool(workspace=workspace, sandbox=sandbox),
+        GitLogTool(
+            workspace=workspace,
+            sandbox=sandbox,
+            max_count_limit=git_log_max_count,
+        ),
         GitDiffTool(workspace=workspace, sandbox=sandbox),
         GitBranchTool(workspace=workspace, sandbox=sandbox),
         GitCommitTool(workspace=workspace, sandbox=sandbox),
@@ -373,6 +382,7 @@ def _build_code_execution_tools(
     *,
     sandbox: SandboxBackend | None,
     code_execution_records: CodeExecutionRecordRepository | None = None,
+    output_tail_limit: int = _DEFAULT_CODE_RUNNER_OUTPUT_TAIL_LIMIT,
 ) -> tuple[BaseTool, ...]:
     """Instantiate the built-in code execution tools.
 
@@ -389,6 +399,7 @@ def _build_code_execution_tools(
         CodeRunnerTool(
             sandbox=sandbox,
             code_execution_records=code_execution_records,
+            output_tail_limit=output_tail_limit,
         ),
     )
 
@@ -499,6 +510,8 @@ def build_default_tools(  # noqa: PLR0913
     *,
     workspace: Path,
     web_request_timeout: float,
+    git_log_max_count: int = _DEFAULT_GIT_LOG_MAX_COUNT,
+    code_runner_output_tail_limit: int = _DEFAULT_CODE_RUNNER_OUTPUT_TAIL_LIMIT,
     git_clone_policy: GitCloneNetworkPolicy | None = None,
     sandbox: SandboxBackend | None = None,
     web_network_policy: NetworkPolicy | None = None,
@@ -541,6 +554,12 @@ def build_default_tools(  # noqa: PLR0913
             DB > env > YAML > default precedence (and the
             ``settings.value.resolved`` audit log) fire on the real
             read instead of being papered over by a local default.
+        git_log_max_count: Upper bound on commits the ``git_log`` tool
+            returns; resolve via ``tools.git_log_max_count`` and pass so
+            the clamp tracks the operator-tuned setting.
+        code_runner_output_tail_limit: Maximum characters of captured
+            stdout/stderr the ``code_runner`` tool keeps on a test
+            record; resolve via ``tools.code_runner_output_tail_limit``.
         git_clone_policy: Network policy for git clone SSRF
             prevention.  ``None`` uses the default (block all
             private IPs, empty hostname allowlist).
@@ -644,6 +663,7 @@ def build_default_tools(  # noqa: PLR0913
             workspace=workspace,
             git_clone_policy=git_clone_policy,
             sandbox=sandbox,
+            git_log_max_count=git_log_max_count,
         ),
         *_build_web_tools(
             network_policy=web_network_policy,
@@ -695,6 +715,7 @@ def build_default_tools(  # noqa: PLR0913
         _build_code_execution_tools(
             sandbox=code_execution_sandbox,
             code_execution_records=code_execution_records,
+            output_tail_limit=code_runner_output_tail_limit,
         ),
     )
     all_tools.extend(
@@ -756,6 +777,8 @@ def build_default_tools_from_config(  # noqa: PLR0913
     architect_autonomy_level: AutonomyLevel = _DEFAULT_ARCHITECT_AUTONOMY,
     architect_writes_enabled: bool = False,
     web_request_timeout: float,
+    git_log_max_count: int = _DEFAULT_GIT_LOG_MAX_COUNT,
+    code_runner_output_tail_limit: int = _DEFAULT_CODE_RUNNER_OUTPUT_TAIL_LIMIT,
     browser_settings: BrowserSettings | None = None,
     desktop_settings: DesktopSettings | None = None,
     code_execution_records: CodeExecutionRecordRepository | None = None,
@@ -809,6 +832,11 @@ def build_default_tools_from_config(  # noqa: PLR0913
             ``settings.value.resolved`` audit log fire on the real
             read).  Overrides ``config.web.request_timeout`` when
             both are supplied.
+        git_log_max_count: Resolved ``tools.git_log_max_count`` registry
+            value bounding the commits the ``git_log`` tool returns.
+        code_runner_output_tail_limit: Resolved
+            ``tools.code_runner_output_tail_limit`` registry value
+            capping the captured stdout/stderr kept on a test record.
         browser_settings: Operator-resolved ``BrowserSettings``.  When
             ``None`` the BrowserTool uses model defaults (mirroring
             the constants in ``tools.browser._constants``).
@@ -939,6 +967,8 @@ def build_default_tools_from_config(  # noqa: PLR0913
     return build_default_tools(
         workspace=workspace,
         web_request_timeout=web_request_timeout,
+        git_log_max_count=git_log_max_count,
+        code_runner_output_tail_limit=code_runner_output_tail_limit,
         git_clone_policy=config.git_clone,
         sandbox=vc_sandbox,
         web_network_policy=web_policy,

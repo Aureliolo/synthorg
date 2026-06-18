@@ -32,12 +32,15 @@ from synthorg.persistence.config import PersistenceConfig, PostgresConfig
 class TestBuildBackupService:
     """build_backup_service always constructs a real service."""
 
-    def test_returns_backup_service_when_disabled_by_default(
+    def test_returns_backup_service_when_disabled(
         self,
         tmp_path: Path,
     ) -> None:
-        """Disabled-by-default config still yields a real BackupService."""
-        config = RootConfig(company_name="test-co")
+        """An explicitly-disabled config still yields a real BackupService."""
+        config = RootConfig(
+            company_name="test-co",
+            backup=BackupConfig(enabled=False),
+        )
         assert config.backup.enabled is False
 
         service = build_backup_service(
@@ -48,6 +51,11 @@ class TestBuildBackupService:
 
         assert isinstance(service, BackupService)
         assert service.scheduler.is_running is False
+
+    def test_enabled_by_default(self) -> None:
+        """Backups are enabled by default (data-safety out of the box)."""
+        config = RootConfig(company_name="test-co")
+        assert config.backup.enabled is True
 
     def test_returns_backup_service_when_enabled(self, tmp_path: Path) -> None:
         """Explicit ``backup.enabled=true`` still returns a real service."""

@@ -58,12 +58,15 @@ _r.register(
         namespace=SettingNamespace.COORDINATION,
         key="decomposition_model",
         type=SettingType.STRING,
-        default="example-medium-001",
+        default="",
         description=(
             "LLM model identifier the coordinator's task decomposition"
             " strategy invokes against the first registered provider."
-            " Resolved at boot; a runtime change applies on the next"
-            " coordinator rebuild (provider re-init)."
+            " Empty (the default) is unset: the operator must configure a"
+            " real model before enabling the coordinator. Boot validation"
+            " rejects an empty value when coordination middleware is"
+            " enabled. Resolved at boot; a runtime change applies on the"
+            " next coordinator rebuild (provider re-init)."
         ),
         group="General",
     )

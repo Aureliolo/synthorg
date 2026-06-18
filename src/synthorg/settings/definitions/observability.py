@@ -230,7 +230,7 @@ _r.register(
         group="Audit Chain",
         level=SettingLevel.ADVANCED,
         restart_required=True,
-        validator_pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
+        validator_pattern=r"^https://[\w.\-:]+(?:/.*)?$",
     )
 )
 
@@ -247,7 +247,7 @@ _r.register(
         group="Audit Chain",
         level=SettingLevel.ADVANCED,
         restart_required=True,
-        validator_pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
+        validator_pattern=r"^https://[\w.\-:]+(?:/.*)?$",
     )
 )
 
@@ -264,6 +264,6 @@ _r.register(
         group="Audit Chain",
         level=SettingLevel.ADVANCED,
         restart_required=True,
-        validator_pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
+        validator_pattern=r"^https://[\w.\-:]+(?:/.*)?$",
     )
 )

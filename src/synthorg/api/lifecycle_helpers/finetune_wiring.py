@@ -71,14 +71,23 @@ async def _wire_fine_tune_orchestrator(app_state: AppState) -> None:
         training_data_source = None
         memory_backend = memory_slice.backend
         if memory_backend is not None:
-            history_dir = await config_resolver_of(app_state).get_str(
+            resolver = config_resolver_of(app_state)
+            history_dir = await resolver.get_str(
                 SettingNamespace.META, "scorecard_history_dir"
+            )
+            max_tasks_per_status = await resolver.get_int(
+                SettingNamespace.MEMORY, "fine_tune_max_tasks_per_status"
+            )
+            per_agent_memory_limit = await resolver.get_int(
+                SettingNamespace.MEMORY, "fine_tune_per_agent_memory_limit"
             )
             training_data_source = TrajectoryTrainingDataSource(
                 memory_backend=memory_backend,
                 task_repo=backend.tasks,
                 artifact_repo=backend.artifacts,
                 scorecard_history_dir=Path(history_dir) if history_dir else None,
+                max_tasks_per_status=max_tasks_per_status,
+                per_agent_memory_limit=per_agent_memory_limit,
             )
         orchestrator = FineTuneOrchestrator(
             run_repo=run_repo,

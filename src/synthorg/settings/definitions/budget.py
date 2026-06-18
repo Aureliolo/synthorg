@@ -275,8 +275,9 @@ _r.register(
             " BudgetChecker raises RunHardCeilingExceededError when the"
             " accumulated cost meets or exceeds this value; the engine"
             " parks the context so the operator can raise the ceiling and"
-            " resume. Zero disables the global fallback (per-task ceilings"
-            " still apply)."
+            " resume. The default 0.0 is the opt-out sentinel: no global"
+            " ceiling is enforced (per-task ceilings still apply). Set a"
+            " positive value to cap every otherwise-unbounded run."
         ),
         group="Forecast",
         min_value=0.0,

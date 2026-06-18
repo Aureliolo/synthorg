@@ -398,6 +398,12 @@ async def _wire_steering_service(
     proposer = await _build_steering_proposer(
         app_state, provider_registry=provider_registry
     )
+    from synthorg.settings.enums import SettingNamespace  # noqa: PLC0415
+    from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
+
+    propose_candidate_limit = await config_resolver_of(app_state).get_int(
+        SettingNamespace.COCKPIT, "steering_propose_candidate_limit"
+    )
     app_state.wire(
         CockpitStateSlice,
         steering_service=SteeringService(
@@ -407,6 +413,7 @@ async def _wire_steering_service(
             proposer=proposer,
             notifier=app_state.slice(CockpitStateSlice).steering_notifier,
             clock=app_state.clock,
+            propose_candidate_limit=propose_candidate_limit,
         ),
     )
     logger.info(API_APP_STARTUP, service="steering", note="wired")

@@ -68,6 +68,9 @@ logger = get_logger(__name__)
 
 _WEB_TIMEOUT_NS: str = "tools"
 _WEB_TIMEOUT_KEY: str = "web_request_timeout_seconds"
+_TOOLS_NS: str = "tools"
+_GIT_LOG_MAX_COUNT_KEY: str = "git_log_max_count"
+_CODE_RUNNER_OUTPUT_TAIL_KEY: str = "code_runner_output_tail_limit"
 _EXTERNAL_API_NS: str = SettingNamespace.EXTERNAL_API.value
 
 
@@ -101,9 +104,18 @@ async def _build_tool_registry(
         parents=True,
         exist_ok=True,
     )
-    web_request_timeout = await config_resolver_of(app_state).get_float(
+    resolver = config_resolver_of(app_state)
+    web_request_timeout = await resolver.get_float(
         _WEB_TIMEOUT_NS,
         _WEB_TIMEOUT_KEY,
+    )
+    git_log_max_count = await resolver.get_int(
+        _TOOLS_NS,
+        _GIT_LOG_MAX_COUNT_KEY,
+    )
+    code_runner_output_tail_limit = await resolver.get_int(
+        _TOOLS_NS,
+        _CODE_RUNNER_OUTPUT_TAIL_KEY,
     )
     from synthorg.tools.browser._settings import (  # noqa: PLC0415
         resolve_browser_settings,
@@ -128,6 +140,8 @@ async def _build_tool_registry(
         config=app_state.config,
         sandbox_backends=sandbox_backends,
         web_request_timeout=web_request_timeout,
+        git_log_max_count=git_log_max_count,
+        code_runner_output_tail_limit=code_runner_output_tail_limit,
         browser_settings=browser_settings,
         desktop_settings=desktop_settings,
         code_execution_records=code_execution_records_of(app_state),

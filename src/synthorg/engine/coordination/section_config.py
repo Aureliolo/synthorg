@@ -134,12 +134,15 @@ class CoordinationSectionConfig(BaseModel):
         default="main",
         description="Git branch for workspace isolation",
     )
-    decomposition_model: NotBlankStr = Field(
-        default=NotBlankStr("example-medium-001"),
+    decomposition_model: str = Field(
+        default="",
         description=(
             "LLM model identifier used by the coordinator's task "
             "decomposition strategy. Resolved against the first "
-            "registered provider at boot. Overridable via the "
+            "registered provider at boot. Empty (the default) is unset: "
+            "boot validation in the coordinator-assembly path rejects an "
+            "empty value when a provider is present and the coordinator is "
+            "built. Overridable via the "
             "SYNTHORG_COORDINATION_DECOMPOSITION_MODEL environment "
             "variable (precedence: DB > env > this code default), "
             "applied on the next coordinator rebuild."

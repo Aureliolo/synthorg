@@ -195,6 +195,12 @@ Independent of the depth cap: a wide but shallow tree on a slow /
 stale-handle NFS mount is bounded by time even when depth is fine.
 On either bound the check returns a ``warn`` band, never a hang."""
 
+FINE_TUNE_MAX_TASKS_PER_STATUS: Final[int] = 1000
+"""Per-status cap on how many tasks a single trajectory harvest scans."""
+
+FINE_TUNE_PER_AGENT_MEMORY_LIMIT: Final[int] = 1000
+"""Per-agent cap on how many memory records a trajectory harvest scans."""
+
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.MEMORY,
@@ -283,5 +289,41 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=0.5,
         max_value=60.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
+        key="fine_tune_max_tasks_per_status",
+        type=SettingType.INTEGER,
+        default=str(FINE_TUNE_MAX_TASKS_PER_STATUS),
+        description=(
+            "Per-status cap on how many tasks a single trajectory"
+            " harvest scans when assembling embedding fine-tune training"
+            " pairs. Bounds the working-history scan per task status."
+        ),
+        group="Fine-Tune",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=100_000,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
+        key="fine_tune_per_agent_memory_limit",
+        type=SettingType.INTEGER,
+        default=str(FINE_TUNE_PER_AGENT_MEMORY_LIMIT),
+        description=(
+            "Per-agent cap on how many memory records a single trajectory"
+            " harvest scans when assembling embedding fine-tune training"
+            " pairs."
+        ),
+        group="Fine-Tune",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=100_000,
     )
 )

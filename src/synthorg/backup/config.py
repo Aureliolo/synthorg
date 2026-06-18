@@ -47,7 +47,7 @@ class BackupConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    enabled: bool = False
+    enabled: bool = True
     path: NotBlankStr = Field(
         default="/data/backups",
         description="Directory path for storing backups",
