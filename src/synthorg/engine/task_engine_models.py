@@ -168,16 +168,13 @@ class UpdateTaskMutation(BaseModel):
         if forbidden:
             msg = f"Cannot update immutable fields: {sorted(forbidden)}"
             raise ValueError(msg)
-        return self
-
-    def __init__(self, **data: object) -> None:
-        super().__init__(**data)
-        # Deep-copy and wrap in MappingProxyType for full immutability.
+        # Deep-copy + wrap for full immutability once validation passes.
         object.__setattr__(
             self,
             "updates",
             MappingProxyType(copy.deepcopy(dict(self.updates))),
         )
+        return self
 
 
 _IMMUTABLE_OVERRIDE_FIELDS: frozenset[str] = _ALWAYS_IMMUTABLE_FIELDS | {"status"}
@@ -229,16 +226,13 @@ class TransitionTaskMutation(BaseModel):
         if forbidden:
             msg = f"Cannot override immutable fields: {sorted(forbidden)}"
             raise ValueError(msg)
-        return self
-
-    def __init__(self, **data: object) -> None:
-        super().__init__(**data)
-        # Deep-copy and wrap in MappingProxyType for full immutability.
+        # Deep-copy + wrap for full immutability once validation passes.
         object.__setattr__(
             self,
             "overrides",
             MappingProxyType(copy.deepcopy(dict(self.overrides))),
         )
+        return self
 
 
 class DeleteTaskMutation(BaseModel):

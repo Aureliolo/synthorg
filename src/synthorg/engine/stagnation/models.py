@@ -194,11 +194,19 @@ class StagnationResult(BaseModel):
         description="Forward-compatible metadata",
     )
 
-    def __init__(self, **data: object) -> None:
-        """Deep-copy details dict at construction boundary."""
-        if "details" in data and isinstance(data["details"], dict):
-            data["details"] = copy.deepcopy(data["details"])
-        super().__init__(**data)
+    @model_validator(mode="before")
+    @classmethod
+    def _deep_copy_details(cls, data: object) -> object:
+        """Deep-copy the supplied details dict at the construction boundary.
+
+        Returns:
+            The input with ``details`` replaced by a deep copy, so a
+            later mutation of the caller's dict cannot reach into this
+            frozen record's nested details.
+        """
+        if isinstance(data, dict) and isinstance(data.get("details"), dict):
+            return {**data, "details": copy.deepcopy(data["details"])}
+        return data
 
     @model_validator(mode="after")
     def _validate_corrective_message(self) -> Self:
