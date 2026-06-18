@@ -11,6 +11,7 @@ from collections.abc import Mapping
 
 from synthorg._core.features import FeatureManifest, FeatureModule
 from synthorg.api.controllers.budget import BudgetController
+from synthorg.api.controllers.budget_cfo import BudgetCfoController
 from synthorg.api.controllers.budget_config_versions import (
     BudgetConfigVersionController,
 )
@@ -40,6 +41,7 @@ FEATURE: FeatureModule = FeatureManifest(
     state_slice=BudgetStateSlice,
     controllers=(
         BudgetController,
+        BudgetCfoController,
         ForecastBudgetController,
         BudgetConfigVersionController,
         ReportsController,
@@ -59,6 +61,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "CompanyRoleSkeletonProvider",
         "CoordinationMetricsCollector",
         "CostForecaster",
+        "CostOptimizer",
         "CostTrackerHistoryLookup",
         "MeasuredBenchmarkScoreProvider",
         "ParetoAnalyzer",

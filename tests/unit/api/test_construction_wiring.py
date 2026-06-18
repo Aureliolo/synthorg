@@ -88,7 +88,9 @@ class TestConstructionWiringPopulatesSlices:
         built_app_state: AppState,
         cost_tracker: CostTracker,
     ) -> None:
-        assert built_app_state.slice(BudgetStateSlice).cost_tracker is cost_tracker
+        budget = built_app_state.slice(BudgetStateSlice)
+        assert budget.cost_tracker is cost_tracker
+        assert budget.cost_optimizer is not None
 
     def test_persistence_slice_wired(
         self,

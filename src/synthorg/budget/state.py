@@ -21,6 +21,7 @@ from synthorg.budget.call_analytics import CallAnalyticsService
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.forecast_service import BudgetForecastService
 from synthorg.budget.forecaster import CostForecaster
+from synthorg.budget.optimizer import CostOptimizer
 from synthorg.budget.pareto import ParetoAnalyzer
 from synthorg.budget.quota_tracker import QuotaTracker
 from synthorg.budget.risk_tracker import RiskTracker
@@ -53,6 +54,7 @@ class BudgetStateSlice(BaseFeatureStateSlice):
     budget_config: BudgetConfig | None = None
     report_service: AutomatedReportService | None = None
     budget_versions_service: BudgetConfigVersionsService | None = None
+    cost_optimizer: CostOptimizer | None = None
 
 
 def cost_tracker_of(app_state: AppStateSliceMixin) -> CostTracker:
@@ -77,4 +79,15 @@ def budget_versions_service_of(
     return require_service(
         app_state.slice(BudgetStateSlice).budget_versions_service,
         "Budget Versions Service",
+    )
+
+
+def cost_optimizer_of(app_state: AppStateSliceMixin) -> CostOptimizer:
+    """Resolve the CFO cost optimizer from its slice, or raise 503.
+
+    Returns:
+        The wired cost optimizer.
+    """
+    return require_service(
+        app_state.slice(BudgetStateSlice).cost_optimizer, "Cost Optimizer"
     )

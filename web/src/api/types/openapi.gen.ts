@@ -1063,6 +1063,40 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/budget/cfo/anomalies": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** DetectAnomalies */
+        readonly get: operations["ApiV1BudgetCfoAnomaliesDetectAnomalies"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/budget/cfo/efficiency": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** AnalyzeEfficiency */
+        readonly get: operations["ApiV1BudgetCfoEfficiencyAnalyzeEfficiency"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/budget/config": {
         readonly parameters: {
             readonly query?: never;
@@ -5569,6 +5603,20 @@ export type components = {
                 } | string | boolean | number | null;
             };
         };
+        /** AgentEfficiency */
+        readonly AgentEfficiency: {
+            /** @description Agent identifier */
+            readonly agent_id: string;
+            /** @description Cost per 1000 tokens, derived from total_cost and total_tokens. */
+            readonly cost_per_1k_tokens: number;
+            readonly efficiency_rating: components["schemas"]["EfficiencyRating"];
+            /** @description Number of cost records */
+            readonly record_count: number;
+            /** @description Total cost in the analysis period */
+            readonly total_cost: number;
+            /** @description Total tokens consumed */
+            readonly total_tokens: number;
+        };
         /** AgentHealthResponse */
         readonly AgentHealthResponse: {
             readonly agent_id: string;
@@ -5764,6 +5812,46 @@ export type components = {
             /** @description Total LLM calls recorded. */
             readonly total_calls: number;
         };
+        /** AnomalyDetectionResult */
+        readonly AnomalyDetectionResult: {
+            /** @description Unique agents in data */
+            readonly agents_scanned: number;
+            /**
+             * @description Detected anomalies
+             * @default []
+             */
+            readonly anomalies: readonly components["schemas"]["SpendingAnomaly"][];
+            /**
+             * Format: date-time
+             * @description Scanned period end
+             */
+            readonly scan_period_end: string;
+            /**
+             * Format: date-time
+             * @description Scanned period start
+             */
+            readonly scan_period_start: string;
+            /**
+             * Format: date-time
+             * @description When the scan ran
+             */
+            readonly scan_timestamp: string;
+        };
+        /**
+         * AnomalySeverity
+         * @description Severity of a detected spending anomaly.
+         * @enum {string}
+         */
+        readonly AnomalySeverity: "low" | "medium" | "high";
+        /**
+         * AnomalyType
+         * @description Type of spending anomaly detected.
+         *
+         *     ``SUSTAINED_HIGH`` and ``RATE_INCREASE`` are reserved for future
+         *     detection algorithms; only ``SPIKE`` is currently produced.
+         * @enum {string}
+         */
+        readonly AnomalyType: "spike" | "sustained_high" | "rate_increase";
         /** AnonymizedOutcomeEvent */
         readonly AnonymizedOutcomeEvent: {
             readonly altitude: string;
@@ -5914,6 +6002,19 @@ export type components = {
         /** ApiResponse[AnalyticsAggregation] */
         readonly ApiResponse_AnalyticsAggregation_: {
             readonly data: components["schemas"]["AnalyticsAggregation"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[AnomalyDetectionResult] */
+        readonly ApiResponse_AnomalyDetectionResult_: {
+            readonly data: components["schemas"]["AnomalyDetectionResult"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /**
@@ -6340,6 +6441,19 @@ export type components = {
         /** ApiResponse[DiscoveryPolicyResponse] */
         readonly ApiResponse_DiscoveryPolicyResponse_: {
             readonly data: components["schemas"]["DiscoveryPolicyResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[EfficiencyAnalysis] */
+        readonly ApiResponse_EfficiencyAnalysis_: {
+            readonly data: components["schemas"]["EfficiencyAnalysis"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /**
@@ -10206,6 +10320,28 @@ export type components = {
                 readonly [key: string]: unknown;
             } | null;
         };
+        /** EfficiencyAnalysis */
+        readonly EfficiencyAnalysis: {
+            /**
+             * @description Per-agent efficiency metrics
+             * @default []
+             */
+            readonly agents: readonly components["schemas"]["AgentEfficiency"][];
+            /**
+             * Format: date-time
+             * @description Analysis period end
+             */
+            readonly analysis_period_end: string;
+            /**
+             * Format: date-time
+             * @description Analysis period start
+             */
+            readonly analysis_period_start: string;
+            /** @description Global average cost per 1000 tokens */
+            readonly global_avg_cost_per_1k: number;
+            /** @description Number of agents rated INEFFICIENT. */
+            readonly inefficient_agent_count: number;
+        };
         /** EfficiencyConfig */
         readonly EfficiencyConfig: {
             /** @default true */
@@ -10231,6 +10367,12 @@ export type components = {
             /** @default 0.2 */
             readonly weight: number;
         };
+        /**
+         * EfficiencyRating
+         * @description Cost efficiency rating for an agent.
+         * @enum {string}
+         */
+        readonly EfficiencyRating: "efficient" | "normal" | "inefficient";
         /** EntityFieldInput */
         readonly EntityFieldInput: {
             /**
@@ -15775,6 +15917,36 @@ export type components = {
          * @enum {string}
          */
         readonly SourceType: "pdf" | "web" | "repo" | "ticket" | "design_doc";
+        /** SpendingAnomaly */
+        readonly SpendingAnomaly: {
+            /** @description Agent identifier */
+            readonly agent_id: string;
+            readonly anomaly_type: components["schemas"]["AnomalyType"];
+            /** @description Mean spending across historical windows */
+            readonly baseline_value: number;
+            /** @description Spending in the most recent window */
+            readonly current_value: number;
+            /** @description Human-readable explanation */
+            readonly description: string;
+            /**
+             * Format: date-time
+             * @description When the anomaly was detected
+             */
+            readonly detected_at: string;
+            /** @description Standard deviations above baseline */
+            readonly deviation_factor: number;
+            /**
+             * Format: date-time
+             * @description Anomalous window end
+             */
+            readonly period_end: string;
+            /**
+             * Format: date-time
+             * @description Anomalous window start
+             */
+            readonly period_start: string;
+            readonly severity: components["schemas"]["AnomalySeverity"];
+        };
         /** SsrfViolationDTO */
         readonly SsrfViolationDTO: {
             /** @description CIDR range that triggered the block, when known. */
@@ -19330,7 +19502,7 @@ export interface operations {
             readonly query?: {
                 /** @description Metric to trend */
                 readonly metric?: components["schemas"]["TrendMetric"];
-                /** @description Lookback period */
+                /** @description Lookback window for the efficiency analysis. */
                 readonly period?: components["schemas"]["TrendPeriod"];
             };
             readonly header?: never;
@@ -20129,6 +20301,66 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ApiResponse_AnalyticsAggregation_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1BudgetCfoAnomaliesDetectAnomalies: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Lookback window for the efficiency analysis. */
+                readonly period?: components["schemas"]["TrendPeriod"];
+                /** @description Number of equal time windows to divide the period into. */
+                readonly window_count?: number;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_AnomalyDetectionResult_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1BudgetCfoEfficiencyAnalyzeEfficiency: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Lookback window for the efficiency analysis. */
+                readonly period?: components["schemas"]["TrendPeriod"];
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_EfficiencyAnalysis_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

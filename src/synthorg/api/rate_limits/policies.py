@@ -97,6 +97,9 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "budget.forecast_create": (5, 60),
     "budget.forecast_decide": (20, 60),
     "budget.forecast_raise_ceiling": (10, 60),
+    # budget (CFO cost-optimizer controller)
+    "budget.cfo_anomalies": (30, 60),
+    "budget.cfo_efficiency": (30, 60),
     # clients
     "clients.create": (10, 60),
     # cockpit
