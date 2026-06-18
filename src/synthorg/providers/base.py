@@ -7,11 +7,13 @@ automatic retry, rate limiting, and provides a cost-computation helper.
 
 import asyncio
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator, Callable, Coroutine, Mapping
+from collections.abc import AsyncGenerator, AsyncIterator, Callable, Coroutine, Mapping
 from typing import Final, ParamSpec, TypeVar
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -39,6 +41,7 @@ from ._call_instrumentation import (
 )
 from ._validation import validate_messages, validate_model
 from .capabilities import ModelCapabilities
+from .enums import StreamEventType
 from .errors import RateLimitError, classify_provider_error
 from .models import (
     ChatMessage,
@@ -242,16 +245,14 @@ class BaseCompletionProvider(ABC):
 
         .. note::
 
-            Unlike :meth:`complete`, ``stream`` does **not** fire the
-            cost-recording chokepoint.  Streaming responses surface
-            usage as a terminal ``StreamEventType.USAGE`` chunk, so the
-            recording logic would have to consume the iterator to
-            extract token counts -- conflating cost recording with the
-            stream-consumption contract.  Until streaming becomes a
-            mainstream LLM call path in this codebase, callers using
-            ``stream()`` are responsible for emitting their own
-            ``CostRecord`` from the final usage chunk.  No call site in
-            the current diff uses ``stream()`` for paid LLM work.
+            Streaming usage surfaces only on the terminal
+            ``StreamEventType.USAGE`` chunk, so the returned iterator is
+            wrapped in a pass-through generator that captures that chunk
+            and fires the same ``record_cost_if_in_scope`` chokepoint as
+            :meth:`complete` once the consumer drains the stream.  The
+            wrapper yields lazily (it does not pre-consume the iterator),
+            so the cost record lands in the consumer's
+            ``cost_recording_scope`` rather than at connection-setup time.
 
         Args:
             messages: Conversation history.
@@ -334,7 +335,49 @@ class BaseCompletionProvider(ABC):
         # DEBUG marker so log-based monitoring can flag a driver that
         # never yields one (the cost path then silently records nothing).
         logger.debug(PROVIDER_STREAM_USAGE_EXPECTED, model=model)
-        return iterator
+        return self._cost_recording_stream(
+            iterator, model=model, provider_label=provider_label
+        )
+
+    async def _cost_recording_stream(
+        self,
+        iterator: AsyncIterator[StreamChunk],
+        *,
+        model: str,
+        provider_label: str,
+    ) -> AsyncGenerator[StreamChunk]:
+        """Pass through ``iterator`` and fire cost recording on drain.
+
+        Yields each chunk unchanged so the consumer's iteration timing
+        is preserved, captures the terminal ``USAGE`` chunk's token
+        counts, and -- once the stream is fully consumed -- emits a
+        ``CostRecord`` through the same ``record_cost_if_in_scope``
+        chokepoint :meth:`complete` uses.  A stream that yields no usage
+        chunk records nothing (matching the no-scope no-op contract).
+
+        Args:
+            iterator: The driver's raw ``StreamChunk`` iterator.
+            model: Model identifier for the call.
+            provider_label: Resolved provider name for the cost record.
+
+        Yields:
+            Each ``StreamChunk`` from ``iterator`` unchanged.
+        """
+        usage = None
+        async for chunk in iterator:
+            if chunk.event_type is StreamEventType.USAGE and chunk.usage is not None:
+                usage = chunk.usage
+            yield chunk
+        if usage is not None:
+            await record_cost_if_in_scope(
+                CompletionResponse(
+                    finish_reason=FinishReason.STOP,
+                    usage=usage,
+                    model=NotBlankStr(model),
+                ),
+                model=model,
+                provider=provider_label,
+            )
 
     async def get_model_capabilities(self, model: str) -> ModelCapabilities:
         """Validate model identifier, delegate to ``_do_get_model_capabilities``.

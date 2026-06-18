@@ -33,8 +33,10 @@ from synthorg.engine.workspace.models import Workspace, WorkspaceGroupResult
 from synthorg.engine.workspace.service import WorkspaceIsolationService
 from synthorg.observability import get_logger
 from synthorg.observability.events.coordination import COORDINATION_PHASE_FAILED
+from synthorg.observability.tracing.instrumentation import get_tracer
 
 logger = get_logger(__name__)
+_tracer = get_tracer(__name__)
 
 
 class WaveDispatcher:
@@ -133,12 +135,21 @@ class WaveDispatcher:
             )
             groups = await self._apply_orchestrator_strategy(groups)
 
-            waves, exec_phases = await execute_waves(
-                groups,
-                parallel_executor,
-                clock=self._clock,
-                fail_fast=config.fail_fast,
-            )
+            with _tracer.start_as_current_span(
+                "coordination.dispatch",
+                attributes={
+                    "coordination.topology": self._topology_label,
+                    "coordination.wave_count": len(groups),
+                },
+                record_exception=False,
+                set_status_on_exception=False,
+            ):
+                waves, exec_phases = await execute_waves(
+                    groups,
+                    parallel_executor,
+                    clock=self._clock,
+                    fail_fast=config.fail_fast,
+                )
             all_phases.extend(exec_phases)
 
             all_succeeded = all(p.success for p in exec_phases)

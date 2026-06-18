@@ -197,6 +197,7 @@ class AuditChainSink(logging.Handler):
     _AUDITED_PREFIXES: tuple[str, ...] = (
         "security.",
         "tool.registry.integrity.",
+        "config.",
     )
 
     def __init__(

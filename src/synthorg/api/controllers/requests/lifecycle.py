@@ -206,6 +206,13 @@ class RequestController(Controller):
             requirement=data.requirement,
         )
         await sim_state.request_store.save(client_request)
+        logger.info(
+            CLIENT_REQUEST_STATUS_TRANSITIONED,
+            request_id=client_request.request_id,
+            client_id=client_request.client_id,
+            from_status=None,
+            to_status=client_request.status.value,
+        )
         _publish(request, WsEventType.REQUEST_SUBMITTED, client_request)
         return ApiResponse(data=client_request)
 

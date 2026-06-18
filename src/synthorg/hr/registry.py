@@ -740,9 +740,17 @@ class AgentRegistryService:
                     saved_by=saved_by,
                 )
                 raise AgentNotFoundError(msg)
+            prior_level = live.autonomy_level
             applied = live.model_copy(update={"autonomy_level": level})
             self._agents[key] = applied
         await self._snapshot(applied, saved_by=saved_by)
+        logger.info(
+            HR_AGENT_STATUS_TRANSITIONED,
+            agent_id=key,
+            from_status=prior_level.value if prior_level is not None else None,
+            to_status=level.value,
+            saved_by=saved_by,
+        )
         return applied
 
     async def apply_autonomy_update_atomic(

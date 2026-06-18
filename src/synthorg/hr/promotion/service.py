@@ -35,6 +35,7 @@ from synthorg.hr.promotion.models import (
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.hr import HR_AGENT_STATUS_TRANSITIONED
 from synthorg.observability.events.promotion import (
     DEMOTION_APPLIED,
     PROMOTION_APPLIED,
@@ -419,6 +420,12 @@ class PromotionService:
         await self._registry.update_identity(
             request.agent_id,
             **updates,
+        )
+        logger.info(
+            HR_AGENT_STATUS_TRANSITIONED,
+            agent_id=request.agent_id,
+            from_status=request.current_level.value,
+            to_status=request.target_level.value,
         )
 
         now = datetime.now(UTC)

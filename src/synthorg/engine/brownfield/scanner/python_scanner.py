@@ -26,6 +26,12 @@ from synthorg.engine.brownfield.scanner._common import (
     walk_relative_paths,
 )
 from synthorg.engine.brownfield.scanner.protocol import EcosystemScan
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.brownfield import (
+    BROWNFIELD_MANIFEST_PARSE_FAILED,
+)
+
+logger = get_logger(__name__)
 
 _MANIFESTS: Final[tuple[str, ...]] = ("pyproject.toml", "setup.py", "setup.cfg")
 _MAX_PACKAGES: Final[int] = 500
@@ -92,7 +98,14 @@ class PythonScanner:
             return {}
         try:
             return tomllib.loads(text)
-        except tomllib.TOMLDecodeError:
+        except tomllib.TOMLDecodeError as exc:
+            logger.warning(
+                BROWNFIELD_MANIFEST_PARSE_FAILED,
+                ecosystem="python",
+                manifest="pyproject.toml",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             return {}
 
     def _build_files(self, workspace_path: Path) -> tuple[BuildFile, ...]:

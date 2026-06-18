@@ -22,6 +22,7 @@ from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.context import AgentContext
 from synthorg.observability import get_logger
+from synthorg.observability.events.middleware import MIDDLEWARE_TOOL_CALL_INVALID
 from synthorg.providers.models import TokenUsage
 
 logger = get_logger(__name__)
@@ -204,11 +205,21 @@ class ToolCallResult(BaseModel):
         """
         if self.success and self.error is not None:
             msg = "successful tool call must not have an error"
-            logger.warning(msg, tool_name=self.tool_name)
+            logger.warning(
+                MIDDLEWARE_TOOL_CALL_INVALID,
+                tool_name=self.tool_name,
+                reason="success_with_error",
+                error_type=ValueError.__name__,
+            )
             raise ValueError(msg)
         if not self.success and self.error is None:
             msg = "failed tool call must have an error description"
-            logger.warning(msg, tool_name=self.tool_name)
+            logger.warning(
+                MIDDLEWARE_TOOL_CALL_INVALID,
+                tool_name=self.tool_name,
+                reason="failure_without_error",
+                error_type=ValueError.__name__,
+            )
             raise ValueError(msg)
         return self
 

@@ -72,6 +72,7 @@ from synthorg.observability.events.workflow_execution import (
     WORKFLOW_EXEC_NODE_COMPLETED,
     WORKFLOW_EXEC_NODE_SKIPPED,
     WORKFLOW_EXEC_NOT_FOUND,
+    WORKFLOW_EXEC_STATUS_TRANSITIONED,
     WORKFLOW_EXEC_SUBWORKFLOW_CONFIG_INVALID,
     WORKFLOW_EXEC_SUBWORKFLOW_DEPTH_EXCEEDED,
     WORKFLOW_EXEC_SUBWORKFLOW_FRAME_POPPED,
@@ -204,6 +205,13 @@ class WorkflowExecutionService:
             execution_id=str(execution_id),
             definition_id=str(definition.id),
             task_count=len(state.node_task_ids),
+        )
+        logger.info(
+            WORKFLOW_EXEC_STATUS_TRANSITIONED,
+            execution_id=str(execution_id),
+            definition_id=str(definition.id),
+            from_status=None,
+            to_status=status.value,
         )
 
         return execution
