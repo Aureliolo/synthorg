@@ -3,7 +3,9 @@
 import hashlib
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+
+from synthorg.core.types import NotBlankStr
 
 
 class ChainEntry(BaseModel):
@@ -21,13 +23,13 @@ class ChainEntry(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     position: int = Field(ge=0, description="Chain position")
-    event_hash: str = Field(description="SHA-256 of event data")
-    previous_hash: str = Field(description="Hash of prior entry")
+    event_hash: NotBlankStr = Field(description="SHA-256 of event data")
+    previous_hash: NotBlankStr = Field(description="Hash of prior entry")
     canonical_payload: bytes = Field(
         description="Canonical event bytes used for signing",
     )
     signature: bytes = Field(description="Signature over event data")
-    timestamp: datetime = Field(description="Entry creation time")
+    timestamp: AwareDatetime = Field(description="Entry creation time")
 
 
 class HashChain:

@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.clock import Clock
 from synthorg.core.project_enums import EnvironmentType
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.workspace.environment.image_builder import ImageBuilder
 
 _DEFAULT_MANIFEST_FILENAME: Final[str] = "synthorg.env.yaml"
@@ -42,9 +43,8 @@ class EnvironmentConfig(BaseModel):
     # Scaffold a default declaration into a fresh workspace when absent.
     auto_seed: bool = True
     # MANIFEST: the committed declaration filename.
-    manifest_filename: str = Field(
+    manifest_filename: NotBlankStr = Field(
         default=_DEFAULT_MANIFEST_FILENAME,
-        min_length=1,
     )
     # Maximum seconds a single setup command (bootstrap path) may run.
     provision_timeout_seconds: float = Field(

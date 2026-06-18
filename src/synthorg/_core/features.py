@@ -292,8 +292,8 @@ class McpHandlerDescriptor(BaseModel):
         frozen=True, allow_inf_nan=False, extra="forbid", arbitrary_types_allowed=True
     )
 
-    domain: str
-    tool_names: tuple[str, ...]
+    domain: NotBlankStr
+    tool_names: tuple[NotBlankStr, ...]
     tool_defs: tuple[object, ...] = ()
     handlers_factory: Callable[[], Mapping[str, object]] | None = None
 

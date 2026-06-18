@@ -7,6 +7,7 @@ selection, tier coverage) live in ``setup._status_checks``,
 """
 
 import json
+from collections.abc import Sequence
 from typing import Final, NamedTuple
 
 from synthorg.api.controllers.setup_agents import departments_to_json
@@ -98,7 +99,7 @@ async def check_has_company(
 
 
 def validate_locale_selection(
-    locales: list[str],
+    locales: Sequence[str],
     sentinel: str,
     valid_codes: frozenset[str],
 ) -> None:

@@ -1,8 +1,17 @@
 """Request/response models for the first-run setup controller."""
 
-from typing import Literal
+from collections.abc import Mapping
+from types import MappingProxyType
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_serializer,
+    model_validator,
+)
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.normalization import normalize_ascii_lowercase
@@ -395,7 +404,7 @@ class SetupNameLocalesRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-    locales: list[NotBlankStr] = Field(min_length=1, max_length=100)
+    locales: tuple[NotBlankStr, ...] = Field(min_length=1, max_length=100)
 
 
 class SetupNameLocalesResponse(BaseModel):
@@ -407,7 +416,7 @@ class SetupNameLocalesResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    locales: list[NotBlankStr]
+    locales: tuple[NotBlankStr, ...]
 
 
 class AvailableLocalesResponse(BaseModel):
@@ -420,8 +429,32 @@ class AvailableLocalesResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    regions: dict[str, list[str]]
+    regions: Mapping[str, tuple[str, ...]]
     display_names: dict[str, str]
+
+    @model_validator(mode="after")
+    def _freeze_regions(self) -> Self:
+        """Wrap ``regions`` in a read-only proxy at construction.
+
+        Returns:
+            The instance with ``regions`` replaced by a ``MappingProxyType``.
+        """
+        object.__setattr__(self, "regions", MappingProxyType(dict(self.regions)))
+        return self
+
+    @field_serializer("regions")
+    def _serialize_regions(
+        self, regions: Mapping[str, tuple[str, ...]]
+    ) -> dict[str, list[str]]:
+        """Serialize the read-only ``regions`` proxy to a plain JSON object.
+
+        The runtime ``MappingProxyType`` is not directly encodable by the
+        response serializer, so flatten it to a dict of lists on the wire.
+
+        Returns:
+            The regions mapping as a plain ``dict`` of ``list`` values.
+        """
+        return {key: list(value) for key, value in regions.items()}
 
 
 class SetupCompleteResponse(BaseModel):
