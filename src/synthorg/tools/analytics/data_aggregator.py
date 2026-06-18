@@ -6,12 +6,12 @@ shipped -- users inject a provider at construction time.
 """
 
 import asyncio
-from datetime import datetime
 from typing import ClassVar, Final, Protocol, cast, override, runtime_checkable
 
 from pydantic import BaseModel, JsonValue
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.iso_datetime import is_valid_iso_datetime
 from synthorg.observability import get_logger
 from synthorg.observability.events.analytics import (
     ANALYTICS_TOOL_PROVIDER_NOT_CONFIGURED,
@@ -174,23 +174,19 @@ class DataAggregatorTool(BaseAnalyticsTool):
             ("start_date", start_date),
             ("end_date", end_date),
         ):
-            if date_val is not None:
-                try:
-                    datetime.fromisoformat(date_val)
-                except ValueError:
-                    logger.warning(
-                        ANALYTICS_TOOL_QUERY_FAILED,
-                        error="invalid_date",
-                        field=date_label,
-                        value=date_val,
-                    )
-                    return ToolExecutionResult(
-                        content=(
-                            f"Invalid {date_label}: {date_val!r}. "
-                            f"Must be ISO 8601 format."
-                        ),
-                        is_error=True,
-                    )
+            if date_val is not None and not is_valid_iso_datetime(date_val):
+                logger.warning(
+                    ANALYTICS_TOOL_QUERY_FAILED,
+                    error="invalid_date",
+                    field=date_label,
+                    value=date_val,
+                )
+                return ToolExecutionResult(
+                    content=(
+                        f"Invalid {date_label}: {date_val!r}. Must be ISO 8601 format."
+                    ),
+                    is_error=True,
+                )
 
         if group_by is not None and group_by not in _VALID_GROUP_BY:
             logger.warning(

@@ -20,7 +20,7 @@ from synthorg.observability.events.persistence.heartbeat import (
     PERSISTENCE_HEARTBEAT_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import validate_pagination_args
+from synthorg.persistence._shared import format_iso_utc, validate_pagination_args
 from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
@@ -152,7 +152,7 @@ INSERT OR REPLACE INTO heartbeats (
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_HEARTBEAT_QUERY_FAILED
         )
-        threshold_iso = threshold.astimezone(UTC).isoformat()
+        threshold_iso = format_iso_utc(threshold)
         try:
             async with self._db.execute(
                 "SELECT execution_id, agent_id, task_id, last_heartbeat_at "

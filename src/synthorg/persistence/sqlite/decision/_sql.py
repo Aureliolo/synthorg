@@ -9,12 +9,13 @@ decisions.
 
 import json
 import sqlite3
-from datetime import UTC, datetime
+from datetime import datetime
 from types import MappingProxyType
 from typing import Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decisions import DecisionOutcome
+from synthorg.persistence._shared import format_iso_utc
 
 _MAX_PAGE_LIMIT: Final[int] = 1_000
 
@@ -76,7 +77,7 @@ def _build_insert_params(  # noqa: PLR0913
         "decision": decision.value,
         "reason": reason,
         "criteria_snapshot": json.dumps(list(criteria_snapshot)),
-        "recorded_at": recorded_at.astimezone(UTC).isoformat(),
+        "recorded_at": format_iso_utc(recorded_at),
         # ``metadata`` may contain ``MappingProxyType`` (from the draft
         # record's frozen view) at arbitrary nesting depth; unwrap
         # recursively so ``json.dumps`` only sees plain dicts and

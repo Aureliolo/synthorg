@@ -2,7 +2,7 @@
 
 import json
 import sqlite3
-from datetime import UTC, datetime
+from datetime import datetime
 
 import aiosqlite
 
@@ -277,10 +277,10 @@ class SQLiteAuditRepository:
             params.append(risk_level.value)
         if since is not None:
             conditions.append("timestamp >= ?")
-            params.append(since.astimezone(UTC).isoformat())
+            params.append(format_iso_utc(since))
         if until is not None:
             conditions.append("timestamp <= ?")
-            params.append(until.astimezone(UTC).isoformat())
+            params.append(format_iso_utc(until))
 
         where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
         return where, params
@@ -302,7 +302,7 @@ class SQLiteAuditRepository:
         if cutoff.tzinfo is None:
             msg = "cutoff must be timezone-aware; a naive datetime is rejected"
             raise QueryError(msg)
-        utc_cutoff = cutoff.astimezone(UTC).isoformat()
+        utc_cutoff = format_iso_utc(cutoff)
         async with self._write_context():
             try:
                 async with self._db.execute(

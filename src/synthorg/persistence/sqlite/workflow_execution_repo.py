@@ -8,7 +8,6 @@ Row <-> model marshalling is shared with the Postgres sibling via
 
 import json
 import sqlite3
-from datetime import UTC
 
 import aiosqlite
 
@@ -32,7 +31,7 @@ from synthorg.observability.events.persistence.workflow_exec import (
     PERSISTENCE_WORKFLOW_EXEC_LISTED,
     PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
 )
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT, format_iso_utc
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence._shared.workflow_execution_marshalling import (
     WORKFLOW_EXECUTION_COLUMNS,
@@ -111,7 +110,7 @@ class SQLiteWorkflowExecutionRepository:
         """
         node_json = json.dumps(node_execution_payloads(execution))
         completed_iso = (
-            execution.completed_at.astimezone(UTC).isoformat()
+            format_iso_utc(execution.completed_at)
             if execution.completed_at is not None
             else None
         )
@@ -123,8 +122,8 @@ class SQLiteWorkflowExecutionRepository:
             node_json,
             execution.activated_by,
             execution.project,
-            execution.created_at.astimezone(UTC).isoformat(),
-            execution.updated_at.astimezone(UTC).isoformat(),
+            format_iso_utc(execution.created_at),
+            format_iso_utc(execution.updated_at),
             completed_iso,
             execution.error,
             execution.version,
