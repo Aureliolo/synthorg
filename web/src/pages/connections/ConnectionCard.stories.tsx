@@ -10,8 +10,7 @@ const baseConnection: Connection = {
   auth_method: 'bearer_token',
   base_url: 'https://api.github.com',
   health_check_enabled: true,
-  health_status: 'healthy',
-  last_health_check_at: '2026-04-12T08:00:00Z',
+  health: { status: 'healthy', last_check_at: '2026-04-12T08:00:00Z' },
   metadata: {},
   rate_limiter: null,
   secret_refs: [],
@@ -61,7 +60,10 @@ export const Healthy: Story = {
 
 export const Degraded: Story = {
   args: {
-    connection: { ...baseConnection, health_status: 'degraded' },
+    connection: {
+      ...baseConnection,
+      health: { ...baseConnection.health, status: 'degraded' },
+    },
     report: { ...healthyReport, status: 'degraded', latency_ms: 1200 },
     checking: false,
   },
@@ -69,7 +71,10 @@ export const Degraded: Story = {
 
 export const Unhealthy: Story = {
   args: {
-    connection: { ...baseConnection, health_status: 'unhealthy' },
+    connection: {
+      ...baseConnection,
+      health: { ...baseConnection.health, status: 'unhealthy' },
+    },
     report: {
       ...healthyReport,
       status: 'unhealthy',
@@ -85,8 +90,7 @@ export const Unknown: Story = {
   args: {
     connection: {
       ...baseConnection,
-      health_status: 'unknown',
-      last_health_check_at: null,
+      health: { status: 'unknown', last_check_at: null },
     },
     report: null,
     checking: false,

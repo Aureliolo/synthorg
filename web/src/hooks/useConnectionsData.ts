@@ -30,7 +30,7 @@ function _effectiveHealth(
   conn: Connection,
   healthMap: Record<string, HealthReport>,
 ): ConnectionHealthStatus {
-  return healthMap[conn.name]?.status ?? conn.health_status
+  return healthMap[conn.name]?.status ?? conn.health.status
 }
 
 type ConnComparator = (
