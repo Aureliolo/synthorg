@@ -12,6 +12,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Final, NoReturn, cast
 
+from synthorg.communication.bus.persistence import DequeHistoryAccessor
 from synthorg.communication.channel import Channel
 from synthorg.communication.config import MessageBusConfig
 from synthorg.communication.enums import ChannelType
@@ -129,6 +130,10 @@ class InMemoryMessageBus:
         self._channels: dict[str, Channel] = {}
         self._queues: dict[tuple[str, str], asyncio.Queue[DeliveryEnvelope | None]] = {}
         self._history: dict[str, deque[Message]] = {}
+        # Read-only history accessor sharing the live ``_history`` mapping,
+        # so the limit / channel-not-found semantics live in one place
+        # (``DequeHistoryAccessor``) rather than being reimplemented here.
+        self._history_accessor = DequeHistoryAccessor(self._history)
         self._known_agents: set[str] = set()
         # Per-waiter one-shot futures keyed by (channel, subscriber).
         # ``receive()`` appends a future on entry and removes it on
@@ -877,18 +882,14 @@ class InMemoryMessageBus:
             ChannelNotFoundError: If the channel does not exist.
         """
         async with self._lock:
-            if channel_name not in self._channels:
-                _raise_channel_not_found(channel_name)
-            messages = list(self._history[channel_name])
-        if limit is not None:
-            if limit <= 0:
-                messages = []
-            elif limit < len(messages):
-                messages = messages[-limit:]
+            messages = await self._history_accessor.get_history(
+                channel_name,
+                limit=limit,
+            )
         logger.debug(
             COMM_HISTORY_QUERIED,
             channel=channel_name,
             count=len(messages),
             limit=limit,
         )
-        return tuple(messages)
+        return messages
