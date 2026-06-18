@@ -5,11 +5,11 @@ for recording metrics.  No concrete implementation is shipped;
 users inject a sink at construction time.
 """
 
-import math
 from typing import ClassVar, Protocol, cast, override, runtime_checkable
 
 from pydantic import BaseModel, JsonValue
 
+from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.analytics import (
@@ -130,41 +130,15 @@ class MetricCollectorTool(BaseAnalyticsTool):
                 is_error=True,
             )
 
-        metric_name = arguments.get("metric_name")
-        value = arguments.get("value")
-        if not isinstance(metric_name, str) or not metric_name.strip():
-            logger.warning(
-                ANALYTICS_TOOL_METRIC_RECORD_FAILED,
-                error="missing_or_invalid_metric_name",
-            )
-            return ToolExecutionResult(
-                content="'metric_name' must be a non-empty string.",
-                is_error=True,
-            )
-        if isinstance(value, bool) or not isinstance(value, int | float):
-            logger.warning(
-                ANALYTICS_TOOL_METRIC_RECORD_FAILED,
-                error="invalid_value_type",
-            )
-            return ToolExecutionResult(
-                content="'value' must be a number (not bool).",
-                is_error=True,
-            )
-        value = float(value)
-        raw_tags = arguments.get("tags")
-        tags: dict[str, str] = (
-            cast("dict[str, str]", raw_tags) if isinstance(raw_tags, dict) else {}
-        )
-        unit = arguments.get("unit")
-        if unit is not None and not isinstance(unit, str):
-            logger.warning(
-                ANALYTICS_TOOL_METRIC_RECORD_FAILED,
-                error="invalid_unit_type",
-            )
-            return ToolExecutionResult(
-                content="'unit' must be a string or null.",
-                is_error=True,
-            )
+        # ``parse_typed`` enforces the structural contract: a non-blank
+        # ``metric_name``, a finite non-bool ``value`` (the model's
+        # ``allow_inf_nan=False`` + the MetricValue bool guard), string
+        # ``tags`` values, and an optional non-blank ``unit``.
+        args = parse_typed("tool.metric_collector", arguments, MetricCollectorArgs)
+        metric_name = args.metric_name
+        value = args.value
+        tags: dict[str, str] = dict(args.tags)
+        unit = args.unit
 
         if not self._is_metric_allowed(metric_name):
             logger.warning(
@@ -176,18 +150,6 @@ class MetricCollectorTool(BaseAnalyticsTool):
                     f"Metric not allowed: {metric_name!r}. "
                     f"Allowed: {sorted(self._config.allowed_metrics or set())}"
                 ),
-                is_error=True,
-            )
-
-        if not math.isfinite(value):
-            logger.warning(
-                ANALYTICS_TOOL_METRIC_RECORD_FAILED,
-                metric_name=metric_name,
-                error="non_finite_value",
-                value=str(value),
-            )
-            return ToolExecutionResult(
-                content=(f"Metric value must be finite: {metric_name!r} got {value}"),
                 is_error=True,
             )
 

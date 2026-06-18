@@ -13,9 +13,39 @@ Tools wired to consume these models:
 from datetime import date
 from typing import Annotated, Literal, Self
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    model_validator,
+)
 
 from synthorg.core.types import NotBlankStr
+
+
+def _reject_bool(value: object) -> object:
+    """Reject a ``bool`` before float coercion turns ``True`` into ``1.0``.
+
+    ``bool`` is an ``int`` subclass, so Pydantic's lax mode would coerce
+    it to a float; a metric ``value`` of ``True`` is a type confusion,
+    not a real measurement, so it is refused at the boundary.
+
+    Returns:
+        ``value`` unchanged when it is not a ``bool``.
+
+    Raises:
+        ValueError: When ``value`` is a ``bool``.
+    """
+    if isinstance(value, bool):
+        msg = "value must be a number, not a bool"
+        raise ValueError(msg)  # noqa: TRY004 -- pydantic wraps only ValueError
+    return value
+
+
+MetricValue = Annotated[float, BeforeValidator(_reject_bool)]
+"""Finite metric value that rejects ``bool`` (allow_inf_nan handles inf/nan)."""
 
 
 def _validate_iso_8601_date(value: str) -> str:
@@ -137,7 +167,7 @@ class MetricCollectorArgs(BaseModel):
     model_config = _ARGS_CONFIG
 
     metric_name: NotBlankStr = Field(description="Name of the metric to record")
-    value: float = Field(description="Metric value")
+    value: MetricValue = Field(description="Metric value")
     tags: dict[str, str] = Field(
         default_factory=dict,
         description="Optional key-value tags",

@@ -3,6 +3,7 @@
 from typing import cast
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.analytics.config import AnalyticsToolsConfig
@@ -150,6 +151,48 @@ class TestMetricCollectorTool:
         assert result.metadata["value"] == 85.5
         assert result.metadata["unit"] == "percent"
         assert cast(JsonDict, result.metadata)["tags"]["host"] == "worker-1"
+
+    async def test_execute_rejects_bool_value(
+        self,
+        mock_sink: MockMetricSink,
+    ) -> None:
+        tool = MetricCollectorTool(sink=mock_sink)
+        with pytest.raises(ValidationError, match="value"):
+            await tool.execute(
+                arguments={
+                    "metric_name": "flag",
+                    "value": True,
+                }
+            )
+        assert mock_sink.recorded == []
+
+    async def test_execute_rejects_non_finite_value(
+        self,
+        mock_sink: MockMetricSink,
+    ) -> None:
+        tool = MetricCollectorTool(sink=mock_sink)
+        with pytest.raises(ValidationError):
+            await tool.execute(
+                arguments={
+                    "metric_name": "latency",
+                    "value": float("inf"),
+                }
+            )
+        assert mock_sink.recorded == []
+
+    async def test_execute_rejects_blank_metric_name(
+        self,
+        mock_sink: MockMetricSink,
+    ) -> None:
+        tool = MetricCollectorTool(sink=mock_sink)
+        with pytest.raises(ValidationError, match="metric_name"):
+            await tool.execute(
+                arguments={
+                    "metric_name": "   ",
+                    "value": 1.0,
+                }
+            )
+        assert mock_sink.recorded == []
 
     def test_mock_sink_satisfies_protocol(
         self,
