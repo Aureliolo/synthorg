@@ -484,8 +484,10 @@ class TaskController(Controller):
     ) -> ApiResponse[Task]:
         """Execute one step of a task on behalf of a worker.
 
-        Called by the distributed worker (``synthorg.workers.executor``)
-        when a JetStream claim arrives. Delegates to
+        Worker-internal endpoint: there is no dashboard UI for it by
+        design. It is called only by the distributed worker
+        (``synthorg.workers.executor``) when a JetStream claim arrives,
+        as part of the worker-to-API execution contract. Delegates to
         ``WorkerExecutionService.execute_once`` so the agent-runtime
         invocation is configurable per deployment.
 

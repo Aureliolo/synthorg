@@ -53,6 +53,7 @@ from synthorg.core.normalization import normalize_ascii_lowercase_or_default
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.setup import (
     SETUP_COMPLETE_CHECK_ERROR,
+    SETUP_COMPLETE_SERIALIZED,
     SETUP_COMPLETED,
     SETUP_NO_AGENTS,
     SETUP_NO_COMPANY,
@@ -233,7 +234,12 @@ class SetupCompletionController(Controller):
 
         # Serialise the entire check / validate / reinit / persist flow
         # so two concurrent /setup/complete requests cannot both observe
-        # ``setup_complete=false`` and race on reinit + flag write.
+        # ``setup_complete=false`` and race on reinit + flag write. Log
+        # when the lock is already held so a double-submit / concurrent
+        # operator is visible instead of silently blocking; the loser
+        # then hits ``_check_setup_not_complete`` and gets a clean 409.
+        if _COMPLETE_LOCK.locked():
+            logger.info(SETUP_COMPLETE_SERIALIZED)
         async with _COMPLETE_LOCK:
             await _check_setup_not_complete(settings_svc)
             has_agents = await _validate_completion_prereqs(app_state, settings_svc)

@@ -44,7 +44,8 @@ logger = get_logger(__name__)
 
 # Module-level cache: (card_data, expires_at, fingerprint).
 _card_cache: dict[str, tuple[dict[str, JsonValue], float, str]] = {}
-_cache_lock = asyncio.Lock()
+# Module-level lock with process lifetime; never rebound across loops.
+_cache_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see above.
 # Module-level clock singleton; tests inject a FakeClock by passing
 # it explicitly to the cache helpers below.
 _default_clock: Clock = SystemClock()

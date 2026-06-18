@@ -23,8 +23,8 @@ from pydantic import (
     model_validator,
 )
 
+from synthorg.core.immutable import deep_copy_mapping, freeze_recursive
 from synthorg.core.types import NotBlankStr, validate_unique_strings
-from synthorg.engine.immutable import deep_copy_mapping, freeze_recursive
 from synthorg.engine.strategy.models import (
     ConfidenceMetadata,
     LensAttribution,

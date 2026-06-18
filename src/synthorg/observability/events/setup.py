@@ -75,6 +75,11 @@ SETUP_TEMPLATE_INVALID: Final[str] = "setup.company.template_invalid"
 # Mutating endpoint called after setup is already complete
 SETUP_ALREADY_COMPLETE: Final[str] = "setup.flow.already_complete"
 
+# A /setup/complete request found the completion lock already held and
+# had to serialise behind a concurrent completion. Logged so contention
+# (two operators / a double-submit) is visible rather than silent.
+SETUP_COMPLETE_SERIALIZED: Final[str] = "setup.flow.complete_serialized"
+
 # Agents list corrupted in settings (JSON parse failure)
 SETUP_AGENTS_CORRUPTED: Final[str] = "setup.agents.corrupted"
 

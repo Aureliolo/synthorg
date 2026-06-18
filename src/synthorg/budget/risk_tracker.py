@@ -62,7 +62,9 @@ class RiskTracker:
             msg = f"auto_prune_threshold must be >= 1, got {auto_prune_threshold}"
             raise ValueError(msg)
         self._records: list[RiskRecord] = []
-        self._lock: asyncio.Lock = asyncio.Lock()
+        # The tracker is constructed once per app lifecycle and never
+        # restarted on a different loop, so loop-capture is benign here.
+        self._lock: asyncio.Lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
         self._risk_budget_config = risk_budget_config
         self._auto_prune_threshold = auto_prune_threshold
         logger.debug(

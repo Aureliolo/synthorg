@@ -87,9 +87,9 @@ class ExperimentsController(Controller):
     ) -> ApiResponse[ExperimentVariant]:
         """Register or replace a variant on an experiment.
 
-        API-only: variant registration is a deployment / scripting
-        operation and is intentionally not surfaced in the dashboard,
-        which exposes only the read views (variants + assignments).
+        Surfaced in the dashboard via the experiment explorer's
+        variant-registration form, alongside the deployment / scripting
+        path; both drive the same registry.
 
         Returns:
             ``ApiResponse[ExperimentVariant]`` instance.

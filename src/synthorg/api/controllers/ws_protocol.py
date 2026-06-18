@@ -28,7 +28,7 @@ from synthorg.api.ws_control_models import (
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.boundary import parse_typed
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_WS_INVALID_MESSAGE,
     API_WS_PING,
@@ -205,9 +205,11 @@ def handle_message(
     :data:`WS_CONTROL_MESSAGE_ADAPTER` so the typed variant
     (:class:`WsSubscribeMessage`, :class:`WsUnsubscribeMessage`,
     :class:`WsPingMessage`, :class:`WsAuthMessage`) drives dispatch.
-    Malformed frames emit ``api.boundary.validation_failed`` and the
-    legacy ``api.ws.invalid_message`` event in tandem so operators
-    keep the ws-specific search trail.
+    A frame that fails typed validation surfaces the canonical
+    ``api.boundary.validation_failed`` event from ``parse_typed`` (with
+    the full error locations); the pre-parse not-a-dict / not-JSON path
+    in :func:`_parse_ws_message` is the only remaining emitter of the
+    ws-specific ``api.ws.invalid_message`` event.
 
     Returns:
         Resulting string.
@@ -218,21 +220,9 @@ def handle_message(
 
     try:
         message = parse_typed("ws.control", parsed, WS_CONTROL_MESSAGE_ADAPTER)
-    except ValidationError as exc:
-        # parse_typed already emitted api.boundary.validation_failed
-        # with the full error locations. Mirror the MCP invoker
-        # pattern by surfacing the redacted description on the
-        # ws-specific search trail so operators triaging
-        # malformed-by-client vs malformed-by-attacker vs
-        # client-version-skew get the per-frame detail without
-        # diving into the boundary helper's log.
-        logger.warning(
-            API_WS_INVALID_MESSAGE,
-            reason="failed_typed_validation",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-            error_count=len(exc.errors()),
-        )
+    except ValidationError:
+        # parse_typed already emitted api.boundary.validation_failed with
+        # the full error locations; no second ws-specific mirror.
         return json.dumps({"error": "Invalid control message"})
 
     if isinstance(message, WsPingMessage):

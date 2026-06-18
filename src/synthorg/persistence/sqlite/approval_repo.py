@@ -42,12 +42,27 @@ from synthorg.persistence._shared import (
     format_iso_utc,
     validate_pagination_args,
 )
+from synthorg.persistence._shared.approval_transition import approval_decision_values
 from synthorg.persistence.approval_protocol import ApprovalFilterSpec
 from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
 
 _MAX_PAGE_LIMIT: int = 1_000
+
+# Atomic status flip + optional decision triple. ``COALESCE`` keeps the
+# existing column when the caller omits a decision field (e.g. a plain
+# EXPIRED flip), so the same statement serves both a bare transition and
+# an approved/rejected decision. The triple's CHECK constraints are
+# enforced by the DB, not duplicated here.
+_TRANSITION_SQL = (
+    "UPDATE approvals SET "
+    "status = ?, "
+    "decided_at = COALESCE(?, decided_at), "
+    "decided_by = COALESCE(?, decided_by), "
+    "decision_reason = COALESCE(?, decision_reason) "
+    "WHERE id = ? AND status = ?"
+)
 
 _APPROVALS_UPSERT_SQL = """
     INSERT INTO approvals (
@@ -668,7 +683,7 @@ class SQLiteApprovalRepository:
         entity_id: NotBlankStr,
         from_state: ApprovalStatus,
         to_state: ApprovalStatus,
-        **updates: object,  # noqa: ARG002
+        **updates: object,
     ) -> bool:
         """Atomic compare-and-set for approval state transitions (ADR-0001 D7).
 
@@ -676,29 +691,61 @@ class SQLiteApprovalRepository:
         the current persisted status matches ``from_state``. Returns ``True``
         iff the state transition succeeded.
 
-        ``**updates`` is ignored for now; future versions may support
-        ``expired_at`` and other status-correlated fields.
+        ``**updates`` carries the status-correlated decision triple
+        (``decided_at`` / ``decided_by`` / ``decision_reason``), written
+        atomically with the status flip so an ``approved`` / ``rejected``
+        CAS records who decided and when in the same row update. The
+        approvals CHECK constraints still apply: ``decided_at`` and
+        ``decided_by`` must be supplied together, and a ``rejected``
+        transition requires a non-blank ``decision_reason``; a violating
+        combination raises :class:`ConstraintViolationError`.
 
         Args:
             entity_id: The approval id.
             from_state: Expected current status.
             to_state: Target status.
-            **updates: Status-correlated fields (reserved, currently unused).
+            **updates: Status-correlated decision fields (``decided_at``,
+                ``decided_by``, ``decision_reason``).
 
         Returns:
             ``True`` iff the transition succeeded, ``False`` on state
             mismatch or when no row exists.
 
         Raises:
-            QueryError: On database errors.
+            ConstraintViolationError: When the decision triple violates a
+                table CHECK constraint.
+            QueryError: On database errors or an unknown ``updates`` key.
         """
-        sql = "UPDATE approvals SET status = ? WHERE id = ? AND status = ?"
-        params = (to_state.value, entity_id, from_state.value)
+        decided_at, decided_by, decision_reason = approval_decision_values(
+            entity_id, updates, format_decided_at=format_iso_utc
+        )
+        params = (
+            to_state.value,
+            decided_at,
+            decided_by,
+            decision_reason,
+            entity_id,
+            from_state.value,
+        )
         async with self._write_context():
             try:
-                async with self._db.execute(sql, params) as cursor:
+                async with self._db.execute(_TRANSITION_SQL, params) as cursor:
                     await self._db.commit()
                     _db_rowcount = cursor.rowcount
+            except sqlite3.IntegrityError as exc:
+                await _safe_rollback(
+                    self._db,
+                    operation="transition_if",
+                    approval_id=entity_id,
+                )
+                msg = f"Constraint violation transitioning approval {entity_id!r}"
+                logger.warning(
+                    API_APPROVAL_REPO_FAILED,
+                    approval_id=entity_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise ConstraintViolationError(msg, constraint=str(exc)) from exc
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await _safe_rollback(
                     self._db,

@@ -55,6 +55,7 @@ def _default_rules() -> dict[OrgFactCategory, CategoryWriteRule]:
         OrgFactCategory.ADR: senior_rule,
         OrgFactCategory.PROCEDURE: senior_rule,
         OrgFactCategory.CONVENTION: senior_rule,
+        OrgFactCategory.ENTITY_DEFINITION: senior_rule,
     }
 
 

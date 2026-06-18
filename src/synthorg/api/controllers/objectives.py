@@ -8,8 +8,8 @@ submission id. The submission id is threaded through to the spawned
 root task as its idempotency key (see
 ``engine/pipeline/service.py``), so callers correlate by that id.
 
-API-only: this adapter-gated intake path is driven by external
-automation, not the dashboard, so it has no UI surface.
+Surfaced in the dashboard via the task board's "Submit objective"
+dialog as well as external automation; both drive the same adapter.
 """
 
 import asyncio

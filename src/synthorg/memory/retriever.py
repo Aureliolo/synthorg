@@ -76,10 +76,8 @@ class ContextInjectionStrategy:
             memory_filter: Optional filter applied after ranking,
                 before formatting.  When ``None``, the filter is
                 resolved by :func:`build_memory_filter` from
-                ``config.memory_filter_strategy``: ``"off"`` defers to
-                ``config.non_inferable_only`` (auto-creating a
-                ``TagBasedMemoryFilter`` only when it is ``True``, else
-                no filtering), ``"tag_based"`` always installs a
+                ``config.memory_filter_strategy``: ``"off"`` applies no
+                filtering, ``"tag_based"`` installs a
                 ``TagBasedMemoryFilter``, and ``"passthrough"`` injects
                 every ranked memory unchanged.  An explicit instance
                 overrides this strategy-based resolution.
@@ -95,11 +93,8 @@ class ContextInjectionStrategy:
         self._config = config
         self._shared_store = shared_store
         if memory_filter is None:
-            memory_filter = build_memory_filter(
-                config.memory_filter_strategy,
-                non_inferable_only=config.non_inferable_only,
-            )
-        elif config.non_inferable_only or config.memory_filter_strategy != "off":
+            memory_filter = build_memory_filter(config.memory_filter_strategy)
+        elif config.memory_filter_strategy != "off":
             logger.debug(
                 MEMORY_FILTER_INIT,
                 note="explicit memory_filter overrides filter config",
