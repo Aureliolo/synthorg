@@ -33,9 +33,11 @@ from synthorg.observability.events.persistence.charter import (
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import validate_pagination_args
 from synthorg.persistence._shared.charter_marshalling import (
+    CHARTER_CAS_UPDATE_SQL_QMARK,
     CHARTER_COLUMNS,
     as_iso,
     build_charter_where,
+    charter_cas_params,
     charter_save_params,
     row_to_charter,
     validate_charter_update_keys,
@@ -377,6 +379,66 @@ class SQLiteCharterRepository:
                     PERSISTENCE_CHARTER_FAILED,
                     operation="transition_if",
                     charter_id=entity_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+        return _db_rowcount > 0
+
+    async def save_edit_if_version(
+        self,
+        entity: ProjectCharter,
+        *,
+        expected_version: int,
+    ) -> bool:
+        """Conditionally persist an edited charter (optimistic concurrency).
+
+        Applies the full ``entity`` only when the stored row is still at
+        ``expected_version`` AND ``DRAFTED``, so a concurrent edit or
+        approve / cancel cannot be silently clobbered (ADR-0001 D7
+        lost-update invariant).
+
+        Returns:
+            ``True`` when one row was updated; ``False`` on a version /
+            status mismatch (or missing row).
+
+        Raises:
+            ConstraintViolationError: On constraint violations.
+            QueryError: On other database errors.
+        """
+        params = charter_cas_params(entity, expected_version=expected_version)
+        async with self._write_context():
+            try:
+                async with self._db.execute(
+                    CHARTER_CAS_UPDATE_SQL_QMARK, params
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
+            except sqlite3.IntegrityError as exc:
+                await _safe_rollback(
+                    self._db, operation="save_edit_if_version", charter_id=entity.id
+                )
+                msg = (
+                    f"Constraint violation editing charter {entity.id!r}: "
+                    f"{safe_error_description(exc)}"
+                )
+                logger.warning(
+                    PERSISTENCE_CHARTER_FAILED,
+                    operation="save_edit_if_version",
+                    charter_id=entity.id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise ConstraintViolationError(msg, constraint=str(exc)) from exc
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await _safe_rollback(
+                    self._db, operation="save_edit_if_version", charter_id=entity.id
+                )
+                msg = f"Failed to edit charter {entity.id!r}"
+                logger.warning(
+                    PERSISTENCE_CHARTER_FAILED,
+                    operation="save_edit_if_version",
+                    charter_id=entity.id,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )

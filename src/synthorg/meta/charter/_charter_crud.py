@@ -144,7 +144,25 @@ class CharterCrudMixin:
                 "updated_at": self._clock.now(),
             }
         )
-        await self._charter_repo.save(updated)
+        # Optimistic-concurrency conditional write: the read above and
+        # this write are separated by an await, so a concurrent edit or
+        # approve / cancel could land between them. Guard on the read
+        # version + DRAFTED status so the loser surfaces a conflict
+        # instead of clobbering the winner's change (Slot 39 CAS).
+        applied = await self._charter_repo.save_edit_if_version(
+            updated,
+            expected_version=charter.version,
+        )
+        if not applied:
+            logger.warning(
+                CHARTER_NOT_EDITABLE,
+                charter_id=charter_id,
+                status=charter.status.value,
+                operation="edit",
+                reason="version_or_status_conflict",
+                error_type=CharterNotEditableError.__name__,
+            )
+            raise CharterNotEditableError(charter_id=charter_id)
         logger.info(
             CHARTER_STATUS_TRANSITIONED,
             charter_id=charter_id,

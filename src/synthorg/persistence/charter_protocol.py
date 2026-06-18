@@ -49,7 +49,11 @@ class CharterRepository(
     """CRUD + state-transition + filtered query for project charters.
 
     Composes :class:`StatefulRepository` + :class:`FilteredQueryRepository`
-    (ADR-0001). No bespoke methods beyond the generic surface.
+    (ADR-0001). The one bespoke method, :meth:`save_edit_if_version`, is
+    sanctioned under ADR-0001 D7 (a domain invariant callers must not
+    bypass): an in-place charter edit is a read-modify-write that must
+    not lose a concurrent writer's change, which the generic ``save``
+    (unconditional upsert) cannot express.
 
     Non-recoverable errors propagate. Constraint violations raise
     :class:`ConstraintViolationError`; other DB errors raise
@@ -121,6 +125,31 @@ class CharterRepository(
 
         Raises:
             QueryError: On database errors or an invalid update key.
+        """
+        ...
+
+    async def save_edit_if_version(
+        self,
+        entity: ProjectCharter,
+        *,
+        expected_version: int,
+    ) -> bool:
+        """Persist an edited charter only if unchanged since it was read.
+
+        Optimistic-concurrency conditional write (ADR-0001 D7): applies
+        ``entity`` only when the stored row is still at
+        ``expected_version`` AND ``DRAFTED``. A concurrent edit (version
+        moved) or approve / cancel (status moved) leaves the row
+        unmatched, so the write is a no-op the caller surfaces as a
+        conflict rather than a silent lost update.
+
+        Returns:
+            ``True`` when one row was updated; ``False`` on a version /
+            status mismatch (or missing row).
+
+        Raises:
+            ConstraintViolationError: On constraint violations.
+            QueryError: On other database errors.
         """
         ...
 

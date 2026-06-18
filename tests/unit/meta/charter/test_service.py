@@ -174,6 +174,22 @@ class _FakeCharterRepo:
         self.items[entity_id] = current.model_copy(update=patch)
         return True
 
+    async def save_edit_if_version(
+        self,
+        entity: ProjectCharter,
+        *,
+        expected_version: int,
+    ) -> bool:
+        current = self.items.get(entity.id)
+        if (
+            current is None
+            or current.version != expected_version
+            or current.status is not CharterStatus.DRAFTED
+        ):
+            return False
+        self.items[entity.id] = entity
+        return True
+
 
 class _ScriptedStrategy:
     """Returns a queued sequence of interview decisions, one per turn."""

@@ -157,6 +157,68 @@ class TestCharterRepository:
         assert fetched.brief == "A sharper brief."
         assert fetched.version == 2
 
+    async def test_save_edit_if_version_applies_on_match(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _repo(backend)
+        charter = _make_charter()
+        await repo.save(charter)
+
+        edited = charter.model_copy(
+            update={
+                "brief": NotBlankStr("Edited under the version guard."),
+                "version": charter.version + 1,
+                "updated_at": _NOW.replace(second=7),
+            }
+        )
+        applied = await repo.save_edit_if_version(
+            edited, expected_version=charter.version
+        )
+        assert applied is True
+
+        fetched = await repo.get(NotBlankStr("charter-1"))
+        assert fetched is not None
+        assert fetched.brief == "Edited under the version guard."
+        assert fetched.version == charter.version + 1
+
+    async def test_save_edit_if_version_rejects_stale_version(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _repo(backend)
+        charter = _make_charter()
+        await repo.save(charter)
+        # A concurrent writer already bumped the row to version 2.
+        winner = charter.model_copy(
+            update={"brief": NotBlankStr("Winner edit."), "version": 2}
+        )
+        assert await repo.save_edit_if_version(winner, expected_version=1) is True
+
+        # The loser still holds the stale version-1 read.
+        loser = charter.model_copy(
+            update={"brief": NotBlankStr("Loser edit."), "version": 2}
+        )
+        assert await repo.save_edit_if_version(loser, expected_version=1) is False
+
+        fetched = await repo.get(NotBlankStr("charter-1"))
+        assert fetched is not None
+        assert fetched.brief == "Winner edit."
+
+    async def test_save_edit_if_version_rejects_non_drafted(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = _repo(backend)
+        charter = _make_charter(status=CharterStatus.APPROVED)
+        await repo.save(charter)
+
+        edited = charter.model_copy(
+            update={"brief": NotBlankStr("Edit after approval."), "version": 2}
+        )
+        assert await repo.save_edit_if_version(edited, expected_version=1) is False
+
+        fetched = await repo.get(NotBlankStr("charter-1"))
+        assert fetched is not None
+        assert fetched.brief == "Build an alternative to the incumbent memory tool."
+
     async def test_query_by_status(self, backend: PersistenceBackend) -> None:
         repo = _repo(backend)
         await repo.save(_make_charter(charter_id="q1"))
