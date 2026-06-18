@@ -9,6 +9,8 @@ default agent chain.  Enable by adding ``"behavior_tagger"``
 to the company's ``AgentMiddlewareConfig.chain``.
 """
 
+from collections.abc import Mapping
+from types import MappingProxyType
 from typing import Final, override
 
 from synthorg.core.critical_errors import reraise_critical
@@ -39,37 +41,39 @@ def _str_tuple(value: object) -> tuple[str, ...]:
 
 # ── Default tool name -> BehaviorTag mapping ───────────────────────
 
-_DEFAULT_TOOL_TAG_MAP: dict[str, BehaviorTag] = {
-    # File operations
-    "read_file": BehaviorTag.FILE_OPERATIONS,
-    "write_file": BehaviorTag.FILE_OPERATIONS,
-    "edit_file": BehaviorTag.FILE_OPERATIONS,
-    "list_files": BehaviorTag.FILE_OPERATIONS,
-    "list_directory": BehaviorTag.FILE_OPERATIONS,
-    "grep": BehaviorTag.FILE_OPERATIONS,
-    "glob": BehaviorTag.FILE_OPERATIONS,
-    # Retrieval
-    "search": BehaviorTag.RETRIEVAL,
-    "web_search": BehaviorTag.RETRIEVAL,
-    "web_fetch": BehaviorTag.RETRIEVAL,
-    "fetch_url": BehaviorTag.RETRIEVAL,
-    # Memory
-    "memory_read": BehaviorTag.MEMORY,
-    "memory_write": BehaviorTag.MEMORY,
-    "memory_search": BehaviorTag.MEMORY,
-    "memory_store": BehaviorTag.MEMORY,
-    # Delegation
-    "delegate": BehaviorTag.DELEGATION,
-    "delegate_task": BehaviorTag.DELEGATION,
-    "spawn_agent": BehaviorTag.DELEGATION,
-    # Verification
-    "verify": BehaviorTag.VERIFICATION,
-    "grade": BehaviorTag.VERIFICATION,
-    "evaluate": BehaviorTag.VERIFICATION,
-    # Coordination
-    "send_message": BehaviorTag.COORDINATION,
-    "broadcast": BehaviorTag.COORDINATION,
-}
+_DEFAULT_TOOL_TAG_MAP: Mapping[str, BehaviorTag] = MappingProxyType(
+    {
+        # File operations
+        "read_file": BehaviorTag.FILE_OPERATIONS,
+        "write_file": BehaviorTag.FILE_OPERATIONS,
+        "edit_file": BehaviorTag.FILE_OPERATIONS,
+        "list_files": BehaviorTag.FILE_OPERATIONS,
+        "list_directory": BehaviorTag.FILE_OPERATIONS,
+        "grep": BehaviorTag.FILE_OPERATIONS,
+        "glob": BehaviorTag.FILE_OPERATIONS,
+        # Retrieval
+        "search": BehaviorTag.RETRIEVAL,
+        "web_search": BehaviorTag.RETRIEVAL,
+        "web_fetch": BehaviorTag.RETRIEVAL,
+        "fetch_url": BehaviorTag.RETRIEVAL,
+        # Memory
+        "memory_read": BehaviorTag.MEMORY,
+        "memory_write": BehaviorTag.MEMORY,
+        "memory_search": BehaviorTag.MEMORY,
+        "memory_store": BehaviorTag.MEMORY,
+        # Delegation
+        "delegate": BehaviorTag.DELEGATION,
+        "delegate_task": BehaviorTag.DELEGATION,
+        "spawn_agent": BehaviorTag.DELEGATION,
+        # Verification
+        "verify": BehaviorTag.VERIFICATION,
+        "grade": BehaviorTag.VERIFICATION,
+        "evaluate": BehaviorTag.VERIFICATION,
+        # Coordination
+        "send_message": BehaviorTag.COORDINATION,
+        "broadcast": BehaviorTag.COORDINATION,
+    }
+)
 
 # Output token threshold for inferring SUMMARIZATION vs CONVERSATION.
 _SUMMARIZATION_TOKEN_THRESHOLD: Final[int] = 500
@@ -91,11 +95,18 @@ class BehaviorTaggerMiddleware(BaseAgentMiddleware):
     def __init__(
         self,
         *,
-        tool_tag_map: dict[str, BehaviorTag] | None = None,
+        tool_tag_map: Mapping[str, BehaviorTag] | None = None,
         **_kwargs: object,
     ) -> None:
         super().__init__(name="behavior_tagger")
-        self._tool_tag_map = tool_tag_map or dict(_DEFAULT_TOOL_TAG_MAP)
+        # Copy-on-store a caller-supplied map into a read-only view so a
+        # later external mutation cannot change tagging behaviour; the
+        # default map is already an immutable MappingProxyType.
+        self._tool_tag_map: Mapping[str, BehaviorTag] = (
+            MappingProxyType(dict(tool_tag_map))
+            if tool_tag_map is not None
+            else _DEFAULT_TOOL_TAG_MAP
+        )
 
     @override
     async def after_model(
