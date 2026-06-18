@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from synthorg.core.task import AcceptanceCriterion
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import TrendDirection
 from synthorg.hr.performance.models import (
@@ -40,7 +41,7 @@ class MockQualityStrategy:
         agent_id: NotBlankStr,
         task_id: NotBlankStr,
         task_result: TaskMetricRecord,
-        acceptance_criteria: tuple[object, ...],
+        acceptance_criteria: tuple[AcceptanceCriterion, ...],
     ) -> QualityScoreResult:
         return QualityScoreResult(
             score=8.0,

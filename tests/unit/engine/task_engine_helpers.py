@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, override
 
 from synthorg.core.task import Task
 from synthorg.engine.task_engine_models import CreateTaskData
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 
 if TYPE_CHECKING:
     from synthorg.core.task_enums import TaskStatus
@@ -37,7 +38,7 @@ class FakeTaskRepository:
     async def list_items(
         self,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Task, ...]:
         result = sorted(self._tasks.values(), key=lambda t: t.id)
@@ -48,7 +49,7 @@ class FakeTaskRepository:
         self,
         filter_spec: object,
         *,
-        limit: int | None = 100,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Task, ...]:
         result = self._filtered(
@@ -56,8 +57,6 @@ class FakeTaskRepository:
             getattr(filter_spec, "assigned_to", None),
             getattr(filter_spec, "project", None),
         )
-        if limit is None:
-            return tuple(result[offset:])
         return tuple(result[offset : offset + limit])
 
     async def count(self, filter_spec: object) -> int:
@@ -144,6 +143,42 @@ class FakeMessageBus:
     ) -> None:
         for msg in messages:
             self.published.append(msg)
+
+    # The channel/subscription surface of the MessageBus protocol is not
+    # exercised by the task-engine tests; stubs keep the fake in lockstep
+    # with the protocol so a future engine call against one of these
+    # surfaces fails loudly here instead of silently passing a stale fake.
+    async def subscribe(self, channel_name: object, subscriber_id: object) -> object:
+        raise NotImplementedError
+
+    async def unsubscribe(self, channel_name: object, subscriber_id: object) -> None:
+        raise NotImplementedError
+
+    async def receive(
+        self,
+        channel_name: object,
+        subscriber_id: object,
+        *,
+        timeout: float | None = None,  # noqa: ASYNC109 -- mirrors bus protocol
+    ) -> object:
+        raise NotImplementedError
+
+    async def create_channel(self, channel: object) -> object:
+        raise NotImplementedError
+
+    async def get_channel(self, channel_name: object) -> object:
+        raise NotImplementedError
+
+    async def list_channels(self) -> tuple[object, ...]:
+        raise NotImplementedError
+
+    async def get_channel_history(
+        self,
+        channel_name: object,
+        *,
+        limit: int | None = None,
+    ) -> tuple[object, ...]:
+        raise NotImplementedError
 
 
 class FailingMessageBus(FakeMessageBus):

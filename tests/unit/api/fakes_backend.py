@@ -178,9 +178,6 @@ class FakeSsrfViolationRepository:
         ordered = sorted(self._violations.values(), key=lambda v: v.id)
         return tuple(ordered[offset : offset + limit])
 
-    async def delete(self, violation_id: NotBlankStr) -> bool:
-        return self._violations.pop(violation_id, None) is not None
-
     async def list_violations(
         self,
         *,
