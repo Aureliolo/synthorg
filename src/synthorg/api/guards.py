@@ -311,6 +311,24 @@ def require_org_mutation(
                 detail=f"Department admin access denied for {target_dept!r}",
             )
 
+        # No org roles provisioned at all: name the missing configuration
+        # explicitly. Without this an operator on an install whose
+        # ``org_roles`` were never populated sees only a generic 403 with
+        # no pointer to the underlying setup gap.
+        if not org_roles:
+            logger.warning(
+                API_GUARD_DENIED,
+                guard="require_org_mutation(no_org_roles_provisioned)",
+                path=str(connection.url.path),
+            )
+            raise PermissionDeniedException(
+                detail=(
+                    "Org mutation access denied: no organisation roles are "
+                    "assigned to this account. Provision org roles to enable "
+                    "organisation-config changes."
+                ),
+            )
+
         # Viewer or unrecognised role
         logger.warning(
             API_GUARD_DENIED,

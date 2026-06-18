@@ -59,8 +59,9 @@ export function useOrgChartEdgeInteraction<T extends EdgeHoverData>(
     if (hoveredEdgeId === null) return [...edges]
     return edges.map((edge) => {
       if (edge.id !== hoveredEdgeId) return edge
-      const existing = (edge.data ?? ({} as T))
-      return { ...edge, data: { ...existing, hovered: true } }
+      // Spread the real edge data (a no-op when undefined) rather than
+      // fabricating an empty ``{} as T``; only ``hovered`` is added.
+      return { ...edge, data: { ...edge.data, hovered: true } as T }
     })
   }, [edges, hoveredEdgeId])
 

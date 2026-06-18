@@ -497,13 +497,21 @@ def handle_record_not_found(
 ) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
     """Map ``RecordNotFoundError`` to 404.
 
+    Uses the class-level ``default_message`` ("Resource not found")
+    rather than the exception's own message: ``RecordNotFoundError`` is
+    raised at the persistence layer with operator-diagnostic text that
+    embeds raw entity ids and storage paths, which must not reach an API
+    client. Resource-specific 404 wording is the job of controller-raised
+    domain errors (handled by ``handle_domain_error``), whose messages
+    are authored for external exposure.
+
     Returns:
         ``Response[ApiResponse[None]] | Response[ProblemDetail]`` instance.
     """
     _log_error(request, exc, status=404)
     return _build_response(
         request,
-        detail=_select_message(exc, 404),
+        detail=str(getattr(exc, "default_message", "Resource not found")),
         error_code=ErrorCode.RECORD_NOT_FOUND,
         error_category=ErrorCategory.NOT_FOUND,
         status_code=404,
@@ -558,10 +566,14 @@ def _classify_integrity_violation(
 ) -> tuple[str, ErrorCode, ErrorCategory, int]:
     """Map a driver integrity error to a user-facing message + status.
 
-    Branches on the SQLSTATE so a uniqueness clash reads as a 409
-    conflict ("already exists") while a foreign-key or not-null
-    violation reads as a 400 caller error that names the shape of the
-    problem without leaking the constraint name or SQL fragment.
+    Branches on the ``sqlstate`` the persistence layer attaches to
+    ``ConstraintViolationError`` (Postgres exposes it natively; the
+    SQLite layer maps its constraint-failure messages onto the same
+    class codes) so a uniqueness clash reads as a 409 conflict while a
+    foreign-key or not-null violation reads as a 400 caller error that
+    names the shape of the problem without leaking the constraint name
+    or SQL fragment. When ``sqlstate`` is absent (a raiser that does
+    not classify), it falls through to a generic 400.
 
     Returns:
         ``(detail, error_code, error_category, status_code)``.
@@ -620,6 +632,19 @@ def handle_persistence_integrity_error(
         ``Response[ApiResponse[None]] | Response[ProblemDetail]`` instance.
     """
     detail, error_code, error_category, status_code = _classify_integrity_violation(exc)
+    sqlstate = getattr(exc, "sqlstate", None)
+    if sqlstate is not None and sqlstate not in {
+        _INTEGRITY_UNIQUE_SQLSTATE,
+        _INTEGRITY_FOREIGN_KEY_SQLSTATE,
+        _INTEGRITY_NOT_NULL_SQLSTATE,
+    }:
+        logger.warning(
+            API_REQUEST_ERROR,
+            method=request.method,
+            path=str(request.url.path),
+            error_type="unclassified_integrity_sqlstate",
+            sqlstate=sqlstate,
+        )
     _log_error(request, exc, status=status_code)
     return _build_response(
         request,

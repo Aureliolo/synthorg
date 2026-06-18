@@ -15,7 +15,7 @@ function ArtifactCardInner({ artifact }: ArtifactCardProps) {
   return (
     <Link
       to={ROUTES.ARTIFACT_DETAIL.replace(':artifactId', encodeURIComponent(artifact.id))}
-      className="block rounded-lg border border-border bg-card p-card transition-all duration-200 hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]"
+      className="block rounded-lg border border-border bg-card p-card transition-all duration-[var(--so-transition-default)] hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]"
     >
       <div className="mb-2 truncate font-mono text-sm font-medium text-foreground">
         {artifact.path}

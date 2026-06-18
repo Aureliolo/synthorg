@@ -9,20 +9,29 @@ import { apiClient, paginateAll, unwrap, unwrapPaginated } from '../client'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 import type { ExperimentAssignment, ExperimentVariant } from '../types'
 
+const VARIANTS_PAGE_SIZE = 200
+
 export interface RegisterVariantPayload {
   variant: string
   weight: number
   description?: string
 }
 
-/** List every registered variant for an experiment. */
+/** List every registered variant for an experiment (all pages). */
 export async function listVariants(
   experiment: string,
 ): Promise<readonly ExperimentVariant[]> {
-  const response = await apiClient.get<ApiResponse<readonly ExperimentVariant[]>>(
-    `/experiments/${encodeURIComponent(experiment)}/variants`,
-  )
-  return unwrap(response)
+  return paginateAll<ExperimentVariant>(async (cursor) => {
+    const params: { limit: number; cursor?: string } = {
+      limit: VARIANTS_PAGE_SIZE,
+    }
+    if (cursor) params.cursor = cursor
+    const response = await apiClient.get<PaginatedResponse<ExperimentVariant>>(
+      `/experiments/${encodeURIComponent(experiment)}/variants`,
+      { params },
+    )
+    return unwrapPaginated<ExperimentVariant>(response)
+  })
 }
 
 /** Register or replace a variant on an experiment. */

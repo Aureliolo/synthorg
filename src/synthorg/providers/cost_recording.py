@@ -532,6 +532,10 @@ async def _record_cost_in_background(
     the asyncio event loop's default exception handler (loud crash
     is preferable to silent corruption); everything else is logged
     and swallowed.
+
+    Raises:
+        CancelledError: Propagated unchanged when the event loop
+            cancels this best-effort task during shutdown.
     """
     try:
         await asyncio.wait_for(
@@ -550,6 +554,10 @@ async def _record_cost_in_background(
             reason="cost_tracker_record_timeout",
         )
         return
+    except asyncio.CancelledError:
+        # Loop shutdown cancelling a pending best-effort cost task is
+        # expected; propagate cleanly rather than logging it as a failure.
+        raise
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(

@@ -16,7 +16,6 @@ their own manifests.
 """
 
 from synthorg._core.features import (
-    ControllerRegistration,
     FeatureManifest,
     FeatureModule,
 )
@@ -39,10 +38,6 @@ from synthorg.api.controllers.workflows.crud import WorkflowController
 from synthorg.api.controllers.workflows.validation import (
     WorkflowValidationController,
 )
-from synthorg.api.route_predicates import (
-    brownfield_controller_ready,
-    objective_controller_ready,
-)
 from synthorg.engine._construction import wire_construction
 from synthorg.engine._mcp import ENGINE_MCP_HANDLERS
 from synthorg.engine.state import EngineStateSlice
@@ -62,12 +57,13 @@ FEATURE: FeatureModule = FeatureManifest(
         WorkflowExecutionController,
         SubworkflowController,
         EvaluationConfigVersionController,
-        ControllerRegistration(
-            controller=ObjectiveController, predicate=objective_controller_ready
-        ),
-        ControllerRegistration(
-            controller=BrownfieldController, predicate=brownfield_controller_ready
-        ),
+        # Mounted unconditionally: their work-entry adapters wire during
+        # startup (after route assembly), so a predicate read at mount
+        # time would always be False and the controller would never mount
+        # on a standard boot. The handlers resolve the adapter via
+        # ``require_service`` and return 503 until it is wired.
+        ObjectiveController,
+        BrownfieldController,
     ),
     mcp_handlers=ENGINE_MCP_HANDLERS,
     lifecycle_hooks=(),

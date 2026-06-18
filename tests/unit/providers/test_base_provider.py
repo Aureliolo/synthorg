@@ -9,6 +9,7 @@ import structlog
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.config import BudgetConfig
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
@@ -334,13 +335,55 @@ class _UsageStreamProvider(_StubProvider):
         return _gen()
 
 
+class _ErrorBeforeUsageStreamProvider(_StubProvider):
+    """Stub whose stream errors mid-flight before emitting a USAGE chunk."""
+
+    @override
+    async def _do_stream(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
+    ) -> AsyncIterator[StreamChunk]:
+        async def _gen() -> AsyncIterator[StreamChunk]:
+            yield StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="hi")
+            msg = "mid-stream boom"
+            raise ProviderInternalError(msg)
+
+        return _gen()
+
+
+class _PostUsageStreamProvider(_StubProvider):
+    """Stub that yields a trailing chunk AFTER the terminal USAGE chunk."""
+
+    @override
+    async def _do_stream(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
+    ) -> AsyncIterator[StreamChunk]:
+        async def _gen() -> AsyncIterator[StreamChunk]:
+            yield StreamChunk(
+                event_type=StreamEventType.USAGE,
+                usage=TokenUsage(input_tokens=3, output_tokens=4, cost=0.0),
+            )
+            yield StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="tail")
+
+        return _gen()
+
+
 @pytest.mark.unit
 class TestBaseProviderStreamCostRecording:
     """``stream()`` records cost from the terminal USAGE chunk in scope."""
 
     async def test_drained_stream_emits_one_cost_record(self) -> None:
         provider = _UsageStreamProvider()
-        tracker = CostTracker(budget_config=BudgetConfig(currency="USD"))
+        tracker = CostTracker(budget_config=BudgetConfig(currency=DEFAULT_CURRENCY))
         async with cost_recording_scope(
             cost_tracker=tracker,
             agent_id=NotBlankStr("system"),
@@ -368,3 +411,42 @@ class TestBaseProviderStreamCostRecording:
         chunks = [chunk async for chunk in iterator]
         # Drains cleanly with no open scope and records nothing.
         assert len(chunks) == 2
+
+    async def test_error_before_usage_records_nothing(self) -> None:
+        provider = _ErrorBeforeUsageStreamProvider()
+        tracker = CostTracker(budget_config=BudgetConfig(currency=DEFAULT_CURRENCY))
+        async with cost_recording_scope(
+            cost_tracker=tracker,
+            agent_id=NotBlankStr("system"),
+            task_id=NotBlankStr("system:test:stream-error"),
+            call_category=LLMCallCategory.SYSTEM,
+        ):
+            iterator = await provider.stream([_msg()], "test-model")
+            with pytest.raises(ProviderInternalError):
+                async for _chunk in iterator:
+                    pass
+        await tracker.drain_pending_records()
+        # A stream that errors before the USAGE chunk records nothing.
+        assert len(await tracker.get_records()) == 0
+
+    async def test_close_after_usage_still_records(self) -> None:
+        provider = _PostUsageStreamProvider()
+        tracker = CostTracker(budget_config=BudgetConfig(currency=DEFAULT_CURRENCY))
+        async with cost_recording_scope(
+            cost_tracker=tracker,
+            agent_id=NotBlankStr("system"),
+            task_id=NotBlankStr("system:test:stream-early-close"),
+            call_category=LLMCallCategory.SYSTEM,
+        ):
+            iterator = await provider.stream([_msg()], "test-model")
+            async for chunk in iterator:
+                if chunk.event_type is StreamEventType.USAGE:
+                    break
+            # Close early, after the USAGE chunk but before the trailing
+            # delta: the cost was already billed, so it must still record.
+            await iterator.aclose()  # type: ignore[attr-defined]
+        await tracker.drain_pending_records()
+        records = await tracker.get_records()
+        assert len(records) == 1
+        assert records[0].input_tokens == 3
+        assert records[0].output_tokens == 4

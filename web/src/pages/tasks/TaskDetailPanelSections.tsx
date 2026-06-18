@@ -110,13 +110,17 @@ export function AssigneeSection({ task, onUpdate }: TaskUpdateProps) {
     <div>
       <div className="flex items-center gap-2">
         <User className="size-4 text-text-muted" />
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+        <label
+          htmlFor="task-assignee-edit"
+          className="text-[11px] font-semibold uppercase tracking-wider text-text-muted"
+        >
           Assignee
-        </span>
+        </label>
       </div>
       <div className="mt-1 flex items-center gap-2">
         {task.assigned_to && <Avatar name={task.assigned_to} size="sm" />}
         <InlineEdit
+          id="task-assignee-edit"
           value={task.assigned_to ?? ''}
           onSave={async (value) => {
             await onUpdate(task.id, {

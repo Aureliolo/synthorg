@@ -34,9 +34,6 @@ from synthorg.experiments.models import (
     ExperimentVariant,
 )
 from synthorg.meta.state import experiment_service_of
-from synthorg.observability import get_logger
-
-logger = get_logger(__name__)
 
 
 class ExperimentsController(Controller):

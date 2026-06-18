@@ -35,8 +35,6 @@ export interface CostRecordListResponseBody {
   error?: string | null
   error_detail?: ErrorDetail | null
   pagination: {
-    total: number | null
-    offset: number
     limit: number
     next_cursor: string | null
     has_more: boolean

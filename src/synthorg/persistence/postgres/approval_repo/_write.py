@@ -68,6 +68,7 @@ class _WriteMixin(_ApprovalRepoBase):
             raise ConstraintViolationError(
                 msg,
                 constraint=_constraint_name(exc),
+                sqlstate=exc.sqlstate,
             ) from exc
         except psycopg.Error as exc:
             msg = f"Failed to save approval {item.id!r}"
@@ -109,7 +110,7 @@ class _WriteMixin(_ApprovalRepoBase):
                 error=safe_error_description(exc),
             )
             raise ConstraintViolationError(
-                msg, constraint=_constraint_name(exc)
+                msg, constraint=_constraint_name(exc), sqlstate=exc.sqlstate
             ) from exc
         except psycopg.Error as exc:
             msg = f"Failed to save approval batch (size={len(items)})"
@@ -228,7 +229,7 @@ class _WriteMixin(_ApprovalRepoBase):
                 error=safe_error_description(exc),
             )
             raise ConstraintViolationError(
-                msg, constraint=_constraint_name(exc)
+                msg, constraint=_constraint_name(exc), sqlstate=exc.sqlstate
             ) from exc
         except psycopg.Error as exc:
             msg = f"Failed to transition approval {entity_id!r}"

@@ -32,7 +32,7 @@ function CatalogEntryCardInner({
       }}
       className={cn(
         'group flex h-full cursor-pointer flex-col gap-3 rounded-lg border border-border bg-card p-card text-left',
-        'transition-all duration-200',
+        'transition-all duration-[var(--so-transition-default)]',
         'hover:bg-card-hover hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]',
         'focus:outline-none focus:ring-2 focus:ring-accent',
         className,

@@ -33,7 +33,7 @@ function WorkflowCardInner({
   const [confirmDelete, setConfirmDelete] = useState(false)
   const navigate = useNavigate()
   const editorUrl = `${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(workflow.id)}`
-  const cardClasses = `relative rounded-lg border bg-card p-card transition-all duration-200 hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)] ${
+  const cardClasses = `relative rounded-lg border bg-card p-card transition-all duration-[var(--so-transition-default)] hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)] ${
     selected ? 'border-accent ring-2 ring-accent/30' : 'border-border'
   }`
 

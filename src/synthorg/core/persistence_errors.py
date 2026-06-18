@@ -101,6 +101,15 @@ class ConstraintViolationError(QueryError):
     check this attribute to map the violation to a domain error
     without parsing error strings.
 
+    Optionally carries the driver ``sqlstate`` (the five-character
+    SQL standard class code, e.g. ``"23505"`` for a uniqueness clash).
+    Postgres exposes it natively; the SQLite layer maps its
+    constraint-failure messages onto the equivalent code. The API
+    integrity handler branches on it to return 409 for a uniqueness
+    clash versus 400 for a foreign-key / not-null violation. It stays
+    ``None`` for raisers that do not classify, in which case the
+    handler falls back to a generic 400.
+
     Non-retryable: constraint violations are deterministic for a
     given input and will not succeed on a bare retry.
 
@@ -127,10 +136,13 @@ class ConstraintViolationError(QueryError):
     # mapping so the two paths stay in lockstep.
     status_code: ClassVar[int] = 400
 
-    def __init__(self, message: str, *, constraint: str) -> None:
+    def __init__(
+        self, message: str, *, constraint: str, sqlstate: str | None = None
+    ) -> None:
         super().__init__(message)
         stripped = constraint.strip()
         self.constraint: str = stripped or self.UNKNOWN_CONSTRAINT
+        self.sqlstate: str | None = sqlstate
 
 
 class PersistenceVersionConflictError(

@@ -70,7 +70,7 @@ function ProjectCardInner({ project, onToggleSelect, selected = false }: Project
     <Link
       to={detailHref}
       className={cn(
-        'block rounded-lg border bg-card p-card transition-all duration-200 hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]',
+        'block rounded-lg border bg-card p-card transition-all duration-[var(--so-transition-default)] hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]',
         selected ? 'border-accent ring-2 ring-accent/30' : 'border-border',
         onToggleSelect && 'pl-8',
       )}

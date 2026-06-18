@@ -20,7 +20,7 @@ function ProviderCardInner({ provider, health, className }: ProviderCardProps) {
     <div
       className={cn(
         'rounded-lg border border-border bg-card p-card',
-        'transition-all duration-200',
+        'transition-all duration-[var(--so-transition-default)]',
         'hover:bg-card-hover hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]',
         className,
       )}

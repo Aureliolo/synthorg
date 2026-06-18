@@ -5,20 +5,28 @@
  * interrupts and resumes them via the REST path that mirrors the live
  * steering controls.
  */
-import { apiClient, unwrap } from '../client'
-import type { ApiResponse } from '../types/http'
+import { apiClient, paginateAll, unwrap, unwrapPaginated } from '../client'
+import type { ApiResponse, PaginatedResponse } from '../types/http'
 import type { InterruptResponse, ResumeInterruptRequest } from '../types'
 
-/** List pending interrupts, optionally scoped to a session. */
+const INTERRUPTS_PAGE_SIZE = 200
+
+/** List pending interrupts, optionally scoped to a session (all pages). */
 export async function listInterrupts(
   sessionId?: string,
 ): Promise<readonly InterruptResponse[]> {
-  const params = sessionId ? { session_id: sessionId } : undefined
-  const response = await apiClient.get<ApiResponse<readonly InterruptResponse[]>>(
-    '/interrupts',
-    { params },
-  )
-  return unwrap(response)
+  return paginateAll<InterruptResponse>(async (cursor) => {
+    const params: { limit: number; cursor?: string; session_id?: string } = {
+      limit: INTERRUPTS_PAGE_SIZE,
+    }
+    if (cursor) params.cursor = cursor
+    if (sessionId) params.session_id = sessionId
+    const response = await apiClient.get<PaginatedResponse<InterruptResponse>>(
+      '/interrupts',
+      { params },
+    )
+    return unwrapPaginated<InterruptResponse>(response)
+  })
 }
 
 /** Resume a pending interrupt (approve / reject / clarify). */

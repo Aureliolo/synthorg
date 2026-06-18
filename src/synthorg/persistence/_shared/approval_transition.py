@@ -15,7 +15,7 @@ from datetime import datetime
 from synthorg.core.persistence_errors import QueryError
 
 ALLOWED_APPROVAL_TRANSITION_KEYS: frozenset[str] = frozenset(
-    {"decided_at", "decided_by", "decision_reason"}
+    ("decided_at", "decided_by", "decision_reason")
 )
 
 

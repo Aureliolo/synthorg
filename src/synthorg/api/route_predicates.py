@@ -10,15 +10,17 @@ not exist (404) rather than 503 on every dashboard poll.
 
 Each predicate mirrors the readiness gate ``api.app`` applied inline before
 the composition-root refactor: the integration controllers gate on
-``integrations.enabled`` plus their own collaborators, the a2a controllers
-gate on the committed a2a state-slice build outcome, and the optional engine
-controllers gate on their work-entry adapter being wired.
+``integrations.enabled`` plus their own collaborators, and the a2a controllers
+gate on the committed a2a state-slice build outcome. Controllers whose
+dependency is wired during startup (after route assembly) are mounted
+unconditionally instead and resolve that dependency per-request via
+``require_service`` (503 until wired), since a predicate read at mount time
+would always see the not-yet-wired state.
 """
 
 from synthorg.a2a.state import A2aStateSlice
 from synthorg.api.state import AppState
 from synthorg.communication.state import CommunicationStateSlice
-from synthorg.engine.state import EngineStateSlice
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.persistence.state import PersistenceStateSlice
 
@@ -134,29 +136,3 @@ def a2a_gateway_ready(app_state: AppState) -> bool:
         ``True`` when the a2a outbound client is present.
     """
     return app_state.slice(A2aStateSlice).client is not None
-
-
-def objective_controller_ready(app_state: AppState) -> bool:
-    """Mount the objective controller when its work-entry adapter is wired.
-
-    The adapter is wired during startup, after route assembly, so on the
-    standard boot path this is ``False`` at mount time (the controller is
-    latent until a deployment wires the adapter at construction).
-
-    Returns:
-        ``True`` when the objective work-entry adapter is present.
-    """
-    return app_state.slice(EngineStateSlice).objective_entry_adapter is not None
-
-
-def brownfield_controller_ready(app_state: AppState) -> bool:
-    """Mount the brownfield controller when its work-entry adapter is wired.
-
-    The adapter is wired during startup, after route assembly, so on the
-    standard boot path this is ``False`` at mount time (the controller is
-    latent until a deployment wires the adapter at construction).
-
-    Returns:
-        ``True`` when the brownfield work-entry adapter is present.
-    """
-    return app_state.slice(EngineStateSlice).brownfield_entry_adapter is not None

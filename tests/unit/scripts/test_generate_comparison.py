@@ -326,7 +326,7 @@ class TestMarkdownGeneration:
     def test_generate_markdown_structure(self) -> None:
         markdown = gen._generate_markdown(MINIMAL_YAML)
         assert "# Framework Comparison" in markdown
-        assert "## Organization & Coordination" in markdown
+        assert "## Organisation & Coordination" in markdown
         assert "## Technical Capabilities" in markdown
         assert "## Operations & Tooling" in markdown
         assert "## Maturity" in markdown

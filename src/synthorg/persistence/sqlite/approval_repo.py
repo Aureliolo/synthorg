@@ -50,6 +50,42 @@ logger = get_logger(__name__)
 
 _MAX_PAGE_LIMIT: int = 1_000
 
+# SQL-standard class codes (SQLSTATE). SQLite does not emit them, so its
+# integrity-failure messages are mapped onto these so the API integrity
+# handler can branch a uniqueness clash (409) apart from a foreign-key /
+# not-null violation (400) identically across both backends.
+_SQLSTATE_UNIQUE: str = "23505"
+_SQLSTATE_FOREIGN_KEY: str = "23503"
+_SQLSTATE_NOT_NULL: str = "23502"
+
+
+def _classify_sqlite_integrity(exc: sqlite3.IntegrityError) -> tuple[str, str | None]:
+    """Map a SQLite ``IntegrityError`` to a stable label + SQLSTATE.
+
+    Returns a stable constraint token (``table.column`` for unique /
+    not-null, a fixed label for foreign-key / check) rather than the raw
+    message, so a CHECK-constraint expression never leaks into the
+    surfaced ``constraint`` attribute, plus the Postgres-equivalent
+    SQLSTATE (``None`` when the failure does not map to a branch the API
+    handler distinguishes).
+
+    Returns:
+        ``(constraint_label, sqlstate)``.
+    """
+    head, _, target = str(exc).partition(":")
+    kind = head.strip().lower()
+    label = target.strip() or ConstraintViolationError.UNKNOWN_CONSTRAINT
+    if kind == "unique constraint failed":
+        return label, _SQLSTATE_UNIQUE
+    if kind == "not null constraint failed":
+        return label, _SQLSTATE_NOT_NULL
+    if kind == "foreign key constraint failed":
+        return "foreign_key", _SQLSTATE_FOREIGN_KEY
+    if kind == "check constraint failed":
+        return "check_constraint", None
+    return ConstraintViolationError.UNKNOWN_CONSTRAINT, None
+
+
 # Atomic status flip + optional decision triple. ``COALESCE`` keeps the
 # existing column when the caller omits a decision field (e.g. a plain
 # EXPIRED flip), so the same statement serves both a bare transition and
@@ -279,9 +315,11 @@ class SQLiteApprovalRepository:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
+                label, sqlstate = _classify_sqlite_integrity(exc)
                 raise ConstraintViolationError(
                     msg,
-                    constraint=str(exc),
+                    constraint=label,
+                    sqlstate=sqlstate,
                 ) from exc
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await _safe_rollback(
@@ -355,7 +393,10 @@ class SQLiteApprovalRepository:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-                raise ConstraintViolationError(msg, constraint=str(exc)) from exc
+                label, sqlstate = _classify_sqlite_integrity(exc)
+                raise ConstraintViolationError(
+                    msg, constraint=label, sqlstate=sqlstate
+                ) from exc
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await _safe_rollback(
                     self._db, operation="save_many", batch_size=len(items)
@@ -403,27 +444,9 @@ class SQLiteApprovalRepository:
                     rows = await cursor.fetchall()
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                # Log the rollback failure separately rather than
-                # suppressing it -- a silent rollback failure leaves
-                # the shared aiosqlite.Connection in an unknown state
-                # and the only diagnostic of why subsequent writes
-                # may start failing is then lost. Original ``exc`` is
-                # still chained on the QueryError so the caller sees
-                # the root cause.
-                try:
-                    await self._db.rollback()
-                except (sqlite3.Error, aiosqlite.Error) as rollback_exc:
-                    # ``logger.error`` (not ``logger.exception``):
-                    # the rollback failure is a structured event, not
-                    # a stack-trace dump. ``rollback_exc`` is captured
-                    # in ``error_type`` + ``error`` already.
-                    log_exception_redacted(
-                        logger,
-                        API_APPROVAL_REPO_FAILED,
-                        rollback_exc,
-                        batch_size=len(ids),
-                        phase="rollback",
-                    )
+                await _safe_rollback(
+                    self._db, operation="expire_if_pending", batch_size=len(ids)
+                )
                 msg = f"Failed to expire approval batch (size={len(ids)})"
                 logger.warning(
                     API_APPROVAL_REPO_FAILED,
@@ -730,8 +753,8 @@ class SQLiteApprovalRepository:
         async with self._write_context():
             try:
                 async with self._db.execute(_TRANSITION_SQL, params) as cursor:
-                    await self._db.commit()
                     _db_rowcount = cursor.rowcount
+                    await self._db.commit()
             except sqlite3.IntegrityError as exc:
                 await _safe_rollback(
                     self._db,
@@ -745,7 +768,10 @@ class SQLiteApprovalRepository:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-                raise ConstraintViolationError(msg, constraint=str(exc)) from exc
+                label, sqlstate = _classify_sqlite_integrity(exc)
+                raise ConstraintViolationError(
+                    msg, constraint=label, sqlstate=sqlstate
+                ) from exc
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await _safe_rollback(
                     self._db,
@@ -798,8 +824,8 @@ class SQLiteApprovalRepository:
         async with self._write_context():
             try:
                 async with self._db.execute(sql, params) as cursor:
-                    await self._db.commit()
                     _db_rowcount = cursor.rowcount
+                    await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await _safe_rollback(
                     self._db,
@@ -832,8 +858,8 @@ class SQLiteApprovalRepository:
         async with self._write_context():
             try:
                 async with self._db.execute(sql, (approval_id,)) as cursor:
-                    await self._db.commit()
                     _db_rowcount = cursor.rowcount
+                    await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await _safe_rollback(
                     self._db, operation="delete", approval_id=approval_id

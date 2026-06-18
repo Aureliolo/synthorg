@@ -15,7 +15,7 @@ from typing import cast
 import aiosqlite
 import pytest
 
-from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
@@ -65,6 +65,7 @@ def _make_item(  # noqa: PLR0913
     action_type: str = "deploy:production",
     task_id: str | None = None,
     metadata: dict[str, str] | None = None,
+    source: ApprovalSource = ApprovalSource.REVIEW_GATE,
 ) -> ApprovalItem:
     """Build an ``ApprovalItem`` with sensible defaults."""
     now = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
@@ -83,6 +84,7 @@ def _make_item(  # noqa: PLR0913
         description="Rolls service v2 to prod.",
         requested_by="agent-eng-001",
         risk_level=risk_level,
+        source=source,
         status=status,
         created_at=now,
         expires_at=now + timedelta(days=7),
@@ -109,6 +111,32 @@ class TestApprovalRepository:
         assert fetched.created_at.tzinfo is not None
         assert fetched.expires_at is not None
         assert fetched.expires_at.tzinfo is not None
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            ApprovalSource.PARKED_CONTEXT,
+            ApprovalSource.REVIEW_GATE,
+            ApprovalSource.CONVERSATIONAL_INTAKE,
+            ApprovalSource.CONVERSATIONAL_INVITE,
+        ],
+    )
+    async def test_save_roundtrips_every_source(
+        self, backend: PersistenceBackend, source: ApprovalSource
+    ) -> None:
+        """Every ``ApprovalSource`` survives a save/get on both backends.
+
+        Guards the CHECK-constraint parity between the schema and the
+        migration chain: a backend whose ``source`` constraint omits a
+        value would reject the save here rather than silently in prod.
+        """
+        repo = _approval_repo(backend)
+        item = _make_item(approval_id=f"src-{source.value}", source=source)
+        await repo.save(item)
+
+        fetched = await repo.get(str(item.id))
+        assert fetched is not None
+        assert fetched.source is source
 
     async def test_get_returns_none_when_absent(
         self, backend: PersistenceBackend
@@ -378,9 +406,15 @@ class TestApprovalRepository:
             (str(pending.id), str(approved.id), str(rejected.id)),
         )
         assert set(updated) == {str(pending.id)}
-        assert (await repo.get(str(pending.id))).status is ApprovalStatus.EXPIRED  # type: ignore[union-attr]
-        assert (await repo.get(str(approved.id))).status is ApprovalStatus.APPROVED  # type: ignore[union-attr]
-        assert (await repo.get(str(rejected.id))).status is ApprovalStatus.REJECTED  # type: ignore[union-attr]
+        fetched_pending = await repo.get(str(pending.id))
+        fetched_approved = await repo.get(str(approved.id))
+        fetched_rejected = await repo.get(str(rejected.id))
+        assert fetched_pending is not None
+        assert fetched_approved is not None
+        assert fetched_rejected is not None
+        assert fetched_pending.status is ApprovalStatus.EXPIRED
+        assert fetched_approved.status is ApprovalStatus.APPROVED
+        assert fetched_rejected.status is ApprovalStatus.REJECTED
 
     async def test_expire_if_pending_empty_input_is_noop(
         self,
@@ -509,6 +543,11 @@ class TestApprovalRepository:
         fetched = await repo.get(str(pending.id))
         assert fetched is not None
         assert fetched.status is ApprovalStatus.EXPIRED
+        # A bare flip carries no decision: COALESCE must leave the
+        # decision columns untouched (they were never set on PENDING).
+        assert fetched.decided_at is None
+        assert fetched.decided_by is None
+        assert fetched.decision_reason is None
 
     async def test_transition_if_returns_false_on_state_mismatch(
         self,
@@ -566,7 +605,13 @@ class TestApprovalRepository:
         assert fetched is not None
         assert fetched.status is ApprovalStatus.APPROVED
         assert fetched.decided_at == decided_at
+        # Round-tripped timestamp must stay timezone-aware; a naive value
+        # would raise on any later aware-datetime arithmetic.
+        assert fetched.decided_at is not None
+        assert fetched.decided_at.tzinfo is not None
         assert fetched.decided_by == "ceo"
+        # No reason was supplied on this approve; COALESCE must leave it null.
+        assert fetched.decision_reason is None
 
     async def test_transition_if_writes_reason_on_rejected(
         self,
@@ -591,6 +636,8 @@ class TestApprovalRepository:
         assert fetched is not None
         assert fetched.status is ApprovalStatus.REJECTED
         assert fetched.decision_reason == "insufficient evidence"
+        assert fetched.decided_at is not None
+        assert fetched.decided_at.tzinfo is not None
 
     async def test_transition_if_rejects_unknown_update_key(
         self,

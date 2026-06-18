@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Node } from '@xyflow/react'
-import type { AgentNodeData } from './build-org-tree'
 import { getNodeLabel } from './node-utils'
 import { OrgChartSearchOverlay } from './OrgChartSearchOverlay'
 
@@ -15,8 +14,10 @@ export interface OrgChartFilterResult {
 function nodeMatchesQuery(n: Node, query: string): boolean {
   if (getNodeLabel(n).toLowerCase().includes(query)) return true
   if (n.type === 'agent' || n.type === 'ceo') {
-    const role = (n.data as AgentNodeData).role.toLowerCase()
-    return role.includes(query)
+    // ``n.data`` is an untyped Record; a malformed agent node may lack
+    // ``role``, so guard the type before calling string methods.
+    const role = n.data['role']
+    return typeof role === 'string' && role.toLowerCase().includes(query)
   }
   return false
 }

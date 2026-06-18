@@ -165,7 +165,8 @@ print(f"Budget used: {overview['budget_used_percent']:.1f}%")
 ## 8. Approve a pending approval
 
 Approvals are decided through dedicated `/approve` and `/reject` endpoints (there is
-no combined `/decide` route). Both accept an optional `comment`.
+no combined `/decide` route). `/approve` accepts an optional `comment`; `/reject`
+requires a mandatory `reason`.
 
 ```bash
 curl -s -b cookies.txt -X POST "$BASE/api/v1/approvals/$APPROVAL_ID/approve" \
@@ -178,8 +179,8 @@ resp = client.post(
     f"/api/v1/approvals/{approval_id}/approve",
     json={"comment": "Canary signal clean."},
 )
-# To reject instead:
-# client.post(f"/api/v1/approvals/{approval_id}/reject", json={"comment": "Needs rework."})
+# To reject instead (reason is mandatory):
+# client.post(f"/api/v1/approvals/{approval_id}/reject", json={"reason": "Needs rework."})
 ```
 
 ## 9. Subscribe to the live event WebSocket
@@ -196,7 +197,11 @@ const ticketResp = await fetch(`${base}/api/v1/auth/ws-ticket`, {
 const { data: { ticket } } = await ticketResp.json()
 
 // 2. Open the socket and authenticate with the ticket on the first frame.
-const ws = new WebSocket(`ws://localhost:3001/api/v1/ws`)
+// Derive ws/wss from the API base so TLS is preserved: an https base
+// yields wss://. Plain ws:// is acceptable only for a localhost base; in
+// any deployment the ticket and event data travel in-band and ws:// would
+// expose them to network observers.
+const ws = new WebSocket(`${base.replace(/^http/, 'ws')}/api/v1/ws`)
 ws.onopen = () => {
   ws.send(JSON.stringify({ action: 'auth', ticket }))
 }

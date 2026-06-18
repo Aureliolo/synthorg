@@ -42,10 +42,10 @@ parked = await gate.park_context(
 print(parked.id, parked.approval_id)
 ```
 
-The dashboard at `/dashboard/approvals` lists pending requests. Reviewer clicks `Approve`; the API persists a verdict via the dedicated `/approve` (or `/reject`) endpoint with an optional `comment`:
+The dashboard at `/dashboard/approvals` lists pending requests. Reviewer clicks `Approve`; the API persists a verdict via the dedicated `/approve` endpoint (optional `comment`) or `/reject` endpoint (mandatory `reason`):
 
 ```bash
-curl -s -b cookies.txt -X POST http://localhost:8000/api/v1/approvals/7c9e6679-7425-40de-944b-e07fc1f90ae7/approve \
+curl -s -b cookies.txt -X POST http://localhost:3001/api/v1/approvals/7c9e6679-7425-40de-944b-e07fc1f90ae7/approve \
   -H "Content-Type: application/json" \
   --data '{"comment": "Looks good; canary signal is clean."}'
 ```
@@ -65,7 +65,7 @@ The approvals page surfaces pending requests with:
 - One-click `Approve` / `Reject` / `Request changes` actions; rejection requires a rationale.
 - Filters on `action_type`, `agent`, `actor` (last reviewer).
 
-For terminal automation, the MCP `approvals` domain exposes `approve` and `reject` tools that take the same approval id plus an optional comment.
+For terminal automation, the MCP `approvals` domain exposes `approve` and `reject` tools that take the same approval id: `approve` with an optional comment, `reject` with a mandatory reason.
 
 ## Observability
 
@@ -83,7 +83,7 @@ Every verdict is appended to the audit chain via the typed-boundary `audit_chain
 Operators query the recorded security audit trail (filterable by `agent_id`, `tool_name`, `action_type`, `verdict`):
 
 ```bash
-curl -s -b cookies.txt "http://localhost:8000/api/v1/security/audit?verdict=APPROVED" | jq
+curl -s -b cookies.txt "http://localhost:3001/api/v1/security/audit?verdict=APPROVED" | jq
 ```
 
 ## Threat model

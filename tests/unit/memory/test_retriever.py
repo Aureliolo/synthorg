@@ -624,26 +624,42 @@ class TestMemoryFilterIntegration:
 
 @pytest.mark.unit
 class TestCandidatePoolMultiplier:
-    def test_pool_limit_with_diversity_enabled(self) -> None:
+    async def test_pool_limit_with_diversity_enabled(self) -> None:
+        # Behavioural: the multiplier widens the limit the backend is
+        # queried with, observed via the MemoryQuery, not a private method.
+        backend = _make_backend(())
         strategy = ContextInjectionStrategy(
-            backend=_make_backend(),
+            backend=backend,
             config=MemoryRetrievalConfig(
                 diversity_penalty_enabled=True,
                 candidate_pool_multiplier=3,
                 max_memories=10,
             ),
         )
-        assert strategy._compute_pool_limit() == 30
+        await strategy.prepare_messages(
+            agent_id="agent-1",
+            query_text="query",
+            token_budget=500,
+        )
+        query: MemoryQuery = backend.retrieve.call_args[0][1]
+        assert query.limit == 30
 
-    def test_pool_limit_without_diversity(self) -> None:
+    async def test_pool_limit_without_diversity(self) -> None:
+        backend = _make_backend(())
         strategy = ContextInjectionStrategy(
-            backend=_make_backend(),
+            backend=backend,
             config=MemoryRetrievalConfig(
                 diversity_penalty_enabled=False,
                 max_memories=10,
             ),
         )
-        assert strategy._compute_pool_limit() == 10
+        await strategy.prepare_messages(
+            agent_id="agent-1",
+            query_text="query",
+            token_budget=500,
+        )
+        query: MemoryQuery = backend.retrieve.call_args[0][1]
+        assert query.limit == 10
 
     def test_default_multiplier_is_three(self) -> None:
         config = MemoryRetrievalConfig()

@@ -192,6 +192,8 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     DepartmentHealthController,
     DepartmentCeremonyPolicyController,
     ProjectController,
+    ObjectiveController,
+    BrownfieldController,
     ProjectBrainController,
     ProjectDocsController,
     DeliverableReceiptController,
@@ -283,28 +285,6 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
 )
 
 
-def _has_objective_entry_adapter(app_state: AppState) -> bool:
-    """Report whether the objective work-entry adapter is wired.
-
-    Returns:
-        ``True`` when the objective entry adapter is composed.
-    """
-    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
-
-    return app_state.slice(EngineStateSlice).objective_entry_adapter is not None
-
-
-def _has_brownfield_entry_adapter(app_state: AppState) -> bool:
-    """Report whether the brownfield work-entry adapter is wired.
-
-    Returns:
-        ``True`` when the brownfield entry adapter is composed.
-    """
-    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
-
-    return app_state.slice(EngineStateSlice).brownfield_entry_adapter is not None
-
-
 # Controllers gated by their collaborator service.  These do NOT live
 # in ``BASE_CONTROLLERS`` -- they are registered only when their
 # dependency is wired so an unconfigured install returns 404 (route
@@ -320,8 +300,6 @@ OPTIONAL_CONTROLLERS: tuple[
 ] = (
     (SimulationController, has_simulation_runtime),
     (RequestController, has_simulation_runtime),
-    (ObjectiveController, _has_objective_entry_adapter),
-    (BrownfieldController, _has_brownfield_entry_adapter),
 )
 
 # Integration subsystem controllers. Registered only when

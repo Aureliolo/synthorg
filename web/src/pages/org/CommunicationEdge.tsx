@@ -1,6 +1,6 @@
 import { memo, useInsertionEffect, useMemo } from 'react'
+import { useReducedMotion } from 'motion/react'
 import { BaseEdge, getBezierPath, type EdgeProps, type Edge } from '@xyflow/react'
-import { prefersReducedMotion } from '@/lib/motion'
 
 export interface CommunicationEdgeData {
   /** Total message count for this edge. */
@@ -63,7 +63,9 @@ function CommunicationEdgeComponent(props: EdgeProps<CommunicationEdgeType>) {
     Math.max(MIN_DASH_DURATION, MAX_DASH_DURATION / Math.max(frequency, 0.1)),
   )
 
-  const reduced = prefersReducedMotion()
+  // Reactive hook (not a point-in-time read) so the edge re-renders when
+  // the OS reduced-motion preference changes mid-session.
+  const reduced = useReducedMotion() ?? false
 
   // Inject shared keyframe once (useInsertionEffect runs before DOM mutations)
   useInsertionEffect(() => { ensureKeyframe() }, [])

@@ -28,16 +28,13 @@ The cost API lives at `/api/v1/costs`. Three core endpoints:
 
 ```bash
 # Summary for the current billing month.
-curl -s http://localhost:8000/api/v1/costs/summary \
-  -H "Authorization: Bearer $TOKEN" | jq
+curl -s -b cookies.txt http://localhost:3001/api/v1/costs/summary | jq
 
 # Per-agent breakdown.
-curl -s "http://localhost:8000/api/v1/costs/by/agent?since=2026-05-01" \
-  -H "Authorization: Bearer $TOKEN" | jq
+curl -s -b cookies.txt "http://localhost:3001/api/v1/costs/by/agent?since=2026-05-01" | jq
 
 # Per-project breakdown filtered to one project.
-curl -s "http://localhost:8000/api/v1/costs/by/project?project_id=proj-acme" \
-  -H "Authorization: Bearer $TOKEN" | jq
+curl -s -b cookies.txt "http://localhost:3001/api/v1/costs/by/project?project_id=proj-acme" | jq
 ```
 
 ## Worked example: route a Slack alert at 80% project budget

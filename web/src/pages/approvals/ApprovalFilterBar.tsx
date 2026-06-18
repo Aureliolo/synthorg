@@ -176,7 +176,9 @@ export function ApprovalFilterBar({
   actionTypes,
 }: ApprovalFilterBarProps) {
   const updateFilter: UpdateFilterFn = (key, value) => {
-    onFiltersChange({ ...filters, [key]: value || undefined })
+    // Only the empty-string sentinel clears a filter; a future falsy
+    // non-string value (0 / false) must survive rather than be dropped.
+    onFiltersChange({ ...filters, [key]: value !== '' ? value : undefined })
   }
 
   return (

@@ -4,6 +4,7 @@ import { Link } from 'react-router'
 import type { Connection, HealthReport } from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
 import { ConnectionHealthBadge } from '@/components/ui/connection-health-badge'
+import { ROUTES } from '@/router/routes'
 import { cn } from '@/lib/utils'
 import { formatRelativeTime } from '@/utils/format'
 import { TypeBadge } from './TypeBadge'
@@ -96,7 +97,7 @@ function ConnectionCardMeta({
       {/* Cross-link into the receipt inspector pre-selected on this
           connection (receipts are scoped per-connection there). */}
       <Link
-        to={`/webhooks/receipts?connection=${encodeURIComponent(connection.name)}`}
+        to={`${ROUTES.WEBHOOK_RECEIPTS}?connection=${encodeURIComponent(connection.name)}`}
         className="inline-flex items-center gap-1.5 pt-1 text-xs text-accent hover:underline"
       >
         <Inbox className="size-3.5" aria-hidden />
@@ -122,7 +123,7 @@ function ConnectionCardInner({
     <div
       className={cn(
         'rounded-lg border border-border bg-card p-card',
-        'transition-all duration-200',
+        'transition-all duration-[var(--so-transition-default)]',
         'hover:bg-card-hover hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]',
         className,
       )}
