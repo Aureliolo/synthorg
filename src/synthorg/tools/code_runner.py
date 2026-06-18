@@ -3,9 +3,9 @@
 Supports Python, JavaScript, and Bash via configurable sandbox backends.
 """
 
-from typing import ClassVar, Final, cast, override
+from typing import ClassVar, Final, Literal, cast, override
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -27,13 +27,38 @@ from synthorg.persistence.code_execution_protocol import (
     CodeExecutionRecordRepository,
 )
 from synthorg.security.autonomy.enums import ToolCategory
-from synthorg.tools._misc_args import CodeRunnerArgs
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.sandbox.errors import SandboxError
 from synthorg.tools.sandbox.protocol import SandboxBackend
 from synthorg.tools.sandbox.result import SandboxResult
 
 logger = get_logger(__name__)
+
+CodeRunnerLanguage = Literal["python", "javascript", "bash"]
+
+
+class CodeRunnerArgs(BaseModel):
+    """Args for ``code_runner``."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    code: str = Field(description="Source code to execute")
+    language: CodeRunnerLanguage = Field(description="Programming language of the code")
+    timeout: float | None = Field(
+        default=None,
+        ge=1,
+        le=600,
+        description="Optional timeout in seconds (minimum 1)",
+    )
+    purpose: Literal["general", "tests"] = Field(
+        default="general",
+        description=(
+            "Set to 'tests' when this run executes the project's test "
+            "suite, so its structured result is captured for the "
+            "deliverable's provenance receipt"
+        ),
+    )
+
 
 _LANGUAGE_COMMANDS: Final[dict[str, tuple[str, str]]] = {
     "python": ("python3", "-c"),

@@ -8,8 +8,9 @@ truncated at ``max_output_bytes``.
 from pathlib import Path
 from typing import ClassVar, cast, override
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.terminal import (
     TERMINAL_COMMAND_FAILED,
@@ -17,7 +18,6 @@ from synthorg.observability.events.terminal import (
     TERMINAL_COMMAND_SUCCESS,
     TERMINAL_COMMAND_TIMEOUT,
 )
-from synthorg.tools._misc_args import ShellCommandArgs
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.sandbox.errors import SandboxError
 from synthorg.tools.sandbox.protocol import SandboxBackend
@@ -25,6 +25,29 @@ from synthorg.tools.terminal.base_terminal_tool import BaseTerminalTool
 from synthorg.tools.terminal.config import TerminalConfig
 
 logger = get_logger(__name__)
+
+
+class ShellCommandArgs(BaseModel):
+    """Args for ``shell_command``.
+
+    Allowlist / blocklist enforcement and ``working_directory`` policy
+    stay inside the tool body because they depend on per-instance
+    sandbox configuration.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    command: NotBlankStr = Field(description="Shell command to execute")
+    working_directory: NotBlankStr | None = Field(
+        default=None,
+        description="Working directory (relative to workspace)",
+    )
+    timeout: float | None = Field(
+        default=None,
+        ge=1,
+        le=600,
+        description="Command timeout in seconds",
+    )
 
 
 class ShellCommandTool(BaseTerminalTool):

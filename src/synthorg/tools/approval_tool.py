@@ -10,11 +10,12 @@ from datetime import UTC, datetime
 from typing import ClassVar, override
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.core.validation import is_valid_action_type
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.approval_gate import (
@@ -25,11 +26,35 @@ from synthorg.observability.events.approval_gate import (
 )
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.security.timeout.protocol import RiskTierClassifier
-from synthorg.tools._misc_args import RequestHumanApprovalArgs
 
 from .base import BaseTool, ToolExecutionResult
 
 logger = get_logger(__name__)
+
+
+class RequestHumanApprovalArgs(BaseModel):
+    """Args for ``request_human_approval``.
+
+    The ``action_type`` must be in ``category:action`` format; that
+    structural check (presence of exactly one ``:`` with non-empty
+    halves) lives inside the tool body where the message can name the
+    expected format and link to ``DEFAULT_CATEGORY_ACTION_MAP``.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    action_type: NotBlankStr = Field(
+        max_length=128,
+        description="Action type in category:action format",
+    )
+    title: NotBlankStr = Field(
+        max_length=256,
+        description="Short summary of the approval request",
+    )
+    description: NotBlankStr = Field(
+        max_length=4096,
+        description="Detailed explanation of what needs approval",
+    )
 
 
 class RequestHumanApprovalTool(BaseTool):

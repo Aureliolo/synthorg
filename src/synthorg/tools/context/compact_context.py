@@ -7,20 +7,39 @@ directly.  The execution loop detects the directive and invokes
 compaction at the turn boundary.
 """
 
-from typing import ClassVar, cast, override
+from typing import ClassVar, Literal, cast, override
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.sanitization import sanitize_message
 from synthorg.observability import get_logger
 from synthorg.observability.events.context_budget import (
     CONTEXT_BUDGET_AGENT_COMPACTION_REQUESTED,
 )
 from synthorg.security.autonomy.enums import ToolCategory
-from synthorg.tools._misc_args import CompactContextArgs
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 
 logger = get_logger(__name__)
+
+CompactContextStrategy = Literal["summarize"]
+
+
+class CompactContextArgs(BaseModel):
+    """Args for ``compact_context``."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    strategy: CompactContextStrategy = Field(description="Compaction strategy")
+    reason: NotBlankStr = Field(
+        min_length=10,
+        max_length=256,
+        description="Brief explanation for why compaction is needed",
+    )
+    preserve_markers: bool = Field(
+        default=True,
+        description="Preserve epistemic markers in the compaction summary",
+    )
 
 
 class CompactContextTool(BaseTool):
