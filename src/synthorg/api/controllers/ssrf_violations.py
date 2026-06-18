@@ -31,8 +31,8 @@ from synthorg.api.services.ssrf_violation_service import SsrfViolationService
 from synthorg.api.state import AppState
 from synthorg.core.actor_context import resolve_decided_by
 from synthorg.core.domain_errors import ResourceNotFoundError
+from synthorg.core.pagination import collect_all
 from synthorg.core.types import NotBlankStr
-from synthorg.persistence._shared.pagination import collect_all
 from synthorg.persistence.state import persistence_of
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
 

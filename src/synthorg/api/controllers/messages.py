@@ -23,12 +23,12 @@ from synthorg.communication.message import Message
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.domain_errors import ResourceNotFoundError
+from synthorg.core.pagination import collect_all
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
     COMMUNICATION_MESSAGE_DELETE_FAILED,
 )
-from synthorg.persistence._shared.pagination import collect_all
 from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)

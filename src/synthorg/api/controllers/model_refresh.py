@@ -39,9 +39,9 @@ from synthorg.api.services.upgrade_recommendation_service import (
 from synthorg.api.state import AppState
 from synthorg.core.actor_context import resolve_decided_by
 from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.core.pagination import collect_all
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import PROVIDER_MODEL_REFRESH_CYCLE_FAILED
-from synthorg.persistence._shared.pagination import collect_all
 from synthorg.providers.enums import RecommendationStatus
 from synthorg.providers.management.refresh_config import (
     RefreshMode,

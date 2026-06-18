@@ -1,5 +1,8 @@
 """Tests for provider discovery SSRF allowlist policy."""
 
+import asyncio
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -11,8 +14,10 @@ from synthorg.providers.discovery_policy import (
     build_seed_allowlist,
     extract_host_port,
     is_url_allowed,
+    resolve_discovery_target,
     seed_from_presets,
 )
+from synthorg.tools.network_validator import DnsValidationOk
 
 pytestmark = pytest.mark.unit
 # ── ProviderDiscoveryPolicy model ────────────────────────────────
@@ -335,3 +340,51 @@ class TestDiscoveryPolicyProperties:
             host_port_allowlist=tuple(entries),
         )
         assert len(policy.host_port_allowlist) == len(set(policy.host_port_allowlist))
+
+
+# ── resolve_discovery_target (async DNS + pinning) ───────────────
+
+
+class TestResolveDiscoveryTarget:
+    """Async DNS pre-flight layered on the host:port trust gate."""
+
+    @pytest.mark.unit
+    async def test_resolves_and_pins_allowlisted_local_host(self) -> None:
+        # localhost is intentionally private; an allowlisted discovery
+        # host bypasses the private-IP block but is still resolved so the
+        # caller can pin the connection.
+        policy = ProviderDiscoveryPolicy(host_port_allowlist=("localhost:11434",))
+        mock_results = [(0, 0, 0, "", ("127.0.0.1", 0))]
+        loop = asyncio.get_running_loop()
+        with patch.object(loop, "getaddrinfo", new_callable=AsyncMock) as mock:
+            mock.return_value = mock_results
+            result = await resolve_discovery_target(
+                "http://localhost:11434/api/tags", policy
+            )
+        assert isinstance(result, DnsValidationOk)
+        assert result.resolved_ips == ("127.0.0.1",)
+
+    @pytest.mark.unit
+    async def test_dns_failure_returns_error(self) -> None:
+        # A trusted host whose DNS cannot resolve yields an error string
+        # so the caller skips it rather than probing unpinned.
+        policy = ProviderDiscoveryPolicy(host_port_allowlist=("myhost:8080",))
+        loop = asyncio.get_running_loop()
+        with patch.object(loop, "getaddrinfo", new_callable=AsyncMock) as mock:
+            mock.side_effect = OSError("no such host")
+            result = await resolve_discovery_target("http://myhost:8080/v1", policy)
+        assert isinstance(result, str)
+
+    @pytest.mark.unit
+    async def test_literal_ip_needs_no_pin(self) -> None:
+        # A literal-IP target has nothing to pin (no DNS step).
+        policy = ProviderDiscoveryPolicy(host_port_allowlist=("172.17.0.1:1234",))
+        result = await resolve_discovery_target("http://172.17.0.1:1234/v1", policy)
+        assert isinstance(result, DnsValidationOk)
+        assert result.resolved_ips == ()
+
+    @pytest.mark.unit
+    async def test_unparseable_url_rejected(self) -> None:
+        policy = ProviderDiscoveryPolicy()
+        result = await resolve_discovery_target("not-a-url", policy)
+        assert isinstance(result, str)

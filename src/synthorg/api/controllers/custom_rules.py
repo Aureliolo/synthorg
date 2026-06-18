@@ -31,6 +31,7 @@ from synthorg.api.pagination import (
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.domain_errors import ConflictError, NotFoundError
+from synthorg.core.pagination import collect_all
 from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import ProposalAltitude, RuleSeverity
@@ -51,7 +52,6 @@ from synthorg.observability.events.security import (
     SECURITY_CUSTOM_RULE_TOGGLED,
     SECURITY_CUSTOM_RULE_UPDATED,
 )
-from synthorg.persistence._shared.pagination import collect_all
 from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)

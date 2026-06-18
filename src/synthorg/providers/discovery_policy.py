@@ -8,6 +8,7 @@ against local providers (e.g. inference servers on private IPs).
 The design mirrors :class:`~synthorg.tools.git_url_validator.GitCloneNetworkPolicy`.
 """
 
+import ipaddress
 from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Self
@@ -20,6 +21,10 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
     PROVIDER_DISCOVERY_URL_ALLOWED,
+)
+from synthorg.tools.network_validator import (
+    DnsValidationOk,
+    resolve_dns,
 )
 
 logger = get_logger(__name__)
@@ -205,3 +210,65 @@ def is_url_allowed(url: str, policy: ProviderDiscoveryPolicy) -> bool:
         allowed=allowed,
     )
     return allowed
+
+
+async def resolve_discovery_target(
+    url: str,
+    policy: ProviderDiscoveryPolicy,
+    *,
+    dns_timeout: float = 5.0,
+) -> DnsValidationOk | str:
+    """Async DNS pre-flight that pins an already-trusted discovery URL.
+
+    :func:`is_url_allowed` gates *trust* by ``host:port`` (a discovery
+    host is only probed if explicitly allowlisted, and allowlisted hosts
+    are intentionally local/private). This adds the layer the static
+    check lacked: resolve the host once so the caller can pin the live
+    connect, closing the TOCTOU window where a DNS rebind could redirect
+    the probe to a different address after the allowlist check.
+
+    No private-IP blocking happens here -- the allowlist *is* the trust
+    decision, and local providers legitimately resolve to private IPs.
+    Call only after :func:`is_url_allowed` has returned ``True``.
+
+    Args:
+        url: The discovery URL to resolve (already allowlist-trusted).
+        policy: The discovery policy (accepted for symmetry with
+            :func:`is_url_allowed`; the trust decision is upstream).
+        dns_timeout: Per-resolution DNS timeout in seconds.
+
+    Returns:
+        A :class:`DnsValidationOk` carrying the pinnable IPs (empty for a
+        literal-IP host, which needs no pin), or an error-message string
+        when the host cannot be resolved.
+    """
+    del policy  # trust is decided by is_url_allowed upstream
+    parsed = urlparse(url)
+    host = parsed.hostname
+    if not host:
+        return f"Could not extract hostname from discovery URL: {url!r}"
+    normalized = host.lower()
+    is_https = parsed.scheme == "https"
+    try:
+        port = parsed.port or _DEFAULT_PORTS.get(parsed.scheme)
+    except ValueError:
+        return f"Invalid port in discovery URL: {url!r}"
+    # Literal IP: nothing to pin (no DNS step), connect straight to it.
+    try:
+        ipaddress.ip_address(normalized)
+    except ValueError:
+        pass
+    else:
+        return DnsValidationOk(hostname=normalized, port=port, is_https=is_https)
+    results = await resolve_dns(normalized, dns_timeout)
+    if isinstance(results, str):
+        return results
+    seen: dict[str, None] = {}
+    for *_info, sockaddr in results:
+        seen.setdefault(sockaddr[0], None)
+    return DnsValidationOk(
+        hostname=normalized,
+        port=port,
+        is_https=is_https,
+        resolved_ips=tuple(seen),
+    )
