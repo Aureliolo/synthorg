@@ -158,7 +158,8 @@
         "pareto_analyzer",
         "benchmark_provider",
         "budget_config",
-        "report_service"
+        "report_service",
+        "budget_versions_service"
       ]
     },
     {
@@ -852,7 +853,8 @@
         "conversation_participant_repo",
         "role_router",
         "group_chat_service",
-        "conversational_actor"
+        "conversational_actor",
+        "custom_rules_service"
       ]
     },
     {
@@ -1260,6 +1262,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-17T23:35:02.586050Z",
+  "generated_at": "2026-06-18T20:15:57.938231Z",
   "schema_version": 1
 }
