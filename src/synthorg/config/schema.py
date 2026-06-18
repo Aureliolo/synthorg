@@ -13,6 +13,7 @@ from synthorg.budget.config import BudgetConfig
 from synthorg.budget.coordination_config import CoordinationMetricsConfig
 from synthorg.budget.cost_tiers import CostTiersConfig
 from synthorg.communication.config import CommunicationConfig
+from synthorg.config._schema_validators import collect_model_refs
 from synthorg.config.agent_schema import (
     AgentConfig,
     GracefulShutdownConfig,
@@ -443,37 +444,6 @@ class RootConfig(BaseModel):
             raise ValueError(msg)
         return self
 
-    def _collect_model_refs(self) -> set[str]:
-        """Build unique model ref set, raising on cross-provider collisions.
-
-        Returns:
-            The set of every model id and alias across all providers.
-
-        Raises:
-            ValueError: When the same id or alias is defined by more than
-                one provider.
-        """
-        ref_to_provider: dict[str, str] = {}
-        for prov_name, provider in self.providers.items():
-            for model in provider.models:
-                for ref in (model.id, model.alias):
-                    if ref is None:
-                        continue
-                    if ref in ref_to_provider:
-                        msg = (
-                            f"Ambiguous model reference {ref!r}: "
-                            f"defined in both {ref_to_provider[ref]!r} "
-                            f"and {prov_name!r}"
-                        )
-                        logger.warning(
-                            CONFIG_VALIDATION_FAILED,
-                            model="RootConfig",
-                            error=msg,
-                        )
-                        raise ValueError(msg)
-                    ref_to_provider[ref] = prov_name
-        return set(ref_to_provider)
-
     @model_validator(mode="after")
     def _validate_routing_references(self) -> Self:
         """Ensure routing model references exist and are unambiguous.
@@ -488,7 +458,7 @@ class RootConfig(BaseModel):
         if not self.routing.rules and not self.routing.fallback_chain:
             return self
 
-        known_models = self._collect_model_refs()
+        known_models = collect_model_refs(self)
 
         for rule in self.routing.rules:
             if rule.preferred_model not in known_models:

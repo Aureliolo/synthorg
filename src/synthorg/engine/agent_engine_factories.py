@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     from synthorg.communication.event_stream.stream import EventStreamHub
     from synthorg.config.schema import ProviderConfig
     from synthorg.core.effective_autonomy import EffectiveAutonomy
-    from synthorg.engine.agent_engine import (
+    from synthorg.engine._agent_engine_types import (
         BrainToolFactoryProvider,
         DocsToolFactoryProvider,
         KnowledgeToolFactoryProvider,

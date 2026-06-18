@@ -13,8 +13,13 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.execution_identity import run_identity_scope
 from synthorg.core.types import NotBlankStr
-from synthorg.docs_engine.tool_factory import DocsToolFactory
 from synthorg.engine._agent_engine_run import AgentEngineRunMixin
+from synthorg.engine._agent_engine_types import (
+    BrainToolFactoryProvider,
+    DocsToolFactoryProvider,
+    KnowledgeToolFactoryProvider,
+    ResearchToolFactoryProvider,
+)
 from synthorg.engine._validation import (
     validate_agent,
     validate_run_inputs,
@@ -39,7 +44,6 @@ from synthorg.engine.loop_protocol import make_budget_checker
 from synthorg.engine.loop_selector import AutoLoopConfig
 from synthorg.engine.recovery import FailAndReassignStrategy
 from synthorg.engine.run_result import AgentRunResult
-from synthorg.knowledge.tool_factory import KnowledgeToolFactory
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -60,9 +64,7 @@ from synthorg.observability.events.session import (
     SESSION_REPLAY_LOW_COMPLETENESS,
 )
 from synthorg.observability.tracing.instrumentation import get_tracer
-from synthorg.project_brain.tool_factory import ProjectBrainToolFactory
 from synthorg.providers.models import ChatMessage
-from synthorg.research.tool_factory import ResearchToolFactory
 from synthorg.security.audit import AuditLog
 
 if TYPE_CHECKING:
@@ -115,12 +117,8 @@ if TYPE_CHECKING:
         CheckpointRepository,
         HeartbeatRepository,
     )
-    from synthorg.persistence.cost_forecast_protocol import (
-        CostForecastRepository,
-    )
-    from synthorg.persistence.parked_context_protocol import (
-        ParkedContextRepository,
-    )
+    from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
+    from synthorg.persistence.parked_context_protocol import ParkedContextRepository
     from synthorg.persistence.project_protocol import ProjectRepository
     from synthorg.providers.models import CompletionConfig
     from synthorg.providers.protocol import CompletionProvider
@@ -160,41 +158,6 @@ class PersonalityTrimPayload(TypedDict):
 
 type PersonalityTrimNotifier = Callable[[PersonalityTrimPayload], Awaitable[None]]
 """Async callback invoked when an agent's personality section is trimmed."""
-
-
-type KnowledgeToolFactoryProvider = Callable[[], KnowledgeToolFactory | None]
-"""Provider reading the live knowledge tool factory at per-task time.
-
-The memory-gated knowledge substrate wires after the boot engine is built,
-so the engine resolves the factory through this provider (rather than
-capturing a ``None`` at construction); it returns ``None`` until the
-substrate is wired, or forever when it is disabled."""
-
-
-type DocsToolFactoryProvider = Callable[[], DocsToolFactory | None]
-"""Provider reading the live living-docs tool factory at per-task time.
-
-The docs engine wires after the boot engine is built, so the factory is
-resolved through this provider; it returns ``None`` until the docs engine
-is wired, or forever when it is disabled."""
-
-
-type ResearchToolFactoryProvider = Callable[[], ResearchToolFactory | None]
-"""Provider reading the live research tool factory at per-task time.
-
-The research subsystem wires after the boot engine is built, so the
-factory is resolved through this provider; it returns ``None`` until
-research is wired, or forever when it is disabled."""
-
-
-type BrainToolFactoryProvider = Callable[[], ProjectBrainToolFactory | None]
-"""Provider reading the live project-brain tool factory at per-task time.
-
-The memory-gated brain wires after the boot engine is built, so the engine
-resolves the factory through this provider (rather than capturing a ``None``
-at construction); it returns ``None`` until the brain is wired, or forever
-when it is disabled.
-"""
 
 
 class AgentEngine(

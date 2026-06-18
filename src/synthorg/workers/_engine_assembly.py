@@ -26,10 +26,7 @@ from synthorg.engine.mcp_self_consumer import build_mcp_self_consumer
 from synthorg.engine.routing_policy import build_stakes_router
 from synthorg.engine.stagnation import create_stagnation_detector
 from synthorg.engine.state import task_engine_of
-from synthorg.integrations.state import (
-    IntegrationsStateSlice,
-    connection_catalog_of,
-)
+from synthorg.integrations.state import IntegrationsStateSlice, connection_catalog_of
 from synthorg.memory.state import MemoryStateSlice
 from synthorg.observability import (
     get_logger,

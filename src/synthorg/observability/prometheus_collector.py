@@ -2,17 +2,12 @@
 """Prometheus metrics collector for SynthOrg business metrics.
 
 Maintains Gauge/Counter instances in a dedicated ``CollectorRegistry``
-and refreshes them from AppState services at scrape time.  The
-``/metrics`` endpoint calls :meth:`refresh` before generating output.
-
-Coordination metrics (efficiency, overhead) are push-updated by the
-coordination collector after each multi-agent execution -- they are
-not refreshed on scrape.
-
+and refreshes them from AppState services at scrape time (``/metrics``
+calls :meth:`refresh` first). Coordination metrics are push-updated by
+the coordination collector after each multi-agent run, not on scrape.
 Push-time recording methods (``record_*``) are inherited from
 :class:`~synthorg.observability.prometheus_recording.RecordingMixin`;
-this module owns construction + the async ``refresh`` pull-path so
-the file stays under the 800-line ceiling mandated by ``CLAUDE.md``.
+this module owns construction + the async ``refresh`` pull-path.
 """
 
 import asyncio
@@ -54,9 +49,7 @@ from synthorg.observability.prometheus_labels import (
 from synthorg.observability.prometheus_push_metrics import PushMetrics
 from synthorg.observability.prometheus_recording import RecordingMixin
 from synthorg.observability.prometheus_recording._base import _PUSH_ALIASED_METRICS
-from synthorg.observability.prometheus_recording_streams import (
-    StreamRecordingMixin,
-)
+from synthorg.observability.prometheus_recording_streams import StreamRecordingMixin
 from synthorg.persistence.protocol import PersistenceBackendKind
 from synthorg.persistence.state import PersistenceStateSlice, persistence_of
 

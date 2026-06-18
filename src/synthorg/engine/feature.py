@@ -29,17 +29,11 @@ from synthorg.api.controllers.objectives import ObjectiveController
 from synthorg.api.controllers.projects import ProjectController
 from synthorg.api.controllers.subworkflows import SubworkflowController
 from synthorg.api.controllers.tasks import TaskController
-from synthorg.api.controllers.workflow_executions import (
-    WorkflowExecutionController,
-)
+from synthorg.api.controllers.workflow_executions import WorkflowExecutionController
 from synthorg.api.controllers.workflow_versions import WorkflowVersionController
-from synthorg.api.controllers.workflows.blueprints import (
-    WorkflowBlueprintController,
-)
+from synthorg.api.controllers.workflows.blueprints import WorkflowBlueprintController
 from synthorg.api.controllers.workflows.crud import WorkflowController
-from synthorg.api.controllers.workflows.validation import (
-    WorkflowValidationController,
-)
+from synthorg.api.controllers.workflows.validation import WorkflowValidationController
 from synthorg.engine._construction import wire_construction
 from synthorg.engine._mcp import ENGINE_MCP_HANDLERS
 from synthorg.engine.state import EngineStateSlice

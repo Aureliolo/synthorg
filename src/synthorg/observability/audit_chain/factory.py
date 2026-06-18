@@ -1,4 +1,4 @@
-# module-kind: feature
+# module-kind: code
 """Factory + installer for the audit-chain logging sink.
 
 Assembles the :class:`AuditChainSink` from its collaborators -- the
