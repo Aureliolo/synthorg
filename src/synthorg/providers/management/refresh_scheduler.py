@@ -214,6 +214,11 @@ class ModelRefreshScheduler:
         stop_event = self._stop_event
         if stop_event is None:  # defensive; start() guarantees non-None
             msg = "_run invoked without an initialised stop event"
+            logger.error(
+                PROVIDER_MODEL_REFRESH_CYCLE_FAILED,
+                reason="run_without_stop_event",
+                error_type=RuntimeError.__name__,
+            )
             raise RuntimeError(msg)
         # lint-allow: long-running-loop-kill-switch -- _stop_event drives shutdown.
         while not stop_event.is_set():

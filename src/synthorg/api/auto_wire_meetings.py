@@ -229,6 +229,13 @@ def _build_protocol_registry() -> Mapping[MeetingProtocolType, MeetingProtocol]:
             f"Protocol registry has {len(registry)} entries but "
             f"{len(MeetingProtocolType)} protocol types exist"
         )
+        logger.error(
+            API_APP_STARTUP,
+            action="meeting_protocol_registry_incomplete",
+            registry_size=len(registry),
+            expected_size=len(MeetingProtocolType),
+            error_type=RuntimeError.__name__,
+        )
         raise RuntimeError(msg)
 
     return registry
