@@ -44,3 +44,28 @@ def approx_tokens(text: str, *, chars_per_token: int = DEFAULT_CHAR_PER_TOKEN) -
     if not text:
         return 0
     return max(1, len(text) // chars_per_token)
+
+
+class DefaultTokenEstimator:
+    """Heuristic token estimator backed by :func:`approx_tokens`.
+
+    The single canonical text-only estimator: ``engine.token_estimation``
+    and ``memory.injection`` both build on this one heuristic instead of
+    each redefining the ``approx_tokens`` delegation. The conversation-
+    aware superset lives in ``engine.token_estimation`` because it couples
+    to the provider ``ChatMessage`` shape, which ``core`` does not import.
+    Suitable for rough budget enforcement when a model-specific tokenizer
+    is unavailable.
+    """
+
+    def estimate_tokens(self, text: str) -> int:
+        """Estimate tokens via the shared chars-per-token heuristic.
+
+        Args:
+            text: The text to estimate tokens for.
+
+        Returns:
+            Estimated token count: ``0`` for empty text, otherwise at
+            least ``1``.
+        """
+        return approx_tokens(text)

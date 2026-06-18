@@ -25,10 +25,10 @@ from pydantic import (
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
+from synthorg.core.text_estimation import DefaultTokenEstimator
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.formatter import format_memory_context_with_directive
 from synthorg.memory.injection import (
-    DefaultTokenEstimator,
     InjectionStrategy,
     TokenEstimator,
 )

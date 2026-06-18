@@ -9,6 +9,7 @@ most important information.
 import re
 from typing import Final
 
+from synthorg.core.collections import dedupe_preserving_order
 from synthorg.observability import get_logger
 from synthorg.observability.events.consolidation import (
     DUAL_MODE_EXTRACTIVE_PRESERVED,
@@ -152,20 +153,16 @@ class ExtractivePreserver:
             Structured text block with extracted facts and anchors.
         """
         # Collect all facts, deduplicated, order-preserving
-        all_facts: list[str] = []
-        seen: set[str] = set()
-
-        for fact in (
-            *_extract_urls(content),
-            *_extract_identifiers(content),
-            *_extract_versions(content),
-            *_extract_key_values(content),
-        ):
-            if fact not in seen:
-                seen.add(fact)
-                all_facts.append(fact)
-
-        facts = all_facts[: self._max_facts]
+        facts = list(
+            dedupe_preserving_order(
+                (
+                    *_extract_urls(content),
+                    *_extract_identifiers(content),
+                    *_extract_versions(content),
+                    *_extract_key_values(content),
+                )
+            )
+        )[: self._max_facts]
         start, mid, end = _build_anchors(content, self._anchor_length)
 
         lines = ["[Extractive preservation]"]

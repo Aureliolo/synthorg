@@ -7,8 +7,9 @@ Respects the configured ``core_token_budget``.
 
 from typing import Final
 
+from synthorg.core.text_estimation import DefaultTokenEstimator
 from synthorg.core.types import NotBlankStr
-from synthorg.memory.injection import DefaultTokenEstimator, TokenEstimator
+from synthorg.memory.injection import TokenEstimator
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import ONTOLOGY_INJECTION_PREPARED
 from synthorg.ontology.models import EntityDefinition, EntityTier
