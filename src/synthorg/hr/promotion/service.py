@@ -545,6 +545,39 @@ class PromotionService:
 
         return record
 
+    async def run_cycle(self) -> tuple[PromotionRecord, ...]:
+        """Scan active agents and apply auto-approved seniority changes.
+
+        Delegates to :func:`synthorg.hr.promotion.cycle.run_promotion_cycle`,
+        which evaluates every active agent for promotion (then demotion),
+        requests eligible changes, applies the auto-approved ones, and
+        leaves human-gated changes pending as approval items.
+
+        Returns:
+            The records for changes applied during this cycle.
+        """
+        from synthorg.hr.promotion.cycle import run_promotion_cycle  # noqa: PLC0415
+
+        return await run_promotion_cycle(self)
+
+    @property
+    def enabled(self) -> bool:
+        """Whether the promotion subsystem is enabled.
+
+        Returns:
+            ``True`` when the configured subsystem is enabled.
+        """
+        return self._config.enabled
+
+    @property
+    def registry(self) -> AgentRegistryService:
+        """The agent registry the service reads and mutates.
+
+        Returns:
+            The wired agent registry service.
+        """
+        return self._registry
+
     def get_promotion_history(
         self,
         agent_id: NotBlankStr,

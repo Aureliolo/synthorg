@@ -190,6 +190,9 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     # projects
     "projects.create": (10, 60),
     "projects.delete": (5, 60),
+    # promotion
+    "promotion.apply": (20, 60),
+    "promotion.trigger_cycle": (5, 60),
     # providers
     "providers.add_model": (20, 60),
     "providers.allowlist_add": (50, 60),

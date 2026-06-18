@@ -117,6 +117,8 @@ class PromotionConfig(BaseModel):
     Attributes:
         enabled: Whether the promotion subsystem is enabled.
         cooldown_hours: Hours between consecutive promotions/demotions.
+        cycle_interval_seconds: Cadence between automatic promotion-cycle
+            scans. The scheduler floors this at 60 seconds.
         criteria: Promotion criteria configuration.
         approval: Promotion approval configuration.
         model_mapping: Model mapping configuration.
@@ -132,6 +134,11 @@ class PromotionConfig(BaseModel):
         default=24,
         ge=0,
         description="Hours between consecutive promotions/demotions",
+    )
+    cycle_interval_seconds: float = Field(
+        default=3600.0,
+        ge=60.0,
+        description="Cadence between automatic promotion-cycle scans (>= 60s)",
     )
     criteria: PromotionCriteriaConfig = Field(
         default_factory=PromotionCriteriaConfig,

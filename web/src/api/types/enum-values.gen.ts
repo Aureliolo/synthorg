@@ -627,6 +627,12 @@ export const PROJECT_STATUS_VALUES = [
 ] as const
 export type ProjectStatus = (typeof PROJECT_STATUS_VALUES)[number]
 
+export const PROMOTION_DIRECTION_VALUES = [
+    'promotion',
+    'demotion',
+] as const
+export type PromotionDirection = (typeof PROMOTION_DIRECTION_VALUES)[number]
+
 export const PROPOSAL_ALTITUDE_VALUES = [
     'config_tuning',
     'architecture',

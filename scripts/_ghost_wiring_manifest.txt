@@ -171,3 +171,4 @@ ENFORCED PerformanceTrackerSink #2334 -- constructed in workers/_engine_assembly
 ENFORCED NotificationDispatcherSink #2334 -- constructed in workers/_engine_assembly.py::_build_classification behind coordination.error_taxonomy.enabled; dispatches high-severity classified errors as notifications
 ENFORCED build_policy_engine #2334 -- called in security/_construction.py::_build_policy_engine_or_none; builds the runtime PolicyEngine (none by default) consulted at the tool-invoker authorization seam
 ENFORCED MCPToolFactory #2334 -- constructed in workers/_engine_assembly.py::_build_mcp_bridge_tools when MCP servers are configured; bridges external MCP server tools into the boot agent tool registry
+ENFORCED build_promotion_service #2404 -- called in api/lifecycle_helpers/promotion_wiring.py::wire_promotion behind promotion.enabled + a wired registry/tracker; builds the PromotionService driven by the PromotionCycleScheduler and reached from the /promotion endpoints
