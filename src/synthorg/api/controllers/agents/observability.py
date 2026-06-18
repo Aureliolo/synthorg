@@ -217,8 +217,7 @@ class AgentObservabilityController(Controller):
             agent_id=agent_id,
         )
         try:
-            budget_cfg = await config_resolver_of(app_state).get_budget_config()
-            currency = budget_cfg.currency
+            currency = await config_resolver_of(app_state).get_str("budget", "currency")
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(

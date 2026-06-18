@@ -452,7 +452,7 @@ class ActivityFeedService:
         if self._config_resolver is None:
             return DEFAULT_CURRENCY
         try:
-            budget = await self._config_resolver.get_budget_config()
+            currency = await self._config_resolver.get_str("budget", "currency")
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
@@ -462,7 +462,7 @@ class ActivityFeedService:
                 error=safe_error_description(exc),
             )
             return DEFAULT_CURRENCY
-        return str(budget.currency)
+        return currency
 
     async def _fetch_lifecycle(
         self,

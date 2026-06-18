@@ -353,8 +353,7 @@ class BudgetController(Controller):
             Paginated cost records with daily and period summaries.
         """
         app_state: AppState = state.app_state
-        budget_cfg = await config_resolver_of(app_state).get_budget_config()
-        currency = budget_cfg.currency
+        currency = await config_resolver_of(app_state).get_str("budget", "currency")
         records = await require_service(
             app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
         ).get_records(
@@ -446,7 +445,7 @@ class BudgetController(Controller):
             Agent spending envelope.
         """
         app_state: AppState = state.app_state
-        budget_cfg = await config_resolver_of(app_state).get_budget_config()
+        currency = await config_resolver_of(app_state).get_str("budget", "currency")
         total = await require_service(
             app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
         ).get_agent_cost(agent_id)
@@ -454,6 +453,6 @@ class BudgetController(Controller):
             data=AgentSpending(
                 agent_id=agent_id,
                 total_cost=total,
-                currency=budget_cfg.currency,
+                currency=currency,
             ),
         )

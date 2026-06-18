@@ -27,9 +27,9 @@ pytestmark = pytest.mark.unit
 
 
 class _ExplodingResolver:
-    """Stand-in ``ConfigResolver`` that raises on ``get_budget_config``."""
+    """Stand-in ``ConfigResolver`` that raises on ``get_str``."""
 
-    async def get_budget_config(self) -> NoReturn:
+    async def get_str(self, namespace: str, key: str) -> NoReturn:
         msg = "synthetic budget config outage"
         raise RuntimeError(msg)
 

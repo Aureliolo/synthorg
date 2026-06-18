@@ -93,7 +93,7 @@ class AnalyticsForecastController(Controller):
             days_until_exhausted=forecast.days_until_exhausted,
         )
 
-        budget_cfg = await config_resolver_of(app_state).get_budget_config()
+        currency = await config_resolver_of(app_state).get_str("budget", "currency")
         return ApiResponse(
             data=ForecastResponse(
                 horizon_days=horizon_days,
@@ -102,6 +102,6 @@ class AnalyticsForecastController(Controller):
                 days_until_exhausted=forecast.days_until_exhausted,
                 confidence=forecast.confidence,
                 avg_daily_spend=forecast.avg_daily_spend,
-                currency=budget_cfg.currency,
+                currency=currency,
             ),
         )

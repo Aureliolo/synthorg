@@ -704,8 +704,8 @@ class TestDegradedSources:
         )
         # Break the config resolver
         app_state = async_test_client.app.state.app_state
-        original = config_resolver_of(app_state).get_budget_config
-        cast(Any, config_resolver_of(app_state)).get_budget_config = AsyncMock(  # type: ignore[explicit-any]  # reach into config-resolver internals
+        original = config_resolver_of(app_state).get_str
+        cast(Any, config_resolver_of(app_state)).get_str = AsyncMock(  # type: ignore[explicit-any]  # reach into config-resolver internals
             side_effect=RuntimeError("simulated failure"),
         )
         try:
@@ -713,7 +713,7 @@ class TestDegradedSources:
             assert resp.status_code == 200
             assert "budget_config" in resp.json()["degraded_sources"]
         finally:
-            cast(Any, config_resolver_of(app_state)).get_budget_config = original  # type: ignore[explicit-any]  # reach into config-resolver internals
+            cast(Any, config_resolver_of(app_state)).get_str = original  # type: ignore[explicit-any]  # reach into config-resolver internals
 
 
 class TestActivityFeedLifecycleCap:
