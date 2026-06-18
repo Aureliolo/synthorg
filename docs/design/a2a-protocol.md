@@ -26,7 +26,7 @@ This page is the status-and-architecture reference: what ships today, how it map
 | Webhook HMAC signature verification + replay protection | Shipped |
 | SSRF validation on outbound webhooks | Shipped |
 | Delegation guard on inbound requests (loop prevention) | Shipped |
-| Quadratic communication enforcement strategies | Planned (detection ships today; enforcement is opt-in behind `alert_only`) |
+| Quadratic communication enforcement strategies | Shipped (all four modes: `alert_only` default, `soft_throttle`, `hard_block`, `disabled`) |
 | Full A2A skill negotiation workflow | Planned |
 | Inter-org federation patterns (delegation across organisations) | Planned |
 
@@ -94,14 +94,14 @@ See [Communication Coordination -> Loop Prevention](communication-coordination.m
 
 `MessageOverhead.is_quadratic` flags configurations where pairwise agent-to-agent messaging approaches `O(n^2)`. External agent federation can amplify this (every external connection potentially talks to every internal agent).
 
-Four enforcement strategies are defined behind `QuadraticEnforcementStrategy`. Only `alert_only` is wired into `MessageBus.publish`; the other three are accepted in config and surface in resolution responses, but the per-mode behaviour is not yet implemented.
+Four enforcement strategies are defined behind `QuadraticEnforcementStrategy` and wired into the in-memory bus (`message_bus.quadratic_enforcement`). Detection compares a sliding-window inter-agent publish count against `team_size^2 * quadratic_threshold`; the strategy decides the response. Every mode emits a structured `communication.quadratic.detected` event (rate-limited to once per window) and, when the dispatcher is wired, a `NotificationDispatcher` warning.
 
 | Strategy | Status | Behaviour |
 |----------|--------|-----------|
-| `alert_only` (default) | Shipped | Detect and emit `NotificationDispatcher` warnings |
-| `soft_throttle` | Planned | Auto-tighten rate limiter on the affected agent group |
-| `hard_block` | Planned | Reject new connections when `max_agent_connections` exceeded |
-| `disabled` | Planned | No detection or enforcement |
+| `alert_only` (default) | Shipped | Detect and emit warning event + `NotificationDispatcher` notification |
+| `soft_throttle` | Shipped | Alert, then apply publish backpressure (per-publish delay) to the over-communicating bus |
+| `hard_block` | Shipped | Alert, then reject new agent connections once the live participant count reaches `max_agent_connections` |
+| `disabled` | Shipped | No detection or enforcement (zero hot-path cost) |
 
 See [Security -> Quadratic Communication Enforcement](security.md#quadratic-communication-enforcement) for the config surface.
 

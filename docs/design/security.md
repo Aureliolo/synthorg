@@ -593,35 +593,40 @@ before connection.
 
 ### Quadratic Communication Enforcement
 
-The existing `MessageOverhead.is_quadratic` detection (see
+The `MessageOverhead.is_quadratic` detection (see
 [Microservices Anti-Patterns](communication-coordination.md#microservices-anti-patterns-assessment))
-will be extended with a pluggable `QuadraticEnforcementStrategy` protocol. This is
-particularly relevant for A2A federation where external agent connections can amplify
-quadratic scaling. Currently, only detection exists. Enforcement strategies are
-proposed below.
+is enforced on the in-memory message bus via the
+`QuadraticEnforcementStrategy` enum. This is particularly relevant for A2A
+federation where external agent connections can amplify quadratic scaling. The
+enforcer compares a sliding-window inter-agent publish count against
+`team_size^2 * quadratic_threshold`; the strategy decides the response. Detection
+runs only once the participant count reaches `min_team_size`.
 
-Four built-in strategies are planned:
+Four built-in strategies ship:
 
 | Strategy | Behaviour | Default |
 |----------|----------|---------|
-| `alert_only` | Current behaviour; detect and notify via `NotificationDispatcher` | Yes |
-| `soft_throttle` | Auto-tighten rate limiter for affected agent group by `rate_reduction_factor` | No |
-| `hard_block` | Reject new connections when agent count exceeds `max_agent_connections` | No |
-| `disabled` | No detection or enforcement | No |
+| `alert_only` | Detect and emit a `communication.quadratic.detected` event + `NotificationDispatcher` warning | Yes |
+| `soft_throttle` | Alert, then apply publish backpressure (`throttle_delay_seconds`) to the over-communicating bus | No |
+| `hard_block` | Alert, then reject new agent connections once the participant count reaches `max_agent_connections` (raises `QuadraticConnectionBlockedError`, HTTP 429) | No |
+| `disabled` | No detection or enforcement (zero hot-path cost) | No |
 
-The strategy will be pluggable via the `QuadraticEnforcementStrategy` protocol; custom
-strategies can be registered without modifying built-in code.
+Alerts are rate-limited to one per `window_seconds` so a sustained burst does not
+flood the log or the notification channel. The config lives under
+`communication.message_bus.quadratic_enforcement`:
 
 ???+ example "Quadratic enforcement configuration"
 
     ```yaml
-    loop_prevention:
-      quadratic_enforcement:
-        strategy: "alert_only"         # alert_only, soft_throttle, hard_block, disabled
-        soft_throttle:
-          rate_reduction_factor: 0.5   # halve rate limits for affected group
-        hard_block:
-          max_agent_connections: 20    # reject connections beyond this count
+    communication:
+      message_bus:
+        quadratic_enforcement:
+          strategy: "alert_only"        # alert_only, soft_throttle, hard_block, disabled
+          quadratic_threshold: 0.5      # fraction of team_size^2 marking a window quadratic
+          window_seconds: 60.0          # sliding window for counting publishes
+          min_team_size: 3              # smallest team for which detection runs
+          throttle_delay_seconds: 0.05  # backpressure delay under soft_throttle
+          max_agent_connections: 50     # participant ceiling under hard_block
     ```
 
 ### A2AConfig

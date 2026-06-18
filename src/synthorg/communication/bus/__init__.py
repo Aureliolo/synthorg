@@ -10,6 +10,7 @@ See ``docs/design/distributed-runtime.md`` for the overall design.
 
 from synthorg.communication.bus._nats_utils import redact_url
 from synthorg.communication.bus.memory import InMemoryMessageBus
+from synthorg.communication.bus.quadratic_enforcement import QuadraticEnforcer
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.config import MessageBusConfig
 from synthorg.communication.enums import MessageBusBackend
@@ -48,7 +49,8 @@ def build_message_bus(config: MessageBusConfig) -> MessageBus:
     """
     match config.backend:
         case MessageBusBackend.INTERNAL:
-            return InMemoryMessageBus(config=config)
+            enforcer = QuadraticEnforcer(config=config.quadratic_enforcement)
+            return InMemoryMessageBus(config=config, quadratic_enforcer=enforcer)
         case MessageBusBackend.NATS:
             from synthorg.communication.bus.nats import (  # noqa: PLC0415
                 JetStreamMessageBus,

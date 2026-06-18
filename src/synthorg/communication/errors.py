@@ -133,6 +133,24 @@ class DelegationDuplicateError(DelegationLoopError):
     """Duplicate delegation detected within dedup window."""
 
 
+class QuadraticConnectionBlockedError(CommunicationError):
+    """A new agent connection is rejected under quadratic ``hard_block``.
+
+    Raised by the message bus when the ``hard_block`` quadratic
+    enforcement strategy is active and admitting another agent would
+    push the live participant count past ``max_agent_connections``.
+    The category is rate-limit (HTTP 429) so a caller treats it as a
+    capacity rejection to retry later, not a permanent fault.
+    """
+
+    status_code: ClassVar[int] = 429
+    error_code: ClassVar[ErrorCode] = ErrorCode.AGENT_CONNECTION_LIMIT_EXCEEDED
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.RATE_LIMIT
+    retryable: ClassVar[bool] = True
+    is_retryable: ClassVar[bool] = True
+    default_message: ClassVar[str] = "Agent connection limit exceeded"
+
+
 class HierarchyResolutionError(CommunicationError):
     """Error resolving organizational hierarchy."""
 

@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from typing import Final, NoReturn, cast
 
 from synthorg.communication.bus.persistence import DequeHistoryAccessor
+from synthorg.communication.bus.quadratic_enforcement import QuadraticEnforcer
 from synthorg.communication.channel import Channel
 from synthorg.communication.config import MessageBusConfig
 from synthorg.communication.enums import ChannelType
@@ -22,6 +23,7 @@ from synthorg.communication.errors import (
     MessageBusAlreadyRunningError,
     MessageBusNotRunningError,
     NotSubscribedError,
+    QuadraticConnectionBlockedError,
 )
 from synthorg.communication.message import Message
 from synthorg.communication.subscription import (
@@ -114,9 +116,14 @@ class InMemoryMessageBus:
         *,
         config: MessageBusConfig,
         clock: Clock | None = None,
+        quadratic_enforcer: QuadraticEnforcer | None = None,
     ) -> None:
         self._config = config
         self._clock = clock or SystemClock()
+        # O(n^2) message-overhead enforcer. Built from
+        # ``config.quadratic_enforcement`` by the factory; ``None`` only
+        # in bare test construction (enforcement is then a no-op).
+        self._quadratic_enforcer = quadratic_enforcer
         # Eager init: ``publish`` / ``subscribe`` / ``receive`` may be
         # called before any background lifecycle task runs, so the
         # hot-path bus lock must exist before the first acquire.
@@ -150,6 +157,16 @@ class InMemoryMessageBus:
         self._shutdown_event = asyncio.Event()  # lint-allow: loop-bound-init -- see.
         self._idle_poll_count: int = 0
         self._last_idle_summary: float = self._clock.monotonic()
+
+    @property
+    def quadratic_enforcer(self) -> QuadraticEnforcer | None:
+        """The O(n^2) message-overhead enforcer, if one is wired.
+
+        Exposed so boot wiring can late-bind the alert sink to the
+        ``NotificationDispatcher`` once it is available (the bus is
+        built in the construction phase, before the dispatcher).
+        """
+        return self._quadratic_enforcer
 
     @property
     def is_running(self) -> bool:
@@ -246,6 +263,36 @@ class InMemoryMessageBus:
             logger.warning(COMM_BUS_NOT_RUNNING)
             msg = "Message bus is not running"
             raise MessageBusNotRunningError(msg)
+
+    def _reject_new_agents_if_blocked(self, agent_ids: tuple[str, ...]) -> None:
+        """Reject newly-joining agents under the ``hard_block`` strategy.
+
+        Existing participants are always re-admitted (idempotent
+        subscribe / repeat direct messages); only agents not yet in
+        ``_known_agents`` consult the enforcer. Must be called under
+        ``self._lock`` so the ``_known_agents`` read is consistent.
+
+        Raises:
+            QuadraticConnectionBlockedError: When the enforcer rejects a
+                new agent because the participant ceiling is reached.
+        """
+        enforcer = self._quadratic_enforcer
+        if enforcer is None:
+            return
+        for agent_id in agent_ids:
+            if agent_id in self._known_agents:
+                continue
+            if not enforcer.admit_agent(
+                current_agent_count=len(self._known_agents),
+            ):
+                msg = (
+                    f"Agent {agent_id!r} rejected: quadratic hard_block "
+                    "participant ceiling reached"
+                )
+                raise QuadraticConnectionBlockedError(
+                    msg,
+                    context={"agent_id": agent_id},
+                )
 
     def _ensure_queue(
         self,
@@ -363,6 +410,12 @@ class InMemoryMessageBus:
             message_id=str(message.id),
             type=str(message.type),
         )
+        # Enforce outside the lock: soft_throttle awaits a backpressure
+        # delay that must not stall other bus traffic.
+        if self._quadratic_enforcer is not None:
+            await self._quadratic_enforcer.on_publish(
+                team_size=len(self._known_agents),
+            )
 
     async def send_direct(
         self,
@@ -386,6 +439,8 @@ class InMemoryMessageBus:
             MessageBusNotRunningError: If not running.
             ValueError: If *recipient* does not match ``message.to``,
                 or if agent IDs contain the separator character.
+            QuadraticConnectionBlockedError: If a new agent would breach
+                the quadratic ``hard_block`` participant ceiling.
         """
         sender = message.sender
         if message.to != recipient:
@@ -411,6 +466,7 @@ class InMemoryMessageBus:
         channel_name = f"@{pair[0]}:{pair[1]}"
         async with self._lock:
             self._require_running()
+            self._reject_new_agents_if_blocked(pair)
             self._ensure_direct_channel(channel_name, pair)
             self._deliver_to_pair(channel_name, pair, message)
         logger.info(
@@ -420,6 +476,10 @@ class InMemoryMessageBus:
             recipient=recipient,
             message_id=str(message.id),
         )
+        if self._quadratic_enforcer is not None:
+            await self._quadratic_enforcer.on_publish(
+                team_size=len(self._known_agents),
+            )
 
     async def publish_batch(
         self,
@@ -541,11 +601,14 @@ class InMemoryMessageBus:
         Raises:
             MessageBusNotRunningError: If not running.
             ChannelNotFoundError: If the channel does not exist.
+            QuadraticConnectionBlockedError: If this is a new agent and
+                the quadratic ``hard_block`` participant ceiling is hit.
         """
         async with self._lock:
             self._require_running()
             if channel_name not in self._channels:
                 _raise_channel_not_found(channel_name)
+            self._reject_new_agents_if_blocked((subscriber_id,))
             self._known_agents.add(subscriber_id)
             channel = self._channels[channel_name]
             if subscriber_id in channel.subscribers:
