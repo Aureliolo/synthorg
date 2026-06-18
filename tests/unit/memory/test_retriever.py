@@ -478,10 +478,7 @@ class TestMemoryFilterIntegration:
         entry = _make_entry(content="all memories pass")
         strategy = ContextInjectionStrategy(
             backend=_make_backend((entry,)),
-            config=MemoryRetrievalConfig(
-                min_relevance=0.0,
-                non_inferable_only=False,
-            ),
+            config=MemoryRetrievalConfig(min_relevance=0.0),
             memory_filter=None,
         )
         result = await strategy.prepare_messages(
@@ -509,40 +506,6 @@ class TestMemoryFilterIntegration:
             token_budget=5000,
         )
         assert result == ()
-
-    async def test_non_inferable_only_config_creates_filter(self) -> None:
-        """non_inferable_only=True auto-creates TagBasedMemoryFilter."""
-        tagged = _make_entry(
-            entry_id="tagged",
-            content="tagged memory",
-            relevance_score=0.9,
-        )
-        tagged = tagged.model_copy(
-            update={"metadata": MemoryMetadata(tags=(NON_INFERABLE_TAG,))},
-        )
-        untagged = _make_entry(
-            entry_id="untagged",
-            content="untagged memory",
-            relevance_score=0.9,
-        )
-        strategy = ContextInjectionStrategy(
-            backend=_make_backend((tagged, untagged)),
-            config=MemoryRetrievalConfig(
-                min_relevance=0.0,
-                non_inferable_only=True,
-            ),
-        )
-        result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=5000,
-        )
-        assert len(result) == 2
-        _, memory_message = result
-        content = memory_message.content
-        assert content is not None
-        assert "tagged memory" in content
-        assert "untagged memory" not in content
 
     async def test_memory_filter_strategy_tag_based(self) -> None:
         """memory_filter_strategy='tag_based' retains only tagged memories."""

@@ -142,11 +142,6 @@ _GUARDED_ENDPOINTS: tuple[tuple[Path, str, str], ...] = (
         "artifacts.create",
     ),
     (
-        _CONTROLLERS_DIR / "events" / "stream.py",
-        "resume_interrupt",
-        "interrupts.resume",
-    ),
-    (
         _CONTROLLERS_DIR / "events" / "interrupts.py",
         "resume",
         "interrupts.resume",

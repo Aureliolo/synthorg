@@ -17,6 +17,7 @@ import pytest
 
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.approval_protocol import (
     ApprovalFilterSpec,
@@ -542,6 +543,70 @@ class TestApprovalRepository:
             to_state=ApprovalStatus.EXPIRED,
         )
         assert result is False
+
+    async def test_transition_if_writes_decision_triple_on_approved(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        repo = _approval_repo(backend)
+        pending = _make_item(approval_id="trans-approve", status=ApprovalStatus.PENDING)
+        await repo.save(pending)
+        decided_at = datetime(2026, 2, 2, 9, 30, tzinfo=UTC)
+
+        result = await repo.transition_if(
+            str(pending.id),
+            from_state=ApprovalStatus.PENDING,
+            to_state=ApprovalStatus.APPROVED,
+            decided_at=decided_at,
+            decided_by="ceo",
+        )
+        assert result is True
+
+        fetched = await repo.get(str(pending.id))
+        assert fetched is not None
+        assert fetched.status is ApprovalStatus.APPROVED
+        assert fetched.decided_at == decided_at
+        assert fetched.decided_by == "ceo"
+
+    async def test_transition_if_writes_reason_on_rejected(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        repo = _approval_repo(backend)
+        pending = _make_item(approval_id="trans-reject", status=ApprovalStatus.PENDING)
+        await repo.save(pending)
+        decided_at = datetime(2026, 2, 2, 10, 0, tzinfo=UTC)
+
+        result = await repo.transition_if(
+            str(pending.id),
+            from_state=ApprovalStatus.PENDING,
+            to_state=ApprovalStatus.REJECTED,
+            decided_at=decided_at,
+            decided_by="ceo",
+            decision_reason="insufficient evidence",
+        )
+        assert result is True
+
+        fetched = await repo.get(str(pending.id))
+        assert fetched is not None
+        assert fetched.status is ApprovalStatus.REJECTED
+        assert fetched.decision_reason == "insufficient evidence"
+
+    async def test_transition_if_rejects_unknown_update_key(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        repo = _approval_repo(backend)
+        pending = _make_item(approval_id="trans-badkey", status=ApprovalStatus.PENDING)
+        await repo.save(pending)
+
+        with pytest.raises(QueryError):
+            await repo.transition_if(
+                str(pending.id),
+                from_state=ApprovalStatus.PENDING,
+                to_state=ApprovalStatus.APPROVED,
+                bogus_field="nope",
+            )
 
     async def test_consume_if_approved_wins_once_then_rejects_replay(
         self,

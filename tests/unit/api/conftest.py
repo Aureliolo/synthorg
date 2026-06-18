@@ -85,8 +85,6 @@ _app_mod.create_app = create_app
 _TEST_JWT_SECRET = "test-secret-that-is-at-least-32-characters-long"
 # Hardcoded valid Fernet key (deterministic across xdist workers).
 _TEST_SETTINGS_KEY = "lKzZcMznksIF8A_2HFFUnKxhxhz9_bxTvVJoZ6mvZrk="
-_TEST_USER_ID = "test-user-001"
-_TEST_USERNAME = "testadmin"
 
 
 # Production argon2 hasher uses memory_cost=65536 (64 MiB per hash)
@@ -240,27 +238,6 @@ def _get_test_password_hash(
                 raise errors[0]
             _TEST_PASSWORD_HASHES[role] = result[0]
         return _TEST_PASSWORD_HASHES[role]
-
-
-def _make_test_user(
-    *,
-    role: HumanRole = HumanRole.CEO,
-    must_change_password: bool = False,
-    user_id: str = _TEST_USER_ID,
-    username: str = _TEST_USERNAME,
-) -> User:
-    """Create a test User with given role."""
-    now = datetime.now(UTC)
-    auth_service = _make_test_auth_service()
-    return User(
-        id=user_id,
-        username=username,
-        password_hash=_get_test_password_hash(role.value, auth_service),
-        role=role,
-        must_change_password=must_change_password,
-        created_at=now,
-        updated_at=now,
-    )
 
 
 def make_auth_headers(
