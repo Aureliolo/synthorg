@@ -29,6 +29,7 @@ from synthorg.observability.events.security import (
 from synthorg.observability.events.tool import (
     TOOL_INVOKE_ALL_COMPLETE,
     TOOL_INVOKE_ALL_START,
+    TOOL_INVOKE_CONFIG_INVALID,
     TOOL_INVOKE_EXECUTION_ERROR,
     TOOL_INVOKE_NON_RECOVERABLE,
     TOOL_INVOKE_NOT_FOUND,
@@ -992,6 +993,12 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
 
         if max_concurrency is not None and max_concurrency < 1:
             msg = f"max_concurrency must be >= 1, got {max_concurrency}"
+            logger.warning(
+                TOOL_INVOKE_CONFIG_INVALID,
+                reason="non_positive_max_concurrency",
+                max_concurrency=max_concurrency,
+                error_type=ValueError.__name__,
+            )
             raise ValueError(msg)
 
         calls = list(tool_calls)

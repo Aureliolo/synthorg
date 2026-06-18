@@ -364,6 +364,12 @@ class BrowserTool(BaseTool):
         """
         url = self._resolve_url(args)
         if args.screenshot_name is None or args.spec_name is None:
+            logger.warning(
+                BROWSER_ARGS_VALIDATION_FAILED,
+                mode="screenshot",
+                reason="missing_spec_or_screenshot_name",
+                error_type=BrowserArgumentError.__name__,
+            )
             raise BrowserArgumentError(
                 "screenshot mode requires spec_name and screenshot_name",
             )
@@ -463,6 +469,12 @@ class BrowserTool(BaseTool):
         """
         url = self._resolve_url(args)
         if args.spec_name is None or args.screenshot_name is None:
+            logger.warning(
+                BROWSER_ARGS_VALIDATION_FAILED,
+                mode="diff",
+                reason="missing_spec_or_screenshot_name",
+                error_type=BrowserArgumentError.__name__,
+            )
             raise BrowserArgumentError(
                 "diff mode requires spec_name and screenshot_name",
             )
@@ -506,6 +518,12 @@ class BrowserTool(BaseTool):
         """
         url = self._resolve_url(args)
         if args.spec_name is None or args.screenshot_name is None:
+            logger.warning(
+                BROWSER_ARGS_VALIDATION_FAILED,
+                mode="spec",
+                reason="missing_spec_or_screenshot_name",
+                error_type=BrowserArgumentError.__name__,
+            )
             raise BrowserArgumentError(
                 "spec mode requires spec_name and screenshot_name",
             )
@@ -701,6 +719,13 @@ class BrowserTool(BaseTool):
             # re-enter the compare path against the now-present
             # baseline rather than treating a missed comparison as
             # success.
+            logger.warning(
+                BROWSER_DIFF_FAILED,
+                spec_name=args.spec_name,
+                screenshot_name=args.screenshot_name,
+                reason="baseline_created_by_concurrent_writer",
+                error_type=BrowserDiffError.__name__,
+            )
             raise BrowserDiffError(
                 "Baseline was created by a concurrent writer; retry the diff",
                 context={
@@ -1072,6 +1097,11 @@ class BrowserTool(BaseTool):
             # traversal-checked. Loopback and private targets stay allowed:
             # the browser drives the app-under-test inside the sandbox.
             if not is_allowed_http_scheme(args.url):
+                logger.warning(
+                    BROWSER_ARGS_VALIDATION_FAILED,
+                    reason="disallowed_url_scheme",
+                    error_type=BrowserArgumentError.__name__,
+                )
                 raise BrowserArgumentError(
                     "url must use http:// or https:// (use the 'path' "
                     "field for workspace-relative local files)",
@@ -1085,6 +1115,11 @@ class BrowserTool(BaseTool):
             # test runs on localhost or a docker-network address.
             host = extract_hostname(args.url)
             if host is not None and is_cloud_metadata_host(host):
+                logger.warning(
+                    BROWSER_ARGS_VALIDATION_FAILED,
+                    reason="cloud_metadata_endpoint_blocked",
+                    error_type=BrowserArgumentError.__name__,
+                )
                 raise BrowserArgumentError(
                     "url must not target a link-local or cloud-metadata endpoint",
                     context={"url": args.url},
@@ -1095,6 +1130,12 @@ class BrowserTool(BaseTool):
             self._reject_path_traversal(normalised)
             container_rel = normalised.lstrip("/")
             return f"file://{CONTAINER_WORKSPACE_ROOT}/{container_rel}"
+        logger.warning(
+            BROWSER_ARGS_VALIDATION_FAILED,
+            mode=args.mode,
+            reason="missing_url_and_path",
+            error_type=BrowserArgumentError.__name__,
+        )
         raise BrowserArgumentError(
             f"{args.mode!r} mode requires url or path",
         )
@@ -1107,12 +1148,22 @@ class BrowserTool(BaseTool):
             BrowserArgumentError: If the related operation fails.
         """
         if path.startswith("/"):
+            logger.warning(
+                BROWSER_ARGS_VALIDATION_FAILED,
+                reason="absolute_path_rejected",
+                error_type=BrowserArgumentError.__name__,
+            )
             raise BrowserArgumentError(
                 "path must be workspace-relative, not absolute",
                 context={"path": path},
             )
         segments = path.split("/")
         if any(segment == ".." for segment in segments):
+            logger.warning(
+                BROWSER_ARGS_VALIDATION_FAILED,
+                reason="path_traversal_rejected",
+                error_type=BrowserArgumentError.__name__,
+            )
             raise BrowserArgumentError(
                 "path must not contain '..' segments",
                 context={"path": path},
