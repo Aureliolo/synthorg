@@ -6,7 +6,8 @@ management.  Repository protocols provide entity-level access.
 """
 
 from contextlib import AbstractAsyncContextManager
-from typing import Literal, Protocol, runtime_checkable
+from enum import StrEnum
+from typing import Protocol, runtime_checkable
 
 from synthorg.budget.config import BudgetConfig
 from synthorg.core.agent import AgentIdentity
@@ -183,6 +184,18 @@ from synthorg.versioning.service import (
 )
 
 
+class PersistenceBackendKind(StrEnum):
+    """Discriminator for the active persistence backend.
+
+    A ``StrEnum`` so existing call sites that key a dispatch table by the
+    raw string (``builders.get(backend.kind)``) keep working: each member
+    hashes and compares equal to its string value.
+    """
+
+    SQLITE = "sqlite"
+    POSTGRES = "postgres"
+
+
 @runtime_checkable
 class PersistenceBackend(Protocol):
     """Lifecycle management for operational data storage.
@@ -253,14 +266,15 @@ class PersistenceBackend(Protocol):
     """
 
     @property
-    def kind(self) -> Literal["sqlite", "postgres"]:
-        """Return the backend's discriminator string.
+    def kind(self) -> PersistenceBackendKind:
+        """Return the backend's discriminator.
 
-        One of ``"sqlite"`` or ``"postgres"``. Used by call sites that
+        One of :class:`PersistenceBackendKind`. Used by call sites that
         need to pick a backend-specific helper (e.g. backup handler
-        factories) without ``isinstance`` checks. The ``Literal`` type
-        means mypy rejects an implementation that returns any other
-        string.
+        factories) without ``isinstance`` checks. The enum type means
+        mypy rejects an implementation that returns any other value, and
+        because it is a ``StrEnum`` it still keys string-keyed dispatch
+        tables.
         """
         ...
 

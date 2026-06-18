@@ -56,6 +56,7 @@ from synthorg.observability.prometheus_recording._base import _PUSH_ALIASED_METR
 from synthorg.observability.prometheus_recording_streams import (
     StreamRecordingMixin,
 )
+from synthorg.persistence.protocol import PersistenceBackendKind
 from synthorg.persistence.state import PersistenceStateSlice, persistence_of
 
 if TYPE_CHECKING:
@@ -283,7 +284,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         if app_state.slice(PersistenceStateSlice).backend is None:
             return
         backend = persistence_of(app_state)
-        if backend.kind != "postgres":
+        if backend.kind != PersistenceBackendKind.POSTGRES:
             return
         pool = getattr(backend, "_pool", None)
         if pool is None:
