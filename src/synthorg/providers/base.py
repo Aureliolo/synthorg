@@ -1,3 +1,4 @@
+# module-kind: adapter
 """Abstract base class for completion providers.
 
 Concrete adapters subclass ``BaseCompletionProvider`` and implement

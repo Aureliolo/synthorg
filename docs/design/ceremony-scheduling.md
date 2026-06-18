@@ -73,7 +73,7 @@ level.
 
 ```mermaid
 flowchart TD
-    TE["TaskEngine"] -->|TaskStateChanged| CS["CeremonyScheduler"]
+    TENG["TaskEngine"] -->|TaskStateChanged| CS["CeremonyScheduler"]
     CS -->|auto-transition| SL["Sprint lifecycle"]
     SCC["SprintCeremonyConfig"] -->|bridge| MTC["MeetingTypeConfig"]
     CS --> MS["MeetingScheduler.trigger_event()"]

@@ -20,6 +20,7 @@ from pydantic import ValidationError
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.evidence import EvidencePackage
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.core.persistence_errors import (
     ConstraintViolationError,
     MalformedRowError,
@@ -73,7 +74,7 @@ def _classify_sqlite_integrity(exc: sqlite3.IntegrityError) -> tuple[str, str | 
         ``(constraint_label, sqlstate)``.
     """
     head, _, target = str(exc).partition(":")
-    kind = head.strip().lower()
+    kind = normalize_ascii_lowercase(head)
     label = target.strip() or ConstraintViolationError.UNKNOWN_CONSTRAINT
     if kind == "unique constraint failed":
         return label, _SQLSTATE_UNIQUE
