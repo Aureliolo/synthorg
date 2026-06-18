@@ -23,7 +23,6 @@ CONFLICT_HYBRID_REVIEW: Final[str] = "conflict.hybrid.review"
 CONFLICT_HYBRID_AUTO_RESOLVED: Final[str] = "conflict.hybrid.auto_resolved"
 
 # Human escalation
-CONFLICT_HUMAN_ESCALATION_STUB: Final[str] = "conflict.human.escalation_stub"
 CONFLICT_ESCALATION_QUEUED: Final[str] = "conflict.escalation.queued"
 CONFLICT_ESCALATION_RESOLVED: Final[str] = "conflict.escalation.resolved"
 CONFLICT_ESCALATION_DECISION_FAILED: Final[str] = "conflict.escalation.decision.failed"
