@@ -181,7 +181,7 @@ The loader applies the Pydantic schema, then runs validation hooks:
 
 - Currency consistency (`budget.currency` must match per-project currencies).
 - Cross-section references (`agents[].role` must appear in some `departments[].roles`).
-- Allowlist enforcement (channels in `notifications.routing[].channels` must exist).
+- Allowlist enforcement (`notifications.sinks[].type` must be a supported sink adapter).
 
 Failures surface at startup with a typed `ConfigValidationError` and a line/column pointer into the YAML.
 

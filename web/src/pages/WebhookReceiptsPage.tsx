@@ -287,11 +287,10 @@ function WebhookReceiptsTable({
 
   const sortedEntries = useMemo(() => {
     const factor = receivedSortDir === 'asc' ? 1 : -1
-    return [...entries].sort(
-      (a, b) =>
-        (new Date(a.received_at).getTime() - new Date(b.received_at).getTime()) * factor,
-    )
+    const at = (r: WebhookReceipt) => new Date(r.received_at).getTime()
+    return [...entries].sort((a, b) => (at(a) - at(b)) * factor)
   }, [entries, receivedSortDir])
+  const receivedSortLabel = receivedSortDir === 'asc' ? 'ascending' : 'descending'
 
   return (
     <SectionCard title="Recent receipts">
@@ -311,12 +310,12 @@ function WebhookReceiptsTable({
                   disabled={retryableIds.length === 0}
                 />
               </th>
-              <th className="py-2 pr-4">
+              <th className="py-2 pr-4" aria-sort={receivedSortLabel}>
                 <button
                   type="button"
                   onClick={() => setReceivedSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
                   className="inline-flex items-center gap-1 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
-                  aria-label="Sort by received time"
+                  aria-label={`Sort by received time (${receivedSortLabel})`}
                 >
                   Received
                   {receivedSortDir === 'asc' ? (

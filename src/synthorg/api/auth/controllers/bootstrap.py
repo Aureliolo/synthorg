@@ -26,7 +26,7 @@ from synthorg.api.auth.service import AuthService
 from synthorg.api.auth.system_user import SYSTEM_USERNAME
 from synthorg.api.auth.user_constraints import raise_for_user_constraint
 from synthorg.api.dto import ApiResponse
-from synthorg.core.auth.models import User
+from synthorg.core.auth.models import OrgRole, User
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.domain_errors import ConflictError
 from synthorg.core.persistence_errors import ConstraintViolationError
@@ -108,6 +108,7 @@ class AuthBootstrapController(Controller):
             password_hash=password_hash,
             role=HumanRole.CEO,
             must_change_password=False,
+            org_roles=(OrgRole.OWNER,),
             created_at=now,
             updated_at=now,
         )

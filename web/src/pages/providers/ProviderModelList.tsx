@@ -130,15 +130,19 @@ export function ProviderModelList({
   const hasActions = supportsDelete || supportsConfig
   const [query, setQuery] = useState('')
 
+  // Show the search box only once the list is long enough to warrant filtering.
+  const showSearch = models.length >= MODEL_SEARCH_THRESHOLD
+
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
+    // When the search input is hidden (list below threshold), ignore any
+    // residual query so the user is never stuck on "No matching models"
+    // with no visible way to clear the filter.
+    const q = (showSearch ? query : '').trim().toLowerCase()
     if (!q) return models
     return models.filter(
       (m) => m.id.toLowerCase().includes(q) || (m.alias?.toLowerCase().includes(q) ?? false),
     )
-  }, [models, query])
-
-  const showSearch = models.length >= MODEL_SEARCH_THRESHOLD
+  }, [models, query, showSearch])
 
   return (
     <SectionCard

@@ -17,7 +17,7 @@ Multiple agents may concurrently write to shared organisational memory. Without 
 consistency model, concurrent writes on the same fact produce undefined ordering, deleted facts
 may reappear, and there is no audit trail for "who changed this and when."
 
-The `OrgFactStore` protocol provides `save`, `delete`, and `query` operations but requires
+The `OrgFactRepository` protocol provides `save`, `delete`, and `query` operations but requires
 explicit concurrency semantics. This is essential even at launch (1--10 concurrent agents,
 low write frequency) to ensure correctness and auditability.
 
@@ -126,15 +126,15 @@ Implementation:
    (PUBLISH and RETRACT), indexed by fact_id, timestamp, and a composite (timestamp, fact_id).
 2. `org_facts_snapshot` table maintains the current committed state of all facts, indexed by
    category and an active-facts index (`WHERE retracted_at IS NULL`).
-3. `SQLiteOrgFactStore` implements the `OrgFactStore` protocol: `save()` appends a PUBLISH
+3. `SQLiteOrgFactRepository` implements the `OrgFactRepository` protocol: `save()` appends a PUBLISH
    row and upserts the snapshot; `delete()` appends a RETRACT row and marks the snapshot as
    retracted.
 4. `snapshot_at(timestamp)` and `get_operation_log(fact_id)` enable time-travel queries on
-   the `OrgFactStore` protocol.
+   the `OrgFactRepository` protocol.
 5. MVCC is the only implementation; no feature flag, no shim layer
    (pre-alpha, all data is ephemeral).
 
-Deviation note: MVCC methods live on `OrgFactStore` rather than `SharedKnowledgeStore`
+Deviation note: MVCC methods live on `OrgFactRepository` rather than `SharedKnowledgeStore`
 because organisational facts are a separate storage layer from cross-agent memory. The
 operation log and snapshot are implementation details of the org fact store, not of the
 Mem0-based shared knowledge system.
@@ -158,11 +158,12 @@ writes from other agents, no MVCC overhead needed. Sequential writes with the ex
 
 ## Implementation Reference
 
-The MVCC model is implemented in `src/synthorg/memory/org/`:
+The MVCC model spans the persistence boundary and the `memory/org` domain package:
 
-- **`store.py`**: `OrgFactStore` protocol defining the contract (connect, save, delete, get,
-  query, list_by_category, snapshot_at, get_operation_log).
-- **`sqlite_store.py`**: `SQLiteOrgFactStore` provides the SQLite implementation with WAL mode,
-  immediate transactions, and time-travel queries via CTE.
-- **`models.py`**: `OrgFact`, `OperationLogEntry`, `OperationLogSnapshot` domain models.
-- **`errors.py`**: Exception hierarchy (OrgMemoryConnectionError, OrgMemoryWriteError, etc.).
+- **`persistence/memory_protocol.py`**: `OrgFactRepository` protocol defining the contract
+  (save, delete, get, query, list_by_category, snapshot_at, get_operation_log).
+- **`persistence/sqlite/org_fact_repo.py`**: `SQLiteOrgFactRepository` provides the SQLite
+  implementation with WAL mode, immediate transactions, and time-travel queries via CTE
+  (`persistence/postgres/org_fact_repo.py` is the Postgres counterpart).
+- **`memory/org/models.py`**: `OrgFact`, `OperationLogEntry`, `OperationLogSnapshot` domain models.
+- **`memory/org/errors.py`**: Exception hierarchy (OrgMemoryConnectionError, OrgMemoryWriteError, etc.).

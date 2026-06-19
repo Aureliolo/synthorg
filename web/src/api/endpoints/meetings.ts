@@ -1,4 +1,4 @@
-import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
+import { apiClient, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 import type {
   MeetingFilters,
@@ -28,7 +28,8 @@ export async function triggerMeeting(
 }
 
 export async function deleteMeeting(meetingId: string): Promise<void> {
-  await apiClient.delete<ApiResponse<null>>(
+  const response = await apiClient.delete<ApiResponse<null>>(
     `/meetings/${encodeURIComponent(meetingId)}`,
   )
+  unwrapVoid(response)
 }

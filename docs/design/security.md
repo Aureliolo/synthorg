@@ -649,7 +649,7 @@ The gateway is configured under the `a2a` key in the company YAML:
         webhook_receiver:
           signature_algorithm: hmac-sha256
           clock_skew_seconds: 300        # timestamp tolerance
-          replay_window_seconds: 60      # nonce dedup window
+          replay_window_seconds: 300     # nonce dedup window
       rate_limiting:
         external_max_per_minute: 30      # per-external-agent rate limit
         external_burst_allowance: 5

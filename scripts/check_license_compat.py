@@ -454,7 +454,11 @@ def _check_web_copyleft(repo_root: Path) -> list[Violation]:
         raise SetupError(msg) from exc
     packages = lock.get("packages")
     if not isinstance(packages, dict):
-        return []
+        msg = (
+            "web/package-lock.json has no valid 'packages' map (expected a "
+            "lockfile v2/v3); cannot run JS copyleft classification"
+        )
+        raise SetupError(msg)
     violations: list[Violation] = []
     for location, entry in sorted(packages.items()):
         if not location or not isinstance(entry, dict):

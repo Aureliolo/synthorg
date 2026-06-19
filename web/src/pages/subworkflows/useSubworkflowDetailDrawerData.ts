@@ -129,7 +129,12 @@ async function runDetailsFetch(
         action: {
           label: 'Retry',
           onClick: () => {
-            void runDetailsFetch(subworkflow, setters, { cancelled: false })
+            // Reuse the existing cancellation token so a retry triggered
+            // after the drawer closed (or another subworkflow was
+            // selected) is a no-op and never updates stale state.
+            if (!ctrl.cancelled) {
+              void runDetailsFetch(subworkflow, setters, ctrl)
+            }
           },
         },
       })

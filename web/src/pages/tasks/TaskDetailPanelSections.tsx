@@ -50,16 +50,17 @@ interface TaskUpdateProps {
 }
 
 export function DescriptionEdit({ task, onUpdate }: TaskUpdateProps) {
+  const descriptionId = `task-description-edit-${task.id}`
   return (
     <div>
       <label
-        htmlFor="task-description-edit"
+        htmlFor={descriptionId}
         className="text-[11px] font-semibold uppercase tracking-wider text-text-muted"
       >
         Description
       </label>
       <InlineEdit
-        id="task-description-edit"
+        id={descriptionId}
         value={task.description}
         onSave={async (value) => {
           await onUpdate(task.id, { description: value, expected_version: task.version ?? null })
@@ -71,10 +72,11 @@ export function DescriptionEdit({ task, onUpdate }: TaskUpdateProps) {
 }
 
 export function PrioritySection({ task, onUpdate }: TaskUpdateProps) {
+  const priorityId = `task-priority-select-${task.id}`
   return (
     <div>
       <label
-        htmlFor="task-priority-select"
+        htmlFor={priorityId}
         className="text-[11px] font-semibold uppercase tracking-wider text-text-muted"
       >
         Priority
@@ -82,7 +84,7 @@ export function PrioritySection({ task, onUpdate }: TaskUpdateProps) {
       <div className="mt-1 flex items-center gap-2">
         <PriorityBadge priority={task.priority} />
         <select
-          id="task-priority-select"
+          id={priorityId}
           value={task.priority}
           onChange={(e) => {
             const priority = parsePriority(e.target.value)
@@ -106,12 +108,13 @@ export function PrioritySection({ task, onUpdate }: TaskUpdateProps) {
 }
 
 export function AssigneeSection({ task, onUpdate }: TaskUpdateProps) {
+  const assigneeId = `task-assignee-edit-${task.id}`
   return (
     <div>
       <div className="flex items-center gap-2">
         <User className="size-4 text-text-muted" />
         <label
-          htmlFor="task-assignee-edit"
+          htmlFor={assigneeId}
           className="text-[11px] font-semibold uppercase tracking-wider text-text-muted"
         >
           Assignee
@@ -120,7 +123,7 @@ export function AssigneeSection({ task, onUpdate }: TaskUpdateProps) {
       <div className="mt-1 flex items-center gap-2">
         {task.assigned_to && <Avatar name={task.assigned_to} size="sm" />}
         <InlineEdit
-          id="task-assignee-edit"
+          id={assigneeId}
           value={task.assigned_to ?? ''}
           onSave={async (value) => {
             await onUpdate(task.id, {

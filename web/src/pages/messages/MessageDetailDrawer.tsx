@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { Drawer } from '@/components/ui/drawer'
 import { Avatar } from '@/components/ui/avatar'
@@ -28,6 +28,17 @@ interface MessageDetailDrawerProps {
 export function MessageDetailDrawer({ message, open, onClose }: MessageDetailDrawerProps) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const deleting = useMessagesStore((s) => s.deleting)
+
+  // Reset the confirm state whenever the drawer closes or a different
+  // message is shown, so a stale confirmation never reopens against the
+  // wrong message.
+  useEffect(() => {
+    if (!open || !message) {
+      // eslint-disable-next-line @eslint-react/set-state-in-effect -- prop-to-local-state sync: clear confirm on close/message change
+      setConfirmDelete(false)
+    }
+  }, [open, message])
+
   return (
     <Drawer open={open} onClose={onClose} title={message?.sender ?? 'Message'}>
       {message && (

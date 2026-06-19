@@ -74,8 +74,27 @@ def _classify_sqlite_integrity(exc: sqlite3.IntegrityError) -> tuple[str, str | 
         ``(constraint_label, sqlstate)``.
     """
     head, _, target = str(exc).partition(":")
-    kind = normalize_ascii_lowercase(head)
     label = target.strip() or ConstraintViolationError.UNKNOWN_CONSTRAINT
+
+    # Prefer the extended result code: it classifies the violation kind
+    # reliably regardless of the SQLite build's localised message text,
+    # which the string parse below depends on. The message is still the
+    # only source for the ``table.column`` label, so both are used. A
+    # PRIMARY KEY clash is a uniqueness violation and maps to 23505.
+    ext_code = exc.sqlite_errorcode
+    if ext_code in (
+        sqlite3.SQLITE_CONSTRAINT_UNIQUE,
+        sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY,
+    ):
+        return label, _SQLSTATE_UNIQUE
+    if ext_code == sqlite3.SQLITE_CONSTRAINT_NOTNULL:
+        return label, _SQLSTATE_NOT_NULL
+    if ext_code == sqlite3.SQLITE_CONSTRAINT_FOREIGNKEY:
+        return "foreign_key", _SQLSTATE_FOREIGN_KEY
+    if ext_code == sqlite3.SQLITE_CONSTRAINT_CHECK:
+        return "check_constraint", None
+
+    kind = normalize_ascii_lowercase(head)
     if kind == "unique constraint failed":
         return label, _SQLSTATE_UNIQUE
     if kind == "not null constraint failed":

@@ -196,6 +196,14 @@ def test_web_copyleft_absent_lockfile_no_violation(tmp_path: Path) -> None:
     assert _MODULE._check_web_copyleft(tmp_path) == []
 
 
+def test_web_copyleft_missing_packages_map_fails_closed(tmp_path: Path) -> None:
+    # A readable lockfile with no 'packages' map must not silently pass:
+    # that would fail-open and let copyleft JS deps bypass enforcement.
+    _write(tmp_path / "web" / "package-lock.json", '{"lockfileVersion": 1}')
+    with pytest.raises(_MODULE.SetupError):
+        _MODULE._check_web_copyleft(tmp_path)
+
+
 # ── known-LGPL NOTICE coverage ──────────────────────────────────
 
 

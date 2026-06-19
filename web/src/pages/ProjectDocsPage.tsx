@@ -69,22 +69,27 @@ function useProjectDocsData(
 
   useEffect(() => {
     if (!projectId) return
+    let active = true
     const controller = new AbortController()
     // eslint-disable-next-line @eslint-react/set-state-in-effect -- reset the skeleton on each projectId change before the refetch resolves
     setListLoading(true)
+    // eslint-disable-next-line @eslint-react/set-state-in-effect -- clear a prior project's error up front so it does not linger while the new list loads
+    setListError(null)
     listProjectDocs(projectId, undefined, controller.signal)
       .then((result) => {
+        if (!active) return
         setDocs(result.data)
         setListError(null)
         setListLoading(false)
       })
       .catch((err: unknown) => {
-        if (isAxiosError(err) && err.code === 'ERR_CANCELED') return
+        if (!active || (isAxiosError(err) && err.code === 'ERR_CANCELED')) return
         log.warn('list docs failed', err)
         setListError('Could not load documents for this project.')
         setListLoading(false)
       })
     return () => {
+      active = false
       controller.abort()
     }
   }, [projectId])

@@ -7,10 +7,11 @@ workflow services, entry adapters, etc.), its core work-pipeline
 REST controllers (projects, tasks, workflows, workflow versions /
 executions, subworkflows, evaluation-config versions), and the tasks +
 workflows MCP domains (assembled in ``engine/_mcp.py``) mounted by the
-composition root. The objective and brownfield controllers mount only
-when their work-entry adapter is wired (predicates read the engine state
-slice); the adapters are wired during startup, so on the standard boot
-path these stay unmounted until a deployment wires them at construction.
+composition root. The objective and brownfield controllers mount
+unconditionally; their work-entry adapters wire during startup (after
+route assembly), so a predicate read at mount time would always be False
+and they would never mount on a standard boot. Their handlers resolve
+the adapter via ``require_service`` and return 503 until it is wired.
 The nested ``engine/cockpit`` and ``engine/workspace`` packages declare
 their own manifests.
 """

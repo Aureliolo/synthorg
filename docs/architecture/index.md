@@ -50,7 +50,7 @@ Templates -> Config
 | **providers** | LLM provider abstraction: LiteLLM adapter, capability matching, routing strategies (5), retry + rate limiting |
 | **communication** | Inter-agent messaging: bus, dispatcher, delegation, loop prevention, conflict resolution (4 strategies), meeting protocols (3) |
 | **memory** | Persistent agent memory: retrieval pipeline (ranking, filtering, injection), shared org memory, consolidation/archival |
-| **security** | Security subsystem: SecOps agent, rule engine (soft-allow/hard-deny), output scanner, progressive trust (3 strategies), autonomy levels, timeout policies |
+| **security** | Security subsystem: SecOps agent, rule engine (soft-allow/hard-deny), output scanner, progressive trust (4 strategies), autonomy levels, timeout policies |
 | **budget** | Cost management: cost tracking, budget enforcement (pre-flight/in-flight), auto-downgrade, quota/subscription, CFO optimiser, spending reports |
 | **hr** | Agent lifecycle: hiring, firing, onboarding, offboarding, registry, performance tracking, promotion/demotion |
 | **tools** | Tool system: registry, built-in tools (file system, git, sandbox, code runner), MCP bridge, role-based access |

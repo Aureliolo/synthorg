@@ -29,11 +29,16 @@ export function TaskHistory({ tasks, className }: TaskHistoryProps) {
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
   }, [tasks])
 
+  // Only the first MAX_VISIBLE_TASKS are rendered, so the duration
+  // baseline is scaled to that same slice -- a hidden older outlier
+  // must not compress every visible bar.
+  const visibleTasks = useMemo(() => sorted.slice(0, MAX_VISIBLE_TASKS), [sorted])
+
   // Compute max duration for relative bar widths.
   // Mirrors effectiveEndMs logic: fall back to created_at if updated_at is
   // unparseable or earlier.
   const maxDurationMs = useMemo(() => {
-    return sorted.reduce((max, task) => {
+    return visibleTasks.reduce((max, task) => {
       const createdMs = new Date(task.created_at).getTime()
       const endRaw = task.updated_at ?? task.created_at
       const endMs = new Date(endRaw).getTime()
@@ -41,7 +46,7 @@ export function TaskHistory({ tasks, className }: TaskHistoryProps) {
       const duration = end - createdMs
       return Math.max(max, duration)
     }, 1)
-  }, [sorted])
+  }, [visibleTasks])
 
   return (
     <SectionCard title="Task History" icon={ListTodo} className={className}>
@@ -54,7 +59,7 @@ export function TaskHistory({ tasks, className }: TaskHistoryProps) {
       ) : (
         <>
           <StaggerGroup className="space-y-1">
-            {sorted.slice(0, MAX_VISIBLE_TASKS).map((task) => (
+            {visibleTasks.map((task) => (
               <StaggerItem key={task.id}>
                 <TaskHistoryBar task={task} maxDurationMs={maxDurationMs} />
               </StaggerItem>
