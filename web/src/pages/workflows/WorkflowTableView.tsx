@@ -4,14 +4,13 @@ import { Menu } from '@base-ui/react/menu'
 import { useState } from 'react'
 import { ROUTES } from '@/router/routes'
 import { EmptyState } from '@/components/ui/empty-state'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { ConfirmDialog, type ConfirmHandler } from '@/components/ui/confirm-dialog'
 import { formatDateTime } from '@/utils/format'
 import type { WorkflowDefinition } from '@/api/types/workflows'
 
 interface WorkflowTableViewProps {
   workflows: readonly WorkflowDefinition[]
-  // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- intentional confirm-handler contract: false keeps the dialog open, void (sync or async) closes it
-  onDelete: (id: string) => boolean | void | Promise<boolean | void>
+  onDelete: ConfirmHandler<[string]>
   onDuplicate: (id: string) => void
   onExport: (id: string) => void | Promise<void>
   onToggleSelect?: (id: string) => void

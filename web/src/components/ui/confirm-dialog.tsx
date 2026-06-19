@@ -8,6 +8,20 @@ import { Button } from './button'
 
 const log = createLogger('ConfirmDialog')
 
+// eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- contract: false keeps the dialog open, void (sync or async) closes it
+type ConfirmReturn = boolean | void | Promise<boolean | void>
+
+/**
+ * Confirm / delete handler contract. Resolving to ``false`` keeps the
+ * dialog open so the caller can retry from the same surface; any other
+ * resolution (``void`` / ``undefined`` / ``true``, sync or async)
+ * closes it. ``Args`` types any leading arguments (e.g. the id of the
+ * row being deleted).
+ */
+export type ConfirmHandler<Args extends unknown[] = []> = (
+  ...args: Args
+) => ConfirmReturn
+
 export interface ConfirmDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -27,8 +41,7 @@ export interface ConfirmDialogProps {
    * caller propagates that as ``false`` here). Any other resolution
    * (``void`` / ``undefined`` / ``true``) closes the dialog.
    */
-  // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- intentional confirm-handler contract: false keeps the dialog open, void (sync or async) closes it
-  onConfirm: () => boolean | void | Promise<boolean | void>
+  onConfirm: ConfirmHandler
   /**
    * Optional handler invoked when the user explicitly clicks the
    * Cancel button. Dismissals via Escape or backdrop click do NOT
