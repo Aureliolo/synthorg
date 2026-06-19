@@ -389,38 +389,6 @@ export interface PaginatedResult<T> {
   }
 }
 
-interface ValidatedPagination {
-  readonly limit: number
-  readonly nextCursor: string | null
-  readonly hasMore: boolean
-}
-
-/**
- * Validate the pagination envelope's field types from an untrusted-wire view.
- *
- * The success-branch type declares the fields present and well-typed, but a
- * malformed backend envelope could omit them. Validating the runtime types
- * (not just presence) makes a malformed envelope fail loudly here rather than
- * leak ``undefined`` into the typed {@link PaginatedResult}.
- */
-function parsePaginationFields(pagination: unknown): ValidatedPagination {
-  if (!pagination || typeof pagination !== 'object') {
-    throw new ApiRequestError('Unexpected API response format')
-  }
-  const fields = pagination as Record<string, unknown>
-  const limit = fields['limit']
-  const nextCursor = fields['next_cursor']
-  const hasMore = fields['has_more']
-  if (
-    typeof limit !== 'number' ||
-    (typeof nextCursor !== 'string' && nextCursor !== null) ||
-    typeof hasMore !== 'boolean'
-  ) {
-    throw new ApiRequestError('Unexpected API response format')
-  }
-  return { limit, nextCursor, hasMore }
-}
-
 /**
  * Extract data from a paginated response.
  * Validates the response structure to avoid cryptic TypeErrors.
@@ -436,20 +404,22 @@ export function unwrapPaginated<T>(
     const detail = 'error_detail' in body ? (body.error_detail) : null
     throw new ApiRequestError(body.error ?? 'Unknown API error', detail)
   }
+  // The success-branch type declares ``pagination`` always present, but a
+  // malformed backend envelope could omit it. Read through an untrusted-wire
+  // view so the guard is type-honest about what the network can actually send.
   const raw: { pagination?: unknown; data?: unknown } = body
-  if (!Array.isArray(raw.data)) {
+  if (!raw.pagination || !Array.isArray(raw.data)) {
     throw new ApiRequestError('Unexpected API response format')
   }
-  const { limit, nextCursor, hasMore } = parsePaginationFields(raw.pagination)
   return {
-    data: raw.data as T[],
-    limit,
-    nextCursor,
-    hasMore,
+    data: body.data,
+    limit: body.pagination.limit,
+    nextCursor: body.pagination.next_cursor,
+    hasMore: body.pagination.has_more,
     pagination: {
-      limit,
-      next_cursor: nextCursor,
-      has_more: hasMore,
+      limit: body.pagination.limit,
+      next_cursor: body.pagination.next_cursor,
+      has_more: body.pagination.has_more,
     },
   }
 }
