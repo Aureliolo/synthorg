@@ -632,8 +632,8 @@
     },
     "src/synthorg/hr/promotion/service.py": {
       "cap": 600,
-      "loc": 668,
-      "ratio": 1.113,
+      "loc": 587,
+      "ratio": 0.978,
       "tier": "service"
     },
     "src/synthorg/hr/scaling/service.py": {
@@ -1304,8 +1304,8 @@
     "synthorg.api.rate_limits": 81,
     "synthorg.api.state": 235,
     "synthorg.api.state_slices": 32,
-    "synthorg.approval.enums": 72,
-    "synthorg.approval.protocol": 46,
+    "synthorg.approval.enums": 73,
+    "synthorg.approval.protocol": 47,
     "synthorg.approval.state": 22,
     "synthorg.budget.call_category": 44,
     "synthorg.budget.config": 29,
@@ -1344,7 +1344,7 @@
     "synthorg.core.registry": 27,
     "synthorg.core.task": 95,
     "synthorg.core.task_enums": 88,
-    "synthorg.core.types": 1116,
+    "synthorg.core.types": 1117,
     "synthorg.engine.context": 39,
     "synthorg.engine.decomposition.models": 28,
     "synthorg.engine.errors": 84,
@@ -1386,7 +1386,7 @@
     "synthorg.meta.models": 62,
     "synthorg.meta.signal_models": 20,
     "synthorg.notifications.models": 20,
-    "synthorg.observability": 1600,
+    "synthorg.observability": 1601,
     "synthorg.observability.background_tasks": 21,
     "synthorg.observability.events.api": 171,
     "synthorg.observability.events.chief_of_staff": 29,
@@ -1527,7 +1527,7 @@
     },
     "synthorg.hr.promotion.service:PromotionService": {
       "lcom4": 2,
-      "loc": 593
+      "loc": 513
     },
     "synthorg.hr.pruning.service:PruningService": {
       "lcom4": 1,
