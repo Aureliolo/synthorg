@@ -161,6 +161,107 @@ def test_go_gpl_absent_files_no_violation(tmp_path: Path) -> None:
     assert _MODULE._check_go_gpl(tmp_path) == []
 
 
+# ── Go module-closure licence scan (go-licenses, opt-in) ────────
+
+
+def _stub_go_licenses(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    stdout: str,
+    stderr: str = "",
+    returncode: int = 0,
+    on_path: bool = True,
+) -> None:
+    """Patch the gate's ``shutil.which`` + ``subprocess.run`` for the scan."""
+
+    def _fake_which(name: str) -> str | None:
+        if on_path and name == "go-licenses":
+            return "/usr/bin/go-licenses"
+        return None
+
+    monkeypatch.setattr(_MODULE.shutil, "which", _fake_which)
+
+    def _fake_run(*_args: Any, **_kwargs: Any) -> SimpleNamespace:
+        return SimpleNamespace(stdout=stdout, stderr=stderr, returncode=returncode)
+
+    monkeypatch.setattr(_MODULE.subprocess, "run", _fake_run)
+
+
+def test_go_licenses_skipped_when_not_run(tmp_path: Path) -> None:
+    # run=False short-circuits before touching the toolchain.
+    assert _MODULE._check_go_licenses(tmp_path, "", run=False) == []
+
+
+def test_go_licenses_absent_gomod_no_scan(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_go_licenses(monkeypatch, stdout="x,y,MIT\n")
+    # No cli/go.mod => nothing to scan even when run=True.
+    assert _MODULE._check_go_licenses(tmp_path, "", run=True) == []
+
+
+def test_go_licenses_flags_gpl_module(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _write(tmp_path / "cli" / "go.mod", "module x\n")
+    _stub_go_licenses(
+        monkeypatch,
+        stdout=(
+            "github.com/spf13/cobra,https://x/LICENSE.txt,Apache-2.0\n"
+            "github.com/evil/gpl,https://x/COPYING,GPL-3.0\n"
+        ),
+    )
+    violations = _MODULE._check_go_licenses(tmp_path, "", run=True)
+    assert any(
+        "github.com/evil/gpl" in v.message and "GPL" in v.message for v in violations
+    )
+
+
+def test_go_licenses_clean_passes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _write(tmp_path / "cli" / "go.mod", "module x\n")
+    _stub_go_licenses(
+        monkeypatch,
+        stdout=(
+            "github.com/spf13/cobra,https://x/LICENSE.txt,Apache-2.0\n"
+            "github.com/spf13/pflag,https://x/LICENSE,BSD-3-Clause\n"
+        ),
+    )
+    assert _MODULE._check_go_licenses(tmp_path, "", run=True) == []
+
+
+def test_go_licenses_lgpl_requires_notice(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _write(tmp_path / "cli" / "go.mod", "module x\n")
+    _stub_go_licenses(
+        monkeypatch,
+        stdout="github.com/some/weaklib,https://x/COPYING.LESSER,LGPL-3.0\n",
+    )
+    # Unattributed LGPL is a violation; an attribution in NOTICE clears it.
+    assert _MODULE._check_go_licenses(tmp_path, "", run=True)
+    assert _MODULE._check_go_licenses(tmp_path, "weaklib is attributed", run=True) == []
+
+
+def test_go_licenses_missing_binary_setup_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _write(tmp_path / "cli" / "go.mod", "module x\n")
+    _stub_go_licenses(monkeypatch, stdout="", on_path=False)
+    with pytest.raises(_MODULE.SetupError, match="go-licenses not on PATH"):
+        _MODULE._check_go_licenses(tmp_path, "", run=True)
+
+
+def test_go_licenses_empty_output_setup_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _write(tmp_path / "cli" / "go.mod", "module x\n")
+    _stub_go_licenses(monkeypatch, stdout="   ", stderr="boom", returncode=1)
+    with pytest.raises(_MODULE.SetupError, match="no licence rows"):
+        _MODULE._check_go_licenses(tmp_path, "", run=True)
+
+
 # ── web JS copyleft scan ────────────────────────────────────────
 
 

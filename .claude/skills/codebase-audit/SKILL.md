@@ -3127,7 +3127,6 @@ the homepage navigation):
 - https://synthorg.io/docs/decisions/
 - https://synthorg.io/docs/getting-started/
 - https://synthorg.io/docs/future-vision/ (if exists)
-- https://synthorg.io/blog/ (if exists)
 
 For each fetched page:
 - Extract every numeric / temporal / version claim (same list as agent 151)

@@ -166,14 +166,22 @@ mutated from multiple workers.
 
 ### Repository pagination contract
 
-The `limit: int | None = None, offset: int = 0` keyword-only signature is the
-canonical pagination shape for `list_*`/`query` methods across the repository
-layer. `limit=None` preserves fetch-all semantics so internal callers that do
-not paginate are unaffected; setting it pushes `LIMIT`/`OFFSET` down to the
-database. The pattern is implemented by:
+The `limit: int = DEFAULT_PAGE_SIZE, offset: int = 0` keyword-only signature is
+the canonical pagination shape for `list_*`/`query` methods across the
+repository layer: results are bounded by default (`DEFAULT_PAGE_SIZE` and
+`DEFAULT_LIST_LIMIT` are both 100; a few domains pin their own default, such as
+the 5-fact `OrgFactRepository`), and every read clamps `limit` to
+`MAX_LIST_LIMIT` (10,000) so a caller cannot request an unbounded scan. There is
+no `limit=None` fetch-all sentinel: callers that genuinely need the whole set
+drain successive pages via the `collect_all` / `collect_all_mapping` helpers in
+`synthorg.core.pagination`. `offset` pushes `LIMIT`/`OFFSET` down to the
+database. The shape is carried by the `IdKeyedRepository.list_items` /
+`FilteredQueryRepository.query` generics (ADR-0001) and by the bespoke list
+methods below:
 
-- `TaskRepository.list_tasks` (filterable + paginated; documented in detail
-  below).
+- `TaskRepository.list_items`, `query` (the `IdKeyedRepository` +
+  `FilteredQueryRepository` generics; filterable + paginated, documented in
+  detail below).
 - `ConnectionRepository.list_items`, `query` (the `IdKeyedRepository` +
   `FilteredQueryRepository` generics; paginated since the durable backends
   landed; in-memory stubs and durable repos share the signature).

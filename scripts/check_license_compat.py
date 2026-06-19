@@ -21,14 +21,18 @@ CI gate:
    closure never enters ``cli/go.mod`` / ``cli/go.sum``. Fail if the name
    appears in either.
 
-   *Go transitive-licence scan gap (documented, not closed):* a full
-   ``go-licenses``-style classification of the CLI's module closure is
-   intentionally NOT run here. ``go.sum`` records module versions but no
-   licence metadata, so a real scan needs the Go toolchain to fetch every
-   module and inspect its ``LICENSE`` file -- too heavy and
-   network-dependent for a fast pre-push gate. The name denylist above is
-   the maintained mechanism; a periodic ``go-licenses report`` belongs in
-   a separate, opt-in CI job, not this gate.
+   *Go transitive-licence scan (opt-in, ``--scan-go-modules``):* a full
+   classification of the CLI's module closure is implemented via
+   ``go-licenses`` but is OFF by default, so the fast pre-push gate stays
+   name-based and offline. ``go.sum`` records module versions but no
+   licence metadata, so the scan shells out to ``go-licenses csv ./...``
+   (run in ``cli/``) which fetches every module and inspects its
+   ``LICENSE`` file, then classifies each reported licence with the same
+   ``_classify`` family logic used for the Python and JS closures. AGPL /
+   GPL (non-LGPL) is a hard failure; LGPL must be attributed in ``NOTICE``.
+   The opt-in flag is passed by the dedicated ``CLI License Scan`` CI job
+   (which provisions the Go toolchain + ``go-licenses``); locally, run
+   ``scripts/install_cli_tools.sh go-licenses`` first.
 
 3. **Web JS copyleft scan** -- classify every package in the resolved
    ``web/package-lock.json`` closure by its recorded SPDX ``license``
@@ -68,6 +72,8 @@ Exit codes:
 
 import argparse
 import json
+import shutil
+import subprocess
 import sys
 import tomllib
 from dataclasses import dataclass
@@ -94,6 +100,14 @@ _HARD_DENYLIST: frozenset[str] = frozenset(
 _KNOWN_LGPL: frozenset[str] = frozenset({"psycopg", "psycopg-pool", "psycopg-binary"})
 
 _GO_GPL_TOOLS: frozenset[str] = frozenset({"golangci-lint"})
+
+# Upper bound for the opt-in ``go-licenses`` scan: it fetches the whole CLI
+# module closure and inspects each LICENSE file, so the wall is generous.
+_GO_LICENSES_TIMEOUT_SECONDS: int = 600
+
+# ``go-licenses csv`` rows are ``<import path>,<licence URL>,<licence name>``;
+# rows with fewer fields are malformed and skipped.
+_GO_LICENSES_CSV_MIN_FIELDS: int = 3
 
 
 @dataclass(frozen=True)
@@ -350,6 +364,100 @@ def _check_go_gpl(repo_root: Path) -> list[Violation]:
     return violations
 
 
+def _run_go_licenses(cli_dir: Path) -> str:
+    """Run ``go-licenses csv ./...`` in ``cli_dir`` and return its stdout.
+
+    ``go-licenses`` may exit non-zero when a package in the closure cannot
+    be analysed (vendored C, a module with no ``LICENSE`` file) while still
+    emitting valid CSV rows for everything it could classify. Those rows
+    are the signal, so a non-zero exit is tolerated as long as stdout
+    carries data; only a missing binary or a truly empty result is a
+    SetupError.
+
+    Returns:
+        The captured CSV stdout.
+
+    Raises:
+        SetupError: If ``go-licenses`` is absent, times out, or produces
+            no parseable output.
+    """
+    if shutil.which("go-licenses") is None:
+        msg = (
+            "go-licenses not on PATH; install it with "
+            "`scripts/install_cli_tools.sh go-licenses` before "
+            "running --scan-go-modules"
+        )
+        raise SetupError(msg)
+    try:
+        completed = subprocess.run(
+            ["go-licenses", "csv", "./..."],
+            cwd=cli_dir,
+            capture_output=True,
+            text=True,
+            timeout=_GO_LICENSES_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        msg = f"go-licenses could not be executed: {exc}"
+        raise SetupError(msg) from exc
+    except subprocess.TimeoutExpired as exc:
+        msg = f"go-licenses timed out after {_GO_LICENSES_TIMEOUT_SECONDS}s"
+        raise SetupError(msg) from exc
+    if not completed.stdout.strip():
+        detail = completed.stderr.strip() or "no output"
+        msg = f"go-licenses produced no licence rows (rc={completed.returncode}): {detail}"
+        raise SetupError(msg)
+    return completed.stdout
+
+
+def _check_go_licenses(repo_root: Path, notice: str, *, run: bool) -> list[Violation]:
+    """Classify the CLI module closure's licences via ``go-licenses``.
+
+    Off unless ``run`` is True (the ``--scan-go-modules`` opt-in): the scan
+    needs the Go toolchain and network access, so it runs in a dedicated CI
+    job rather than the fast pre-push gate. Each CSV row is
+    ``<import path>,<licence URL>,<licence name>``; the licence name is
+    classified with the same family logic as the Python and JS closures.
+    AGPL / GPL (non-LGPL) is a hard failure; LGPL must be attributed in
+    ``NOTICE``.
+    """
+    if not run:
+        return []
+    cli_dir = repo_root / "cli"
+    if not (cli_dir / "go.mod").is_file():
+        return []
+    output = _run_go_licenses(cli_dir)
+    violations: list[Violation] = []
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        fields = line.split(",")
+        if len(fields) < _GO_LICENSES_CSV_MIN_FIELDS:
+            continue
+        module = fields[0].strip()
+        license_name = fields[-1].strip()
+        family = _classify(license_name.lower())
+        if family in {"agpl", "gpl"}:
+            violations.append(
+                Violation(
+                    "cli go module closure",
+                    f"Go dependency {module!r} is {family.upper()}-licensed"
+                    f" ({license_name}); strong copyleft is incompatible with"
+                    " redistribution",
+                )
+            )
+        elif family == "lgpl" and not _notice_covers(notice, module.rsplit("/", 1)[-1]):
+            violations.append(
+                Violation(
+                    "NOTICE",
+                    f"LGPL Go dependency {module!r} ({license_name}) ships but"
+                    " is not attributed in NOTICE",
+                )
+            )
+    return violations
+
+
 def _check_direct_copyleft(
     pyproject: dict[str, object],
     notice: str,
@@ -496,8 +604,14 @@ def _check_known_lgpl_notice(notice: str) -> list[Violation]:
     ]
 
 
-def run_checks(repo_root: Path) -> list[Violation]:
+def run_checks(repo_root: Path, *, scan_go_modules: bool = False) -> list[Violation]:
     """Run every licence-compatibility check against the repo.
+
+    Args:
+        repo_root: Project root to anchor path resolution against.
+        scan_go_modules: When True, also run the opt-in ``go-licenses``
+            transitive scan of the CLI module closure (needs the Go
+            toolchain + network; default off for the fast pre-push gate).
 
     Returns:
         All violations, in deterministic order.
@@ -511,6 +625,7 @@ def run_checks(repo_root: Path) -> list[Violation]:
     violations: list[Violation] = []
     violations.extend(_check_denylist(pyproject, lock))
     violations.extend(_check_go_gpl(repo_root))
+    violations.extend(_check_go_licenses(repo_root, notice, run=scan_go_modules))
     violations.extend(_check_known_lgpl_notice(notice))
     violations.extend(_check_direct_copyleft(pyproject, notice))
     violations.extend(_check_web_copyleft(repo_root))
@@ -526,11 +641,20 @@ def main(argv: list[str] | None = None) -> int:
         default=_REPO_ROOT_DEFAULT,
         help="Project root to anchor path resolution against.",
     )
+    parser.add_argument(
+        "--scan-go-modules",
+        action="store_true",
+        help=(
+            "Also run the go-licenses transitive scan of the CLI module"
+            " closure (needs the Go toolchain + go-licenses on PATH; off by"
+            " default so the pre-push gate stays fast and offline)."
+        ),
+    )
     args = parser.parse_args(argv)
     repo_root = args.repo_root.resolve()
 
     try:
-        violations = run_checks(repo_root)
+        violations = run_checks(repo_root, scan_go_modules=args.scan_go_modules)
     except SetupError as exc:
         print(f"license-compat: setup error: {exc}", file=sys.stderr)
         return 2
