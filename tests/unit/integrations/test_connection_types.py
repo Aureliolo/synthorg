@@ -32,6 +32,31 @@ class TestGitHubAuthenticator:
 
 
 @pytest.mark.unit
+class TestLLMProviderAuthenticator:
+    """Tests for LLM-provider credential validation."""
+
+    def test_valid_credentials_accepted(self) -> None:
+        auth = get_authenticator(ConnectionType.LLM_PROVIDER)
+        auth.validate_credentials({"api_key": "sk-test-123"})
+
+    def test_missing_api_key_rejected(self) -> None:
+        auth = get_authenticator(ConnectionType.LLM_PROVIDER)
+        with pytest.raises(InvalidConnectionAuthError, match="api_key"):
+            auth.validate_credentials({})
+
+    def test_blank_api_key_rejected(self) -> None:
+        auth = get_authenticator(ConnectionType.LLM_PROVIDER)
+        with pytest.raises(InvalidConnectionAuthError, match="api_key"):
+            auth.validate_credentials({"api_key": "   "})
+
+    def test_base_url_not_required(self) -> None:
+        # Unlike GENERIC_HTTP, no base_url is needed: providers routing
+        # through litellm's default endpoints have none of their own.
+        auth = get_authenticator(ConnectionType.LLM_PROVIDER)
+        assert auth.required_fields() == ("api_key",)
+
+
+@pytest.mark.unit
 class TestGitLabAuthenticator:
     """Tests for GitLab connection validation."""
 

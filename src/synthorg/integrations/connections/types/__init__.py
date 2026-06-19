@@ -25,6 +25,9 @@ from synthorg.integrations.connections.types.gitea import (
 )
 from synthorg.integrations.connections.types.github import GitHubAuthenticator
 from synthorg.integrations.connections.types.gitlab import GitLabAuthenticator
+from synthorg.integrations.connections.types.llm_provider import (
+    LLMProviderAuthenticator,
+)
 from synthorg.integrations.connections.types.oauth_app import (
     OAuthAppAuthenticator,
 )
@@ -50,6 +53,7 @@ CONNECTION_TYPE_REGISTRY: MappingProxyType[ConnectionType, ConnectionAuthenticat
             ConnectionType.GENERIC_HTTP: GenericHttpAuthenticator(),
             ConnectionType.OAUTH_APP: OAuthAppAuthenticator(),
             ConnectionType.A2A_PEER: A2APeerAuthenticator(),
+            ConnectionType.LLM_PROVIDER: LLMProviderAuthenticator(),
         },
     )
 )
