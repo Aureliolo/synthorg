@@ -147,8 +147,8 @@ Verified events are published to the `#webhooks` channel on the message bus.
 Per-type health check implementations with a background `HealthProberService`.
 
 - **Smoothing**: N consecutive failures before marking `unhealthy` (default 3)
-- **Interval**: Configurable (default 30 minutes)
-- **Pattern**: Matches `ProviderHealthProber`
+- **Interval**: Configurable (default 5 minutes)
+- **Pattern**: Matches the `ProviderHealthProber` design
 
 ---
 

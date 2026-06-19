@@ -141,7 +141,7 @@ uv run python -m pytest tests/ --ignore=tests/benchmarks/ --cov=synthorg --cov-f
 ### Testing Rules
 
 - **Coverage**: 80% minimum (enforced in CI)
-- **Parallelism**: always include `-n 8` (pytest-xdist)
+- **Parallelism**: `-n 8 --dist=loadfile` (pytest-xdist) is auto-applied via pyproject `addopts`, so it need not be passed explicitly (including on coverage runs); the flags shown in the example commands above are illustrative
 - **Async**: `asyncio_mode = "auto"`, no manual `@pytest.mark.asyncio` needed
 - **Timeout**: 30 seconds per test (global default)
 - **Markers**: `@pytest.mark.unit`, `@pytest.mark.integration`, `@pytest.mark.e2e`, `@pytest.mark.slow`

@@ -81,7 +81,10 @@ def _classify_sqlite_integrity(exc: sqlite3.IntegrityError) -> tuple[str, str | 
     # which the string parse below depends on. The message is still the
     # only source for the ``table.column`` label, so both are used. A
     # PRIMARY KEY clash is a uniqueness violation and maps to 23505.
-    ext_code = exc.sqlite_errorcode
+    # ``getattr`` (not direct access) so an IntegrityError without the
+    # attribute -- a non-driver-originated one -- degrades to the
+    # message-string fallback below instead of raising.
+    ext_code = getattr(exc, "sqlite_errorcode", None)
     if ext_code in (
         sqlite3.SQLITE_CONSTRAINT_UNIQUE,
         sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY,
