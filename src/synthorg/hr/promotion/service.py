@@ -8,11 +8,10 @@ and trust integration.
 
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
-from uuid import UUID, uuid4
 
 from pydantic import AwareDatetime
 
-from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.approval.enums import ApprovalStatus
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.concurrency.refcounted_lock_map import RefcountedLockMap
@@ -25,6 +24,7 @@ from synthorg.hr.errors import (
     PromotionError,
 )
 from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.hr.promotion._approval_ops import create_approval, verify_approval
 from synthorg.hr.promotion.approval_protocol import PromotionApprovalStrategy
 from synthorg.hr.promotion.config import PromotionConfig
 from synthorg.hr.promotion.criteria_protocol import PromotionCriteriaStrategy
@@ -41,7 +41,6 @@ from synthorg.observability.events.hr import HR_AGENT_STATUS_TRANSITIONED
 from synthorg.observability.events.promotion import (
     DEMOTION_APPLIED,
     PROMOTION_APPLIED,
-    PROMOTION_APPROVAL_SUBMITTED,
     PROMOTION_COOLDOWN_ACTIVE,
     PROMOTION_EVALUATE_COMPLETE,
     PROMOTION_EVALUATE_FAILED,
@@ -369,10 +368,11 @@ class PromotionService:
                 )
                 logger.warning(PROMOTION_REQUESTED, agent_id=agent_id, error=msg)
                 raise PromotionError(msg)
-            approval_id = await self._create_approval(
+            approval_id = await create_approval(
                 agent_id=agent_id,
                 evaluation=evaluation,
                 initiated_by=initiated_by,
+                approval_store=self._approval_store,
             )
             return ApprovalStatus.PENDING, approval_id
         return ApprovalStatus.PENDING, None
@@ -415,7 +415,7 @@ class PromotionService:
             msg = f"Cannot apply promotion: request status is {request.status.value}"
             raise PromotionApprovalRequiredError(msg)
 
-        await self._verify_approval(request)
+        await verify_approval(request, approval_store=self._approval_store)
         record = await self._apply_level_change(request, initiated_by=initiated_by)
         await self._reevaluate_trust_best_effort(request.agent_id)
         self._log_applied(record, request.direction)
@@ -677,97 +677,3 @@ class PromotionService:
         if until is None:
             return False
         return datetime.now(UTC) < until
-
-    async def _verify_approval(
-        self,
-        request: PromotionRequest,
-    ) -> None:
-        """Verify approval status from store (defense-in-depth).
-
-        If the request has an approval_id and an approval store is
-        configured, verify that the stored approval is actually approved.
-        Prevents crafted requests from bypassing human approval gates.
-
-        Raises:
-            PromotionApprovalRequiredError: If the related operation fails.
-        """
-        if request.approval_id is None or self._approval_store is None:
-            return
-
-        item = await self._approval_store.get(request.approval_id)
-        if item is None or item.status != ApprovalStatus.APPROVED:
-            msg = (
-                f"Approval {request.approval_id!r} not found or "
-                f"not approved in approval store"
-            )
-            logger.warning(
-                PROMOTION_REJECTED,
-                agent_id=request.agent_id,
-                approval_id=request.approval_id,
-                error=msg,
-            )
-            raise PromotionApprovalRequiredError(msg)
-
-    async def _create_approval(
-        self,
-        *,
-        agent_id: NotBlankStr,
-        evaluation: PromotionEvaluation,
-        initiated_by: NotBlankStr,
-    ) -> NotBlankStr:
-        """Create an approval item for a promotion requiring human review.
-
-        Returns:
-            Result of type ``NotBlankStr``.
-
-        Raises:
-            PromotionError: If the related operation fails.
-        """
-        # Defense-in-depth: caller already checks, but guard against
-        # direct invocation without an approval store.
-        if self._approval_store is None:
-            msg = "Cannot create approval: no approval store configured"
-            logger.warning(
-                PROMOTION_APPROVAL_SUBMITTED,
-                agent_id=agent_id,
-                error=msg,
-            )
-            raise PromotionError(msg)
-
-        from synthorg.core.approval import ApprovalItem  # noqa: PLC0415
-
-        approval_id = NotBlankStr(str(uuid4()))
-        now = datetime.now(UTC)
-
-        approval = ApprovalItem(
-            id=UUID(approval_id),
-            action_type="org:promote",
-            title=(
-                f"{evaluation.direction.value.title()}: "
-                f"{evaluation.current_level.value} -> "
-                f"{evaluation.target_level.value}"
-            ),
-            description=(
-                f"Agent {agent_id!r} evaluated for "
-                f"{evaluation.direction.value}. "
-                f"Criteria met: {evaluation.criteria_met_count}/"
-                f"{len(evaluation.criteria_results)}"
-            ),
-            requested_by=initiated_by,
-            risk_level=ApprovalRiskLevel.MEDIUM,
-            created_at=now,
-            metadata={
-                "agent_id": str(agent_id),
-                "direction": evaluation.direction.value,
-                "current_level": evaluation.current_level.value,
-                "target_level": evaluation.target_level.value,
-            },
-        )
-        await self._approval_store.add(approval)
-
-        logger.info(
-            PROMOTION_APPROVAL_SUBMITTED,
-            agent_id=agent_id,
-            approval_id=approval_id,
-        )
-        return approval_id

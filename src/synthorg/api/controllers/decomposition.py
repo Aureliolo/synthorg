@@ -192,7 +192,7 @@ def _build_plan(
     except PydanticError as exc:
         # Do not echo str(exc): a Pydantic error embeds the rejected
         # field values (caller-supplied subtask text) and full field
-        # paths. Surface only a structured count (SEC-1 safe-error).
+        # paths. Surface only a structured count to avoid leaking them.
         msg = f"Decomposition plan validation failed: {len(exc.errors())} error(s)"
         raise ValidationError(msg) from exc
 
