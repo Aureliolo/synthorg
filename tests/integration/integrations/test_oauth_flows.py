@@ -10,7 +10,7 @@ raw tokens are returned (not placeholder ``pending-*`` refs).
 """
 
 from collections.abc import Mapping, Sequence
-from contextlib import ExitStack
+from contextlib import AbstractContextManager, ExitStack
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -747,6 +747,32 @@ def _leak_free(events: Sequence[Mapping[str, object]]) -> None:
         )
 
 
+async def _ssrf_ok(*_args: object, **_kwargs: object) -> DnsValidationOk:
+    """Stand in for ``resolve_outbound_target`` so the SSRF seam passes.
+
+    The authorization-code flow SSRF-validates ``token_url`` (real DNS
+    resolution + pinned transport) before the HTTP POST. With the network
+    mocked, ``idp.example.com`` does not resolve, so the flow would fail
+    at the SSRF seam and never reach the mocked leaky HTTP error these
+    tests guard. Returning a validated result with empty ``resolved_ips``
+    makes the real ``build_pinned_transport`` return ``None`` without
+    touching the network, so the request flows into the mocked client.
+    """
+    return DnsValidationOk(
+        hostname=NotBlankStr("idp.example.com"),
+        port=443,
+        is_https=True,
+    )
+
+
+def _authorization_code_ssrf_patch() -> AbstractContextManager[object]:
+    """Patch the authorization-code flow's ``resolve_outbound_target``."""
+    return patch(
+        "synthorg.integrations.oauth.flows.authorization_code.resolve_outbound_target",
+        new=_ssrf_ok,
+    )
+
+
 @pytest.mark.integration
 class TestOAuthLogRedaction:
     """Regression guards for OAuth error-path logging.
@@ -804,34 +830,16 @@ class TestOAuthLogRedaction:
 
         raised_message: str | None = None
 
-        # The authorization-code flow SSRF-validates ``token_url`` (real
-        # DNS resolution + pinned transport) before the HTTP POST. With
-        # the network mocked, ``idp.example.com`` does not resolve, so the
-        # flow would fail at the SSRF seam and never reach the mocked
-        # leaky HTTP error this test guards. Stub the seam with a real
-        # validated result (empty ``resolved_ips`` -> the real
-        # ``build_pinned_transport`` returns ``None`` without touching the
-        # network) so the request flows into the mocked client.
-        async def _ssrf_ok(*_args: object, **_kwargs: object) -> DnsValidationOk:
-            return DnsValidationOk(
-                hostname=NotBlankStr("idp.example.com"),
-                port=443,
-                is_https=True,
-            )
-
-        ssrf_stubs: list[object] = []
+        # Share the SSRF seam stub (see ``_ssrf_ok``) so the
+        # authorization-code scenarios reach the mocked leaky HTTP error
+        # instead of failing at DNS validation.
+        ssrf_stubs: list[AbstractContextManager[object]] = []
         if scenario.startswith("authorization_code"):
-            ssrf_stubs = [
-                patch(
-                    "synthorg.integrations.oauth.flows."
-                    "authorization_code.resolve_outbound_target",
-                    new=_ssrf_ok,
-                ),
-            ]
+            ssrf_stubs = [_authorization_code_ssrf_patch()]
 
         with patch(mock_path) as client_cls, ExitStack() as ssrf_stack:
             for stub in ssrf_stubs:
-                ssrf_stack.enter_context(stub)  # type: ignore[arg-type]
+                ssrf_stack.enter_context(stub)
             client_cls.return_value.__aenter__ = _enter
             client_cls.return_value.__aexit__ = _exit
             if scenario == "authorization_code_exchange":
@@ -928,9 +936,15 @@ class TestOAuthLogRedaction:
         async def _exit(_self: object, *_args: object) -> None:
             return None
 
-        with patch(
-            "synthorg.integrations.oauth.flows.authorization_code.httpx.AsyncClient",
-        ) as client_cls:
+        with (
+            patch(
+                "synthorg.integrations.oauth.flows.authorization_code.httpx.AsyncClient",
+            ) as client_cls,
+            # Bypass the SSRF seam so the flow reaches the mocked leaky
+            # ``HTTPStatusError`` path this test guards rather than failing
+            # earlier at DNS validation of ``idp.example.com``.
+            _authorization_code_ssrf_patch(),
+        ):
             client_cls.return_value.__aenter__ = _enter
             client_cls.return_value.__aexit__ = _exit
             with (

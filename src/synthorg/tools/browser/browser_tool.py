@@ -1150,7 +1150,7 @@ class BrowserTool(BaseTool):
                 raise BrowserArgumentError(
                     "url must use http:// or https:// (use the 'path' "
                     "field for workspace-relative local files)",
-                    context={"url": args.url},
+                    context={"url": redact_url(args.url)},
                 )
             # Block link-local / cloud-metadata endpoints
             # (169.254.169.254, metadata.google.internal, fe80::) which
@@ -1167,7 +1167,7 @@ class BrowserTool(BaseTool):
                 )
                 raise BrowserArgumentError(
                     "url must not target a link-local or cloud-metadata endpoint",
-                    context={"url": args.url},
+                    context={"url": redact_url(args.url)},
                 )
             return args.url
         if args.path:

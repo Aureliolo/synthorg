@@ -581,11 +581,17 @@ class PruningService:
         Persists the dedup marker into the approval item's metadata via
         the store FIRST, and only records the in-memory mark once the
         durable write succeeds. This keeps in-memory dedup backed by
-        durability: a write failure leaves the item unmarked in both
-        places so the next poll retries (rather than the in-memory mark
-        hiding a durability hole that re-processes the same approval
-        after restart). Idempotent: a no-op when the marker is already
-        present.
+        durability. A write failure is fail-closed: the marker is left
+        unset in both places AND the exception propagates so the failure
+        is observable to the scheduler loop (which logs and retries next
+        cycle) rather than being silently swallowed -- offboarding is not
+        idempotent, so a broken approval store must be loud, not allowed
+        to re-process the same approval on the next poll unnoticed.
+        Idempotent: a no-op when the marker is already present.
+
+        Raises:
+            Exception: Re-raised when the durable marker write fails, so
+                the caller does not treat the approval as processed.
         """
         if self._already_processed_durably(item):
             self._processed_approval_ids.add(str(item.id))
@@ -601,7 +607,7 @@ class PruningService:
                     }
                 )
             )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        except Exception as exc:
             reraise_critical(exc)
             logger.warning(
                 HR_PRUNING_POLICY_ERROR,
@@ -610,7 +616,7 @@ class PruningService:
                 error=safe_error_description(exc),
                 note="durable_processed_mark_failed",
             )
-            return
+            raise
         self._processed_approval_ids.add(str(item.id))
 
     async def _process_decided_approvals(self) -> None:

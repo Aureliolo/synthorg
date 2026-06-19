@@ -35,7 +35,7 @@ from synthorg.budget.spending_summary import (
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.pagination import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT
+from synthorg.core.pagination import DEFAULT_LIST_LIMIT, validate_pagination_args
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.budget import (
@@ -229,12 +229,12 @@ class CostTracker(CostTrackerSummaryMixin):
     async def record(self, cost_record: CostRecord) -> None:
         """Append a cost record.
 
-        The in-memory append runs under ``_lock``.  After the lock
-        is released, ``_update_project_aggregate`` is awaited to
-        update the durable project cost aggregate when the record
-        has a ``project_id`` and a repository is configured.
-        Aggregate updates are best-effort: failures are logged at
-        WARNING but do not affect the in-memory recording.
+        Claim reservation and the in-memory append each run under
+        ``_lock``. Between them, ``_durable_increment_if_unseen`` is
+        awaited so a project record's durable aggregate is updated in
+        one transaction before the record becomes visible in memory.
+        A transient durable failure is fail-open (logged at WARNING) so
+        it never blocks a legitimate first record.
 
         When a ``BudgetConfig`` is attached, the incoming record's
         ``currency`` must match ``budget_config.currency``; mismatches
@@ -332,8 +332,7 @@ class CostTracker(CostTrackerSummaryMixin):
         # the durable aggregate. ``increment_if_unseen`` records the
         # dedup row and increments the aggregate in ONE transaction, so
         # a crash between the two can never leave the aggregate
-        # incremented without its dedup row (the gap that previously
-        # let a redelivery double-bill). A duplicate returns
+        # incremented without its dedup row. A duplicate returns
         # ``was_new=False`` and skips the increment. The in-flight
         # reservation is held across this DB call, so any failure or
         # cancellation must release it -- ``except Exception`` would
@@ -395,12 +394,10 @@ class CostTracker(CostTrackerSummaryMixin):
 
         When both the aggregate and dedup repos are wired, records the
         dedup row and increments the project aggregate in a single
-        repository transaction (closing the crash window where the
-        aggregate could be incremented without its dedup row, which
-        re-billed the claim on redelivery). When only the aggregate repo
-        is wired (no dedup store), falls back to a plain increment with
-        no durable dedup -- the in-memory LRU still guards same-process
-        duplicates.
+        repository transaction so the aggregate and its dedup row are
+        committed together. When only the aggregate repo is wired (no
+        dedup store), falls back to a plain increment with no durable
+        dedup -- the in-memory LRU still guards same-process duplicates.
 
         Fail-open on a transient DB error: returns ``True`` (treat as a
         new record and proceed to the in-memory append) so a blip never
@@ -678,20 +675,16 @@ class CostTracker(CostTrackerSummaryMixin):
 
         Raises:
             ValueError: If both *start* and *end* are given and
-                ``start >= end``, or if ``limit`` is below 1 or ``offset``
-                is negative.
+                ``start >= end``.
+            QueryError: If ``limit`` / ``offset`` fail the shared
+                pagination bounds/type checks.
         """
         _validate_time_range(start, end)
-        if limit < 1:
-            msg = f"limit must be >= 1, got {limit}"
-            raise ValueError(msg)
-        if offset < 0:
-            msg = f"offset must be >= 0, got {offset}"
-            raise ValueError(msg)
-        # Clamp oversized page requests to the bound the persistence
-        # repositories enforce, so an in-memory walk cannot return a
-        # wider page than a durable one would.
-        limit = min(limit, MAX_LIST_LIMIT)
+        # Reuse the shared validator the persistence repositories use:
+        # it rejects bool/non-int, enforces limit>=1 / offset>=0, logs a
+        # structured warning, and clamps to the repository page bound, so
+        # the in-memory tracker cannot diverge from durable validation.
+        limit = validate_pagination_args(limit, offset, event=BUDGET_RECORDS_QUERIED)
         logger.debug(
             BUDGET_RECORDS_QUERIED,
             agent_id=agent_id,
