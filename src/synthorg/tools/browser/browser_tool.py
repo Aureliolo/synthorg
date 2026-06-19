@@ -862,9 +862,12 @@ class BrowserTool(BaseTool):
             The decoded executor result envelope.
 
         Raises:
-            BrowserLaunchError: If the related operation fails.
-            map_executor_error: Raised when the relevant invariant fails.
-            BrowserDomainError: If the related operation fails.
+            BrowserLaunchError: If the sandbox launch, execution, or
+                timeout fails.
+            BrowserDomainError: If the executor returns non-JSON or
+                non-object output, or reports an error status (mapped
+                onto a ``BrowserDomainError`` subclass via
+                ``map_executor_error``).
         """
         executor_container = (
             f"{CONTAINER_WORKSPACE_ROOT}/{_DEPLOY_SUBDIR}/{_EXECUTOR_DEPLOY_NAME}"
@@ -951,7 +954,12 @@ class BrowserTool(BaseTool):
         if decoded.get("status") != "ok":
             err_type = str(decoded.get("error_type", "BrowserDomainError"))
             message = decoded.get("message", "executor returned an error")
-            raise map_executor_error(err_type, str(message), operation)
+            mapped_error: BrowserDomainError = map_executor_error(
+                err_type,
+                str(message),
+                operation,
+            )
+            raise mapped_error
 
         return cast("_ExecutorResult", decoded)
 

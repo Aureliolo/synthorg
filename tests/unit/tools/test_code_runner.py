@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pydantic import ValidationError
+from typeguard import suppress_type_checks
 
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.code_runner import CodeRunnerTool
@@ -61,6 +62,23 @@ class TestCodeRunnerInit:
         assert "language" in props
         assert "timeout" in props
         assert cast(JsonDict, schema)["required"] == ["code", "language"]
+
+    def test_rejects_non_positive_output_tail_limit(self) -> None:
+        sandbox = _make_mock_sandbox()
+        with pytest.raises(ValueError, match="positive integer"):
+            CodeRunnerTool(sandbox=sandbox, output_tail_limit=0)
+
+    def test_rejects_non_integer_output_tail_limit(self) -> None:
+        # A positive float passes the ``> 0`` guard but would crash the
+        # ``[-limit:]`` slice; the isinstance check rejects it up front.
+        # Suppress typeguard so the runtime guard (not the test-only
+        # boundary check) is what raises -- production runs without it.
+        sandbox = _make_mock_sandbox()
+        with (
+            suppress_type_checks(),
+            pytest.raises(ValueError, match="positive integer"),
+        ):
+            CodeRunnerTool(sandbox=sandbox, output_tail_limit=cast(int, 1.5))
 
 
 # ── Language mapping ────────────────────────────────────────────
