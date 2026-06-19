@@ -161,6 +161,7 @@
         "benchmark_provider",
         "budget_config",
         "report_service",
+        "budget_versions_service",
         "cost_optimizer"
       ]
     },
@@ -862,7 +863,8 @@
         "conversation_participant_repo",
         "role_router",
         "group_chat_service",
-        "conversational_actor"
+        "conversational_actor",
+        "custom_rules_service"
       ]
     },
     {
@@ -1275,6 +1277,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-19T06:21:07.396228Z",
+  "generated_at": "2026-06-19T06:39:15.898721Z",
   "schema_version": 1
 }
