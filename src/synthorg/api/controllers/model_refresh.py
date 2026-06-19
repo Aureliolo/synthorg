@@ -10,7 +10,7 @@ Endpoints under ``/providers/model-refresh``:
 * ``GET /status`` -- current refresh mode / cadence / auto-apply flag.
 """
 
-from typing import Annotated
+from typing import Annotated, Final
 from uuid import UUID
 
 from litestar import Controller, get, post
@@ -18,14 +18,22 @@ from litestar.datastructures import State
 from litestar.params import QueryParameter
 
 from synthorg.api.api_core_state import org_mutation_service_of
-from synthorg.api.dto import ApiResponse
+from synthorg.api.cursor import decode_cursor
+from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_model_refresh import (
     RefreshCycleReportDTO,
     RefreshStatusDTO,
     UpgradeRecommendationDTO,
 )
 from synthorg.api.guards import require_ceo_or_manager, require_write_access
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    encode_countless_seek_meta,
+)
 from synthorg.api.path_params import PathId
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.services.upgrade_recommendation_service import (
     UpgradeRecommendationService,
 )
@@ -43,6 +51,7 @@ from synthorg.providers.management.refresh_state import ModelRefreshStateSlice
 from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
+_DEFAULT_LIMIT: Final[int] = 50
 
 
 def _recommendation_service(state: State) -> UpgradeRecommendationService:
@@ -78,19 +87,44 @@ class ModelRefreshController(Controller):
         self,
         state: State,
         status: Annotated[RecommendationStatus | None, QueryParameter()] = None,
-    ) -> ApiResponse[tuple[UpgradeRecommendationDTO, ...]]:
+        cursor: CursorParam = None,
+        limit: CursorLimit = _DEFAULT_LIMIT,
+    ) -> PaginatedResponse[UpgradeRecommendationDTO]:
         """List upgrade recommendations, optionally filtered by status.
 
+        Args:
+            state: Application state.
+            status: Optional status filter.
+            cursor: Opaque pagination cursor from the previous page.
+            limit: Page size.
+
         Returns:
-            The matching recommendations, newest-first.
+            Paginated recommendations, newest-first.
         """
         service = _recommendation_service(state)
-        rows = await service.list_recommendations(status=status)
-        return ApiResponse(
-            data=tuple(UpgradeRecommendationDTO.from_entity(r) for r in rows),
+        secret = cursor_secret_of(state.app_state)
+        offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
+        # Fetch ``limit + 1`` so the next-page flag is derived from a
+        # bounded read instead of exhausting the whole recommendation set.
+        rows = await service.list_recommendations(
+            status=status, limit=limit + 1, offset=offset
         )
+        meta = encode_countless_seek_meta(
+            offset=offset,
+            fetched_rows=len(rows),
+            limit=limit,
+            secret=secret,
+        )
+        entries = tuple(UpgradeRecommendationDTO.from_entity(r) for r in rows[:limit])
+        return PaginatedResponse(data=entries, pagination=meta)
 
-    @post("/recommendations/{rec_id:str}/approve")
+    @post(
+        "/recommendations/{rec_id:str}/approve",
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy("providers.model_refresh_decide", key="user"),
+        ],
+    )
     async def approve_recommendation(
         self,
         rec_id: PathId,
@@ -108,7 +142,13 @@ class ModelRefreshController(Controller):
         updated = await service.approve(UUID(rec_id), decided_by=resolve_decided_by())
         return ApiResponse(data=UpgradeRecommendationDTO.from_entity(updated))
 
-    @post("/recommendations/{rec_id:str}/reject")
+    @post(
+        "/recommendations/{rec_id:str}/reject",
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy("providers.model_refresh_decide", key="user"),
+        ],
+    )
     async def reject_recommendation(
         self,
         rec_id: PathId,
@@ -126,7 +166,15 @@ class ModelRefreshController(Controller):
         updated = await service.reject(UUID(rec_id), decided_by=resolve_decided_by())
         return ApiResponse(data=UpgradeRecommendationDTO.from_entity(updated))
 
-    @post("/refresh", guards=[require_ceo_or_manager])
+    @post(
+        "/refresh",
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy(
+                "providers.model_refresh_trigger", key="user"
+            ),
+        ],
+    )
     async def trigger_refresh(self, state: State) -> ApiResponse[RefreshCycleReportDTO]:
         """Run one reconcile+recommend cycle on demand.
 

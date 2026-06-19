@@ -3,8 +3,7 @@
 
 Declares the ontology feature's surface: its state slice and REST
 controller. The ontology service is wired at boot after persistence
-connects; the feature has no dedicated settings namespace, MCP domain, or
-ghost-wired symbols.
+connects; the feature has no dedicated settings namespace or MCP domain.
 """
 
 from synthorg._core.features import FeatureManifest, FeatureModule
@@ -26,6 +25,6 @@ FEATURE: FeatureModule = FeatureManifest(
     ),
     mcp_handlers=(),
     lifecycle_hooks=(),
-    ghost_wired_symbols=(),
+    ghost_wired_symbols=("build_drift_detection_service",),
     depends_on=(),
 )

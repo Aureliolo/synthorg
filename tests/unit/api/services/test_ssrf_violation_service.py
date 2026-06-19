@@ -56,16 +56,20 @@ class _FakeSsrfViolationRepo:
         *,
         status: SsrfViolationStatus | None = None,
         limit: int = 100,
+        offset: int = 0,
     ) -> tuple[SsrfViolation, ...]:
         if limit < 1:
             msg = "limit must be positive"
+            raise ValueError(msg)
+        if offset < 0:
+            msg = "offset must be non-negative"
             raise ValueError(msg)
         rows: Iterable[SsrfViolation] = sorted(
             self._rows.values(), key=lambda v: v.timestamp, reverse=True
         )
         if status is not None:
             rows = [v for v in rows if v.status == status]
-        return tuple(list(rows)[:limit])
+        return tuple(list(rows)[offset : offset + limit])
 
     async def list_items(
         self,
@@ -251,6 +255,7 @@ class _RaisingReadRepo(_FakeSsrfViolationRepo):
         *,
         status: SsrfViolationStatus | None = None,
         limit: int = 100,
+        offset: int = 0,
     ) -> tuple[SsrfViolation, ...]:
         msg = "boom"
         raise QueryError(msg)

@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
@@ -78,6 +79,23 @@ class TestSsrfViolationRepository:
         ordered = [v.id for v in rows if v.id in {as_uuid("older"), as_uuid("newer")}]
         assert ordered == [as_uuid("newer"), as_uuid("older")]
 
+    async def test_list_violations_paginates_with_offset(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # Three violations, newest-first ordering; offset skips from the head.
+        for i, label in enumerate(("v0", "v1", "v2")):
+            await backend.ssrf_violations.save(
+                _violation(violation_id=label, timestamp=_NOW + timedelta(minutes=i)),
+            )
+        first = await backend.ssrf_violations.list_violations(limit=1, offset=0)
+        second = await backend.ssrf_violations.list_violations(limit=1, offset=1)
+        third = await backend.ssrf_violations.list_violations(limit=1, offset=2)
+        assert [v.id for v in first] == [as_uuid("v2")]
+        assert [v.id for v in second] == [as_uuid("v1")]
+        assert [v.id for v in third] == [as_uuid("v0")]
+        # An offset past the end yields an empty page (no widening / overlap).
+        assert await backend.ssrf_violations.list_violations(limit=5, offset=3) == ()
+
     async def test_list_violations_filters_by_status(
         self, backend: PersistenceBackend
     ) -> None:
@@ -107,7 +125,7 @@ class TestSsrfViolationRepository:
     async def test_list_violations_rejects_non_positive_limit(
         self, backend: PersistenceBackend
     ) -> None:
-        with pytest.raises(ValueError, match=r"(?i)limit"):
+        with pytest.raises(QueryError, match=r"(?i)limit"):
             await backend.ssrf_violations.list_violations(limit=0)
 
     async def test_update_status_pending_to_denied(

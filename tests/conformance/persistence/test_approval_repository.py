@@ -505,7 +505,8 @@ class TestApprovalRepository:
         await repo.save(_make_item(approval_id="c3", status=ApprovalStatus.APPROVED))
 
         count = await repo.count(ApprovalFilterSpec())
-        assert count >= 3
+        # Per-test fresh DB: exactly the three rows written above.
+        assert count == 3
 
     async def test_count_filter_by_status(
         self,
@@ -522,8 +523,9 @@ class TestApprovalRepository:
         approved_count = await repo.count(
             ApprovalFilterSpec(status=ApprovalStatus.APPROVED)
         )
-        assert pending_count >= 2
-        assert approved_count >= 1
+        # Per-test fresh DB: exactly the rows written above per status.
+        assert pending_count == 2
+        assert approved_count == 1
 
     async def test_transition_if_flips_state_atomically(
         self,

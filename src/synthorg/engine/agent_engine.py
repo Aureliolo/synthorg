@@ -14,6 +14,12 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.execution_identity import run_identity_scope
 from synthorg.core.types import NotBlankStr
 from synthorg.engine._agent_engine_run import AgentEngineRunMixin
+from synthorg.engine._agent_engine_types import (
+    BrainToolFactoryProvider,
+    DocsToolFactoryProvider,
+    KnowledgeToolFactoryProvider,
+    ResearchToolFactoryProvider,
+)
 from synthorg.engine._validation import (
     validate_agent,
     validate_run_inputs,
@@ -58,7 +64,6 @@ from synthorg.observability.events.session import (
     SESSION_REPLAY_LOW_COMPLETENESS,
 )
 from synthorg.observability.tracing.instrumentation import get_tracer
-from synthorg.project_brain.tool_factory import ProjectBrainToolFactory
 from synthorg.providers.models import ChatMessage
 from synthorg.security.audit import AuditLog
 
@@ -112,12 +117,8 @@ if TYPE_CHECKING:
         CheckpointRepository,
         HeartbeatRepository,
     )
-    from synthorg.persistence.cost_forecast_protocol import (
-        CostForecastRepository,
-    )
-    from synthorg.persistence.parked_context_protocol import (
-        ParkedContextRepository,
-    )
+    from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
+    from synthorg.persistence.parked_context_protocol import ParkedContextRepository
     from synthorg.persistence.project_protocol import ProjectRepository
     from synthorg.providers.models import CompletionConfig
     from synthorg.providers.protocol import CompletionProvider
@@ -157,16 +158,6 @@ class PersonalityTrimPayload(TypedDict):
 
 type PersonalityTrimNotifier = Callable[[PersonalityTrimPayload], Awaitable[None]]
 """Async callback invoked when an agent's personality section is trimmed."""
-
-
-type BrainToolFactoryProvider = Callable[[], ProjectBrainToolFactory | None]
-"""Provider reading the live project-brain tool factory at per-task time.
-
-The memory-gated brain wires after the boot engine is built, so the engine
-resolves the factory through this provider (rather than capturing a ``None``
-at construction); it returns ``None`` until the brain is wired, or forever
-when it is disabled.
-"""
 
 
 class AgentEngine(
@@ -235,6 +226,9 @@ class AgentEngine(
         approval_interrupt_timeout_seconds: float | None = None,
         external_api_runtime: ExternalApiRuntime | None = None,
         brain_tool_factory_provider: BrainToolFactoryProvider | None = None,
+        knowledge_tool_factory_provider: KnowledgeToolFactoryProvider | None = None,
+        docs_tool_factory_provider: DocsToolFactoryProvider | None = None,
+        research_tool_factory_provider: ResearchToolFactoryProvider | None = None,
         stakes_router: StakesRouter | None = None,
         flight_recorder_sink: FlightRecorderSink | None = None,
         clock: Clock | None = None,
@@ -259,6 +253,9 @@ class AgentEngine(
         self._approval_store = approval_store
         self._external_api_runtime = external_api_runtime
         self._brain_tool_factory_provider = brain_tool_factory_provider
+        self._knowledge_tool_factory_provider = knowledge_tool_factory_provider
+        self._docs_tool_factory_provider = docs_tool_factory_provider
+        self._research_tool_factory_provider = research_tool_factory_provider
         self._parked_context_repo = parked_context_repo
         self._cost_forecast_repo = cost_forecast_repo
         # The boot path constructs one ApprovalGate (backed by the

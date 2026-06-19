@@ -66,12 +66,14 @@ class SsrfViolationRepository(Protocol):
         *,
         status: SsrfViolationStatus | None = None,
         limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
     ) -> tuple[SsrfViolation, ...]:
         """List violations, optionally filtered by status.
 
         Args:
             status: Filter by status (None for all).
             limit: Maximum number of results (must be positive).
+            offset: Rows to skip from the head of the ordering.
 
         Returns:
             Tuple of violations, ordered by timestamp DESC.

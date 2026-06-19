@@ -99,6 +99,17 @@ class KnowledgeUsageRecordRepository(
         """Persist one usage record (append-only; duplicate id is a violation)."""
         ...
 
+    async def append_many(self, records: tuple[KnowledgeUsageRecord, ...], /) -> None:
+        """Persist many usage records in one transaction (ADR-0001 D7).
+
+        Batches the per-hit writes a single search produces into one
+        round-trip instead of N sequential ``append`` calls (the N+1 the
+        per-hit loop in ``KnowledgeService._record_usage`` would otherwise
+        issue). An empty tuple is a no-op. Bespoke under D7: a real
+        per-search write-amplification optimisation callers must not bypass.
+        """
+        ...
+
     @override
     async def query(
         self,

@@ -5,13 +5,16 @@ including on-demand health checks.
 """
 
 import copy
-from typing import Annotated, Final
+from typing import Final
 
 from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State
-from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from synthorg._core.features import require_service
+from synthorg.api.controllers.connections_models import (
+    CreateConnectionRequest,
+    UpdateConnectionRequest,
+)
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import (
@@ -20,21 +23,13 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     paginate_cursor,
 )
-from synthorg.api.path_params import (
-    PathField,
-    PathName,
-)
+from synthorg.api.path_params import PathField, PathName
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.core.domain_errors import ConflictError, ValidationError
-from synthorg.core.types import (
-    NotBlankStr,
-)
 from synthorg.integrations.connections.catalog import _UNSET, _UnsetType
 from synthorg.integrations.connections.models import (
-    AuthMethod,
     Connection,
-    ConnectionType,
     HealthReport,
 )
 from synthorg.integrations.errors import (
@@ -73,109 +68,11 @@ _REVEAL_GENERIC_ERROR = "Connection or credential field not found"
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
 
-
-_MAX_BASE_URL_LEN: Final[int] = 2048
-_MAX_CRED_VALUE_LEN: Final[int] = 8192
-
-
-class CreateConnectionRequest(BaseModel):
-    """Request body for ``POST /connections``.
-
-    ``extra="forbid"`` rejects unknown keys at the boundary so the API
-    never silently ACKs payloads it did not actually accept (typos,
-    fabricated capability flags, stale client schemas). Field types
-    enforce the same shape the controller previously checked inline,
-    and ``max_length`` caps prevent unbounded string allocation on
-    attacker-controllable input.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    name: NotBlankStr = Field(max_length=128)
-    connection_type: ConnectionType
-    auth_method: AuthMethod = AuthMethod.API_KEY
-    # ``dict[NotBlankStr, ...]`` matches the catalog signature
-    # (``catalog.create(..., credentials: dict[str, str], metadata:
-    # dict[str, str])``) and the secret-backend reveal contract;
-    # accepting non-string values would let a ``credentials["k"] = 42``
-    # entry slip through and trigger ``SecretRetrievalError`` only at
-    # reveal time. The key type is ``NotBlankStr`` so blank or
-    # whitespace-only credential field names are rejected at the
-    # boundary rather than landing in the secret backend with a key
-    # that no reveal call can ever match. ``max_length`` on the value
-    # type bounds payload size.
-    credentials: dict[
-        NotBlankStr,
-        Annotated[str, Field(max_length=_MAX_CRED_VALUE_LEN)],
-    ] = Field(default_factory=dict)
-    base_url: Annotated[NotBlankStr, Field(max_length=_MAX_BASE_URL_LEN)] | None = None
-    metadata: dict[NotBlankStr, str] | None = None
-    health_check_enabled: bool = True
-    # Per-connection override for the webhook-receipt cleanup window.
-    # ``None`` falls back to the global ``integrations.webhook_receipt_retention_days``
-    # setting; ``0`` opts this connection out of the sweep entirely.
-    webhook_receipt_retention_days: int | None = Field(default=None, ge=0)
-    # Marks the connection sensitive so the governed external-access
-    # tool routes every call against it (read or write) to approval.
-    sensitive: bool = False
-
-    @field_validator("name")
-    @classmethod
-    def _strip_name(cls, v: str) -> str:
-        # Persist the canonical trimmed form so ``"  github  "`` and
-        # ``"github"`` cannot become two distinct identities.  The
-        # ``NotBlankStr`` annotation already rejects whitespace-only
-        # input; this just normalises the surrounding spaces.
-        """Return strip name."""
-        return v.strip()
-
-
-class UpdateConnectionRequest(BaseModel):
-    """Request body for ``PATCH /connections/{name}`` (partial update).
-
-    Each field is optional; absent fields keep their stored value.
-    ``extra="forbid"`` mirrors :class:`CreateConnectionRequest`.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    base_url: Annotated[NotBlankStr, Field(max_length=_MAX_BASE_URL_LEN)] | None = None
-    # Mirrors ``CreateConnectionRequest.metadata``: non-string values
-    # are rejected at parse time rather than producing surprises later
-    # in the catalog / health-check path, and ``NotBlankStr`` keys
-    # block blank/whitespace-only metadata field names from reaching
-    # the catalog.
-    metadata: dict[NotBlankStr, str] | None = None
-    health_check_enabled: bool | None = None
-    # Same tri-state semantics as ``CreateConnectionRequest``:
-    # ``None`` clears the override (falls back to global default),
-    # an int sets the override, omitting the field keeps the existing
-    # stored value (handled via ``model_fields_set`` below).
-    webhook_receipt_retention_days: int | None = Field(default=None, ge=0)
-    # Omitting keeps the stored value; setting true/false toggles whether
-    # external-access calls against this connection require approval.
-    # Explicit ``null`` is rejected (see ``_reject_null_sensitive``) so a
-    # malformed PATCH cannot be silently ACKed as an omission.
-    sensitive: bool | None = None
-
-    @field_validator("sensitive")
-    @classmethod
-    def _reject_null_sensitive(
-        cls,
-        v: bool | None,  # noqa: FBT001 -- Pydantic validator value is positional
-    ) -> bool | None:
-        # The default (omission) skips validation, so this only fires on an
-        # explicit JSON ``null``; the supported states are omit / true /
-        # false, and a null body is a client error, not a no-op.
-        """Return reject null sensitive.
-
-        Raises:
-            ValueError: Raised on the corresponding failure path.
-        """
-        if v is None:
-            msg = "sensitive must be true or false, not null"
-            raise ValueError(msg)
-        return v
+__all__ = [
+    "ConnectionsController",
+    "CreateConnectionRequest",
+    "UpdateConnectionRequest",
+]
 
 
 class ConnectionsController(Controller):

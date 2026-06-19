@@ -212,6 +212,7 @@ class _FakeMessageRepository:
         channel: str,
         *,
         limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[Message, ...]:
         return ()
 
@@ -814,8 +815,9 @@ class _FakeSsrfViolationRepository:
         *,
         status: object | None = None,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
     ) -> tuple[SsrfViolation, ...]:
-        del status, limit
+        del status, limit, offset
         return ()
 
     async def delete(self, entity_id: NotBlankStr) -> bool:

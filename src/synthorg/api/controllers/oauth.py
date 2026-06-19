@@ -61,11 +61,16 @@ class InitiateOAuthFlowRequest(BaseModel):
 
     connection_name: Annotated[
         NotBlankStr,
-        Field(max_length=_MAX_CONNECTION_NAME_LEN),
+        Field(
+            max_length=_MAX_CONNECTION_NAME_LEN,
+            description="Name of the connection to initiate the OAuth flow for.",
+        ),
     ]
     # Scope items are themselves NotBlankStr so an empty / whitespace
     # element cannot be silently forwarded to the OAuth provider call.
-    scopes: tuple[Annotated[NotBlankStr, Field(max_length=_MAX_SCOPE_LEN)], ...] = ()
+    scopes: tuple[Annotated[NotBlankStr, Field(max_length=_MAX_SCOPE_LEN)], ...] = (
+        Field(default=(), description="OAuth scopes to request for the connection.")
+    )
 
 
 class OAuthController(Controller):

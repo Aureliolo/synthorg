@@ -6,13 +6,14 @@ import json as _json
 from collections.abc import AsyncIterator
 from typing import Annotated
 
-from litestar import Controller, delete, post, put
+from litestar import Controller, Request, delete, post, put
 from litestar.datastructures import State
 from litestar.params import PathParameter
 from litestar.response import ServerSentEvent
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.controllers._provider_helpers import sse_error
+from synthorg.api.controllers.events._sse import revalidated_sse_stream
 from synthorg.api.dto import ApiResponse
 from synthorg.api.dto_providers import (
     ProviderModelResponse,
@@ -27,6 +28,7 @@ from synthorg.api.rate_limits import (
     per_op_rate_limit_from_policy,
 )
 from synthorg.api.state import AppState
+from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     DomainError,
@@ -70,6 +72,7 @@ class ProviderLocalModelsController(Controller):
     )
     async def pull_model(
         self,
+        request: Request[object, object, State],
         state: State,
         name: PathName,
         data: PullModelRequest,
@@ -77,6 +80,7 @@ class ProviderLocalModelsController(Controller):
         """Pull a model on a local provider (SSE streaming).
 
         Args:
+            request: Incoming HTTP request (for the authenticated user).
             state: Application state.
             name: Provider name.
             data: Pull request with model name.
@@ -86,9 +90,26 @@ class ProviderLocalModelsController(Controller):
 
         Raises:
             CancelledError: Raised on the corresponding failure path.
+            ValidationError: When no authenticated user is attached to the
+                connection (defensive; the route guards already require an
+                authenticated CEO/Manager).
         """
         app_state: AppState = state.app_state
         svc = provider_management_of(app_state)
+        # ``require_ceo_or_manager`` guarantees an authenticated user; bind it
+        # so the long-lived pull stream can be revalidated mid-flight (the
+        # download can outlive a session revocation / role demotion).
+        user = getattr(request, "user", None)
+        if not isinstance(user, AuthenticatedUser):
+            msg = "pull_model requires an authenticated user"
+            logger.warning(
+                API_VALIDATION_FAILED,
+                resource="provider",
+                operation="pull_model",
+                provider=name,
+                error=msg,
+            )
+            raise ValidationError(msg)
 
         async def _event_stream() -> AsyncIterator[dict[str, str]]:
             # Carve-out: SSE responses cannot raise domain exceptions
@@ -149,7 +170,17 @@ class ProviderLocalModelsController(Controller):
                     ),
                 }
 
-        return ServerSentEvent(content=_event_stream())
+        # Periodic auth revalidation: the pull can run for minutes, so the
+        # stream is torn down within one interval of the user being deleted /
+        # demoted / their session or API key revoked (same cadence + limiter
+        # as the events SSE).
+        return ServerSentEvent(
+            content=revalidated_sse_stream(
+                _event_stream(),
+                app_state=app_state,
+                user=user,
+            ),
+        )
 
     @delete(
         "/{name:str}/models/{model_id:path}",

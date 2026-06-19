@@ -12,7 +12,6 @@ import contextlib
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Final
-from urllib.parse import urlparse
 
 import httpx
 
@@ -20,7 +19,6 @@ from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
-from synthorg.core.normalization import strip_trailing_slash
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_HEALTH_PROBE_FAILED,
@@ -37,93 +35,25 @@ from synthorg.observability.events.provider import (
 from synthorg.providers.discovery_policy import (
     ProviderDiscoveryPolicy,
     is_url_allowed,
+    resolve_discovery_target,
 )
 from synthorg.providers.errors import ProviderLifecycleConflictError
 from synthorg.providers.health import ProviderHealthRecord, ProviderHealthTracker
+from synthorg.providers.health_prober_helpers import (
+    build_auth_headers,
+    build_ping_url,
+    truncate,
+)
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.resolver import ConfigResolver
+from synthorg.tools.network_validator import DnsValidationOk
+from synthorg.tools.ssrf import build_pinned_transport
 
 logger = get_logger(__name__)
 
 _DEFAULT_INTERVAL_SECONDS: Final[int] = 1800
 _PROBE_TIMEOUT_SECONDS: Final[float] = 10.0
 _HTTP_SERVER_ERROR_THRESHOLD: Final[int] = 500
-_MAX_ERROR_MESSAGE_LENGTH: Final[int] = 200
-
-
-def _build_ping_url(
-    base_url: str,
-    litellm_provider: str | None,
-    *,
-    ollama_port: int,
-) -> str:
-    """Build a lightweight ping URL for a provider.
-
-    Uses the cheapest possible endpoint -- no model loading.
-    Providers whose ``litellm_provider`` is ``"ollama"`` (or whose
-    URL is bound to ``ollama_port``) use the root URL; all others
-    append ``/models``.
-
-    Args:
-        base_url: Provider base URL.
-        litellm_provider: LiteLLM provider identifier for path selection.
-        ollama_port: Port used to detect a self-hosted Ollama provider
-            when ``litellm_provider`` is not set explicitly. Required
-            (no default) so the canonical value flows through from the
-            registered ``providers.ollama_default_port`` setting at
-            every call site instead of mirroring it locally. Must be a
-            valid TCP port (1-65535); the registry entry validates the
-            bounds at write time, so a value out of range cannot reach
-            this function via the resolver path.
-
-    Returns:
-        URL to ping.
-
-    Raises:
-        ValueError: ``ollama_port`` is outside the valid TCP-port range.
-    """
-    if not 1 <= ollama_port <= 65535:  # noqa: PLR2004 -- TCP port range
-        msg = f"ollama_port must be in 1-65535, got {ollama_port!r}"
-        raise ValueError(msg)
-    stripped = strip_trailing_slash(base_url)
-    is_ollama = litellm_provider == "ollama" or urlparse(stripped).port == ollama_port
-    if is_ollama:
-        return stripped  # Root URL returns a liveness string
-    return f"{stripped}/models"
-
-
-def _build_auth_headers(
-    auth_type: str,
-    api_key: str | None,
-) -> dict[str, str]:
-    """Build auth headers for the probe request.
-
-    Only ``api_key`` and ``subscription`` auth types produce an
-    ``Authorization: Bearer`` header.  Other types (oauth,
-    custom_header, none) result in no probe auth headers.
-
-    Args:
-        auth_type: Provider auth type.
-        api_key: API key (may be None for local providers).
-
-    Returns:
-        Headers dict (may be empty).
-    """
-    if api_key and auth_type in ("api_key", "subscription"):
-        return {"Authorization": f"Bearer {api_key}"}
-    return {}
-
-
-def _truncate(msg: str, limit: int = _MAX_ERROR_MESSAGE_LENGTH) -> str:
-    """Truncate a string to *limit* characters.
-
-    Returns:
-        *msg* unchanged when within *limit*, otherwise truncated to
-        *limit* characters.
-    """
-    if len(msg) <= limit:
-        return msg
-    return msg[: limit - 3] + "..."
 
 
 class ProviderHealthProber:
@@ -426,23 +356,37 @@ class ProviderHealthProber:
         ollama_port = await self._config_resolver.get_int(
             "providers", "ollama_default_port"
         )
-        eligible: list[tuple[str, ProviderConfig]] = []
+        eligible: list[tuple[str, ProviderConfig, DnsValidationOk | None]] = []
         for name, config in providers.items():
             if config.base_url is None:
                 continue  # cloud providers -- no lightweight ping available
-            url = _build_ping_url(
+            url = build_ping_url(
                 config.base_url, config.litellm_provider, ollama_port=ollama_port
             )
-            if policy is not None and not is_url_allowed(url, policy):
-                # Skip -- SSRF-blocked providers are in an indeterminate
-                # state, not a failed one.  UNKNOWN (zero records) is the
-                # correct health status for them.
-                logger.warning(
-                    PROVIDER_HEALTH_PROBE_SKIPPED,
-                    provider=name,
-                    reason="url_not_allowed_by_discovery_policy",
-                )
-                continue
+            validation: DnsValidationOk | None = None
+            if policy is not None:
+                if not is_url_allowed(url, policy):
+                    # Skip -- SSRF-blocked providers are in an indeterminate
+                    # state, not a failed one.  UNKNOWN (zero records) is the
+                    # correct health status for them.
+                    logger.warning(
+                        PROVIDER_HEALTH_PROBE_SKIPPED,
+                        provider=name,
+                        reason="url_not_allowed_by_discovery_policy",
+                    )
+                    continue
+                resolved = await resolve_discovery_target(url, policy)
+                if isinstance(resolved, str):
+                    # An allowlisted host whose DNS will not resolve cannot
+                    # be pinned; probing it would reopen the rebinding
+                    # window, so leave it UNKNOWN rather than probe unpinned.
+                    logger.warning(
+                        PROVIDER_HEALTH_PROBE_SKIPPED,
+                        provider=name,
+                        reason="discovery_dns_unresolved",
+                    )
+                    continue
+                validation = resolved
             summary = await self._health_tracker.get_summary(name)
             if summary.last_check_timestamp is not None:
                 elapsed = (
@@ -455,12 +399,17 @@ class ProviderHealthProber:
                         seconds_since_last=round(elapsed),
                     )
                     continue
-            eligible.append((name, config))
+            eligible.append((name, config, validation))
         if eligible:
             async with asyncio.TaskGroup() as tg:
-                for name, config in eligible:
+                for name, config, validation in eligible:
                     _ = tg.create_task(
-                        self._safe_probe_one(name, config, ollama_port=ollama_port)
+                        self._safe_probe_one(
+                            name,
+                            config,
+                            ollama_port=ollama_port,
+                            validation=validation,
+                        )
                     )
 
     async def _safe_probe_one(
@@ -469,6 +418,7 @@ class ProviderHealthProber:
         config: ProviderConfig,
         *,
         ollama_port: int,
+        validation: DnsValidationOk | None = None,
     ) -> None:
         """Probe a single provider, isolating failures from peers.
 
@@ -481,9 +431,14 @@ class ProviderHealthProber:
             config: Provider configuration.
             ollama_port: Resolved ``providers.ollama_default_port`` for
                 Ollama-detection in :func:`_build_ping_url`.
+            validation: DNS pre-flight result for the probe URL, carrying
+                the IPs to pin; ``None`` when no discovery policy gates
+                the prober.
         """
         try:
-            await self._probe_one(name, config, ollama_port=ollama_port)
+            await self._probe_one(
+                name, config, ollama_port=ollama_port, validation=validation
+            )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
@@ -500,6 +455,7 @@ class ProviderHealthProber:
         config: ProviderConfig,
         *,
         ollama_port: int,
+        validation: DnsValidationOk | None = None,
     ) -> None:
         """Ping a single provider and record the result.
 
@@ -508,19 +464,21 @@ class ProviderHealthProber:
             config: Provider configuration.
             ollama_port: Resolved ``providers.ollama_default_port`` for
                 Ollama-detection in :func:`_build_ping_url`.
+            validation: DNS pre-flight result carrying the IPs to pin the
+                probe connection to; ``None`` disables pinning.
         """
         # base_url is guaranteed non-None: _probe_all filters out
         # providers without it before calling _probe_one.
-        url = _build_ping_url(
+        url = build_ping_url(
             config.base_url,  # type: ignore[arg-type]
             config.litellm_provider,
             ollama_port=ollama_port,
         )
         auth_type = str(config.auth_type)
-        headers = _build_auth_headers(auth_type, config.api_key)
+        headers = build_auth_headers(auth_type, config.api_key)
 
         logger.debug(PROVIDER_HEALTH_PROBE_STARTED, provider=name)
-        result = await self._execute_probe(url, headers)
+        result = await self._execute_probe(url, headers, validation=validation)
         elapsed_ms, success, error_msg = result
 
         record = ProviderHealthRecord(
@@ -550,12 +508,17 @@ class ProviderHealthProber:
         self,
         url: str,
         headers: dict[str, str],
+        *,
+        validation: DnsValidationOk | None = None,
     ) -> tuple[float, bool, str | None]:
         """Execute the HTTP probe request.
 
         Args:
             url: URL to probe.
             headers: Auth headers for the request.
+            validation: DNS pre-flight result; when it carries resolved
+                IPs the probe connects through a pinned transport so a
+                DNS rebind cannot redirect it after the allowlist check.
 
         Returns:
             Tuple of (elapsed_ms, success, error_message).
@@ -567,11 +530,17 @@ class ProviderHealthProber:
         start = self._clock.monotonic()
         success = False
         error_msg: str | None = None
+        # ``transport=None`` is httpx's default-transport sentinel, so a
+        # literal-IP target (no IPs to pin) connects normally.
+        transport = (
+            build_pinned_transport(validation) if validation is not None else None
+        )
 
         try:
             async with httpx.AsyncClient(
                 timeout=_PROBE_TIMEOUT_SECONDS,
                 follow_redirects=False,
+                transport=transport,
             ) as client:
                 resp = await client.get(url, headers=headers)
                 success = resp.status_code < _HTTP_SERVER_ERROR_THRESHOLD
@@ -585,9 +554,7 @@ class ProviderHealthProber:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            error_msg = _truncate(
-                f"{type(exc).__name__}: {safe_error_description(exc)}"
-            )
+            error_msg = truncate(f"{type(exc).__name__}: {safe_error_description(exc)}")
 
         elapsed_ms = (self._clock.monotonic() - start) * 1000
         return elapsed_ms, success, error_msg

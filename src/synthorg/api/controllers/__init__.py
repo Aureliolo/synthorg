@@ -29,6 +29,7 @@ from synthorg.api.controllers.autonomy import AutonomyController
 from synthorg.api.controllers.backup import BackupController
 from synthorg.api.controllers.brownfield import BrownfieldController
 from synthorg.api.controllers.budget import BudgetController
+from synthorg.api.controllers.budget_cfo import BudgetCfoController
 from synthorg.api.controllers.budget_config_versions import (
     BudgetConfigVersionController,
 )
@@ -52,6 +53,7 @@ from synthorg.api.controllers.coordination_metrics import (
     CoordinationMetricsController,
 )
 from synthorg.api.controllers.custom_rules import CustomRuleController
+from synthorg.api.controllers.decomposition import DecompositionController
 from synthorg.api.controllers.departments.ceremony_policy import (
     DepartmentCeremonyPolicyController,
 )
@@ -102,6 +104,7 @@ from synthorg.api.controllers.project_knowledge import (
     ProjectKnowledgeController,
 )
 from synthorg.api.controllers.projects import ProjectController
+from synthorg.api.controllers.promotion import PromotionController
 from synthorg.api.controllers.providers.allowlists import (
     ProviderAllowlistsController,
 )
@@ -138,6 +141,7 @@ from synthorg.api.controllers.setup_personality import (
     SetupPersonalityController,
 )
 from synthorg.api.controllers.simulations import SimulationController
+from synthorg.api.controllers.ssrf_violations import SsrfViolationController
 from synthorg.api.controllers.steering import SteeringController
 from synthorg.api.controllers.subworkflows import SubworkflowController
 from synthorg.api.controllers.tasks import TaskController
@@ -200,14 +204,17 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     ProjectKnowledgeController,
     GlobalKnowledgeController,
     TaskController,
+    DecompositionController,
     ExperimentsController,
     MessageController,
     MeetingController,
     ArtifactController,
     CharterController,
     BudgetController,
+    BudgetCfoController,
     ForecastBudgetController,
     ModelRefreshController,
+    SsrfViolationController,
     AnalyticsOverviewController,
     AnalyticsTrendsController,
     AnalyticsForecastController,
@@ -274,6 +281,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     ClientController,
     ReviewController,
     ScalingController,
+    PromotionController,
     TrainingController,
     MetaController,
     ConversationalController,
@@ -349,6 +357,7 @@ __all__ = [
     "AutonomyController",
     "BackupController",
     "BrownfieldController",
+    "BudgetCfoController",
     "BudgetConfigVersionController",
     "BudgetController",
     "CeremonyPolicyController",
@@ -363,6 +372,7 @@ __all__ = [
     "CoordinationController",
     "CoordinationMetricsController",
     "CustomRuleController",
+    "DecompositionController",
     "DeliverableReceiptController",
     "DepartmentCeremonyPolicyController",
     "DepartmentController",
@@ -399,6 +409,7 @@ __all__ = [
     "ProjectController",
     "ProjectDocsController",
     "ProjectKnowledgeController",
+    "PromotionController",
     "ProviderAllowlistsController",
     "ProviderAuditController",
     "ProviderCapabilitiesController",
@@ -424,6 +435,7 @@ __all__ = [
     "SetupPersonalityController",
     "SetupStatusController",
     "SimulationController",
+    "SsrfViolationController",
     "SubworkflowController",
     "TaskController",
     "TeamController",

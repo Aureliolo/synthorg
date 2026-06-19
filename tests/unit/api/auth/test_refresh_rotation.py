@@ -15,6 +15,7 @@ import pytest
 import structlog
 
 from synthorg.api.auth.service import AuthService
+from synthorg.api.auth.system_user import USER_AUDIENCE, USER_ISSUER
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.auth.models import User
 from synthorg.core.auth.refresh_record import (
@@ -81,7 +82,10 @@ async def test_success_rotates_within_same_session() -> None:
 
     assert result.user.id == "user-1"
     assert result.session_id == "sess-original"
-    assert svc.decode_token(result.token).jti == "sess-original"
+    assert (
+        svc.decode_token(result.token, audience=USER_AUDIENCE, issuer=USER_ISSUER).jti
+        == "sess-original"
+    )
     # consume() was called with the hashed cookie, not the raw value.
     store.consume.assert_awaited_once()
     assert store.consume.await_args.args[0] == svc.hash_api_key("opaque-cookie-value")

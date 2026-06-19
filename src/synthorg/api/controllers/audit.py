@@ -26,6 +26,7 @@ from synthorg.api.pagination import (
     paginate_cursor,
 )
 from synthorg.api.path_params import QUERY_MAX_LENGTH
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ValidationError
 from synthorg.observability import get_logger
@@ -100,7 +101,12 @@ class AuditController(Controller):
     tags = ("security",)
     guards = [require_read_access]  # noqa: RUF012
 
-    @get()
+    @get(
+        guards=[
+            require_read_access,
+            per_op_rate_limit_from_policy("security.audit_query", key="user"),
+        ],
+    )
     async def list_audit_entries(  # noqa: PLR0913
         self,
         state: State,

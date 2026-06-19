@@ -12,7 +12,8 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 from synthorg.budget.forecast_history import CostTrackerHistoryLookup
 from synthorg.budget.tracker import CostTracker
 from synthorg.hr.registry import AgentRegistryService
@@ -31,21 +32,26 @@ def _record(
     model: str,
     cost: float,
     category: LLMCallCategory | None = LLMCallCategory.PRODUCTIVE,
-    currency: str = DEFAULT_CURRENCY,
-) -> SimpleNamespace:
-    return SimpleNamespace(
+    currency: CurrencyCode = DEFAULT_CURRENCY,
+) -> CostRecord:
+    return CostRecord(
         agent_id=agent_id,
+        task_id="task-001",
         model=model,
+        provider="test-provider",
+        input_tokens=1000,
+        output_tokens=500,
         cost=cost,
         call_category=category,
         currency=currency,
+        timestamp=datetime(2026, 1, 1, tzinfo=UTC),
     )
 
 
 def _lookup(
     *,
     agents: tuple[SimpleNamespace, ...],
-    records: tuple[SimpleNamespace, ...],
+    records: tuple[CostRecord, ...],
 ) -> CostTrackerHistoryLookup:
     registry = mock_of[AgentRegistryService](
         list_active=AsyncMock(return_value=agents),

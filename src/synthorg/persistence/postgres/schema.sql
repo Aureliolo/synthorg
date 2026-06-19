@@ -60,7 +60,12 @@ CREATE TABLE tasks (
     dependencies JSONB NOT NULL DEFAULT '[]'::JSONB,
     artifacts_expected JSONB NOT NULL DEFAULT '[]'::JSONB,
     acceptance_criteria JSONB NOT NULL DEFAULT '[]'::JSONB,
-    delegation_chain JSONB NOT NULL DEFAULT '[]'::JSONB
+    delegation_chain JSONB NOT NULL DEFAULT '[]'::JSONB,
+    hard_ceiling DOUBLE PRECISION,
+    forecast_id TEXT,
+    source TEXT,
+    middleware_override JSONB,
+    metadata JSONB NOT NULL DEFAULT '{}'::JSONB
 );
 
 CREATE INDEX idx_tasks_status ON tasks (status);
@@ -360,6 +365,8 @@ ON sessions (user_id, revoked, expires_at);
 CREATE INDEX idx_sessions_revoked_expires
 ON sessions (revoked, expires_at);
 CREATE INDEX idx_sessions_expires_at ON sessions (expires_at);
+CREATE INDEX idx_sessions_user_created
+ON sessions (user_id, revoked, created_at DESC, session_id ASC);
 
 -- ── Checkpoints ───────────────────────────────────────────────
 CREATE TABLE checkpoints (
@@ -393,7 +400,7 @@ CREATE TABLE flight_recorder_frames (
     tool_calls JSONB NOT NULL DEFAULT '[]'::JSONB,
     input_tokens INTEGER NOT NULL DEFAULT 0 CHECK (input_tokens >= 0),
     output_tokens INTEGER NOT NULL DEFAULT 0 CHECK (output_tokens >= 0),
-    cost NUMERIC(12, 6) NOT NULL DEFAULT 0.0 CHECK (cost >= 0),
+    cost DOUBLE PRECISION NOT NULL DEFAULT 0.0 CHECK (cost >= 0),
     status TEXT NOT NULL,
     intervention_kind TEXT
 );
@@ -854,6 +861,9 @@ ON workflow_executions (project);
 
 CREATE INDEX idx_wfe_definition_revision
 ON workflow_executions (definition_id, definition_revision);
+
+CREATE INDEX idx_we_node_executions
+ON workflow_executions USING GIN (node_executions);
 
 -- ── Fine-tuning pipeline runs ───────────────────────────────────
 CREATE TABLE fine_tune_runs (
@@ -1538,6 +1548,7 @@ CREATE TABLE conversation_turns (
     ),
     CONSTRAINT uq_ct_conversation_sequence UNIQUE (conversation_id, sequence)
 );
+CREATE INDEX idx_ct_created_at ON conversation_turns (created_at);
 
 CREATE TABLE conversational_proposals (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
@@ -1572,8 +1583,8 @@ CREATE TABLE conversation_participants (
     added_at TIMESTAMPTZ NOT NULL,
     CONSTRAINT uq_cpart_conversation_agent UNIQUE (conversation_id, agent_id)
 );
-CREATE INDEX idx_cpart_conversation_id
-ON conversation_participants (conversation_id);
+CREATE INDEX idx_cpart_conversation_status_added
+ON conversation_participants (conversation_id, status, added_at ASC, id ASC);
 
 CREATE TABLE conversation_invites (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),

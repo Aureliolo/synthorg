@@ -26,10 +26,7 @@ from synthorg.engine.mcp_self_consumer import build_mcp_self_consumer
 from synthorg.engine.routing_policy import build_stakes_router
 from synthorg.engine.stagnation import create_stagnation_detector
 from synthorg.engine.state import task_engine_of
-from synthorg.integrations.state import (
-    IntegrationsStateSlice,
-    connection_catalog_of,
-)
+from synthorg.integrations.state import IntegrationsStateSlice, connection_catalog_of
 from synthorg.memory.state import MemoryStateSlice
 from synthorg.observability import (
     get_logger,
@@ -49,6 +46,9 @@ from synthorg.tools.sandbox.factory import build_sandbox_backends
 from synthorg.tools.sandbox.lifecycle.factory import create_lifecycle_strategy
 from synthorg.workers._agent_engine_collaborators import (
     boot_brain_tool_factory_provider,
+    boot_docs_tool_factory_provider,
+    boot_knowledge_tool_factory_provider,
+    boot_research_tool_factory_provider,
     boot_steering_inbox,
 )
 
@@ -518,6 +518,9 @@ def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
         interrupt_store=app_state.slice(CommunicationStateSlice).interrupt_store,
         external_api_runtime=external_api_runtime,
         brain_tool_factory_provider=boot_brain_tool_factory_provider(app_state),
+        knowledge_tool_factory_provider=boot_knowledge_tool_factory_provider(app_state),
+        docs_tool_factory_provider=boot_docs_tool_factory_provider(app_state),
+        research_tool_factory_provider=boot_research_tool_factory_provider(app_state),
         flight_recorder_sink=flight_recorder_sink,
         steering_inbox=boot_steering_inbox(app_state),
         stagnation_detector=create_stagnation_detector(app_state.config.stagnation),

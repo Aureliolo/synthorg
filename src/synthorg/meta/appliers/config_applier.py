@@ -13,8 +13,9 @@ frozen sub-models (``MappingProxyType`` wrappers, custom field
 serializers), so their violations surface at ``apply()`` instead.
 """
 
+import json
 from collections.abc import Callable
-from typing import Annotated
+from typing import Annotated, Protocol, runtime_checkable
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
@@ -50,6 +51,41 @@ ConfigProvider = Callable[[], "RootConfig"]
 """Zero-arg callable returning the current ``RootConfig`` snapshot."""
 
 
+@runtime_checkable
+class SettingsWritePort(Protocol):
+    """Minimal read/write seam the config applier needs to persist changes.
+
+    Structurally satisfied by
+    :class:`~synthorg.settings.service.SettingsService`; narrowing to
+    this port keeps the applier free of the full service surface and
+    lets tests substitute an in-memory double.
+    """
+
+    async def get(self, namespace: str, key: str) -> object:
+        """Return the resolved setting (raises if the key is unknown)."""
+        ...
+
+    async def set(
+        self,
+        namespace: str,
+        key: str,
+        value: str,
+    ) -> object:
+        """Persist *value* for ``namespace/key`` (raises on validation)."""
+        ...
+
+
+def _serialise(value: object) -> str:
+    """Serialise a JSON config value into the settings string form.
+
+    Returns:
+        The string a :class:`SettingsService` ``set`` accepts.
+    """
+    if isinstance(value, str):
+        return value
+    return json.dumps(value)
+
+
 class _PathResolutionError(
     ValueError,
 ):  # lint-allow: domain-error-hierarchy -- internal config-path precondition
@@ -65,15 +101,21 @@ class ConfigApplier:
             round-trip validation.  May be ``None`` in constrained
             environments, in which case ``dry_run`` rejects the proposal
             with an explicit error.
+        settings_writer: Read/write seam used by ``apply`` to persist
+            each change through the settings service (DB precedence
+            tier).  ``None`` makes ``apply`` reject the proposal rather
+            than silently no-op.
     """
 
     def __init__(
         self,
         *,
         config_provider: ConfigProvider | None = None,
+        settings_writer: SettingsWritePort | None = None,
     ) -> None:
-        """Store the config provider."""
+        """Store the config provider and the settings write seam."""
         self._config_provider = config_provider
+        self._settings_writer = settings_writer
 
     @property
     def altitude(self) -> ProposalAltitude:
@@ -88,18 +130,15 @@ class ConfigApplier:
         self,
         proposal: ImprovementProposal,
     ) -> ApplyResult:
-        """Apply config changes from the proposal.
+        """Persist config changes from the proposal via the settings service.
 
-        .. warning::
-            Config persistence is **not** implemented here. Like the
-            architecture applier, this ships ``dry_run`` validation
-            only; the mutating ``apply`` path still needs a write seam
-            on the config provider and a transactional settings writer,
-            tracked separately. For now ``apply()`` counts the changes
-            and logs ``META_APPLY_COMPLETED`` (with ``note`` flagging
-            that nothing was persisted) so the meta-loop's bookkeeping
-            stays consistent with the other appliers. Callers must not
-            rely on this method to persist config yet.
+        Each :class:`ConfigChange` path is split into a
+        ``namespace/key`` pair and written through the injected
+        :class:`SettingsWritePort` (the DB precedence tier). The prior
+        value of every key is captured first so a mid-batch failure
+        rolls every already-applied change back, leaving the settings
+        store as it was before the call (best-effort: a rollback write
+        that itself fails is logged).
 
         Args:
             proposal: The approved config tuning proposal.
@@ -107,18 +146,51 @@ class ConfigApplier:
         Returns:
             Result indicating success or failure.
         """
-        try:
-            count = len(proposal.config_changes)
-            logger.info(
-                META_APPLY_COMPLETED,
+        if self._settings_writer is None:
+            logger.warning(
+                META_APPLY_FAILED,
                 altitude="config_tuning",
-                changes=count,
                 proposal_id=str(proposal.id),
-                note="config persistence not yet implemented",
+                reason="no settings_writer injected",
             )
-            return ApplyResult(success=True, changes_applied=count)
+            return ApplyResult(
+                success=False,
+                error_message="Config apply requires a settings writer; none wired.",
+                changes_applied=0,
+            )
+        if not proposal.config_changes:
+            return ApplyResult(success=True, changes_applied=0)
+
+        targets: list[tuple[str, str, object]] = []
+        for change in proposal.config_changes:
+            namespace, _, key = change.path.partition(".")
+            if not namespace or not key:
+                logger.warning(
+                    META_APPLY_FAILED,
+                    altitude="config_tuning",
+                    proposal_id=str(proposal.id),
+                    reason=f"config path {change.path!r} is not 'namespace.key'",
+                )
+                return ApplyResult(
+                    success=False,
+                    error_message=(
+                        f"config path {change.path!r} is not 'namespace.key'"
+                    ),
+                    changes_applied=0,
+                )
+            targets.append((namespace, key, change.new_value))
+
+        writer = self._settings_writer
+        applied: list[tuple[str, str, str]] = []
+        try:
+            for namespace, key, new_value in targets:
+                previous = await writer.get(namespace, key)
+                old_value = getattr(previous, "value", "")
+                await writer.set(namespace, key, _serialise(new_value))
+                applied.append((namespace, key, str(old_value)))
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
+            rollback_failures = await self._rollback(applied, proposal=proposal)
             log_exception_redacted(
                 logger,
                 META_APPLY_FAILED,
@@ -128,9 +200,59 @@ class ConfigApplier:
             )
             return ApplyResult(
                 success=False,
-                error_message="Config apply failed. Check logs for details.",
+                error_message=(
+                    "Config apply failed; rollback was incomplete and the "
+                    "settings store may be partially applied."
+                    if rollback_failures > 0
+                    else "Config apply failed and was rolled back."
+                ),
                 changes_applied=0,
             )
+
+        logger.info(
+            META_APPLY_COMPLETED,
+            altitude="config_tuning",
+            changes=len(applied),
+            proposal_id=str(proposal.id),
+        )
+        return ApplyResult(success=True, changes_applied=len(applied))
+
+    async def _rollback(
+        self,
+        applied: list[tuple[str, str, str]],
+        *,
+        proposal: ImprovementProposal,
+    ) -> int:
+        """Restore previously-captured values after a failed apply.
+
+        A rollback write that itself fails is logged and skipped so one
+        bad key cannot abort the rest of the restoration.
+
+        Returns:
+            The number of rollback writes that failed; ``0`` means the
+            store was fully restored.
+        """
+        if self._settings_writer is None:
+            return 0
+        writer = self._settings_writer
+        failures = 0
+        for namespace, key, old_value in reversed(applied):
+            try:
+                await writer.set(namespace, key, old_value)
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                failures += 1
+                logger.warning(
+                    META_APPLY_FAILED,
+                    altitude="config_tuning",
+                    proposal_id=str(proposal.id),
+                    reason="rollback_write_failed",
+                    namespace=namespace,
+                    key=key,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+        return failures
 
     async def dry_run(
         self,

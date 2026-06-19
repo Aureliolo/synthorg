@@ -34,6 +34,16 @@ COMM_MESSAGE_DELIVERED: Final[str] = "communication.message.delivered"
 COMM_DIRECT_SENT: Final[str] = "communication.message.direct_sent"
 COMM_BATCH_PUBLISHED: Final[str] = "communication.message.batch_published"
 
+# Quadratic message-overhead enforcement
+COMM_QUADRATIC_DETECTED: Final[str] = "communication.quadratic.detected"
+COMM_QUADRATIC_ALERT_SINK_FAILED: Final[str] = (
+    "communication.quadratic.alert_sink_failed"
+)
+COMM_QUADRATIC_THROTTLED: Final[str] = "communication.quadratic.throttled"
+COMM_QUADRATIC_CONNECTION_BLOCKED: Final[str] = (
+    "communication.quadratic.connection_blocked"
+)
+
 # Subscriptions
 COMM_SUBSCRIPTION_CREATED: Final[str] = "communication.subscription.created"
 COMM_SUBSCRIPTION_REMOVED: Final[str] = "communication.subscription.removed"

@@ -209,6 +209,14 @@ async def _wire_knowledge_engine(app_state: AppState) -> None:
         return
     if app_state.slice(KnowledgeStateSlice).service is not None:
         return
+    config = app_state.config.knowledge
+    if not config.enabled:
+        logger.info(
+            API_APP_STARTUP,
+            service="knowledge_engine",
+            note="knowledge substrate disabled (knowledge.enabled=false); skipped",
+        )
+        return
     if app_state.slice(MemoryStateSlice).backend is None:
         logger.info(
             API_APP_STARTUP,
@@ -216,7 +224,6 @@ async def _wire_knowledge_engine(app_state: AppState) -> None:
             note="memory backend not wired; knowledge engine wiring skipped",
         )
         return
-    from synthorg.knowledge.config import KnowledgeConfig  # noqa: PLC0415
     from synthorg.knowledge.factory import build_knowledge_service  # noqa: PLC0415
     from synthorg.knowledge.tool_factory import (  # noqa: PLC0415
         build_knowledge_tool_factory,
@@ -225,7 +232,7 @@ async def _wire_knowledge_engine(app_state: AppState) -> None:
     service = build_knowledge_service(
         memory_backend=memory_backend_of(app_state),
         persistence=persistence_of(app_state),
-        config=KnowledgeConfig(enabled=True),
+        config=config,
         clock=app_state.clock,
     )
     tool_factory = build_knowledge_tool_factory(service=service)
@@ -452,11 +459,48 @@ async def _wire_signals_service(
             note="performance tracker absent; signals wiring skipped",
         )
         return
+    from datetime import datetime  # noqa: PLC0415
+
+    from synthorg.budget.cost_record import CostRecord  # noqa: PLC0415
+    from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
+    from synthorg.budget.tracker_protocol import (  # noqa: PLC0415
+        collect_all_records,
+    )
+    from synthorg.coordination.state import (  # noqa: PLC0415
+        CoordinationStateSlice,
+    )
     from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
+    from synthorg.meta.signals.budget import CostRecordProvider  # noqa: PLC0415
     from synthorg.meta.signals.factory import build_signals_service  # noqa: PLC0415
+    from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
 
     registry = app_state.slice(HrStateSlice).agent_registry
     agent_ids_provider = registry.active_agent_ids if registry is not None else tuple
+    cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
+    cost_record_provider: CostRecordProvider | None = None
+    budget_total_monthly = 0.0
+    if cost_tracker is not None:
+        tracker = cost_tracker
+
+        async def _provider(
+            since: datetime,
+            until: datetime,
+        ) -> tuple[CostRecord, ...]:
+            return await collect_all_records(tracker, start=since, end=until)
+
+        cost_record_provider = _provider
+        try:
+            budget_cfg = await config_resolver_of(app_state).get_budget_config()
+            budget_total_monthly = budget_cfg.total_monthly
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                API_APP_STARTUP,
+                service="signals",
+                note="budget config unavailable; budget forecast uses 0 ceiling",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
     # The evolution-outcome store is intentionally left unwired: its only
     # producer is the self-improvement cycle (SelfImprovementService), which
     # is out of scope here, so wiring a read-only store with no writer would
@@ -470,6 +514,11 @@ async def _wire_signals_service(
             approval_store=effective_approval_store,
             scaling_service=app_state.slice(HrStateSlice).scaling_service,
             error_store=app_state.slice(EngineStateSlice).error_taxonomy_store,
+            budget_total_monthly=budget_total_monthly,
+            cost_record_provider=cost_record_provider,
+            coordination_metrics_store=app_state.slice(
+                CoordinationStateSlice
+            ).metrics_store,
         )
         app_state.wire(MetaStateSlice, signals_service=signals_service)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised

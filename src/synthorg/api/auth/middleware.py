@@ -207,7 +207,10 @@ async def _try_jwt_auth(
         Authenticated user on success, or ``None`` on failure.
     """
     try:
-        claims = auth_service.decode_token(token)
+        # Raw path: the middleware enforces iss/aud itself in
+        # ``_resolve_jwt_user`` after loading the user record (the expected
+        # pair is keyed off the resolved role).
+        claims = auth_service._decode_token_raw(token)  # noqa: SLF001
     except jwt.InvalidTokenError as exc:
         logger.warning(
             SECURITY_AUTH_FAILED,

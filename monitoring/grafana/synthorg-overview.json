@@ -10,7 +10,7 @@
     }
   ],
   "annotations": {"list": []},
-  "editable": true,
+  "editable": false,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
   "id": null,
@@ -336,6 +336,22 @@
           ],
           "fieldConfig": {"defaults": {"unit": "ops"}},
           "gridPos": {"h": 8, "w": 8, "x": 16, "y": 24}
+        },
+        {
+          "type": "timeseries",
+          "id": 405,
+          "title": "Provider call latency p95",
+          "description": "p95 of synthorg_provider_call_duration_seconds per provider + call_type.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "histogram_quantile(0.95, sum by (le, provider, call_type) (rate(synthorg_provider_call_duration_seconds_bucket[5m])))",
+              "legendFormat": "{{provider}} {{call_type}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}},
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 32}
         }
       ]
     },
@@ -703,6 +719,22 @@
           ],
           "fieldConfig": {"defaults": {"unit": "ops"}},
           "gridPos": {"h": 8, "w": 8, "x": 16, "y": 41}
+        },
+        {
+          "type": "timeseries",
+          "id": 804,
+          "title": "Autonomy promotion decisions / sec",
+          "description": "synthorg_autonomy_promotion_decisions_total partitioned by outcome (granted / denied). The autonomy-promotion workflow's terminal decision vocabulary, disjoint from the approval-gate counter.",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+              "expr": "sum by (outcome) (rate(synthorg_autonomy_promotion_decisions_total[5m]))",
+              "legendFormat": "{{outcome}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}},
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 49}
         }
       ]
     },
@@ -1059,7 +1091,7 @@
   },
   "time": {"from": "now-6h", "to": "now"},
   "timepicker": {},
-  "timezone": "browser",
+  "timezone": "utc",
   "title": "SynthOrg / Overview",
   "uid": "synthorg-overview",
   "version": 2,

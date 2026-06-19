@@ -8,7 +8,12 @@ safe-default approval-timeout scheduler builder.
 from typing import Final
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.observability import get_logger
+from synthorg.observability.events.timeout import TIMEOUT_FACTORY_UNKNOWN_CONFIG
+from synthorg.security.timeout.config import ApprovalTimeoutConfig
+from synthorg.security.timeout.factory import create_timeout_policy
 from synthorg.security.timeout.policies import WaitForeverPolicy
+from synthorg.security.timeout.protocol import TimeoutPolicy
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
 from synthorg.security.timeout.timeout_checker import TimeoutChecker
 from synthorg.settings.bootstrap_resolver import resolve_init_value
@@ -29,6 +34,31 @@ from synthorg.settings.mirrors import (
 # bootstrap value will silently disagree with operator-editable
 # overrides resolved through ``ConfigResolver``.
 _DEFAULT_TIMEOUT_CHECK_INTERVAL_SECONDS: Final[float] = 60.0
+
+logger = get_logger(__name__)
+
+
+def _resolve_timeout_policy(config: ApprovalTimeoutConfig | None) -> TimeoutPolicy:
+    """Build the timeout policy from the resolved approval-timeout config.
+
+    Falls back to :class:`WaitForeverPolicy` (the safe, never-auto-decide
+    default) when no config is supplied or the config maps to an
+    unrecognised policy type, so a malformed company template degrades to
+    the conservative behaviour rather than failing boot.
+
+    Returns:
+        The configured timeout policy, or the wait-forever default.
+    """
+    if config is None:
+        return WaitForeverPolicy()
+    try:
+        return create_timeout_policy(config)
+    except TypeError:
+        logger.warning(
+            TIMEOUT_FACTORY_UNKNOWN_CONFIG,
+            config_type=type(config).__name__,
+        )
+        return WaitForeverPolicy()
 
 
 def resolve_rate_limiter_enabled() -> bool:
@@ -108,21 +138,27 @@ def resolve_budget_int(key: str) -> int:
 def build_default_approval_timeout_scheduler(
     *,
     approval_store: ApprovalStoreProtocol,
+    approval_timeout_config: ApprovalTimeoutConfig | None = None,
 ) -> ApprovalTimeoutScheduler:
-    """Construct an :class:`ApprovalTimeoutScheduler` with safe defaults.
+    """Construct an :class:`ApprovalTimeoutScheduler` from the boot config.
 
-    Uses :class:`WaitForeverPolicy` so the scheduler runs the periodic
-    scan and emits TIMEOUT_WAITING events but never auto-decides
-    pending approvals. Operators wire a real policy via the
-    ``security.timeout_*`` settings; the settings subscriber on
+    The timeout policy is resolved from ``approval_timeout_config`` (the
+    resolved ``config.approval_timeout`` company-template field) via
+    :func:`create_timeout_policy`, so an operator who configures
+    deny-on-timeout / tiered / escalation-chain behaviour gets it from
+    the first scan rather than the never-auto-decide default. When no
+    config is supplied (or it maps to an unrecognised type), it degrades
+    to :class:`WaitForeverPolicy`. The cadence stays operator-tunable
+    without restart: the settings subscriber on
     ``security.timeout_check_interval_seconds`` invokes
-    ``scheduler.reschedule()`` so the cadence stays operator-tunable
-    without restart.
+    ``scheduler.reschedule()``.
 
     Returns:
         The configured approval-timeout scheduler.
     """
-    timeout_checker = TimeoutChecker(policy=WaitForeverPolicy())
+    timeout_checker = TimeoutChecker(
+        policy=_resolve_timeout_policy(approval_timeout_config),
+    )
     return ApprovalTimeoutScheduler(
         approval_store=approval_store,
         timeout_checker=timeout_checker,

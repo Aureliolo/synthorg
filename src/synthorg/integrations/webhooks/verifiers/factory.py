@@ -3,6 +3,11 @@
 from synthorg.a2a.push_verifier import A2APushVerifier
 from synthorg.integrations.connections.models import ConnectionType
 from synthorg.integrations.errors import InvalidConnectionAuthError
+from synthorg.integrations.webhooks.verifiers.forge_verifiers import (
+    ForgejoHmacVerifier,
+    GiteaHmacVerifier,
+    GitLabTokenVerifier,
+)
 from synthorg.integrations.webhooks.verifiers.generic_hmac import (
     GenericHmacVerifier,
 )
@@ -24,6 +29,9 @@ logger = get_logger(__name__)
 
 _VERIFIER_FACTORIES: dict[ConnectionType, type[SignatureVerifier]] = {
     ConnectionType.GITHUB: GitHubHmacVerifier,
+    ConnectionType.GITLAB: GitLabTokenVerifier,
+    ConnectionType.GITEA: GiteaHmacVerifier,
+    ConnectionType.FORGEJO: ForgejoHmacVerifier,
     ConnectionType.SLACK: SlackSigningVerifier,
     ConnectionType.GENERIC_HTTP: GenericHmacVerifier,
     ConnectionType.A2A_PEER: A2APushVerifier,

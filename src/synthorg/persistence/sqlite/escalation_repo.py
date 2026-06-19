@@ -10,7 +10,7 @@ import asyncio
 import json
 import sqlite3
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from datetime import UTC, datetime
 from typing import override
 from uuid import UUID
@@ -380,26 +380,28 @@ class SQLiteEscalationRepository(EscalationQueueStore):
         return
 
     @override
-    @asynccontextmanager
-    async def subscribe_notifications(
+    def subscribe_notifications(
         self,
         channel: str,
-    ) -> AsyncIterator[AsyncIterator[str]]:
-        # The `@asynccontextmanager` decorator turns this generator into a
-        # callable returning an `AbstractAsyncContextManager[AsyncIterator[str]]`
-        # which matches the protocol declared on `EscalationQueueStore`;
-        # the generator itself must be annotated with the inner iterator
-        # type because that is what the `yield` statement produces.
-        """Return an iterator that blocks until cancelled (no-op).
+    ) -> AbstractAsyncContextManager[AsyncIterator[str]]:
+        """Return a no-op subscription context manager.
 
-        SQLite is single-process by design; there is no cross-instance
-        signalling channel for this backend. The subscriber contract
-        still needs an async context manager + iterator, so we yield
-        an iterator that awaits an :class:`asyncio.Event` that is never
-        set and exits cleanly on cancellation. Callers get a valid
-        iterator they can iterate over with ``async for`` -- the body
-        just never runs until the task is cancelled.
+        Plain ``def`` returning an ``AbstractAsyncContextManager`` to match
+        the protocol + the Postgres backend exactly (the previous
+        ``@asynccontextmanager async def`` form declared a different static
+        signature). SQLite is single-process by design, so there is no
+        cross-instance signalling channel; the returned context manager
+        yields an iterator that blocks on a never-set
+        :class:`asyncio.Event` and exits cleanly on cancellation.
+
+        Returns:
+            An async context manager yielding a never-emitting iterator.
         """
+        return self._never_notifications()
+
+    @asynccontextmanager
+    async def _never_notifications(self) -> AsyncIterator[AsyncIterator[str]]:
+        """Yield a never-emitting payload iterator (single-process no-op)."""
         stop = asyncio.Event()
 
         async def _never() -> AsyncIterator[str]:

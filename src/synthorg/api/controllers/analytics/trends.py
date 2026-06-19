@@ -19,6 +19,7 @@ from synthorg.api.guards import require_read_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.budget.state import BudgetStateSlice
+from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.budget.trends import (
     BucketSize,
     TrendDataPoint,
@@ -96,9 +97,10 @@ async def _fetch_trend_data_points(
         Bucketed data points for the metric.
     """
     if metric == TrendMetric.SPEND:
-        records = await require_service(
-            app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
-        ).get_records(
+        records = await collect_all_records(
+            require_service(
+                app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
+            ),
             start=start,
             end=now,
         )

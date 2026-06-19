@@ -122,7 +122,14 @@ class DelegationAncestryError(DelegationLoopError):
 
 
 class DelegationRateLimitError(DelegationLoopError):
-    """Delegation rate limit exceeded for agent pair."""
+    """Delegation rate limit exceeded for agent pair.
+
+    Despite the "rate limit" name this is NOT retryable (it inherits
+    ``is_retryable = False`` from ``CommunicationError``): it is a
+    loop-prevention policy rejection for this agent pair, not a transient
+    network rate limit. The caller should surface it to the orchestrator
+    rather than backing off and retrying.
+    """
 
 
 class DelegationCircuitOpenError(DelegationLoopError):
@@ -131,6 +138,24 @@ class DelegationCircuitOpenError(DelegationLoopError):
 
 class DelegationDuplicateError(DelegationLoopError):
     """Duplicate delegation detected within dedup window."""
+
+
+class QuadraticConnectionBlockedError(CommunicationError):
+    """A new agent connection is rejected under quadratic ``hard_block``.
+
+    Raised by the message bus when the ``hard_block`` quadratic
+    enforcement strategy is active and admitting another agent would
+    push the live participant count past ``max_agent_connections``.
+    The category is rate-limit (HTTP 429) so a caller treats it as a
+    capacity rejection to retry later, not a permanent fault.
+    """
+
+    status_code: ClassVar[int] = 429
+    error_code: ClassVar[ErrorCode] = ErrorCode.AGENT_CONNECTION_LIMIT_EXCEEDED
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.RATE_LIMIT
+    retryable: ClassVar[bool] = True
+    is_retryable: ClassVar[bool] = True
+    default_message: ClassVar[str] = "Agent connection limit exceeded"
 
 
 class HierarchyResolutionError(CommunicationError):

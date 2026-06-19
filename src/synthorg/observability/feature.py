@@ -4,8 +4,7 @@
 Declares the observability feature's surface: its settings namespace,
 state slice (Prometheus collector + trace handler), and the metrics
 REST controller mounted by the composition root. The collectors are
-built directly at boot, so the feature has no MCP domain or ghost-wired
-symbols.
+built directly at boot, so the feature has no MCP domain.
 """
 
 from synthorg._core.features import FeatureManifest, FeatureModule
@@ -20,6 +19,6 @@ FEATURE: FeatureModule = FeatureManifest(
     controllers=(MetricsController,),
     mcp_handlers=(),
     lifecycle_hooks=(),
-    ghost_wired_symbols=(),
+    ghost_wired_symbols=("install_audit_chain_sink",),
     depends_on=(),
 )

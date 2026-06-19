@@ -8,7 +8,7 @@ import pytest
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.communication.message import FilePart, Message, TextPart
 from synthorg.core.persistence_errors import QueryError
-from synthorg.core.task_enums import TaskStatus
+from synthorg.core.task_enums import TaskSource, TaskStatus
 from synthorg.persistence.message_protocol import MessageFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend
 from tests._shared import as_uuid, sid
@@ -45,6 +45,40 @@ class TestTaskRepository:
         fetched = await backend.tasks.get(sid("t-no-owner"))
         assert fetched is not None
         assert fetched.requested_by_user_id is None
+
+    async def test_budget_and_provenance_fields_round_trip(
+        self, backend: PersistenceBackend
+    ) -> None:
+        forecast_id = uuid4()
+        task = make_task(task_id="t-budget").model_copy(
+            update={
+                "hard_ceiling": 12.5,
+                "forecast_id": forecast_id,
+                "source": TaskSource.CLIENT,
+                "middleware_override": ("retry", "budget_guard"),
+                "metadata": {"label": "vip", "wave": 3},
+            }
+        )
+        await backend.tasks.save(task)
+        fetched = await backend.tasks.get(sid("t-budget"))
+        assert fetched is not None
+        assert fetched.hard_ceiling == 12.5
+        assert fetched.forecast_id == forecast_id
+        assert fetched.source is TaskSource.CLIENT
+        assert fetched.middleware_override == ("retry", "budget_guard")
+        assert fetched.metadata == {"label": "vip", "wave": 3}
+
+    async def test_budget_and_provenance_fields_default(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.tasks.save(make_task(task_id="t-budget-default"))
+        fetched = await backend.tasks.get(sid("t-budget-default"))
+        assert fetched is not None
+        assert fetched.hard_ceiling is None
+        assert fetched.forecast_id is None
+        assert fetched.source is None
+        assert fetched.middleware_override is None
+        assert fetched.metadata == {}
 
     async def test_upsert_updates_existing(self, backend: PersistenceBackend) -> None:
         task = make_task(task_id="t2", title="Original")
@@ -282,6 +316,26 @@ class TestMessageRepository:
             )
         history = await backend.messages.get_history("chan1", limit=2)
         assert len(history) == 2
+
+    async def test_get_history_offset_pages_deeper(
+        self, backend: PersistenceBackend
+    ) -> None:
+        for i in range(5):
+            await backend.messages.append(
+                make_message(
+                    msg_id=uuid4(),
+                    channel="chan1",
+                    content=f"m{i}",
+                    timestamp=datetime(2026, 4, 10, 12, i, tzinfo=UTC),
+                )
+            )
+        first = await backend.messages.get_history("chan1", limit=2, offset=0)
+        second = await backend.messages.get_history("chan1", limit=2, offset=2)
+        third = await backend.messages.get_history("chan1", limit=2, offset=4)
+        # Newest-first, so offsets walk from m4 down to m0 without overlap.
+        assert [m.text for m in first] == ["m4", "m3"]
+        assert [m.text for m in second] == ["m2", "m1"]
+        assert [m.text for m in third] == ["m0"]
 
     async def test_get_history_filters_by_channel(
         self, backend: PersistenceBackend

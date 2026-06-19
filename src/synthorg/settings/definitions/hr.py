@@ -27,6 +27,25 @@ _r.register(
     )
 )
 
+# ── Promotion cycle kill switch ──────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.HR,
+        key="promotion_cycle_paused",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Pause flag for the automatic promotion cycle. When True the"
+            " periodic scheduler stays resident but every tick"
+            " short-circuits, so the org stops re-evaluating agent"
+            " seniority without a restart."
+        ),
+        group="Promotion",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
 # ── Evaluation metric granular toggles ───────────────────────────
 
 _r.register(

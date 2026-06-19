@@ -27,6 +27,7 @@ from synthorg.budget.report_models import (
 )
 from synthorg.budget.spending_summary import SpendingSummary
 from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.observability import get_logger
 from synthorg.observability.events.cfo import (
@@ -114,7 +115,8 @@ class ReportGenerator:
 
         now = datetime.now(UTC)
 
-        records = await self._cost_tracker.get_records(
+        records = await collect_all_records(
+            self._cost_tracker,
             start=start,
             end=end,
         )

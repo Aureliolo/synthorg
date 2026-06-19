@@ -11,10 +11,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.pareto_assignments import AgentRegistryAssignmentLookup
 from synthorg.budget.tracker import CostTracker
 from synthorg.hr.registry import AgentRegistryService
 from tests._shared import mock_of
+from tests.unit.budget.conftest import make_cost_record
 
 pytestmark = pytest.mark.unit
 
@@ -23,16 +25,14 @@ def _agent(role: str, model_id: str) -> SimpleNamespace:
     return SimpleNamespace(role=role, model=SimpleNamespace(model_id=model_id))
 
 
-def _record(model: str, cost: float) -> SimpleNamespace:
-    # ``currency`` mirrors the real ``CostRecord`` field the same-currency
-    # aggregation guard in ``_mean_cost_per_model`` reads.
-    return SimpleNamespace(model=model, cost=cost, currency="USD")
+def _record(model: str, cost: float) -> CostRecord:
+    return make_cost_record(model=model, cost=cost, currency="USD")
 
 
 def _lookup(
     *,
     agents: tuple[SimpleNamespace, ...],
-    records: tuple[SimpleNamespace, ...],
+    records: tuple[CostRecord, ...],
 ) -> AgentRegistryAssignmentLookup:
     registry = mock_of[AgentRegistryService](
         list_active=AsyncMock(return_value=agents),

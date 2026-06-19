@@ -28,10 +28,15 @@ class PresetSummaryResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    name: NotBlankStr
-    description: str = ""
-    traits: tuple[NotBlankStr, ...] = ()
-    source: PresetSource
+    name: NotBlankStr = Field(description="Unique preset name.")
+    description: str = Field(default="", description="Short human-readable summary.")
+    traits: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Headline personality traits for the preset.",
+    )
+    source: PresetSource = Field(
+        description="Whether the preset is built-in or custom.",
+    )
 
 
 class PresetDetailResponse(BaseModel):
@@ -39,24 +44,81 @@ class PresetDetailResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    name: NotBlankStr
-    source: PresetSource
-    description: str = ""
-    traits: tuple[NotBlankStr, ...] = ()
-    communication_style: NotBlankStr = NotBlankStr("neutral")
-    risk_tolerance: RiskTolerance = RiskTolerance.MEDIUM
-    creativity: CreativityLevel = CreativityLevel.MEDIUM
-    openness: float = Field(default=0.5, ge=0.0, le=1.0)
-    conscientiousness: float = Field(default=0.5, ge=0.0, le=1.0)
-    extraversion: float = Field(default=0.5, ge=0.0, le=1.0)
-    agreeableness: float = Field(default=0.5, ge=0.0, le=1.0)
-    stress_response: float = Field(default=0.5, ge=0.0, le=1.0)
-    decision_making: DecisionMakingStyle = DecisionMakingStyle.CONSULTATIVE
-    collaboration: CollaborationPreference = CollaborationPreference.TEAM
-    verbosity: CommunicationVerbosity = CommunicationVerbosity.BALANCED
-    conflict_approach: ConflictApproach = ConflictApproach.COLLABORATE
-    created_at: str | None = None
-    updated_at: str | None = None
+    name: NotBlankStr = Field(description="Unique preset name.")
+    source: PresetSource = Field(
+        description="Whether the preset is built-in or custom.",
+    )
+    description: str = Field(default="", description="Full preset description.")
+    traits: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Personality traits for the preset.",
+    )
+    communication_style: NotBlankStr = Field(
+        default=NotBlankStr("neutral"),
+        description="Default communication style label.",
+    )
+    risk_tolerance: RiskTolerance = Field(
+        default=RiskTolerance.MEDIUM,
+        description="Risk-tolerance disposition.",
+    )
+    creativity: CreativityLevel = Field(
+        default=CreativityLevel.MEDIUM,
+        description="Creativity disposition.",
+    )
+    openness: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Big Five openness score in the range 0 to 1.",
+    )
+    conscientiousness: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Big Five conscientiousness score in the range 0 to 1.",
+    )
+    extraversion: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Big Five extraversion score in the range 0 to 1.",
+    )
+    agreeableness: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Big Five agreeableness score in the range 0 to 1.",
+    )
+    stress_response: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Stress-response (neuroticism) score in the range 0 to 1.",
+    )
+    decision_making: DecisionMakingStyle = Field(
+        default=DecisionMakingStyle.CONSULTATIVE,
+        description="Default decision-making style.",
+    )
+    collaboration: CollaborationPreference = Field(
+        default=CollaborationPreference.TEAM,
+        description="Default collaboration preference.",
+    )
+    verbosity: CommunicationVerbosity = Field(
+        default=CommunicationVerbosity.BALANCED,
+        description="Default communication verbosity.",
+    )
+    conflict_approach: ConflictApproach = Field(
+        default=ConflictApproach.COLLABORATE,
+        description="Default conflict-handling approach.",
+    )
+    created_at: str | None = Field(
+        default=None,
+        description="Creation timestamp as an ISO 8601 string, if known.",
+    )
+    updated_at: str | None = Field(
+        default=None,
+        description="Last-update timestamp as an ISO 8601 string, if known.",
+    )
 
 
 # ── Requests ─────────────────────────────────────────────────
@@ -67,20 +129,75 @@ class _PresetFieldsBase(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-    traits: tuple[NotBlankStr, ...] = Field(default=(), max_length=50)
-    communication_style: NotBlankStr = Field(default="neutral", max_length=100)
-    risk_tolerance: RiskTolerance = RiskTolerance.MEDIUM
-    creativity: CreativityLevel = CreativityLevel.MEDIUM
-    description: str = Field(default="", max_length=500)
-    openness: float = Field(default=0.5, ge=0.0, le=1.0)
-    conscientiousness: float = Field(default=0.5, ge=0.0, le=1.0)
-    extraversion: float = Field(default=0.5, ge=0.0, le=1.0)
-    agreeableness: float = Field(default=0.5, ge=0.0, le=1.0)
-    stress_response: float = Field(default=0.5, ge=0.0, le=1.0)
-    decision_making: DecisionMakingStyle = DecisionMakingStyle.CONSULTATIVE
-    collaboration: CollaborationPreference = CollaborationPreference.TEAM
-    verbosity: CommunicationVerbosity = CommunicationVerbosity.BALANCED
-    conflict_approach: ConflictApproach = ConflictApproach.COLLABORATE
+    traits: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        max_length=50,
+        description="Personality traits for the preset.",
+    )
+    communication_style: NotBlankStr = Field(
+        default="neutral",
+        max_length=100,
+        description="Communication style label.",
+    )
+    risk_tolerance: RiskTolerance = Field(
+        default=RiskTolerance.MEDIUM,
+        description="Risk-tolerance disposition.",
+    )
+    creativity: CreativityLevel = Field(
+        default=CreativityLevel.MEDIUM,
+        description="Creativity disposition.",
+    )
+    description: str = Field(
+        default="",
+        max_length=500,
+        description="Preset description.",
+    )
+    openness: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Big Five openness score in the range 0 to 1.",
+    )
+    conscientiousness: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Big Five conscientiousness score in the range 0 to 1.",
+    )
+    extraversion: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Big Five extraversion score in the range 0 to 1.",
+    )
+    agreeableness: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Big Five agreeableness score in the range 0 to 1.",
+    )
+    stress_response: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Stress-response (neuroticism) score in the range 0 to 1.",
+    )
+    decision_making: DecisionMakingStyle = Field(
+        default=DecisionMakingStyle.CONSULTATIVE,
+        description="Decision-making style.",
+    )
+    collaboration: CollaborationPreference = Field(
+        default=CollaborationPreference.TEAM,
+        description="Collaboration preference.",
+    )
+    verbosity: CommunicationVerbosity = Field(
+        default=CommunicationVerbosity.BALANCED,
+        description="Communication verbosity.",
+    )
+    conflict_approach: ConflictApproach = Field(
+        default=ConflictApproach.COLLABORATE,
+        description="Conflict-handling approach.",
+    )
 
 
 class CreatePresetRequest(_PresetFieldsBase):

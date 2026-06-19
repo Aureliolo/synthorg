@@ -21,6 +21,7 @@ from synthorg._core.features import (
     FeatureModule,
 )
 from synthorg.api.controllers.brownfield import BrownfieldController
+from synthorg.api.controllers.decomposition import DecompositionController
 from synthorg.api.controllers.evaluation_config_versions import (
     EvaluationConfigVersionController,
 )
@@ -28,17 +29,11 @@ from synthorg.api.controllers.objectives import ObjectiveController
 from synthorg.api.controllers.projects import ProjectController
 from synthorg.api.controllers.subworkflows import SubworkflowController
 from synthorg.api.controllers.tasks import TaskController
-from synthorg.api.controllers.workflow_executions import (
-    WorkflowExecutionController,
-)
+from synthorg.api.controllers.workflow_executions import WorkflowExecutionController
 from synthorg.api.controllers.workflow_versions import WorkflowVersionController
-from synthorg.api.controllers.workflows.blueprints import (
-    WorkflowBlueprintController,
-)
+from synthorg.api.controllers.workflows.blueprints import WorkflowBlueprintController
 from synthorg.api.controllers.workflows.crud import WorkflowController
-from synthorg.api.controllers.workflows.validation import (
-    WorkflowValidationController,
-)
+from synthorg.api.controllers.workflows.validation import WorkflowValidationController
 from synthorg.engine._construction import wire_construction
 from synthorg.engine._mcp import ENGINE_MCP_HANDLERS
 from synthorg.engine.state import EngineStateSlice
@@ -58,6 +53,7 @@ FEATURE: FeatureModule = FeatureManifest(
         WorkflowExecutionController,
         SubworkflowController,
         EvaluationConfigVersionController,
+        DecompositionController,
         # Mounted unconditionally: their work-entry adapters wire during
         # startup (after route assembly), so a predicate read at mount
         # time would always be False and the controller would never mount
@@ -92,6 +88,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "wire_real_brownfield_entry",
         "build_mcp_self_consumer",
         "build_coordinator",
+        "ManualDecompositionStrategy",
         "build_stakes_router",
         "build_work_pipeline",
         "ForecastGate",

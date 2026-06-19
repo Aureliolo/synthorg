@@ -293,40 +293,85 @@ class AuthService:
         )
         return token, expiry_seconds, session_id
 
-    def decode_token(self, token: str) -> JwtClaims:
-        """Decode and validate a JWT into a typed claim set.
+    def decode_token(
+        self,
+        token: str,
+        *,
+        audience: str,
+        issuer: str,
+    ) -> JwtClaims:
+        """Fully validate a JWT, including issuer and audience.
 
-        Issuer (``iss``) and audience (``aud``) verification is
-        intentionally deferred to the auth middleware's
-        ``_resolve_jwt_user``: the canonical pair differs by role
-        (``synthorg-cli`` / ``synthorg-backend`` for CLI-minted
-        SYSTEM tokens vs. ``synthorg-api`` / ``synthorg-api`` for
-        API-minted user tokens), and the middleware loads the user
-        record before deciding which pair to enforce. Both claims are
-        ``require``-listed here so a missing claim fails decode rather
-        than reaching the middleware as ``None``.
-
-        After PyJWT validates the signature and required claims, the
-        raw payload is routed through
-        :func:`synthorg.core.boundary.parse_typed` so a malformed claim
-        set (extra keys, type mismatch, ``iat >= exp``) is rejected at
-        the boundary with a structured ``api.boundary.validation_failed``
-        log instead of slipping through and surprising a downstream
-        attribute access.
+        This is the SAFE default: signature, expiry, required claims, and
+        the supplied ``issuer`` / ``audience`` are all enforced. Callers
+        that must resolve the expected issuer/audience pair *after* decode
+        (the auth middleware, which keys the pair off the user role) use
+        :meth:`_decode_token_raw` explicitly instead.
 
         Args:
             token: Encoded JWT string.
+            audience: Expected ``aud`` claim; rejected if it does not match.
+            issuer: Expected ``iss`` claim; rejected if it does not match.
 
         Returns:
             Validated :class:`JwtClaims` instance.
 
         Raises:
             SecretNotConfiguredError: If the JWT secret is empty.
-            jwt.InvalidTokenError: If the token signature, expiry,
-                or required claim set is invalid.
-            ValidationError: If the decoded claim set does not
-                conform to :class:`JwtClaims` (extra keys, wrong
-                types, or violated invariants).
+            jwt.InvalidTokenError: If the token signature, expiry, required
+                claim set, issuer, or audience is invalid.
+            ValidationError: If the decoded claim set does not conform to
+                :class:`JwtClaims`.
+        """
+        secret = self._require_secret("decode_token")
+        raw_claims = jwt.decode(
+            token,
+            secret,
+            algorithms=[self._config.jwt_algorithm],
+            audience=audience,
+            issuer=issuer,
+            options={"require": ["exp", "iat", "sub", "jti", "iss", "aud"]},
+        )
+        return parse_typed("jwt", raw_claims, JwtClaims)
+
+    def _decode_token_raw(
+        self,
+        token: str,
+        *,
+        verify_exp: bool = True,
+    ) -> JwtClaims:
+        """Decode a JWT verifying signature + required claims but NOT iss/aud.
+
+        UNSAFE PATH (explicit opt-in). Issuer (``iss``) and audience
+        (``aud``) verification is deferred to the caller: the canonical
+        pair differs by role (``synthorg-cli`` / ``synthorg-backend`` for
+        CLI-minted SYSTEM tokens vs. ``synthorg-api`` / ``synthorg-api``
+        for API-minted user tokens), and the auth middleware loads the
+        user record before deciding which pair to enforce. Both claims are
+        ``require``-listed here so a missing claim fails decode rather than
+        reaching the caller as ``None``.
+
+        After PyJWT validates the signature and required claims, the raw
+        payload is routed through :func:`synthorg.core.boundary.parse_typed`
+        so a malformed claim set (extra keys, type mismatch, ``iat >= exp``)
+        is rejected at the boundary with a structured
+        ``api.boundary.validation_failed`` log.
+
+        Args:
+            token: Encoded JWT string.
+            verify_exp: When ``False``, an expired token still decodes so a
+                logout can revoke its session (revocation is safe even for
+                an expired token).
+
+        Returns:
+            Validated :class:`JwtClaims` instance.
+
+        Raises:
+            SecretNotConfiguredError: If the JWT secret is empty.
+            jwt.InvalidTokenError: If the token signature, expiry (when
+                ``verify_exp``), or required claim set is invalid.
+            ValidationError: If the decoded claim set does not conform to
+                :class:`JwtClaims`.
         """
         secret = self._require_secret("decode_token")
         raw_claims = jwt.decode(
@@ -337,6 +382,7 @@ class AuthService:
                 "require": ["exp", "iat", "sub", "jti", "iss", "aud"],
                 "verify_aud": False,
                 "verify_iss": False,
+                "verify_exp": verify_exp,
             },
         )
         return parse_typed("jwt", raw_claims, JwtClaims)

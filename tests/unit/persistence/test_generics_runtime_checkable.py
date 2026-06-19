@@ -112,8 +112,10 @@ class _MVCCStub:
     async def append_op(self, op: object) -> None:
         _ = op
 
-    async def snapshot_at(self, timestamp: datetime) -> tuple[object, ...]:
-        _ = timestamp
+    async def snapshot_at(
+        self, timestamp: datetime, *, limit: int = 100, offset: int = 0
+    ) -> tuple[object, ...]:
+        _ = (timestamp, limit, offset)
         return ()
 
     async def get(self, entity_id: object) -> object | None:
@@ -123,8 +125,10 @@ class _MVCCStub:
     async def retract(self, entity_id: object, reason: str) -> None:
         _ = (entity_id, reason)
 
-    async def get_operation_log(self, entity_id: object) -> tuple[object, ...]:
-        _ = entity_id
+    async def get_operation_log(
+        self, entity_id: object, *, limit: int = 100, offset: int = 0
+    ) -> tuple[object, ...]:
+        _ = (entity_id, limit, offset)
         return ()
 
 

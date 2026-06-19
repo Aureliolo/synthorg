@@ -54,6 +54,7 @@ from synthorg.backup.factory import build_backup_service
 from synthorg.backup.service import BackupService
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.tracker import CostTracker
+from synthorg.communication.bus import InMemoryMessageBus
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.conflict_resolution.escalation.factory import (
     build_decision_processor,
@@ -119,6 +120,35 @@ class ConstructionResult:
     plugins: list[ChannelsPlugin]
     middleware: list[Middleware]
     should_auto_wire_settings: bool
+
+
+def _wire_quadratic_alert_sink(
+    message_bus: MessageBus | None,
+    dispatcher: NotificationDispatcher,
+) -> None:
+    """Late-bind the bus quadratic enforcer's alert sink to the dispatcher.
+
+    The in-memory bus is constructed before the dispatcher exists, so its
+    :class:`QuadraticEnforcer` starts with no alert sink (it still emits
+    the structured detection event). Once the dispatcher is built we wrap
+    it in a :class:`DispatcherQuadraticAlertSink` so quadratic detections
+    also fire operator notifications. No-op for backends without an
+    enforcer (NATS) or when enforcement is disabled.
+
+    Args:
+        message_bus: The auto-wired message bus, or ``None``.
+        dispatcher: The construction-phase notification dispatcher.
+    """
+    if not isinstance(message_bus, InMemoryMessageBus):
+        return
+    enforcer = message_bus.quadratic_enforcer
+    if enforcer is None:
+        return
+    from synthorg.notifications.quadratic_alert_sink import (  # noqa: PLC0415
+        DispatcherQuadraticAlertSink,
+    )
+
+    enforcer.set_alert_sink(DispatcherQuadraticAlertSink(dispatcher=dispatcher))
 
 
 def _wire_communication_services(
@@ -278,6 +308,7 @@ def build_construction_services(
     notification_dispatcher = build_notification_dispatcher(
         effective_config.notifications,
     )
+    _wire_quadratic_alert_sink(message_bus, notification_dispatcher)
 
     integrations = auto_wire_integrations(
         effective_config=effective_config,
@@ -436,11 +467,13 @@ def build_construction_services(
         effective_config,
         resolved_db_path=boot.resolved_db_path,
         resolved_config_path=boot.resolved_config_path,
+        config_resolver=config_resolver,
     )
     # ``_build_settings_dispatcher`` wires the timeout-check subscriber onto the
     # scheduler, so the scheduler must exist before the dispatcher is built.
     approval_timeout_scheduler = build_default_approval_timeout_scheduler(
         approval_store=approval_store,
+        approval_timeout_config=effective_config.config.approval_timeout,
     )
     settings_dispatcher = _build_settings_dispatcher(
         message_bus,

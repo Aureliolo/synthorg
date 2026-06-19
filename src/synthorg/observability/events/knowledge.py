@@ -84,7 +84,3 @@ KNOWLEDGE_REINDEX_STARTED: Final[str] = "knowledge.reindex.started"
 
 KNOWLEDGE_LIST_REQUESTED: Final[str] = "knowledge.list.requested"
 """Emitted at DEBUG when the list endpoint is called, with filter params."""
-
-KNOWLEDGE_SUBSTRATE_UNAVAILABLE: Final[str] = "knowledge.substrate.unavailable"
-"""Emitted at WARNING when :func:`_wire_knowledge_engine` cannot wire the
-knowledge service (missing persistence / memory backend / dependency)."""

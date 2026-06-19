@@ -83,11 +83,11 @@ class TestJWT:
         user = _make_user()
         token, expires_in, session_id = svc.create_token(user)
         assert isinstance(token, str)
-        assert expires_in == 1440 * 60
+        assert expires_in == 60 * 60
         assert isinstance(session_id, str)
         assert len(session_id) == 32  # uuid4().hex
 
-        claims = svc.decode_token(token)
+        claims = svc._decode_token_raw(token)
         assert claims.sub == "user-001"
         assert claims.username == "admin"
         assert claims.role is not None
@@ -105,7 +105,7 @@ class TestJWT:
         user = _make_user()
         token, _, session_id = svc.create_token(user, session_id="fixed-session-xyz")
         assert session_id == "fixed-session-xyz"
-        assert svc.decode_token(token).jti == "fixed-session-xyz"
+        assert svc._decode_token_raw(token).jti == "fixed-session-xyz"
 
     def test_expired_token_raises(self) -> None:
         config = AuthConfig(jwt_secret=_SECRET, jwt_expiry_minutes=1)
@@ -127,7 +127,7 @@ class TestJWT:
         }
         expired_token = jwt.encode(expired_payload, _SECRET, algorithm="HS256")
         with pytest.raises(jwt.ExpiredSignatureError):
-            svc.decode_token(expired_token)
+            svc._decode_token_raw(expired_token)
 
     def test_decode_token_missing_iss_claim(self) -> None:
         """A token without ``iss`` is rejected at decode time."""
@@ -145,7 +145,7 @@ class TestJWT:
         }
         token = jwt.encode(payload, _SECRET, algorithm="HS256")
         with pytest.raises(jwt.MissingRequiredClaimError):
-            svc.decode_token(token)
+            svc._decode_token_raw(token)
 
     def test_decode_token_missing_aud_claim(self) -> None:
         """A token without ``aud`` is rejected at decode time."""
@@ -163,10 +163,10 @@ class TestJWT:
         }
         token = jwt.encode(payload, _SECRET, algorithm="HS256")
         with pytest.raises(jwt.MissingRequiredClaimError):
-            svc.decode_token(token)
+            svc._decode_token_raw(token)
 
     def test_decode_token_does_not_verify_issuer_value(self) -> None:
-        """``decode_token`` accepts any ``iss`` value (presence only).
+        """``_decode_token_raw`` accepts any ``iss`` value (presence only).
 
         Issuer *value* enforcement intentionally lives in
         :func:`_resolve_jwt_user` so the middleware can pick the
@@ -196,11 +196,11 @@ class TestJWT:
             "exp": datetime.now(UTC) + timedelta(hours=1),
         }
         token = jwt.encode(payload, _SECRET, algorithm="HS256")
-        claims = svc.decode_token(token)
+        claims = svc._decode_token_raw(token)
         assert claims.iss == "attacker"
 
     def test_decode_token_does_not_verify_audience_value(self) -> None:
-        """``decode_token`` accepts any ``aud`` value (presence only).
+        """``_decode_token_raw`` accepts any ``aud`` value (presence only).
 
         Wrong-value audience rejection is exercised by
         ``test_middleware.test_user_jwt_with_wrong_audience_returns_401``
@@ -221,7 +221,7 @@ class TestJWT:
             "exp": datetime.now(UTC) + timedelta(hours=1),
         }
         token = jwt.encode(payload, _SECRET, algorithm="HS256")
-        claims = svc.decode_token(token)
+        claims = svc._decode_token_raw(token)
         assert claims.aud == "attacker"
 
     def test_invalid_signature_raises(self) -> None:
@@ -234,13 +234,13 @@ class TestJWT:
             AuthConfig(jwt_secret="wrong-secret-that-is-at-least-32-chars!!")
         )
         with pytest.raises(jwt.InvalidSignatureError):
-            wrong_svc.decode_token(token)
+            wrong_svc._decode_token_raw(token)
 
     def test_must_change_password_in_claims(self) -> None:
         svc = _make_service()
         user = _make_user(must_change_password=True)
         token, _, _ = svc.create_token(user)
-        claims = svc.decode_token(token)
+        claims = svc._decode_token_raw(token)
         assert claims.must_change_password is True
 
     def test_decode_token_missing_sub_claim(self) -> None:
@@ -256,7 +256,7 @@ class TestJWT:
         }
         token = jwt.encode(payload, _SECRET, algorithm="HS256")
         with pytest.raises(jwt.MissingRequiredClaimError):
-            svc.decode_token(token)
+            svc._decode_token_raw(token)
 
     def test_create_token_empty_secret_raises(self) -> None:
         svc = AuthService(AuthConfig())
@@ -267,7 +267,7 @@ class TestJWT:
     def test_decode_token_empty_secret_raises(self) -> None:
         svc = AuthService(AuthConfig())
         with pytest.raises(SecretNotConfiguredError, match="JWT secret not configured"):
-            svc.decode_token("any.token.here")
+            svc._decode_token_raw("any.token.here")
 
 
 @pytest.mark.unit

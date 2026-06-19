@@ -98,6 +98,30 @@ class ConflictResolutionStrategy(StrEnum):
     HYBRID = "hybrid"
 
 
+class QuadraticEnforcementStrategy(StrEnum):
+    """Enforcement mode for O(n^2) message-overhead detection.
+
+    Detection (``MessageOverhead.is_quadratic``) always computes the
+    same signal; the strategy decides what the message bus does once a
+    coordination crosses the quadratic threshold.
+
+    Members:
+        DISABLED: No detection and no enforcement (zero hot-path cost).
+        ALERT_ONLY: Detect and emit a warning event / notification; the
+            default, behaviour-preserving for message delivery.
+        SOFT_THROTTLE: Alert, then apply publish backpressure (a per-
+            publish delay) to the over-communicating bus so the message
+            rate is automatically dampened.
+        HARD_BLOCK: Alert, then reject new agent connections once the
+            live participant count exceeds ``max_agent_connections``.
+    """
+
+    DISABLED = "disabled"
+    ALERT_ONLY = "alert_only"
+    SOFT_THROTTLE = "soft_throttle"
+    HARD_BLOCK = "hard_block"
+
+
 class MessageBusBackend(StrEnum):
     """Message bus backend implementation.
 

@@ -1,5 +1,6 @@
 """Unit tests for CostTracker project-level queries."""
 
+import inspect
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -7,6 +8,9 @@ import pytest
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.project_cost_aggregate import ProjectCostAggregate
 from synthorg.budget.tracker import CostTracker
+from synthorg.persistence.project_cost_aggregate_protocol import (
+    ProjectCostAggregateRepository,
+)
 
 from .conftest import make_cost_record
 
@@ -153,6 +157,7 @@ class _PinningRepo:
     def __init__(self) -> None:
         self.pinned: dict[str, str] = {}
         self._totals: dict[str, tuple[float, int, int, int]] = {}
+        self._seen: set[str] = set()
 
     async def get(self, project_id: str) -> ProjectCostAggregate | None:
         if project_id not in self.pinned:
@@ -211,6 +216,27 @@ class _PinningRepo:
             last_updated=datetime.now(UTC),
         )
 
+    async def increment_if_unseen(  # noqa: PLR0913 -- mirrors the real signature
+        self,
+        project_id: str,
+        cost: float,
+        input_tokens: int,
+        output_tokens: int,
+        *,
+        currency: str,
+        claim_id: str,
+        now: datetime,
+        ttl_seconds: float,
+    ) -> tuple[ProjectCostAggregate | None, bool]:
+        _ = (now, ttl_seconds)
+        if claim_id in self._seen:
+            return None, False
+        self._seen.add(claim_id)
+        aggregate = await self.increment(
+            project_id, cost, input_tokens, output_tokens, currency=currency
+        )
+        return aggregate, True
+
 
 @pytest.mark.unit
 class TestPerProjectCurrencyGuardWithoutBudgetConfig:
@@ -219,6 +245,51 @@ class TestPerProjectCurrencyGuardWithoutBudgetConfig:
     aggregate.  Enforcement now lives in the repository (Postgres /
     SQLite); the tracker propagates the error.
     """
+
+    def test_pinning_repo_conforms_to_protocol(self) -> None:
+        # ``isinstance`` against a runtime_checkable Protocol only verifies
+        # member existence, not signatures, so it cannot catch a drifted
+        # keyword-only arg on its own. Pair it with an explicit
+        # signature comparison so the inline stub stays a faithful mirror
+        # of the real repository protocol.
+        repo = _PinningRepo()
+        assert isinstance(repo, ProjectCostAggregateRepository)
+        method_names = [
+            name
+            for name in dir(ProjectCostAggregateRepository)
+            if not name.startswith("_")
+            and callable(getattr(ProjectCostAggregateRepository, name, None))
+        ]
+        assert method_names, "protocol exposes no methods to compare"
+
+        def _norm_kind(kind: inspect._ParameterKind) -> str:
+            # The protocol declares leading args positional-only (``/``)
+            # while the stub leaves them positional-or-keyword; treat both
+            # as "positional" so that convention difference is not a false
+            # drift, while keyword-only / var-args drift is still caught.
+            if kind in (
+                inspect.Parameter.POSITIONAL_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            ):
+                return "positional"
+            return kind.name
+
+        for name in method_names:
+            proto_sig = inspect.signature(getattr(ProjectCostAggregateRepository, name))
+            impl_sig = inspect.signature(getattr(repo, name))
+            # Drop ``self`` from the unbound protocol method for parity
+            # with the bound stub method.
+            proto_params = [
+                (p.name, _norm_kind(p.kind))
+                for p in proto_sig.parameters.values()
+                if p.name != "self"
+            ]
+            impl_params = [
+                (p.name, _norm_kind(p.kind)) for p in impl_sig.parameters.values()
+            ]
+            assert proto_params == impl_params, (
+                f"{name} signature drift: protocol {proto_sig} vs stub {impl_sig}"
+            )
 
     async def test_first_record_pins_project_currency(self) -> None:
         """A subsequent USD write after an initial USD record is accepted."""

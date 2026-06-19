@@ -227,6 +227,7 @@ class PostgresSsrfViolationRepository:
         *,
         status: SsrfViolationStatus | None = None,
         limit: int = DEFAULT_LIST_LIMIT,
+        offset: int = 0,
     ) -> tuple[SsrfViolation, ...]:
         """List violations, optionally filtered by status.
 
@@ -237,14 +238,9 @@ class PostgresSsrfViolationRepository:
             ValueError: If an argument fails validation.
             QueryError: If the database query fails.
         """
-        if limit <= 0:
-            msg = "limit must be positive"
-            logger.warning(
-                PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
-                error=msg,
-                limit=limit,
-            )
-            raise ValueError(msg)
+        capped = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED
+        )
 
         try:
             async with (
@@ -254,14 +250,15 @@ class PostgresSsrfViolationRepository:
                 if status is not None:
                     await cur.execute(
                         f"SELECT {_COLS} FROM ssrf_violations "  # noqa: S608
-                        "WHERE status = %s ORDER BY timestamp DESC LIMIT %s",
-                        (status.value, limit),
+                        "WHERE status = %s ORDER BY timestamp DESC, id DESC "
+                        "LIMIT %s OFFSET %s",
+                        (status.value, capped, offset),
                     )
                 else:
                     await cur.execute(
                         f"SELECT {_COLS} FROM ssrf_violations "  # noqa: S608
-                        "ORDER BY timestamp DESC LIMIT %s",
-                        (limit,),
+                        "ORDER BY timestamp DESC, id DESC LIMIT %s OFFSET %s",
+                        (capped, offset),
                     )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:

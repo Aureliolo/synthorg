@@ -12,7 +12,7 @@ process-local pin becomes redundant and can be removed.
 import asyncio
 import math
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import aiosqlite
 from pydantic import ValidationError
@@ -31,8 +31,14 @@ from synthorg.observability.events.persistence.project_cost_agg import (
     PERSISTENCE_PROJECT_COST_AGG_INCREMENT_FAILED,
     PERSISTENCE_PROJECT_COST_AGG_INCREMENTED,
 )
-from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
+from synthorg.persistence._shared import format_iso_utc, normalize_utc, parse_iso_utc
 from synthorg.persistence.sqlite._shared import WriteContext
+
+_CLAIM_SEEN_INSERT_SQL = """\
+INSERT INTO project_cost_claim_seen (claim_id, project_id, seen_at, expires_at)
+VALUES (?, ?, ?, ?)
+ON CONFLICT(claim_id) DO NOTHING
+"""
 
 logger = get_logger(__name__)
 
@@ -415,3 +421,139 @@ class SQLiteProjectCostAggregateRepository:
             record_count=aggregate.record_count,
         )
         return aggregate
+
+    async def increment_if_unseen(  # noqa: PLR0913 -- aggregate + dedup params
+        self,
+        project_id: NotBlankStr,
+        cost: float,
+        input_tokens: int,
+        output_tokens: int,
+        *,
+        currency: CurrencyCode,
+        claim_id: NotBlankStr,
+        now: datetime,
+        ttl_seconds: float,
+    ) -> tuple[ProjectCostAggregate | None, bool]:
+        """Atomically dedup-and-increment in one SQLite transaction.
+
+        Returns:
+            ``(aggregate, True)`` on a new claim, ``(None, False)`` on a
+            duplicate (increment skipped).
+
+        Raises:
+            MixedCurrencyAggregationError: On a currency-pin mismatch.
+            QueryError: If the database operation fails.
+            ValueError: If a delta is negative / non-finite, or
+                ``ttl_seconds`` is non-finite / non-positive.
+        """
+        if not math.isfinite(cost) or cost < 0 or input_tokens < 0 or output_tokens < 0:
+            msg = (
+                "Deltas must be finite and non-negative: "
+                f"cost={cost}, input_tokens={input_tokens}, "
+                f"output_tokens={output_tokens}"
+            )
+            raise ValueError(msg)
+        if not math.isfinite(ttl_seconds) or ttl_seconds <= 0:
+            msg = f"ttl_seconds must be finite and positive, got {ttl_seconds!r}"
+            raise ValueError(msg)
+
+        seen_at = normalize_utc(now)
+        expires_at = seen_at + timedelta(seconds=ttl_seconds)
+        upsert_now = datetime.now(UTC).isoformat()
+        project_lock = await self._project_lock(project_id)
+        async with project_lock:
+            pinned = self._pinned_currencies.get(project_id)
+            pin_was_set = False
+            if pinned is not None and pinned != currency:
+                msg = (
+                    f"Project {project_id!r} aggregate is in {pinned!r}; "
+                    f"refusing increment in {currency!r}"
+                )
+                raise MixedCurrencyAggregationError(
+                    msg,
+                    currencies=frozenset({pinned, currency}),
+                    project_id=project_id,
+                )
+            committed = False
+            try:
+                try:
+                    async with self._write_context():
+                        async with self._db.execute(
+                            _CLAIM_SEEN_INSERT_SQL,
+                            (
+                                str(claim_id),
+                                str(project_id),
+                                format_iso_utc(seen_at),
+                                format_iso_utc(expires_at),
+                            ),
+                        ) as claim_cursor:
+                            inserted = claim_cursor.rowcount > 0
+                        if not inserted:
+                            # Duplicate claim: skip the increment. The
+                            # ON CONFLICT DO NOTHING left the durable row
+                            # untouched, so committing is a clean no-op.
+                            # Crucially the pin is NOT set here -- a deduped
+                            # claim must not leave a phantom currency pin
+                            # that would reject a later valid first
+                            # increment for this project.
+                            await self._db.commit()
+                            committed = True
+                            return None, False
+                        # Claim is genuinely new: only now is it safe to pin
+                        # the project's currency.
+                        if pinned is None:
+                            self._pinned_currencies[project_id] = currency
+                            pin_was_set = True
+                        async with self._db.execute(
+                            _UPSERT_SQL,
+                            (project_id, cost, input_tokens, output_tokens, upsert_now),
+                        ) as cursor:
+                            row = await cursor.fetchone()
+                        if row is None:  # pragma: no cover -- defensive
+                            await self._db.rollback()
+                            msg = f"Aggregate for {project_id!r} missing after upsert"
+                            raise QueryError(msg)
+                        try:
+                            aggregate = _row_to_aggregate(row, currency=currency)
+                        except (ValidationError, ValueError) as exc:
+                            await self._db.rollback()
+                            msg = (
+                                f"Failed to deserialize project cost aggregate"
+                                f" for {project_id!r} after increment:"
+                                f" {safe_error_description(exc)}"
+                            )
+                            logger.warning(
+                                PERSISTENCE_PROJECT_COST_AGG_INCREMENT_FAILED,
+                                project_id=project_id,
+                                error_type=type(exc).__name__,
+                                error=safe_error_description(exc),
+                            )
+                            raise QueryError(msg) from exc
+                        await self._db.commit()
+                        committed = True
+                except (sqlite3.Error, aiosqlite.Error) as exc:
+                    logger.warning(
+                        PERSISTENCE_PROJECT_COST_AGG_INCREMENT_FAILED,
+                        project_id=project_id,
+                        cost=cost,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
+                    msg = (
+                        f"Failed to increment project cost aggregate for "
+                        f"{project_id!r}: {safe_error_description(exc)}"
+                    )
+                    raise QueryError(msg) from exc
+            finally:
+                if pin_was_set and not committed:
+                    self._pinned_currencies.pop(project_id, None)
+
+        logger.info(
+            PERSISTENCE_PROJECT_COST_AGG_INCREMENTED,
+            project_id=project_id,
+            cost_delta=cost,
+            currency=currency,
+            total_cost=aggregate.total_cost,
+            record_count=aggregate.record_count,
+        )
+        return aggregate, True

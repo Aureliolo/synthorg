@@ -29,6 +29,20 @@ export const AGENT_STATUS_VALUES = [
 ] as const
 export type AgentStatus = (typeof AGENT_STATUS_VALUES)[number]
 
+export const ANOMALY_SEVERITY_VALUES = [
+    'low',
+    'medium',
+    'high',
+] as const
+export type AnomalySeverity = (typeof ANOMALY_SEVERITY_VALUES)[number]
+
+export const ANOMALY_TYPE_VALUES = [
+    'spike',
+    'sustained_high',
+    'rate_increase',
+] as const
+export type AnomalyType = (typeof ANOMALY_TYPE_VALUES)[number]
+
 export const APPROVAL_RISK_LEVEL_VALUES = [
     'low',
     'medium',
@@ -353,6 +367,13 @@ export const DRIFT_ACTION_VALUES = [
 ] as const
 export type DriftAction = (typeof DRIFT_ACTION_VALUES)[number]
 
+export const EFFICIENCY_RATING_VALUES = [
+    'efficient',
+    'normal',
+    'inefficient',
+] as const
+export type EfficiencyRating = (typeof EFFICIENCY_RATING_VALUES)[number]
+
 export const ENTITY_SOURCE_VALUES = [
     'auto',
     'config',
@@ -627,6 +648,12 @@ export const PROJECT_STATUS_VALUES = [
 ] as const
 export type ProjectStatus = (typeof PROJECT_STATUS_VALUES)[number]
 
+export const PROMOTION_DIRECTION_VALUES = [
+    'promotion',
+    'demotion',
+] as const
+export type PromotionDirection = (typeof PROMOTION_DIRECTION_VALUES)[number]
+
 export const PROPOSAL_ALTITUDE_VALUES = [
     'config_tuning',
     'architecture',
@@ -864,6 +891,13 @@ export const SOURCE_TYPE_VALUES = [
     'design_doc',
 ] as const
 export type SourceType = (typeof SOURCE_TYPE_VALUES)[number]
+
+export const SSRF_VIOLATION_STATUS_VALUES = [
+    'pending',
+    'allowed',
+    'denied',
+] as const
+export type SsrfViolationStatus = (typeof SSRF_VIOLATION_STATUS_VALUES)[number]
 
 export const STAKES_VALUES = [
     'low',

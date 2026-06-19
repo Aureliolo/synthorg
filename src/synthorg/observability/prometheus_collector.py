@@ -2,17 +2,12 @@
 """Prometheus metrics collector for SynthOrg business metrics.
 
 Maintains Gauge/Counter instances in a dedicated ``CollectorRegistry``
-and refreshes them from AppState services at scrape time.  The
-``/metrics`` endpoint calls :meth:`refresh` before generating output.
-
-Coordination metrics (efficiency, overhead) are push-updated by the
-coordination collector after each multi-agent execution -- they are
-not refreshed on scrape.
-
+and refreshes them from AppState services at scrape time (``/metrics``
+calls :meth:`refresh` first). Coordination metrics are push-updated by
+the coordination collector after each multi-agent run, not on scrape.
 Push-time recording methods (``record_*``) are inherited from
 :class:`~synthorg.observability.prometheus_recording.RecordingMixin`;
-this module owns construction + the async ``refresh`` pull-path so
-the file stays under the 800-line ceiling mandated by ``CLAUDE.md``.
+this module owns construction + the async ``refresh`` pull-path.
 """
 
 import asyncio
@@ -34,6 +29,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability._prometheus_label_fetchers import (
     agent_ids_from_agents,
     fetch_departments,
+    fetch_model_ids,
     fetch_provider_names,
     fetch_tool_names,
     fetch_workflow_definitions,
@@ -53,9 +49,7 @@ from synthorg.observability.prometheus_labels import (
 from synthorg.observability.prometheus_push_metrics import PushMetrics
 from synthorg.observability.prometheus_recording import RecordingMixin
 from synthorg.observability.prometheus_recording._base import _PUSH_ALIASED_METRICS
-from synthorg.observability.prometheus_recording_streams import (
-    StreamRecordingMixin,
-)
+from synthorg.observability.prometheus_recording_streams import StreamRecordingMixin
 from synthorg.persistence.protocol import PersistenceBackendKind
 from synthorg.persistence.state import PersistenceStateSlice, persistence_of
 
@@ -333,6 +327,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         """
         agent_ids = agent_ids_from_agents(agents)
         provider_names = fetch_provider_names(app_state)
+        model_ids = fetch_model_ids(app_state)
         async with asyncio.TaskGroup() as tg:
             wf_task = tg.create_task(fetch_workflow_definitions(app_state))
             dept_task = tg.create_task(fetch_departments(app_state))
@@ -343,16 +338,18 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             dept_ids=dept_task.result(),
             tool_names=tool_task.result(),
             provider_names=provider_names,
+            model_ids=model_ids,
         )
 
     @staticmethod
-    async def _merge_and_update_snapshot(
+    async def _merge_and_update_snapshot(  # noqa: PLR0913 -- one kwarg per label source, each carried forward independently
         *,
         agent_ids: frozenset[str] | None,
         wf_ids: frozenset[str] | None,
         dept_ids: frozenset[str] | None,
         tool_names: frozenset[str] | None,
         provider_names: frozenset[str] | None,
+        model_ids: frozenset[str] | None,
     ) -> None:
         """Merge with the previous snapshot and atomically rebind.
 
@@ -385,6 +382,9 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             merged_providers = (
                 provider_names if provider_names is not None else previous.providers
             )
+            merged_model_ids = (
+                model_ids if model_ids is not None else previous.model_ids
+            )
             update_label_snapshot(
                 _LabelSnapshot(
                     agent_ids=merged_agent_ids,
@@ -392,6 +392,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
                     departments=merged_departments,
                     tool_names=merged_tool_names,
                     providers=merged_providers,
+                    model_ids=merged_model_ids,
                     agent_ids_seeded=previous.agent_ids_seeded
                     or (agent_ids is not None),
                     workflow_definition_ids_seeded=(
@@ -403,6 +404,8 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
                     or (tool_names is not None),
                     providers_seeded=previous.providers_seeded
                     or (provider_names is not None),
+                    model_ids_seeded=previous.model_ids_seeded
+                    or (model_ids is not None),
                 ),
             )
 

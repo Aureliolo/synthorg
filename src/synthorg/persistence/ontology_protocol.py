@@ -226,12 +226,15 @@ class OntologyDriftReportRepository(
 ):
     """Storage protocol for drift detection reports.
 
-    Composes :class:`AppendOnlyRepository`. :meth:`get_latest`
+    Composes :class:`AppendOnlyRepository`, so ``append``, ``query`` and
+    ``purge_before`` are inherited (generic surface). :meth:`get_latest`
     (per-entity most recent) and :meth:`get_all_latest` (latest per
-    entity across all entities) are domain-specific aggregates beyond
-    the generic ``query`` surface and are optimised with specialised
-    SQL (indexes on ``(entity_name, id DESC)`` and ``DISTINCT ON``
-    subqueries for fast per-entity selection).
+    entity across all entities) are bespoke methods kept under
+    **ADR-0001 D7** (real perf optimisation): they are domain-specific
+    aggregates the generic ``query`` cannot express efficiently, optimised
+    with specialised SQL (indexes on ``(entity_name, id DESC)`` and
+    ``DISTINCT ON`` subqueries for fast per-entity selection) that callers
+    must not bypass.
     """
 
     @override

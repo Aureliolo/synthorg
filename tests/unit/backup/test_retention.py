@@ -162,6 +162,63 @@ class TestRetentionPruneByAge:
 
 
 @pytest.mark.unit
+class TestRetentionResolverDrivenAge:
+    """The live ``backup.retention_days`` setting overrides static config."""
+
+    async def test_resolver_value_overrides_static_max_age(
+        self,
+        backup_path: Path,
+    ) -> None:
+        """A resolver-supplied retention_days wins over config.max_age_days."""
+        from unittest.mock import AsyncMock
+
+        from synthorg.settings.resolver_protocol import ConfigResolverProtocol
+
+        # Static config would keep everything (365 days); the resolver
+        # narrows the age cap to 7 days.
+        config = RetentionConfig(max_count=100, max_age_days=365)
+        resolver = AsyncMock(spec=ConfigResolverProtocol)
+        resolver.get_int.return_value = 7
+        now = datetime.now(UTC)
+
+        ts_recent = (now - timedelta(days=1)).isoformat()
+        _create_backup_dir(backup_path, "recent", BackupTrigger.MANUAL, ts_recent)
+        ts_old = (now - timedelta(days=10)).isoformat()
+        _create_backup_dir(backup_path, "old-one", BackupTrigger.MANUAL, ts_old)
+
+        manager = RetentionManager(config, backup_path, config_resolver=resolver)
+        pruned = await manager.prune()
+
+        assert "old-one" in pruned
+        assert "recent" not in pruned
+
+    async def test_resolver_failure_falls_back_to_static(
+        self,
+        backup_path: Path,
+    ) -> None:
+        """A resolver outage falls back to the static max_age_days."""
+        from unittest.mock import AsyncMock
+
+        from synthorg.settings.resolver_protocol import ConfigResolverProtocol
+
+        config = RetentionConfig(max_count=100, max_age_days=7)
+        resolver = AsyncMock(spec=ConfigResolverProtocol)
+        resolver.get_int.side_effect = RuntimeError("settings backend down")
+        now = datetime.now(UTC)
+
+        ts_recent = (now - timedelta(days=1)).isoformat()
+        _create_backup_dir(backup_path, "recent", BackupTrigger.MANUAL, ts_recent)
+        ts_old = (now - timedelta(days=10)).isoformat()
+        _create_backup_dir(backup_path, "old-one", BackupTrigger.MANUAL, ts_old)
+
+        manager = RetentionManager(config, backup_path, config_resolver=resolver)
+        pruned = await manager.prune()
+
+        assert "old-one" in pruned
+        assert "recent" not in pruned
+
+
+@pytest.mark.unit
 class TestRetentionNewestProtection:
     """The most recent backup is never pruned."""
 

@@ -26,10 +26,22 @@ class UpgradeRecommendationDTO(BaseModel):
     current_model_id: NotBlankStr
     recommended_model_id: NotBlankStr
     family: NotBlankStr
-    current_generation: float = Field(ge=0.0)
-    recommended_generation: float = Field(gt=0.0)
-    score: float = Field(ge=0.0, le=1.0)
-    reason: NotBlankStr
+    current_generation: float = Field(
+        ge=0.0,
+        description="Generation number of the currently-assigned model.",
+    )
+    recommended_generation: float = Field(
+        gt=0.0,
+        description="Generation number of the recommended replacement model.",
+    )
+    score: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Confidence score for the recommendation in the range 0 to 1.",
+    )
+    reason: NotBlankStr = Field(
+        description="Human-readable rationale for the upgrade recommendation.",
+    )
     agent_ids: tuple[NotBlankStr, ...]
     status: RecommendationStatus
     created_at: datetime
@@ -69,11 +81,26 @@ class RefreshCycleReportDTO(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-    providers_scanned: int = Field(ge=0)
-    added_count: int = Field(ge=0)
-    stale_count: int = Field(ge=0)
-    recommended_count: int = Field(ge=0)
-    auto_applied_count: int = Field(ge=0)
+    providers_scanned: int = Field(
+        ge=0,
+        description="Number of providers scanned during the refresh cycle.",
+    )
+    added_count: int = Field(
+        ge=0,
+        description="Number of newly-discovered models added during the cycle.",
+    )
+    stale_count: int = Field(
+        ge=0,
+        description="Number of models marked stale during the cycle.",
+    )
+    recommended_count: int = Field(
+        ge=0,
+        description="Number of upgrade recommendations produced during the cycle.",
+    )
+    auto_applied_count: int = Field(
+        ge=0,
+        description="Number of recommendations auto-applied within their family.",
+    )
 
     @classmethod
     def from_report(cls, report: RefreshCycleReport) -> RefreshCycleReportDTO:
@@ -100,8 +127,13 @@ class RefreshStatusDTO(BaseModel):
     interval_seconds: float = Field(
         ge=_MIN_REFRESH_INTERVAL_SECONDS,
         le=_MAX_REFRESH_INTERVAL_SECONDS,
+        description="Cadence between automatic refresh cycles in seconds.",
     )
-    auto_apply_within_family: bool
+    auto_apply_within_family: bool = Field(
+        description=(
+            "Whether same-family upgrade recommendations are applied automatically."
+        ),
+    )
 
     @classmethod
     def from_config(cls, config: ModelRefreshConfig) -> RefreshStatusDTO:

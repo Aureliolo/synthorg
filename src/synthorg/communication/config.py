@@ -12,6 +12,7 @@ from synthorg.communication.conflict_resolution.config import (
 from synthorg.communication.enums import (
     CommunicationPattern,
     MessageBusBackend,
+    QuadraticEnforcementStrategy,
 )
 from synthorg.communication.meeting.config import MeetingTypeConfig
 from synthorg.core.types import (
@@ -248,6 +249,63 @@ class NatsConfig(BaseModel):
     )
 
 
+class QuadraticEnforcementConfig(BaseModel):
+    """O(n^2) message-overhead enforcement settings for the message bus.
+
+    Detection compares the windowed inter-agent message count against
+    ``team_size^2 * quadratic_threshold``.  The ``strategy`` decides
+    what happens when that threshold is crossed (see
+    :class:`~synthorg.communication.enums.QuadraticEnforcementStrategy`).
+
+    Attributes:
+        strategy: Enforcement mode (default ``alert_only``).
+        quadratic_threshold: Fraction of ``team_size^2`` that marks a
+            window as quadratic.
+        window_seconds: Sliding window over which inter-agent publishes
+            are counted.
+        max_agent_connections: Participant ceiling enforced under
+            ``hard_block``; admitting another agent past this is rejected.
+        throttle_delay_seconds: Publish backpressure delay applied under
+            ``soft_throttle`` while a window is quadratic.
+        min_team_size: Smallest team for which detection runs; below this
+            the quadratic comparison is noise and is skipped.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    strategy: QuadraticEnforcementStrategy = Field(
+        default=QuadraticEnforcementStrategy.ALERT_ONLY,
+        description="Quadratic enforcement mode",
+    )
+    quadratic_threshold: float = Field(
+        default=0.5,
+        gt=0.0,
+        le=1.0,
+        description="Fraction of team_size^2 that marks a window quadratic",
+    )
+    window_seconds: float = Field(
+        default=60.0,
+        gt=0.0,
+        description="Sliding window for counting inter-agent publishes",
+    )
+    max_agent_connections: int = Field(
+        default=50,
+        gt=0,
+        description="Participant ceiling enforced under hard_block",
+    )
+    throttle_delay_seconds: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=5.0,
+        description="Publish backpressure delay under soft_throttle",
+    )
+    min_team_size: int = Field(
+        default=3,
+        gt=0,
+        description="Smallest team for which quadratic detection runs",
+    )
+
+
 class MessageBusConfig(BaseModel):
     """Message bus backend configuration.
 
@@ -259,6 +317,7 @@ class MessageBusConfig(BaseModel):
         retention: Message retention settings.
         nats: NATS-specific configuration (required when
             ``backend == NATS``, ignored otherwise).
+        quadratic_enforcement: O(n^2) message-overhead enforcement.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -278,6 +337,10 @@ class MessageBusConfig(BaseModel):
     nats: NatsConfig | None = Field(
         default=None,
         description="NATS-specific configuration (required when backend=nats)",
+    )
+    quadratic_enforcement: QuadraticEnforcementConfig = Field(
+        default_factory=QuadraticEnforcementConfig,
+        description="O(n^2) message-overhead enforcement settings",
     )
 
     @model_validator(mode="after")

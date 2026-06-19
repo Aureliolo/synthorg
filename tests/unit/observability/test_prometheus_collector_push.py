@@ -128,10 +128,12 @@ class TestRecordAgentIdentityChange:
             agent_id="agent-1",
             change_type="created",
         )
+        # ``agent_id`` is an OpenMetrics exemplar now, not a label, so the
+        # series is keyed by ``change_type`` alone (bounded cardinality).
         value = _sample_value(
             collector,
             "synthorg_test_agent_identity_version_changes_total",
-            {"agent_id": "agent-1", "change_type": "created"},
+            {"change_type": "created"},
         )
         assert value == 2.0
 

@@ -34,6 +34,8 @@ from synthorg.observability.events.integrations import (
     OAUTH_TOKEN_REFRESH_FAILED,
     OAUTH_TOKEN_REFRESHED,
 )
+from synthorg.tools.network_validator import NetworkPolicy
+from synthorg.tools.ssrf import build_pinned_transport, resolve_outbound_target
 
 logger = get_logger(__name__)
 
@@ -61,6 +63,7 @@ class AuthorizationCodeFlow:
         *,
         http_timeout_seconds: float = _DEFAULT_HTTP_TIMEOUT_SECONDS,
         clock: Clock | None = None,
+        network_policy: NetworkPolicy | None = None,
     ) -> None:
         # Strict numeric + finite + positive: reject ``bool`` (which
         # is an ``int`` subclass and would silently flow into
@@ -81,6 +84,52 @@ class AuthorizationCodeFlow:
             raise ValueError(msg)
         self._http_timeout_seconds = float(http_timeout_seconds)
         self._clock: Clock = clock if clock is not None else SystemClock()
+        # SSRF policy for the outbound token-endpoint POSTs. ``token_url``
+        # is operator/provider-supplied, so every exchange/refresh call is
+        # DNS-resolved + pinned before connecting (no redirects).
+        self._network_policy: NetworkPolicy = (
+            network_policy if network_policy is not None else NetworkPolicy()
+        )
+
+    async def _post_token_request(
+        self,
+        *,
+        token_url: str,
+        payload: dict[str, str],
+        field: str,
+    ) -> dict[str, object]:
+        """SSRF-validate ``token_url`` then POST the token request.
+
+        DNS-resolves the host against the SSRF policy, pins the connect to
+        the validated IP (DNS-rebinding defence), and disables redirects so
+        a 3xx cannot bounce the request to an internal host.
+
+        Returns:
+            The parsed JSON object from the token endpoint.
+
+        Raises:
+            ValueError: When ``token_url`` is rejected by the SSRF policy.
+            httpx.HTTPError: On transport / status failure.
+            json.JSONDecodeError: When the response body is not JSON.
+            TokenExchangeFailedError: When the JSON body is not an object.
+        """
+        validation = await resolve_outbound_target(
+            token_url,
+            field=field,
+            policy=self._network_policy,
+        )
+        async with httpx.AsyncClient(
+            timeout=self._http_timeout_seconds,
+            follow_redirects=False,
+            transport=build_pinned_transport(validation),
+        ) as client:
+            resp = await client.post(token_url, data=payload)
+            resp.raise_for_status()
+            parsed = resp.json()
+        if not isinstance(parsed, dict):
+            msg = "token endpoint returned a non-object JSON body"
+            raise TokenExchangeFailedError(msg)
+        return parsed
 
     @property
     def grant_type(self) -> str:
@@ -195,15 +244,18 @@ class AuthorizationCodeFlow:
             "code_verifier": verifier,
         }
         try:
-            async with httpx.AsyncClient(timeout=self._http_timeout_seconds) as client:
-                resp = await client.post(token_url, data=payload)
-                resp.raise_for_status()
-                data = resp.json()
-        except (httpx.HTTPError, json.JSONDecodeError) as exc:
+            # SSRF-validated + DNS-pinned POST (token_url is provider-supplied).
+            data = await self._post_token_request(
+                token_url=token_url,
+                payload=payload,
+                field="token_url",
+            )
+        except (httpx.HTTPError, json.JSONDecodeError, ValueError) as exc:
             # Use ``warning`` (no traceback) + scrubbed description so the
             # request payload that contained ``client_secret`` and
             # ``code_verifier`` cannot leak through frame-local repr's or
-            # stringified error bodies.
+            # stringified error bodies. ``ValueError`` covers an SSRF
+            # rejection of ``token_url`` raised before any network I/O.
             logger.warning(
                 OAUTH_TOKEN_EXCHANGE_FAILED,
                 error_type=type(exc).__name__,
@@ -240,13 +292,24 @@ class AuthorizationCodeFlow:
             "client_secret": client_secret,
         }
         try:
-            async with httpx.AsyncClient(timeout=self._http_timeout_seconds) as client:
-                resp = await client.post(token_url, data=payload)
-                resp.raise_for_status()
-                data = resp.json()
-        except (httpx.HTTPError, json.JSONDecodeError) as exc:
+            # SSRF-validated + DNS-pinned POST (token_url is provider-supplied).
+            data = await self._post_token_request(
+                token_url=token_url,
+                payload=payload,
+                field="token_url",
+            )
+        except (
+            httpx.HTTPError,
+            json.JSONDecodeError,
+            ValueError,
+            TokenExchangeFailedError,
+        ) as exc:
             # See ``exchange_code`` above: ``warning`` + scrubbed description
             # keeps the refresh_token and client_secret out of logs.
+            # ``ValueError`` covers an SSRF rejection of ``token_url``.
+            # ``TokenExchangeFailedError`` is raised by
+            # ``_post_token_request`` on a non-object JSON body; catch it
+            # here so refresh callers always see the refresh error domain.
             logger.warning(
                 OAUTH_TOKEN_REFRESH_FAILED,
                 error_type=type(exc).__name__,

@@ -27,6 +27,7 @@ from synthorg.budget._cost_window import (
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.currency import assert_currencies_match
 from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.core.normalization import normalize_identifier
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger
@@ -99,7 +100,7 @@ class CostTrackerHistoryLookup:
         """
         end = self._clock()
         start = end - timedelta(days=self._window_days)
-        records = await self._cost_tracker.get_records(start=start, end=end)
+        records = await collect_all_records(self._cost_tracker, start=start, end=end)
         if not records:
             return {}
         agents = await self._registry.list_active()

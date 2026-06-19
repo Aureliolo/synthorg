@@ -68,6 +68,7 @@ Bounded-label values are enforced at record time in `src/synthorg/observability/
 | `synthorg_provider_tokens_total` | Counter | `provider`, `model`, `direction` | Input/output tokens by model (`direction` bounded to `input`/`output`). | `Tools & Providers` |
 | `synthorg_provider_cost_total` | Counter | `provider`, `model` | Cost per provider call. | `Tools & Providers` |
 | `synthorg_provider_errors_total` | Counter | `provider`, `model`, `error_class` | Provider-call failures classified by `rate_limit` / `timeout` / `connection` / `internal` / `invalid_request` / `auth` / `content_filter` / `not_found` / `other`. | `Tools & Providers` |
+| `synthorg_provider_call_duration_seconds` | Histogram | `provider`, `model`, `call_type` | Provider call wall-clock duration per provider, model, and call type (buckets 0.05s-120s). The auto-emitted `_count` series is the per-label call counter. | `Tools & Providers` |
 
 ### Tools
 
@@ -157,6 +158,7 @@ Bounded-label values are enforced at record time in `src/synthorg/observability/
 | `synthorg_approval_decisions_total` | Counter | `outcome` | Approval-gate terminal decisions (`outcome` bounded to `approved` / `rejected` / `expired`). | `Decisions` |
 | `synthorg_escalation_outcomes_total` | Counter | `outcome` | Conflict-resolution escalation terminal outcomes (`outcome` bounded to `resolved` / `escalated_to_human` / `auto_resolved` / `notify_failed` / `sweeper_failed`). | `Decisions` |
 | `synthorg_blueprint_instantiations_total` | Counter | `outcome` | Workflow blueprint instantiation attempts (`outcome` bounded to `success` / `validation_error` / `not_found` / `unknown_error`). | `Decisions` |
+| `synthorg_autonomy_promotion_decisions_total` | Counter | `outcome` | Autonomy-promotion workflow terminal decisions by bounded `outcome` (`granted` / `denied`). | `Decisions` |
 
 ### Configuration & MCP
 
@@ -234,6 +236,17 @@ sum by (provider, error_class) (rate(synthorg_provider_errors_total[5m]))
 # Token-normalized provider error rate (error events per token volume)
 sum by (provider) (rate(synthorg_provider_errors_total[5m]))
   / clamp_min(sum by (provider) (rate(synthorg_provider_tokens_total[5m])), 1)
+
+# Provider call latency p95 by provider + call type
+histogram_quantile(
+  0.95,
+  sum by (le, provider, call_type) (
+    rate(synthorg_provider_call_duration_seconds_bucket[5m])
+  )
+)
+
+# Provider call rate (the histogram's auto-emitted _count series)
+sum by (provider, call_type) (rate(synthorg_provider_call_duration_seconds_count[5m]))
 ```
 
 ### Cache hit rate
@@ -245,6 +258,17 @@ sum by (cache_name) (rate(synthorg_cache_operations_total{outcome="hit"}[5m]))
 
 # Eviction spike (may indicate undersized cache)
 sum by (cache_name) (rate(synthorg_cache_operations_total{outcome="evict"}[5m]))
+```
+
+### Autonomy promotion
+
+```promql
+# Promotion grant vs deny rate (governance throughput by outcome)
+sum by (outcome) (rate(synthorg_autonomy_promotion_decisions_total[1h]))
+
+# Denial fraction of all promotion decisions over the last day
+sum(rate(synthorg_autonomy_promotion_decisions_total{outcome="denied"}[1d]))
+  / clamp_min(sum(rate(synthorg_autonomy_promotion_decisions_total[1d])), 1)
 ```
 
 ### Security posture
@@ -354,11 +378,11 @@ The dashboard organises over fifty panels into thirteen rows. Only `Health & SLO
 | `Health & SLO` | expanded | Coordination efficiency, coordination overhead, budget utilisation, active agents, escalation queue depth |
 | `Tasks` | collapsed | Task completion rate, task duration p50/p95, tasks-by-status, task-runs-by-outcome, tasks per agent |
 | `Workflows` | collapsed | Workflow duration p50/p95, workflow execution rate by status, top-N workflow definitions |
-| `Tools & Providers` | collapsed | Tool invocation rate, tool duration p95 by `tool_name`, provider tokens, provider cost, provider errors by class |
+| `Tools & Providers` | collapsed | Tool invocation rate, tool duration p95 by `tool_name`, provider tokens, provider cost, provider errors by class, provider call latency p95 (`synthorg_provider_call_duration_seconds`) |
 | `Cost & Budget` | collapsed | `synthorg_cost_total`, monthly cost, daily used %, top-25 per-agent cost, agent budget used % |
 | `Audit & Security` | collapsed | Audit chain append rate, depth, last-append age, audit-log fill-ratio gauge, security verdicts, agent identity version changes, API error categories |
 | `Client Health` | collapsed | Client disconnects by transport+reason, API request rate by status class, OTLP export batches, OTLP dropped records, cache hit rate, app info |
-| `Decisions` | collapsed | Approval decisions/sec (`synthorg_approval_decisions_total`), escalation outcomes/sec (`synthorg_escalation_outcomes_total`), blueprint instantiations/sec (`synthorg_blueprint_instantiations_total`) |
+| `Decisions` | collapsed | Approval decisions/sec (`synthorg_approval_decisions_total`), escalation outcomes/sec (`synthorg_escalation_outcomes_total`), blueprint instantiations/sec (`synthorg_blueprint_instantiations_total`), autonomy promotion decisions/sec (`synthorg_autonomy_promotion_decisions_total`) |
 | `Configuration & MCP` | collapsed | Settings mutations/sec by namespace (`synthorg_settings_mutations_total`), MCP handler success rate (`synthorg_mcp_handler_outcomes_total`), MCP handler p95 latency by tool (`synthorg_mcp_handler_duration_seconds`) |
 | `Audit & Performance` | collapsed | Audit chain signing-error rate (`synthorg_audit_chain_appends_total{status="error"}`), audit chain integrity over the last hour (`synthorg_audit_chain_verifications_total`), budget query p95 latency by query type (`synthorg_budget_query_duration_seconds`) |
 | `WebSocket Transport` | collapsed | Active connections (`synthorg_ws_active_connections`), revalidation outcomes (`synthorg_ws_revalidation_total`), connection lifetime p95 by transport (`synthorg_ws_connection_lifetime_seconds`) |

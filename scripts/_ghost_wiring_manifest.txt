@@ -25,6 +25,7 @@
 
 ENFORCED AgentEngine #1956 -- runtime root; construct at boot behind the provider switch
 ENFORCED build_coordinator #1958 -- called by workers.runtime_builder.build_runtime_services behind the provider switch
+ENFORCED ManualDecompositionStrategy #2404 -- constructed in api/controllers/decomposition.py::DecompositionController.decompose_manual over a caller-authored plan; runs through DecompositionService to validate + classify + assess a hand-built subtask breakdown served by POST /tasks/{task_id}/decompose
 ENFORCED ApprovalGate #1957 -- one gate wired at boot in lifecycle_builder, injected into AgentEngine; engine parks, /approvals resumes
 ENFORCED TrustService #1957 -- built at boot (non-DISABLED strategy), injected into AgentEngine; narrows tool permissions at the invoker seam
 ENFORCED build_mcp_self_consumer #1957 -- called in runtime_builder; agent invokes SynthOrg's own MCP tools trust-scoped with actor fail-closed
@@ -165,9 +166,14 @@ ENFORCED SubworkflowService #2334 -- constructed in api/lifecycle_helpers/persis
 ENFORCED QuotaTracker #2334 -- constructed in budget/_construction.py::wire_construction from budget subscriptions; threaded into the BudgetEnforcer for per-provider quota enforcement
 ENFORCED RiskTracker #2334 -- constructed in budget/_construction.py::wire_construction; threaded into the BudgetEnforcer + AutomatedReportService for risk-budget enforcement and risk trend reports
 ENFORCED CallAnalyticsService #2334 -- constructed in budget/_construction.py::wire_construction over the cost tracker; serves GET /budget/call-analytics
+ENFORCED CostOptimizer #2404 -- constructed in budget/_construction.py::wire_construction over the cost tracker + budget config; serves the CFO advisory analytics GET /budget/cfo/anomalies + GET /budget/cfo/efficiency via BudgetCfoController
 ENFORCED build_evolution_service #2334 -- called in workers/_engine_assembly.py::_build_evolution_service_or_none behind evolution.enabled + connected persistence; builds the agent self-evolution service reached from the post-execution evolution trigger
 ENFORCED InMemoryErrorTaxonomyStore #2334 -- constructed in engine/_construction.py::wire_construction; the shared error-taxonomy aggregation store fed by the post-execution classification sinks and read by the signals error aggregator
 ENFORCED PerformanceTrackerSink #2334 -- constructed in workers/_engine_assembly.py::_build_classification behind coordination.error_taxonomy.enabled; feeds classified errors back into the performance tracker
 ENFORCED NotificationDispatcherSink #2334 -- constructed in workers/_engine_assembly.py::_build_classification behind coordination.error_taxonomy.enabled; dispatches high-severity classified errors as notifications
 ENFORCED build_policy_engine #2334 -- called in security/_construction.py::_build_policy_engine_or_none; builds the runtime PolicyEngine (none by default) consulted at the tool-invoker authorization seam
 ENFORCED MCPToolFactory #2334 -- constructed in workers/_engine_assembly.py::_build_mcp_bridge_tools when MCP servers are configured; bridges external MCP server tools into the boot agent tool registry
+ENFORCED build_promotion_service #2404 -- called in api/lifecycle_helpers/promotion_wiring.py::wire_promotion behind promotion.enabled + a wired registry/tracker; builds the PromotionService driven by the PromotionCycleScheduler and reached from the /promotion endpoints
+ENFORCED build_drift_detection_service #2404 -- called in api/lifecycle_startup.py::_wire_drift_detection after the ontology service connects (strategy != none + a memory backend); builds the DriftDetectionService backing GET /ontology/drift
+ENFORCED install_audit_chain_sink #2404 -- called in observability/startup_wiring.py::wire_observability_callbacks behind audit_chain.enabled; attaches the Ed25519-signing AuditChainSink to the root logger so security.* events are signed + chained
+PENDING SelfImprovementService #2406 -- meta self-improvement cycle (the sole constructor of build_appliers/ConfigApplier, whose apply() persists config via SettingsWritePort). Defined + tested but not constructed on MetaStateSlice at boot, so ConfigApplier.apply() is unreachable in a real deployment; the meta-loop / EvolutionService wiring that builds it is deferred to #2406. MCP handlers degrade to capability_gap while absent. Move PENDING -> ENFORCED in the wiring PR.

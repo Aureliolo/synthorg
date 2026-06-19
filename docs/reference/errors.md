@@ -63,6 +63,7 @@ This page is the developer-oriented reference for the problem-type URIs and the 
 | 2013 | `STEERING_KIND_INVALID` | Steering directive kind not recognised |
 | 2014 | `STEERING_DIRECTIVE_FIELD_BLANK` | Steering directive required field blank |
 | 2015 | `STEERING_TASK_PROJECT_MISMATCH` | Steering task does not belong to the project |
+| 2016 | `ESCALATION_DECISION_INVALID` | Human-supplied escalation decision is invalid or not accepted by the active processor |
 
 ## Not Found (3xxx)
 
@@ -148,6 +149,7 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 5000 | `RATE_LIMITED` | Global per-user / per-IP throttle tripped |
 | 5001 | `PER_OPERATION_RATE_LIMITED` | Specific operation's `(max_requests, window)` budget exhausted |
 | 5002 | `CONCURRENCY_LIMIT_EXCEEDED` | Too many in-flight requests for the op |
+| 5003 | `AGENT_CONNECTION_LIMIT_EXCEEDED` | Message-bus quadratic `hard_block` rejected a new agent connection |
 
 ## Budget Exhausted (6xxx)
 

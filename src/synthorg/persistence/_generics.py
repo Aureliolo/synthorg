@@ -280,8 +280,20 @@ class MVCCRepository(Protocol[T_co, ID_contra, Op]):
         """Append one operation (immutable log entry)."""
         ...
 
-    async def snapshot_at(self, timestamp: datetime) -> tuple[T_co, ...]:
-        """Return entity state as of ``timestamp``."""
+    async def snapshot_at(
+        self,
+        timestamp: datetime,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[T_co, ...]:
+        """Return a bounded page of entity state as of ``timestamp``.
+
+        Returns one ``limit``-sized page in a stable order; callers
+        needing the whole snapshot drain every page via
+        :func:`synthorg.persistence._shared.collect_all`. Unbounded
+        materialisation is a denial-of-service vector on a large log.
+        """
         ...
 
     async def get(self, entity_id: ID_contra, /) -> T_co | None:
@@ -292,13 +304,23 @@ class MVCCRepository(Protocol[T_co, ID_contra, Op]):
         """Non-destructive delete: append a tombstone op with ``reason``."""
         ...
 
-    async def get_operation_log(self, entity_id: ID_contra, /) -> tuple[Op, ...]:
-        """Return the full op history for one entity.
+    async def get_operation_log(
+        self,
+        entity_id: ID_contra,
+        /,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[Op, ...]:
+        """Return a bounded page of the op history for one entity.
 
         Ordering: rows are returned by ascending append order
         (oldest-first). The append-order key is the storage layer's
         monotonic insertion id; concrete implementations MUST not
         re-order historical entries even after retraction, since the
         log is the system-of-record for the entity's causal history.
+        Returns one ``limit``-sized page; callers needing the full
+        trail drain every page via
+        :func:`synthorg.persistence._shared.collect_all`.
         """
         ...

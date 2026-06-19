@@ -31,6 +31,7 @@ from synthorg.api.pagination import (
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.domain_errors import ConflictError, NotFoundError
+from synthorg.core.pagination import collect_all
 from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import ProposalAltitude, RuleSeverity
@@ -98,7 +99,17 @@ class CustomRuleController(Controller):
         Returns:
             Paginated custom rule definitions.
         """
-        rules, _total = await _service(state).list_rules()
+        service = _service(state)
+
+        async def _fetch(
+            page_limit: int, page_offset: int
+        ) -> tuple[CustomRuleDefinition, ...]:
+            page_rules, _ = await service.list_rules(
+                limit=page_limit, offset=page_offset
+            )
+            return page_rules
+
+        rules = await collect_all(_fetch)
         entries = tuple(rule_to_dict(r) for r in rules)
         page, meta = paginate_cursor(
             entries,

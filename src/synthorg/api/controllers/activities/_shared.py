@@ -17,6 +17,7 @@ from synthorg.api.state import AppState
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.state import BudgetStateSlice
+from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.communication.delegation.models import DelegationRecord
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.collections import dedupe_preserving_order
@@ -395,7 +396,8 @@ async def _fetch_cost_records(
     if cost_tracker is None:
         return (), False
     try:
-        return await cost_tracker.get_records(
+        return await collect_all_records(
+            cost_tracker,
             agent_id=agent_id,
             start=since,
             end=now,

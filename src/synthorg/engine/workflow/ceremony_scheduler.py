@@ -11,7 +11,7 @@ See ``docs/design/ceremony-scheduling.md`` for the full design.
 
 import asyncio
 import json
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
@@ -619,17 +619,182 @@ class CeremonyScheduler:
 
         async with self._lock:
             # A concurrent deactivate/activate may have switched the active
-            # sprint during the unlocked fire above. Mutating counters or
-            # saving under a stale ``sprint.id`` would corrupt the now-active
-            # sprint's persisted state, so re-confirm identity first.
+            # sprint during the unlocked fire above, and both of those reset
+            # ``_fired_once_triggers`` to the new sprint's marks. Rolling
+            # back the old sprint's un-fired one-shots, resetting counters,
+            # or saving under a stale ``sprint.id`` would corrupt the
+            # now-active sprint's state, so re-confirm identity FIRST and
+            # leave the new sprint untouched on a switch.
             if self._active_sprint is None or self._active_sprint.id != sprint.id:
                 return transitioned
+            # Same sprint: roll back the optimistic one-shot marks for
+            # ceremonies that did not fire so they stay eligible; the
+            # successful ones keep their mark.
+            self._fired_once_triggers.difference_update(
+                set(one_shot) - set(fired_one_shot)
+            )
             for name in fired_per_task:
                 if name in self._completion_counters:
                     self._completion_counters[name] = 0
-            # Roll back the optimistic one-shot marks for ceremonies that
-            # did not fire so they stay eligible on the next completion;
-            # the successful ones keep their mark.
+            await self._save_state_unlocked(sprint.id)
+        return transitioned
+
+    async def on_task_added(self, sprint: Sprint, task_id: str) -> Sprint:
+        """Handle a task-added event by delegating to the active strategy.
+
+        Args:
+            sprint: Current sprint state (after the task was added).
+            task_id: The added task ID.
+
+        Returns:
+            The sprint, possibly auto-transitioned by the active strategy.
+        """
+
+        async def _delegate(
+            strategy: CeremonySchedulingStrategy,
+            current: Sprint,
+            _context: CeremonyEvalContext,
+        ) -> None:
+            await strategy.on_task_added(current, task_id)
+
+        return await self._dispatch_event(
+            sprint, delegate=_delegate, event="task_added"
+        )
+
+    async def on_task_blocked(self, sprint: Sprint, task_id: str) -> Sprint:
+        """Handle a task-blocked event by delegating to the active strategy.
+
+        Args:
+            sprint: Current sprint state.
+            task_id: The blocked task ID.
+
+        Returns:
+            The sprint, possibly auto-transitioned by the active strategy.
+        """
+
+        async def _delegate(
+            strategy: CeremonySchedulingStrategy,
+            current: Sprint,
+            _context: CeremonyEvalContext,
+        ) -> None:
+            await strategy.on_task_blocked(current, task_id)
+
+        return await self._dispatch_event(
+            sprint, delegate=_delegate, event="task_blocked"
+        )
+
+    async def on_budget_updated(
+        self,
+        sprint: Sprint,
+        budget_consumed_fraction: float,
+    ) -> Sprint:
+        """Handle a budget-update event by delegating to the active strategy.
+
+        Args:
+            sprint: Current sprint state.
+            budget_consumed_fraction: Budget consumed as a fraction (0.0--1.0).
+
+        Returns:
+            The sprint, possibly auto-transitioned by the active strategy.
+        """
+
+        async def _delegate(
+            strategy: CeremonySchedulingStrategy,
+            current: Sprint,
+            _context: CeremonyEvalContext,
+        ) -> None:
+            await strategy.on_budget_updated(current, budget_consumed_fraction)
+
+        return await self._dispatch_event(
+            sprint, delegate=_delegate, event="budget_updated"
+        )
+
+    async def on_external_event(
+        self,
+        sprint: Sprint,
+        event_name: str,
+        payload: Mapping[str, object],
+    ) -> Sprint:
+        """Handle an external event by delegating to the active strategy.
+
+        Args:
+            sprint: Current sprint state.
+            event_name: Name of the external event.
+            payload: Event payload data.
+
+        Returns:
+            The sprint, possibly auto-transitioned by the active strategy.
+        """
+
+        async def _delegate(
+            strategy: CeremonySchedulingStrategy,
+            current: Sprint,
+            _context: CeremonyEvalContext,
+        ) -> None:
+            await strategy.on_external_event(current, event_name, payload)
+
+        return await self._dispatch_event(sprint, delegate=_delegate, event=event_name)
+
+    async def _dispatch_event(
+        self,
+        sprint: Sprint,
+        *,
+        delegate: Callable[
+            [CeremonySchedulingStrategy, Sprint, CeremonyEvalContext],
+            Awaitable[None],
+        ],
+        event: str,
+    ) -> Sprint:
+        """Run an event through the strategy hook + one-shot ceremony firing.
+
+        Mirrors :meth:`on_task_completed`'s lock / fire-outside-lock /
+        rollback structure, minus the per-task completion counters which
+        are specific to completions: it delegates to the strategy hook,
+        fires any eligible midpoint/end one-shot ceremonies, and checks
+        auto-transition. No-ops (returns ``sprint``) when the scheduler
+        is not active.
+
+        Returns:
+            The sprint, possibly auto-transitioned.
+        """
+        async with self._lock:
+            if not self._running or self._active_strategy is None:
+                logger.debug(
+                    SPRINT_CEREMONY_SKIPPED,
+                    note="scheduler_not_active",
+                    event_kind=event,
+                )
+                return sprint
+            assert self._sprint_config is not None  # noqa: S101
+            self._active_sprint = sprint
+            context = self._build_context(sprint)
+            try:
+                await delegate(self._active_strategy, sprint, context)
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                log_exception_redacted(
+                    logger,
+                    SPRINT_CEREMONY_STRATEGY_HOOK_FAILED,
+                    exc,
+                    event_kind=event,
+                    sprint_id=sprint.id,
+                )
+                return sprint
+            one_shot = self._select_one_shot_ceremonies(context)
+            self._fired_once_triggers.update(one_shot)
+            transitioned = self._check_auto_transition(sprint, context)
+
+        fired_one_shot = await self._fire_ceremonies(one_shot, sprint)
+
+        async with self._lock:
+            # Re-confirm identity FIRST: a concurrent deactivate/activate
+            # resets ``_fired_once_triggers`` to the new sprint's marks, so
+            # rolling back the old sprint's un-fired one-shots after a
+            # switch would erase the new sprint's valid markers.
+            if self._active_sprint is None or self._active_sprint.id != sprint.id:
+                return transitioned
+            # Same sprint: roll back optimistically-marked triggers that did
+            # NOT fire so an un-fired one-shot ceremony stays eligible.
             self._fired_once_triggers.difference_update(
                 set(one_shot) - set(fired_one_shot)
             )

@@ -13,6 +13,7 @@ from synthorg.budget.config import BudgetConfig
 from synthorg.budget.coordination_config import CoordinationMetricsConfig
 from synthorg.budget.cost_tiers import CostTiersConfig
 from synthorg.communication.config import CommunicationConfig
+from synthorg.config._schema_validators import collect_model_refs
 from synthorg.config.agent_schema import (
     AgentConfig,
     GracefulShutdownConfig,
@@ -42,10 +43,12 @@ from synthorg.hr.performance.config import PerformanceConfig
 from synthorg.hr.promotion.config import PromotionConfig
 from synthorg.hr.training.config import TrainingConfig
 from synthorg.integrations.config import IntegrationsConfig
+from synthorg.knowledge.config import KnowledgeConfig
 from synthorg.memory.config import CompanyMemoryConfig
 from synthorg.memory.org.config import OrgMemoryConfig
 from synthorg.notifications.config import NotificationConfig
 from synthorg.observability import get_logger
+from synthorg.observability.audit_chain.config import AuditChainConfig
 from synthorg.observability.config import LogConfig
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 from synthorg.ontology.config import OntologyConfig
@@ -96,6 +99,8 @@ class RootConfig(BaseModel):
         stakes_routing: Stakes-aware model routing configuration (strategy
             discriminator, per-stakes quality floors, coordination nudge).
         logging: Logging configuration (``None`` to use platform defaults).
+        audit_chain: Quantum-safe audit-chain sink configuration (opt-in,
+            disabled by default).
         graceful_shutdown: Graceful shutdown configuration.
         workflow_handoffs: Cross-department workflow handoffs.
         escalation_paths: Cross-department escalation paths.
@@ -120,6 +125,7 @@ class RootConfig(BaseModel):
         coordination: Multi-agent coordination configuration.
         stagnation: Intra-loop stagnation detection selector and sub-configs.
         strategy: Strategy and trendslop mitigation configuration.
+        knowledge: Knowledge-substrate configuration (opt-in, off by default).
         git_clone: Git clone SSRF prevention network policy.
         backup: Backup and restore configuration.
         workflow: Workflow type configuration.
@@ -187,6 +193,10 @@ class RootConfig(BaseModel):
     logging: LogConfig | None = Field(
         default=None,
         description="Logging configuration",
+    )
+    audit_chain: AuditChainConfig = Field(
+        default_factory=AuditChainConfig,
+        description="Quantum-safe audit-chain sink configuration (opt-in)",
     )
     graceful_shutdown: GracefulShutdownConfig = Field(
         default_factory=GracefulShutdownConfig,
@@ -276,6 +286,10 @@ class RootConfig(BaseModel):
     strategy: StrategyConfig = Field(
         default_factory=StrategyConfig,
         description="Strategy and trendslop mitigation configuration",
+    )
+    knowledge: KnowledgeConfig = Field(
+        default_factory=KnowledgeConfig,
+        description="Knowledge-substrate configuration (opt-in, off by default)",
     )
     git_clone: GitCloneNetworkPolicy = Field(
         default_factory=GitCloneNetworkPolicy,
@@ -430,37 +444,6 @@ class RootConfig(BaseModel):
             raise ValueError(msg)
         return self
 
-    def _collect_model_refs(self) -> set[str]:
-        """Build unique model ref set, raising on cross-provider collisions.
-
-        Returns:
-            The set of every model id and alias across all providers.
-
-        Raises:
-            ValueError: When the same id or alias is defined by more than
-                one provider.
-        """
-        ref_to_provider: dict[str, str] = {}
-        for prov_name, provider in self.providers.items():
-            for model in provider.models:
-                for ref in (model.id, model.alias):
-                    if ref is None:
-                        continue
-                    if ref in ref_to_provider:
-                        msg = (
-                            f"Ambiguous model reference {ref!r}: "
-                            f"defined in both {ref_to_provider[ref]!r} "
-                            f"and {prov_name!r}"
-                        )
-                        logger.warning(
-                            CONFIG_VALIDATION_FAILED,
-                            model="RootConfig",
-                            error=msg,
-                        )
-                        raise ValueError(msg)
-                    ref_to_provider[ref] = prov_name
-        return set(ref_to_provider)
-
     @model_validator(mode="after")
     def _validate_routing_references(self) -> Self:
         """Ensure routing model references exist and are unambiguous.
@@ -475,7 +458,7 @@ class RootConfig(BaseModel):
         if not self.routing.rules and not self.routing.fallback_chain:
             return self
 
-        known_models = self._collect_model_refs()
+        known_models = collect_model_refs(self)
 
         for rule in self.routing.rules:
             if rule.preferred_model not in known_models:

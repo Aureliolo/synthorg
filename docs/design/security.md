@@ -201,8 +201,9 @@ ID cross-reference, and a server-assigned monotonic version per task.
   statement, eliminating the TOCTOU race that a read-then-write pattern would
   create under concurrent reviewers. The `UNIQUE(task_id, version)` constraint
   rejects any residual collision as `DuplicateRecordError`.
-- **Best-effort append after transition**: a failed append is logged at ERROR
-  (via `logger.exception`) for audit forensics but does not roll back the review
+- **Best-effort append after transition**: a failed append is logged at WARNING
+  (structured `logger.warning` with `error_type` + `safe_error_description`, never
+  `logger.exception`) for audit forensics but does not roll back the review
   transition itself. Only known transient persistence errors (`QueryError`,
   `DuplicateRecordError`) are treated as non-fatal; programming errors
   (`ValidationError`, `TypeError`, etc.) propagate loudly so schema drift
@@ -433,30 +434,37 @@ existing flows. Operators graduate to `"enforce"` after observing decisions.
 
 **Module**: `src/synthorg/security/policy_engine/`
 
-## Quantum-Safe Audit Trail
+## Signed Audit Trail
 
-An observability sink that signs security events with ML-DSA-65 (FIPS 204)
-via the Asqav library and chains them in an append-only hash chain for
-tamper-evident audit. Wraps the existing `observability/sinks.py` logging
-handler protocol; no changes to event producers.
+An observability sink that signs security events with Ed25519 and chains
+them in an append-only hash chain for tamper-evident audit. Ed25519 is the
+baseline signing arm; the `backend="asqav"` config slot reserves a future
+quantum-safe ML-DSA-65 (FIPS 204) arm. Wraps the existing
+`observability/sinks.py` logging handler protocol; no changes to event
+producers.
 
 **Features**:
 
-- ML-DSA-65 post-quantum signatures per security event
+- Ed25519 signatures per security event (post-quantum ML-DSA-65 arm reserved
+  via `backend`)
 - SHA-256 hash chain linking each entry to its predecessor
-- RFC 3161 timestamping via public TSA with local-clock fallback
-  (emits `SECURITY_TIMESTAMP_FALLBACK` on fallback)
+- RFC 3161 timestamping via a configurable TSA preset with local-clock
+  fallback (emits `SECURITY_TIMESTAMP_FALLBACK` on fallback)
 - `AuditChainVerifier` for end-to-end chain integrity verification
-- m-of-n threshold signing for high-risk `EvidencePackage` approvals
 
 **Configuration** (`AuditChainConfig`, opt-in):
 
 | Field | Default | Description |
 |-------|---------|-------------|
 | `enabled` | `False` | Opt-in activation |
-| `backend` | `"asqav"` | Signing backend |
-| `tsa_url` | `None` | RFC 3161 TSA endpoint (None = local clock) |
-| `signing_key_path` | `None` | Path to signing key |
+| `backend` | `"asqav"` | Signing backend slot (signer is Ed25519) |
+| `tsa_preset` | `NONE` | Well-known TSA preset, or `CUSTOM` for `tsa_url` |
+| `tsa_url` | `None` | Custom RFC 3161 TSA endpoint (required for `CUSTOM`) |
+| `tsa_timeout_sec` | `5.0` | HTTP timeout for TSA calls |
+| `tsa_hash_algorithm` | `"sha256"` | TSA MessageImprint hash (`sha256`/`sha512`) |
+| `tsa_verify_signature` | `True` | Verify the TSA response against trusted roots |
+| `tsa_trusted_roots_path` | `None` | PEM root bundle (required when verifying a non-`NONE` preset) |
+| `signing_key_path` | `None` | Path to the Ed25519 signing key (ephemeral when unset) |
 | `chain_storage_path` | `None` | Path for chain persistence |
 
 **Module**: `src/synthorg/observability/audit_chain/`
@@ -575,11 +583,12 @@ A2A push notification webhook URLs submitted by external agents must be validate
 against SSRF attacks. The framework provides a consolidated `SsrfValidator` service
 that unifies URL validation across all outbound connection points:
 
-| Consumer | Current Implementation | After Consolidation |
+| Consumer | Current Implementation | Consolidation target |
 |----------|----------------------|-------------------|
-| Notification adapters (ntfy, Slack) | `_validate_outbound_url()` | `SsrfValidator` |
+| Notification adapters (ntfy, Slack) | `synthorg.tools.ssrf` (via `notifications/adapters/_ssrf.py`) | `SsrfValidator` protocol seam |
 | Git clone URLs | `git_url_validator` module | `SsrfValidator` |
-| Provider discovery | `ProviderDiscoveryPolicy` allowlist | `SsrfValidator` + allowlist |
+| Provider discovery | `ProviderDiscoveryPolicy` allowlist + `resolve_discovery_target` DNS pinning | `SsrfValidator` + allowlist |
+| OAuth token endpoints | `synthorg.tools.ssrf` (`resolve_outbound_target` + pinned transport) | `SsrfValidator` |
 | A2A push notification webhooks | (new) | `SsrfValidator` |
 
 For HTTP(S) consumers (webhooks, notifications, provider discovery), the `SsrfValidator`
@@ -593,35 +602,40 @@ before connection.
 
 ### Quadratic Communication Enforcement
 
-The existing `MessageOverhead.is_quadratic` detection (see
+The `MessageOverhead.is_quadratic` detection (see
 [Microservices Anti-Patterns](communication-coordination.md#microservices-anti-patterns-assessment))
-will be extended with a pluggable `QuadraticEnforcementStrategy` protocol. This is
-particularly relevant for A2A federation where external agent connections can amplify
-quadratic scaling. Currently, only detection exists. Enforcement strategies are
-proposed below.
+is enforced on the in-memory message bus via the
+`QuadraticEnforcementStrategy` enum. This is particularly relevant for A2A
+federation where external agent connections can amplify quadratic scaling. The
+enforcer compares a sliding-window inter-agent publish count against
+`team_size^2 * quadratic_threshold`; the strategy decides the response. Detection
+runs only once the participant count reaches `min_team_size`.
 
-Four built-in strategies are planned:
+Four built-in strategies ship:
 
 | Strategy | Behaviour | Default |
 |----------|----------|---------|
-| `alert_only` | Current behaviour; detect and notify via `NotificationDispatcher` | Yes |
-| `soft_throttle` | Auto-tighten rate limiter for affected agent group by `rate_reduction_factor` | No |
-| `hard_block` | Reject new connections when agent count exceeds `max_agent_connections` | No |
-| `disabled` | No detection or enforcement | No |
+| `alert_only` | Detect and emit a `communication.quadratic.detected` event + `NotificationDispatcher` warning | Yes |
+| `soft_throttle` | Alert, then apply publish backpressure (`throttle_delay_seconds`) to the over-communicating bus | No |
+| `hard_block` | Alert, then reject new agent connections once the participant count reaches `max_agent_connections` (raises `QuadraticConnectionBlockedError`, HTTP 429) | No |
+| `disabled` | No detection or enforcement (zero hot-path cost) | No |
 
-The strategy will be pluggable via the `QuadraticEnforcementStrategy` protocol; custom
-strategies can be registered without modifying built-in code.
+Alerts are rate-limited to one per `window_seconds` so a sustained burst does not
+flood the log or the notification channel. The config lives under
+`communication.message_bus.quadratic_enforcement`:
 
 ???+ example "Quadratic enforcement configuration"
 
     ```yaml
-    loop_prevention:
-      quadratic_enforcement:
-        strategy: "alert_only"         # alert_only, soft_throttle, hard_block, disabled
-        soft_throttle:
-          rate_reduction_factor: 0.5   # halve rate limits for affected group
-        hard_block:
-          max_agent_connections: 20    # reject connections beyond this count
+    communication:
+      message_bus:
+        quadratic_enforcement:
+          strategy: "alert_only"        # alert_only, soft_throttle, hard_block, disabled
+          quadratic_threshold: 0.5      # fraction of team_size^2 marking a window quadratic
+          window_seconds: 60.0          # sliding window for counting publishes
+          min_team_size: 3              # smallest team for which detection runs
+          throttle_delay_seconds: 0.05  # backpressure delay under soft_throttle
+          max_agent_connections: 50     # participant ceiling under hard_block
     ```
 
 ### A2AConfig

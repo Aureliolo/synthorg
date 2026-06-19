@@ -5,6 +5,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import collect_all_records
+from synthorg.core.pagination import DEFAULT_LIST_LIMIT
 from tests.unit.budget.conftest import make_cost_record
 
 
@@ -101,6 +103,23 @@ class TestGetRecords:
                 start=datetime(2026, 3, 1, tzinfo=UTC),
                 end=datetime(2026, 2, 1, tzinfo=UTC),
             )
+
+    async def test_single_page_is_bounded(self) -> None:
+        tracker = CostTracker()
+        for _ in range(DEFAULT_LIST_LIMIT + 50):
+            await tracker.record(make_cost_record())
+        # A single get_records returns only one bounded page.
+        page = await tracker.get_records()
+        assert len(page) == DEFAULT_LIST_LIMIT
+
+    async def test_collect_all_records_drains_every_page(self) -> None:
+        tracker = CostTracker()
+        total = DEFAULT_LIST_LIMIT + 50
+        for _ in range(total):
+            await tracker.record(make_cost_record())
+        # collect_all_records sweeps every bounded page and returns all rows.
+        drained = await collect_all_records(tracker)
+        assert len(drained) == total
 
     async def test_start_inclusive_end_exclusive(self) -> None:
         tracker = CostTracker()

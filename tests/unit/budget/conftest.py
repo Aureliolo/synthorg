@@ -7,6 +7,7 @@ import pytest
 from polyfactory.factories.pydantic_factory import ModelFactory
 
 from synthorg.budget.call_analytics_config import CallAnalyticsConfig
+from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.config import (
     AutoDowngradeConfig,
     BudgetAlertConfig,
@@ -375,6 +376,7 @@ def make_cost_record(  # noqa: PLR0913
     cost: float = 0.05,
     currency: CurrencyCode = DEFAULT_CURRENCY,
     timestamp: datetime | None = None,
+    call_category: LLMCallCategory | None = None,
 ) -> CostRecord:
     """Build a CostRecord with sensible defaults."""
     return CostRecord(
@@ -388,6 +390,7 @@ def make_cost_record(  # noqa: PLR0913
         cost=cost,
         currency=currency,
         timestamp=timestamp or datetime(2026, 2, 15, 12, 0, 0, tzinfo=UTC),
+        call_category=call_category,
     )
 
 

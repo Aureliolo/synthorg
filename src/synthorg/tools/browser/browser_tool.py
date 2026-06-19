@@ -59,6 +59,7 @@ from synthorg.observability.events.browser import (
     BROWSER_START_COMMAND_START,
     BROWSER_START_COMMAND_SUCCESS,
 )
+from synthorg.providers.url_utils import redact_url
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.browser._args import A11yImpact, BrowserToolArgs
@@ -333,7 +334,7 @@ class BrowserTool(BaseTool):
             BrowserDomainError: If the related operation fails.
         """
         url = self._resolve_url(args)
-        logger.debug(BROWSER_NAVIGATE_START, url=url)
+        logger.debug(BROWSER_NAVIGATE_START, url=redact_url(url))
         try:
             payload = await self._run_executor(
                 operation="navigate",
@@ -344,12 +345,12 @@ class BrowserTool(BaseTool):
         except BrowserDomainError as exc:
             logger.warning(
                 BROWSER_NAVIGATE_FAILED,
-                url=url,
+                url=redact_url(url),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise
-        logger.debug(BROWSER_NAVIGATE_SUCCESS, url=navigation.final_url)
+        logger.debug(BROWSER_NAVIGATE_SUCCESS, url=redact_url(navigation.final_url))
         return ok_result(navigation)
 
     async def _mode_screenshot(
@@ -366,6 +367,9 @@ class BrowserTool(BaseTool):
             BrowserDomainError: If the related operation fails.
         """
         url = self._resolve_url(args)
+        # Redact query tokens from every logged URL on this path; the raw
+        # ``url`` is still handed to the executor for the actual request.
+        safe_url = redact_url(url)
         if args.screenshot_name is None or args.spec_name is None:
             logger.warning(
                 BROWSER_ARGS_VALIDATION_FAILED,
@@ -378,7 +382,7 @@ class BrowserTool(BaseTool):
             )
         logger.debug(
             BROWSER_SCREENSHOT_START,
-            url=url,
+            url=safe_url,
             spec=args.spec_name,
             screenshot=args.screenshot_name,
         )
@@ -408,14 +412,14 @@ class BrowserTool(BaseTool):
             except BrowserDomainError as exc:
                 logger.warning(
                     BROWSER_SCREENSHOT_FAILED,
-                    url=url,
+                    url=safe_url,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
                 raise
         logger.debug(
             BROWSER_SCREENSHOT_SUCCESS,
-            url=url,
+            url=safe_url,
             saved_path=metadata.saved_path,
         )
         return ok_result(metadata)
@@ -434,6 +438,7 @@ class BrowserTool(BaseTool):
             BrowserAccessibilityError: If the related operation fails.
         """
         url = self._resolve_url(args)
+        safe_url = redact_url(url)
         try:
             payload = await self._run_executor(
                 operation="accessibility_scan",
@@ -448,7 +453,7 @@ class BrowserTool(BaseTool):
             logger.warning(
                 BROWSER_EXECUTOR_FAILED,
                 operation="accessibility_scan",
-                url=url,
+                url=safe_url,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -530,7 +535,7 @@ class BrowserTool(BaseTool):
             raise BrowserArgumentError(
                 "spec mode requires spec_name and screenshot_name",
             )
-        logger.debug(BROWSER_SPEC_START, spec=args.spec_name, url=url)
+        logger.debug(BROWSER_SPEC_START, spec=args.spec_name, url=redact_url(url))
         # Same per-key lock as screenshot / diff modes -- spec stitches
         # capture + diff together and must not race a concurrent task
         # using the same (spec, screenshot) slot.
@@ -1145,7 +1150,7 @@ class BrowserTool(BaseTool):
                 raise BrowserArgumentError(
                     "url must use http:// or https:// (use the 'path' "
                     "field for workspace-relative local files)",
-                    context={"url": args.url},
+                    context={"url": redact_url(args.url)},
                 )
             # Block link-local / cloud-metadata endpoints
             # (169.254.169.254, metadata.google.internal, fe80::) which
@@ -1162,7 +1167,7 @@ class BrowserTool(BaseTool):
                 )
                 raise BrowserArgumentError(
                     "url must not target a link-local or cloud-metadata endpoint",
-                    context={"url": args.url},
+                    context={"url": redact_url(args.url)},
                 )
             return args.url
         if args.path:

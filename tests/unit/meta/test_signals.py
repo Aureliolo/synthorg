@@ -1,10 +1,14 @@
 """Unit tests for meta-loop signal aggregation."""
 
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.scaling.service import ScalingService
 from synthorg.meta.models import (
@@ -199,41 +203,95 @@ class TestPerformanceSignalAggregator:
 # ── Other aggregators ──────────────────────────────────────────────
 
 
+def _cost_record(
+    *,
+    category: LLMCallCategory,
+    cost: float,
+    input_tokens: int = 1000,
+    output_tokens: int = 500,
+) -> CostRecord:
+    return CostRecord(
+        agent_id="agent-1",
+        task_id="task-1",
+        provider="example-provider",
+        model="example-medium-001",
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cost=cost,
+        currency=DEFAULT_CURRENCY,
+        timestamp=datetime(2026, 6, 1, 12, 0, tzinfo=UTC),
+        call_category=category,
+    )
+
+
+def _provider_for(
+    records: tuple[CostRecord, ...],
+) -> Callable[[datetime, datetime], Awaitable[tuple[CostRecord, ...]]]:
+    async def _provide(since: datetime, until: datetime) -> tuple[CostRecord, ...]:
+        del since, until
+        return records
+
+    return _provide
+
+
+async def _empty_provider(since: datetime, until: datetime) -> tuple[CostRecord, ...]:
+    del since, until
+    return ()
+
+
 class TestBudgetSignalAggregator:
     """Budget aggregator tests."""
 
     def test_domain_name(self) -> None:
-        agg = BudgetSignalAggregator(cost_record_provider=list)
+        agg = BudgetSignalAggregator(cost_record_provider=_empty_provider)
         assert agg.domain == "budget"
 
-    async def test_returns_budget_summary(self) -> None:
-        agg = BudgetSignalAggregator(cost_record_provider=list)
+    async def test_empty_records_returns_zeroed_summary(self) -> None:
+        agg = BudgetSignalAggregator(cost_record_provider=_empty_provider)
         result = await agg.aggregate(since=_week_ago(), until=_now())
         assert isinstance(result, OrgBudgetSummary)
+        assert result.total_spend == 0.0
+
+    async def test_computes_spend_ratios_from_records(self) -> None:
+        records = (
+            _cost_record(category=LLMCallCategory.PRODUCTIVE, cost=6.0),
+            _cost_record(category=LLMCallCategory.COORDINATION, cost=3.0),
+            _cost_record(category=LLMCallCategory.SYSTEM, cost=1.0),
+        )
+        agg = BudgetSignalAggregator(
+            cost_record_provider=_provider_for(records),
+            budget_total_monthly=100.0,
+        )
+        result = await agg.aggregate(since=_week_ago(), until=_now())
+        assert result.total_spend == pytest.approx(10.0)
+        assert result.productive_ratio == pytest.approx(0.6)
+        assert result.coordination_ratio == pytest.approx(0.3)
+        assert result.system_ratio == pytest.approx(0.1)
+        # Each category has equal token counts, so coordination/productive = 1.
+        assert result.orchestration_overhead == pytest.approx(1.0)
+
+    async def test_provider_failure_returns_empty(self) -> None:
+        async def _boom(since: datetime, until: datetime) -> tuple[CostRecord, ...]:
+            del since, until
+            msg = "provider down"
+            raise ValueError(msg)
+
+        agg = BudgetSignalAggregator(cost_record_provider=_boom)
+        result = await agg.aggregate(since=_week_ago(), until=_now())
+        assert result.total_spend == 0.0
 
     @pytest.mark.parametrize("exc_cls", [MemoryError, RecursionError])
     async def test_propagates_catastrophic_interpreter_errors(
         self,
         exc_cls: type[BaseException],
-        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Catastrophic interpreter errors escape the broad ``Exception`` net.
+        """Catastrophic interpreter errors escape the broad ``Exception`` net."""
 
-        The placeholder ``aggregate()`` body only calls ``logger.info``,
-        so a real production trigger for the carve-out requires the
-        logger itself to raise. Monkeypatching the module-level logger
-        is the supported pattern; once the real implementation lands
-        (bucket_cost_records / project_daily_spend / etc.) those calls
-        become the natural injection point and this test will be
-        rewritten against them.
-        """
-        from synthorg.meta.signals import budget as _budget_module
-
-        def _raise(*_args: object, **_kwargs: object) -> None:
+        async def _boom(since: datetime, until: datetime) -> tuple[CostRecord, ...]:
+            del since, until
             raise exc_cls
 
-        monkeypatch.setattr(_budget_module.logger, "info", _raise)
-        agg = BudgetSignalAggregator(cost_record_provider=list)
+        agg = BudgetSignalAggregator(cost_record_provider=_boom)
         with pytest.raises(exc_cls):
             await agg.aggregate(since=_week_ago(), until=_now())
 
@@ -241,10 +299,46 @@ class TestBudgetSignalAggregator:
 class TestCoordinationSignalAggregator:
     """Coordination aggregator tests."""
 
-    async def test_returns_coordination_summary(self) -> None:
+    async def test_returns_empty_summary_without_store(self) -> None:
         agg = CoordinationSignalAggregator()
         result = await agg.aggregate(since=_week_ago(), until=_now())
         assert isinstance(result, OrgCoordinationSummary)
+        assert result.sample_count == 0
+
+    async def test_averages_metrics_from_store(self) -> None:
+        from synthorg.budget.coordination_metric_models import (
+            CoordinationEfficiency,
+            CoordinationMetrics,
+        )
+        from synthorg.budget.coordination_store import (
+            CoordinationMetricsRecord,
+            CoordinationMetricsStore,
+        )
+
+        store = CoordinationMetricsStore()
+        store.record(
+            CoordinationMetricsRecord(
+                task_id="task-1",
+                computed_at=datetime(2026, 6, 1, 12, 0, tzinfo=UTC),
+                team_size=3,
+                metrics=CoordinationMetrics(
+                    efficiency=CoordinationEfficiency(
+                        success_rate=0.9,
+                        turns_mas=4.0,
+                        turns_sas=2.0,
+                    ),
+                ),
+            )
+        )
+        agg = CoordinationSignalAggregator(store=store)
+        result = await agg.aggregate(
+            since=datetime(2026, 5, 1, tzinfo=UTC),
+            until=datetime(2026, 7, 1, tzinfo=UTC),
+        )
+        assert result.sample_count == 1
+        assert result.coordination_efficiency == pytest.approx(0.45)
+        # No overhead metric was recorded, so it stays None.
+        assert result.coordination_overhead_pct is None
 
 
 class TestScalingSignalAggregator:
@@ -305,7 +399,7 @@ class TestSnapshotBuilder:
                 tracker=tracker,
                 agent_ids_provider=lambda: ["agent-1"],
             ),
-            budget=BudgetSignalAggregator(cost_record_provider=list),
+            budget=BudgetSignalAggregator(cost_record_provider=_empty_provider),
             coordination=CoordinationSignalAggregator(),
             scaling=ScalingSignalAggregator(service=scaling_service),
             errors=ErrorSignalAggregator(),

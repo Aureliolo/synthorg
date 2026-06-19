@@ -233,7 +233,7 @@ class TestJwtDecodeBoundary:
     def test_decode_returns_typed_claims(self) -> None:
         svc = _make_service()
         token, _, session_id = svc.create_token(_make_user())
-        claims = svc.decode_token(token)
+        claims = svc.decode_token(token, audience=USER_AUDIENCE, issuer=USER_ISSUER)
         assert isinstance(claims, JwtClaims)
         assert claims.sub == "user-001"
         assert claims.jti == session_id
@@ -259,7 +259,7 @@ class TestJwtDecodeBoundary:
             structlog.testing.capture_logs() as logs,
             pytest.raises(ValidationError),
         ):
-            svc.decode_token(token)
+            svc.decode_token(token, audience=USER_AUDIENCE, issuer=USER_ISSUER)
         boundary_logs = [
             log for log in logs if log.get("event") == "api.boundary.validation_failed"
         ]
@@ -284,7 +284,7 @@ class TestJwtDecodeBoundary:
             structlog.testing.capture_logs() as logs,
             pytest.raises(ValidationError),
         ):
-            svc.decode_token(token)
+            svc.decode_token(token, audience=USER_AUDIENCE, issuer=USER_ISSUER)
         boundary_logs = [
             log for log in logs if log.get("event") == "api.boundary.validation_failed"
         ]
@@ -303,7 +303,7 @@ class TestJwtDecodeBoundary:
             "exp": int((now + timedelta(minutes=5)).timestamp()),
         }
         token = jwt.encode(payload, _SECRET, algorithm=_ALG)
-        claims = svc.decode_token(token)
+        claims = svc.decode_token(token, audience=SYSTEM_AUDIENCE, issuer=SYSTEM_ISSUER)
         assert claims.sub == SYSTEM_USER_ID
         assert claims.username is None
         assert claims.role is None
@@ -327,7 +327,42 @@ class TestJwtDecodeBoundary:
         }
         token = jwt.encode(payload, _SECRET, algorithm=_ALG)
         with pytest.raises(ValidationError):
-            svc.decode_token(token)
+            svc.decode_token(token, audience=USER_AUDIENCE, issuer=USER_ISSUER)
+
+    def test_decode_token_rejects_wrong_audience(self) -> None:
+        svc = _make_service()
+        token, _, _ = svc.create_token(_make_user())
+        with pytest.raises(jwt.InvalidAudienceError):
+            svc.decode_token(token, audience="wrong-audience", issuer=USER_ISSUER)
+
+    def test_decode_token_rejects_wrong_issuer(self) -> None:
+        svc = _make_service()
+        token, _, _ = svc.create_token(_make_user())
+        with pytest.raises(jwt.InvalidIssuerError):
+            svc.decode_token(token, audience=USER_AUDIENCE, issuer="wrong-issuer")
+
+    def test_raw_decode_skips_aud_iss_and_optionally_exp(self) -> None:
+        svc = _make_service()
+        now = datetime.now(UTC)
+        payload = {
+            "iss": USER_ISSUER,
+            "aud": USER_AUDIENCE,
+            "sub": "user-1",
+            "username": "admin",
+            "role": "ceo",
+            "must_change_password": False,
+            "pwd_sig": "0123456789abcdef",
+            "jti": "expired-jti",
+            "iat": int((now - timedelta(hours=2)).timestamp()),
+            "exp": int((now - timedelta(hours=1)).timestamp()),  # expired
+        }
+        token = jwt.encode(payload, _SECRET, algorithm=_ALG)
+        # Default raw decode still enforces expiry.
+        with pytest.raises(jwt.ExpiredSignatureError):
+            svc._decode_token_raw(token)
+        # verify_exp=False lets logout recover the jti from an expired token.
+        claims = svc._decode_token_raw(token, verify_exp=False)
+        assert claims.jti == "expired-jti"
 
 
 @pytest.mark.unit
@@ -338,7 +373,7 @@ class TestJwtCreateBoundary:
         svc = _make_service()
         token, expires_in, session_id = svc.create_token(_make_user())
         assert expires_in > 0
-        claims = svc.decode_token(token)
+        claims = svc.decode_token(token, audience=USER_AUDIENCE, issuer=USER_ISSUER)
         assert claims.sub == "user-001"
         assert claims.role is HumanRole.CEO
         assert claims.username == "admin"

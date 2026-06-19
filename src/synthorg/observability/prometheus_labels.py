@@ -18,62 +18,6 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.metrics import METRICS_SCRAPE_FAILED
 from synthorg.providers.errors import ProviderErrorLabel
 
-__all__ = [
-    "MCP_UNKNOWN_TOOL_LABEL",
-    "TRANSIENT_PROVIDER_ERROR_CLASSES",
-    "UNKNOWN_LABEL",
-    "VALID_API_ERROR_CATEGORIES",
-    "VALID_APPROVAL_OUTCOMES",
-    "VALID_AUDIT_APPEND_STATUSES",
-    "VALID_AUDIT_VERIFICATION_OUTCOMES",
-    "VALID_AUTONOMY_PROMOTION_OUTCOMES",
-    "VALID_BLUEPRINT_OUTCOMES",
-    "VALID_BUDGET_QUERY_TYPES",
-    "VALID_CACHE_NAMES",
-    "VALID_CACHE_OUTCOMES",
-    "VALID_DISCONNECT_REASONS",
-    "VALID_DISCONNECT_TRANSPORTS",
-    "VALID_ESCALATION_OUTCOMES",
-    "VALID_IDENTITY_CHANGE_TYPES",
-    "VALID_LOG_SINK_KINDS",
-    "VALID_LOG_SINK_OUTCOMES",
-    "VALID_MCP_HANDLER_OUTCOMES",
-    "VALID_OTLP_KINDS",
-    "VALID_OTLP_OUTCOMES",
-    "VALID_PG_BACKENDS",
-    "VALID_PROVIDER_CALL_TYPES",
-    "VALID_PROVIDER_ERROR_CLASSES",
-    "VALID_PUSH_QUEUE_OUTCOMES",
-    "VALID_SETTINGS_NAMESPACES",
-    "VALID_STATUS_CLASSES",
-    "VALID_TASK_OUTCOMES",
-    "VALID_TOKEN_DIRECTIONS",
-    "VALID_TOOL_OUTCOMES",
-    "VALID_VERDICTS",
-    "VALID_WORKFLOW_EXECUTION_STATUSES",
-    "VALID_WS_REVALIDATION_OUTCOMES",
-    "VALID_WS_TRANSPORTS",
-    "_LabelSnapshot",
-    "_reset_label_snapshot_for_tests",
-    "_reset_mcp_tool_names_for_tests",
-    "_snapshot_lock",
-    "is_known_agent_id",
-    "normalize_mcp_tool_label",
-    "normalize_model_label",
-    "normalize_provider_label",
-    "register_mcp_tool_names",
-    "require_finite",
-    "require_label",
-    "require_label_summary",
-    "require_non_negative",
-    "status_class",
-    "update_label_snapshot",
-    "validate_agent_id",
-    "validate_department",
-    "validate_tool_name",
-    "validate_workflow_definition_id",
-]
-
 logger = get_logger(__name__)
 
 
@@ -425,11 +369,13 @@ class _LabelSnapshot:
     departments: frozenset[str] = frozenset()
     tool_names: frozenset[str] = frozenset()
     providers: frozenset[str] = frozenset()
+    model_ids: frozenset[str] = frozenset()
     agent_ids_seeded: bool = False
     workflow_definition_ids_seeded: bool = False
     departments_seeded: bool = False
     tool_names_seeded: bool = False
     providers_seeded: bool = False
+    model_ids_seeded: bool = False
 
 
 _INITIAL_SNAPSHOT: Final[_LabelSnapshot] = _LabelSnapshot()
@@ -591,17 +537,24 @@ def normalize_model_label(value: str) -> str:
 
     Unlike ``provider``, the ``model`` label cannot be allowlisted: the
     usable model set is the open litellm namespace plus whatever a
-    self-hosted server reports at runtime, so a registry snapshot would
-    fold most legitimate ids to UNKNOWN and gut the metric. Model
-    strings already originate from provider config rather than request
-    bodies, so the residual cardinality risk is a misconfiguration
-    injecting a garbage value; a length plus charset cap bounds that
-    without rejecting real ids (``provider/model:tag`` forms included).
-    An empty, over-long, or out-of-charset value folds to UNKNOWN.
+    self-hosted server reports at runtime, so the primary guard is a
+    length plus charset cap (``provider/model:tag`` forms included)
+    rather than an allowlist. An empty, over-long, or out-of-charset
+    value folds to UNKNOWN.
+
+    Once the collector has seeded the configured model ids (the bounded
+    set the deployment can actually call), an in-charset value outside
+    that set also folds to UNKNOWN so a misconfiguration or a rogue
+    self-hosted id cannot mint unbounded per-model series. Before seeding
+    (bootstrap) the charset cap alone applies, so real ids are not gutted
+    while the snapshot is still empty.
     """
     if not value or len(value) > _MODEL_LABEL_MAX_LENGTH:
         return UNKNOWN_LABEL
     if _MODEL_LABEL_PATTERN.match(value) is None:
+        return UNKNOWN_LABEL
+    snapshot = _snapshot
+    if snapshot.model_ids_seeded and value not in snapshot.model_ids:
         return UNKNOWN_LABEL
     return value
 

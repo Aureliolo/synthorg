@@ -61,8 +61,12 @@ class EscalationResponse(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     escalation: Escalation
-    conflict_id: NotBlankStr
-    status: EscalationStatus
+    conflict_id: NotBlankStr = Field(
+        description="ID of the conflict this escalation was raised for.",
+    )
+    status: EscalationStatus = Field(
+        description="Current lifecycle status of the escalation.",
+    )
 
 
 class SubmitDecisionRequest(BaseModel):

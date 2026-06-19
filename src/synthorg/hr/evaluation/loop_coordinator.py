@@ -6,7 +6,7 @@ loop:
     trace capture (observability/)
       -> behavior tagging (BehaviorTaggerMiddleware)
         -> eval enrichment (EvaluationService + 5 pillars)
-          -> pattern identification (stub for v0.7)
+          -> pattern identification (EvaluationService analytics)
             -> targeted fix proposal (feeds TrainingService)
               -> validation (next run's trajectory scores)
 

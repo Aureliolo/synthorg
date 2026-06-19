@@ -82,7 +82,12 @@ CREATE TABLE tasks (
     dependencies TEXT NOT NULL DEFAULT '[]',
     artifacts_expected TEXT NOT NULL DEFAULT '[]',
     acceptance_criteria TEXT NOT NULL DEFAULT '[]',
-    delegation_chain TEXT NOT NULL DEFAULT '[]'
+    delegation_chain TEXT NOT NULL DEFAULT '[]',
+    hard_ceiling REAL,
+    forecast_id TEXT,
+    source TEXT,
+    middleware_override TEXT,
+    metadata TEXT NOT NULL DEFAULT '{}'
 );
 
 CREATE INDEX idx_tasks_status ON tasks (status);
@@ -347,6 +352,8 @@ ON sessions (user_id, revoked, expires_at);
 CREATE INDEX idx_sessions_revoked_expires
 ON sessions (revoked, expires_at);
 CREATE INDEX idx_sessions_expires_at ON sessions (expires_at);
+CREATE INDEX idx_sessions_user_created
+ON sessions (user_id, revoked, created_at DESC, session_id ASC);
 
 -- ── Checkpoints ───────────────────────────────────────────────
 CREATE TABLE checkpoints (
@@ -1479,6 +1486,7 @@ CREATE TABLE conversation_turns (
     ),
     CONSTRAINT uq_ct_conversation_sequence UNIQUE (conversation_id, sequence)
 );
+CREATE INDEX idx_ct_created_at ON conversation_turns (created_at);
 
 CREATE TABLE conversational_proposals (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
@@ -1517,8 +1525,8 @@ CREATE TABLE conversation_participants (
     ),
     CONSTRAINT uq_cpart_conversation_agent UNIQUE (conversation_id, agent_id)
 );
-CREATE INDEX idx_cpart_conversation_id
-ON conversation_participants (conversation_id);
+CREATE INDEX idx_cpart_conversation_status_added
+ON conversation_participants (conversation_id, status, added_at ASC, id ASC);
 
 CREATE TABLE conversation_invites (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),

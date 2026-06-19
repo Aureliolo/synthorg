@@ -11,6 +11,8 @@ from synthorg.tools.network_validator import (
     BLOCKED_NETWORKS,
     DnsValidationOk,
     NetworkPolicy,
+    SsrfValidator,
+    UrlHostValidator,
     check_resolved_ips,
     extract_hostname,
     is_allowed_http_scheme,
@@ -382,6 +384,35 @@ class TestValidateUrlHost:
             result = await validate_url_host("https://example.com/api", policy)
         assert isinstance(result, DnsValidationOk)
         assert set(result.resolved_ips) == {"93.184.216.34", "93.184.216.35"}
+
+
+# ── SsrfValidator seam ─────────────────────────────────────────
+
+
+class TestUrlHostValidator:
+    """Tests for the SsrfValidator protocol + UrlHostValidator adapter."""
+
+    @pytest.mark.unit
+    def test_adapter_satisfies_protocol(self) -> None:
+        validator = UrlHostValidator(NetworkPolicy())
+        assert isinstance(validator, SsrfValidator)
+
+    @pytest.mark.unit
+    async def test_delegates_to_validate_url_host(self) -> None:
+        validator = UrlHostValidator(NetworkPolicy())
+        mock_results = [(0, 0, 0, "", ("93.184.216.34", 0))]
+        loop = asyncio.get_running_loop()
+        with patch.object(loop, "getaddrinfo", new_callable=AsyncMock) as mock:
+            mock.return_value = mock_results
+            result = await validator.validate("https://example.com/api")
+        assert isinstance(result, DnsValidationOk)
+        assert result.hostname == "example.com"
+
+    @pytest.mark.unit
+    async def test_rejects_private_target(self) -> None:
+        validator = UrlHostValidator(NetworkPolicy())
+        result = await validator.validate("http://127.0.0.1/admin")
+        assert isinstance(result, str)
 
 
 # ── BLOCKED_NETWORKS constant ──────────────────────────────────

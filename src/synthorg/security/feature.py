@@ -12,6 +12,7 @@ than construction); see ``FEATURE.ghost_wired_symbols`` for the manifest list.
 from synthorg._core.features import FeatureManifest, FeatureModule
 from synthorg.api.controllers.audit import AuditController
 from synthorg.api.controllers.autonomy import AutonomyController
+from synthorg.api.controllers.ssrf_violations import SsrfViolationController
 from synthorg.security._construction import wire_construction
 from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.enums import SettingNamespace
@@ -20,7 +21,7 @@ FEATURE: FeatureModule = FeatureManifest(
     name="security",
     settings_namespace=SettingNamespace.SECURITY,
     state_slice=SecurityStateSlice,
-    controllers=(AuditController, AutonomyController),
+    controllers=(AuditController, AutonomyController, SsrfViolationController),
     mcp_handlers=(),
     lifecycle_hooks=(),
     construction_wirer=wire_construction,

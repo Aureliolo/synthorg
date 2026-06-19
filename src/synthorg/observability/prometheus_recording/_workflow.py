@@ -139,7 +139,8 @@ class _WorkflowRecordingMixin(_RecordingMetricsBase):
             change_type,
             VALID_IDENTITY_CHANGE_TYPES,
         )
+        # ``agent_id`` rides as an OpenMetrics exemplar, not a label, so
+        # per-agent attribution survives without unbounded label cardinality.
         self._agent_identity_changes.labels(
-            agent_id=agent_id,
             change_type=change_type,
-        ).inc()
+        ).inc(exemplar={"agent_id": agent_id})

@@ -256,14 +256,16 @@ async def create_session_record(
 def extract_jti(request: Request[object, object, State]) -> str | None:
     """Extract the JWT ``jti`` claim from cookie or header.
 
-    SIGNATURE-ONLY TRUST: ``decode_token``
-    verifies the HMAC signature + expiry but defers ``iss`` / ``aud``
-    validation to ``_resolve_jwt_user``. This helper does NOT call
-    ``_resolve_jwt_user``, so the returned ``jti`` is trusted only as a
+    SIGNATURE-ONLY TRUST: ``_decode_token_raw``
+    verifies the HMAC signature but defers ``iss`` / ``aud`` validation to
+    ``_resolve_jwt_user`` and skips expiry (``verify_exp=False``) so an
+    expired session can still be revoked on logout. This helper does NOT
+    call ``_resolve_jwt_user``, so the returned ``jti`` is trusted only as a
     *revocation hint* for an unauthenticated logout: it identifies which
     session to revoke and grants no privilege. Callers MUST NOT treat a
     non-``None`` return as authorisation; revoking a session is safe even
-    if the supplied token carried a mismatched issuer/audience.
+    if the supplied token carried a mismatched issuer/audience or had
+    expired.
 
     Returns:
         The ``str`` value when present, ``None`` otherwise.
@@ -279,7 +281,10 @@ def extract_jti(request: Request[object, object, State]) -> str | None:
         token = auth_header[7:]
 
     try:
-        claims: JwtClaims = auth_service_of(app_state).decode_token(token)
+        claims: JwtClaims = auth_service_of(app_state)._decode_token_raw(  # noqa: SLF001
+            token,
+            verify_exp=False,
+        )
     except jwt.InvalidTokenError:
         logger.debug(
             SECURITY_AUTH_FAILED,

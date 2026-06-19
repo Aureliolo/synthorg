@@ -76,6 +76,14 @@ def _task_params(task: Task) -> dict[str, object]:
         "artifacts_expected": Jsonb(dumped["artifacts_expected"]),
         "acceptance_criteria": Jsonb(dumped["acceptance_criteria"]),
         "delegation_chain": Jsonb(dumped["delegation_chain"]),
+        "hard_ceiling": dumped["hard_ceiling"],
+        "forecast_id": dumped["forecast_id"],
+        "source": dumped["source"],
+        # middleware_override is a nullable JSONB array; keep NULL as NULL.
+        "middleware_override": Jsonb(dumped["middleware_override"])
+        if task.middleware_override is not None
+        else None,
+        "metadata": Jsonb(dumped["metadata"]),
     }
 
 
@@ -96,7 +104,9 @@ class PostgresTaskRepository:
                         estimated_complexity, budget_limit,
                         deadline, max_retries, parent_task_id, task_structure,
                         coordination_topology, reviewers, dependencies,
-                        artifacts_expected, acceptance_criteria, delegation_chain
+                        artifacts_expected, acceptance_criteria, delegation_chain,
+                        hard_ceiling, forecast_id, source, middleware_override,
+                        metadata
                     ) VALUES (
                         %(id)s, %(title)s, %(description)s, %(type)s, %(priority)s,
                         %(project)s, %(created_by)s, %(requested_by_user_id)s,
@@ -105,7 +115,9 @@ class PostgresTaskRepository:
                         %(max_retries)s, %(parent_task_id)s, %(task_structure)s,
                         %(coordination_topology)s, %(reviewers)s, %(dependencies)s,
                         %(artifacts_expected)s, %(acceptance_criteria)s,
-                        %(delegation_chain)s
+                        %(delegation_chain)s,
+                        %(hard_ceiling)s, %(forecast_id)s, %(source)s,
+                        %(middleware_override)s, %(metadata)s
                     )
                     ON CONFLICT(id) DO UPDATE SET
                         title=EXCLUDED.title,
@@ -128,7 +140,12 @@ class PostgresTaskRepository:
                         dependencies=EXCLUDED.dependencies,
                         artifacts_expected=EXCLUDED.artifacts_expected,
                         acceptance_criteria=EXCLUDED.acceptance_criteria,
-                        delegation_chain=EXCLUDED.delegation_chain
+                        delegation_chain=EXCLUDED.delegation_chain,
+                        hard_ceiling=EXCLUDED.hard_ceiling,
+                        forecast_id=EXCLUDED.forecast_id,
+                        source=EXCLUDED.source,
+                        middleware_override=EXCLUDED.middleware_override,
+                        metadata=EXCLUDED.metadata
                     """
 
     async def save(self, task: Task) -> None:
@@ -182,7 +199,8 @@ class PostgresTaskRepository:
         "budget_limit, deadline, "
         "max_retries, parent_task_id, task_structure, coordination_topology, "
         "reviewers, dependencies, artifacts_expected, acceptance_criteria, "
-        "delegation_chain"
+        "delegation_chain, hard_ceiling, forecast_id, source, "
+        "middleware_override, metadata"
     )
 
     def _row_to_task(self, row: DictRow) -> Task:

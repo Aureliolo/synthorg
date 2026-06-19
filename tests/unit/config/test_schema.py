@@ -654,12 +654,17 @@ class TestRootConfig:
         # ``QualityFloors`` likewise requires non-decreasing floors
         # (low <= normal <= high <= critical), which independent random
         # draws violate, so pin ``stakes_routing`` to its default too.
+        # ``AuditChainConfig`` carries a preset-coherence validator (a
+        # signature-verifying TSA preset demands a trusted-roots path)
+        # that random draws violate, so pin ``audit_chain`` as well.
         from synthorg.engine.routing_policy.config import StakesRoutingConfig
         from synthorg.integrations.config import IntegrationsConfig
+        from synthorg.observability.audit_chain.config import AuditChainConfig
 
         cfg = RootConfigFactory.build(
             integrations=IntegrationsConfig(),
             stakes_routing=StakesRoutingConfig(),
+            audit_chain=AuditChainConfig(),
         )
         assert isinstance(cfg, RootConfig)
         assert cfg.company_name

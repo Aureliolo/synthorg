@@ -39,9 +39,18 @@ class GroupChatRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    message: NotBlankStr = Field(max_length=2000)
-    conversation_id: NotBlankStr | None = Field(default=None)
-    participants: tuple[NotBlankStr, ...] = Field(default=())
+    message: NotBlankStr = Field(
+        max_length=2000,
+        description="Human message to broadcast to the group chat.",
+    )
+    conversation_id: NotBlankStr | None = Field(
+        default=None,
+        description="Existing conversation to append to; None starts a new one.",
+    )
+    participants: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Agent IDs to enrol in the group chat for this turn.",
+    )
 
 
 class ChatActRequest(BaseModel):
@@ -49,9 +58,18 @@ class ChatActRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    instruction: NotBlankStr = Field(max_length=2000)
-    agent: NotBlankStr = Field(max_length=200)
-    conversation_id: NotBlankStr | None = Field(default=None)
+    instruction: NotBlankStr = Field(
+        max_length=2000,
+        description="Natural-language instruction for the agent to act on.",
+    )
+    agent: NotBlankStr = Field(
+        max_length=200,
+        description="ID of the agent that should act on the instruction.",
+    )
+    conversation_id: NotBlankStr | None = Field(
+        default=None,
+        description="Existing conversation to act within; None starts a new one.",
+    )
 
 
 class ConversationalController(Controller):

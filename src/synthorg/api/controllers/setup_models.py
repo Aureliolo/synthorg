@@ -174,16 +174,19 @@ class SetupCompanyRequest(BaseModel):
     company_name: NotBlankStr = Field(
         max_length=200,
         examples=["Hooli", "Pied Piper"],
+        description="Company display name.",
     )
     description: str | None = Field(
         default=None,
         max_length=1000,
         examples=["Boutique consultancy specializing in agentic ops"],
+        description="Optional company description.",
     )
     template_name: NotBlankStr | None = Field(
         default=None,
         max_length=100,
         examples=["consulting-firm", "blank"],
+        description="Optional company template to apply; None creates a blank company.",
     )
 
 
@@ -337,8 +340,14 @@ class UpdateAgentModelRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-    model_provider: NotBlankStr = Field(max_length=100)
-    model_id: NotBlankStr = Field(max_length=200)
+    model_provider: NotBlankStr = Field(
+        max_length=100,
+        description="Provider name supplying the model.",
+    )
+    model_id: NotBlankStr = Field(
+        max_length=200,
+        description="Model identifier from the named provider.",
+    )
 
 
 class UpdateAgentNameRequest(BaseModel):
@@ -350,7 +359,10 @@ class UpdateAgentNameRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-    name: NotBlankStr = Field(max_length=200)
+    name: NotBlankStr = Field(
+        max_length=200,
+        description="New agent display name.",
+    )
 
 
 class UpdateAgentPersonalityRequest(BaseModel):
@@ -363,7 +375,10 @@ class UpdateAgentPersonalityRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-    personality_preset: NotBlankStr = Field(max_length=100)
+    personality_preset: NotBlankStr = Field(
+        max_length=100,
+        description="Personality preset name; must exist in PERSONALITY_PRESETS.",
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -404,7 +419,14 @@ class SetupNameLocalesRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-    locales: tuple[NotBlankStr, ...] = Field(min_length=1, max_length=100)
+    locales: tuple[NotBlankStr, ...] = Field(
+        min_length=1,
+        max_length=100,
+        description=(
+            "Faker locale codes (1 to 100 entries), or the single special value "
+            '["__all__"] to select all Latin-script locales.'
+        ),
+    )
 
 
 class SetupNameLocalesResponse(BaseModel):

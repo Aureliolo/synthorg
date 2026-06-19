@@ -9,6 +9,7 @@ from synthorg.budget.call_analytics_models import AnalyticsAggregation
 from synthorg.budget.category_analytics import OrchestrationRatio
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.notifications.dispatcher import NotificationDispatcher
@@ -77,7 +78,8 @@ class CallAnalyticsService:
         Returns:
             Aggregated analytics over the matching records.
         """
-        records = await self._tracker.get_records(
+        records = await collect_all_records(
+            self._tracker,
             agent_id=agent_id,
             task_id=task_id,
             provider=provider,

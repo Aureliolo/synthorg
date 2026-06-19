@@ -24,8 +24,13 @@ from synthorg.observability.events.backup import (
     BACKUP_RETENTION_FAILED,
     BACKUP_RETENTION_PRUNED,
 )
+from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
+
+_RETENTION_DAYS_KEY = "retention_days"
 
 
 class RetentionManager:
@@ -37,11 +42,50 @@ class RetentionManager:
     Args:
         config: Retention policy configuration.
         backup_path: Root directory containing all backups.
+        config_resolver: Optional resolver for the live
+            ``backup.retention_days`` knob. When wired, every prune
+            re-reads the setting (DB > env > code default) so an
+            operator can re-tune retention without a restart; without a
+            resolver the static ``config.max_age_days`` applies.
     """
 
-    def __init__(self, config: RetentionConfig, backup_path: Path) -> None:
+    def __init__(
+        self,
+        config: RetentionConfig,
+        backup_path: Path,
+        *,
+        config_resolver: ConfigResolverProtocol | None = None,
+    ) -> None:
         self._config = config
         self._backup_path = backup_path
+        self._config_resolver = config_resolver
+
+    async def _resolve_max_age_days(self) -> int:
+        """Resolve the retention age cap, preferring the live setting.
+
+        Returns:
+            ``backup.retention_days`` from the resolver, or the static
+            ``config.max_age_days`` when no resolver is wired or the
+            lookup fails.
+        """
+        if self._config_resolver is None:
+            return self._config.max_age_days
+        try:
+            return await self._config_resolver.get_int(
+                SettingNamespace.BACKUP.value,
+                _RETENTION_DAYS_KEY,
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace=SettingNamespace.BACKUP.value,
+                key=_RETENTION_DAYS_KEY,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                fallback=self._config.max_age_days,
+            )
+            return self._config.max_age_days
 
     async def prune(self) -> tuple[str, ...]:
         """Remove backups that exceed count or age limits.
@@ -66,14 +110,17 @@ class RetentionManager:
         if not manifests:
             return ()
 
+        max_age_days = await self._resolve_max_age_days()
         # Sort by timestamp descending (newest first)
         manifests.sort(key=lambda m: m.timestamp, reverse=True)
-        candidates = self._identify_prunable(manifests)
+        candidates = self._identify_prunable(manifests, max_age_days=max_age_days)
         return await asyncio.to_thread(self._execute_prune, candidates)
 
     def _identify_prunable(
         self,
         manifests: list[BackupManifest],
+        *,
+        max_age_days: int,
     ) -> list[BackupManifest]:
         """Identify manifests eligible for pruning.
 
@@ -82,7 +129,7 @@ class RetentionManager:
             any pre-migration backups).
         """
         now = datetime.now(UTC)
-        max_age = timedelta(days=self._config.max_age_days)
+        max_age = timedelta(days=max_age_days)
         candidates: list[BackupManifest] = []
 
         for i, manifest in enumerate(manifests):

@@ -1112,6 +1112,12 @@ class TestControllerHttpLayer:
             IntegrationHealthController,
         )
         from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
+        from synthorg.api.rate_limits import InMemorySlidingWindowStore
+        from synthorg.api.rate_limits._subject import (
+            STATE_KEY_CONFIG,
+            STATE_KEY_STORE,
+        )
+        from synthorg.api.rate_limits.config import PerOpRateLimitConfig
 
         app_state_stub = make_app_state(
             connection_catalog=catalog,
@@ -1159,9 +1165,21 @@ class TestControllerHttpLayer:
                 IntegrationHealthController,
             ],
         )
+        # The health endpoints apply per-op rate-limit guards that run
+        # ahead of the handler. Without a wired store + config the guard
+        # fail-closes with ``ServiceUnavailableError`` (503) and masks
+        # the 404/200 these smoke tests assert. Install a real in-memory
+        # store and the registry-default config so the guard passes and
+        # the request flows into the controller.
         app = Litestar(
             route_handlers=[api_router],
-            state=State({"app_state": app_state_stub}),
+            state=State(
+                {
+                    "app_state": app_state_stub,
+                    STATE_KEY_STORE: InMemorySlidingWindowStore(),
+                    STATE_KEY_CONFIG: PerOpRateLimitConfig(),
+                },
+            ),
             middleware=[_InjectUserMiddleware()],
             exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
         )

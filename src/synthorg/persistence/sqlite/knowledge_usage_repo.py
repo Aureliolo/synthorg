@@ -94,6 +94,43 @@ class SQLiteKnowledgeUsageRecordRepository:
                 )
                 raise QueryError(msg) from exc
 
+    async def append_many(self, records: tuple[KnowledgeUsageRecord, ...]) -> None:
+        """Persist many usage records in one transaction (ADR-0001 D7).
+
+        Raises:
+            DuplicateRecordError: If any record id already exists.
+            QueryError: If the database query fails.
+        """
+        if not records:
+            return
+        async with self._write_context():
+            try:
+                await self._db.executemany(
+                    _INSERT_SQL, [self._to_row(record) for record in records]
+                )
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                count = len(records)
+                if is_unique_constraint_error(exc):
+                    msg = f"Duplicate id among {count} knowledge usage records"
+                    logger.warning(
+                        PERSISTENCE_KNOWLEDGE_USAGE_SAVE_FAILED,
+                        record_count=count,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
+                    raise DuplicateRecordError(msg) from exc
+                msg = f"Failed to save {count} knowledge usage records"
+                logger.warning(
+                    PERSISTENCE_KNOWLEDGE_USAGE_SAVE_FAILED,
+                    record_count=count,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+
     async def query(
         self,
         filter_spec: KnowledgeUsageFilterSpec,

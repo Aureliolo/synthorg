@@ -6,14 +6,12 @@ the export-outcome series knows wiring was skipped, not idle).
 """
 
 import logging
-from types import SimpleNamespace
 
 import pytest
 import structlog.testing
 from prometheus_client import generate_latest
 from prometheus_client.parser import text_string_to_metric_families
 
-from synthorg.api.state import AppState
 from synthorg.observability.config import SinkConfig
 from synthorg.observability.enums import SinkType
 from synthorg.observability.events.metrics import METRICS_PROMETHEUS_WIRING_SKIPPED
@@ -23,8 +21,10 @@ from synthorg.observability.startup_wiring import (
     _wire_prometheus_sinks,
     wire_observability_callbacks,
 )
+from synthorg.observability.state import ObservabilityStateSlice
 from synthorg.observability.syslog_handler import build_syslog_handler
-from tests._shared import mock_of
+from synthorg.observability.tracing.protocol import TraceHandler
+from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -88,12 +88,15 @@ def test_wire_prometheus_sinks_wires_syslog_export_callback(
 
 def test_wire_observability_callbacks_warns_when_collector_absent() -> None:
     """The None-collector branch logs a wiring-skipped warning."""
-    slice_stub = SimpleNamespace(
-        trace_handler=object(),  # non-None: skips trace-handler build
-        prometheus_collector=None,
+    # A real AppState carries a real (audit-chain-disabled) RootConfig, so
+    # the audit-chain installer the callback now runs first short-circuits
+    # cleanly. Wiring a trace handler skips the trace-handler build path,
+    # leaving the absent-collector branch as the behaviour under test.
+    app_state = make_app_state(
+        slices={
+            ObservabilityStateSlice: {"trace_handler": mock_of[TraceHandler]()},
+        },
     )
-    app_state = mock_of[AppState]()
-    app_state.slice.return_value = slice_stub
 
     with structlog.testing.capture_logs() as logs:
         wire_observability_callbacks(app_state)

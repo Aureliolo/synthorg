@@ -48,7 +48,6 @@ from synthorg.observability.events.conflict import (
     CONFLICT_DISSENT_RECORDED,
     CONFLICT_ESCALATED,
     CONFLICT_HIERARCHY_ERROR,
-    CONFLICT_HUMAN_ESCALATION_STUB,
     CONFLICT_HYBRID_AUTO_RESOLVED,
     CONFLICT_HYBRID_REVIEW,
     CONFLICT_LCM_LOOKUP,
@@ -582,7 +581,6 @@ class TestEventConstants:
         assert CONFLICT_DEBATE_JUDGE_DECIDED == "conflict.debate.judge_decided"
         assert CONFLICT_HYBRID_REVIEW == "conflict.hybrid.review"
         assert CONFLICT_HYBRID_AUTO_RESOLVED == "conflict.hybrid.auto_resolved"
-        assert CONFLICT_HUMAN_ESCALATION_STUB == "conflict.human.escalation_stub"
         assert CONFLICT_CROSS_DEPARTMENT == "conflict.cross_department"
         assert CONFLICT_LCM_LOOKUP == "conflict.lcm_lookup"
         assert CONFLICT_DISSENT_QUERIED == "conflict.dissent.queried"

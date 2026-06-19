@@ -20,6 +20,7 @@ from synthorg.api.state import AppState
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.error_taxonomy import set_error_docs_base_url
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.review_gate_inputs import AutonomyProvider
 from synthorg.integrations.connections.catalog import ConnectionCatalog
@@ -86,6 +87,55 @@ def _publish_red_team_runtime(
         )
 
 
+def _try_wire_ssrf_violation_recorder(app_state: AppState) -> None:
+    """Install the fail-safe SSRF-violation recorder when persistence is up.
+
+    Turns the outbound SSRF guard's previously write-never violation store
+    into a live audit trail: every blocked URL is recorded as a PENDING
+    ``SsrfViolation`` for operator review via ``/providers/ssrf-violations``.
+    A persistence-less boot (dev / test fixtures) clears the recorder so the
+    chokepoint no-ops. Recording is best-effort and never weakens a block.
+    """
+    from synthorg.api.services.ssrf_violation_service import (  # noqa: PLC0415
+        SsrfViolationService,
+    )
+    from synthorg.persistence.state import (  # noqa: PLC0415
+        PersistenceStateSlice,
+        persistence_of,
+    )
+    from synthorg.providers.url_utils import redact_url  # noqa: PLC0415
+    from synthorg.security.ssrf_violation import SsrfViolation  # noqa: PLC0415
+    from synthorg.tools._ssrf_recording import (  # noqa: PLC0415
+        install_ssrf_violation_recorder,
+    )
+
+    if app_state.slice(PersistenceStateSlice).backend is None:
+        install_ssrf_violation_recorder(None)
+        return
+    service = SsrfViolationService(repo=persistence_of(app_state).ssrf_violations)
+    clock = app_state.clock
+
+    async def _record(
+        url: str,
+        hostname: str,
+        port: int,
+        resolved_ip: str | None,
+        blocked_range: str | None,
+    ) -> None:
+        await service.record(
+            SsrfViolation(
+                timestamp=clock.now(),
+                url=NotBlankStr(redact_url(url)),
+                hostname=NotBlankStr(hostname),
+                port=port,
+                resolved_ip=NotBlankStr(resolved_ip) if resolved_ip else None,
+                blocked_range=(NotBlankStr(blocked_range) if blocked_range else None),
+            )
+        )
+
+    install_ssrf_violation_recorder(_record)
+
+
 async def install_runtime_services(
     app_state: AppState,
     *,
@@ -141,6 +191,7 @@ async def install_runtime_services(
     # tree per project under the workspace base. Persistence-less
     # boots (test fixtures, dev apps with no DB) skip wiring.
     _try_wire_cost_dial(app_state)
+    _try_wire_ssrf_violation_recorder(app_state)
     # Attach durable metric repos to the performance tracker now that the
     # backend is connected; a restart otherwise discards all recorded
     # task/collaboration performance metrics.

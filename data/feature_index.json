@@ -113,6 +113,7 @@
     {
       "controllers": [
         "BudgetController",
+        "BudgetCfoController",
         "ForecastBudgetController",
         "BudgetConfigVersionController",
         "ReportsController"
@@ -125,6 +126,7 @@
         "CompanyRoleSkeletonProvider",
         "CoordinationMetricsCollector",
         "CostForecaster",
+        "CostOptimizer",
         "CostTrackerHistoryLookup",
         "MeasuredBenchmarkScoreProvider",
         "ParetoAnalyzer",
@@ -159,7 +161,8 @@
         "benchmark_provider",
         "budget_config",
         "report_service",
-        "budget_versions_service"
+        "budget_versions_service",
+        "cost_optimizer"
       ]
     },
     {
@@ -424,6 +427,7 @@
         "WorkflowExecutionController",
         "SubworkflowController",
         "EvaluationConfigVersionController",
+        "DecompositionController",
         "ObjectiveController",
         "BrownfieldController"
       ],
@@ -452,6 +456,7 @@
         "wire_real_brownfield_entry",
         "build_mcp_self_consumer",
         "build_coordinator",
+        "ManualDecompositionStrategy",
         "build_stakes_router",
         "build_work_pipeline",
         "ForecastGate"
@@ -602,13 +607,16 @@
         "ActivityController",
         "PersonalityPresetController",
         "ScalingController",
+        "PromotionController",
         "TrainingController",
         "QualityController",
         "CollaborationController"
       ],
       "depends_on": [],
       "directory": "src/synthorg/hr",
-      "ghost_wired_symbols": [],
+      "ghost_wired_symbols": [
+        "build_promotion_service"
+      ],
       "mcp_tool_names": [
         "synthorg_agents_list",
         "synthorg_agents_get",
@@ -651,7 +659,9 @@
         "activity_feed_service",
         "agent_health_service",
         "scaling_service",
-        "scaling_decision_service"
+        "scaling_decision_service",
+        "promotion_service",
+        "promotion_cycle_scheduler"
       ]
     },
     {
@@ -895,7 +905,9 @@
       ],
       "depends_on": [],
       "directory": "src/synthorg/observability",
-      "ghost_wired_symbols": [],
+      "ghost_wired_symbols": [
+        "install_audit_chain_sink"
+      ],
       "mcp_tool_names": [],
       "name": "observability",
       "protocol_exports": [],
@@ -914,7 +926,9 @@
       ],
       "depends_on": [],
       "directory": "src/synthorg/ontology",
-      "ghost_wired_symbols": [],
+      "ghost_wired_symbols": [
+        "build_drift_detection_service"
+      ],
       "mcp_tool_names": [],
       "name": "ontology",
       "protocol_exports": [
@@ -1107,7 +1121,8 @@
     {
       "controllers": [
         "AuditController",
-        "AutonomyController"
+        "AutonomyController",
+        "SsrfViolationController"
       ],
       "depends_on": [],
       "directory": "src/synthorg/security",
@@ -1262,6 +1277,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-19T08:23:12.232618Z",
+  "generated_at": "2026-06-19T12:34:01.124038Z",
   "schema_version": 1
 }

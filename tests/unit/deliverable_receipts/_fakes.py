@@ -106,6 +106,15 @@ class InMemoryKnowledgeUsageRecordRepository:
             raise DuplicateRecordError(msg)
         self._records.append(record)
 
+    async def append_many(self, records: tuple[KnowledgeUsageRecord, ...]) -> None:
+        seen = {r.record_id for r in self._records}
+        for record in records:
+            if record.record_id in seen:
+                msg = f"Duplicate id among {len(records)} knowledge usage records"
+                raise DuplicateRecordError(msg)
+            seen.add(record.record_id)
+        self._records.extend(records)
+
     async def query(
         self,
         filter_spec: KnowledgeUsageFilterSpec,

@@ -593,6 +593,59 @@ class TestApprovalProcessing:
         await service.run_pruning_cycle(now=NOW + timedelta(hours=2))
         callback.assert_awaited_once()
 
+    async def test_restart_does_not_reoffboard_processed_approval(
+        self,
+        registry: AgentRegistryService,
+        approval_store: ApprovalStore,
+        offboarding: FakeOffboardingService,
+    ) -> None:
+        """A fresh service over the same store must not re-offboard.
+
+        The durable ``pruning_processed`` marker stamped into the
+        approval metadata is the cross-restart dedup anchor; the
+        post-restart service has an empty in-memory ``_processed`` set
+        and would otherwise re-offboard the still-APPROVED item.
+        """
+        agent = make_agent_identity(name="poor-performer")
+        await registry.register(agent)
+
+        service = _make_service(
+            policies=(AlwaysEligiblePolicy(),),
+            registry=registry,
+            approval_store=approval_store,
+            offboarding=offboarding,
+        )
+        await service.run_pruning_cycle(now=NOW)
+        items = await approval_store.list_items(action_type="hr:prune")
+        approved = items[0].model_copy(
+            update={
+                "status": ApprovalStatus.APPROVED,
+                "decided_at": NOW + timedelta(hours=1),
+                "decided_by": NotBlankStr("admin"),
+            },
+        )
+        await approval_store.save(approved)
+
+        await service.run_pruning_cycle(now=NOW + timedelta(hours=2))
+        assert len(offboarding.offboard_calls) == 1
+
+        # The durable marker must have landed on the stored approval.
+        stored = await approval_store.get(NotBlankStr(str(approved.id)))
+        assert stored is not None
+        assert stored.metadata.get("pruning_processed") == "true"
+
+        # Simulate a restart: a fresh service has an empty in-memory
+        # processed set but shares the durable approval store.
+        restarted = _make_service(
+            policies=(AlwaysEligiblePolicy(),),
+            registry=registry,
+            approval_store=approval_store,
+            offboarding=offboarding,
+        )
+        await restarted.run_pruning_cycle(now=NOW + timedelta(hours=3))
+        # No second offboard: the durable marker deduped it.
+        assert len(offboarding.offboard_calls) == 1
+
     async def test_notification_callback_failure_does_not_crash(
         self,
         registry: AgentRegistryService,

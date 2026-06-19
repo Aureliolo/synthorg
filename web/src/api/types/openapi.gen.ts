@@ -1063,6 +1063,40 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/budget/cfo/anomalies": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** DetectAnomalies */
+        readonly get: operations["ApiV1BudgetCfoAnomaliesDetectAnomalies"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/budget/cfo/efficiency": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** AnalyzeEfficiency */
+        readonly get: operations["ApiV1BudgetCfoEfficiencyAnalyzeEfficiency"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/budget/config": {
         readonly parameters: {
             readonly query?: never;
@@ -3406,6 +3440,74 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/promotion/{agent_id}/apply": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Apply */
+        readonly post: operations["ApiV1PromotionAgentIdApplyApply"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/promotion/{agent_id}/evaluate": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Evaluate */
+        readonly get: operations["ApiV1PromotionAgentIdEvaluateEvaluate"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/promotion/{agent_id}/history": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** History */
+        readonly get: operations["ApiV1PromotionAgentIdHistoryHistory"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/promotion/cycle": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** TriggerCycle */
+        readonly post: operations["ApiV1PromotionCycleTriggerCycle"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/providers": {
         readonly parameters: {
             readonly query?: never;
@@ -3832,6 +3934,40 @@ export type paths = {
         readonly put?: never;
         /** ProbeLocal */
         readonly post: operations["ApiV1ProvidersProbeLocalProbeLocal"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/providers/ssrf-violations": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListViolations */
+        readonly get: operations["ApiV1ProvidersSsrfViolationsListViolations"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/providers/ssrf-violations/{violation_id}/resolve": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** ResolveViolation */
+        readonly post: operations["ApiV1ProvidersSsrfViolationsViolationIdResolveResolveViolation"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -4772,6 +4908,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/tasks/{task_id}/decompose": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** DecomposeManual */
+        readonly post: operations["ApiV1TasksTaskIdDecomposeDecomposeManual"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/tasks/{task_id}/execute": {
         readonly parameters: {
             readonly query?: never;
@@ -5467,6 +5620,20 @@ export type components = {
                 } | string | boolean | number | null;
             };
         };
+        /** AgentEfficiency */
+        readonly AgentEfficiency: {
+            /** @description Agent identifier */
+            readonly agent_id: string;
+            /** @description Cost per 1000 tokens, derived from total_cost and total_tokens. */
+            readonly cost_per_1k_tokens: number;
+            readonly efficiency_rating: components["schemas"]["EfficiencyRating"];
+            /** @description Number of cost records */
+            readonly record_count: number;
+            /** @description Total cost in the analysis period */
+            readonly total_cost: number;
+            /** @description Total tokens consumed */
+            readonly total_tokens: number;
+        };
         /** AgentHealthResponse */
         readonly AgentHealthResponse: {
             readonly agent_id: string;
@@ -5662,6 +5829,46 @@ export type components = {
             /** @description Total LLM calls recorded. */
             readonly total_calls: number;
         };
+        /** AnomalyDetectionResult */
+        readonly AnomalyDetectionResult: {
+            /** @description Unique agents in data */
+            readonly agents_scanned: number;
+            /**
+             * @description Detected anomalies
+             * @default []
+             */
+            readonly anomalies: readonly components["schemas"]["SpendingAnomaly"][];
+            /**
+             * Format: date-time
+             * @description Scanned period end
+             */
+            readonly scan_period_end: string;
+            /**
+             * Format: date-time
+             * @description Scanned period start
+             */
+            readonly scan_period_start: string;
+            /**
+             * Format: date-time
+             * @description When the scan ran
+             */
+            readonly scan_timestamp: string;
+        };
+        /**
+         * AnomalySeverity
+         * @description Severity of a detected spending anomaly.
+         * @enum {string}
+         */
+        readonly AnomalySeverity: "low" | "medium" | "high";
+        /**
+         * AnomalyType
+         * @description Type of spending anomaly detected.
+         *
+         *     ``SUSTAINED_HIGH`` and ``RATE_INCREASE`` are reserved for future
+         *     detection algorithms; only ``SPIKE`` is currently produced.
+         * @enum {string}
+         */
+        readonly AnomalyType: "spike" | "sustained_high" | "rate_increase";
         /** AnonymizedOutcomeEvent */
         readonly AnonymizedOutcomeEvent: {
             readonly altitude: string;
@@ -5812,6 +6019,19 @@ export type components = {
         /** ApiResponse[AnalyticsAggregation] */
         readonly ApiResponse_AnalyticsAggregation_: {
             readonly data: components["schemas"]["AnalyticsAggregation"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[AnomalyDetectionResult] */
+        readonly ApiResponse_AnomalyDetectionResult_: {
+            readonly data: components["schemas"]["AnomalyDetectionResult"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /**
@@ -6095,6 +6315,19 @@ export type components = {
              */
             readonly success: boolean;
         };
+        /** ApiResponse[DecompositionResult] */
+        readonly ApiResponse_DecompositionResult_: {
+            readonly data: components["schemas"]["DecompositionResult"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
         /** ApiResponse[DeliverableReceipt] */
         readonly ApiResponse_DeliverableReceipt_: {
             readonly data: components["schemas"]["DeliverableReceipt"] | null;
@@ -6238,6 +6471,19 @@ export type components = {
         /** ApiResponse[DiscoveryPolicyResponse] */
         readonly ApiResponse_DiscoveryPolicyResponse_: {
             readonly data: components["schemas"]["DiscoveryPolicyResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[EfficiencyAnalysis] */
+        readonly ApiResponse_EfficiencyAnalysis_: {
+            readonly data: components["schemas"]["EfficiencyAnalysis"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /**
@@ -6651,6 +6897,32 @@ export type components = {
              */
             readonly success: boolean;
         };
+        /** ApiResponse[PromotionApplyResultDTO] */
+        readonly ApiResponse_PromotionApplyResultDTO_: {
+            readonly data: components["schemas"]["PromotionApplyResultDTO"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[PromotionEvaluationDTO] */
+        readonly ApiResponse_PromotionEvaluationDTO_: {
+            readonly data: components["schemas"]["PromotionEvaluationDTO"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
         /** ApiResponse[ProposeResult] */
         readonly ApiResponse_ProposeResult_: {
             readonly data: components["schemas"]["ProposeResult"] | null;
@@ -6979,6 +7251,19 @@ export type components = {
         /** ApiResponse[SimulationStatusResponse] */
         readonly ApiResponse_SimulationStatusResponse_: {
             readonly data: components["schemas"]["SimulationStatusResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[SsrfViolationDTO] */
+        readonly ApiResponse_SsrfViolationDTO_: {
+            readonly data: components["schemas"]["SsrfViolationDTO"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /**
@@ -7327,6 +7612,19 @@ export type components = {
              */
             readonly success: boolean;
         };
+        /** ApiResponse[tuple[PromotionRecordDTO, ...]] */
+        readonly "ApiResponse_tuple_PromotionRecordDTO_..._": {
+            readonly data: readonly components["schemas"]["PromotionRecordDTO"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
         /** ApiResponse[tuple[ScalingDecisionResponse, ...]] */
         readonly "ApiResponse_tuple_ScalingDecisionResponse_..._": {
             readonly data: readonly components["schemas"]["ScalingDecisionResponse"][] | null;
@@ -7395,19 +7693,6 @@ export type components = {
         /** ApiResponse[tuple[TemplateInfoResponse, ...]] */
         readonly "ApiResponse_tuple_TemplateInfoResponse_..._": {
             readonly data: readonly components["schemas"]["TemplateInfoResponse"][] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
-            readonly success: boolean;
-        };
-        /** ApiResponse[tuple[UpgradeRecommendationDTO, ...]] */
-        readonly "ApiResponse_tuple_UpgradeRecommendationDTO_..._": {
-            readonly data: readonly components["schemas"]["UpgradeRecommendationDTO"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /**
@@ -7766,6 +8051,7 @@ export type components = {
         readonly ApprovalStatus: "pending" | "approved" | "rejected" | "expired";
         /** ApproveRequest */
         readonly ApproveRequest: {
+            /** @description Optional comment explaining the approval decision. */
             readonly comment?: string | null;
         };
         /** Artifact */
@@ -8543,12 +8829,19 @@ export type components = {
         };
         /** CharterEditRequest */
         readonly CharterEditRequest: {
+            /** @description Replacement charter brief. */
             readonly brief?: string | null;
+            /** @description Replacement set of charter constraints. */
             readonly constraints?: readonly string[] | null;
+            /** @description Replacement budget envelope. */
             readonly envelope?: components["schemas"]["BudgetEnvelope"] | null;
+            /** @description Replacement set of charter goals. */
             readonly goals?: readonly string[] | null;
+            /** @description Replacement scope boundaries. */
             readonly scope?: components["schemas"]["ScopeBoundaries"] | null;
+            /** @description Replacement set of charter success criteria. */
             readonly success_criteria?: readonly string[] | null;
+            /** @description Replacement charter title. */
             readonly title?: string | null;
         };
         /**
@@ -8585,16 +8878,26 @@ export type components = {
         };
         /** ChatActRequest */
         readonly ChatActRequest: {
+            /** @description ID of the agent that should act on the instruction. */
             readonly agent: string;
+            /** @description Existing conversation to act within; None starts a new one. */
             readonly conversation_id?: string | null;
+            /** @description Natural-language instruction for the agent to act on. */
             readonly instruction: string;
         };
         /** ChatRequest */
         readonly ChatRequest: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Proactive alert the question is scoped to, if any.
+             */
             readonly alert_id?: string | null;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Improvement proposal the question is scoped to, if any.
+             */
             readonly proposal_id?: string | null;
+            /** @description Free-text question for the Chief of Staff agent. */
             readonly question: string;
         };
         /** CheckpointRecord */
@@ -9022,8 +9325,11 @@ export type components = {
         };
         /** ConversationalProposeRequest */
         readonly ConversationalProposeRequest: {
+            /** @description Existing conversation to append to; None starts a new one. */
             readonly conversation_id?: string | null;
+            /** @description Human message for the clarify-and-propose turn. */
             readonly message: string;
+            /** @description Project the proposal should be scoped to, if any. */
             readonly project?: string | null;
         };
         /** ConversationParticipant */
@@ -9064,9 +9370,14 @@ export type components = {
         readonly CoordinateTaskRequest: {
             /** @description Agent names to coordinate with (None = all active) */
             readonly agent_names?: readonly string[] | null;
+            /** @description Override for fail-fast behaviour; None uses the section config default. */
             readonly fail_fast?: boolean | null;
+            /** @description Override for the maximum agents run concurrently per wave. */
             readonly max_concurrency_per_wave?: number | null;
-            /** @default 10 */
+            /**
+             * @description Maximum number of subtasks the decomposition may produce.
+             * @default 10
+             */
             readonly max_subtasks: number;
         };
         /** CoordinationEfficiency */
@@ -9163,11 +9474,17 @@ export type components = {
             readonly currency: string;
             /** @description Whether all phases succeeded */
             readonly is_success: boolean;
+            /** @description ID of the parent task that was coordinated. */
             readonly parent_task_id: string;
+            /** @description Phase results in execution order. */
             readonly phases: readonly components["schemas"]["CoordinationPhaseResponse"][];
+            /** @description Resolved coordination topology for the run. */
             readonly topology: string;
+            /** @description Total cost across all waves in the configured currency. */
             readonly total_cost: number;
+            /** @description Total wall-clock duration of the coordination run in seconds. */
             readonly total_duration_seconds: number;
+            /** @description Number of execution waves in the coordination run. */
             readonly wave_count: number;
         };
         /**
@@ -9336,17 +9653,25 @@ export type components = {
             readonly auth_method?: components["schemas"]["AuthMethod"];
             readonly base_url?: string | null;
             readonly connection_type: components["schemas"]["ConnectionType"];
+            /** @description Credential field-name to value map sent to the secret backend. */
             readonly credentials?: {
                 readonly [key: string]: string;
             };
-            /** @default true */
+            /**
+             * @description Whether periodic health checks run against the connection.
+             * @default true
+             */
             readonly health_check_enabled: boolean;
             readonly metadata?: {
                 readonly [key: string]: string;
             } | null;
             readonly name: string;
-            /** @default false */
+            /**
+             * @description Marks the connection sensitive so every external-access call against it routes to approval.
+             * @default false
+             */
             readonly sensitive: boolean;
+            /** @description Per-connection webhook-receipt retention window in days; None uses the global default, 0 opts out of the sweep. */
             readonly webhook_receipt_retention_days?: number | null;
         };
         /** CreateCustomRuleRequest */
@@ -9432,40 +9757,76 @@ export type components = {
         };
         /** CreatePresetRequest */
         readonly CreatePresetRequest: {
-            /** @default 0.5 */
+            /**
+             * @description Big Five agreeableness score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly agreeableness: number;
             readonly collaboration?: components["schemas"]["CollaborationPreference"];
-            /** @default neutral */
+            /**
+             * @description Communication style label.
+             * @default neutral
+             */
             readonly communication_style: string;
             readonly conflict_approach?: components["schemas"]["ConflictApproach"];
-            /** @default 0.5 */
+            /**
+             * @description Big Five conscientiousness score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly conscientiousness: number;
             readonly creativity?: components["schemas"]["CreativityLevel"];
             readonly decision_making?: components["schemas"]["DecisionMakingStyle"];
-            /** @default  */
+            /**
+             * @description Preset description.
+             * @default
+             */
             readonly description: string;
-            /** @default 0.5 */
+            /**
+             * @description Big Five extraversion score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly extraversion: number;
             readonly name: string;
-            /** @default 0.5 */
+            /**
+             * @description Big Five openness score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly openness: number;
             readonly risk_tolerance?: components["schemas"]["RiskTolerance"];
-            /** @default 0.5 */
+            /**
+             * @description Stress-response (neuroticism) score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly stress_response: number;
-            /** @default [] */
+            /**
+             * @description Personality traits for the preset.
+             * @default []
+             */
             readonly traits: readonly string[];
             readonly verbosity?: components["schemas"]["CommunicationVerbosity"];
         };
         /** CreateProjectRequest */
         readonly CreateProjectRequest: {
-            /** @default 0 */
+            /**
+             * @description Total project budget in the configured base currency.
+             * @default 0
+             */
             readonly budget: number;
+            /** @description Optional deadline as an ISO 8601 string. */
             readonly deadline?: string | null;
-            /** @default  */
+            /**
+             * @description Detailed project description.
+             * @default
+             */
             readonly description: string;
+            /** @description Agent ID of the project lead. */
             readonly lead?: string | null;
+            /** @description Project display name. */
             readonly name: string;
-            /** @default [] */
+            /**
+             * @description Agent IDs assigned to the project.
+             * @default []
+             */
             readonly team: readonly string[];
         };
         /** CreateProviderRequest */
@@ -9531,13 +9892,18 @@ export type components = {
         /** CreateTaskRequest */
         readonly CreateTaskRequest: {
             readonly assigned_to?: string | null;
-            /** @default 0 */
+            /**
+             * @description Maximum spend for the task in the configured base currency.
+             * @default 0
+             */
             readonly budget_limit: number;
             readonly created_by: string;
+            /** @description Detailed task description. */
             readonly description: string;
             readonly estimated_complexity?: components["schemas"]["Complexity"];
             readonly priority?: components["schemas"]["Priority"];
             readonly project: string;
+            /** @description Short task title. */
             readonly title: string;
             readonly type: components["schemas"]["TaskType"];
         };
@@ -9629,6 +9995,19 @@ export type components = {
          * @enum {string}
          */
         readonly CreativityLevel: "low" | "medium" | "high";
+        /** CriterionResultDTO */
+        readonly CriterionResultDTO: {
+            /** @description Agent's current value for the criterion */
+            readonly current_value: number;
+            /** @description Whether the criterion was met */
+            readonly met: boolean;
+            /** @description Criterion name */
+            readonly name: string;
+            /** @description Required threshold value */
+            readonly threshold: number;
+            /** @description Weight of this criterion, when weighted */
+            readonly weight: number | null;
+        };
         /** DailySummary */
         readonly DailySummary: {
             /**
@@ -9695,6 +10074,32 @@ export type components = {
              * @constant
              */
             readonly entry_kind: "decision";
+        };
+        /**
+         * DecompositionPlan
+         * @description Executed decomposition plan
+         */
+        readonly DecompositionPlan: {
+            readonly coordination_topology: components["schemas"]["CoordinationTopology"];
+            /** @description ID of the task being decomposed */
+            readonly parent_task_id: string;
+            /** @description Ordered subtask definitions */
+            readonly subtasks: readonly components["schemas"]["SubtaskDefinition"][];
+            readonly task_structure: components["schemas"]["TaskStructure"];
+        };
+        /** DecompositionResult */
+        readonly DecompositionResult: {
+            /** @description Task objects created from subtask definitions */
+            readonly created_tasks: readonly components["schemas"]["Task"][];
+            /**
+             * @description Directed edges (from_id, to_id) in the DAG
+             * @default []
+             */
+            readonly dependency_edges: readonly (readonly [
+                string,
+                string
+            ])[];
+            readonly plan: components["schemas"]["DecompositionPlan"];
         };
         /** DeliverableReceipt */
         readonly DeliverableReceipt: {
@@ -9971,6 +10376,28 @@ export type components = {
                 readonly [key: string]: unknown;
             } | null;
         };
+        /** EfficiencyAnalysis */
+        readonly EfficiencyAnalysis: {
+            /**
+             * @description Per-agent efficiency metrics
+             * @default []
+             */
+            readonly agents: readonly components["schemas"]["AgentEfficiency"][];
+            /**
+             * Format: date-time
+             * @description Analysis period end
+             */
+            readonly analysis_period_end: string;
+            /**
+             * Format: date-time
+             * @description Analysis period start
+             */
+            readonly analysis_period_start: string;
+            /** @description Global average cost per 1000 tokens */
+            readonly global_avg_cost_per_1k: number;
+            /** @description Number of agents rated INEFFICIENT. */
+            readonly inefficient_agent_count: number;
+        };
         /** EfficiencyConfig */
         readonly EfficiencyConfig: {
             /** @default true */
@@ -9996,6 +10423,12 @@ export type components = {
             /** @default 0.2 */
             readonly weight: number;
         };
+        /**
+         * EfficiencyRating
+         * @description Cost efficiency rating for an agent.
+         * @enum {string}
+         */
+        readonly EfficiencyRating: "efficient" | "normal" | "inefficient";
         /** EntityFieldInput */
         readonly EntityFieldInput: {
             /**
@@ -10122,7 +10555,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4025 | 4026 | 4027 | 4028 | 4029 | 4030 | 5000 | 5001 | 5002 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4025 | 4026 | 4027 | 4028 | 4029 | 4030 | 5000 | 5001 | 5002 | 5003 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;
@@ -10190,6 +10623,7 @@ export type components = {
         };
         /** EscalationResponse */
         readonly EscalationResponse: {
+            /** @description ID of the conflict this escalation was raised for. */
             readonly conflict_id: string;
             readonly escalation: components["schemas"]["Escalation"];
             readonly status: components["schemas"]["EscalationStatus"];
@@ -10871,9 +11305,14 @@ export type components = {
         };
         /** GroupChatRequest */
         readonly GroupChatRequest: {
+            /** @description Existing conversation to append to; None starts a new one. */
             readonly conversation_id?: string | null;
+            /** @description Human message to broadcast to the group chat. */
             readonly message: string;
-            /** @default [] */
+            /**
+             * @description Agent IDs to enrol in the group chat for this turn.
+             * @default []
+             */
             readonly participants: readonly string[];
         };
         /**
@@ -11016,8 +11455,12 @@ export type components = {
         };
         /** InitiateOAuthFlowRequest */
         readonly InitiateOAuthFlowRequest: {
+            /** @description Name of the connection to initiate the OAuth flow for. */
             readonly connection_name: string;
-            /** @default [] */
+            /**
+             * @description OAuth scopes to request for the connection.
+             * @default []
+             */
             readonly scopes: readonly string[];
         };
         /** InstalledEntry */
@@ -11105,8 +11548,11 @@ export type components = {
         readonly InterventionKind: "pause" | "kill" | "hint" | "redirect";
         /** InterviewTurnRequest */
         readonly InterviewTurnRequest: {
+            /** @description Existing interview conversation to continue; None starts one. */
             readonly conversation_id?: string | null;
+            /** @description Human message for this charter-interview turn. */
             readonly message: string;
+            /** @description Project the interview is scoped to, if any. */
             readonly project?: string | null;
         };
         /** InterviewTurnResult */
@@ -11423,6 +11869,45 @@ export type components = {
         readonly LoginRequest: {
             readonly password: string;
             readonly username: string;
+        };
+        /** ManualDecomposeRequest */
+        readonly ManualDecomposeRequest: {
+            readonly coordination_topology?: components["schemas"]["CoordinationTopology"];
+            /**
+             * @description Maximum nesting depth
+             * @default 3
+             */
+            readonly max_depth: number;
+            /**
+             * @description Maximum number of subtasks allowed
+             * @default 10
+             */
+            readonly max_subtasks: number;
+            /** @description Hand-authored subtask specifications */
+            readonly subtasks: readonly components["schemas"]["ManualSubtaskSpec"][];
+        };
+        /** ManualSubtaskSpec */
+        readonly ManualSubtaskSpec: {
+            /**
+             * @description Labels of subtasks this one depends on
+             * @default []
+             */
+            readonly dependencies: readonly string[];
+            /** @description Detailed subtask description */
+            readonly description: string;
+            readonly estimated_complexity?: components["schemas"]["Complexity"];
+            /** @description Caller-chosen subtask label (unique within the request) */
+            readonly label: string;
+            /** @description Optional role name for routing */
+            readonly required_role?: string | null;
+            /**
+             * @description Skill IDs needed for routing
+             * @default []
+             */
+            readonly required_skills: readonly string[];
+            readonly stakes?: components["schemas"]["Stakes"];
+            /** @description Short subtask title */
+            readonly title: string;
         };
         /**
          * MeetingAgenda
@@ -12984,6 +13469,26 @@ export type components = {
              */
             readonly success: boolean;
         };
+        /** PaginatedResponse[SsrfViolationDTO] */
+        readonly PaginatedResponse_SsrfViolationDTO_: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["SsrfViolationDTO"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
         /** PaginatedResponse[str] */
         readonly PaginatedResponse_str_: {
             /** @default [] */
@@ -13048,6 +13553,26 @@ export type components = {
         readonly PaginatedResponse_ThresholdRecommendation_: {
             /** @default [] */
             readonly data: readonly components["schemas"]["ThresholdRecommendation"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** PaginatedResponse[UpgradeRecommendationDTO] */
+        readonly PaginatedResponse_UpgradeRecommendationDTO_: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["UpgradeRecommendationDTO"][];
             /**
              * @description Data sources that failed gracefully (partial data)
              * @default []
@@ -13522,30 +14047,57 @@ export type components = {
         };
         /** PresetDetailResponse */
         readonly PresetDetailResponse: {
-            /** @default 0.5 */
+            /**
+             * @description Big Five agreeableness score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly agreeableness: number;
             readonly collaboration: components["schemas"]["CollaborationPreference"];
-            /** @default neutral */
+            /**
+             * @description Default communication style label.
+             * @default neutral
+             */
             readonly communication_style: string;
             readonly conflict_approach: components["schemas"]["ConflictApproach"];
-            /** @default 0.5 */
+            /**
+             * @description Big Five conscientiousness score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly conscientiousness: number;
+            /** @description Creation timestamp as an ISO 8601 string, if known. */
             readonly created_at: string | null;
             readonly creativity: components["schemas"]["CreativityLevel"];
             readonly decision_making: components["schemas"]["DecisionMakingStyle"];
-            /** @default  */
+            /**
+             * @description Full preset description.
+             * @default
+             */
             readonly description: string;
-            /** @default 0.5 */
+            /**
+             * @description Big Five extraversion score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly extraversion: number;
+            /** @description Unique preset name. */
             readonly name: string;
-            /** @default 0.5 */
+            /**
+             * @description Big Five openness score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly openness: number;
             readonly risk_tolerance: components["schemas"]["RiskTolerance"];
             readonly source: components["schemas"]["PresetSource"];
-            /** @default 0.5 */
+            /**
+             * @description Stress-response (neuroticism) score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly stress_response: number;
-            /** @default [] */
+            /**
+             * @description Personality traits for the preset.
+             * @default []
+             */
             readonly traits: readonly string[];
+            /** @description Last-update timestamp as an ISO 8601 string, if known. */
             readonly updated_at: string | null;
             readonly verbosity: components["schemas"]["CommunicationVerbosity"];
         };
@@ -13584,11 +14136,18 @@ export type components = {
         readonly PresetSource: "builtin" | "custom";
         /** PresetSummaryResponse */
         readonly PresetSummaryResponse: {
-            /** @default  */
+            /**
+             * @description Short human-readable summary.
+             * @default
+             */
             readonly description: string;
+            /** @description Unique preset name. */
             readonly name: string;
             readonly source: components["schemas"]["PresetSource"];
-            /** @default [] */
+            /**
+             * @description Headline personality traits for the preset.
+             * @default []
+             */
             readonly traits: readonly string[];
         };
         /** PreviewRuleRequest */
@@ -13763,6 +14322,119 @@ export type components = {
          * @enum {string}
          */
         readonly ProjectStatus: "planning" | "active" | "on_hold" | "completed" | "cancelled";
+        /** PromotionApplyResultDTO */
+        readonly PromotionApplyResultDTO: {
+            /** @description The applied record when auto-approved, else null */
+            readonly applied: components["schemas"]["PromotionRecordDTO"] | null;
+            readonly request: components["schemas"]["PromotionRequestDTO"];
+        };
+        /**
+         * PromotionDirection
+         * @description Direction of a seniority level change.
+         * @default promotion
+         * @enum {string}
+         */
+        readonly PromotionDirection: "promotion" | "demotion";
+        /** PromotionEvaluationDTO */
+        readonly PromotionEvaluationDTO: {
+            /** @description Agent that was evaluated */
+            readonly agent_id: string;
+            /** @description Number of criteria that were met */
+            readonly criteria_met_count: number;
+            /**
+             * @description Individual criterion outcomes
+             * @default []
+             */
+            readonly criteria_results: readonly components["schemas"]["CriterionResultDTO"][];
+            /** @description Current seniority level */
+            readonly current_level: string;
+            /**
+             * @description Either 'promotion' or 'demotion'
+             * @enum {string}
+             */
+            readonly direction: "promotion" | "demotion";
+            /** @description Whether the agent qualifies for the change */
+            readonly eligible: boolean;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly evaluated_at: string;
+            /** @description Whether all required criteria were met */
+            readonly required_criteria_met: boolean;
+            /** @description Strategy that produced the evaluation */
+            readonly strategy_name: string;
+            /** @description Target seniority level */
+            readonly target_level: string;
+        };
+        /** PromotionRecordDTO */
+        readonly PromotionRecordDTO: {
+            /** @description Agent that was promoted or demoted */
+            readonly agent_id: string;
+            /** @description Agent display name */
+            readonly agent_name: string;
+            /** @description Approval item identifier when human-approved */
+            readonly approval_id: string | null;
+            /** @description Who approved the change ('auto' or 'human') */
+            readonly approved_by: string | null;
+            /**
+             * @description Either 'promotion' or 'demotion'
+             * @enum {string}
+             */
+            readonly direction: "promotion" | "demotion";
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly effective_at: string;
+            /** @description Unique record identifier */
+            readonly id: string;
+            /** @description Who initiated the change */
+            readonly initiated_by: string;
+            /** @description Whether the agent's model changed */
+            readonly model_changed: boolean;
+            /** @description New seniority level */
+            readonly new_level: string;
+            /** @description New model identifier, when changed */
+            readonly new_model_id: string | null;
+            /** @description Previous seniority level */
+            readonly old_level: string;
+            /** @description Previous model identifier, when changed */
+            readonly old_model_id: string | null;
+        };
+        /**
+         * PromotionRequestDTO
+         * @description The promotion request
+         */
+        readonly PromotionRequestDTO: {
+            /** @description Agent being promoted or demoted */
+            readonly agent_id: string;
+            /** @description Agent display name */
+            readonly agent_name: string;
+            /** @description Linked approval item identifier, when human-gated */
+            readonly approval_id: string | null;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly created_at: string;
+            /** @description Current seniority level */
+            readonly current_level: string;
+            /**
+             * @description Either 'promotion' or 'demotion'
+             * @enum {string}
+             */
+            readonly direction: "promotion" | "demotion";
+            /** @description Unique request identifier */
+            readonly id: string;
+            /**
+             * @description Current approval status
+             * @enum {string}
+             */
+            readonly status: "pending" | "approved" | "rejected" | "expired";
+            /** @description Target seniority level */
+            readonly target_level: string;
+        };
         /**
          * ProposalAltitude
          * @description Altitude of change a proposal targets.
@@ -14304,10 +14976,15 @@ export type components = {
         };
         /** RefreshCycleReportDTO */
         readonly RefreshCycleReportDTO: {
+            /** @description Number of newly-discovered models added during the cycle. */
             readonly added_count: number;
+            /** @description Number of recommendations auto-applied within their family. */
             readonly auto_applied_count: number;
+            /** @description Number of providers scanned during the refresh cycle. */
             readonly providers_scanned: number;
+            /** @description Number of upgrade recommendations produced during the cycle. */
             readonly recommended_count: number;
+            /** @description Number of models marked stale during the cycle. */
             readonly stale_count: number;
         };
         /**
@@ -14326,7 +15003,9 @@ export type components = {
         readonly RefreshMode: "off" | "manual_only" | "detect_only" | "reconcile_recommend";
         /** RefreshStatusDTO */
         readonly RefreshStatusDTO: {
+            /** @description Whether same-family upgrade recommendations are applied automatically. */
             readonly auto_apply_within_family: boolean;
+            /** @description Cadence between automatic refresh cycles in seconds. */
             readonly interval_seconds: number;
             readonly mode: components["schemas"]["RefreshMode"];
         };
@@ -14358,6 +15037,7 @@ export type components = {
         };
         /** RejectRequest */
         readonly RejectRequest: {
+            /** @description Mandatory reason explaining the rejection. */
             readonly reason: string;
         };
         /** RemoveAllowlistEntryRequest */
@@ -14524,6 +15204,14 @@ export type components = {
             readonly value: string | {
                 readonly [key: string]: unknown;
             } | boolean | number;
+        };
+        /** ResolveSsrfViolationRequest */
+        readonly ResolveSsrfViolationRequest: {
+            /**
+             * @description Resolution decision; must be 'allowed' or 'denied'.
+             * @enum {string}
+             */
+            readonly status: "allowed" | "denied";
         };
         /** RestoreRequest */
         readonly RestoreRequest: {
@@ -15098,13 +15786,18 @@ export type components = {
         /** SetupCompanyRequest */
         readonly SetupCompanyRequest: {
             /**
+             * @description Company display name.
              * @example Hooli
              * @example Pied Piper
              */
             readonly company_name: string;
-            /** @example Boutique consultancy specializing in agentic ops */
+            /**
+             * @description Optional company description.
+             * @example Boutique consultancy specializing in agentic ops
+             */
             readonly description?: string | null;
             /**
+             * @description Optional company template to apply; None creates a blank company.
              * @example consulting-firm
              * @example blank
              */
@@ -15136,6 +15829,7 @@ export type components = {
         };
         /** SetupNameLocalesRequest */
         readonly SetupNameLocalesRequest: {
+            /** @description Faker locale codes (1 to 100 entries), or the single special value ["__all__"] to select all Latin-script locales. */
             readonly locales: readonly string[];
         };
         /** SetupNameLocalesResponse */
@@ -15211,15 +15905,19 @@ export type components = {
              */
             readonly completed_at: string | null;
             readonly config: components["schemas"]["SimulationConfig"];
+            /** @description Error description when the run failed, otherwise null. */
             readonly error: string | null;
             readonly metrics: components["schemas"]["SimulationMetrics"];
+            /** @description Fractional completion progress in the range 0 to 1. */
             readonly progress: number;
+            /** @description Unique identifier for the simulation run. */
             readonly simulation_id: string;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
             readonly started_at: string | null;
+            /** @description Lifecycle status of the run, one of: pending, running, completed, failed, cancelled. */
             readonly status: string;
         };
         /** SinkInfoResponse */
@@ -15330,6 +16028,72 @@ export type components = {
          * @enum {string}
          */
         readonly SourceType: "pdf" | "web" | "repo" | "ticket" | "design_doc";
+        /** SpendingAnomaly */
+        readonly SpendingAnomaly: {
+            /** @description Agent identifier */
+            readonly agent_id: string;
+            readonly anomaly_type: components["schemas"]["AnomalyType"];
+            /** @description Mean spending across historical windows */
+            readonly baseline_value: number;
+            /** @description Spending in the most recent window */
+            readonly current_value: number;
+            /** @description Human-readable explanation */
+            readonly description: string;
+            /**
+             * Format: date-time
+             * @description When the anomaly was detected
+             */
+            readonly detected_at: string;
+            /** @description Standard deviations above baseline */
+            readonly deviation_factor: number;
+            /**
+             * Format: date-time
+             * @description Anomalous window end
+             */
+            readonly period_end: string;
+            /**
+             * Format: date-time
+             * @description Anomalous window start
+             */
+            readonly period_start: string;
+            readonly severity: components["schemas"]["AnomalySeverity"];
+        };
+        /** SsrfViolationDTO */
+        readonly SsrfViolationDTO: {
+            /** @description CIDR range that triggered the block, when known. */
+            readonly blocked_range: string | null;
+            /** @description Hostname extracted from the URL. */
+            readonly hostname: string;
+            /** @description Unique violation identifier. */
+            readonly id: string;
+            /** @description Destination port. */
+            readonly port: number;
+            /** @description Provider preset that triggered the block, when known. */
+            readonly provider_name: string | null;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly resolved_at: string | null;
+            /** @description Operator who resolved the violation, when resolved. */
+            readonly resolved_by: string | null;
+            /** @description IP the hostname resolved to, when known. */
+            readonly resolved_ip: string | null;
+            readonly status: components["schemas"]["SsrfViolationStatus"];
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly timestamp: string;
+            /** @description The blocked URL (credentials redacted). */
+            readonly url: string;
+        };
+        /**
+         * SsrfViolationStatus
+         * @description Status of an SSRF violation record.
+         * @enum {string}
+         */
+        readonly SsrfViolationStatus: "pending" | "allowed" | "denied";
         /** StageDecisionPayload */
         readonly StageDecisionPayload: {
             /** @description Rationale for the decision */
@@ -15491,6 +16255,34 @@ export type components = {
              * @default []
              */
             readonly quotas: readonly components["schemas"]["QuotaLimit"][];
+        };
+        /** SubtaskDefinition */
+        readonly SubtaskDefinition: {
+            /**
+             * @description IDs of subtasks this one depends on
+             * @default []
+             */
+            readonly dependencies: readonly string[];
+            /** @description Detailed subtask description */
+            readonly description: string;
+            readonly estimated_complexity: components["schemas"]["Complexity"];
+            /** @description Unique subtask identifier */
+            readonly id: string;
+            /** @description Optional role name for routing */
+            readonly required_role: string | null;
+            /**
+             * @description Skill IDs needed for routing
+             * @default []
+             */
+            readonly required_skills: readonly string[];
+            /**
+             * @description Tags needed for multi-faceted routing match
+             * @default []
+             */
+            readonly required_tags: readonly string[];
+            readonly stakes: components["schemas"]["Stakes"];
+            /** @description Short subtask title */
+            readonly title: string;
         };
         /** SubworkflowSummary */
         readonly SubworkflowSummary: {
@@ -15703,6 +16495,7 @@ export type components = {
          *
          *     Used by the decomposition engine to determine coordination topology
          *     and execution ordering. See the Engine design page.
+         * @default sequential
          * @enum {string}
          */
         readonly TaskStructure: "sequential" | "parallel" | "mixed";
@@ -16144,11 +16937,14 @@ export type components = {
         };
         /** UpdateAgentModelRequest */
         readonly UpdateAgentModelRequest: {
+            /** @description Model identifier from the named provider. */
             readonly model_id: string;
+            /** @description Provider name supplying the model. */
             readonly model_provider: string;
         };
         /** UpdateAgentNameRequest */
         readonly UpdateAgentNameRequest: {
+            /** @description New agent display name. */
             readonly name: string;
         };
         /** UpdateAgentOrgRequest */
@@ -16165,6 +16961,7 @@ export type components = {
         };
         /** UpdateAgentPersonalityRequest */
         readonly UpdateAgentPersonalityRequest: {
+            /** @description Personality preset name; must exist in PERSONALITY_PRESETS. */
             readonly personality_preset: string;
         };
         /** UpdateClientRequest */
@@ -16195,11 +16992,14 @@ export type components = {
         /** UpdateConnectionRequest */
         readonly UpdateConnectionRequest: {
             readonly base_url?: string | null;
+            /** @description Whether periodic health checks run against the connection. */
             readonly health_check_enabled?: boolean | null;
             readonly metadata?: {
                 readonly [key: string]: string;
             } | null;
+            /** @description Marks the connection sensitive so every external-access call against it routes to approval. */
             readonly sensitive?: boolean | null;
+            /** @description Per-connection webhook-receipt retention window in days; None uses the global default, 0 opts out of the sweep. */
             readonly webhook_receipt_retention_days?: number | null;
         };
         /** UpdateCustomRuleRequest */
@@ -16244,26 +17044,50 @@ export type components = {
         };
         /** UpdatePresetRequest */
         readonly UpdatePresetRequest: {
-            /** @default 0.5 */
+            /**
+             * @description Big Five agreeableness score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly agreeableness: number;
             readonly collaboration?: components["schemas"]["CollaborationPreference"];
-            /** @default neutral */
+            /**
+             * @description Communication style label.
+             * @default neutral
+             */
             readonly communication_style: string;
             readonly conflict_approach?: components["schemas"]["ConflictApproach"];
-            /** @default 0.5 */
+            /**
+             * @description Big Five conscientiousness score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly conscientiousness: number;
             readonly creativity?: components["schemas"]["CreativityLevel"];
             readonly decision_making?: components["schemas"]["DecisionMakingStyle"];
-            /** @default  */
+            /**
+             * @description Preset description.
+             * @default
+             */
             readonly description: string;
-            /** @default 0.5 */
+            /**
+             * @description Big Five extraversion score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly extraversion: number;
-            /** @default 0.5 */
+            /**
+             * @description Big Five openness score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly openness: number;
             readonly risk_tolerance?: components["schemas"]["RiskTolerance"];
-            /** @default 0.5 */
+            /**
+             * @description Stress-response (neuroticism) score in the range 0 to 1.
+             * @default 0.5
+             */
             readonly stress_response: number;
-            /** @default [] */
+            /**
+             * @description Personality traits for the preset.
+             * @default []
+             */
             readonly traits: readonly string[];
             readonly verbosity?: components["schemas"]["CommunicationVerbosity"];
         };
@@ -16297,12 +17121,15 @@ export type components = {
         /** UpdateTaskRequest */
         readonly UpdateTaskRequest: {
             readonly assigned_to?: string | null;
+            /** @description New maximum spend for the task in the base currency. */
             readonly budget_limit?: number | null;
+            /** @description New task description. */
             readonly description?: string | null;
             /** @description Optimistic concurrency version guard */
             readonly expected_version?: number | null;
             /** @enum {string|null} */
             readonly priority?: "critical" | "high" | "medium" | "low" | null;
+            /** @description New task title. */
             readonly title?: string | null;
         };
         /** UpdateTeamRequest */
@@ -16356,6 +17183,7 @@ export type components = {
             readonly agent_ids: readonly string[];
             /** Format: date-time */
             readonly created_at: string;
+            /** @description Generation number of the currently-assigned model. */
             readonly current_generation: number;
             readonly current_model_id: string;
             /** Format: date-time */
@@ -16364,9 +17192,12 @@ export type components = {
             readonly family: string;
             readonly id: string;
             readonly provider_name: string;
+            /** @description Human-readable rationale for the upgrade recommendation. */
             readonly reason: string;
+            /** @description Generation number of the recommended replacement model. */
             readonly recommended_generation: number;
             readonly recommended_model_id: string;
+            /** @description Confidence score for the recommendation in the range 0 to 1. */
             readonly score: number;
             readonly status: components["schemas"]["RecommendationStatus"];
         };
@@ -18811,7 +19642,7 @@ export interface operations {
             readonly query?: {
                 /** @description Metric to trend */
                 readonly metric?: components["schemas"]["TrendMetric"];
-                /** @description Lookback period */
+                /** @description Lookback window for the efficiency analysis. */
                 readonly period?: components["schemas"]["TrendPeriod"];
             };
             readonly header?: never;
@@ -19610,6 +20441,66 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ApiResponse_AnalyticsAggregation_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1BudgetCfoAnomaliesDetectAnomalies: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Lookback window for the efficiency analysis. */
+                readonly period?: components["schemas"]["TrendPeriod"];
+                /** @description Number of equal time windows to divide the period into. */
+                readonly window_count?: number;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_AnomalyDetectionResult_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1BudgetCfoEfficiencyAnalyzeEfficiency: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Lookback window for the efficiency analysis. */
+                readonly period?: components["schemas"]["TrendPeriod"];
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_EfficiencyAnalysis_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -24716,6 +25607,130 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
+    readonly ApiV1PromotionAgentIdApplyApply: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Whether to apply a promotion or demotion. */
+                readonly direction?: components["schemas"]["PromotionDirection"];
+            };
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly agent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_PromotionApplyResultDTO_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1PromotionAgentIdEvaluateEvaluate: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Whether to apply a promotion or demotion. */
+                readonly direction?: components["schemas"]["PromotionDirection"];
+            };
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly agent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_PromotionEvaluationDTO_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1PromotionAgentIdHistoryHistory: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly agent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_tuple_PromotionRecordDTO_..._"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1PromotionCycleTriggerCycle: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_tuple_PromotionRecordDTO_..._"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     readonly ApiV1ProvidersListProviders: {
         readonly parameters: {
             readonly query?: {
@@ -25433,6 +26448,10 @@ export interface operations {
     readonly ApiV1ProvidersModelRefreshRecommendationsListRecommendations: {
         readonly parameters: {
             readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
                 readonly status?: "pending" | "approved" | "rejected" | "auto_applied" | null;
             };
             readonly header?: never;
@@ -25447,7 +26466,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_tuple_UpgradeRecommendationDTO_..._"];
+                    readonly "application/json": components["schemas"]["PaginatedResponse_UpgradeRecommendationDTO_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -25711,6 +26730,73 @@ export interface operations {
             readonly 400: components["responses"]["BadRequest"];
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersSsrfViolationsListViolations: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
+                readonly status?: "pending" | "allowed" | "denied" | null;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PaginatedResponse_SsrfViolationDTO_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersSsrfViolationsViolationIdResolveResolveViolation: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly violation_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ResolveSsrfViolationRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_SsrfViolationDTO_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
             readonly 409: components["responses"]["Conflict"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
@@ -27711,6 +28797,41 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ApiResponse_CoordinationResultResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1TasksTaskIdDecomposeDecomposeManual: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly task_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ManualDecomposeRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_DecompositionResult_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

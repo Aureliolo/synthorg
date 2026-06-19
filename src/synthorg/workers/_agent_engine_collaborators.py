@@ -8,14 +8,20 @@ crashing. They are threaded into ``_construct_agent_engine``.
 from collections.abc import Callable
 
 from synthorg.api.state import AppState
+from synthorg.docs_engine.state import DocsStateSlice
+from synthorg.docs_engine.tool_factory import DocsToolFactory
 from synthorg.engine.flight_recording import (
     FlightRecorderSink,
     build_flight_recorder_sink,
 )
 from synthorg.engine.intervention import SteeringInbox, build_steering_inbox
+from synthorg.knowledge.state import KnowledgeStateSlice
+from synthorg.knowledge.tool_factory import KnowledgeToolFactory
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.project_brain.state import ProjectBrainStateSlice
 from synthorg.project_brain.tool_factory import ProjectBrainToolFactory
+from synthorg.research.state import ResearchStateSlice
+from synthorg.research.tool_factory import ResearchToolFactory
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.state import config_resolver_of
 
@@ -59,6 +65,67 @@ def boot_brain_tool_factory_provider(
 
     def _provider() -> ProjectBrainToolFactory | None:
         return app_state.slice(ProjectBrainStateSlice).tool_factory
+
+    return _provider
+
+
+def boot_knowledge_tool_factory_provider(
+    app_state: AppState,
+) -> Callable[[], KnowledgeToolFactory | None]:
+    """Return a provider reading the live knowledge tool factory.
+
+    The memory-gated knowledge substrate wires after the boot
+    ``AgentEngine`` is built, so the engine resolves the factory through
+    this provider at per-task tool-invoker time rather than capturing a
+    ``None`` at construction. The provider returns ``None`` until the
+    substrate is wired (or forever when it is disabled), in which case no
+    knowledge tools are added.
+
+    Returns:
+        A zero-arg callable returning the current ``KnowledgeToolFactory``
+        from app state, or ``None`` when the substrate is not wired.
+    """
+
+    def _provider() -> KnowledgeToolFactory | None:
+        return app_state.slice(KnowledgeStateSlice).tool_factory
+
+    return _provider
+
+
+def boot_docs_tool_factory_provider(
+    app_state: AppState,
+) -> Callable[[], DocsToolFactory | None]:
+    """Return a provider reading the live living-docs tool factory.
+
+    Resolved at per-task tool-invoker time because the docs engine wires
+    after the boot ``AgentEngine`` is built.
+
+    Returns:
+        A zero-arg callable returning the current ``DocsToolFactory`` from
+        app state, or ``None`` when the docs engine is not wired.
+    """
+
+    def _provider() -> DocsToolFactory | None:
+        return app_state.slice(DocsStateSlice).tool_factory
+
+    return _provider
+
+
+def boot_research_tool_factory_provider(
+    app_state: AppState,
+) -> Callable[[], ResearchToolFactory | None]:
+    """Return a provider reading the live research tool factory.
+
+    Resolved at per-task tool-invoker time because the research subsystem
+    wires after the boot ``AgentEngine`` is built.
+
+    Returns:
+        A zero-arg callable returning the current ``ResearchToolFactory``
+        from app state, or ``None`` when research is not wired.
+    """
+
+    def _provider() -> ResearchToolFactory | None:
+        return app_state.slice(ResearchStateSlice).tool_factory
 
     return _provider
 

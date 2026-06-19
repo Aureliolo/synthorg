@@ -136,6 +136,7 @@ class SsrfViolationService:
         *,
         status: SsrfViolationStatus | None = None,
         limit: int = _DEFAULT_LIMIT,
+        offset: int = 0,
     ) -> tuple[SsrfViolation, ...]:
         """List violations with an optional ``status`` filter.
 
@@ -145,6 +146,7 @@ class SsrfViolationService:
         Args:
             status: Filter by status (``None`` for all).
             limit: Maximum number of results (must be positive).
+            offset: Rows to skip from the head of the ordering.
 
         Returns:
             Tuple of matching violations, ordered by timestamp DESC.
@@ -155,7 +157,9 @@ class SsrfViolationService:
                 before propagating).
         """
         try:
-            rows = await self._repo.list_violations(status=status, limit=limit)
+            rows = await self._repo.list_violations(
+                status=status, limit=limit, offset=offset
+            )
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(

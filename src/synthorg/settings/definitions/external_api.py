@@ -16,11 +16,12 @@ _r.register(
         namespace=SettingNamespace.EXTERNAL_API,
         key="enabled",
         type=SettingType.BOOLEAN,
-        default="true",
+        default="false",
         description=(
-            "Master switch for the governed external-access tool. When"
-            " false the tool is not registered, so agents cannot make"
-            " external API calls."
+            "Master switch for the governed external-access tool. Off by"
+            " default (safe egress posture): the tool is not registered, so"
+            " agents cannot make external API calls until an operator opts"
+            " in. When false the tool is not registered."
         ),
         group="General",
     )

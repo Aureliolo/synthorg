@@ -69,6 +69,11 @@ RUNTIME_PREFIXES: Final[tuple[str, ...]] = (
     "src/synthorg/budget/",
     "src/synthorg/security/",
     "src/synthorg/meta/",
+    # observability/ holds the audit-chain sink + signer, wired at boot by
+    # observability/startup_wiring.py::wire_observability_callbacks (called
+    # from api/lifecycle_runner_startup.py); counting its construction lets
+    # the manifest track the audit-chain sink's wiring.
+    "src/synthorg/observability/",
     # infrastructure/ holds the read / MCP facade family; its services are
     # constructed at boot by the facades feature construction_wirer
     # (infrastructure/_construction.py) via run_construction_wiring.
@@ -79,7 +84,7 @@ RUNTIME_PREFIXES: Final[tuple[str, ...]] = (
     # ``build_default_tools_from_config`` chain called from
     # ``workers/runtime_builder._build_tool_registry``; counting tool
     # factory + tool-class construction lets the manifest track tool
-    # wiring (e.g. EPIC #1987 children that add new tool classes).
+    # wiring (e.g. new tool classes added by tool-extension epics).
     "src/synthorg/tools/",
     "src/synthorg/docs_engine/",
     # knowledge/ is reached at boot via api/app.py::_wire_knowledge_engine

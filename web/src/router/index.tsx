@@ -13,6 +13,7 @@ const RolesPage = lazy(() => import('@/pages/RolesPage'))
 const RoleVersionsPage = lazy(() => import('@/pages/RoleVersionsPage'))
 const TaskBoardPage = lazy(() => import('@/pages/TaskBoardPage'))
 const TaskDetailPage = lazy(() => import('@/pages/TaskDetailPage'))
+const TaskDecomposePage = lazy(() => import('@/pages/TaskDecomposePage'))
 const BudgetPage = lazy(() => import('@/pages/BudgetPage'))
 const BudgetForecastPage = lazy(() => import('@/pages/BudgetForecastPage'))
 const ReportsPage = lazy(() => import('@/pages/ReportsPage'))
@@ -144,6 +145,7 @@ export const router = createBrowserRouter([
               { path: ROUTES.ROLE_VERSIONS.slice(1), element: <RoleVersionsPage /> },
               { path: 'tasks', element: <TaskBoardPage /> },
               { path: 'tasks/:taskId', element: <TaskDetailPage /> },
+              { path: 'tasks/:taskId/decompose', element: <TaskDecomposePage /> },
               { path: 'budget', element: <BudgetPage /> },
               { path: 'budget/forecast', element: <BudgetForecastPage /> },
               { path: 'reports', element: <ReportsPage /> },

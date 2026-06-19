@@ -14,7 +14,7 @@ before checking.  Unparseable IPs are blocked (fail-closed).
 import asyncio
 import ipaddress
 from collections.abc import Sequence
-from typing import Final
+from typing import Final, Protocol, runtime_checkable
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -501,3 +501,56 @@ async def validate_url_host(
         return result
 
     return _ok(normalized, port, is_https=is_https, resolved_ips=result)
+
+
+# ── Unified SSRF validator seam ─────────────────────────────────
+
+
+@runtime_checkable
+class SsrfValidator(Protocol):
+    """Common SSRF pre-flight seam over an outbound URL.
+
+    Every egress validator (web, git clone, provider discovery) reduces
+    to the same contract: given a URL, return a :class:`DnsValidationOk`
+    carrying the resolved + pinnable IPs, or an error-message string when
+    the target is rejected. Domain-specific validators keep their own
+    audit-log channels and policy models behind this seam.
+    """
+
+    async def validate(self, url: str) -> str | DnsValidationOk:
+        """Validate ``url`` for outbound egress.
+
+        Args:
+            url: The outbound URL to validate.
+
+        Returns:
+            A :class:`DnsValidationOk` on success, or an error-message
+            string when the target is rejected.
+        """
+        ...
+
+
+class UrlHostValidator:
+    """:class:`SsrfValidator` backed by a :class:`NetworkPolicy`.
+
+    The canonical adapter wrapping :func:`validate_url_host`; web tools,
+    notification webhooks, and OAuth flows all share this implementation
+    so a single code path performs DNS resolution + blocklist checking.
+
+    Args:
+        policy: The network policy controlling allowlist and blocking.
+    """
+
+    __slots__ = ("_policy",)
+
+    def __init__(self, policy: NetworkPolicy) -> None:
+        self._policy = policy
+
+    async def validate(self, url: str) -> str | DnsValidationOk:
+        """Validate ``url`` against the wrapped policy.
+
+        Returns:
+            A :class:`DnsValidationOk` on success, or an error-message
+            string when the host is rejected.
+        """
+        return await validate_url_host(url, self._policy)

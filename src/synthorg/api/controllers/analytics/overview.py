@@ -21,6 +21,7 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.state import BudgetStateSlice
+from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.budget.trends import BucketSize, bucket_cost_records
 from synthorg.config.agent_schema import AgentConfig
 from synthorg.core.critical_errors import reraise_critical
@@ -155,9 +156,11 @@ class AnalyticsOverviewController(Controller):
                     config_resolver_of(app_state).get_agents(),
                 )
                 t_7d = tg.create_task(
-                    require_service(
-                        app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
-                    ).get_records(
+                    collect_all_records(
+                        require_service(
+                            app_state.slice(BudgetStateSlice).cost_tracker,
+                            "Cost Tracker",
+                        ),
                         start=now - timedelta(days=7),
                         end=now,
                     ),
