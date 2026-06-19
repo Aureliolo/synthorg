@@ -44,4 +44,149 @@ test.describe('Approval critical flow', () => {
     await page.getByRole('button', { name: /notifications/i }).click()
     await expect(page.getByText('Approval approved').first()).toBeVisible()
   })
+
+  test('approves a pending request via the POST .../approve round-trip', async ({ page }) => {
+    // Full wire shape: ``ApprovalResponse`` carries fields the e2e
+    // factory omits (risk_level, action_type, ...). A pending status is
+    // what renders the card's inline Approve / Reject buttons.
+    const pending = {
+      ...makeApprovalRequest({ status: 'pending' }),
+      risk_level: 'medium',
+      action_type: 'deploy',
+      requested_by: 'agent-001',
+      source: 'review_gate',
+      urgency_level: 'medium',
+      metadata: {},
+      seconds_remaining: null,
+      expires_at: null,
+      consumed_at: null,
+      decided_at: null,
+      decided_by: null,
+      decision_reason: null,
+      evidence_package: null,
+    }
+    await page.route('**/api/v1/approvals**', (route) => {
+      if (route.request().method() !== 'GET') {
+        route.fallback()
+        return
+      }
+      route.fulfill({
+        json: {
+          success: true,
+          data: [pending],
+          error: null,
+          error_detail: null,
+          pagination: { total: 1, offset: 0, limit: 50, next_cursor: null, has_more: false },
+        },
+      })
+    })
+    await page.route('**/api/v1/approvals/approval-001/approve', (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: { ...pending, status: 'approved' },
+          error: null,
+          error_detail: null,
+        },
+      }),
+    )
+
+    await page.goto('/approvals')
+    await expect(page.getByText('Deploy to production').first()).toBeVisible()
+
+    const [decided] = await Promise.all([
+      page.waitForResponse(
+        (res) =>
+          res.url().includes('/api/v1/approvals/approval-001/approve') &&
+          res.request().method() === 'POST',
+      ),
+      page.getByRole('button', { name: /^approve$/i }).first().click(),
+    ])
+    expect(decided.request().method()).toBe('POST')
+
+    // The store emits a success toast on the confirmed decision.
+    await expect(page.getByText('Approval granted').first()).toBeVisible()
+  })
+
+  test('rejects a pending request via the drawer + POST .../reject round-trip', async ({
+    page,
+  }) => {
+    const pending = {
+      ...makeApprovalRequest({ status: 'pending' }),
+      risk_level: 'medium',
+      action_type: 'deploy',
+      requested_by: 'agent-001',
+      source: 'review_gate',
+      urgency_level: 'medium',
+      metadata: {},
+      seconds_remaining: null,
+      expires_at: null,
+      consumed_at: null,
+      decided_at: null,
+      decided_by: null,
+      decision_reason: null,
+      evidence_package: null,
+    }
+    await page.route('**/api/v1/approvals**', (route) => {
+      if (route.request().method() !== 'GET') {
+        route.fallback()
+        return
+      }
+      route.fulfill({
+        json: {
+          success: true,
+          data: [pending],
+          error: null,
+          error_detail: null,
+          pagination: { total: 1, offset: 0, limit: 50, next_cursor: null, has_more: false },
+        },
+      })
+    })
+    // Detail GET feeds the drawer a single approval (not a list), so its
+    // pending footer (Approve / Reject) renders.
+    await page.route('**/api/v1/approvals/approval-001', (route) => {
+      if (route.request().method() !== 'GET') {
+        route.fallback()
+        return
+      }
+      route.fulfill({
+        json: { success: true, data: pending, error: null, error_detail: null },
+      })
+    })
+    await page.route('**/api/v1/approvals/approval-001/reject', (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: { ...pending, status: 'rejected' },
+          error: null,
+          error_detail: null,
+        },
+      }),
+    )
+
+    // The card's Reject opens the detail drawer (role=dialog); the
+    // drawer's Reject opens an alert-dialog requiring a reason.
+    await page.goto('/approvals')
+    await expect(page.getByText('Deploy to production').first()).toBeVisible()
+    await page.getByRole('button', { name: /^reject$/i }).first().click()
+
+    const drawer = page.getByRole('dialog')
+    await expect(drawer).toBeVisible()
+    // Drawer footer Reject -> opens the "Reject Action" alert-dialog.
+    await drawer.getByRole('button', { name: /^reject$/i }).first().click()
+    const confirm = page.getByRole('alertdialog')
+    await expect(confirm.getByText(/reject action/i)).toBeVisible()
+    await confirm.getByRole('textbox').fill('Not authorised for production')
+
+    const [decided] = await Promise.all([
+      page.waitForResponse(
+        (res) =>
+          res.url().includes('/api/v1/approvals/approval-001/reject') &&
+          res.request().method() === 'POST',
+      ),
+      confirm.getByRole('button', { name: /^reject$/i }).click(),
+    ])
+    expect(decided.request().method()).toBe('POST')
+    await expect(page.getByText('Approval rejected').first()).toBeVisible()
+  })
 })

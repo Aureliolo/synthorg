@@ -278,6 +278,20 @@ export const CONNECTION_TYPE_FIELDS: Record<ConnectionType, ConnectionTypeSpec> 
       },
     ],
   },
+  llm_provider: {
+    label: 'LLM Provider',
+    description: 'API-key credential for an LLM provider, referenced by a provider config.',
+    defaultAuthMethod: 'api_key',
+    topLevelFields: [],
+    credentialFields: [
+      {
+        key: 'api_key',
+        label: 'API Key',
+        type: 'password',
+        required: true,
+      },
+    ],
+  },
 }
 
 const DATABASE_SERVER_FIELDS = new Set(['host', 'port', 'username', 'password'])

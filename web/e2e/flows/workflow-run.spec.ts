@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import { mockApiRoutes, freezeTime } from '../fixtures/mock-api'
 import { installWebSocketHarness, injectEvent } from '../fixtures/websocket-harness'
 import { makeWorkflow, makeWorkflowExecution } from '../factories'
-import { clickLocator } from '../helpers/interactions'
+import { clickButton, clickLocator, fillForm } from '../helpers/interactions'
 
 /**
  * Critical-flow E2E: workflows list mount + system.error notification path.
@@ -103,5 +103,39 @@ test.describe('Workflows list + system.error notification path', () => {
     await expect(page.getByText('System error').first()).toBeVisible()
     await expect(page.getByText(message).first()).toBeVisible()
     await expect(page.locator('main')).toBeVisible()
+  })
+
+  test('creates a workflow via the POST /workflows round-trip', async ({ page }) => {
+    // POST-specific stub wins over the GET list route (Playwright LIFO).
+    await page.route('**/api/v1/workflows', (route) => {
+      if (route.request().method() !== 'POST') {
+        route.fallback()
+        return
+      }
+      route.fulfill({
+        json: { success: true, data: makeWorkflow(), error: null, error_detail: null },
+      })
+    })
+
+    await page.goto('/workflows')
+    await expect(page).toHaveURL(/\/workflows/)
+
+    // "New workflow" opens the create drawer; filling the name and
+    // submitting drives the real POST round-trip the store owns.
+    await clickButton(page, /new workflow/i)
+    await fillForm(page, { Name: 'Daily standup' })
+
+    const [created] = await Promise.all([
+      page.waitForResponse(
+        (res) =>
+          res.url().includes('/api/v1/workflows') && res.request().method() === 'POST',
+      ),
+      clickButton(page, /create workflow/i),
+    ])
+    expect(created.request().method()).toBe('POST')
+
+    // The store emits a success toast on the confirmed create; its title
+    // carries the workflow name, proving the dispatch chain completed.
+    await expect(page.getByText(/Workflow Daily standup created/i).first()).toBeVisible()
   })
 })
