@@ -543,25 +543,22 @@ class LiteLLMDriver(BaseCompletionProvider):
         resolved = self._resolved_credentials
         match self._config.auth_type:
             case AuthType.API_KEY:
+                # Catalog-only: the key is resolved from the
+                # ``connection_name`` connection. With no embedded fallback,
+                # an unresolved key leaves ``api_key`` unset and the request
+                # goes out unauthenticated (the provider rejects it loudly).
                 key = resolved.get("api_key") if resolved else None
-                if key is None:
-                    key = self._config.api_key
                 if key is not None:
                     kwargs["api_key"] = key
             case AuthType.OAUTH:
                 # Catalog-backed OAuth stores the bearer under the
                 # ``access_token`` key (set by
-                # ``ConnectionCatalog.store_oauth_tokens``). Fall back
-                # to ``api_key`` (legacy embedded config) and finally
-                # to the static ``self._config.api_key``. Missing any
-                # of these means the request would go out
-                # unauthenticated, so we leave ``kwargs["api_key"]``
-                # unset only when nothing resolves.
+                # ``ConnectionCatalog.store_oauth_tokens``); ``api_key`` is
+                # the legacy catalog key. Both come from the catalog now --
+                # there is no embedded fallback.
                 key = None
                 if resolved:
                     key = resolved.get("access_token") or resolved.get("api_key")
-                if key is None:
-                    key = self._config.api_key
                 if key is not None:
                     kwargs["api_key"] = key
             case AuthType.CUSTOM_HEADER:

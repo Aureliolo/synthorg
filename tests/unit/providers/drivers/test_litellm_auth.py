@@ -47,9 +47,20 @@ def _make_config(
     )
 
 
-def _build_kwargs(config: ProviderConfig) -> _AcompletionKwargs:
-    """Extract _build_kwargs result from a driver."""
+def _build_kwargs(
+    config: ProviderConfig,
+    *,
+    resolved: dict[str, str] | None = None,
+) -> _AcompletionKwargs:
+    """Extract _build_kwargs result from a driver.
+
+    Credentials are catalog-only, so ``resolved`` simulates what
+    ``_ensure_credentials_resolved`` would have fetched from the
+    ConnectionCatalog for the provider's ``connection_name``.
+    """
     driver = LiteLLMDriver("test-provider", config)
+    if resolved is not None:
+        driver._resolved_credentials = resolved
     messages = [ChatMessage(role=MessageRole.USER, content="ping")]
     return driver._build_kwargs(
         messages,
@@ -62,9 +73,10 @@ class TestLiteLLMDriverAuth:
     def test_build_kwargs_api_key_auth(self) -> None:
         config = _make_config(
             auth_type=AuthType.API_KEY,
-            api_key="sk-test",
+            connection_name="provider-test",
         )
-        kwargs = _build_kwargs(config)
+        # Credentials are catalog-only: the key arrives via resolved creds.
+        kwargs = _build_kwargs(config, resolved={"api_key": "sk-test"})
         assert kwargs["api_key"] == "sk-test"
 
     def test_build_kwargs_api_key_none_omitted(self) -> None:
@@ -94,12 +106,13 @@ class TestLiteLLMDriverAuth:
     def test_build_kwargs_oauth_passes_api_key(self) -> None:
         config = _make_config(
             auth_type=AuthType.OAUTH,
-            api_key="oauth-token-123",
+            connection_name="provider-oauth",
             oauth_token_url="https://auth.example.com/token",
             oauth_client_id="client-id",
             oauth_client_secret="client-secret",
         )
-        kwargs = _build_kwargs(config)
+        # Catalog-backed OAuth resolves the bearer under access_token.
+        kwargs = _build_kwargs(config, resolved={"access_token": "oauth-token-123"})
         assert kwargs["api_key"] == "oauth-token-123"
 
     def test_build_kwargs_base_url_always_set(self) -> None:
