@@ -33,6 +33,9 @@ _ALLOWED_SCHEMES: frozenset[str] = frozenset({"http", "https"})
 _DEFAULT_PORTS: MappingProxyType[str, int] = MappingProxyType(
     {"http": 80, "https": 443},
 )
+# Mirrors NetworkPolicy.dns_resolution_timeout default; the trust decision
+# is upstream (is_url_allowed), so this is only a connect-pin DNS deadline.
+_DEFAULT_DNS_TIMEOUT_SECONDS: float = 5.0
 
 
 class ProviderDiscoveryPolicy(BaseModel):
@@ -216,7 +219,7 @@ async def resolve_discovery_target(
     url: str,
     policy: ProviderDiscoveryPolicy,
     *,
-    dns_timeout: float = 5.0,
+    dns_timeout: float = _DEFAULT_DNS_TIMEOUT_SECONDS,
 ) -> DnsValidationOk | str:
     """Async DNS pre-flight that pins an already-trusted discovery URL.
 

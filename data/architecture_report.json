@@ -50,8 +50,8 @@
     },
     "src/synthorg/api/controllers/__init__.py": {
       "cap": 500,
-      "loc": 435,
-      "ratio": 0.87,
+      "loc": 441,
+      "ratio": 0.882,
       "tier": "code"
     },
     "src/synthorg/api/controllers/_conversational_resume.py": {
@@ -86,8 +86,8 @@
     },
     "src/synthorg/api/controllers/connections.py": {
       "cap": 500,
-      "loc": 409,
-      "ratio": 0.818,
+      "loc": 414,
+      "ratio": 0.828,
       "tier": "code"
     },
     "src/synthorg/api/controllers/events/_sse.py": {
@@ -710,8 +710,8 @@
     },
     "src/synthorg/memory/embedding/fine_tune_models.py": {
       "cap": 500,
-      "loc": 500,
-      "ratio": 1.0,
+      "loc": 494,
+      "ratio": 0.988,
       "tier": "code"
     },
     "src/synthorg/memory/embedding/fine_tune_orchestrator.py": {
@@ -1112,8 +1112,8 @@
     },
     "src/synthorg/providers/health_prober.py": {
       "cap": 500,
-      "loc": 532,
-      "ratio": 1.064,
+      "loc": 471,
+      "ratio": 0.942,
       "tier": "code"
     },
     "src/synthorg/providers/management/_capabilities_mixin.py": {

@@ -72,6 +72,7 @@ class TestSelfImprovementService:
         from unittest.mock import AsyncMock
 
         from synthorg.approval.protocol import ApprovalStoreProtocol
+        from synthorg.meta.appliers.config_applier import SettingsWritePort
 
         cfg = SelfImprovementConfig(
             enabled=True,
@@ -83,11 +84,16 @@ class TestSelfImprovementService:
         # a protocol-shaped mock so the meta-layer test does not depend
         # on the concrete API-layer ``ApprovalStore`` implementation.
         approval_store = AsyncMock(spec=ApprovalStoreProtocol)
+        # ``ConfigApplier.apply`` now persists through the settings
+        # service rather than no-opping; a protocol-shaped writer lets
+        # the rollout path exercise the real apply without a live DB.
+        settings_writer = AsyncMock(spec=SettingsWritePort)
         return SelfImprovementService(
             config=cfg,
             clock=FakeClock(),
             snapshot_builder=_snapshot_builder,
             approval_store=approval_store,
+            settings_writer=settings_writer,
         )
 
     async def test_no_triggers_returns_empty(self) -> None:

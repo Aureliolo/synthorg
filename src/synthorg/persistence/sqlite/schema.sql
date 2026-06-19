@@ -352,6 +352,8 @@ ON sessions (user_id, revoked, expires_at);
 CREATE INDEX idx_sessions_revoked_expires
 ON sessions (revoked, expires_at);
 CREATE INDEX idx_sessions_expires_at ON sessions (expires_at);
+CREATE INDEX idx_sessions_user_created
+ON sessions (user_id, revoked, created_at DESC, session_id ASC);
 
 -- ── Checkpoints ───────────────────────────────────────────────
 CREATE TABLE checkpoints (

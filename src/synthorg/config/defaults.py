@@ -54,6 +54,8 @@ def default_config_dict() -> dict[str, object]:
         "integrations": {},
         "a2a": {},
         "ontology": {},
+        "knowledge": {},
+        "audit_chain": {},
         "telemetry": {},
         "web": None,
         "database": None,

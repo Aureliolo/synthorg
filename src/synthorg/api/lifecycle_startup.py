@@ -158,10 +158,16 @@ async def _wire_drift_detection(
 
     if app_state.slice(OntologyStateSlice).drift_detection_service is not None:
         return
-    store = persistence.ontology_drift
+    try:
+        store = persistence.ontology_drift
+        ontology = persistence.ontology_entities
+    except AttributeError, NotImplementedError:
+        # Backend without ontology-drift support: leave the slice empty so
+        # the drift controller 503s rather than poisoning startup.
+        return
     memory = app_state.slice(MemoryStateSlice).backend
     detection = build_drift_detection_service(
-        ontology=persistence.ontology_entities,
+        ontology=ontology,
         memory=memory,
         config=app_state.config.ontology.drift_detection,
         store=store,

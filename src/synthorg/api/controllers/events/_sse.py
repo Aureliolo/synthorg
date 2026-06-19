@@ -439,6 +439,7 @@ async def revalidated_sse_stream(
     inner_iter = inner.__aiter__()
     pending: asyncio.Task[dict[str, str]] | None = None
     try:
+        # lint-allow: long-running-loop-kill-switch -- per-request SSE stream; lifetime bounded by client connection (CancelledError on disconnect) + auth revocation  # noqa: E501
         while True:
             timeout = max(0.0, next_revalidate_ts - clock.monotonic())
             if pending is None:

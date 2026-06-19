@@ -68,6 +68,12 @@ _REVEAL_GENERIC_ERROR = "Connection or credential field not found"
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
 
+__all__ = [
+    "ConnectionsController",
+    "CreateConnectionRequest",
+    "UpdateConnectionRequest",
+]
+
 
 class ConnectionsController(Controller):
     """CRUD and health endpoints for external connections."""
