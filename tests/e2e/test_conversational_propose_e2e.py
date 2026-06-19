@@ -60,11 +60,21 @@ from synthorg.meta.chief_of_staff.models import (
     ProposeArgs,
 )
 from synthorg.meta.chief_of_staff.propose import ChiefOfStaffProposer
+from synthorg.meta.chief_of_staff.resume_service import (
+    ConversationalResumeService,
+)
+from synthorg.persistence.conversation_invite_protocol import (
+    ConversationInviteRepository,
+)
+from synthorg.persistence.conversation_participant_protocol import (
+    ConversationParticipantRepository,
+)
 from synthorg.persistence.conversation_protocol import (
     ConversationTurnFilterSpec,
 )
 from synthorg.persistence.conversational_proposal_protocol import (
     ConversationalProposalFilterSpec,
+    ConversationalProposalRepository,
 )
 from synthorg.providers.drivers.scripted import ScriptedDriver
 from synthorg.providers.models import (
@@ -257,6 +267,24 @@ class _FakeProposalRepo:
         return len(await self.query(filter_spec))
 
 
+def _resume_service(
+    proposal_repo: ConversationalProposalRepository,
+) -> ConversationalResumeService:
+    """Wrap *proposal_repo* in the ungated facade the dispatcher reads.
+
+    The intake-resume path only touches the proposal repo, so the invite
+    and participant legs are typed stubs.
+
+    Returns:
+        The resume service for the approval-decision dispatch state.
+    """
+    return ConversationalResumeService(
+        proposal_repo=proposal_repo,
+        invite_repo=mock_of[ConversationInviteRepository](),
+        participant_repo=mock_of[ConversationParticipantRepository](),
+    )
+
+
 def _make_agent(name: str, skill: str, *, level: SeniorityLevel) -> AgentIdentity:
     return AgentIdentity(
         id=uuid4(),
@@ -425,7 +453,7 @@ async def test_vague_request_clarifies_then_executes_on_approval(
     )
     dispatch_state = make_app_state(
         approval_store=approval_store,
-        conversational_proposal_repo=proposal_repo,
+        conversational_resume_service=_resume_service(proposal_repo),
         work_pipeline=pipeline,
     )
     await signal_resume_intent(
@@ -495,7 +523,7 @@ async def test_rejected_proposal_never_touches_pipeline(
     )
     dispatch_state = make_app_state(
         approval_store=approval_store,
-        conversational_proposal_repo=proposal_repo,
+        conversational_resume_service=_resume_service(proposal_repo),
         work_pipeline=pipeline,
     )
     await signal_resume_intent(

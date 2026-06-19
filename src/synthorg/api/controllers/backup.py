@@ -211,7 +211,7 @@ class BackupController(Controller):
             raise ConflictError(msg)
         try:
             manifest = BackupManifest.model_validate(outcome.result)
-        except (ValueError, TypeError) as exc:
+        except (ValueError, TypeError, ValidationError) as exc:
             # A corrupt or stale cached payload (e.g. schema added a
             # field after the entry was stored) would otherwise leak
             # the raw pydantic ValidationError. Surface a 5xx instead
@@ -478,7 +478,7 @@ class BackupController(Controller):
             raise ConflictError(msg)
         try:
             response = RestoreResponse.model_validate(outcome.result)
-        except (ValueError, TypeError) as exc:
+        except (ValueError, TypeError, ValidationError) as exc:
             log_exception_redacted(
                 logger,
                 BACKUP_RESTORE_FAILED,
