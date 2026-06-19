@@ -116,7 +116,9 @@ class TestUpdateProvider:
         )
         result = await service.update_provider("test-provider", update)
         assert result.base_url == "http://localhost:5000"
-        assert result.api_key == "sk-original"
+        # The api_key is minted into the catalog on create and referenced by
+        # connection_name; a partial update preserves that reference.
+        assert result.connection_name == "provider-test-provider"
 
 
 @pytest.mark.unit
@@ -664,5 +666,7 @@ class TestSerializeRoundTrip:
         restored = ProviderConfig.model_validate(raw)
         assert restored.driver == "litellm"
         assert restored.auth_type == AuthType.API_KEY
-        assert restored.api_key == "sk-round-trip"
+        # The secret is stored in the catalog, never serialised on the config;
+        # the persisted blob carries only the connection_name reference.
+        assert restored.connection_name == "provider-test-provider"
         assert restored.base_url == "http://localhost:8080"

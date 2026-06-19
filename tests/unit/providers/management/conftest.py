@@ -64,6 +64,42 @@ def settings_service(
     )
 
 
+class _InMemorySecretBackend:
+    """Functional dict-backed secret backend for provider-management tests.
+
+    Lets the wired ConnectionCatalog round-trip mint (store) and resolve
+    (retrieve) so the catalog-only credential path is exercised end-to-end
+    without a real encrypted backend.
+    """
+
+    def __init__(self) -> None:
+        self._secrets: dict[str, bytes] = {}
+        self._counter = 0
+
+    @property
+    def backend_name(self) -> str:
+        return "in-memory-test"
+
+    async def store(self, secret_id: str, value: bytes) -> None:
+        self._secrets[secret_id] = value
+
+    async def retrieve(self, secret_id: str) -> bytes | None:
+        return self._secrets.get(secret_id)
+
+    async def delete(self, secret_id: str) -> bool:
+        return self._secrets.pop(secret_id, None) is not None
+
+    async def rotate(self, old_id: str, new_value: bytes) -> str:
+        self._counter += 1
+        new_id = f"{old_id}-rot{self._counter}"
+        self._secrets[new_id] = new_value
+        self._secrets.pop(old_id, None)
+        return new_id
+
+    async def close(self) -> None:
+        return None
+
+
 @pytest.fixture
 def app_state(
     root_config: RootConfig,
@@ -71,11 +107,19 @@ def app_state(
     fake_message_bus: FakeMessageBus,
     settings_service: SettingsService,
 ) -> AppState:
-    """AppState assembled from fakes for isolated service tests."""
+    """AppState assembled from fakes for isolated service tests.
+
+    Wires a functional in-memory ConnectionCatalog onto
+    ``provider_credential_catalog`` so the catalog-only credential path
+    (mint-on-create, resolve-at-probe) works under unit tests.
+    """
     from synthorg.api.approval_store import ApprovalStore
+    from synthorg.integrations.connections.catalog import ConnectionCatalog
+    from synthorg.integrations.state import IntegrationsStateSlice
+    from synthorg.persistence.integration_stubs import InMemoryConnectionRepository
     from synthorg.settings.resolver import ConfigResolver
 
-    return make_app_state(
+    state = make_app_state(
         config=root_config,
         approval_store=ApprovalStore(),
         persistence=fake_persistence,
@@ -86,6 +130,12 @@ def app_state(
             config=root_config,
         ),
     )
+    catalog = ConnectionCatalog(
+        repository=InMemoryConnectionRepository(),
+        secret_backend=_InMemorySecretBackend(),  # type: ignore[arg-type]
+    )
+    state.wire(IntegrationsStateSlice, provider_credential_catalog=catalog)
+    return state
 
 
 @pytest.fixture

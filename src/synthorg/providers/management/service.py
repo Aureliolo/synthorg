@@ -18,6 +18,7 @@ core.
 """
 
 import asyncio
+import contextlib
 import json
 from collections.abc import AsyncIterator, Mapping
 
@@ -35,6 +36,11 @@ from synthorg.config.schema import (
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.integrations.connections.models import AuthMethod, ConnectionType
+from synthorg.integrations.errors import (
+    ConnectionNotFoundError,
+    DuplicateConnectionError,
+)
 from synthorg.integrations.state import provider_credential_catalog_of
 from synthorg.observability import (
     get_logger,
@@ -319,6 +325,63 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             raise ProviderNotFoundError(msg)
         return config
 
+    def _credential_connection_name(self, provider_name: str) -> str:
+        """Catalog connection name backing a provider's API-key credential.
+
+        Returns:
+            The deterministic ``provider-<name>`` connection name.
+        """
+        return f"provider-{provider_name}"
+
+    async def _store_provider_api_key(self, provider_name: str, api_key: str) -> str:
+        """Mint (or replace) the catalog connection holding the provider key.
+
+        The ConnectionCatalog has no secret-update seam, so this deletes any
+        existing connection and recreates it: idempotent, and it doubles as
+        rotation. Runs inside the service lock held by the caller.
+
+        Returns:
+            The connection name to stamp onto
+            ``ProviderConfig.connection_name``.
+
+        Raises:
+            ProviderValidationError: When no credential catalog is wired (a
+                connected persistence backend is required for catalog-backed
+                provider credentials).
+        """
+        catalog = provider_credential_catalog_of(self._app_state)
+        if catalog is None:
+            msg = (
+                "Cannot store the provider API key: no credential catalog is "
+                "available. A connected persistence backend is required for "
+                "catalog-backed provider credentials."
+            )
+            logger.warning(
+                PROVIDER_VALIDATION_FAILED,
+                provider=provider_name,
+                error=msg,
+            )
+            raise ProviderValidationError(msg)
+        conn_name = self._credential_connection_name(provider_name)
+        with contextlib.suppress(ConnectionNotFoundError):
+            await catalog.delete(conn_name)
+        with contextlib.suppress(DuplicateConnectionError):
+            await catalog.create(
+                name=conn_name,
+                connection_type=ConnectionType.LLM_PROVIDER,
+                auth_method=AuthMethod.API_KEY.value,
+                credentials={"api_key": api_key},
+            )
+        return conn_name
+
+    async def _delete_provider_credential(self, provider_name: str) -> None:
+        """Best-effort removal of a provider's backing credential connection."""
+        catalog = provider_credential_catalog_of(self._app_state)
+        if catalog is None:
+            return
+        with contextlib.suppress(ConnectionNotFoundError):
+            await catalog.delete(self._credential_connection_name(provider_name))
+
     async def create_provider(
         self,
         request: CreateProviderRequest,
@@ -344,6 +407,17 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 raise ProviderAlreadyExistsError(msg)
 
             new_config = build_provider_config(request)
+            # Catalog-only credentials: an api_key supplied at the boundary is
+            # minted into a ConnectionCatalog connection and referenced by
+            # connection_name; it is never persisted on the ProviderConfig.
+            if request.api_key is not None and new_config.connection_name is None:
+                conn_name = await self._store_provider_api_key(
+                    request.name,
+                    request.api_key.get_secret_value(),
+                )
+                new_config = new_config.model_copy(
+                    update={"connection_name": conn_name},
+                )
             new_providers = {**providers, request.name: new_config}
             await self._validate_and_persist(new_providers)
             await self._allowlist.update_for_create(new_config)
@@ -432,6 +506,9 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             removed_config = providers[name]
             new_providers = {k: v for k, v in providers.items() if k != name}
             await self._validate_and_persist(new_providers)
+            # Remove the catalog connection minted for this provider's
+            # credential so a deleted provider leaves no orphaned secret.
+            await self._delete_provider_credential(name)
             await self._allowlist.update_for_delete(
                 removed_config,
                 new_providers,

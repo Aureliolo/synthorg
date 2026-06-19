@@ -66,11 +66,14 @@ def build_provider_config(
     tos_accepted_at = (
         datetime.now(UTC) if is_subscription and request.tos_accepted else None
     )
+    # api_key is NOT embedded here: the management service mints it into a
+    # ConnectionCatalog connection and stamps connection_name onto the config
+    # (catalog-only credentials). build_provider_config produces the config
+    # without the secret; the caller attaches connection_name post-mint.
     return ProviderConfig(
         driver=request.driver,
         litellm_provider=request.litellm_provider,
         auth_type=request.auth_type,
-        api_key=_unwrap_secret(request.api_key),
         subscription_token=(
             _unwrap_secret(request.subscription_token) if is_subscription else None
         ),
