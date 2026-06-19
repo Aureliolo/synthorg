@@ -50,8 +50,8 @@
     },
     "src/synthorg/api/controllers/__init__.py": {
       "cap": 500,
-      "loc": 441,
-      "ratio": 0.882,
+      "loc": 427,
+      "ratio": 0.854,
       "tier": "code"
     },
     "src/synthorg/api/controllers/_conversational_resume.py": {
@@ -140,8 +140,8 @@
     },
     "src/synthorg/api/controllers/tasks.py": {
       "cap": 500,
-      "loc": 491,
-      "ratio": 0.982,
+      "loc": 493,
+      "ratio": 0.986,
       "tier": "code"
     },
     "src/synthorg/api/controllers/training.py": {
@@ -161,6 +161,12 @@
       "loc": 420,
       "ratio": 0.84,
       "tier": "code"
+    },
+    "src/synthorg/api/exception_handlers.py": {
+      "cap": 1100,
+      "loc": 901,
+      "ratio": 0.819,
+      "tier": "complex_service"
     },
     "src/synthorg/api/lifecycle_helpers/config_apply.py": {
       "cap": 600,
@@ -440,8 +446,8 @@
     },
     "src/synthorg/engine/feature.py": {
       "cap": 100,
-      "loc": 96,
-      "ratio": 0.96,
+      "loc": 88,
+      "ratio": 0.88,
       "tier": "feature"
     },
     "src/synthorg/engine/hybrid/replan_helpers.py": {
@@ -734,8 +740,8 @@
     },
     "src/synthorg/memory/retriever.py": {
       "cap": 500,
-      "loc": 464,
-      "ratio": 0.928,
+      "loc": 459,
+      "ratio": 0.918,
       "tier": "code"
     },
     "src/synthorg/memory/self_editing.py": {
@@ -1098,16 +1104,16 @@
       "ratio": 0.952,
       "tier": "service"
     },
-    "src/synthorg/providers/base.py": {
-      "cap": 500,
-      "loc": 493,
-      "ratio": 0.986,
-      "tier": "code"
-    },
     "src/synthorg/providers/cassette/store.py": {
       "cap": 500,
       "loc": 414,
       "ratio": 0.828,
+      "tier": "code"
+    },
+    "src/synthorg/providers/cost_recording.py": {
+      "cap": 500,
+      "loc": 474,
+      "ratio": 0.948,
       "tier": "code"
     },
     "src/synthorg/providers/drivers/litellm_driver.py": {
@@ -1291,7 +1297,7 @@
     "synthorg.api.api_core_state": 32,
     "synthorg.api.construction_wiring": 21,
     "synthorg.api.cursor": 26,
-    "synthorg.api.dto": 119,
+    "synthorg.api.dto": 118,
     "synthorg.api.guards": 115,
     "synthorg.api.pagination": 58,
     "synthorg.api.path_params": 79,
@@ -1331,9 +1337,9 @@
     "synthorg.core.error_taxonomy": 61,
     "synthorg.core.iso_datetime": 25,
     "synthorg.core.memory_enums": 48,
-    "synthorg.core.normalization": 82,
+    "synthorg.core.normalization": 83,
     "synthorg.core.pagination": 23,
-    "synthorg.core.persistence_errors": 205,
+    "synthorg.core.persistence_errors": 206,
     "synthorg.core.project_enums": 28,
     "synthorg.core.registry": 27,
     "synthorg.core.task": 95,
@@ -1344,7 +1350,7 @@
     "synthorg.engine.errors": 84,
     "synthorg.engine.loop_protocol": 46,
     "synthorg.engine.prompt_safety": 70,
-    "synthorg.engine.state": 41,
+    "synthorg.engine.state": 39,
     "synthorg.engine.task_engine": 37,
     "synthorg.engine.task_engine_models": 20,
     "synthorg.engine.workflow.definition": 40,
@@ -1380,7 +1386,7 @@
     "synthorg.meta.models": 62,
     "synthorg.meta.signal_models": 20,
     "synthorg.notifications.models": 20,
-    "synthorg.observability": 1601,
+    "synthorg.observability": 1600,
     "synthorg.observability.background_tasks": 21,
     "synthorg.observability.events.api": 171,
     "synthorg.observability.events.chief_of_staff": 29,
@@ -1569,7 +1575,7 @@
     },
     "synthorg.persistence.sqlite.approval_repo:SQLiteApprovalRepository": {
       "lcom4": 1,
-      "loc": 561
+      "loc": 578
     },
     "synthorg.persistence.sqlite.subworkflow_repo:SQLiteSubworkflowRepository": {
       "lcom4": 1,
