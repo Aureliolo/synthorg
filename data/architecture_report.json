@@ -152,8 +152,8 @@
     },
     "src/synthorg/api/controllers/ws.py": {
       "cap": 1100,
-      "loc": 902,
-      "ratio": 0.82,
+      "loc": 918,
+      "ratio": 0.835,
       "tier": "complex_service"
     },
     "src/synthorg/api/etag.py": {
@@ -632,8 +632,8 @@
     },
     "src/synthorg/hr/promotion/service.py": {
       "cap": 600,
-      "loc": 587,
-      "ratio": 0.978,
+      "loc": 592,
+      "ratio": 0.987,
       "tier": "service"
     },
     "src/synthorg/hr/scaling/service.py": {
@@ -1040,8 +1040,8 @@
     },
     "src/synthorg/persistence/sqlite/project_cost_aggregate_repo.py": {
       "cap": 500,
-      "loc": 447,
-      "ratio": 0.894,
+      "loc": 453,
+      "ratio": 0.906,
       "tier": "code"
     },
     "src/synthorg/persistence/sqlite/project_repo.py": {
@@ -1226,8 +1226,8 @@
     },
     "src/synthorg/tools/browser/browser_tool.py": {
       "cap": 1100,
-      "loc": 1094,
-      "ratio": 0.995,
+      "loc": 1096,
+      "ratio": 0.996,
       "tier": "complex_service"
     },
     "src/synthorg/tools/desktop/_executor.py": {
@@ -1296,7 +1296,7 @@
     "synthorg._core.features": 146,
     "synthorg.api.api_core_state": 32,
     "synthorg.api.construction_wiring": 21,
-    "synthorg.api.cursor": 26,
+    "synthorg.api.cursor": 29,
     "synthorg.api.dto": 118,
     "synthorg.api.guards": 115,
     "synthorg.api.pagination": 58,
@@ -1338,7 +1338,7 @@
     "synthorg.core.iso_datetime": 25,
     "synthorg.core.memory_enums": 48,
     "synthorg.core.normalization": 83,
-    "synthorg.core.pagination": 23,
+    "synthorg.core.pagination": 20,
     "synthorg.core.persistence_errors": 206,
     "synthorg.core.project_enums": 28,
     "synthorg.core.registry": 27,
@@ -1420,7 +1420,7 @@
     "synthorg.persistence.state": 65,
     "synthorg.project_brain.models": 24,
     "synthorg.providers.cost_recording": 37,
-    "synthorg.providers.enums": 87,
+    "synthorg.providers.enums": 86,
     "synthorg.providers.errors": 40,
     "synthorg.providers.models": 115,
     "synthorg.providers.protocol": 68,
@@ -1459,11 +1459,11 @@
     },
     "synthorg.budget.tracker:CostTracker": {
       "lcom4": 3,
-      "loc": 738
+      "loc": 739
     },
     "synthorg.communication.bus.memory:InMemoryMessageBus": {
       "lcom4": 1,
-      "loc": 708
+      "loc": 712
     },
     "synthorg.communication.meeting.orchestrator:MeetingOrchestrator": {
       "lcom4": 1,
@@ -1527,11 +1527,11 @@
     },
     "synthorg.hr.promotion.service:PromotionService": {
       "lcom4": 2,
-      "loc": 513
+      "loc": 518
     },
     "synthorg.hr.pruning.service:PruningService": {
       "lcom4": 1,
-      "loc": 653
+      "loc": 663
     },
     "synthorg.hr.registry:AgentRegistryService": {
       "lcom4": 2,
@@ -1615,7 +1615,7 @@
     },
     "synthorg.tools.browser.browser_tool:BrowserTool": {
       "lcom4": 1,
-      "loc": 929
+      "loc": 931
     },
     "synthorg.tools.invoker:ToolInvoker": {
       "lcom4": 1,
