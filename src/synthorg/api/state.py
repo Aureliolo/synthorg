@@ -34,8 +34,12 @@ from synthorg.engine.pipeline.entry.task_board_adapter import TaskBoardEntryAdap
 from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.shutdown import CooperativeTimeoutStrategy, ShutdownManager
 from synthorg.notifications.dispatcher import NotificationDispatcher
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.api import API_APP_SHUTDOWN
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.workers.execution_service import WorkerExecutionService
+
+logger = get_logger(__name__)
 
 # Grace window the cooperative shutdown manager waits for in-flight
 # multi-agent parallel tasks to exit at a turn boundary before it
@@ -187,8 +191,26 @@ class AppState(AppStateSliceMixin):
         if still_running:
             # Await the cancellations so the coroutines unwind before the
             # loop closes; ``return_exceptions`` keeps one task's failure
-            # from masking the others.
-            await asyncio.gather(*still_running, return_exceptions=True)
+            # from masking the others. ``shield`` the gather so a cancel of
+            # this drain (the outer shutdown ``wait_for`` budget) does not
+            # re-orphan the very stragglers it is awaiting.
+            results = await asyncio.shield(
+                asyncio.gather(*still_running, return_exceptions=True)
+            )
+            # Surface any non-cancellation failure a straggler raised before
+            # it was cancelled; otherwise abandoned work disappears with no
+            # post-mortem trace.
+            for result in results:
+                if isinstance(result, BaseException) and not isinstance(
+                    result, asyncio.CancelledError
+                ):
+                    logger.warning(
+                        API_APP_SHUTDOWN,
+                        service="entry_task_drain",
+                        error_type=type(result).__name__,
+                        error=safe_error_description(result),
+                        note="entry background task raised during shutdown drain",
+                    )
 
     # -- Hot-swap seams (thin shims over ``wire``) -----------------------
     # Public names preserved for the boot install + ``post_setup_reinit``.

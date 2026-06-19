@@ -616,6 +616,7 @@ class TestWireRunNarrator:
             )
 
 
+@pytest.mark.unit
 class TestPublishRedTeamRuntime:
     """`_publish_red_team_runtime` publishes, clears, and gates the store."""
 

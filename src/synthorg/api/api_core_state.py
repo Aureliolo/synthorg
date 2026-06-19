@@ -4,11 +4,11 @@ Holds the cross-cutting API services that belong to no single domain
 feature: the opaque-pagination cursor secret, the auth service, the
 session / lockout / refresh-token stores, the WebSocket ticket store,
 the user-presence tracker, the org-mutation service, the workflow
-rollback service, and the idempotency service. The cursor secret and
-auth service are wired in ``create_app``; the persistence-backed
-auth stores and services are wired once persistence is connected. All
-fields are ``None`` until wired; readers pass them through
-``require_service`` to surface a clean 503 before that.
+rollback service, the idempotency service, and the analytics read
+service. The cursor secret and auth service are wired in ``create_app``;
+the persistence-backed auth stores and services are wired once
+persistence is connected. All fields are ``None`` until wired; readers
+pass them through ``require_service`` to surface a clean 503 before that.
 
 The mutable coordination primitives that ``AppState`` still owns
 directly (request locks, bridge-config snapshots, shutdown event,

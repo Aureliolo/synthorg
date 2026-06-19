@@ -26,18 +26,21 @@ import asyncio
 import math
 import os
 import sys
+from collections.abc import Awaitable
 from typing import Final
 
 import httpx
 
 from synthorg.communication.config import NatsConfig
-from synthorg.observability import get_logger
+from synthorg.core.critical_errors import reraise_critical
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workers import (
     WORKERS_MAIN_INVALID_EXECUTOR_CONFIG,
     WORKERS_MAIN_INVALID_WORKER_COUNT,
     WORKERS_MAIN_PLACEHOLDER_EXECUTOR_INVOKED,
     WORKERS_MAIN_SEEN_CLAIMS_SKIPPED,
     WORKERS_MAIN_SEEN_CLAIMS_WIRED,
+    WORKERS_MAIN_SHUTDOWN_CLEANUP_FAILED,
 )
 from synthorg.persistence.config_factory import (
     build_postgres_persistence_config_from_url,
@@ -263,6 +266,25 @@ def _resolve_http_timeout(explicit: float | None) -> float | None:
     return None
 
 
+async def _safe_cleanup(coro: Awaitable[None], *, step: str) -> None:
+    """Await a teardown *coro*, logging and swallowing non-critical failures.
+
+    Each ``finally`` teardown step must run even if a prior one raised, so a
+    ``task_queue.stop()`` timeout cannot strand an open persistence
+    connection. ``MemoryError`` / ``RecursionError`` still propagate.
+    """
+    try:
+        await coro
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            WORKERS_MAIN_SHUTDOWN_CLEANUP_FAILED,
+            step=step,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+
+
 async def _async_main(argv: list[str]) -> int:
     """Parse arguments, start the queue, and run the worker pool.
 
@@ -326,12 +348,15 @@ async def _async_main(argv: list[str]) -> int:
             seen_claims=seen_claims,
         )
     finally:
+        # Each step is individually guarded so a failure in one (e.g. a
+        # queue drain timeout) cannot skip a later one and leak its
+        # resource (the open persistence connection).
         if http_client is not None:
-            await http_client.aclose()
+            await _safe_cleanup(http_client.aclose(), step="http_client_close")
         if queue_started:
-            await task_queue.stop()
+            await _safe_cleanup(task_queue.stop(), step="task_queue_stop")
         if backend is not None and backend_connected:
-            await backend.disconnect()
+            await _safe_cleanup(backend.disconnect(), step="backend_disconnect")
     return 0
 
 

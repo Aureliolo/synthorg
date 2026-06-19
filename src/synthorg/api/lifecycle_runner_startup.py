@@ -105,6 +105,8 @@ async def _start_runtime_background_services(
     started_webhook_event_bridge = False
     started_integration_health_prober = False
     started_oauth_token_manager = False
+    started_escalation_sweeper = False
+    started_escalation_notify_subscriber = False
     started_event_stream_hub = False
     integrations = app_state.slice(IntegrationsStateSlice)
     communication = app_state.slice(CommunicationStateSlice)
@@ -156,6 +158,7 @@ async def _start_runtime_background_services(
         if communication.escalation_sweeper is not None:
             try:
                 await communication.escalation_sweeper.start()
+                started_escalation_sweeper = True
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
@@ -168,6 +171,7 @@ async def _start_runtime_background_services(
         if communication.escalation_notify_subscriber is not None:
             try:
                 await communication.escalation_notify_subscriber.start()
+                started_escalation_notify_subscriber = True
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 logger.warning(
@@ -213,6 +217,10 @@ async def _start_runtime_background_services(
             started_bus=False,
             event_stream_hub=communication.event_stream_hub,
             started_event_stream_hub=started_event_stream_hub,
+            escalation_notify_subscriber=communication.escalation_notify_subscriber,
+            started_escalation_notify_subscriber=started_escalation_notify_subscriber,
+            escalation_sweeper=communication.escalation_sweeper,
+            started_escalation_sweeper=started_escalation_sweeper,
             oauth_token_manager=integrations.oauth_token_manager,
             started_oauth_token_manager=started_oauth_token_manager,
             integration_health_prober=integrations.health_prober_service,

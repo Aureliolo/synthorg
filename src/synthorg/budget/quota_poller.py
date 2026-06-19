@@ -23,6 +23,7 @@ from synthorg.observability import (
     log_exception_redacted,
     safe_error_description,
 )
+from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.quota import (
     QUOTA_ALERT_COOLDOWN_ACTIVE,
     QUOTA_POLL_COMPLETED,
@@ -155,6 +156,15 @@ class QuotaPoller:
                     QUOTA_POLLER_STOPPED,
                     error=("stop exceeded hard deadline; poller marked unrestartable"),
                     timeout_seconds=self._stop_drain_timeout_seconds,
+                )
+                # Log the orphaned drain's eventual outcome (it keeps running
+                # past the deadline) rather than dropping it silently.
+                drain_task.add_done_callback(
+                    log_task_exceptions(
+                        logger,
+                        QUOTA_POLLER_STOPPED,
+                        note="orphaned_drain_after_timeout",
+                    )
                 )
                 raise
             self._task = None

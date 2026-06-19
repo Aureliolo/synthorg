@@ -14,34 +14,29 @@ elsewhere.
 
 import asyncio
 import contextlib
-from typing import Final
 
 import pytest
 import structlog.testing
 
 from synthorg.api.lifecycle_builder import _cancel_with_timeout
 
-# Janitor-body sleep used by the stub tasks below. Deliberately far longer than
-# every ``_cancel_with_timeout`` cap exercised here (<= 2.0s): the task is
-# guaranteed still sleeping when the helper's timeout fires, so the tests
-# observe the bounded-cancel path rather than a task that happened to finish.
-_TASK_SLEEP_SECONDS: Final[float] = 60.0
-
 
 async def _absorb_one_cancel() -> None:
-    """Sleep, absorb one ``CancelledError``, then sleep again.
+    """Block, absorb one ``CancelledError``, then block again.
 
     Models a janitor body that catches the first cancellation
     (third-party callee with ``except Exception``) but accepts the
     second one. The first cancel comes from
     ``_cancel_with_timeout``'s explicit ``task.cancel()``; the
     second comes from ``asyncio.wait_for`` on timeout, so the task
-    completes cleanly after the helper returns.
+    completes cleanly after the helper returns. Both waits block on an
+    unset ``Event`` rather than a long sleep so the task is guaranteed
+    still pending when the helper's timeout fires.
     """
     with contextlib.suppress(asyncio.CancelledError):
-        await asyncio.sleep(_TASK_SLEEP_SECONDS)
+        await asyncio.Event().wait()
     # The second cancel arrives here and propagates up, ending the task.
-    await asyncio.sleep(_TASK_SLEEP_SECONDS)
+    await asyncio.Event().wait()
 
 
 @pytest.mark.unit
@@ -53,7 +48,7 @@ class TestCancelWithTimeout:
 
         async def cooperative() -> None:
             try:
-                await asyncio.sleep(_TASK_SLEEP_SECONDS)
+                await asyncio.Event().wait()
             except asyncio.CancelledError:
                 return
 
@@ -64,20 +59,21 @@ class TestCancelWithTimeout:
         assert task.done()
         assert task.exception() is None
 
-    async def test_timeout_returns_within_budget_on_shielded_task(self) -> None:
-        """The helper returns within budget+jitter when the body shields once."""
+    async def test_timeout_resolves_shielded_task(self) -> None:
+        """The helper returns and ends a body that shields the first cancel.
+
+        ``_absorb_one_cancel`` blocks on an unset ``Event`` forever, so a
+        helper that returned with the task ``done`` proves the bounded
+        ``asyncio.wait_for`` fired and re-cancelled the task rather than
+        blocking on the never-completing wait.
+        """
         task = asyncio.create_task(_absorb_one_cancel(), name="shielded")
         await asyncio.sleep(0)
 
-        loop = asyncio.get_running_loop()
-        start = loop.time()
         await _cancel_with_timeout(task, service="ticket_cleanup", timeout=0.1)
-        elapsed = loop.time() - start
 
-        # The hard invariant: the helper must not block indefinitely.
-        # 1.0 s is generous given a 0.1 s budget; anything close to 60
-        # would mean the helper waited for the underlying sleep.
-        assert elapsed < 1.0, f"Timeout should fire fast; took {elapsed:.3f}s"
+        assert task.done()
+        assert task.cancelled()
 
     async def test_timeout_emits_shutdown_timeout_event(self) -> None:
         """``API_APP_SHUTDOWN_TIMEOUT`` fires at ERROR with the service label."""

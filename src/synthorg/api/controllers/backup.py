@@ -412,7 +412,10 @@ class BackupController(Controller):
         try:
             outcome = await idempotency_service_of(app_state).run_idempotent(
                 scope="backup:restore",
-                key=idempotency_key,
+                # Bind the backup id into the key so a reused token on a
+                # different backup cannot return this restore's cached
+                # result (matches the MCP backup handler's pattern).
+                key=f"{data.backup_id}:{idempotency_key}",
                 callback=lambda: _do_restore_as_dict(_do_restore),
             )
         except BackupNotFoundError:

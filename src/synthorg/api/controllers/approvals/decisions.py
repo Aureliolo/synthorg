@@ -282,7 +282,10 @@ class ApprovalsDecisionsController(Controller):
         response = await _decide_idempotent(
             app_state,
             scope="approval:approve",
-            key=idempotency_key,
+            # Bind the approval id into the key so the same caller token
+            # reused against a different approval cannot return this one's
+            # cached decision (matches the MCP backup handler's pattern).
+            key=f"{approval_id}:{idempotency_key}",
             endpoint="approvals.approve",
             decide=_do_approve,
         )
@@ -374,7 +377,9 @@ class ApprovalsDecisionsController(Controller):
         response = await _decide_idempotent(
             app_state,
             scope="approval:reject",
-            key=idempotency_key,
+            # Bind the approval id into the key (see ``approve`` above) so a
+            # reused token on a different approval cannot collide.
+            key=f"{approval_id}:{idempotency_key}",
             endpoint="approvals.reject",
             decide=_do_reject,
         )

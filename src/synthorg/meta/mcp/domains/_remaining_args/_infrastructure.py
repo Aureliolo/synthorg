@@ -116,6 +116,7 @@ class BackupRestoreArgs(_BackupIdArgs, AdminGuardrailFields):
     """
 
     idempotency_key: NotBlankStr = Field(
+        max_length=255,
         description=(
             "Retry-safe key: an identical key returns the cached restore "
             "result instead of re-running the restore."

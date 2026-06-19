@@ -1,25 +1,16 @@
 import { apiClient, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
+import { idempotencyKeyHeader } from '../idempotency'
 import type { BackupInfo, BackupManifest, RestoreRequest, RestoreResponse } from '../types/backup'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 export async function createBackup(idempotencyKey?: string): Promise<BackupManifest> {
-  // The backend requires the Idempotency-Key header on POST
-  // /admin/backups so a 5xx-driven retry cannot launch concurrent
-  // backups and violate the at-most-one-running invariant. Callers
-  // may supply their own key (recommended for retry semantics);
-  // otherwise we mint a fresh UUID per call so first-time submissions
-  // still satisfy the contract without forcing every caller to think
-  // about it.
-  // Treat blank / whitespace-only keys as not provided. ``??`` would
-  // forward an empty string through to the server, which then rejects
-  // the request as a 400 because the header is required and
-  // ``min_length=1``. Trim and fall through to a fresh UUID instead.
-  const trimmed = idempotencyKey?.trim()
-  const key = trimmed && trimmed.length > 0 ? trimmed : crypto.randomUUID()
+  // The backend requires the Idempotency-Key header on POST /admin/backups
+  // so a 5xx-driven retry cannot launch concurrent backups and violate the
+  // at-most-one-running invariant.
   const response = await apiClient.post<ApiResponse<BackupManifest>>(
     '/admin/backups',
     null,
-    { headers: { 'Idempotency-Key': key } },
+    { headers: idempotencyKeyHeader(idempotencyKey) },
   )
   return unwrap(response)
 }
@@ -45,7 +36,16 @@ export async function deleteBackup(backupId: string): Promise<void> {
   unwrapVoid(response)
 }
 
-export async function restoreBackup(data: RestoreRequest): Promise<RestoreResponse> {
-  const response = await apiClient.post<ApiResponse<RestoreResponse>>('/admin/backups/restore', data)
+export async function restoreBackup(
+  data: RestoreRequest,
+  idempotencyKey?: string,
+): Promise<RestoreResponse> {
+  // The backend requires the Idempotency-Key header on restore (destructive)
+  // so a 5xx-driven retry cannot re-run the restore over the same data.
+  const response = await apiClient.post<ApiResponse<RestoreResponse>>(
+    '/admin/backups/restore',
+    data,
+    { headers: idempotencyKeyHeader(idempotencyKey) },
+  )
   return unwrap(response)
 }

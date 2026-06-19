@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.message import DataPart
 from synthorg.core.boundary import parse_typed
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
 from synthorg.core.types import NotBlankStr
@@ -82,10 +83,15 @@ class WebhookEventBridge:
         ceremony_scheduler: CeremonyScheduler,
         *,
         config_resolver: ConfigResolver | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._bus = bus
         self._scheduler = ceremony_scheduler
         self._config_resolver = config_resolver
+        # Clock seam: the poll loop's pause / error-backoff waits route
+        # through the clock so tests can drive them with a ``FakeClock``
+        # instead of real wall-clock sleeps.
+        self._clock: Clock = clock or SystemClock()
         self._task: asyncio.Task[None] | None = None
         # Eager lifecycle lock per ``docs/reference/lifecycle-sync.md``;
         # ``asyncio.Lock`` is loop-agnostic until first ``acquire()``,
@@ -218,6 +224,13 @@ class WebhookEventBridge:
                     note="unrestartable",
                 )
                 raise WebhookBridgeUnrestartableError(msg)
+            # A poll loop that self-stopped on the max-consecutive-errors
+            # path leaves its task done (and, on an unsubscribe failure
+            # there, still referenced). Treat a done task as absent so the
+            # bridge re-subscribes and re-runs instead of refusing forever
+            # on the stale handle.
+            if self._task is not None and self._task.done():
+                self._task = None
             if self._task is not None:
                 return
             await self._bus.subscribe(
@@ -294,18 +307,30 @@ class WebhookEventBridge:
                     error=("stop exceeded hard deadline; bridge marked unrestartable"),
                     timeout_seconds=self._stop_drain_timeout_seconds,
                 )
+                # Log the orphaned drain's eventual outcome (it keeps running
+                # past the deadline) rather than dropping it silently.
+                drain_task.add_done_callback(
+                    log_task_exceptions(
+                        logger,
+                        WEBHOOK_BRIDGE_STOPPED,
+                        note="orphaned_drain_after_timeout",
+                    )
+                )
                 raise
             try:
                 await self._bus.unsubscribe(
                     WEBHOOK_CHANNEL.name,
                     _SUBSCRIBER_ID,
                 )
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     WEBHOOK_BRIDGE_STOPPED,
                     subscriber_id=_SUBSCRIBER_ID,
                     channel=WEBHOOK_CHANNEL.name,
-                    error=(
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    note=(
                         "unsubscribe failed -- bridge remains in "
                         "partial-stop state; call stop() again after "
                         "the bus recovers"
@@ -380,7 +405,7 @@ class WebhookEventBridge:
                 # bridge unexpectedly.
                 consecutive_errors = 0
                 logger.debug(WEBHOOK_BRIDGE_PAUSED, reason="paused_by_setting")
-                await asyncio.sleep(await self._get_poll_timeout())
+                await self._clock.sleep(await self._get_poll_timeout())
                 continue
             poll_timeout = await self._get_poll_timeout()
             max_errors = await self._get_max_consecutive_errors()
@@ -468,7 +493,7 @@ class WebhookEventBridge:
                 )
                 # Back off for one poll interval before retrying so the
                 # loop does not tight-spin on a hot error path.
-                await asyncio.sleep(poll_timeout)
+                await self._clock.sleep(poll_timeout)
 
     async def _forward(self, message: object) -> None:
         """Extract event data and call on_external_event."""

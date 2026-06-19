@@ -299,6 +299,46 @@ def _node_map(
 # ── Tests ─────────────────────────────────────────────────────────
 
 
+class TestDepthResolution:
+    """The depth cap resolves per activation (settings hot-reload)."""
+
+    @pytest.mark.unit
+    async def test_resolver_none_falls_back_to_seed_default(
+        self,
+        def_repo: FakeDefinitionRepo,
+        exec_repo: FakeExecutionRepo,
+        task_engine: FakeTaskEngine,
+    ) -> None:
+        # The observer path wires the service without a resolver; it
+        # never activates, but a missing resolver must still resolve to
+        # the EngineBridgeConfig seed default rather than raising.
+        svc = WorkflowExecutionService(
+            definition_repo=def_repo,
+            execution_repo=exec_repo,
+            task_engine=task_engine,
+            config_resolver=None,
+        )
+        assert (
+            await svc._resolve_max_subworkflow_depth()
+            == EngineBridgeConfig().max_subworkflow_depth
+        )
+
+    @pytest.mark.unit
+    async def test_resolver_value_is_used(
+        self,
+        def_repo: FakeDefinitionRepo,
+        exec_repo: FakeExecutionRepo,
+        task_engine: FakeTaskEngine,
+    ) -> None:
+        svc = WorkflowExecutionService(
+            definition_repo=def_repo,
+            execution_repo=exec_repo,
+            task_engine=task_engine,
+            config_resolver=_depth_resolver(depth=7),
+        )
+        assert await svc._resolve_max_subworkflow_depth() == 7
+
+
 class TestActivateSimple:
     """Activate a simple START -> TASK -> END workflow."""
 

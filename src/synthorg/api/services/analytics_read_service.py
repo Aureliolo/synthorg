@@ -27,9 +27,10 @@ class AnalyticsReadService:
     async def list_tasks(self) -> tuple[Task, ...]:
         """Return the task list the analytics aggregates are built from.
 
-        Mirrors the prior controller behaviour (an unfiltered ``query``
-        with the repository's default page window), so a caller swapping
-        the direct repo touch for this method observes identical results.
+        Runs an unfiltered ``query`` over the repository's default page
+        window: the analytics overview / trends endpoints fold the full
+        task set into their counts, so the empty filter spec is the
+        intended scope rather than a narrowing.
 
         Returns:
             Tasks matching the empty filter spec, ordered by id ascending.

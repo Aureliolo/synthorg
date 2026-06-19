@@ -2,11 +2,11 @@
 """Repo facade for the conversational approval-resume flows.
 
 The approvals controller resolves a decided conversational approval
-(intake proposal or agent invite) through the repo-direct resume flows
-in ``api/controllers/_conversational_resume.py``. Those flows used to
-reach ``MetaStateSlice``'s proposal / invite / participant repositories
-directly; this thin service is the single seam they route through
-instead, so the controller layer never touches a repository protocol.
+(intake proposal or agent invite) through the resume flows in
+``api/controllers/_conversational_resume.py``. This thin service is the
+single seam those flows route every proposal / invite / participant repo
+call through, so the controller layer never touches a repository
+protocol.
 
 The service is deliberately *ungated*: it wraps only the persistence
 repositories (never the toggle-gated Chief-of-Staff feature services),
@@ -49,6 +49,8 @@ from synthorg.persistence.conversational_proposal_protocol import (
 
 class ConversationalResumeService:
     """Ungated repo facade for the conversational approval-resume flows."""
+
+    __slots__ = ("_invite_repo", "_participant_repo", "_proposal_repo")
 
     def __init__(
         self,

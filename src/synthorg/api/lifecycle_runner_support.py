@@ -187,6 +187,18 @@ def _wire_workflow_execution_service(
         return
     config_resolver = app_state.slice(SettingsStateSlice).config_resolver
     if config_resolver is None:
+        # Mirror the observer wirer's diagnostic: without the resolver the
+        # service stays unwired and every /workflow-executions endpoint 503s,
+        # so log the cause rather than leaving an operator to infer it from a
+        # bare "service not wired" 503.
+        logger.warning(
+            API_APP_STARTUP,
+            component="workflow_execution_service",
+            note=(
+                "config_resolver not wired; skipping WorkflowExecutionService "
+                "wiring (workflow-execution endpoints will 503)"
+            ),
+        )
         return
     service = WorkflowExecutionService(
         definition_repo=persistence.workflow_definitions,

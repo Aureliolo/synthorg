@@ -9,11 +9,10 @@ on request handling:
 * :func:`_build_idem_scope` / :func:`_build_idem_key`: pure functions
   that compose the durable idempotency-key for a webhook delivery.
 
-The webhook activity service and replay protector are no longer built
-lazily here; they are wired once at startup
-(``_wire_webhook_request_services``) onto ``IntegrationsStateSlice`` and
-read through ``webhook_activity_service_of`` /
-``webhook_replay_protector_of`` so the controller never touches
+The webhook activity service and replay protector are wired once at
+startup (``_wire_webhook_request_services``) onto
+``IntegrationsStateSlice`` and read through ``webhook_activity_service_of``
+/ ``webhook_replay_protector_of`` so the controller never touches
 ``persistence.webhook_receipts`` directly. The replay protector's
 in-process nonce cache is the source of truth between durable-
 idempotency reads, so a single wired instance must serve every request.

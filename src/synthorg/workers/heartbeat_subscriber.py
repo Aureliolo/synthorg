@@ -25,6 +25,7 @@ from synthorg.observability.events.workers import (
     WORKERS_HEARTBEAT_OBSERVED,
     WORKERS_HEARTBEAT_STALE,
     WORKERS_HEARTBEAT_SUBSCRIBER_FAILED,
+    WORKERS_HEARTBEAT_SUBSCRIBER_START_REJECTED,
     WORKERS_HEARTBEAT_SUBSCRIBER_STARTED,
     WORKERS_HEARTBEAT_SUBSCRIBER_STOPPED,
 )
@@ -105,7 +106,7 @@ class WorkerHeartbeatSubscriber:
         async with self._lifecycle_lock:
             if self._running:
                 logger.warning(
-                    WORKERS_HEARTBEAT_SUBSCRIBER_FAILED,
+                    WORKERS_HEARTBEAT_SUBSCRIBER_START_REJECTED,
                     reason="already_running",
                 )
                 msg = "WorkerHeartbeatSubscriber is already running"

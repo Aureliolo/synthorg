@@ -29,6 +29,7 @@ from synthorg.integrations.errors import (
     IntegrationLifecycleConflictError,
 )
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.integrations import (
     RATE_LIMIT_ACQUIRE_PUBLISHED,
     RATE_LIMIT_COORDINATOR_STARTED,
@@ -228,6 +229,17 @@ class SharedRateLimitCoordinator:
                             "marked unrestartable"
                         ),
                         timeout_seconds=self._stop_drain_timeout_seconds,
+                    )
+                    # The shielded drain keeps running orphaned past the
+                    # deadline; log its eventual outcome rather than letting a
+                    # later failure surface as "task exception never retrieved".
+                    drain_task.add_done_callback(
+                        log_task_exceptions(
+                            logger,
+                            RATE_LIMIT_COORDINATOR_STOPPED,
+                            connection_name=self._connection_name,
+                            note="orphaned_drain_after_timeout",
+                        )
                     )
                     raise
                 self._task = None

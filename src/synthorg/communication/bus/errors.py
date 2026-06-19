@@ -6,7 +6,10 @@ module holds errors that only make sense for distributed transports
 (connection failures, stream setup failures, etc.).
 """
 
+from typing import ClassVar
+
 from synthorg.communication.errors import CommunicationError
+from synthorg.core.domain_errors import ConflictError
 
 
 class BusConnectionError(CommunicationError):
@@ -39,10 +42,17 @@ class BusStopTimeoutError(CommunicationError):
     """
 
 
-class BusUnrestartableError(CommunicationError):
+class BusUnrestartableError(ConflictError):
     """Raised when ``start()`` is called after a timed-out ``stop()``.
 
     See :class:`BusStopTimeoutError` for the underlying invariant. The
     only safe recovery is constructing a fresh instance, so this error
     surfaces the operator-visible signal rather than silently retrying.
+
+    Subclasses :class:`ConflictError` (409 / ``RESOURCE_CONFLICT``) so it
+    is consistent with the other lifecycle ``*UnrestartableError`` classes:
+    an unrestartable instance is a lifecycle conflict, not an internal
+    error, so an HTTP client must not auto-retry the ``start()`` on a 5xx.
     """
+
+    default_message: ClassVar[str] = "Message bus is unrestartable"

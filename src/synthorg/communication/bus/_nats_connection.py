@@ -20,6 +20,7 @@ from synthorg.communication.bus.errors import (
 )
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.communication import (
     COMM_BUS_CONNECTED,
     COMM_BUS_DISCONNECTED,
@@ -288,7 +289,10 @@ async def stop(state: _NatsState) -> None:
                 )
             except TimeoutError as exc:
                 state.stop_failed = True
-                logger.warning(
+                # ERROR (not WARNING): the bus is now permanently
+                # unrestartable for the process lifetime, matching every
+                # sibling lifecycle service's drain-timeout log level.
+                logger.error(
                     COMM_BUS_DISCONNECTED,
                     phase="stop_drain",
                     error_type=type(exc).__name__,
@@ -299,6 +303,16 @@ async def stop(state: _NatsState) -> None:
                 msg = (
                     f"JetStreamMessageBus.stop() drain exceeded "
                     f"{state.stop_drain_timeout_seconds}s"
+                )
+                # The shielded drain keeps running orphaned past the
+                # deadline; log its eventual outcome rather than letting a
+                # later failure surface as "task exception never retrieved".
+                drain_task.add_done_callback(
+                    log_task_exceptions(
+                        logger,
+                        COMM_BUS_DISCONNECTED,
+                        note="orphaned_drain_after_timeout",
+                    )
                 )
                 # Release the retained handles before propagating so a
                 # timed-out drain does not leak the dead client.

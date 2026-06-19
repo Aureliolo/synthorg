@@ -6,11 +6,6 @@ from typing import Protocol, runtime_checkable
 from synthorg.core.task import (
     Task,
 )
-from synthorg.observability import (
-    get_logger,
-)
-
-logger = get_logger(__name__)
 
 
 @runtime_checkable

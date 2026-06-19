@@ -7,7 +7,6 @@ fail-marker on callback exception.
 """
 
 from datetime import UTC, datetime
-from types import ModuleType
 from typing import override
 
 import pytest
@@ -19,6 +18,7 @@ from synthorg.persistence.idempotency_protocol import (
     IdempotencyOutcome,
     IdempotencyRecord,
 )
+from tests._shared import FakeClock
 
 pytestmark = pytest.mark.unit
 
@@ -177,67 +177,22 @@ async def test_run_idempotent_marks_failed_when_callback_raises() -> None:
     assert len(repo.completes) == 0
 
 
-class _DeterministicClock:
-    """Stub Clock injected via the service constructor's ``clock`` kwarg.
-
-    Tracks a virtual-time float that advances when the service awaits
-    asyncio.sleep (which we also stub out so polling deadlines progress
-    without real wall-clock waits).
-    """
-
-    def __init__(self) -> None:
-        self.now_seconds = 0.0
-
-    def now(self) -> datetime:
-        from datetime import UTC
-        from datetime import datetime as _dt
-
-        return _dt.fromtimestamp(self.now_seconds, tz=UTC)
-
-    def monotonic(self) -> float:
-        return self.now_seconds
-
-    async def sleep(self, seconds: float) -> None:
-        if seconds > 0:
-            self.now_seconds += seconds
-
-
-def _install_deterministic_clock(
-    monkeypatch: pytest.MonkeyPatch,
-    svc_mod: ModuleType,
-) -> _DeterministicClock:
-    """Stub asyncio.sleep so the service's polling loop progresses
-    against the injected ``_DeterministicClock`` without real waits.
-
-    Returns the clock instance; the test passes it via the service
-    constructor's ``clock`` kwarg, then reads/writes ``now_seconds``
-    to verify timing-dependent behaviour.
-    """
-    clock = _DeterministicClock()
-
-    async def _fake_sleep(delay: float) -> None:
-        # Negative or zero stays a real no-op; positive advances the
-        # virtual clock so deadline arithmetic in the service-under-
-        # test progresses without a real wall-clock sleep.
-        if delay > 0:
-            clock.now_seconds += delay
-
-    monkeypatch.setattr(svc_mod.asyncio, "sleep", _fake_sleep)
-    return clock
-
-
 async def test_run_idempotent_in_flight_returns_none_after_poll_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """When the repo reports IN_FLIGHT and ``get`` keeps returning a
     record stuck in the in-flight state, the service polls then
-    returns (None, False) so the controller can surface 409."""
+    returns (None, False) so the controller can surface 409.
+
+    ``FakeClock.sleep`` advances virtual time so the service's polling
+    deadline progresses without any real wall-clock wait.
+    """
     from synthorg.idempotency import service as svc_mod
 
     monkeypatch.setattr(svc_mod, "_IN_FLIGHT_POLL_TIMEOUT_SECONDS", 0.05)
     monkeypatch.setattr(svc_mod, "_IN_FLIGHT_POLL_INITIAL_BACKOFF_SECONDS", 0.005)
     monkeypatch.setattr(svc_mod, "_IN_FLIGHT_POLL_MAX_BACKOFF_SECONDS", 0.01)
-    clock = _install_deterministic_clock(monkeypatch, svc_mod)
+    clock = FakeClock()
 
     class _StuckRepo(_FakeRepo):
         @override
@@ -282,7 +237,7 @@ async def test_run_idempotent_in_flight_resolves_to_completed_via_poll(
     monkeypatch.setattr(svc_mod, "_IN_FLIGHT_POLL_TIMEOUT_SECONDS", 0.5)
     monkeypatch.setattr(svc_mod, "_IN_FLIGHT_POLL_INITIAL_BACKOFF_SECONDS", 0.005)
     monkeypatch.setattr(svc_mod, "_IN_FLIGHT_POLL_MAX_BACKOFF_SECONDS", 0.01)
-    clock = _install_deterministic_clock(monkeypatch, svc_mod)
+    clock = FakeClock()
 
     poll_count = 0
 
@@ -334,3 +289,30 @@ async def test_cleanup_expired_delegates_to_repository() -> None:
     removed = await svc.cleanup_expired()
     assert removed == 0
     assert len(repo.cleanup_calls) == 1
+
+
+def test_ttl_must_exceed_poll_timeout() -> None:
+    # A TTL at or below the in-flight poll budget would let a
+    # still-running leader's row expire mid-poll, so a follower could
+    # observe it as missing and re-execute the callback. The constructor
+    # makes that invariant load-bearing.
+    from synthorg.idempotency import service as svc_mod
+
+    repo = _FakeRepo()
+    with pytest.raises(ValueError, match="must exceed"):
+        svc_mod.IdempotencyService(
+            repo,
+            ttl_seconds=int(svc_mod._IN_FLIGHT_POLL_TIMEOUT_SECONDS),
+        )
+
+
+def test_ttl_above_poll_timeout_is_accepted() -> None:
+    from synthorg.idempotency import service as svc_mod
+
+    repo = _FakeRepo()
+    # One second above the budget is the smallest accepted TTL.
+    svc = svc_mod.IdempotencyService(
+        repo,
+        ttl_seconds=int(svc_mod._IN_FLIGHT_POLL_TIMEOUT_SECONDS) + 1,
+    )
+    assert svc is not None

@@ -55,10 +55,10 @@ class _FakeProposalRepo:
     async def save(self, entity: ConversationalProposal, /) -> None:
         self.items[str(entity.id)] = entity
 
-    async def get(self, entity_id: str, /) -> ConversationalProposal | None:
+    async def get(self, entity_id: NotBlankStr, /) -> ConversationalProposal | None:
         return self.items.get(entity_id)
 
-    async def delete(self, entity_id: str, /) -> bool:
+    async def delete(self, entity_id: NotBlankStr, /) -> bool:
         return self.items.pop(entity_id, None) is not None
 
     async def list_items(
@@ -86,7 +86,8 @@ class _FakeProposalRepo:
 
     async def transition_if(
         self,
-        entity_id: str,
+        /,
+        entity_id: NotBlankStr,
         from_state: ConversationalProposalStatus,
         to_state: ConversationalProposalStatus,
         **updates: object,

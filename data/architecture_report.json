@@ -194,8 +194,8 @@
     },
     "src/synthorg/api/lifecycle_runner_startup.py": {
       "cap": 600,
-      "loc": 529,
-      "ratio": 0.882,
+      "loc": 537,
+      "ratio": 0.895,
       "tier": "orchestrator"
     },
     "src/synthorg/api/services/_org_agent_mutations.py": {
@@ -590,8 +590,8 @@
     },
     "src/synthorg/engine/workflow/webhook_bridge.py": {
       "cap": 500,
-      "loc": 411,
-      "ratio": 0.822,
+      "loc": 426,
+      "ratio": 0.852,
       "tier": "code"
     },
     "src/synthorg/engine/workspace/environment/devcontainer.py": {
@@ -692,8 +692,14 @@
     },
     "src/synthorg/integrations/oauth/token_manager.py": {
       "cap": 500,
-      "loc": 419,
-      "ratio": 0.838,
+      "loc": 427,
+      "ratio": 0.854,
+      "tier": "code"
+    },
+    "src/synthorg/integrations/rate_limiting/shared_state.py": {
+      "cap": 500,
+      "loc": 400,
+      "ratio": 0.8,
       "tier": "code"
     },
     "src/synthorg/memory/backends/composite/adapter.py": {
@@ -830,8 +836,8 @@
     },
     "src/synthorg/meta/mcp/domains/infrastructure.py": {
       "cap": 500,
-      "loc": 505,
-      "ratio": 1.01,
+      "loc": 496,
+      "ratio": 0.992,
       "tier": "code"
     },
     "src/synthorg/meta/mcp/handlers/common_args.py": {
@@ -1360,9 +1366,9 @@
     "synthorg.core.auth.roles": 29,
     "synthorg.core.autonomy_enums": 36,
     "synthorg.core.boundary": 37,
-    "synthorg.core.clock": 174,
-    "synthorg.core.critical_errors": 531,
-    "synthorg.core.domain_errors": 216,
+    "synthorg.core.clock": 175,
+    "synthorg.core.critical_errors": 532,
+    "synthorg.core.domain_errors": 217,
     "synthorg.core.effective_autonomy": 22,
     "synthorg.core.error_taxonomy": 61,
     "synthorg.core.iso_datetime": 25,
@@ -1417,8 +1423,8 @@
     "synthorg.meta.signal_models": 20,
     "synthorg.notifications.models": 20,
     "synthorg.observability": 1601,
-    "synthorg.observability.background_tasks": 21,
-    "synthorg.observability.events.api": 171,
+    "synthorg.observability.background_tasks": 25,
+    "synthorg.observability.events.api": 172,
     "synthorg.observability.events.chief_of_staff": 29,
     "synthorg.observability.events.client": 24,
     "synthorg.observability.events.communication": 26,

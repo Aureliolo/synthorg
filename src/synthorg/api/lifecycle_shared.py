@@ -153,6 +153,10 @@ async def _cleanup_on_failure(  # noqa: PLR0913
     started_approval_timeout_scheduler: bool = False,
     event_stream_hub: _AsyncStartStop | None = None,
     started_event_stream_hub: bool = False,
+    escalation_notify_subscriber: _AsyncStartStop | None = None,
+    started_escalation_notify_subscriber: bool = False,
+    escalation_sweeper: _AsyncStartStop | None = None,
+    started_escalation_sweeper: bool = False,
     oauth_token_manager: _AsyncStartStop | None = None,
     started_oauth_token_manager: bool = False,
     integration_health_prober: _AsyncStartStop | None = None,
@@ -179,6 +183,25 @@ async def _cleanup_on_failure(  # noqa: PLR0913
             "Cleanup: failed to stop event stream hub",
             timeout=_CLEANUP_STOP_TIMEOUT_SECONDS,
             service="event_stream_hub",
+        )
+    if (
+        started_escalation_notify_subscriber
+        and escalation_notify_subscriber is not None
+    ):
+        await _try_stop(
+            escalation_notify_subscriber.stop(),
+            API_APP_STARTUP,
+            "Cleanup: failed to stop escalation notify subscriber",
+            timeout=_CLEANUP_STOP_TIMEOUT_SECONDS,
+            service="escalation_notify_subscriber",
+        )
+    if started_escalation_sweeper and escalation_sweeper is not None:
+        await _try_stop(
+            escalation_sweeper.stop(),
+            API_APP_STARTUP,
+            "Cleanup: failed to stop escalation sweeper",
+            timeout=_CLEANUP_STOP_TIMEOUT_SECONDS,
+            service="escalation_sweeper",
         )
     if started_oauth_token_manager and oauth_token_manager is not None:
         await _try_stop(
