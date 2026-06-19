@@ -36,7 +36,17 @@ from synthorg.observability.events.workers import (
     WORKERS_MAIN_INVALID_EXECUTOR_CONFIG,
     WORKERS_MAIN_INVALID_WORKER_COUNT,
     WORKERS_MAIN_PLACEHOLDER_EXECUTOR_INVOKED,
+    WORKERS_MAIN_SEEN_CLAIMS_SKIPPED,
+    WORKERS_MAIN_SEEN_CLAIMS_WIRED,
 )
+from synthorg.persistence.config_factory import (
+    build_postgres_persistence_config_from_url,
+    build_sqlite_persistence_config,
+    normalize_ssl_mode_value,
+)
+from synthorg.persistence.factory import create_backend
+from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
 from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace, SettingSource
 from synthorg.settings.mirrors import parse_float, parse_int
@@ -146,7 +156,52 @@ def _build_parser() -> argparse.ArgumentParser:
             "workers.executor_http_timeout_seconds default."
         ),
     )
+    parser.add_argument(
+        "--no-dedup",
+        action="store_true",
+        help=(
+            "Skip wiring the seen-claims dedup store even when a database "
+            "is configured (SYNTHORG_DATABASE_URL / SYNTHORG_DB_PATH). Use "
+            "for NATS-only smoke tests; production runs should leave it off "
+            "so a redelivered claim is not executed twice."
+        ),
+    )
     return parser
+
+
+def _build_seen_claims_backend(*, no_dedup: bool) -> PersistenceBackend | None:
+    """Build a disconnected persistence backend for seen-claims dedup.
+
+    The standalone worker is otherwise DB-free (it drives the backend
+    over HTTP), so seen-claims dedup is opt-in on the presence of a
+    database configuration in the environment. Returns ``None`` (and
+    logs a single skip line) when dedup is force-disabled via
+    ``--no-dedup`` or when no ``SYNTHORG_DATABASE_URL`` /
+    ``SYNTHORG_DB_PATH`` is set, in which case the worker runs without
+    redelivery dedup (current behaviour, preserved for NATS-only runs).
+
+    Returns:
+        A new, disconnected ``PersistenceBackend`` when a database is
+        configured and dedup is enabled; otherwise ``None``.
+    """
+    if no_dedup:
+        logger.info(WORKERS_MAIN_SEEN_CLAIMS_SKIPPED, reason="no_dedup_flag")
+        return None
+    db_url = (os.environ.get("SYNTHORG_DATABASE_URL") or "").strip()
+    db_path = (os.environ.get("SYNTHORG_DB_PATH") or "").strip()
+    if db_url:
+        config = build_postgres_persistence_config_from_url(
+            db_url,
+            ssl_mode_override=normalize_ssl_mode_value(
+                os.environ.get("SYNTHORG_POSTGRES_SSL_MODE"),
+            ),
+        )
+    elif db_path:
+        config = build_sqlite_persistence_config(path=db_path)
+    else:
+        logger.warning(WORKERS_MAIN_SEEN_CLAIMS_SKIPPED, reason="no_db_config")
+        return None
+    return create_backend(config)
 
 
 def _resolve_worker_count(explicit: int | None) -> int | None:
@@ -241,25 +296,42 @@ async def _async_main(argv: list[str]) -> int:
         queue_config=queue_config,
         nats_config=nats_config,
     )
-    # ``queue_started`` gates the ``task_queue.stop()`` call so a
-    # ``start()`` failure does not call ``stop()`` on a queue that
-    # never bound the consumer, and a flag-flip lets the owned
-    # ``http_client`` close cleanly regardless of which stage failed.
+    # Built disconnected here (cannot leak a connection) and connected
+    # inside the try so a connect failure unwinds through the same
+    # cleanup path as a queue-start failure.
+    backend = _build_seen_claims_backend(no_dedup=args.no_dedup)
+    # ``queue_started`` / ``backend_connected`` gate the matching
+    # ``stop()`` / ``disconnect()`` calls so a partial start does not
+    # tear down a resource that never came up, and a flag-flip lets the
+    # owned ``http_client`` close cleanly regardless of which stage failed.
     queue_started = False
+    backend_connected = False
     try:
         await task_queue.start()
         queue_started = True
+        seen_claims: SeenClaimsRepository | None = None
+        if backend is not None:
+            await backend.connect()
+            backend_connected = True
+            seen_claims = backend.seen_claims
+            logger.info(
+                WORKERS_MAIN_SEEN_CLAIMS_WIRED,
+                backend_type=type(backend).__name__,
+            )
         await run_worker_pool(
             queue_config=queue_config,
             task_queue=task_queue,
             executor=executor,
             worker_count=args.workers,
+            seen_claims=seen_claims,
         )
     finally:
         if http_client is not None:
             await http_client.aclose()
         if queue_started:
             await task_queue.stop()
+        if backend is not None and backend_connected:
+            await backend.disconnect()
     return 0
 
 

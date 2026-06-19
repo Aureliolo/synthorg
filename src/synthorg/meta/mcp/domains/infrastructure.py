@@ -206,9 +206,16 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
         "Restore from a backup (destructive; requires confirm).",
         {
             "backup_id": {"type": "string", "description": "Backup UUID to restore"},
+            "idempotency_key": {
+                "type": "string",
+                "description": (
+                    "Retry-safe key: an identical key returns the cached "
+                    "restore result instead of re-running the restore."
+                ),
+            },
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("backup_id", *ADMIN_GUARDRAIL_REQUIRED),
+        required=("backup_id", "idempotency_key", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=BackupRestoreArgs,
     ),
     # --- Audit ---

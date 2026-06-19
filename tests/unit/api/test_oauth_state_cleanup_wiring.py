@@ -20,8 +20,8 @@ import pytest
 from synthorg.api.api_core_state import ApiCoreStateSlice, idempotency_service_of
 from synthorg.api.auth.ticket_store import WsTicketStore
 from synthorg.api.lifecycle_helpers import ticket_cleanup as lifecycle_helpers
-from synthorg.api.services.idempotency_service import IdempotencyService
 from synthorg.api.state import AppState
+from synthorg.idempotency import IdempotencyService
 from synthorg.persistence.connection_protocol import OAuthStateRepository
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.state import persistence_of

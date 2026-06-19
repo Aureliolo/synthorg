@@ -665,7 +665,7 @@ class _KeyedIdempotencyRepo:
 def _app_state_with_engine(task_engine: object) -> AppState:
     """Build an app-state wiring the engine and a fresh idempotency service."""
     from synthorg.api.api_core_state import ApiCoreStateSlice
-    from synthorg.api.services.idempotency_service import IdempotencyService
+    from synthorg.idempotency import IdempotencyService
 
     return make_app_state(
         task_engine=task_engine,

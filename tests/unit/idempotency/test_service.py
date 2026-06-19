@@ -12,8 +12,8 @@ from typing import override
 
 import pytest
 
-from synthorg.api.services.idempotency_service import IdempotencyService
 from synthorg.core.types import NotBlankStr
+from synthorg.idempotency import IdempotencyService
 from synthorg.persistence.idempotency_protocol import (
     IdempotencyClaim,
     IdempotencyOutcome,
@@ -232,7 +232,7 @@ async def test_run_idempotent_in_flight_returns_none_after_poll_timeout(
     """When the repo reports IN_FLIGHT and ``get`` keeps returning a
     record stuck in the in-flight state, the service polls then
     returns (None, False) so the controller can surface 409."""
-    from synthorg.api.services import idempotency_service as svc_mod
+    from synthorg.idempotency import service as svc_mod
 
     monkeypatch.setattr(svc_mod, "_IN_FLIGHT_POLL_TIMEOUT_SECONDS", 0.05)
     monkeypatch.setattr(svc_mod, "_IN_FLIGHT_POLL_INITIAL_BACKOFF_SECONDS", 0.005)
@@ -277,7 +277,7 @@ async def test_run_idempotent_in_flight_resolves_to_completed_via_poll(
 ) -> None:
     """A second request that polls during an in-flight claim picks up
     the cached response once the first request completes."""
-    from synthorg.api.services import idempotency_service as svc_mod
+    from synthorg.idempotency import service as svc_mod
 
     monkeypatch.setattr(svc_mod, "_IN_FLIGHT_POLL_TIMEOUT_SECONDS", 0.5)
     monkeypatch.setattr(svc_mod, "_IN_FLIGHT_POLL_INITIAL_BACKOFF_SECONDS", 0.005)

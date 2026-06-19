@@ -6,6 +6,7 @@ bootstrapping a full Litestar app, we call the raw function via
 ``handler.fn(self, ...)``.
 """
 
+import inspect
 from collections.abc import AsyncIterator, Awaitable, Callable
 from unittest.mock import AsyncMock, MagicMock
 
@@ -16,10 +17,6 @@ from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.controllers.backup import BackupController
 from synthorg.api.cursor import CursorSecret
 from synthorg.api.dto import ApiResponse, PaginatedResponse
-from synthorg.api.services.idempotency_service import (
-    IdempotencyResult,
-    IdempotencyService,
-)
 from synthorg.backup.errors import (
     BackupInProgressError,
     BackupNotFoundError,
@@ -37,6 +34,10 @@ from synthorg.backup.service import BackupService
 from synthorg.backup.state import BackupStateSlice
 from synthorg.core.domain_errors import ConflictError, ValidationError
 from synthorg.core.error_taxonomy import ErrorCode
+from synthorg.idempotency import (
+    IdempotencyResult,
+    IdempotencyService,
+)
 from tests._shared import LoopAsyncClient, make_app_state
 from tests.unit.api.conftest import make_auth_headers
 
@@ -270,6 +271,7 @@ class TestRestoreBackup:
             ctrl,
             state=state,
             data=request,
+            idempotency_key="restore-key",
         )
 
         service.restore_from_backup.assert_awaited_once_with(
@@ -291,7 +293,9 @@ class TestRestoreBackup:
             confirm=True,
         )
         ctrl = _controller()
-        await ctrl.restore_backup.fn(ctrl, state=state, data=request)
+        await ctrl.restore_backup.fn(
+            ctrl, state=state, data=request, idempotency_key="restore-key"
+        )
 
         service.restore_from_backup.assert_awaited_once_with(
             "abc123def456",
@@ -307,7 +311,9 @@ class TestRestoreBackup:
 
         ctrl = _controller()
         with pytest.raises(ValidationError) as exc_info:
-            await ctrl.restore_backup.fn(ctrl, state=state, data=request)
+            await ctrl.restore_backup.fn(
+                ctrl, state=state, data=request, idempotency_key="restore-key"
+            )
 
         assert exc_info.value.status_code == 422
 
@@ -328,7 +334,9 @@ class TestRestoreBackup:
         )
         ctrl = _controller()
         with pytest.raises(BackupNotFoundError):
-            await ctrl.restore_backup.fn(ctrl, state=state, data=request)
+            await ctrl.restore_backup.fn(
+                ctrl, state=state, data=request, idempotency_key="restore-key"
+            )
 
     async def test_restore_raises_409_on_in_progress(self) -> None:
         state, service = _make_state_and_service()
@@ -340,7 +348,9 @@ class TestRestoreBackup:
         )
         ctrl = _controller()
         with pytest.raises(ConflictError) as exc_info:
-            await ctrl.restore_backup.fn(ctrl, state=state, data=request)
+            await ctrl.restore_backup.fn(
+                ctrl, state=state, data=request, idempotency_key="restore-key"
+            )
 
         assert exc_info.value.status_code == 409
 
@@ -354,7 +364,9 @@ class TestRestoreBackup:
         )
         ctrl = _controller()
         with pytest.raises(ValidationError) as exc_info:
-            await ctrl.restore_backup.fn(ctrl, state=state, data=request)
+            await ctrl.restore_backup.fn(
+                ctrl, state=state, data=request, idempotency_key="restore-key"
+            )
 
         assert exc_info.value.status_code == 422
 
@@ -371,10 +383,54 @@ class TestRestoreBackup:
         )
         ctrl = _controller()
         with pytest.raises(RestoreError) as exc_info:
-            await ctrl.restore_backup.fn(ctrl, state=state, data=request)
+            await ctrl.restore_backup.fn(
+                ctrl, state=state, data=request, idempotency_key="restore-key"
+            )
 
         assert exc_info.value.status_code == 500
         assert exc_info.value.error_code == ErrorCode.BACKUP_RESTORE_FAILED
+
+    def test_restore_signature_marks_idempotency_key_required(self) -> None:
+        sig = inspect.signature(BackupController.restore_backup.fn)
+        param = sig.parameters["idempotency_key"]
+        # A required header parameter carries no default value.
+        assert param.default is inspect.Parameter.empty
+
+    async def test_restore_timed_out_raises_409(self) -> None:
+        """A concurrent in-flight restore (timed_out) surfaces a 409."""
+
+        async def _timed_out(
+            *,
+            scope: object,
+            key: object,
+            callback: Callable[[], Awaitable[object]],
+        ) -> IdempotencyResult:
+            del scope, key, callback
+            return IdempotencyResult(result=None, fresh=False, timed_out=True)
+
+        service = AsyncMock(spec=BackupService)
+        idempotency_service = MagicMock(spec=IdempotencyService)
+        idempotency_service.run_idempotent = _timed_out
+        app_state = make_app_state(
+            cursor_secret=CursorSecret.from_key("test-key-32-bytes-padding0000000"),
+            slices={
+                BackupStateSlice: {"service": service},
+                ApiCoreStateSlice: {"idempotency_service": idempotency_service},
+            },
+        )
+        state = State()
+        state.app_state = app_state
+
+        request = RestoreRequest(backup_id="abc123def456", confirm=True)
+        ctrl = _controller()
+        with pytest.raises(ConflictError) as exc_info:
+            await ctrl.restore_backup.fn(
+                ctrl, state=state, data=request, idempotency_key="restore-key"
+            )
+        assert exc_info.value.status_code == 409
+        # The callback never ran: the restore must not touch the service
+        # when a concurrent claim is in flight.
+        service.restore_from_backup.assert_not_called()
 
 
 @pytest.mark.unit
@@ -392,7 +448,9 @@ class TestRestoreConfirmGate:
 
         ctrl = _controller()
         with pytest.raises(ValidationError):
-            await ctrl.restore_backup.fn(ctrl, state=state, data=request)
+            await ctrl.restore_backup.fn(
+                ctrl, state=state, data=request, idempotency_key="restore-key"
+            )
 
         # Service must never be called when confirm is false.
         # ``assert_not_called()`` is stricter than ``assert_not_awaited()``:

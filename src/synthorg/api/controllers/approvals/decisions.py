@@ -1,13 +1,17 @@
 # module-kind: controller
 """Approvals decision endpoints -- create, approve, reject."""
 
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+from typing import Annotated
 from uuid import UUID, uuid4
 
 from litestar import Controller, Request, post
 from litestar.datastructures import State
+from litestar.params import HeaderParameter
 
 from synthorg._core.features import require_service
+from synthorg.api.api_core_state import idempotency_service_of
 from synthorg.api.auth.controller_helpers import require_authenticated_user
 from synthorg.api.controllers.approvals._notify import (
     _decided_attribution,
@@ -38,10 +42,68 @@ from synthorg.api.ws_models import WsEventType
 from synthorg.approval.enums import ApprovalStatus
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.domain_errors import ConflictError
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APPROVAL_CREATED
+from synthorg.observability.events.idempotency import IDEMPOTENCY_CLAIM_IN_FLIGHT
 
 logger = get_logger(__name__)
+
+_IdempotencyKeyHeader = Annotated[
+    NotBlankStr,
+    HeaderParameter(
+        name="Idempotency-Key",
+        description=(
+            "RFC-style retry-safe key. Required: an identical key within "
+            "24h returns the cached decision response instead of re-running "
+            "the decision, so a 5xx-driven client retry cannot double-fire "
+            "the notification / resume-signal side effects."
+        ),
+        required=True,
+        min_length=1,
+        max_length=255,
+    ),
+]
+
+
+async def _decide_idempotent(
+    app_state: AppState,
+    *,
+    scope: str,
+    key: str,
+    endpoint: str,
+    decide: Callable[[], Awaitable[dict[str, object]]],
+) -> ApprovalResponse:
+    """Run *decide* under the idempotency guard and re-hydrate the response.
+
+    The callback owns the full decision (re-read, PENDING gate, durable
+    write, notify) and returns the JSON-dumped :class:`ApprovalResponse`;
+    a repeated key returns the cached dict, which is re-validated here so
+    callers always receive a typed response.
+
+    Returns:
+        The (fresh or cached) approval response.
+
+    Raises:
+        ConflictError: If a concurrent in-flight decision holds the same
+            idempotency key.
+    """
+    outcome = await idempotency_service_of(app_state).run_idempotent(
+        scope=scope,
+        key=key,
+        callback=decide,
+    )
+    if outcome.timed_out:
+        logger.warning(
+            IDEMPOTENCY_CLAIM_IN_FLIGHT,
+            scope=scope,
+            idempotency_key=key,
+            endpoint=endpoint,
+        )
+        msg = "Concurrent in-flight decision with this idempotency key"
+        raise ConflictError(msg)
+    return ApprovalResponse.model_validate(outcome.result)
 
 
 class ApprovalsDecisionsController(Controller):
@@ -145,73 +207,86 @@ class ApprovalsDecisionsController(Controller):
         approval_id: PathId,
         data: ApproveRequest,
         request: Request[object, object, State],
+        idempotency_key: _IdempotencyKeyHeader,
     ) -> ApiResponse[ApprovalResponse]:
         """Approve a pending approval item.
 
         The ``decided_by`` field is populated from the authenticated
-        user's username.
+        user's username. The decision runs under the idempotency guard
+        so a retried request with the same ``Idempotency-Key`` returns
+        the cached response without re-firing the side effects.
 
         Args:
             state: Application state.
             approval_id: Approval identifier.
             data: Approval payload with optional comment.
             request: The incoming HTTP request.
+            idempotency_key: Required caller-supplied retry token.
 
         Returns:
             Updated approval response with urgency fields.
 
         Raises:
             NotFoundError: If the approval is not found.
-            ConflictError: If the approval is not in PENDING status.
+            ConflictError: If the approval is not in PENDING status, or a
+                concurrent decision holds the same idempotency key.
         """
         app_state: AppState = state.app_state
-        item = await _get_approval_or_404(app_state, approval_id)
 
-        _resolve_decision(request, item, approval_id)
-        decided_by, decided_by_user_id = _decided_attribution()
-        now = datetime.now(UTC)
-        previous_status = item.status
-        updated = item.model_copy(
-            update={
-                "status": ApprovalStatus.APPROVED,
-                "decided_at": now,
-                "decided_by": decided_by,
-                "decision_reason": data.comment,
-            },
-        )
-        # Pre-resolve urgency thresholds before the durable decision
-        # write so a slow settings backend can't strand a committed
-        # decision behind a blocked response (which would prompt the
-        # client to retry against an already-decided approval).
-        critical_seconds, high_seconds = await _resolve_urgency_thresholds(app_state)
-        # ``_save_decision_and_notify`` emits the
-        # ``APPROVAL_STATUS_TRANSITIONED`` log immediately after the
-        # persistence write succeeds, so a downstream notification or
-        # resume-signal failure cannot strand the row in a decided
-        # state without a corresponding transition entry. The log
-        # uses ``decided_by_user_id`` (not username) to keep the
-        # observability stream free of human-readable identifiers.
-        saved = await _save_decision_and_notify(
-            app_state,
-            request,
-            approval_id,
-            updated,
-            approved=True,
-            decided_by=decided_by,
-            decided_by_user_id=decided_by_user_id,
-            previous_status=previous_status,
-            decision_reason=data.comment,
-            ws_event=WsEventType.APPROVAL_APPROVED,
-        )
-
-        return ApiResponse(
-            data=_to_approval_response(
+        async def _do_approve() -> dict[str, object]:
+            item = await _get_approval_or_404(app_state, approval_id)
+            _resolve_decision(request, item, approval_id)
+            decided_by, decided_by_user_id = _decided_attribution()
+            now = datetime.now(UTC)
+            previous_status = item.status
+            updated = item.model_copy(
+                update={
+                    "status": ApprovalStatus.APPROVED,
+                    "decided_at": now,
+                    "decided_by": decided_by,
+                    "decision_reason": data.comment,
+                },
+            )
+            # Pre-resolve urgency thresholds before the durable decision
+            # write so a slow settings backend can't strand a committed
+            # decision behind a blocked response.
+            critical_seconds, high_seconds = await _resolve_urgency_thresholds(
+                app_state
+            )
+            # ``_save_decision_and_notify`` emits the
+            # ``APPROVAL_STATUS_TRANSITIONED`` log immediately after the
+            # persistence write succeeds, so a downstream notification or
+            # resume-signal failure cannot strand the row in a decided
+            # state without a corresponding transition entry. The log
+            # uses ``decided_by_user_id`` (not username) to keep the
+            # observability stream free of human-readable identifiers.
+            saved = await _save_decision_and_notify(
+                app_state,
+                request,
+                approval_id,
+                updated,
+                approved=True,
+                decided_by=decided_by,
+                decided_by_user_id=decided_by_user_id,
+                previous_status=previous_status,
+                decision_reason=data.comment,
+                ws_event=WsEventType.APPROVAL_APPROVED,
+            )
+            return _to_approval_response(
                 saved,
                 now=now,
                 urgency_critical_seconds=critical_seconds,
                 urgency_high_seconds=high_seconds,
-            )
+            ).model_dump(mode="json")
+
+        response = await _decide_idempotent(
+            app_state,
+            scope="approval:approve",
+            key=idempotency_key,
+            endpoint="approvals.approve",
+            decide=_do_approve,
         )
+        return ApiResponse(data=response)
 
     @post(
         "/{approval_id:str}/reject",
@@ -227,67 +302,80 @@ class ApprovalsDecisionsController(Controller):
         approval_id: PathId,
         data: RejectRequest,
         request: Request[object, object, State],
+        idempotency_key: _IdempotencyKeyHeader,
     ) -> ApiResponse[ApprovalResponse]:
         """Reject a pending approval item.
 
         The ``decided_by`` field is populated from the authenticated
-        user's username.
+        user's username. The decision runs under the idempotency guard
+        so a retried request with the same ``Idempotency-Key`` returns
+        the cached response without re-firing the side effects.
 
         Args:
             state: Application state.
             approval_id: Approval identifier.
             data: Rejection payload with mandatory reason.
             request: The incoming HTTP request.
+            idempotency_key: Required caller-supplied retry token.
 
         Returns:
             Updated approval response with urgency fields.
 
         Raises:
             NotFoundError: If the approval is not found.
-            ConflictError: If the approval is not in PENDING status.
+            ConflictError: If the approval is not in PENDING status, or a
+                concurrent decision holds the same idempotency key.
         """
         app_state: AppState = state.app_state
-        item = await _get_approval_or_404(app_state, approval_id)
 
-        _resolve_decision(request, item, approval_id)
-        decided_by, decided_by_user_id = _decided_attribution()
-        now = datetime.now(UTC)
-        previous_status = item.status
-        updated = item.model_copy(
-            update={
-                "status": ApprovalStatus.REJECTED,
-                "decided_at": now,
-                "decided_by": decided_by,
-                "decision_reason": data.reason,
-            },
-        )
-        # Pre-resolve urgency thresholds before the durable decision
-        # write so a slow settings backend can't strand a committed
-        # decision behind a blocked response (which would prompt the
-        # client to retry against an already-decided approval).
-        critical_seconds, high_seconds = await _resolve_urgency_thresholds(app_state)
-        # ``_save_decision_and_notify`` emits the
-        # ``APPROVAL_STATUS_TRANSITIONED`` log immediately after the
-        # persistence write succeeds (see the approve branch above
-        # for the rationale).
-        saved = await _save_decision_and_notify(
-            app_state,
-            request,
-            approval_id,
-            updated,
-            approved=False,
-            decided_by=decided_by,
-            decided_by_user_id=decided_by_user_id,
-            previous_status=previous_status,
-            decision_reason=data.reason,
-            ws_event=WsEventType.APPROVAL_REJECTED,
-        )
-
-        return ApiResponse(
-            data=_to_approval_response(
+        async def _do_reject() -> dict[str, object]:
+            item = await _get_approval_or_404(app_state, approval_id)
+            _resolve_decision(request, item, approval_id)
+            decided_by, decided_by_user_id = _decided_attribution()
+            now = datetime.now(UTC)
+            previous_status = item.status
+            updated = item.model_copy(
+                update={
+                    "status": ApprovalStatus.REJECTED,
+                    "decided_at": now,
+                    "decided_by": decided_by,
+                    "decision_reason": data.reason,
+                },
+            )
+            # Pre-resolve urgency thresholds before the durable decision
+            # write so a slow settings backend can't strand a committed
+            # decision behind a blocked response.
+            critical_seconds, high_seconds = await _resolve_urgency_thresholds(
+                app_state
+            )
+            # ``_save_decision_and_notify`` emits the
+            # ``APPROVAL_STATUS_TRANSITIONED`` log immediately after the
+            # persistence write succeeds (see the approve branch above
+            # for the rationale).
+            saved = await _save_decision_and_notify(
+                app_state,
+                request,
+                approval_id,
+                updated,
+                approved=False,
+                decided_by=decided_by,
+                decided_by_user_id=decided_by_user_id,
+                previous_status=previous_status,
+                decision_reason=data.reason,
+                ws_event=WsEventType.APPROVAL_REJECTED,
+            )
+            return _to_approval_response(
                 saved,
                 now=now,
                 urgency_critical_seconds=critical_seconds,
                 urgency_high_seconds=high_seconds,
-            )
+            ).model_dump(mode="json")
+
+        response = await _decide_idempotent(
+            app_state,
+            scope="approval:reject",
+            key=idempotency_key,
+            endpoint="approvals.reject",
+            decide=_do_reject,
         )
+        return ApiResponse(data=response)

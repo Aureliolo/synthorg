@@ -24,14 +24,12 @@ from synthorg.api.auth.presence import UserPresence
 from synthorg.api.auth.service import AuthService
 from synthorg.api.auth.ticket_store import WsTicketStore
 from synthorg.api.cursor import CursorSecret
-from synthorg.api.services.idempotency_service import (
-    IdempotencyService,
-)
 from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.api.services.workflow_rollback_service import (
     WorkflowRollbackService,
 )
 from synthorg.api.state_slices import AppStateSliceMixin
+from synthorg.idempotency import IdempotencyService
 from synthorg.persistence.auth_protocol import (
     LockoutRepository as LockoutStore,
 )

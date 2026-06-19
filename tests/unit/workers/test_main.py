@@ -13,11 +13,66 @@ import pytest
 from synthorg.workers.__main__ import (
     _DEFAULT_WORKER_COUNT,
     _build_parser,
+    _build_seen_claims_backend,
     _resolve_http_timeout,
     _resolve_worker_count,
 )
 
 pytestmark = pytest.mark.unit
+
+
+def _clear_db_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Strip every database-config env var the seen-claims builder reads."""
+    for var in (
+        "SYNTHORG_DATABASE_URL",
+        "SYNTHORG_DB_PATH",
+        "SYNTHORG_POSTGRES_SSL_MODE",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+
+def test_seen_claims_backend_none_when_no_dedup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``--no-dedup`` skips the backend even when a database is configured."""
+    monkeypatch.setenv("SYNTHORG_DB_PATH", "data/worker.db")
+    assert _build_seen_claims_backend(no_dedup=True) is None
+
+
+def test_seen_claims_backend_none_when_no_db_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No database env -> no backend (NATS-only smoke-test behaviour)."""
+    _clear_db_env(monkeypatch)
+    assert _build_seen_claims_backend(no_dedup=False) is None
+
+
+def test_seen_claims_backend_built_from_sqlite_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A ``SYNTHORG_DB_PATH`` yields a disconnected SQLite backend."""
+    _clear_db_env(monkeypatch)
+    monkeypatch.setenv("SYNTHORG_DB_PATH", "data/worker.db")
+    backend = _build_seen_claims_backend(no_dedup=False)
+    assert backend is not None
+    # Built disconnected: the type confirms the SQLite branch without
+    # touching ``seen_claims`` (whose accessor raises until connect()).
+    assert type(backend).__name__ == "SQLitePersistenceBackend"
+
+
+def test_seen_claims_backend_built_from_database_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A ``SYNTHORG_DATABASE_URL`` takes precedence and builds Postgres."""
+    _clear_db_env(monkeypatch)
+    monkeypatch.setenv(
+        "SYNTHORG_DATABASE_URL",
+        "postgresql://user:pass@localhost:5432/synthorg",
+    )
+    monkeypatch.setenv("SYNTHORG_POSTGRES_SSL_MODE", "disable")
+    backend = _build_seen_claims_backend(no_dedup=False)
+    assert backend is not None
+    assert type(backend).__name__ == "PostgresPersistenceBackend"
 
 
 def test_explicit_flag_wins(monkeypatch: pytest.MonkeyPatch) -> None:

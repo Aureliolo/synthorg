@@ -98,6 +98,25 @@ async def _do_backup_as_dict(
     return dumped
 
 
+async def _do_restore_as_dict(
+    restore_callable: Callable[[], Awaitable[RestoreResponse]],
+) -> dict[str, object]:
+    """Bridge a ``RestoreResponse``-returning callable to a JSON dict.
+
+    Mirrors :func:`_do_backup_as_dict`: the idempotency service caches a
+    JSON-serialized response, so the Pydantic model is dumped (and
+    round-trip validated to reject a corrupt payload before it pollutes
+    the cache) and re-validated on the controller's cache-hit branch.
+
+    Returns:
+        Mapping with the declared key/value types.
+    """
+    response = await restore_callable()
+    dumped = response.model_dump(mode="json")
+    RestoreResponse.model_validate(dumped)
+    return dumped
+
+
 class BackupController(Controller):
     """Admin endpoints for backup and restore operations.
 
@@ -326,6 +345,22 @@ class BackupController(Controller):
         self,
         state: State,
         data: RestoreRequest,
+        idempotency_key: Annotated[
+            NotBlankStr,
+            HeaderParameter(
+                name="Idempotency-Key",
+                description=(
+                    "RFC-style retry-safe key. Required: identical keys "
+                    "within 24h return the cached restore result instead of "
+                    "running a second restore. Without a key a 5xx-driven "
+                    "client retry could launch concurrent restores over the "
+                    "same data."
+                ),
+                required=True,
+                min_length=1,
+                max_length=255,
+            ),
+        ],
     ) -> ApiResponse[RestoreResponse]:
         """Restore from a backup.
 
@@ -334,16 +369,21 @@ class BackupController(Controller):
         Args:
             state: Application state.
             data: Restore request with backup_id and confirmation.
+            idempotency_key: Required caller-supplied retry token; a
+                repeated key within the TTL returns the cached result
+                rather than re-running the restore.
 
         Returns:
             Restore response with safety backup ID.
 
         Raises:
             ValidationError: If confirm is false or manifest invalid (422).
-            ConflictError: If a backup is in progress (409).
+            ConflictError: If a backup is in progress (409) or a
+                concurrent restore holds the same idempotency key.
             NotFoundError: If the backup does not exist (404).
             RestoreError: If the restore fails (re-raised so the
-                ``BACKUP_RESTORE_FAILED`` code survives).
+                ``BACKUP_RESTORE_FAILED`` code survives), or a cached
+                restore payload fails validation.
             BackupNotFoundError: Raised on the corresponding failure path.
         """
         if not data.confirm:
@@ -362,10 +402,18 @@ class BackupController(Controller):
             raise ValidationError(msg)
 
         app_state: AppState = state.app_state
-        try:
-            response = await _backup_service(app_state).restore_from_backup(
+
+        async def _do_restore() -> RestoreResponse:
+            return await _backup_service(app_state).restore_from_backup(
                 data.backup_id,
                 components=data.components,
+            )
+
+        try:
+            outcome = await idempotency_service_of(app_state).run_idempotent(
+                scope="backup:restore",
+                key=idempotency_key,
+                callback=lambda: _do_restore_as_dict(_do_restore),
             )
         except BackupNotFoundError:
             logger.warning(
@@ -413,4 +461,28 @@ class BackupController(Controller):
                 logger, BACKUP_RESTORE_FAILED, exc, backup_id=data.backup_id
             )
             raise
+
+        if outcome.timed_out:
+            # Discriminated 409 path: a concurrent in-flight restore holds
+            # the same idempotency key.
+            logger.warning(
+                IDEMPOTENCY_CLAIM_IN_FLIGHT,
+                scope="backup:restore",
+                idempotency_key=idempotency_key,
+                endpoint="backup.restore",
+            )
+            msg = "Concurrent in-flight restore with this idempotency key"
+            raise ConflictError(msg)
+        try:
+            response = RestoreResponse.model_validate(outcome.result)
+        except (ValueError, TypeError) as exc:
+            log_exception_redacted(
+                logger,
+                BACKUP_RESTORE_FAILED,
+                exc,
+                backup_id=data.backup_id,
+                stage="cached_restore_validate",
+            )
+            msg = "Cached restore response failed validation; rerun the restore"
+            raise RestoreError(msg) from exc
         return ApiResponse(data=response)

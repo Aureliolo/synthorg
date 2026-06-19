@@ -125,6 +125,8 @@ WORKERS_MAIN_INVALID_EXECUTOR_CONFIG: Final[str] = (
 WORKERS_MAIN_PLACEHOLDER_EXECUTOR_INVOKED: Final[str] = (
     "workers.main.placeholder_executor_invoked"
 )
+WORKERS_MAIN_SEEN_CLAIMS_WIRED: Final[str] = "workers.main.seen_claims_wired"
+WORKERS_MAIN_SEEN_CLAIMS_SKIPPED: Final[str] = "workers.main.seen_claims_skipped"
 
 # HTTP-callback executor events
 WORKERS_EXECUTOR_HTTP_INVOKED: Final[str] = "workers.executor.http_invoked"

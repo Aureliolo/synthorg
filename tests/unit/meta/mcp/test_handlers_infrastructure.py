@@ -6,6 +6,7 @@ integration health.
 """
 
 import json
+from datetime import datetime
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -14,6 +15,7 @@ import structlog.testing
 
 from synthorg.api.state import AppState
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.types import NotBlankStr
 from synthorg.infrastructure.services import (
     AuditReadService,
     BackupFacadeService,
@@ -31,11 +33,77 @@ from synthorg.infrastructure.services import (
 from synthorg.infrastructure.state import FacadesStateSlice
 from synthorg.meta.mcp.handlers.infrastructure import INFRASTRUCTURE_HANDLERS
 from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
+from synthorg.persistence.idempotency_protocol import (
+    IdempotencyClaim,
+    IdempotencyOutcome,
+    IdempotencyRecord,
+)
+from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.settings.state import SettingsStateSlice
-from tests._shared import make_app_state
+from tests._shared import make_app_state, mock_of
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
+
+
+class _FakeIdempotencyRepo:
+    """Always-FRESH in-memory idempotency repo for the MCP restore path.
+
+    The restore handler builds its own ``IdempotencyService`` over
+    ``persistence.idempotency_keys`` (it cannot reach the api-side
+    accessor). The MCP tests issue a single restore, so an always-FRESH
+    claim keeps the ``run_idempotent`` wrapper executing the callback
+    once without standing up a real persistence backend.
+    """
+
+    async def claim(
+        self,
+        *,
+        scope: NotBlankStr,
+        key: NotBlankStr,
+        ttl_seconds: int,
+        now: datetime,
+    ) -> IdempotencyClaim:
+        del scope, key, ttl_seconds, now
+        return IdempotencyClaim(
+            outcome=IdempotencyOutcome.FRESH,
+            claim_token=NotBlankStr("test-token"),
+        )
+
+    async def complete(
+        self,
+        *,
+        scope: NotBlankStr,
+        key: NotBlankStr,
+        response_body: str,
+        response_hash: str,
+        claim_token: NotBlankStr,
+    ) -> bool:
+        del scope, key, response_body, response_hash, claim_token
+        return True
+
+    async def fail(
+        self,
+        *,
+        scope: NotBlankStr,
+        key: NotBlankStr,
+        claim_token: NotBlankStr,
+    ) -> bool:
+        del scope, key, claim_token
+        return True
+
+    async def get(
+        self,
+        *,
+        scope: NotBlankStr,
+        key: NotBlankStr,
+    ) -> IdempotencyRecord | None:
+        del scope, key
+        return None
+
+    async def cleanup_expired(self, now: datetime) -> int:
+        del now
+        return 0
 
 
 @pytest.fixture
@@ -162,6 +230,9 @@ def fake_app_state(  # noqa: PLR0913
         task_engine=object(),
         cost_tracker=object(),
         agent_registry=object(),
+        persistence=mock_of[PersistenceBackend](
+            idempotency_keys=_FakeIdempotencyRepo(),
+        ),
         slices={
             SettingsStateSlice: {"settings_read_service": fake_settings},
             FacadesStateSlice: {
@@ -337,13 +408,32 @@ class TestBackup:
         with structlog.testing.capture_logs() as events:
             response = await handler(
                 app_state=fake_app_state,
-                arguments={"backup_id": "b1", "confirm": True, "reason": "dr"},
+                arguments={
+                    "backup_id": "b1",
+                    "confirm": True,
+                    "reason": "dr",
+                    "idempotency_key": "restore-key-1",
+                },
                 actor=make_test_actor(),
             )
         assert json.loads(response)["status"] == "ok"
         exec_events = [e for e in events if e.get("event") == MCP_ADMIN_OP_EXECUTED]
         assert len(exec_events) == 1
         assert exec_events[0]["tool_name"] == "synthorg_backup_restore"
+
+    async def test_restore_requires_idempotency_key(
+        self, fake_app_state: AppState
+    ) -> None:
+        handler = INFRASTRUCTURE_HANDLERS["synthorg_backup_restore"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={"backup_id": "b1", "confirm": True, "reason": "dr"},
+            actor=make_test_actor(),
+        )
+        # The required idempotency_key arg is missing, so the typed-args
+        # parse rejects the call with an error envelope rather than
+        # running an unguarded (retry-unsafe) restore.
+        assert json.loads(response)["status"] == "error"
 
 
 class TestUsers:

@@ -8,6 +8,8 @@ from synthorg.backup.models import BackupTrigger
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import ConflictError
+from synthorg.idempotency import IdempotencyService
 from synthorg.infrastructure.state import backup_facade_service_of
 from synthorg.meta.mcp.domains._remaining_args import (
     BackupCreateArgs,
@@ -47,6 +49,7 @@ from synthorg.observability.events.mcp import (
     MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
+from synthorg.persistence.state import persistence_of
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -223,20 +226,43 @@ async def _backup_restore(
     tool = "synthorg_backup_restore"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        backup_id = typed_args(arguments, BackupRestoreArgs).backup_id
+        args = typed_args(arguments, BackupRestoreArgs)
+        backup_id = args.backup_id
         actor_id = require_actor_id(resolved_actor)
-        result = await backup_facade_service_of(app_state).restore_backup(
-            backup_id=backup_id,
-            actor_id=actor_id,
-            reason=reason,
+
+        async def _restore() -> dict[str, object]:
+            result = await backup_facade_service_of(app_state).restore_backup(
+                backup_id=backup_id,
+                actor_id=actor_id,
+                reason=reason,
+            )
+            # Logged inside the callback so a cache-hit (idempotent retry)
+            # does not record a second admin-op execution for a restore
+            # that never actually ran.
+            logger.info(
+                MCP_ADMIN_OP_EXECUTED,
+                tool_name=tool,
+                actor_agent_id=actor_id,
+                reason=reason,
+                backup_id=backup_id,
+            )
+            return dict(result)
+
+        # ``meta`` cannot import ``api.services`` (layering contract), so
+        # the handler constructs the service over the neutral repository
+        # instead of reaching for the api-side ``idempotency_service_of``
+        # accessor; the dedup state lives in the shared repo, so a
+        # per-call instance is equivalent.
+        service = IdempotencyService(persistence_of(app_state).idempotency_keys)
+        outcome = await service.run_idempotent(
+            scope="mcp:backup_restore",
+            key=f"{backup_id}:{args.idempotency_key}",
+            callback=_restore,
         )
-        logger.info(
-            MCP_ADMIN_OP_EXECUTED,
-            tool_name=tool,
-            actor_agent_id=actor_id,
-            reason=reason,
-            backup_id=backup_id,
-        )
+        if outcome.timed_out:
+            msg = "Concurrent in-flight restore with this idempotency key"
+            return err(ConflictError(msg), domain_code="conflict")
+        payload = outcome.result
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except GuardrailViolationError as exc:
@@ -250,7 +276,7 @@ async def _backup_restore(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(dict(result))
+    return ok(payload)
 
 
 BACKUP_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
