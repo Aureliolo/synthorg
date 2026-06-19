@@ -9,6 +9,7 @@
  */
 import { useEffect, useState } from 'react'
 import { Loader2, TrendingUp } from 'lucide-react'
+import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
@@ -58,26 +59,23 @@ export default function LearningCurvePage() {
 
   useEffect(() => {
     let cancelled = false
-    void Promise.resolve().then(async () => {
-      if (cancelled) return
+    const fetchData = async () => {
       setLoading(true)
       setError(null)
       try {
         const result = await getLearningCurve()
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- flipped by effect cleanup during the await; CFA cannot see the closure mutation
         if (cancelled) return
         setCurve(result)
       } catch (err) {
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- flipped by effect cleanup during the await; CFA cannot see the closure mutation
         if (cancelled) return
         const message = getErrorMessage(err)
         log.error('getLearningCurve failed', { error: sanitizeForLog(message) })
         setError(message)
       } finally {
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- flipped by effect cleanup during the await; CFA cannot see the closure mutation
         if (!cancelled) setLoading(false)
       }
-    })
+    }
+    void fetchData()
     return () => {
       cancelled = true
     }
@@ -111,10 +109,11 @@ export default function LearningCurvePage() {
           </ErrorBoundary>
         </>
       ) : (
-        <div className="flex items-center justify-center py-12 text-text-muted">
-          <TrendingUp className="mr-2 size-5" />
-          No learning data available
-        </div>
+        <EmptyState
+          icon={TrendingUp}
+          title="No learning data available"
+          description="Benchmark scores will appear here once the golden-company evaluation has recorded at least one run."
+        />
       )}
     </div>
   )

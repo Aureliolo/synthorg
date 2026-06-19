@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react'
 import {
   Skeleton,
   SkeletonCard,
+  SkeletonChart,
   SkeletonMetric,
   SkeletonTable,
   SkeletonText,
@@ -37,6 +38,10 @@ export const Card: Story = {
 
 export const Table: Story = {
   render: () => <SkeletonTable rows={5} columns={4} />,
+}
+
+export const Chart: Story = {
+  render: () => <SkeletonChart className="w-96" />,
 }
 
 export const NoShimmer: Story = {

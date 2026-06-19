@@ -57,11 +57,12 @@ class EntrySelector(Protocol):
 
 @runtime_checkable
 class ConsolidationOp(Protocol):
+    async def prepare(self, agent_id: NotBlankStr) -> ConsolidationContext: ...
+
     async def consolidate(
         self,
-        to_remove: tuple[MemoryEntry, ...],
+        group: SelectionGroup,
         *,
-        category: MemoryCategory,
         context: ConsolidationContext,
     ) -> OpResult: ...
 ```
@@ -126,8 +127,8 @@ Operations:
   (key-fact extraction).
 - `LLMSynthesisOp`: LLM synthesis with trajectory context + the
   truncation accounting; concatenation fallback on LLM failure or
-  empty result. Reports the truncation-survivor subset via
-  `OpResult.represented`.
+  empty result. Reports the successfully deleted subset via
+  `OpResult.removed_ids`.
 - `DensityRoutingOp(classifier, extractive_op, abstractive_op)`:
   majority-vote density classification over the group, then delegates
   to the extractive or abstractive op and stamps the

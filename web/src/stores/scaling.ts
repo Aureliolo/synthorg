@@ -6,12 +6,15 @@ import {
   getScalingSignals,
   getScalingStrategies,
   triggerScalingEvaluation,
+  updateScalingPriority,
+  updateScalingStrategy,
   type ScalingDecisionResponse,
   type ScalingSignalResponse,
   type ScalingStrategyResponse,
 } from '@/api/endpoints/scaling'
 import { createLogger } from '@/lib/logger'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
+import { useToastStore } from '@/stores/toast'
 import { sanitizeWsString } from '@/utils/ws-sanitize'
 import type { WsEvent } from '@/api/types/websocket'
 
@@ -30,12 +33,17 @@ interface ScalingState {
   loading: boolean
   error: string | null
   evaluating: boolean
+  mutating: boolean
 
   fetchAll: () => Promise<void>
   fetchStrategies: () => Promise<void>
   fetchDecisions: () => Promise<void>
   fetchSignals: () => Promise<void>
   evaluateNow: () => Promise<ScalingDecisionResponse[]>
+  /** Enable/disable a strategy and refetch. Returns false on failure. */
+  setStrategyEnabled: (name: string, enabled: boolean) => Promise<boolean>
+  /** Persist a new strategy priority order and refetch. Returns false on failure. */
+  reorderPriority: (order: readonly string[]) => Promise<boolean>
   updateFromWsEvent: (event: WsEvent) => void
   dispose: () => void
 }
@@ -130,6 +138,58 @@ async function runWsRefresh(get: ScGet): Promise<void> {
   }
 }
 
+async function setStrategyEnabledImpl(
+  set: ScSet,
+  get: ScGet,
+  name: string,
+  enabled: boolean,
+): Promise<boolean> {
+  set({ mutating: true })
+  try {
+    await updateScalingStrategy(name, enabled)
+    await get().fetchStrategies()
+    set({ mutating: false })
+    useToastStore.getState().add({
+      variant: 'success',
+      title: enabled ? 'Strategy enabled' : 'Strategy disabled',
+    })
+    return true
+  } catch (err) {
+    log.error('Failed to update strategy', err)
+    set({ mutating: false })
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, 'Could not update strategy'),
+      description: getErrorMessage(err),
+    })
+    return false
+  }
+}
+
+async function reorderPriorityImpl(
+  set: ScSet,
+  get: ScGet,
+  order: readonly string[],
+): Promise<boolean> {
+  set({ mutating: true })
+  try {
+    await updateScalingPriority(order)
+    await get().fetchStrategies()
+    set({ mutating: false })
+    useToastStore.getState().add({ variant: 'success', title: 'Priority order updated' })
+    return true
+  } catch (err) {
+    log.error('Failed to update priority', err)
+    set({ mutating: false })
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, 'Could not update priority'),
+      description: getErrorMessage(err),
+    })
+    return false
+  }
+}
+
 export const useScalingStore = create<ScalingState>()((set, get) => ({
   strategies: [],
   decisions: [],
@@ -138,6 +198,7 @@ export const useScalingStore = create<ScalingState>()((set, get) => ({
   loading: false,
   error: null,
   evaluating: false,
+  mutating: false,
 
   fetchAll: () => fetchAllImpl(set),
   fetchStrategies: async () => {
@@ -165,6 +226,10 @@ export const useScalingStore = create<ScalingState>()((set, get) => ({
       throw err
     }
   },
+
+  setStrategyEnabled: (name, enabled) => setStrategyEnabledImpl(set, get, name, enabled),
+
+  reorderPriority: (order) => reorderPriorityImpl(set, get, order),
 
   updateFromWsEvent: (event: WsEvent) => {
     log.debug('Scaling WS event', sanitizeWsString(event.event_type, 128))

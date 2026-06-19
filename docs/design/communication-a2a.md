@@ -55,7 +55,7 @@ Outbound (internal -> external)
 ## Agent Card Projection
 
 When the gateway is enabled, SynthOrg serves an Agent Card at
-`/.well-known/agent.json` per the A2A specification. The card is a **safe projection**
+`/.well-known/agent-card.json` per the A2A specification. The card is a **safe projection**
 of `AgentIdentity`; only fields relevant to external capability discovery are exposed:
 
 | AgentIdentity Field | Agent Card Field | Included | Rationale |

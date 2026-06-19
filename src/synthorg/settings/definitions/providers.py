@@ -39,7 +39,13 @@ _r.register(
         key="configs",
         type=SettingType.JSON,
         default=None,
-        description="LLM provider configurations (JSON object keyed by name)",
+        description=(
+            "LLM provider configurations (JSON object keyed by name). Marked"
+            " sensitive so the settings UI masks its value: the blob embeds"
+            " provider credentials. Manage providers through the dedicated"
+            " Providers page (which redacts secrets per field) rather than"
+            " editing this raw JSON setting directly."
+        ),
         group="General",
         sensitive=True,
     )

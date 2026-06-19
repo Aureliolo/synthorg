@@ -36,6 +36,16 @@ export const Indeterminate: Story = {
   },
 }
 
+export const IndeterminateWarning: Story = {
+  args: {
+    variant: 'indeterminate',
+    label: 'Provisioning environment',
+    description: 'Taking longer than expected',
+    startedAt: new Date(Date.now() - 5 * 60 * 1000),
+    warningAfterSeconds: 60,
+  },
+}
+
 export const Stages: Story = {
   args: {
     variant: 'stages',

@@ -193,8 +193,9 @@ dense + BM25 RRF hybrid and optional rerank. Each `MemoryEntry` becomes a
 Two retrieval paths, both first-class:
 
 1. **Transparent** (`ProjectAwareMemoryFacade`): the facade fans out via
-   `asyncio.TaskGroup` to the agent's own memories, project living-docs, AND
-   the knowledge namespace, merging by descending relevance. An agent gets
+   `asyncio.TaskGroup` to the agent's own memories, project living-docs,
+   the knowledge namespace, AND the project brain, merging by descending
+   relevance. An agent gets
    cited corpus hits without calling any special tool.
 2. **Explicit** (`SearchKnowledgeTool`, MCP `knowledge:search`): an agent or
    operator runs a corpus-only query.

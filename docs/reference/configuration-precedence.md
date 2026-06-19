@@ -212,7 +212,7 @@ to the default.
 
 ```python
 from synthorg.settings.bootstrap_resolver import resolve_init_value
-from synthorg.settings.namespaces import SettingNamespace
+from synthorg.settings.enums import SettingNamespace
 
 resolved = resolve_init_value(
     SettingNamespace.API,

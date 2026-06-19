@@ -88,17 +88,19 @@ Higher-seniority agents can delegate tasks to lower-seniority agents within thei
 
 ## Built-in Roles
 
-SynthOrg ships with 50+ built-in roles organised by department:
+SynthOrg ships with 30+ built-in roles organised by department:
 
 | Department | Roles |
 |-----------|-------|
-| Executive | CEO, CTO, CFO, COO |
-| Product | Product Manager, Product Designer, UX Researcher |
-| Engineering | Full-Stack Developer, Backend Developer, Frontend Developer, DevOps Engineer, QA Engineer, Security Engineer, Data Engineer, ML Engineer, Software Architect |
-| Design | UI Designer, Graphic Designer |
-| Data | Data Scientist, Data Analyst, Business Analyst |
-| Operations | SysAdmin, Technical Writer, Project Coordinator |
-| Creative | Content Writer, Marketing Specialist |
+| Executive | CEO, CTO, CFO, COO, CPO |
+| Product | Product Manager, Technical Writer |
+| Design | UX Designer, UI Designer, UX Researcher |
+| Engineering | Software Architect, Frontend Developer, Backend Developer, Full-Stack Developer, DevOps/SRE Engineer, Database Engineer, Knowledge Architect |
+| Security | Security Engineer, Security Operations |
+| Quality Assurance | QA Lead, QA Engineer, Automation Engineer, Performance Engineer, Red Team |
+| Data & Analytics | Data Analyst, Data Engineer, ML Engineer |
+| Operations | Project Manager, Scrum Master, HR Manager |
+| Creative & Marketing | Content Writer, Brand Strategist, Growth Marketer |
 
 ### Custom Roles
 
@@ -106,11 +108,12 @@ Define custom roles when the built-in catalog does not cover your needs:
 
 ```yaml
 custom_roles:
-  - role: "Compliance Officer"
+  - name: "Compliance Officer"
+    department: "operations"
     system_prompt_template: |
       You are a compliance officer responsible for ensuring
       all outputs meet regulatory requirements.
-    skills:
+    required_skills:
       - "regulatory_analysis"
       - "policy_review"
     authority_level: "senior"

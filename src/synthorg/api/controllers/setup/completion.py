@@ -9,6 +9,9 @@ broken provider config leaves the operator a retryable error rather than
 a half-configured runtime that reports itself as "complete".
 """
 
+import asyncio
+from typing import Final
+
 from litestar import Controller, post
 from litestar.datastructures import State
 
@@ -53,6 +56,7 @@ from synthorg.core.normalization import normalize_ascii_lowercase_or_default
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.setup import (
     SETUP_COMPLETE_CHECK_ERROR,
+    SETUP_COMPLETE_SERIALIZED,
     SETUP_COMPLETED,
     SETUP_NO_AGENTS,
     SETUP_NO_COMPANY,
@@ -66,6 +70,11 @@ from synthorg.settings.service_protocol import SettingsServiceProtocol
 from synthorg.settings.state import settings_service_of
 
 logger = get_logger(__name__)
+
+# Above this wait the completion lock was genuinely contended (a
+# concurrent /setup/complete was in flight); an uncontended acquire
+# does not suspend, so its measured wait is effectively zero.
+_LOCK_CONTENTION_LOG_THRESHOLD_SECONDS: Final[float] = 0.001
 
 
 async def _validate_completion_prereqs(
@@ -233,8 +242,17 @@ class SetupCompletionController(Controller):
 
         # Serialise the entire check / validate / reinit / persist flow
         # so two concurrent /setup/complete requests cannot both observe
-        # ``setup_complete=false`` and race on reinit + flag write.
+        # ``setup_complete=false`` and race on reinit + flag write. The
+        # serialization log fires AFTER acquisition, gated on the measured
+        # wait, so it reflects requests that genuinely queued behind an
+        # in-flight completion rather than a stale pre-acquire snapshot;
+        # the loser then hits ``_check_setup_not_complete`` and gets a
+        # clean 409.
+        _t_before = asyncio.get_running_loop().time()
         async with _COMPLETE_LOCK:
+            _waited = asyncio.get_running_loop().time() - _t_before
+            if _waited > _LOCK_CONTENTION_LOG_THRESHOLD_SECONDS:
+                logger.info(SETUP_COMPLETE_SERIALIZED, waited_seconds=round(_waited, 3))
             await _check_setup_not_complete(settings_svc)
             has_agents = await _validate_completion_prereqs(app_state, settings_svc)
             embedder_failure_reason = await _run_embedder_auto_select(

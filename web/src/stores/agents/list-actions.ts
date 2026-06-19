@@ -31,5 +31,12 @@ export function createListActions(set: AgentsSet) {
     setStatusFilter: (s: AgentStatus | null) => set({ statusFilter: s }),
     setSortBy: (key: AgentSortKey) => set({ sortBy: key }),
     setSortDirection: (dir: 'asc' | 'desc') => set({ sortDirection: dir }),
+    clearFilters: () =>
+      set({
+        searchQuery: '',
+        departmentFilter: null,
+        levelFilter: null,
+        statusFilter: null,
+      }),
   }
 }

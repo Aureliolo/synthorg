@@ -148,7 +148,7 @@ Per-type health check implementations with a background `HealthProberService`.
 
 - **Smoothing**: N consecutive failures before marking `unhealthy` (default 3)
 - **Interval**: Configurable (default 5 minutes)
-- **Pattern**: Matches `ProviderHealthProber`
+- **Pattern**: Matches the `ProviderHealthProber` design
 
 ---
 

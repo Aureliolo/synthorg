@@ -73,7 +73,7 @@ Returns a paginated envelope; the `meta.next_cursor` field drives the next page.
 ```bash
 curl -s -b cookies.txt -X POST "$BASE/api/v1/tasks" \
   -H "Content-Type: application/json" \
-  --data '{"title":"Build a sample","description":"Smoke test","acceptance_criteria":["Compiles","Runs"]}'
+  --data '{"title":"Build a sample","description":"Smoke test","type":"development","project":"'"$PROJECT_ID"'","created_by":"'"$AGENT_NAME"'"}'
 ```
 
 ```python
@@ -82,7 +82,9 @@ resp = client.post(
     json={
         "title": "Build a sample",
         "description": "Smoke test",
-        "acceptance_criteria": ["Compiles", "Runs"],
+        "type": "development",
+        "project": project_id,
+        "created_by": agent_name,
     },
 )
 task = resp.json()["data"]
@@ -93,7 +95,7 @@ const r = await fetch(`${base}/api/v1/tasks`, {
   method: 'POST',
   credentials: 'include',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ title: 'Build a sample', description: 'Smoke test', acceptance_criteria: ['Compiles', 'Runs'] }),
+  body: JSON.stringify({ title: 'Build a sample', description: 'Smoke test', type: 'development', project: projectId, created_by: agentName }),
 })
 const { data: task } = await r.json()
 ```
@@ -152,65 +154,72 @@ The approve endpoint walks the request through the intake engine (when in `SUBMI
 ## 7. Fetch budget utilisation
 
 ```bash
-curl -s -b cookies.txt "$BASE/api/v1/budget/utilization" | jq
+curl -s -b cookies.txt "$BASE/api/v1/analytics/overview" | jq
 ```
 
 ```python
-util = client.get("/api/v1/budget/utilization").json()["data"]
-print(f"Monthly: {util['monthly_used_percent']:.1f}% Daily: {util['daily_used_percent']:.1f}%")
+overview = client.get("/api/v1/analytics/overview").json()["data"]
+print(f"Budget used: {overview['budget_used_percent']:.1f}%")
 ```
 
-## 8. Decide on a pending approval
+## 8. Approve a pending approval
+
+Approvals are decided through dedicated `/approve` and `/reject` endpoints (there is
+no combined `/decide` route). `/approve` accepts an optional `comment`; `/reject`
+requires a mandatory `reason`.
 
 ```bash
-curl -s -b cookies.txt -X POST "$BASE/api/v1/approvals/$APPROVAL_ID/decide" \
+curl -s -b cookies.txt -X POST "$BASE/api/v1/approvals/$APPROVAL_ID/approve" \
   -H "Content-Type: application/json" \
-  --data '{"verdict":"approve","rationale":"Canary signal clean."}'
+  --data '{"comment":"Canary signal clean."}'
 ```
 
 ```python
 resp = client.post(
-    f"/api/v1/approvals/{approval_id}/decide",
-    json={"verdict": "approve", "rationale": "Canary signal clean."},
+    f"/api/v1/approvals/{approval_id}/approve",
+    json={"comment": "Canary signal clean."},
 )
+# To reject instead (reason is mandatory):
+# client.post(f"/api/v1/approvals/{approval_id}/reject", json={"reason": "Needs rework."})
 ```
 
-## 9. Invoke an MCP tool
+## 9. Subscribe to the live event WebSocket
 
-```bash
-curl -s -b cookies.txt -X POST "$BASE/api/v1/mcp/invoke" \
-  -H "Content-Type: application/json" \
-  --data '{"tool":"hello.greet","arguments":{"name":"world","times":2}}'
-```
+The WebSocket uses a two-step ticket handshake: exchange your session for a one-time
+ticket, then send it as the first frame after the socket opens.
 
 ```javascript
-const r = await fetch(`${base}/api/v1/mcp/invoke`, {
+// 1. Exchange the session cookie for a one-time WebSocket ticket.
+const ticketResp = await fetch(`${base}/api/v1/auth/ws-ticket`, {
   method: 'POST',
   credentials: 'include',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ tool: 'hello.greet', arguments: { name: 'world', times: 2 } }),
 })
-const result = await r.json()
-```
+const { data: { ticket } } = await ticketResp.json()
 
-## 10. Subscribe to the live event WebSocket
-
-```javascript
-// The session cookie is sent automatically because the WebSocket
-// upgrade runs against the same origin; no Authorization header is
-// involved. Make sure document.cookie still holds the session cookie
-// at upgrade time.
-const ws = new WebSocket(`ws://localhost:3001/api/v1/ws`)
-ws.onmessage = (e) => {
-  const evt = JSON.parse(e.data)
-  console.log('[event]', evt.event_type, evt.payload)
-}
+// 2. Open the socket and authenticate with the ticket on the first frame.
+// Derive ws/wss from the API base so TLS is preserved: an https base
+// yields wss://. Plain ws:// is acceptable only for a localhost base; in
+// any deployment the ticket and event data travel in-band and ws:// would
+// expose them to network observers.
+const ws = new WebSocket(`${base.replace(/^http/, 'ws')}/api/v1/ws`)
 ws.onopen = () => {
-  ws.send(JSON.stringify({ action: 'subscribe', channels: ['tasks', 'approvals'] }))
+  ws.send(JSON.stringify({ action: 'auth', ticket }))
+}
+ws.onmessage = (e) => {
+  const msg = JSON.parse(e.data)
+  if (msg.action === 'auth_ok') {
+    // 3. Once authenticated, subscribe to channels.
+    ws.send(JSON.stringify({ action: 'subscribe', channels: ['tasks', 'approvals'] }))
+    return
+  }
+  console.log('[event]', msg.event_type, msg.payload)
 }
 ```
 
-The first frame the server sends is `{"event_type":"auth_ok"}`; once seen, the channels you subscribed to deliver events in real time. See the [WebSocket Models](../api/layer.md#websocket-models) section of the API reference for the full handshake and event-type catalogue.
+The server's auth acknowledgement frame is `{"action":"auth_ok"}`; once seen, the
+channels you subscribed to deliver events in real time. See the
+[WebSocket Models](../api/layer.md#websocket-models) section of the API reference for
+the full handshake and event-type catalogue.
 
 ## Pagination
 

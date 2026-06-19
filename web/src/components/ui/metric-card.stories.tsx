@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { MetricCard } from './metric-card'
+import { SkeletonMetric } from './skeleton'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatCurrency } from '@/utils/format'
 
@@ -62,6 +63,20 @@ export const FullExample: Story = {
     progress: { current: 24, total: 30 },
     subText: 'of 30 completed',
   },
+}
+
+export const AnimatedValue: Story = {
+  args: {
+    label: 'Tasks Today',
+    value: 24,
+    animateValue: true,
+    sparklineData: SAMPLE_DATA,
+  },
+}
+
+export const Loading: Story = {
+  args: { label: 'Tasks Today', value: 0 },
+  render: () => <SkeletonMetric className="w-64" />,
 }
 
 export const StringValue: Story = {

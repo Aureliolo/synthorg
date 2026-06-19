@@ -12,6 +12,7 @@ import {
   Palette,
   Settings,
   ShieldCheck,
+  Sparkles,
   Users,
   Video,
 } from 'lucide-react'
@@ -204,6 +205,7 @@ function _buildGlobalNavCommands(
     { id: 'nav-messages', label: 'Messages', icon: MessageSquare, action: () => navigate(ROUTES.MESSAGES), group: 'Navigation' },
     { id: 'nav-meetings', label: 'Meetings', icon: Video, action: () => navigate(ROUTES.MEETINGS), group: 'Navigation' },
     { id: 'nav-providers', label: 'Providers', icon: Cpu, action: () => navigate(ROUTES.PROVIDERS), group: 'Navigation' },
+    { id: 'nav-meta', label: 'Meta Loop', icon: Sparkles, action: () => navigate(ROUTES.META), group: 'Navigation', keywords: ['meta', 'governance', 'self-improvement', 'loop'] },
     { id: 'nav-docs', label: 'Documentation', icon: BookOpen, action: navigateToDocs, group: 'Navigation', keywords: ['docs', 'help', 'guide', 'reference'] },
     { id: 'nav-settings', label: 'Settings', icon: Settings, action: () => navigate(ROUTES.SETTINGS), group: 'Navigation', shortcut: ['ctrl', ','] },
     { id: 'notifications-open', label: 'Notifications', icon: Bell, action: openNotificationDrawer, group: 'Navigation', shortcut: ['shift', 'N'] },

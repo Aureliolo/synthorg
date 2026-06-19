@@ -1,7 +1,9 @@
+import { useMemo, useState } from 'react'
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import { ModelStalenessBadge } from '@/components/ui/model-staleness-badge'
+import { SearchInput } from '@/components/ui/search-input'
 import { cn } from '@/lib/utils'
 import { Boxes, Settings2, Trash2 } from 'lucide-react'
 import type { ProviderModelResponse } from '@/api/types/providers'
@@ -115,6 +117,9 @@ interface ProviderModelListProps {
   onConfigure?: ((model: ProviderModelResponse) => void) | undefined
 }
 
+// Show the search box only once the list is long enough to warrant filtering.
+const MODEL_SEARCH_THRESHOLD = 8
+
 export function ProviderModelList({
   models,
   supportsDelete = false,
@@ -123,13 +128,49 @@ export function ProviderModelList({
   onConfigure,
 }: ProviderModelListProps) {
   const hasActions = supportsDelete || supportsConfig
+  const [query, setQuery] = useState('')
+
+  // Show the search box only once the list is long enough to warrant filtering.
+  const showSearch = models.length >= MODEL_SEARCH_THRESHOLD
+
+  const filtered = useMemo(() => {
+    // When the search input is hidden (list below threshold), ignore any
+    // residual query so the user is never stuck on "No matching models"
+    // with no visible way to clear the filter.
+    const q = (showSearch ? query : '').trim().toLowerCase()
+    if (!q) return models
+    return models.filter(
+      (m) => m.id.toLowerCase().includes(q) || (m.alias?.toLowerCase().includes(q) ?? false),
+    )
+  }, [models, query, showSearch])
+
   return (
-    <SectionCard title="Models" icon={Boxes}>
+    <SectionCard
+      title="Models"
+      icon={Boxes}
+      action={
+        showSearch ? (
+          <SearchInput
+            value={query}
+            onChange={setQuery}
+            placeholder="Filter models by id or alias"
+            ariaLabel="Filter models"
+            className="w-56"
+          />
+        ) : undefined
+      }
+    >
       {models.length === 0 ? (
         <EmptyState
           icon={Boxes}
           title="No models configured"
           description="Use 'Discover Models' to auto-detect available models, or add them manually."
+        />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          icon={Boxes}
+          title="No matching models"
+          description="No model id or alias matches your filter. Clear the field to see them all."
         />
       ) : (
         <div className="overflow-x-auto">
@@ -146,7 +187,7 @@ export function ProviderModelList({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {models.map((model) => (
+              {filtered.map((model) => (
                 <ProviderModelRow
                   key={model.id}
                   model={model}

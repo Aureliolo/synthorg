@@ -19,7 +19,7 @@ After this, the `Missing labels` section of the preflight tracking issue should 
 
 ## 2. Create the GitHub environments
 
-CI uses seven GitHub environments for branch-policy gating and to scope secrets. The preflight job audits all of them unconditionally, so create every one even if your fork does not yet exercise the corresponding workflow; a missing environment will keep the preflight tracking issue open.
+CI uses six GitHub environments for branch-policy gating and to scope secrets. The preflight job audits all of them unconditionally, so create every one even if your fork does not yet exercise the corresponding workflow; a missing environment will keep the preflight tracking issue open.
 
 Create at **Settings -> Environments -> New environment**:
 

@@ -27,6 +27,7 @@ export interface MessagesState {
   hasMore: boolean
   loading: boolean
   loadingMore: boolean
+  deleting: boolean
   error: string | null
 
   // Unread tracking: channel name -> count
@@ -43,6 +44,8 @@ export interface MessagesState {
   fetchChannelActivity: () => Promise<void>
   fetchMessages: (channel: string, limit?: number) => Promise<void>
   fetchMoreMessages: (channel: string) => Promise<void>
+  /** Delete a message and drop it from the active thread. Returns false on failure. */
+  deleteMessage: (messageId: string) => Promise<boolean>
   /** Returns true when the event mutated the active channel's thread, so
    *  the caller can gate freshness on a real active-channel update. */
   handleWsEvent: (event: WsEvent, activeChannel: string | null) => boolean

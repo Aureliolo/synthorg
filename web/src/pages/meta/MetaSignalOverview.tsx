@@ -13,7 +13,7 @@ export function MetaSignalOverview({ signals }: MetaSignalOverviewProps) {
     return (
       <EmptyState
         icon={Activity}
-        title="No Signal Data"
+        title="No signal data"
         description="Signal data will appear here when the meta-loop runs its first cycle."
       />
     )

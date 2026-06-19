@@ -9,6 +9,7 @@ import {
   getPriorityLabel,
   getTaskStatusLabel,
   getTaskTypeLabel,
+  parsePriority,
 } from '@/utils/tasks'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatCurrency, formatDateTime } from '@/utils/format'
@@ -49,12 +50,17 @@ interface TaskUpdateProps {
 }
 
 export function DescriptionEdit({ task, onUpdate }: TaskUpdateProps) {
+  const descriptionId = `task-description-edit-${task.id}`
   return (
     <div>
-      <label className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+      <label
+        htmlFor={descriptionId}
+        className="text-[11px] font-semibold uppercase tracking-wider text-text-muted"
+      >
         Description
       </label>
       <InlineEdit
+        id={descriptionId}
         value={task.description}
         onSave={async (value) => {
           await onUpdate(task.id, { description: value, expected_version: task.version ?? null })
@@ -66,23 +72,29 @@ export function DescriptionEdit({ task, onUpdate }: TaskUpdateProps) {
 }
 
 export function PrioritySection({ task, onUpdate }: TaskUpdateProps) {
+  const priorityId = `task-priority-select-${task.id}`
   return (
     <div>
-      <label className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+      <label
+        htmlFor={priorityId}
+        className="text-[11px] font-semibold uppercase tracking-wider text-text-muted"
+      >
         Priority
       </label>
       <div className="mt-1 flex items-center gap-2">
         <PriorityBadge priority={task.priority} />
         <select
+          id={priorityId}
           value={task.priority}
           onChange={(e) => {
+            const priority = parsePriority(e.target.value)
+            if (priority === null) return
             void onUpdate(task.id, {
-              priority: e.target.value as Priority,
+              priority,
               expected_version: task.version ?? null,
             })
           }}
           className="h-7 rounded border border-border bg-surface px-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
-          aria-label="Change priority"
         >
           {PRIORITIES.map((p) => (
             <option key={p} value={p}>
@@ -96,17 +108,22 @@ export function PrioritySection({ task, onUpdate }: TaskUpdateProps) {
 }
 
 export function AssigneeSection({ task, onUpdate }: TaskUpdateProps) {
+  const assigneeId = `task-assignee-edit-${task.id}`
   return (
     <div>
       <div className="flex items-center gap-2">
         <User className="size-4 text-text-muted" />
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+        <label
+          htmlFor={assigneeId}
+          className="text-[11px] font-semibold uppercase tracking-wider text-text-muted"
+        >
           Assignee
-        </span>
+        </label>
       </div>
       <div className="mt-1 flex items-center gap-2">
         {task.assigned_to && <Avatar name={task.assigned_to} size="sm" />}
         <InlineEdit
+          id={assigneeId}
           value={task.assigned_to ?? ''}
           onSave={async (value) => {
             await onUpdate(task.id, {
@@ -192,11 +209,13 @@ export function AcceptanceCriteriaList({ task }: TaskOnlyProps) {
             className="flex items-start gap-2 text-xs text-text-secondary"
           >
             <span
+              aria-hidden="true"
               className={cn(
                 'mt-0.5 size-3.5 shrink-0 rounded border',
                 criterion.met ? 'border-success bg-success/20' : 'border-border',
               )}
             />
+            <span className="sr-only">{criterion.met ? 'Met: ' : 'Not met: '}</span>
             {criterion.description}
           </li>
         ))}

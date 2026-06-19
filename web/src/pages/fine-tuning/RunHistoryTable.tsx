@@ -4,7 +4,9 @@ import { useShallow } from 'zustand/react/shallow'
 import type { FineTuneRun, FineTuneStage } from '@/api/endpoints/fine-tuning'
 import { ACTIVE_STAGES } from '@/api/endpoints/fine-tuning'
 import { EmptyState } from '@/components/ui/empty-state'
+import { Pagination } from '@/components/ui/pagination'
 import { StatusBadge } from '@/components/ui/status-badge'
+import { useListPagination } from '@/hooks/use-list-pagination'
 import { useFineTuningStore } from '@/stores/fine-tuning'
 import { formatDateTime } from '@/utils/format'
 
@@ -67,6 +69,7 @@ const RunRow = memo(function RunRow({ run }: { run: FineTuneRun }) {
 
 export function RunHistoryTable() {
   const { runs } = useFineTuningStore(useShallow((s) => ({ runs: s.runs })))
+  const pagination = useListPagination({ items: runs, namespace: 'fine-tuning-runs' })
 
   if (runs.length === 0) {
     return (
@@ -78,23 +81,32 @@ export function RunHistoryTable() {
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[28rem] text-sm">
-        <thead>
-          <tr className="border-b border-border text-left text-muted-foreground">
-            <th className="pb-2 pr-4">Date</th>
-            <th className="pb-2 pr-4">Duration</th>
-            <th className="pb-2 pr-4">Status</th>
-            <th className="pb-2 pr-4">Stages</th>
-            <th className="pb-2">Source</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
-          {runs.map((run) => (
-            <RunRow key={run.id} run={run} />
-          ))}
-        </tbody>
-      </table>
+    <div className="space-y-section-gap">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[28rem] text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-muted-foreground">
+              <th className="pb-2 pr-4">Date</th>
+              <th className="pb-2 pr-4">Duration</th>
+              <th className="pb-2 pr-4">Status</th>
+              <th className="pb-2 pr-4">Stages</th>
+              <th className="pb-2">Source</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {pagination.paginatedItems.map((run) => (
+              <RunRow key={run.id} run={run} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <Pagination
+        page={pagination.page}
+        pageSize={pagination.pageSize}
+        total={pagination.totalItems}
+        onPageChange={pagination.setPage}
+        onPageSizeChange={pagination.setPageSize}
+      />
     </div>
   )
 }

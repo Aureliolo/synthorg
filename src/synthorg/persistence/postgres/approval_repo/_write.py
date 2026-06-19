@@ -12,11 +12,25 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APPROVAL_REPO_FAILED
 from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence._shared.approval_transition import approval_decision_values
 from synthorg.persistence.postgres.approval_repo._base import _ApprovalRepoBase
 from synthorg.persistence.postgres.approval_repo._marshalling import item_save_params
 from synthorg.persistence.postgres.approval_repo._sql import APPROVALS_UPSERT_SQL
 
 logger = get_logger(__name__)
+
+# Atomic status flip + optional decision triple. ``COALESCE`` keeps the
+# existing column when the caller omits a decision field (e.g. a plain
+# EXPIRED flip), mirroring the SQLite path. The triple's CHECK
+# constraints are enforced by the DB, not duplicated here.
+_TRANSITION_SQL = (
+    "UPDATE approvals SET "
+    "status = %s, "
+    "decided_at = COALESCE(%s, decided_at), "
+    "decided_by = COALESCE(%s, decided_by), "
+    "decision_reason = COALESCE(%s, decision_reason) "
+    "WHERE id = %s AND status = %s"
+)
 
 
 def _constraint_name(exc: psycopg.errors.IntegrityError) -> str:
@@ -54,6 +68,7 @@ class _WriteMixin(_ApprovalRepoBase):
             raise ConstraintViolationError(
                 msg,
                 constraint=_constraint_name(exc),
+                sqlstate=exc.sqlstate,
             ) from exc
         except psycopg.Error as exc:
             msg = f"Failed to save approval {item.id!r}"
@@ -95,7 +110,7 @@ class _WriteMixin(_ApprovalRepoBase):
                 error=safe_error_description(exc),
             )
             raise ConstraintViolationError(
-                msg, constraint=_constraint_name(exc)
+                msg, constraint=_constraint_name(exc), sqlstate=exc.sqlstate
             ) from exc
         except psycopg.Error as exc:
             msg = f"Failed to save approval batch (size={len(items)})"
@@ -164,48 +179,58 @@ class _WriteMixin(_ApprovalRepoBase):
         the current persisted status matches ``from_state``. Returns
         ``True`` iff the state transition succeeded.
 
-        Decision metadata (``decided_at`` / ``decided_by`` /
-        ``decision_json``) is governed by a table CHECK constraint that
-        requires the full triple together, so partial writes through
-        this method are rejected rather than silently dropped: pass an
-        empty ``updates`` and persist the decision triple via the
-        dedicated decision path.
+        ``**updates`` carries the status-correlated decision triple
+        (``decided_at`` / ``decided_by`` / ``decision_reason``), written
+        atomically with the status flip so an ``approved`` / ``rejected``
+        CAS records who decided and when in the same row update. The
+        approvals CHECK constraints still apply: ``decided_at`` and
+        ``decided_by`` must be supplied together, and a ``rejected``
+        transition requires a non-blank ``decision_reason``; a violating
+        combination raises :class:`ConstraintViolationError`.
 
         Args:
             entity_id: The approval id.
             from_state: Expected current status.
             to_state: Target status.
-            **updates: Must be empty; any keys raise ``QueryError``.
+            **updates: Status-correlated decision fields (``decided_at``,
+                ``decided_by``, ``decision_reason``).
 
         Returns:
             ``True`` iff the transition succeeded, ``False`` on state
             mismatch or when no row exists.
 
         Raises:
-            QueryError: On database errors, or if ``updates`` is
-                non-empty (status-correlated writes are not supported
-                through this CAS path).
+            ConstraintViolationError: When the decision triple violates a
+                table CHECK constraint.
+            QueryError: On database errors or an unknown ``updates`` key.
         """
-        if updates:
-            msg = (
-                "transition_if does not persist decision metadata "
-                f"(got keys {sorted(updates)!r}); the approvals CHECK "
-                "constraint requires the full decision triple, so use "
-                "the dedicated decision path instead"
-            )
+        decided_at, decided_by, decision_reason = approval_decision_values(
+            entity_id, updates, format_decided_at=normalize_utc
+        )
+        params = (
+            to_state.value,
+            decided_at,
+            decided_by,
+            decision_reason,
+            entity_id,
+            from_state.value,
+        )
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(_TRANSITION_SQL, params)
+                updated = cur.rowcount > 0
+                await conn.commit()
+        except psycopg.errors.IntegrityError as exc:
+            msg = f"Constraint violation transitioning approval {entity_id!r}"
             logger.warning(
                 API_APPROVAL_REPO_FAILED,
                 approval_id=entity_id,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
-            raise QueryError(msg)
-        sql = "UPDATE approvals SET status = %s WHERE id = %s AND status = %s"
-        params = (to_state.value, entity_id, from_state.value)
-        try:
-            async with self._pool.connection() as conn, conn.cursor() as cur:
-                await cur.execute(sql, params)
-                updated = cur.rowcount > 0
-                await conn.commit()
+            raise ConstraintViolationError(
+                msg, constraint=_constraint_name(exc), sqlstate=exc.sqlstate
+            ) from exc
         except psycopg.Error as exc:
             msg = f"Failed to transition approval {entity_id!r}"
             logger.warning(

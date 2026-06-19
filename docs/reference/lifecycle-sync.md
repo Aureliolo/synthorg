@@ -22,7 +22,7 @@ For services whose `stop()` drains across `await` boundaries, wrap the drain in 
 - `MessageBusBridge` (`api/bus_bridge.py`)
 - `SettingsChangeDispatcher` (`settings/dispatcher.py`)
 - `MeetingScheduler` (`communication/meeting/scheduler.py`)
-- `IntegrationsHealthProber`
+- `HealthProberService` (`integrations/health/prober.py`)
 - `EscalationNotifySubscriber`
 - `EscalationSweeper`
 - `ProviderHealthProber` (`providers/health_prober.py`)

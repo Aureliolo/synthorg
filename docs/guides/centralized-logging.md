@@ -45,7 +45,7 @@ Add a syslog sink via the `custom_sinks` setting in the **observability** namesp
 
 ```yaml
 logging:
-  custom_sinks:
+  sinks:
     - sink_type: syslog
       syslog_host: syslog.internal
       syslog_port: 514
@@ -125,7 +125,7 @@ to an HTTP endpoint. A background thread handles batching, flushing, and retries
 
 ```yaml
 logging:
-  custom_sinks:
+  sinks:
     - sink_type: http
       http_url: https://logs.example.com/ingest
       http_headers:
@@ -186,14 +186,8 @@ drivers and downstream parsers can process, override the console sink format:
 {"__console__": {"json_format": true}}
 ```
 
-Or in YAML company config:
-
-```yaml
-logging:
-  sink_overrides:
-    __console__:
-      json_format: true
-```
+This is applied through the `sink_overrides` runtime setting in the **observability**
+namespace; it patches built-in sinks without redefining the whole `sinks` list.
 
 ### When to Use Docker Drivers
 
@@ -253,15 +247,11 @@ Enable compression in the rotation config:
 }
 ```
 
-Or via `RotationConfig` in YAML:
+Or via the `sink_overrides` runtime setting, which patches an existing sink's
+`RotationConfig` without redefining it:
 
-```yaml
-logging:
-  sink_overrides:
-    audit.log:
-      rotation:
-        backup_count: 10
-        compress_rotated: true
+```json
+{"audit.log": {"rotation": {"backup_count": 10, "compress_rotated": true}}}
 ```
 
 ### Behaviour

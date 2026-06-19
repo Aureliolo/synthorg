@@ -185,7 +185,7 @@ describe("AgentsStep: unresolved-agent detection", () => {
   });
 });
 
-describe("AgentsStep: empty-state copy is wizard-mode aware", () => {
+describe("AgentsStep: empty-state copy", () => {
   beforeEach(() => {
     useSetupWizardStore.getState().reset();
     // Stub the mount-time fetches to no-ops so the empty fallback renders
@@ -200,24 +200,24 @@ describe("AgentsStep: empty-state copy is wizard-mode aware", () => {
     });
   });
 
-  it("uses the default-template wording in quick mode", () => {
-    useSetupWizardStore.setState({ wizardMode: "quick" });
+  it("points at the Company template step regardless of wizard mode", () => {
+    // The Agents step is part of the guided flow only (quick mode skips
+    // straight from Company to Complete), so the empty state always points
+    // back at the guided Company step.
+    for (const wizardMode of ["quick", "guided"] as const) {
+      useSetupWizardStore.setState({ wizardMode });
 
-    renderWithRouter(<AgentsStep />, { initialEntries: ["/setup/agents"] });
+      const { unmount } = renderWithRouter(<AgentsStep />, {
+        initialEntries: ["/setup/agents"],
+      });
 
-    expect(screen.getByText(/default company template/i)).toBeInTheDocument();
-  });
-
-  it("points at the template step in guided mode", () => {
-    useSetupWizardStore.setState({ wizardMode: "guided" });
-
-    renderWithRouter(<AgentsStep />, { initialEntries: ["/setup/agents"] });
-
-    expect(
-      screen.getByText(/apply a template to generate agents/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText(/default company template/i),
-    ).not.toBeInTheDocument();
+      expect(
+        screen.getByText(/apply a template to generate agents/i),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(/default company template/i),
+      ).not.toBeInTheDocument();
+      unmount();
+    }
   });
 });

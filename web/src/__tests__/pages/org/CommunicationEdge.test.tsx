@@ -13,10 +13,10 @@ vi.mock('@xyflow/react', () => ({
   Position: { Top: 'top', Bottom: 'bottom', Left: 'left', Right: 'right' },
 }))
 
-const mockPrefersReducedMotion = vi.fn(() => false)
+const mockUseReducedMotion = vi.fn<() => boolean | null>(() => false)
 
-vi.mock('@/lib/motion', () => ({
-  prefersReducedMotion: () => mockPrefersReducedMotion(),
+vi.mock('motion/react', () => ({
+  useReducedMotion: () => mockUseReducedMotion(),
 }))
 
 // Import after mock
@@ -49,7 +49,7 @@ const baseProps = {
 
 describe('CommunicationEdge', () => {
   beforeEach(() => {
-    mockPrefersReducedMotion.mockReturnValue(false)
+    mockUseReducedMotion.mockReturnValue(false)
   })
 
   it('renders a path element', () => {
@@ -105,7 +105,7 @@ describe('CommunicationEdge', () => {
   })
 
   it('omits animation when prefers-reduced-motion is active', () => {
-    mockPrefersReducedMotion.mockReturnValue(true)
+    mockUseReducedMotion.mockReturnValue(true)
     const { container } = render(
       <svg>
         <CommunicationEdge {...baseProps} />

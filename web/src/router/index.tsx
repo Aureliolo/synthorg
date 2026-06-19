@@ -156,7 +156,7 @@ export const router = createBrowserRouter([
               },
               { path: 'agents', element: <AgentsPage /> },
               {
-                path: 'agents/model-recommendations',
+                path: ROUTES.MODEL_RECOMMENDATIONS.slice(1),
                 element: <ModelRecommendationsPage />,
               },
               { path: 'agents/:agentId', element: <AgentDetailPage /> },

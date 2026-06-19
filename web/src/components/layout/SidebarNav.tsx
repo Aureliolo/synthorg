@@ -17,6 +17,7 @@ import {
   LineChart,
   LibraryBig,
   MessageSquare,
+  Orbit,
   Package,
   Plug,
   Radio,
@@ -54,6 +55,7 @@ export function SidebarNav({ collapsed }: SidebarNavProps) {
           <SidebarNavItem to={ROUTES.CHARTERS} icon={ClipboardList} label="Charters" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.APPROVALS} icon={ShieldCheck} label="Approvals" collapsed={collapsed} badge={0} />
           <SidebarNavItem to={ROUTES.SCALING} icon={Scale} label="Scaling" collapsed={collapsed} />
+          <SidebarNavItem to={ROUTES.META} icon={Orbit} label="Meta Loop" collapsed={collapsed} end />
         </SidebarNavGroup>
       </SidebarSection>
 

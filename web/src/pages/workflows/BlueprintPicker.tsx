@@ -91,7 +91,7 @@ export function BlueprintPicker({
 
   if (loading) {
     return (
-      <div className="grid grid-cols-2 gap-grid-gap">
+      <div className="grid grid-cols-2 gap-grid-gap max-[479px]:grid-cols-1">
         {Array.from({ length: 4 }, (_, i) => (
           <Skeleton key={i} className="h-28 rounded-lg" />
         ))}
@@ -112,7 +112,7 @@ export function BlueprintPicker({
 
   return (
     <motion.div
-      className="grid grid-cols-2 gap-grid-gap"
+      className="grid grid-cols-2 gap-grid-gap max-[479px]:grid-cols-1"
       variants={staggerChildren}
       initial="hidden"
       animate="visible"

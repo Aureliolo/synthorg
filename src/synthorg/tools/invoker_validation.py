@@ -152,7 +152,17 @@ class ToolInvokerValidationMixin:
         tool: BaseTool,
         tool_call: ToolCall,
     ) -> ToolResult | None:
-        """Validate ``tool_call.arguments`` against the tool's JSON Schema.
+        """Validate ``tool_call.arguments`` against a free-form JSON Schema.
+
+        This path is reached only by tools with no ``args_model``. Every
+        concrete first-party tool declares a Pydantic ``args_model``, so
+        the sole production caller is :class:`MCPBridgeTool`, whose
+        ``parameters_schema`` mirrors a remote MCP server's
+        ``tools/list`` response and therefore cannot be a compile-time
+        Pydantic model. ``jsonschema`` is retained for exactly this
+        structural exception (and is also a transitive ``litellm``
+        dependency); the "bridge is the only fallthrough" invariant is
+        enforced by ``tests/unit/tools/test_args_model_coverage.py``.
 
         Returns:
             The resulting ``ToolResult``, or ``None`` when unavailable.

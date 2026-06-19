@@ -113,7 +113,9 @@ services:
     stop_signal: SIGTERM
 ```
 
-The drain emits three observability log events documented in `docs/design/observability.md` § "Telemetry collector lifecycle" (sibling table for `api.app.drain.*`): `api.app.drain.started`, `api.app.drain.completed`, `api.app.drain.timeout`. Tail those during a deploy to confirm a clean drain.
+The drain emits observability log events from `observability/events/api.py`:
+`api.app.drain.started`, `api.app.drain.completed`, `api.app.drain.timeout`, and
+`api.app.drain.send_failed`. Tail those during a deploy to confirm a clean drain.
 
 ## Web server
 

@@ -72,8 +72,8 @@ All environment variables are configured in `docker/.env` (copy from `docker/.en
 |----------|---------|-------------|
 | `SYNTHORG_DB_PATH` | `/data/synthorg.db` | SQLite database path (inside container) |
 | `SYNTHORG_MEMORY_DIR` | `/data/memory` | Agent memory storage directory |
-| `SYNTHORG_PERSISTENCE_BACKEND` | `sqlite` | Persistence backend |
-| `SYNTHORG_MEMORY_BACKEND` | `mem0` | Memory backend |
+| `SYNTHORG_PERSISTENCE_BACKEND` | `sqlite` | Compose-template selector only; the Python process does not read it. The backend is chosen by `SYNTHORG_DATABASE_URL` (Postgres) vs `SYNTHORG_DB_PATH` (SQLite). |
+| `SYNTHORG_MEMORY_BACKEND` | `mem0` | Compose-template selector only; the Python process does not read it. The memory backend is set in the company template under `memory.backend`. |
 | `SYNTHORG_LOG_DIR` | `/data/logs` | Log file directory |
 | `SYNTHORG_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warning`, `error`, `critical` |
 | `BACKEND_PORT` | `3001` | Host port for the backend API |
@@ -92,7 +92,7 @@ These environment variables are read by the code but were previously undocumente
 |----------|---------|-------------|
 | `SYNTHORG_DATABASE_URL` | *(unset)* | Postgres connection URL (e.g. `postgres://user:pass@host:5432/synthorg`). Setting this switches the persistence backend from SQLite to Postgres regardless of `SYNTHORG_PERSISTENCE_BACKEND`. Query parameters are **not** supported in this URL; `_postgres_config_from_url()` rejects them up front; route `sslmode` overrides through `SYNTHORG_POSTGRES_SSL_MODE` instead. |
 | `SYNTHORG_POSTGRES_SSL_MODE` | `require` | Override Postgres SSL mode (`disable`, `require`, `verify-ca`, `verify-full`). When unset, the default comes from `PostgresConfig.ssl_mode` (`"require"`), which rejects plaintext connections. |
-| `SYNTHORG_NATS_URL` | `nats://localhost:4222` | NATS server URL for the distributed task queue. Required when `queue.enabled=true`. Must use `nats://`, `tls://`, or `nats+tls://`. |
+| `SYNTHORG_NATS_URL` | `nats://nats:4222` | NATS server URL for the distributed task queue. Required when `queue.enabled=true`. Must use `nats://`, `tls://`, or `nats+tls://`. |
 | `SYNTHORG_NATS_STREAM_PREFIX` | `SYNTHORG` | JetStream stream name prefix. The bus stream is `<prefix>_BUS`; the KV bucket is `<prefix>_BUS_CHANNELS`. |
 | `SYNTHORG_ARTIFACT_DIR` | `/data` (Postgres) or DB path directory (SQLite) | Filesystem path for artifact storage. Container deployments usually bind-mount this. |
 | `SYNTHORG_TRACE_OTLP_ENDPOINT` | *(unset)* | OpenTelemetry OTLP HTTP endpoint (e.g. `http://otel-collector:4318/v1/traces`). Leaving it unset disables distributed tracing. |
@@ -204,9 +204,9 @@ The `synthorg-data` Docker volume persists all application data:
 ### Backup
 
 ```bash
-synthorg backup             # create a backup
-synthorg backup --list       # list available backups
-synthorg backup --restore    # restore from backup
+synthorg backup                          # create a backup
+synthorg backup list                     # list available backups
+synthorg backup restore <id> --confirm   # restore from a backup
 ```
 
 For manual Docker Compose deployments, back up the `synthorg-data` volume directly.

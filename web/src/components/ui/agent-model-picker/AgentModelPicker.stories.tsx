@@ -72,6 +72,21 @@ export const WithStaleModel: Story = {
   },
 }
 
+export const WithSelectedModel: Story = {
+  args: {
+    currentModelId: 'example-large-001',
+    providers: providersWith([
+      model('example-large-001', {
+        alias: 'large',
+        family: 'example-large',
+        supports_tools: true,
+        supports_vision: true,
+      }),
+      model('example-small-001', { family: 'example-small', max_context: 32000 }),
+    ]),
+  },
+}
+
 export const NoModels: Story = { args: { providers: {} } }
 export const Disabled: Story = {
   args: {

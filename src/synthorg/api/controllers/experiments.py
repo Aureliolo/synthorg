@@ -34,9 +34,6 @@ from synthorg.experiments.models import (
     ExperimentVariant,
 )
 from synthorg.meta.state import experiment_service_of
-from synthorg.observability import get_logger
-
-logger = get_logger(__name__)
 
 
 class ExperimentsController(Controller):
@@ -87,9 +84,9 @@ class ExperimentsController(Controller):
     ) -> ApiResponse[ExperimentVariant]:
         """Register or replace a variant on an experiment.
 
-        API-only: variant registration is a deployment / scripting
-        operation and is intentionally not surfaced in the dashboard,
-        which exposes only the read views (variants + assignments).
+        Surfaced in the dashboard via the experiment explorer's
+        variant-registration form, alongside the deployment / scripting
+        path; both drive the same registry.
 
         Returns:
             ``ApiResponse[ExperimentVariant]`` instance.

@@ -36,6 +36,7 @@ A2A_AGENT_CARD_BUILT: Final[str] = "a2a.agent_card.built"
 A2A_AGENT_CARD_NOT_FOUND: Final[str] = "a2a.agent_card.not_found"
 A2A_AGENT_CARD_CACHE_HIT: Final[str] = "a2a.agent_card.cache_hit"
 A2A_AGENT_CARD_CACHE_MISS: Final[str] = "a2a.agent_card.cache_miss"
+A2A_AGENT_CARD_FAILED: Final[str] = "a2a.agent_card.failed"
 
 # -- Task operations -------------------------------------------------------
 

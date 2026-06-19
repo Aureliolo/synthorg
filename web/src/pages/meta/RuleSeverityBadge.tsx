@@ -14,13 +14,17 @@ const SEVERITY_LABELS = {
 
 type Severity = keyof typeof SEVERITY_STYLES
 
+function isSeverity(value: string): value is Severity {
+  return Object.hasOwn(SEVERITY_STYLES, value)
+}
+
 interface RuleSeverityBadgeProps {
   severity: string
   className?: string
 }
 
 export function RuleSeverityBadge({ severity, className }: RuleSeverityBadgeProps) {
-  const key = (Object.hasOwn(SEVERITY_STYLES, severity) ? severity : 'info') as Severity
+  const key: Severity = isSeverity(severity) ? severity : 'info'
   return (
     <span
       className={cn(

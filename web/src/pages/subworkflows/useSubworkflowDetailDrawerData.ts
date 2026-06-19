@@ -124,8 +124,19 @@ async function runDetailsFetch(
       log.warn('Failed to load subworkflow details', sanitizeForLog(err))
       setters.addToast({
         variant: 'error',
-        title: 'Failed to load details',
+        title: 'Could not load subworkflow details',
         description: getErrorMessage(err),
+        action: {
+          label: 'Retry',
+          onClick: () => {
+            // Reuse the existing cancellation token so a retry triggered
+            // after the drawer closed (or another subworkflow was
+            // selected) is a no-op and never updates stale state.
+            if (!ctrl.cancelled) {
+              void runDetailsFetch(subworkflow, setters, ctrl)
+            }
+          },
+        },
       })
     }
   } finally {

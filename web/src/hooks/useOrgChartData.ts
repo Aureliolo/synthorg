@@ -32,6 +32,7 @@ export interface UseOrgChartDataReturn {
   commLoading: boolean
   commError: string | null
   commTruncated: boolean
+  refetchComm: () => void
   wsConnected: boolean
   wsSetupError: string | null
 }
@@ -239,9 +240,13 @@ export function useOrgChartData(
   })
 
   // Communication data for force view (only fetched when needed)
-  const { links: commLinks, loading: commLoading, error: commError, truncated: commTruncated } = useCommunicationEdges(
-    viewMode === 'force',
-  )
+  const {
+    links: commLinks,
+    loading: commLoading,
+    error: commError,
+    truncated: commTruncated,
+    refetch: refetchComm,
+  } = useCommunicationEdges(viewMode === 'force')
 
   const { nodes, edges, allNodes } = useMemo(() => {
     if (!config) return { nodes: [], edges: [], allNodes: [] }
@@ -274,6 +279,7 @@ export function useOrgChartData(
     commLoading,
     commError,
     commTruncated,
+    refetchComm,
     wsConnected,
     wsSetupError,
   }

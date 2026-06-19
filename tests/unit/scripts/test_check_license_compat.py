@@ -161,6 +161,49 @@ def test_go_gpl_absent_files_no_violation(tmp_path: Path) -> None:
     assert _MODULE._check_go_gpl(tmp_path) == []
 
 
+# ── web JS copyleft scan ────────────────────────────────────────
+
+
+def test_web_copyleft_flags_gpl_dependency(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "web" / "package-lock.json",
+        '{"packages": {"": {"name": "root"}, '
+        '"node_modules/some-lib": {"version": "1.0.0", "license": "GPL-3.0-only"}}}',
+    )
+    violations = _MODULE._check_web_copyleft(tmp_path)
+    assert any("some-lib" in v.message for v in violations)
+
+
+def test_web_copyleft_flags_legacy_licenses_array(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "web" / "package-lock.json",
+        '{"packages": {"node_modules/agpl-lib": {"licenses": [{"type": "AGPL-3.0"}]}}}',
+    )
+    violations = _MODULE._check_web_copyleft(tmp_path)
+    assert any("agpl-lib" in v.message for v in violations)
+
+
+def test_web_copyleft_permissive_passes(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "web" / "package-lock.json",
+        '{"packages": {"node_modules/mit-lib": {"license": "MIT"}, '
+        '"node_modules/no-license": {"version": "2.0.0"}}}',
+    )
+    assert _MODULE._check_web_copyleft(tmp_path) == []
+
+
+def test_web_copyleft_absent_lockfile_no_violation(tmp_path: Path) -> None:
+    assert _MODULE._check_web_copyleft(tmp_path) == []
+
+
+def test_web_copyleft_missing_packages_map_fails_closed(tmp_path: Path) -> None:
+    # A readable lockfile with no 'packages' map must not silently pass:
+    # that would fail-open and let copyleft JS deps bypass enforcement.
+    _write(tmp_path / "web" / "package-lock.json", '{"lockfileVersion": 1}')
+    with pytest.raises(_MODULE.SetupError):
+        _MODULE._check_web_copyleft(tmp_path)
+
+
 # ── known-LGPL NOTICE coverage ──────────────────────────────────
 
 

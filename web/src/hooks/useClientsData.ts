@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { listClients, type ClientProfile } from '@/api/endpoints/clients'
 import { createLogger } from '@/lib/logger'
 import { useWebSocketStore } from '@/stores/websocket'
+import { getErrorMessage } from '@/utils/errors'
 
 const log = createLogger('useClientsData')
 
@@ -32,7 +33,7 @@ export function useClientsData(): {
       setClients(result.data)
     } catch (err) {
       log.error('list_clients_failed', err)
-      setError('Failed to load clients. Retry shortly.')
+      setError(`Could not load clients: ${getErrorMessage(err)}`)
     } finally {
       setLoading(false)
     }

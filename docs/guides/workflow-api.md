@@ -112,14 +112,14 @@ curl "http://localhost:3001/api/v1/workflows/${WF_ID}/versions" \
 ## 4. Diff two versions
 
 ```bash
-curl "http://localhost:3001/api/v1/workflows/${WF_ID}/versions/diff?from_version=1&to_version=2" \
+curl "http://localhost:3001/api/v1/workflows/${WF_ID}/diff?from_version=1&to_version=2" \
   -H "Cookie: ${SESSION}" | jq
 ```
 
 ## 5. Rollback to a previous version
 
 ```bash
-curl -X POST "http://localhost:3001/api/v1/workflows/${WF_ID}/versions/rollback" \
+curl -X POST "http://localhost:3001/api/v1/workflows/${WF_ID}/rollback" \
   -H "Content-Type: application/json" \
   -H "Cookie: ${SESSION}" \
   -d '{"target_version": 1, "reason": "v2 introduced a routing bug"}' | jq

@@ -61,7 +61,9 @@ interface EntitySummaryExtras {
 function readAttributeCount(entity: EntityResponse): number {
   const extras = entity as EntityResponse & EntitySummaryExtras
   if (typeof extras.attribute_count === 'number') return extras.attribute_count
-  return extras.attributes?.length ?? 0
+  // ``attributes`` is only declared as an array; the value comes from an
+  // untyped payload, so confirm it actually is one before reading length.
+  return Array.isArray(extras.attributes) ? extras.attributes.length : 0
 }
 
 interface EntityCatalogControlsProps {

@@ -111,14 +111,15 @@ export function NodeContextMenu({
   onDelete,
 }: NodeContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
+  const firstItemRef = useRef<HTMLButtonElement>(null)
   const addToast = useToastStore((s) => s.add)
 
   const stubAction = useCallback(
     (action: string) => {
       addToast({
         variant: 'info',
-        title: `${action} -- not yet available`,
-        description: 'Backend API for this operation is pending',
+        title: `${action} isn't available yet`,
+        description: 'This action will be enabled in an upcoming release.',
       })
       onClose()
     },
@@ -126,6 +127,13 @@ export function NodeContextMenu({
   )
 
   useDismissOnOutside(menuRef, onClose)
+
+  // Move keyboard focus to the first action when the menu opens so the
+  // menu is operable without a pointer (the context menu mounts fresh on
+  // every open, so a mount-time focus is correct).
+  useEffect(() => {
+    firstItemRef.current?.focus()
+  }, [])
 
   const items = buildMenuItems(nodeType, { nodeId, onClose, stubAction, onViewDetails, onDelete })
 
@@ -151,9 +159,10 @@ export function NodeContextMenu({
       aria-label={menuLabelFor(nodeType)}
       data-testid="node-context-menu"
     >
-      {items.map((item) => (
+      {items.map((item, index) => (
         <button
           key={item.label}
+          ref={index === 0 ? firstItemRef : undefined}
           type="button"
           onClick={item.action}
           role="menuitem"

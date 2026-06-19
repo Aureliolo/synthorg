@@ -293,7 +293,7 @@ in issue #1113):
 - **`VersioningService[T]`** (`versioning/service.py`): Wraps a `VersionRepository`
   to provide content-addressable snapshot creation. `snapshot_if_changed` skips the
   write when the content hash matches the latest stored version.
-- **`VersionRepository[T]`** (`persistence/version_repo.py`): Generic protocol with
+- **`VersionRepository[T]`** (`persistence/version_protocol.py`): Generic protocol with
   `save_version` (idempotent INSERT OR IGNORE), `get_version`, `get_latest_version`,
   `get_by_content_hash`, `list_versions`, `count_versions`,
   `delete_versions_for_entity`.

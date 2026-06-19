@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+import { create, type StoreApi } from 'zustand'
 
 import { ApiRequestError } from '@/api/client'
 import * as ceremonyApi from '@/api/endpoints/ceremony-policy'
@@ -8,6 +8,7 @@ import type {
   ResolvedCeremonyPolicyResponse,
 } from '@/api/types/ceremony-policy'
 import { getErrorMessage } from '@/utils/errors'
+import { useToastStore } from '@/stores/toast'
 
 /**
  * Friendly message for the CAS conflict raised by the department
@@ -56,10 +57,73 @@ interface CeremonyPolicyState {
   fetchActiveStrategy: () => Promise<void>
   /** Fetch a department's ceremony policy override. */
   fetchDepartmentPolicy: (name: string) => Promise<void>
-  /** Set a department ceremony policy override. */
-  updateDepartmentPolicy: (name: string, data: CeremonyPolicyConfig) => Promise<void>
-  /** Clear a department's ceremony policy override (revert to inherit). */
-  clearDepartmentPolicy: (name: string) => Promise<void>
+  /** Set a department ceremony policy override. Returns false on failure. */
+  updateDepartmentPolicy: (name: string, data: CeremonyPolicyConfig) => Promise<boolean>
+  /** Clear a department's ceremony policy override (revert to inherit). Returns false on failure. */
+  clearDepartmentPolicy: (name: string) => Promise<boolean>
+}
+
+type CeremonySet = StoreApi<CeremonyPolicyState>['setState']
+type CeremonyGet = StoreApi<CeremonyPolicyState>['getState']
+
+async function _updateDepartmentPolicy(
+  set: CeremonySet,
+  get: CeremonyGet,
+  name: string,
+  data: CeremonyPolicyConfig,
+): Promise<boolean> {
+  set({ saving: true, saveError: null })
+  try {
+    const saved = await ceremonyApi.updateDepartmentCeremonyPolicy(name, data)
+    const updated = new Map(get().departmentPolicies)
+    // Use server-normalized response instead of the input data
+    updated.set(name, saved)
+    set({ departmentPolicies: updated, saving: false })
+    useToastStore.getState().add({
+      variant: 'success',
+      title: 'Ceremony policy saved',
+      description: `Updated the override for ${name}.`,
+    })
+    return true
+  } catch (err) {
+    const message = describeCeremonyPolicySaveError(err)
+    set({ saveError: message, saving: false })
+    useToastStore.getState().add({
+      variant: 'error',
+      title: 'Could not save ceremony policy',
+      description: message,
+    })
+    return false
+  }
+}
+
+async function _clearDepartmentPolicy(
+  set: CeremonySet,
+  get: CeremonyGet,
+  name: string,
+): Promise<boolean> {
+  set({ saving: true, saveError: null })
+  try {
+    await ceremonyApi.clearDepartmentCeremonyPolicy(name)
+    const updated = new Map(get().departmentPolicies)
+    updated.set(name, null)
+    set({ departmentPolicies: updated, saving: false })
+    useToastStore.getState().add({
+      variant: 'success',
+      title: 'Ceremony policy cleared',
+      description: `${name} now inherits the project-level policy.`,
+    })
+    return true
+  } catch (err) {
+    const message = describeCeremonyPolicySaveError(err)
+    set({ saveError: message, saving: false })
+    useToastStore.getState().add({
+      variant: 'error',
+      title: 'Could not clear ceremony policy',
+      description: message,
+    })
+    return false
+  }
 }
 
 export const useCeremonyPolicyStore = create<CeremonyPolicyState>()((set, get) => ({
@@ -110,30 +174,8 @@ export const useCeremonyPolicyStore = create<CeremonyPolicyState>()((set, get) =
     }
   },
 
-  updateDepartmentPolicy: async (name: string, data: CeremonyPolicyConfig) => {
-    set({ saving: true, saveError: null })
-    try {
-      const saved = await ceremonyApi.updateDepartmentCeremonyPolicy(name, data)
-      const current = get().departmentPolicies
-      const updated = new Map(current)
-      // Use server-normalized response instead of the input data
-      updated.set(name, saved)
-      set({ departmentPolicies: updated, saving: false })
-    } catch (err) {
-      set({ saveError: describeCeremonyPolicySaveError(err), saving: false })
-    }
-  },
+  updateDepartmentPolicy: (name: string, data: CeremonyPolicyConfig) =>
+    _updateDepartmentPolicy(set, get, name, data),
 
-  clearDepartmentPolicy: async (name: string) => {
-    set({ saving: true, saveError: null })
-    try {
-      await ceremonyApi.clearDepartmentCeremonyPolicy(name)
-      const current = get().departmentPolicies
-      const updated = new Map(current)
-      updated.set(name, null)
-      set({ departmentPolicies: updated, saving: false })
-    } catch (err) {
-      set({ saveError: describeCeremonyPolicySaveError(err), saving: false })
-    }
-  },
+  clearDepartmentPolicy: (name: string) => _clearDepartmentPolicy(set, get, name),
 }))

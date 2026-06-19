@@ -81,7 +81,7 @@ function PayloadFields({ payload }: PayloadFieldsProps) {
   const fields = Object.entries(payload).filter(([key]) => key !== 'entry_kind')
   if (fields.length === 0) return null
   return (
-    <dl className="border-border grid grid-cols-[140px_1fr] gap-x-4 gap-y-1 border-t pt-3 text-sm">
+    <dl className="border-border grid grid-cols-[minmax(0,140px)_1fr] gap-x-4 gap-y-1 border-t pt-3 text-sm max-[479px]:grid-cols-1">
       {fields.map(([key, value]) => (
         <DefRow key={key} term={key.replaceAll('_', ' ')} value={renderValue(value)} />
       ))}
@@ -95,7 +95,7 @@ interface MetaListProps {
 
 function MetaList({ entry }: MetaListProps) {
   return (
-    <dl className="border-border grid grid-cols-[140px_1fr] gap-x-4 gap-y-1 border-t pt-3 text-sm">
+    <dl className="border-border grid grid-cols-[minmax(0,140px)_1fr] gap-x-4 gap-y-1 border-t pt-3 text-sm max-[479px]:grid-cols-1">
       <DefRow term="author" value={entry.author} />
       <DefRow term="recorded" value={formatRelativeTime(entry.recorded_at)} />
       {entry.confidence !== null && (

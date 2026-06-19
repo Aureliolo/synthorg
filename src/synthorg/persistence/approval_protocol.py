@@ -27,9 +27,18 @@ if TYPE_CHECKING:
     from typing_extensions import TypedDict
 
     class TransitionKwargs(TypedDict, total=False):
-        """Typed kwargs for :meth:`ApprovalRepository.transition_if`."""
+        """Typed kwargs for :meth:`ApprovalRepository.transition_if`.
 
-        expired_at: object
+        The status-correlated decision triple written atomically with an
+        ``approved`` / ``rejected`` compare-and-set. ``decided_at`` and
+        ``decided_by`` must be supplied together; a ``rejected`` target
+        also requires a non-blank ``decision_reason`` (DB CHECK
+        constraints).
+        """
+
+        decided_at: object
+        decided_by: object
+        decision_reason: object
 
 
 class ApprovalFilterSpec(BaseModel):
@@ -109,23 +118,27 @@ class ApprovalRepository(
         atomically at the database level. Returns ``True`` iff the row
         was in ``from_state`` and is now in ``to_state``.
 
-        ``**updates`` carries status-correlated columns. The only
-        standard key is ``expired_at`` (when transitioning to EXPIRED);
-        other keys are ignored for now but reserved for future
-        domain-invariant fields.
+        ``**updates`` carries the status-correlated decision triple
+        (``decided_at`` / ``decided_by`` / ``decision_reason``; see
+        :class:`TransitionKwargs`), written in the same row update so an
+        ``approved`` / ``rejected`` CAS records who decided and when. An
+        omitted decision field leaves the existing column untouched, so a
+        bare state flip (e.g. to EXPIRED) passes no updates.
 
         Args:
             entity_id: The approval id to transition.
             from_state: Expected current status.
             to_state: Target status.
-            **updates: Status-correlated fields (e.g. ``expired_at``).
+            **updates: Status-correlated decision fields.
 
         Returns:
             ``True`` iff the state transition succeeded, ``False`` on
             state mismatch or when no row exists.
 
         Raises:
-            QueryError: On database errors.
+            ConstraintViolationError: When the decision triple violates a
+                table CHECK constraint.
+            QueryError: On database errors or an unknown ``updates`` key.
         """
         ...
 

@@ -55,6 +55,7 @@ function OrgChartInner() {
         error={data.error}
         commError={data.commError}
         commTruncated={data.commTruncated}
+        onRetryComm={data.refetchComm}
         wsConnected={data.wsConnected}
         wsSetupError={data.wsSetupError}
       />

@@ -157,6 +157,45 @@ Providers can be managed at runtime through the API without restarting:
 - **Preset overrides**: `GET /api/v1/providers/presets/{preset_name}/override` returns the persisted override for one preset (or 404 if absent); `PATCH /api/v1/providers/presets/{preset_name}/override` upserts an override; `DELETE /api/v1/providers/presets/{preset_name}/override` removes it. Overrides apply globally; subsequent `from-preset` creations see the merged preset. Validation rejects infeasible combinations (e.g. `base_url` on a local preset, `candidate_urls` on a cloud preset). Audited.
 - **Audit log**: `GET /api/v1/providers/{name}/audit?cursor=...&limit=...` returns the mutation history for one provider, newest first, keyset-paginated on the integer `id` column. Append-only; the only mutating operation is the retention sweeper `purge_before_id`. Every provider mutation (create / update / delete / model add / model remove / model config edit / bulk model sync / credential rotate / rate-limit edit / preset override edit) writes one row through `ProviderAuditService.record(...)`; audit failures never propagate out of a mutation (the persisted change is already committed by the time we reach the audit write).
 
+## Model Refresh
+
+The periodic model-refresh subsystem keeps the persisted model catalogue aligned
+with what each provider actually advertises, and surfaces upgrade recommendations
+when a newer in-family model appears. It is **off by default**; a normal boot skips
+it entirely. Wiring (`wire_model_refresh`) is gated on
+`providers.model_refresh_mode != off`, a built provider-management service, and a
+connected persistence backend.
+
+**Modes** (`RefreshMode`, the config discriminator):
+
+| Mode | Behaviour |
+|------|-----------|
+| `off` | Disabled (safe default). Nothing scheduled. |
+| `manual_only` | No cadence; only the explicit `POST /refresh` endpoint runs a cycle. |
+| `detect_only` | Periodically probe providers and flag removed models stale; never persists new models or emits recommendations. |
+| `reconcile_recommend` | Probe, persist refreshed metadata, flag removed models stale, and feed upgrade recommendations. |
+
+**Settings** (namespace `providers`, DB > env > code): `model_refresh_mode`,
+`model_refresh_interval_seconds` (default daily, clamped to 60s-7d), and
+`model_refresh_auto_apply_within_family` (when set, strictly in-family upgrades are
+auto-applied instead of parked for human approval). The scheduler re-reads the live
+mode + auto-apply flag every tick and fails safe to `off` on any read error, so an
+operator can change mode without a restart and a settings-backend hiccup never
+silently runs a refresh.
+
+**API** (`/api/v1/providers/model-refresh`, `require_write_access`):
+
+- `GET /recommendations` -- list upgrade recommendations (filter by `status`).
+- `POST /recommendations/{id}/approve` -- approve and reassign pinned agents.
+- `POST /recommendations/{id}/reject` -- reject (no reassignment).
+- `POST /refresh` -- run one reconcile+recommend cycle on demand (CEO/manager).
+- `GET /status` -- current refresh mode, cadence, and auto-apply flag.
+
+The recommendation store, scheduler, and service form a both-or-neither paired
+invariant on `ModelRefreshStateSlice`; the controllers 503 when the store is unwired.
+Recommendations only PROPOSE; human approval still gates apply unless a strictly
+in-family upgrade matches the auto-apply flag.
+
 ## Model Routing Strategy
 
 Model routing determines which LLM handles a given request. Five strategies are available,

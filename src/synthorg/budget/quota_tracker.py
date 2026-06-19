@@ -73,7 +73,9 @@ class QuotaTracker:
         self._subscriptions: dict[str, SubscriptionConfig] = copy.deepcopy(
             dict(subscriptions),
         )
-        self._lock = asyncio.Lock()
+        # Constructed once per app lifecycle and never restarted on a
+        # different loop, so loop-capture is benign here.
+        self._lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see above.
         self._loop: asyncio.AbstractEventLoop | None = None
         self._usage: dict[str, dict[QuotaWindow, _WindowUsage]] = {}
 

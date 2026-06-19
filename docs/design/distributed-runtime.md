@@ -94,7 +94,7 @@ NATS JetStream is the shipped distributed backend. The comparison above preserve
 
 #### NATS client library
 
-The project uses `nats-py==2.14.0`. A scoped `filterwarnings` entry in `pyproject.toml` suppresses the `asyncio.iscoroutinefunction` deprecation warning from `nats-py` on Python 3.14 until an upstream fix lands. See [docs/architecture/decisions.md](../architecture/decisions.md) for the full decision record including the evaluation of alternative clients.
+The project uses `nats-py==2.15.0`, which migrated off the `asyncio.iscoroutinefunction` call deprecated on Python 3.14. A scoped `filterwarnings` entry in `pyproject.toml` still suppresses that deprecation warning for other transitive deps that have not yet migrated. See [docs/architecture/decisions.md](../architecture/decisions.md) for the full decision record including the evaluation of alternative clients.
 
 ---
 
@@ -118,7 +118,7 @@ The Phase 4 task queue uses a **separate** stream `SYNTHORG_TASKS` with `WorkQue
 
 The stream is configured with `allow_msg_ttl=True` so individual messages can expire independently of the stream-level retention policy. The `MessageBus.publish()` and `send_direct()` methods accept an optional `ttl_seconds` parameter; when set, the message expires after that duration on the server regardless of `MaxMsgsPerSubject`. When `None` (default), the stream's LimitsPolicy governs retention as before.
 
-- **Wire protocol**: uses nats-py's native `msg_ttl` parameter on `JetStreamContext.publish()` (nats-py 2.14.0+).
+- **Wire protocol**: uses nats-py's native `msg_ttl` parameter on `JetStreamContext.publish()`.
 - **In-memory backend**: accepts `ttl_seconds` for protocol conformance but ignores it (retention is deque-based).
 
 ### Batch publishing

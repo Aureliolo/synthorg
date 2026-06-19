@@ -172,7 +172,7 @@ budget:
   per_task_limit: 5.00
   per_agent_daily_limit: 10.00
   auto_downgrade:
-    enabled: true
+    enabled: false             # opt-in -- ships disabled
     threshold: 85              # percent of budget used
     boundary: "task_assignment" # task_assignment only -- NEVER mid-execution
     downgrade_map:             # ordered pairs -- aliases reference configured models

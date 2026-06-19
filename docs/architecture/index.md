@@ -8,6 +8,9 @@ SynthOrg is organised as a modular, protocol-driven framework. Every major subsy
 Core: Core Models
 Providers: LLM Providers
 API: API Layer
+ProjectBrain: Project Brain
+DocsEngine: Living Docs
+A2A: A2A Protocol
 
 Config -> Engine
 Engine -> Core
@@ -18,7 +21,15 @@ Engine -> Memory
 Engine -> Security
 Engine -> Budget
 Engine -> HR
+Engine -> Knowledge
+Engine -> Ontology
+Engine -> ProjectBrain
+Engine -> DocsEngine
+Communication -> A2A
 API -> Engine
+Meta -> Engine {style.stroke-dash: 5}
+Ontology -> Memory {style.stroke-dash: 5}
+Knowledge -> Memory {style.stroke-dash: 5}
 Observability -> Engine {style.stroke-dash: 5}
 Observability -> Providers {style.stroke-dash: 5}
 Observability -> Security {style.stroke-dash: 5}

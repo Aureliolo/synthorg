@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
+import { Plus } from 'lucide-react'
 import { Button } from './button'
 
 const meta = {
@@ -12,7 +13,7 @@ const meta = {
     },
     size: {
       control: 'select',
-      options: ['default', 'xs', 'sm', 'lg', 'icon'],
+      options: ['default', 'xs', 'sm', 'lg', 'icon', 'icon-xs', 'icon-sm', 'icon-lg'],
     },
   },
 } satisfies Meta<typeof Button>
@@ -44,8 +45,31 @@ export const Link: Story = {
   args: { children: 'Link', variant: 'link' },
 }
 
+export const XSmall: Story = {
+  args: { children: 'XSmall', size: 'xs' },
+}
+
 export const Small: Story = {
   args: { children: 'Small', size: 'sm' },
+}
+
+export const IconSizes: Story = {
+  render: () => (
+    <div className="flex flex-wrap items-center gap-3">
+      <Button size="icon-xs" aria-label="Add">
+        <Plus />
+      </Button>
+      <Button size="icon-sm" aria-label="Add">
+        <Plus />
+      </Button>
+      <Button size="icon" aria-label="Add">
+        <Plus />
+      </Button>
+      <Button size="icon-lg" aria-label="Add">
+        <Plus />
+      </Button>
+    </div>
+  ),
 }
 
 export const Large: Story = {

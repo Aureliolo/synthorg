@@ -7,6 +7,7 @@ import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import type { ProviderConfig } from '@/api/types/providers'
 import type { SetupAgentSummary, SetupCompanyResponse } from '@/api/types/setup'
 import { getProviderStatus } from '@/utils/provider-status'
+import { formatModelTier } from '@/utils/model-tiers'
 import { Building2, Users, Server } from 'lucide-react'
 
 function SetupAgentRow({ agent }: { agent: SetupAgentSummary }) {
@@ -19,7 +20,7 @@ function SetupAgentRow({ agent }: { agent: SetupAgentSummary }) {
       </div>
       <div className="flex items-center gap-2">
         <StatPill label="Dept" value={agent.department} />
-        <StatPill label="Tier" value={agent.tier} />
+        <StatPill label="Tier" value={formatModelTier(agent.tier)} />
       </div>
     </div>
   )

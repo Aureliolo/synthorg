@@ -71,6 +71,14 @@ export const WithSecondaryActions: Story = {
   },
 }
 
+export const Refreshing: Story = {
+  args: {
+    title: 'Overview',
+    count: 12,
+    refreshing: true,
+  },
+}
+
 export const LongTitle: Story = {
   args: {
     title: 'Department policy overrides with long name that should truncate',

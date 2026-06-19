@@ -15,6 +15,7 @@ import { ListHeader } from '@/components/ui/list-header'
 import { SectionCard } from '@/components/ui/section-card'
 import { SearchFilterSort } from '@/components/ui/search-filter-sort'
 import { SearchInput } from '@/components/ui/search-input'
+import { SelectField } from '@/components/ui/select-field'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -27,16 +28,26 @@ interface RoleSummary {
   agentCount: number
 }
 
-function deriveRoles(agents: readonly AgentConfig[]): RoleSummary[] {
+type RoleSortKey = 'name' | 'count'
+
+const ROLE_SORT_OPTIONS: ReadonlyArray<{ value: RoleSortKey; label: string }> = [
+  { value: 'name', label: 'Sort: Name' },
+  { value: 'count', label: 'Sort: Agent count' },
+]
+
+function deriveRoles(agents: readonly AgentConfig[], sortBy: RoleSortKey): RoleSummary[] {
   const counts = new Map<string, number>()
   for (const agent of agents) {
     const role = agent.role.trim()
     if (!role) continue
     counts.set(role, (counts.get(role) ?? 0) + 1)
   }
-  return [...counts.entries()]
-    .map(([name, agentCount]) => ({ name, agentCount }))
-    .sort((a, b) => a.name.localeCompare(b.name))
+  const roles = [...counts.entries()].map(([name, agentCount]) => ({ name, agentCount }))
+  // Agent-count sort is descending (most-staffed first) with a name
+  // tiebreaker so equal counts stay stably ordered.
+  return sortBy === 'count'
+    ? roles.sort((a, b) => b.agentCount - a.agentCount || a.name.localeCompare(b.name))
+    : roles.sort((a, b) => a.name.localeCompare(b.name))
 }
 
 export default function RolesPage() {
@@ -51,14 +62,15 @@ export default function RolesPage() {
   }, [])
 
   const [searchQuery, setSearchQuery] = useState('')
+  const [sortBy, setSortBy] = useState<RoleSortKey>('name')
 
   // Filtering folds into the same memo that derives roles, so a query over a
   // large org is a single cheap pass.
   const roles = useMemo(() => {
-    const all = deriveRoles(config?.agents ?? [])
+    const all = deriveRoles(config?.agents ?? [], sortBy)
     const query = searchQuery.trim().toLowerCase()
     return query ? all.filter((r) => r.name.toLowerCase().includes(query)) : all
-  }, [config, searchQuery])
+  }, [config, searchQuery, sortBy])
 
   return (
     <div className="space-y-section-gap">
@@ -79,6 +91,14 @@ export default function RolesPage() {
             onChange={setSearchQuery}
             placeholder="Search roles by name"
             ariaLabel="Search roles"
+          />
+        }
+        sort={
+          <SelectField
+            label="Sort"
+            value={sortBy}
+            onChange={(value) => setSortBy(value as RoleSortKey)}
+            options={ROLE_SORT_OPTIONS}
           />
         }
       />

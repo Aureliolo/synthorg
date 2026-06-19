@@ -41,7 +41,7 @@ ALLOWLIST: Final[dict[str, str]] = {
     "reference/web-package-structure.md": "internal web-dashboard dev note",
     "reference/web-post-training.md": "internal web-dashboard dev note",
     "reference/web-zustand-stores.md": "internal web-dashboard dev note",
-    "reference/py314-flake-investigation-2026-05.md": (
+    "research/py314-flake-investigation-2026-05.md": (
         "point-in-time CPython flake investigation"
     ),
     "reference/rl-consolidation-feasibility.md": "internal feasibility study",

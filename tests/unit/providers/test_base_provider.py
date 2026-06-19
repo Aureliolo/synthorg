@@ -7,7 +7,12 @@ from typing import override
 import pytest
 import structlog
 
+from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.config import BudgetConfig
+from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.completion_enums import FinishReason
+from synthorg.core.types import NotBlankStr
 from synthorg.observability.events.provider import (
     PROVIDER_BATCH_CAPABILITIES_PARTIAL,
     PROVIDER_CALL_ERROR,
@@ -17,7 +22,8 @@ from synthorg.observability.events.provider import (
 )
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
-from synthorg.providers.enums import MessageRole
+from synthorg.providers.cost_recording import cost_recording_scope
+from synthorg.providers.enums import MessageRole, StreamEventType
 from synthorg.providers.errors import InvalidRequestError, ProviderInternalError
 from synthorg.providers.models import (
     ChatMessage,
@@ -305,3 +311,142 @@ class TestBatchGetCapabilitiesDefault:
             await provider.batch_get_capabilities(("doomed",))
         # TaskGroup wraps escaped exceptions; one of them is the MemoryError.
         assert any(isinstance(exc, MemoryError) for exc in exc_info.value.exceptions)
+
+
+class _UsageStreamProvider(_StubProvider):
+    """Stub whose stream yields a content delta then a terminal USAGE chunk."""
+
+    @override
+    async def _do_stream(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
+    ) -> AsyncIterator[StreamChunk]:
+        async def _gen() -> AsyncIterator[StreamChunk]:
+            yield StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="hi")
+            yield StreamChunk(
+                event_type=StreamEventType.USAGE,
+                usage=TokenUsage(input_tokens=12, output_tokens=7, cost=0.0),
+            )
+
+        return _gen()
+
+
+class _ErrorBeforeUsageStreamProvider(_StubProvider):
+    """Stub whose stream errors mid-flight before emitting a USAGE chunk."""
+
+    @override
+    async def _do_stream(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
+    ) -> AsyncIterator[StreamChunk]:
+        async def _gen() -> AsyncIterator[StreamChunk]:
+            yield StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="hi")
+            msg = "mid-stream boom"
+            raise ProviderInternalError(msg)
+
+        return _gen()
+
+
+class _PostUsageStreamProvider(_StubProvider):
+    """Stub that yields a trailing chunk AFTER the terminal USAGE chunk."""
+
+    @override
+    async def _do_stream(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
+    ) -> AsyncIterator[StreamChunk]:
+        async def _gen() -> AsyncIterator[StreamChunk]:
+            yield StreamChunk(
+                event_type=StreamEventType.USAGE,
+                usage=TokenUsage(input_tokens=3, output_tokens=4, cost=0.0),
+            )
+            yield StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="tail")
+
+        return _gen()
+
+
+@pytest.mark.unit
+class TestBaseProviderStreamCostRecording:
+    """``stream()`` records cost from the terminal USAGE chunk in scope."""
+
+    async def test_drained_stream_emits_one_cost_record(self) -> None:
+        provider = _UsageStreamProvider()
+        tracker = CostTracker(budget_config=BudgetConfig(currency=DEFAULT_CURRENCY))
+        async with cost_recording_scope(
+            cost_tracker=tracker,
+            agent_id=NotBlankStr("system"),
+            task_id=NotBlankStr("system:test:stream"),
+            call_category=LLMCallCategory.SYSTEM,
+        ):
+            iterator = await provider.stream([_msg()], "test-model")
+            chunks = [chunk async for chunk in iterator]
+
+        # The wrapper is transparent: both chunks pass through in order.
+        assert [c.event_type for c in chunks] == [
+            StreamEventType.CONTENT_DELTA,
+            StreamEventType.USAGE,
+        ]
+        await tracker.drain_pending_records()
+        records = await tracker.get_records()
+        assert len(records) == 1
+        assert records[0].input_tokens == 12
+        assert records[0].output_tokens == 7
+        assert records[0].model == "test-model"
+
+    async def test_no_scope_is_noop(self) -> None:
+        provider = _UsageStreamProvider()
+        iterator = await provider.stream([_msg()], "test-model")
+        chunks = [chunk async for chunk in iterator]
+        # Drains cleanly with no open scope and records nothing.
+        assert len(chunks) == 2
+
+    async def test_error_before_usage_records_nothing(self) -> None:
+        provider = _ErrorBeforeUsageStreamProvider()
+        tracker = CostTracker(budget_config=BudgetConfig(currency=DEFAULT_CURRENCY))
+        async with cost_recording_scope(
+            cost_tracker=tracker,
+            agent_id=NotBlankStr("system"),
+            task_id=NotBlankStr("system:test:stream-error"),
+            call_category=LLMCallCategory.SYSTEM,
+        ):
+            iterator = await provider.stream([_msg()], "test-model")
+            with pytest.raises(ProviderInternalError):
+                async for _chunk in iterator:
+                    pass
+        await tracker.drain_pending_records()
+        # A stream that errors before the USAGE chunk records nothing.
+        assert len(await tracker.get_records()) == 0
+
+    async def test_close_after_usage_records_nothing(self) -> None:
+        provider = _PostUsageStreamProvider()
+        tracker = CostTracker(budget_config=BudgetConfig(currency=DEFAULT_CURRENCY))
+        async with cost_recording_scope(
+            cost_tracker=tracker,
+            agent_id=NotBlankStr("system"),
+            task_id=NotBlankStr("system:test:stream-early-close"),
+            call_category=LLMCallCategory.SYSTEM,
+        ):
+            iterator = await provider.stream([_msg()], "test-model")
+            async for chunk in iterator:
+                if chunk.event_type is StreamEventType.USAGE:
+                    break
+            # Close early, after the USAGE chunk but before the stream is
+            # fully drained. Cost is recorded only on a complete drain: the
+            # early ``aclose()`` raises GeneratorExit out of the wrapper's
+            # ``finally`` (which still releases the inner rate-limiter slot)
+            # and skips the synthetic cost record.
+            await iterator.aclose()  # type: ignore[attr-defined]
+        await tracker.drain_pending_records()
+        assert len(await tracker.get_records()) == 0

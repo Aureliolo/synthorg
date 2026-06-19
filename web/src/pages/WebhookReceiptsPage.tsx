@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
-import { RefreshCw } from 'lucide-react'
+import { ChevronDown, ChevronUp, RefreshCw } from 'lucide-react'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
 import { BulkActionBar } from '@/components/ui/bulk-action-bar'
 import { Button } from '@/components/ui/button'
@@ -100,7 +100,7 @@ function bulkRetryToast(succeeded: number, failed: number, toast: AddToast): voi
     toast({
       variant: 'warning',
       title: `Retried ${succeeded} of ${succeeded + failed}`,
-      description: `${failed} retry attempt${plural(failed)} failed; check logs.`,
+      description: `${failed} retry attempt${plural(failed)} failed. Try those receipts again in a moment.`,
     })
   } else {
     toast({ variant: 'error', title: `Failed to retry ${failed} receipt${plural(failed)}` })
@@ -283,6 +283,15 @@ function WebhookReceiptsTable({
   selection: WebhookSelection
   retryableIds: string[]
 }) {
+  const [receivedSortDir, setReceivedSortDir] = useState<'asc' | 'desc'>('desc')
+
+  const sortedEntries = useMemo(() => {
+    const factor = receivedSortDir === 'asc' ? 1 : -1
+    const at = (r: WebhookReceipt) => new Date(r.received_at).getTime()
+    return [...entries].sort((a, b) => (at(a) - at(b)) * factor)
+  }, [entries, receivedSortDir])
+  const receivedSortLabel = receivedSortDir === 'asc' ? 'ascending' : 'descending'
+
   return (
     <SectionCard title="Recent receipts">
       <div className="overflow-x-auto">
@@ -301,7 +310,21 @@ function WebhookReceiptsTable({
                   disabled={retryableIds.length === 0}
                 />
               </th>
-              <th className="py-2 pr-4">Received</th>
+              <th className="py-2 pr-4" aria-sort={receivedSortLabel}>
+                <button
+                  type="button"
+                  onClick={() => setReceivedSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                  className="inline-flex items-center gap-1 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
+                  aria-label={`Sort by received time (${receivedSortLabel})`}
+                >
+                  Received
+                  {receivedSortDir === 'asc' ? (
+                    <ChevronUp className="size-3" aria-hidden="true" />
+                  ) : (
+                    <ChevronDown className="size-3" aria-hidden="true" />
+                  )}
+                </button>
+              </th>
               <th className="py-2 pr-4">Event</th>
               <th className="py-2 pr-4">Status</th>
               <th className="py-2 pr-4">Processed</th>
@@ -309,7 +332,7 @@ function WebhookReceiptsTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {entries.map((row) => (
+            {sortedEntries.map((row) => (
               <WebhookReceiptRow key={row.id} row={row} selection={selection} />
             ))}
           </tbody>

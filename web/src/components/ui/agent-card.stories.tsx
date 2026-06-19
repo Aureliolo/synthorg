@@ -58,6 +58,17 @@ export const Offline: Story = {
   },
 }
 
+export const WithTimestampTitle: Story = {
+  args: {
+    name: 'Frank Green',
+    role: 'Platform Engineer',
+    department: 'Engineering',
+    status: 'active',
+    timestamp: '3 days ago',
+    timestampIso: '2026-06-15T09:30:00Z',
+  },
+}
+
 export const LongTaskName: Story = {
   args: {
     name: 'Eve Thompson',

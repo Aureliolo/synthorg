@@ -1,6 +1,6 @@
 import { memo, useInsertionEffect, useMemo } from 'react'
+import { useReducedMotion } from 'motion/react'
 import { BaseEdge, getBezierPath, type EdgeProps, type Edge } from '@xyflow/react'
-import { prefersReducedMotion } from '@/lib/motion'
 
 export interface CommunicationEdgeData {
   /** Total message count for this edge. */
@@ -36,11 +36,12 @@ function ensureKeyframe() {
 function CommunicationEdgeComponent(props: EdgeProps<CommunicationEdgeType>) {
   // ``EdgeProps.data`` is optional, so a partially-populated (or absent) edge
   // payload must not yield ``undefined`` metrics that propagate as ``NaN`` into
-  // the stroke/opacity/duration maths below.
-  const data = (props.data ?? {}) as Partial<CommunicationEdgeData>
-  const volume = data.volume ?? 1
-  const frequency = data.frequency ?? 1
-  const maxVolume = data.maxVolume ?? 1
+  // the stroke/opacity/duration maths below. ``data`` is already typed by
+  // ``EdgeProps<CommunicationEdgeType>``; optional-chain its fields instead
+  // of casting the whole payload.
+  const volume = props.data?.volume ?? 1
+  const frequency = props.data?.frequency ?? 1
+  const maxVolume = props.data?.maxVolume ?? 1
 
   const [edgePath] = getBezierPath({
     sourceX: props.sourceX,
@@ -62,7 +63,9 @@ function CommunicationEdgeComponent(props: EdgeProps<CommunicationEdgeType>) {
     Math.max(MIN_DASH_DURATION, MAX_DASH_DURATION / Math.max(frequency, 0.1)),
   )
 
-  const reduced = prefersReducedMotion()
+  // Reactive hook (not a point-in-time read) so the edge re-renders when
+  // the OS reduced-motion preference changes mid-session.
+  const reduced = useReducedMotion() ?? false
 
   // Inject shared keyframe once (useInsertionEffect runs before DOM mutations)
   useInsertionEffect(() => { ensureKeyframe() }, [])

@@ -63,7 +63,7 @@ describe('TaskDetailPanel', () => {
   it('renders priority badge and selector', () => {
     render(<TaskDetailPanel task={mockTask} onClose={() => {}} onUpdate={noop} onTransition={noop} onCancel={noopSentinel} onDelete={noopSentinel} />)
     // Priority appears in both badge and select dropdown
-    expect(screen.getByLabelText('Change priority')).toHaveValue('high')
+    expect(screen.getByLabelText('Priority')).toHaveValue('high')
   })
 
   it('renders assignee', () => {

@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Activity } from 'lucide-react'
 
 import { ProgressGauge } from '@/components/ui/progress-gauge'
@@ -19,14 +20,16 @@ function clampGauge(value: number, max: number): number {
   return Math.max(0, Math.min(max, Math.round(value)))
 }
 
-export function SignalGauges({ signals }: SignalGaugesProps) {
+export const SignalGauges = memo(function SignalGauges({
+  signals,
+}: SignalGaugesProps) {
   const utilization = findSignal(signals, 'avg_utilization') * 100
   const burnRate = findSignal(signals, 'burn_rate_percent')
   const decliningCount = findSignal(signals, 'declining_agent_count')
 
   return (
     <SectionCard title="Signal Dashboard" icon={Activity}>
-      <div className="grid grid-cols-3 gap-card-gap">
+      <div className="grid grid-cols-3 gap-card-gap max-[639px]:grid-cols-1">
         <div className="flex flex-col items-center gap-2">
           <ProgressGauge value={clampGauge(utilization, 100)} max={100} />
           <span className="text-sm font-medium text-foreground">
@@ -51,4 +54,4 @@ export function SignalGauges({ signals }: SignalGaugesProps) {
       </div>
     </SectionCard>
   )
-}
+})

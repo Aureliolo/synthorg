@@ -1,4 +1,4 @@
-import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
+import { apiClient, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 import type {
   MeetingFilters,
@@ -25,4 +25,11 @@ export async function triggerMeeting(
 ): Promise<MeetingResponse[]> {
   const response = await apiClient.post<ApiResponse<MeetingResponse[]>>('/meetings/trigger', data)
   return unwrap(response)
+}
+
+export async function deleteMeeting(meetingId: string): Promise<void> {
+  const response = await apiClient.delete<ApiResponse<null>>(
+    `/meetings/${encodeURIComponent(meetingId)}`,
+  )
+  unwrapVoid(response)
 }

@@ -44,8 +44,8 @@ SynthOrg: {
   DelegGuard: DelegationGuard
   InternalBus: Internal MessageBus
   Hub: EventStreamHub
-  Projection: A2A Projection
-  WebhookRX: WebhookReceiver
+  Projection: project_event
+  WebhookRX: A2APushVerifier
 
   Gateway -> DelegGuard: "auth + allowlist + signature"
   DelegGuard -> InternalBus
@@ -85,8 +85,8 @@ External agents are treated as delegation sources. The same five `DelegationGuar
 1. **Depth cap**: max delegation chain length
 2. **Ancestry check**: reject cycles in the delegation graph
 3. **Per-pair rate limit**: throttle repeated delegations between the same agents
-4. **Structural circuit breaker**: detect rapid oscillation
-5. **Budget guard**: reject when the delegation chain has consumed too much
+4. **Structural circuit breaker**: block an agent pair after repeated bounces
+5. **Identical-request dedup**: reject duplicate delegations within a window
 
 See [Communication Coordination -> Loop Prevention](communication-coordination.md#loop-prevention) for implementation.
 

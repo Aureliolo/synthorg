@@ -40,14 +40,18 @@ autonomy:
 
     semi:
       description: "Most work is autonomous. Major decisions need approval."
-      auto_approve: ["code", "test", "docs", "comms:internal"]
-      human_approval: ["deploy", "comms:external", "budget:exceed", "org:hire"]
+      auto_approve: ["code", "test", "docs", "vcs", "comms:internal", "db:query"]
+      human_approval: ["deploy", "org", "budget", "comms:external", "tool"]
       security_agent: true
 
     supervised:
-      description: "Human approves major steps. Agents handle details."
-      auto_approve: ["code:write", "comms:internal"]
-      human_approval: ["arch", "code:create", "deploy", "vcs:push"]
+      description: "Read-only and test actions auto-approved; all mutations need approval."
+      auto_approve: ["code:read", "vcs:read", "test:run", "db:query"]
+      human_approval:
+        ["code:write", "code:create", "code:delete", "code:refactor",
+         "test:write", "docs:write", "vcs:commit", "vcs:push", "vcs:branch",
+         "deploy", "comms", "budget", "org", "db:mutate", "db:admin",
+         "arch:decide", "tool"]
       security_agent: true
 
     locked:
@@ -554,13 +558,13 @@ depth.
 ### Push Notification Webhook Security
 
 A2A push notifications allow external agents to receive task updates via webhooks.
-SynthOrg will implement a generic `WebhookReceiver` that is reusable beyond A2A:
+SynthOrg implements generic webhook receiving (signature verifiers) reusable beyond A2A:
 
 | Protection | Description |
 |------------|-------------|
 | **HMAC signature verification** | Webhook payloads are signed with a shared secret using the configured algorithm (default: HMAC-SHA256). The receiver verifies the signature before processing |
 | **Timestamp validation** | Requests include a timestamp header. The receiver rejects requests with timestamps outside the configured clock skew tolerance (default: 300 seconds) |
-| **Nonce/replay prevention** | Each request includes a unique nonce. The receiver maintains a TTL-based dedup window (default: 60 seconds) to reject replayed requests |
+| **Nonce/replay prevention** | Each request includes a unique nonce. The receiver maintains a TTL-based dedup window (`replay_window_seconds`, default: 300 seconds) to reject replayed requests |
 
 The `WebhookReceiver` will be a standalone reusable component, not A2A-specific. It will
 protect any endpoint that receives webhook callbacks from external systems.
@@ -645,7 +649,7 @@ The gateway is configured under the `a2a` key in the company YAML:
         webhook_receiver:
           signature_algorithm: hmac-sha256
           clock_skew_seconds: 300        # timestamp tolerance
-          replay_window_seconds: 60      # nonce dedup window
+          replay_window_seconds: 300     # nonce dedup window
       rate_limiting:
         external_max_per_minute: 30      # per-external-agent rate limit
         external_burst_allowance: 5

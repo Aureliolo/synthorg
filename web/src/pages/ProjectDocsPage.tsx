@@ -47,6 +47,7 @@ function resolveDoc(
 interface ProjectDocsData {
   docs: readonly DocSummary[]
   listError: string | null
+  listLoading: boolean
   filter: DocType | null
   setFilter: (filter: DocType | null) => void
   doc: LivingDocument | null
@@ -64,21 +65,31 @@ function useProjectDocsData(
   const [docResult, setDocResult] = useState<DocFetchResult | null>(null)
   const [filter, setFilter] = useState<DocType | null>(null)
   const [listError, setListError] = useState<string | null>(null)
+  const [listLoading, setListLoading] = useState(true)
 
   useEffect(() => {
     if (!projectId) return
+    let active = true
     const controller = new AbortController()
+    // eslint-disable-next-line @eslint-react/set-state-in-effect -- reset the skeleton on each projectId change before the refetch resolves
+    setListLoading(true)
+    // eslint-disable-next-line @eslint-react/set-state-in-effect -- clear a prior project's error up front so it does not linger while the new list loads
+    setListError(null)
     listProjectDocs(projectId, undefined, controller.signal)
       .then((result) => {
+        if (!active) return
         setDocs(result.data)
         setListError(null)
+        setListLoading(false)
       })
       .catch((err: unknown) => {
-        if (isAxiosError(err) && err.code === 'ERR_CANCELED') return
+        if (!active || (isAxiosError(err) && err.code === 'ERR_CANCELED')) return
         log.warn('list docs failed', err)
         setListError('Could not load documents for this project.')
+        setListLoading(false)
       })
     return () => {
+      active = false
       controller.abort()
     }
   }, [projectId])
@@ -114,12 +125,12 @@ function useProjectDocsData(
     [navigate, projectId],
   )
 
-  return { docs, listError, filter, setFilter, doc, docError, docLoading, handleSelect }
+  return { docs, listError, listLoading, filter, setFilter, doc, docError, docLoading, handleSelect }
 }
 
 export default function ProjectDocsPage() {
   const { projectId, slug } = useParams<{ projectId: string; slug?: string }>()
-  const { docs, listError, filter, setFilter, doc, docError, docLoading, handleSelect } =
+  const { docs, listError, listLoading, filter, setFilter, doc, docError, docLoading, handleSelect } =
     useProjectDocsData(projectId, slug)
 
   if (!projectId) {
@@ -162,6 +173,7 @@ export default function ProjectDocsPage() {
             docs={docs}
             selectedSlug={slug ?? null}
             filter={filter}
+            loading={listLoading}
             onSelect={handleSelect}
             onFilterChange={setFilter}
           />

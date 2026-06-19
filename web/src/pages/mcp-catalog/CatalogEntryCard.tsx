@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import type { McpCatalogEntry } from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -11,7 +12,7 @@ export interface CatalogEntryCardProps {
   className?: string
 }
 
-export function CatalogEntryCard({
+function CatalogEntryCardInner({
   entry,
   installed,
   onSelect,
@@ -31,7 +32,7 @@ export function CatalogEntryCard({
       }}
       className={cn(
         'group flex h-full cursor-pointer flex-col gap-3 rounded-lg border border-border bg-card p-card text-left',
-        'transition-all duration-200',
+        'transition-all duration-[var(--so-transition-default)]',
         'hover:bg-card-hover hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]',
         'focus:outline-none focus:ring-2 focus:ring-accent',
         className,
@@ -56,6 +57,8 @@ export function CatalogEntryCard({
     </div>
   )
 }
+
+export const CatalogEntryCard = memo(CatalogEntryCardInner)
 
 interface CatalogEntryHeaderProps {
   entry: McpCatalogEntry

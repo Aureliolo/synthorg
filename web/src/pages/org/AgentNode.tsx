@@ -44,7 +44,7 @@ function AgentNodeComponent({ data }: NodeProps<AgentNodeType>) {
         'group/agent relative rounded-lg border border-border bg-card p-card',
         'min-w-36 max-w-44',
         'ring-1 transition-all duration-200',
-        'hover:shadow-md hover:ring-2',
+        'hover:shadow-[var(--so-shadow-card-hover)] hover:ring-2',
         STATUS_RING_CLASSES[statusColor] ?? 'ring-border',
         isOffline && 'opacity-50',
       )}

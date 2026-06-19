@@ -23,7 +23,7 @@ This replaces the prior `--detect-async-leaks` ceiling gate
 axios's response chain, tough-cookie wrappers); the resulting number
 could not distinguish a real leak from MSW's structural floor, so it
 required a manually-curated buffer and was ratcheted up over time.
-The new detector counts resources that actually hold the event loop
+The detector counts resources that actually hold the event loop
 open, attributed per-test, with zero tolerance and no buffer.
 
 ## What it catches

@@ -41,7 +41,9 @@ _STATS_FILE: Path = REPO_ROOT / "data" / "runtime_stats.yaml"
 # rewrites `docs/reference/comparison.md` from `data/competitors.yaml`,
 # not from runtime_stats.yaml). Adding them here would either be a no-op
 # (no `<!--RS:...-->` markers exist) or, for paths that don't yet exist
-# on disk, fail the build under the round-3 fail-fast contract.
+# on disk, fail the build: the injection contract requires every
+# _SCOPED_FILES entry to resolve to a real file so a stale marker can
+# never be left unsubstituted in a published doc.
 _SCOPED_FILES: Final[tuple[str, ...]] = (
     "README.md",
     "docs/index.md",

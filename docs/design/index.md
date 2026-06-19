@@ -198,7 +198,14 @@ Queue: Hiring Queue
 
     ---
 
-    Execution loops, task decomposition, routing, orchestration, and recovery.
+    Task lifecycle, decomposition, routing, workflow types, and the task engine.
+
+-   [**Agent Execution**](agent-execution.md)
+
+    ---
+
+    The agent execution loop: brain/hands/session model, context budget and
+    compaction, and termination conditions.
 
 -   [**Memory**](memory.md)
 

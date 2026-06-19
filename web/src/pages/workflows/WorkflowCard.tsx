@@ -1,11 +1,11 @@
 import { Link, useNavigate } from 'react-router'
 import { Menu } from '@base-ui/react/menu'
 import { MoreHorizontal, Pencil, Copy, Download, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { ROUTES } from '@/router/routes'
 import { StatPill } from '@/components/ui/stat-pill'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { formatRelativeTime, formatLabel } from '@/utils/format'
+import { formatRelativeTime, formatLabel, formatDateTime } from '@/utils/format'
 import type { WorkflowDefinition } from '@/api/types/workflows'
 
 interface WorkflowCardProps {
@@ -22,7 +22,7 @@ interface WorkflowCardProps {
   selected?: boolean | undefined
 }
 
-export function WorkflowCard({
+function WorkflowCardInner({
   workflow,
   onDelete,
   onDuplicate,
@@ -33,7 +33,7 @@ export function WorkflowCard({
   const [confirmDelete, setConfirmDelete] = useState(false)
   const navigate = useNavigate()
   const editorUrl = `${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(workflow.id)}`
-  const cardClasses = `relative rounded-lg border bg-card p-card transition-shadow hover:shadow-[var(--so-shadow-card-hover)] ${
+  const cardClasses = `relative rounded-lg border bg-card p-card transition-all duration-[var(--so-transition-default)] hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)] ${
     selected ? 'border-accent ring-2 ring-accent/30' : 'border-border'
   }`
 
@@ -73,6 +73,8 @@ export function WorkflowCard({
     </>
   )
 }
+
+export const WorkflowCard = memo(WorkflowCardInner)
 
 interface SelectCheckboxProps {
   workflowId: string
@@ -129,7 +131,12 @@ function WorkflowCardBody({ workflow }: WorkflowCardBodyProps) {
       </div>
       <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span>v{workflow.version}</span>
-        <span>Updated {formatRelativeTime(workflow.updated_at)}</span>
+        <span>
+          Updated{' '}
+          <time dateTime={workflow.updated_at} title={formatDateTime(workflow.updated_at)}>
+            {formatRelativeTime(workflow.updated_at)}
+          </time>
+        </span>
       </div>
       {workflow.is_subworkflow && (
         <div className="text-xs text-accent">Subworkflow</div>

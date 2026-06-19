@@ -245,7 +245,7 @@ export function ApprovalDetailDrawer({
 
       <motion.aside
         ref={panelRef}
-        className="fixed top-0 right-0 z-50 flex h-full w-full max-w-lg flex-col border-l border-border bg-base shadow-[var(--so-shadow-card-hover)]"
+        className="fixed top-0 right-0 z-50 flex h-full w-[var(--so-drawer-width-default)] max-w-[100vw] flex-col border-l border-border bg-base shadow-[var(--so-shadow-card-hover)]"
         variants={PANEL_VARIANTS}
         initial="initial"
         animate="animate"

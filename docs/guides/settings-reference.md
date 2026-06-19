@@ -5,7 +5,7 @@ description: How SynthOrg settings resolve, the runtime-editable namespaces, how
 
 # Settings Reference
 
-SynthOrg has around a hundred individually-resolved settings across <!--RS:settings_namespaces-->28<!--/RS--> namespaces, split between user-facing namespaces (visible in the dashboard) and operator-only namespaces (operator-tunable, hidden from the basic UI). Each setting is typed (`STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`) and has a clearly-documented default. This guide covers how resolution works, which namespaces are user-facing vs operator-only, and how to edit settings at runtime.
+SynthOrg has over 300 individually-resolved settings across <!--RS:settings_namespaces-->28<!--/RS--> namespaces, split between user-facing namespaces (visible in the dashboard) and operator-only namespaces (operator-tunable, hidden from the basic UI). Each setting is typed (`STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`) and has a clearly-documented default. This guide covers how resolution works, which namespaces are user-facing vs operator-only, and how to edit settings at runtime. <!-- lint-allow: doc-numeric-macros -- approximate floor; total settings count is not a tracked runtime stat -->
 
 ---
 
@@ -162,7 +162,7 @@ limiter (``api.rate_limit.*``). Both are runtime-editable via settings.
 | Setting | Type | Default | Runtime-editable | Purpose |
 |---------|------|---------|------------------|---------|
 | `api.per_op_rate_limit.enabled` | BOOLEAN | `true` | yes | Master switch; when `false` every `per_op_rate_limit` guard becomes a no-op. |
-| `api.per_op_rate_limit.backend` | ENUM | `memory` | no (restart) | Sliding-window store backend. `memory` is the only implementation today; `redis` reserved for cross-worker fairness. |
+| `api.per_op_rate_limit.backend` | ENUM | `memory` | no (restart) | Sliding-window store backend. `memory` is the only shipped implementation; `redis` is reserved for cross-worker fairness. |
 | `api.per_op_rate_limit.overrides` | JSON | `{}` | yes | Per-operation overrides keyed by operation name. Shape: `{"<op>": [max_requests, window_seconds]}`. Setting either component to `0` disables the guard for that operation; negative values are rejected. |
 
 Example override to tighten ``memory.fine_tune`` to two starts per day.

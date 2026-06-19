@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import structlog
-from litestar import get, post
+from litestar import Request, get, post
 from litestar.exceptions import (
     HTTPException,
     NotAuthorizedException,
@@ -94,7 +94,10 @@ class TestExceptionHandlers:
     async def test_record_not_found_maps_to_404(self) -> None:
         @get("/test")
         async def handler() -> None:
-            msg = "gone"
+            # Persistence-layer messages embed raw ids / paths; the handler
+            # must NOT surface them, so this operator-diagnostic text stays
+            # internal and the client sees the safe class default.
+            msg = "No project with id 'abc-123' at /data/projects/abc-123"
             raise RecordNotFoundError(msg)
 
         async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
@@ -102,8 +105,10 @@ class TestExceptionHandlers:
             assert resp.status_code == 404
             body = resp.json()
             assert body["success"] is False
-            # Error message is scrubbed -- internal details not exposed.
+            # Scrubbed to the class default -- no raw id / path leaks out.
             assert body["error"] == "Resource not found"
+            assert "abc-123" not in body["error"]
+            assert "/data/projects" not in body["error"]
             _assert_error_detail(
                 body,
                 error_code=ErrorCode.RECORD_NOT_FOUND,
@@ -172,7 +177,79 @@ class TestExceptionHandlers:
             assert resp.status_code == 400
             body = resp.json()
             assert body["success"] is False
-            assert body["error"] == "persistence integrity violation"
+            assert (
+                body["error"] == "The request could not be saved because it conflicts "
+                "with existing data."
+            )
+            _assert_error_detail(
+                body,
+                error_code=ErrorCode.VALIDATION_ERROR,
+                error_category=ErrorCategory.VALIDATION,
+                retryable=False,
+            )
+
+    async def test_constraint_violation_unique_sqlstate_maps_to_409(self) -> None:
+        """A uniqueness-clash SQLSTATE (23505) surfaces as a 409 conflict."""
+        from synthorg.core.persistence_errors import ConstraintViolationError
+
+        @get("/test")
+        async def handler() -> None:
+            msg = "duplicate key"
+            raise ConstraintViolationError(
+                msg, constraint="approvals_pkey", sqlstate="23505"
+            )
+
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
+            assert resp.status_code == 409
+            body = resp.json()
+            assert body["error"] == "A record with these details already exists."
+            _assert_error_detail(
+                body,
+                error_code=ErrorCode.DUPLICATE_RECORD,
+                error_category=ErrorCategory.CONFLICT,
+                retryable=False,
+            )
+
+    async def test_constraint_violation_foreign_key_sqlstate_maps_to_400(self) -> None:
+        """A foreign-key SQLSTATE (23503) surfaces as a 400 with a FK message."""
+        from synthorg.core.persistence_errors import ConstraintViolationError
+
+        @get("/test")
+        async def handler() -> None:
+            msg = "fk violated"
+            raise ConstraintViolationError(
+                msg, constraint="foreign_key", sqlstate="23503"
+            )
+
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
+            assert resp.status_code == 400
+            body = resp.json()
+            assert body["error"] == "This request references data that does not exist."
+            _assert_error_detail(
+                body,
+                error_code=ErrorCode.VALIDATION_ERROR,
+                error_category=ErrorCategory.VALIDATION,
+                retryable=False,
+            )
+
+    async def test_constraint_violation_not_null_sqlstate_maps_to_400(self) -> None:
+        """A not-null SQLSTATE (23502) surfaces as a 400 missing-field message."""
+        from synthorg.core.persistence_errors import ConstraintViolationError
+
+        @get("/test")
+        async def handler() -> None:
+            msg = "not null violated"
+            raise ConstraintViolationError(
+                msg, constraint="approvals.status", sqlstate="23502"
+            )
+
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
+            assert resp.status_code == 400
+            body = resp.json()
+            assert body["error"] == "A required field is missing."
             _assert_error_detail(
                 body,
                 error_code=ErrorCode.VALIDATION_ERROR,
@@ -778,7 +855,7 @@ class TestExceptionHandlers:
         exc.detail = ""
         exc.headers = None
 
-        request = MagicMock()
+        request = MagicMock(spec=Request)
         request.method = "GET"
         request.url.path = "/test"
         request.accept.best_match.return_value = "application/json"
@@ -802,7 +879,7 @@ class TestExceptionHandlers:
         exc.detail = "Slow down"
         exc.headers = {"Retry-After": "soon"}
 
-        request = MagicMock()
+        request = MagicMock(spec=Request)
         request.method = "GET"
         request.url.path = "/test"
         request.accept.best_match.return_value = "application/json"
@@ -836,7 +913,7 @@ class TestExceptionHandlers:
         exc.detail = b"bytes detail"
         exc.headers = None
 
-        request = MagicMock()
+        request = MagicMock(spec=Request)
         request.method = "GET"
         request.url.path = "/test"
         request.accept.best_match.return_value = "application/json"
@@ -979,7 +1056,7 @@ class TestStructuredErrorMetadata:
         """instance field should be a UUID when middleware is not active."""
 
         exc = RuntimeError("boom")
-        request = MagicMock()
+        request = MagicMock(spec=Request)
         request.method = "GET"
         request.url.path = "/test"
         request.accept.best_match.return_value = "application/json"
@@ -1193,7 +1270,7 @@ class TestBuildResponseFallback:
         contract on the very degraded path the fallback is designed to
         cover.
         """
-        request = MagicMock()
+        request = MagicMock(spec=Request)
         request.accept.best_match.return_value = "application/json"
 
         with patch(
@@ -1222,7 +1299,7 @@ class TestBuildResponseFallback:
 
     def test_fallback_returns_problem_detail_for_problem_json(self) -> None:
         """``Accept: application/problem+json`` keeps the bare RFC 9457 body."""
-        request = MagicMock()
+        request = MagicMock(spec=Request)
         request.accept.best_match.return_value = "application/problem+json"
 
         with patch(
@@ -1246,7 +1323,7 @@ class TestBuildResponseFallback:
 
     def test_fallback_returns_500_on_problem_json_build_failure(self) -> None:
         """Fallback fires for problem+json path too."""
-        request = MagicMock()
+        request = MagicMock(spec=Request)
         request.accept.best_match.return_value = "application/problem+json"
 
         with patch(

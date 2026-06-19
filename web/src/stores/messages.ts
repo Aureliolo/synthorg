@@ -19,6 +19,7 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
   hasMore: false,
   loading: false,
   loadingMore: false,
+  deleting: false,
   error: null,
 
   unreadCounts: {},

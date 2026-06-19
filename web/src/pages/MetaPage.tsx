@@ -3,14 +3,12 @@ import {
   ClipboardList,
   FlaskConical,
   MessageCircle,
-  RefreshCw,
   Settings2,
   Shield,
   Users,
   Zap,
 } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { MetricCard } from '@/components/ui/metric-card'
@@ -77,13 +75,13 @@ interface MetaPageReadyProps {
 }
 
 function MetaPageReady({ data }: MetaPageReadyProps) {
-  const { config, proposals, abTests, signals, loading } = data
+  const { config, proposals, abTests, signals } = data
   const pendingCount = proposals.filter((p) => p.status === 'pending').length
   const activeRollouts = proposals.filter((p) => p.status === 'approved').length
   return (
     <ErrorBoundary level="page">
       <div className="mx-auto max-w-7xl space-y-section-gap p-card">
-        <MetaPageHeader loading={loading} />
+        <MetaPageHeader />
         <WsConnectionBanner description="Meta-loop signals may be stale until the connection recovers." />
         <MetaMetricsRow
           pendingCount={pendingCount}
@@ -144,11 +142,7 @@ function MetaLoadingSkeleton() {
   )
 }
 
-interface MetaPageHeaderProps {
-  loading: boolean
-}
-
-function MetaPageHeader({ loading }: MetaPageHeaderProps) {
+function MetaPageHeader() {
   return (
     <header className="flex items-center justify-between">
       <div>
@@ -159,10 +153,6 @@ function MetaPageHeader({ loading }: MetaPageHeaderProps) {
           Meta-loop signals, proposals, and rollout status
         </p>
       </div>
-      <Button variant="outline" size="sm" disabled={loading}>
-        <RefreshCw className="mr-2 h-4 w-4" />
-        Trigger Cycle
-      </Button>
     </header>
   )
 }

@@ -17,6 +17,7 @@ import {
   parseRetryAfterMs,
   retryAfterLoop,
 } from '@/utils/retry-after'
+import { isObject } from '@/utils/type-guards'
 import { notifyUnauthorized } from './unauthorized-handler'
 import type { ErrorDetail } from './types/errors'
 import type { ApiResponse, PaginatedResponse } from './types/http'
@@ -114,11 +115,21 @@ type ApiAxiosError = AxiosError<{
 
 function _normalizeHeaders(headers: unknown): Record<string, string> {
   const result: Record<string, string> = {}
-  if (!headers || typeof headers !== 'object') return result
-  for (const [k, v] of Object.entries(headers as Record<string, unknown>)) {
+  if (!isObject(headers)) return result
+  for (const [k, v] of Object.entries(headers)) {
     if (typeof v === 'string') result[k.toLowerCase()] = v
   }
   return result
+}
+
+/**
+ * Read the ``error_detail`` from an Axios response body without scattering
+ * boundary casts at each call site. ``AxiosResponse.data`` is typed ``any``,
+ * so the single cast lives here behind a runtime object check.
+ */
+function _responseErrorDetail(data: unknown): ErrorDetail | null {
+  if (!isObject(data)) return null
+  return (data['error_detail'] as ErrorDetail | null | undefined) ?? null
 }
 
 /**
@@ -141,10 +152,8 @@ function _isReplayableRequest(config: RetriableConfig): boolean {
  * chains so a non-standard 429 still parses.
  */
 function _retryAfterMsFor(response: AxiosResponse): number {
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- headers may be absent on non-standard response objects
-  const retryAfter = response.headers?.['retry-after'] as string | undefined
-  const data = response.data as { error_detail?: ErrorDetail | null } | undefined
-  const detail = data?.error_detail ?? null
+  const retryAfter = _normalizeHeaders(response.headers)['retry-after']
+  const detail = _responseErrorDetail(response.data)
   return parseRetryAfterMs(retryAfter, detail)
 }
 

@@ -5,6 +5,8 @@ import type {
   getScalingSignals,
   getScalingStrategies,
   triggerScalingEvaluation,
+  updateScalingPriority,
+  updateScalingStrategy,
 } from '@/api/endpoints/scaling'
 import {
   emptyPage,
@@ -29,5 +31,17 @@ export const scalingHandlers = [
   ),
   http.post('/api/v1/scaling/evaluate', () =>
     HttpResponse.json(successFor<typeof triggerScalingEvaluation>([])),
+  ),
+  http.put('/api/v1/scaling/strategies/:name', ({ params }) =>
+    HttpResponse.json(
+      successFor<typeof updateScalingStrategy>({
+        name: String(params['name']),
+        enabled: true,
+        priority: 0,
+      }),
+    ),
+  ),
+  http.put('/api/v1/scaling/priority', () =>
+    HttpResponse.json(successFor<typeof updateScalingPriority>([])),
   ),
 ]

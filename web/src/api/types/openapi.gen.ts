@@ -1012,6 +1012,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/brownfield/import": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** ImportCodebase */
+        readonly post: operations["ApiV1BrownfieldImportImportCodebase"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/budget/agents/{agent_id}": {
         readonly parameters: {
             readonly query?: never;
@@ -1907,23 +1924,6 @@ export type paths = {
         readonly get: operations["ApiV1EvaluationConfigVersionsVersionNumGetVersion"];
         readonly put?: never;
         readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/events/resume/{interrupt_id}": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** ResumeInterrupt */
-        readonly post: operations["ApiV1EventsResumeInterruptIdResumeInterrupt"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -2899,6 +2899,23 @@ export type paths = {
         readonly get: operations["ApiV1OauthStatusConnectionNameTokenStatus"];
         readonly put?: never;
         readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/objectives": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** SubmitObjective */
+        readonly post: operations["ApiV1ObjectivesSubmitObjective"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -6348,6 +6365,19 @@ export type components = {
              */
             readonly success: boolean;
         };
+        /** ApiResponse[ImportCodebaseAck] */
+        readonly ApiResponse_ImportCodebaseAck_: {
+            readonly data: components["schemas"]["ImportCodebaseAck"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
         /** ApiResponse[InstallEntryResponse] */
         readonly ApiResponse_InstallEntryResponse_: {
             readonly data: components["schemas"]["InstallEntryResponse"] | null;
@@ -6988,6 +7018,19 @@ export type components = {
         /** ApiResponse[SteeringSupersessionResult] */
         readonly ApiResponse_SteeringSupersessionResult_: {
             readonly data: components["schemas"]["SteeringSupersessionResult"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[SubmitObjectiveAck] */
+        readonly ApiResponse_SubmitObjectiveAck_: {
+            readonly data: components["schemas"]["SubmitObjectiveAck"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /**
@@ -10941,6 +10984,35 @@ export type components = {
             readonly field_path: string;
             readonly new_value: string | null;
             readonly old_value: string | null;
+        };
+        /** ImportCodebaseAck */
+        readonly ImportCodebaseAck: {
+            /** @description The project the codebase is being imported into. */
+            readonly project_id: string;
+            /** @description Lifecycle marker; always ``"accepted"`` on 202. */
+            readonly status: string;
+        };
+        /** ImportCodebasePayload */
+        readonly ImportCodebasePayload: {
+            /**
+             * @description Branch to provision and seed.
+             * @default main
+             */
+            readonly default_branch: string;
+            /** @description Target project to import into. */
+            readonly project_id: string;
+            /**
+             * @description Identifier of the human / service requesting the import.
+             * @default operator
+             */
+            readonly requested_by: string;
+            /** @description Remote clone URL or local path to import from. */
+            readonly source_ref: string;
+            /**
+             * @description Title for the indexed knowledge source.
+             * @default Imported codebase
+             */
+            readonly title: string;
         };
         /** InitiateOAuthFlowRequest */
         readonly InitiateOAuthFlowRequest: {
@@ -15372,6 +15444,33 @@ export type components = {
             /** @description Operator decision payload */
             readonly decision: components["schemas"]["WinnerDecision"] | components["schemas"]["RejectDecision"];
         };
+        /** SubmitObjectiveAck */
+        readonly SubmitObjectiveAck: {
+            /** @description Lifecycle marker; always ``"accepted"`` on 202. */
+            readonly status: string;
+            /** @description Server-minted correlation id. Used as the WorkItem's correlation_id and the spawned root task's idempotency key, so callers can correlate this submission to the spawned task once it exists. */
+            readonly submission_id: string;
+        };
+        /** SubmitObjectivePayload */
+        readonly SubmitObjectivePayload: {
+            /**
+             * @description Optional acceptance criteria strings.
+             * @default []
+             */
+            readonly acceptance_criteria: readonly string[];
+            /** @description Detailed statement of the objective. */
+            readonly description: string;
+            /** @description Optional complexity override (Complexity enum value). */
+            readonly estimated_complexity?: string | null;
+            /** @description Optional priority override (Priority enum value). */
+            readonly priority?: string | null;
+            /** @description Identifier of the human / service requesting the work. */
+            readonly requested_by: string;
+            /** @description Optional task-type override (TaskType enum value). */
+            readonly task_type?: string | null;
+            /** @description Short human-readable objective title. */
+            readonly title: string;
+        };
         /** SubscriptionConfig */
         readonly SubscriptionConfig: {
             readonly cost_model: components["schemas"]["ProviderCostModel"];
@@ -19427,6 +19526,37 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
+    readonly ApiV1BrownfieldImportImportCodebase: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ImportCodebasePayload"];
+            };
+        };
+        readonly responses: {
+            /** @description Request accepted, processing continues off-line */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_ImportCodebaseAck_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     readonly ApiV1BudgetAgentsAgentIdGetAgentSpending: {
         readonly parameters: {
             readonly query?: never;
@@ -21480,41 +21610,6 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
-    readonly ApiV1EventsResumeInterruptIdResumeInterrupt: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                /** @description Resource identifier */
-                readonly interrupt_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["ResumeInterruptRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_str_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 404: components["responses"]["NotFound"];
-            readonly 409: components["responses"]["Conflict"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
     readonly ApiV1EventsStreamStream: {
         readonly parameters: {
             readonly query: {
@@ -23436,6 +23531,37 @@ export interface operations {
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ObjectivesSubmitObjective: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SubmitObjectivePayload"];
+            };
+        };
+        readonly responses: {
+            /** @description Request accepted, processing continues off-line */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_SubmitObjectiveAck_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

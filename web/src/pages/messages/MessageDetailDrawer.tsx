@@ -1,5 +1,10 @@
+import { useEffect, useState } from 'react'
+import { Trash2 } from 'lucide-react'
 import { Drawer } from '@/components/ui/drawer'
 import { Avatar } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { useMessagesStore } from '@/stores/messages'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatDateTime, formatCurrency } from '@/utils/format'
 import { MessageTypeBadge } from './MessageTypeBadge'
@@ -21,9 +26,52 @@ interface MessageDetailDrawerProps {
 }
 
 export function MessageDetailDrawer({ message, open, onClose }: MessageDetailDrawerProps) {
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const deleting = useMessagesStore((s) => s.deleting)
+
+  // Reset the confirm state whenever the drawer closes or a different
+  // message is shown, so a stale confirmation never reopens against the
+  // wrong message.
+  useEffect(() => {
+    if (!open || !message) {
+      // eslint-disable-next-line @eslint-react/set-state-in-effect -- prop-to-local-state sync: clear confirm on close/message change
+      setConfirmDelete(false)
+    }
+  }, [open, message])
+
   return (
     <Drawer open={open} onClose={onClose} title={message?.sender ?? 'Message'}>
-      {message && <MessageDetailContent message={message} />}
+      {message && (
+        <div className="space-y-section-gap">
+          <MessageDetailContent message={message} />
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-danger hover:bg-danger/10 hover:text-danger"
+            onClick={() => setConfirmDelete(true)}
+          >
+            <Trash2 className="size-3.5" aria-hidden="true" />
+            Delete message
+          </Button>
+          <ConfirmDialog
+            open={confirmDelete}
+            onOpenChange={setConfirmDelete}
+            title="Delete message"
+            description="Permanently delete this message? This cannot be undone."
+            confirmLabel="Delete"
+            variant="destructive"
+            loading={deleting}
+            onConfirm={async () => {
+              const ok = await useMessagesStore.getState().deleteMessage(message.id)
+              if (ok) {
+                setConfirmDelete(false)
+                onClose()
+              }
+              return ok
+            }}
+          />
+        </div>
+      )}
     </Drawer>
   )
 }

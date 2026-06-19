@@ -63,6 +63,7 @@ function AgentGridItemComponent({ agent, selected, onToggleSelect }: AgentGridIt
             department={agent.department}
             status={toRuntimeStatus(agent.status ?? 'active')}
             timestamp={agent.hiring_date ? formatRelativeTime(agent.hiring_date) : undefined}
+            timestampIso={agent.hiring_date ?? undefined}
           />
         </Link>
       </div>

@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import { Video } from 'lucide-react'
+import { Trash2, Video } from 'lucide-react'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
+import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { DetailNavBar } from '@/components/ui/detail-nav-bar'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
@@ -59,11 +61,13 @@ function MeetingDetailNavHeader({
   nav,
   goPrev,
   goNext,
+  onDelete,
 }: {
   meeting: MeetingDetail
   nav: MeetingNav
   goPrev: () => void
   goNext: () => void
+  onDelete: () => void
 }) {
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -80,6 +84,15 @@ function MeetingDetailNavHeader({
         onNext={goNext}
         position={nav.position}
       />
+      <Button
+        variant="ghost"
+        size="sm"
+        className="ml-auto text-danger hover:bg-danger/10 hover:text-danger"
+        onClick={onDelete}
+      >
+        <Trash2 className="size-3.5" aria-hidden="true" />
+        Delete
+      </Button>
     </div>
   )
 }
@@ -177,6 +190,8 @@ function MeetingStatusNotices({ meeting }: { meeting: MeetingDetail }) {
 export default function MeetingDetailPage() {
   const { meetingId } = useParams<{ meetingId: string }>()
   const navigate = useNavigate()
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const deleting = useMeetingsStore((s) => s.deleting)
   const { meeting, loading, error, wsSetupError, showDisconnected, nav, goPrev, goNext } =
     useMeetingDetailController(meetingId)
 
@@ -213,7 +228,13 @@ export default function MeetingDetailPage() {
 
   return (
     <div className="space-y-section-gap">
-      <MeetingDetailNavHeader meeting={meeting} nav={nav} goPrev={goPrev} goNext={goNext} />
+      <MeetingDetailNavHeader
+        meeting={meeting}
+        nav={nav}
+        goPrev={goPrev}
+        goNext={goNext}
+        onDelete={() => setConfirmDelete(true)}
+      />
       <MeetingDetailBanners
         error={error}
         showDisconnected={showDisconnected}
@@ -224,6 +245,24 @@ export default function MeetingDetailPage() {
       </ErrorBoundary>
       <MeetingMinutesSections meeting={meeting} />
       <MeetingStatusNotices meeting={meeting} />
+
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title="Delete meeting"
+        description={`Permanently delete "${meeting.meeting_type_name || meeting.meeting_id}" and its minutes? This cannot be undone.`}
+        confirmLabel="Delete"
+        variant="destructive"
+        loading={deleting}
+        onConfirm={async () => {
+          const ok = await useMeetingsStore.getState().deleteMeeting(meetingId)
+          if (ok) {
+            setConfirmDelete(false)
+            void navigate(ROUTES.MEETINGS)
+          }
+          return ok
+        }}
+      />
     </div>
   )
 }

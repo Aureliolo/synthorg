@@ -275,7 +275,7 @@ The cycle only ever **proposes**: every authored-tool proposal still flows throu
 
 ## Proposal Lifecycle
 
-1. **Signal collection**: `SnapshotBuilder` runs all 7 aggregators in parallel
+1. **Signal collection**: `SnapshotBuilder` runs the 7 core aggregators (plus an opt-in benchmark aggregator) in parallel
 2. **Rule evaluation**: `RuleEngine` checks all enabled rules against the snapshot
 3. **Strategy dispatch**: Matching strategies generate proposals (rule-first hybrid)
 4. **Guard chain**: Sequential evaluation (scope, rollback plan, rate limit, approval gate)

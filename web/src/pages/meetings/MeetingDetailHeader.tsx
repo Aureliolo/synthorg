@@ -6,11 +6,9 @@ import { StatPill } from '@/components/ui/stat-pill'
 import { formatDateTime, formatLabel, formatTokenCount } from '@/utils/format'
 import {
   formatMeetingDuration,
-  getMeetingStatusColor,
-  getMeetingStatusLabel,
   getProtocolLabel,
-  STATUS_BADGE_CLASSES,
 } from '@/utils/meetings'
+import { MeetingStatusBadge } from '@/components/ui/meeting-status-badge'
 import { ROUTES } from '@/router/routes'
 import type { MeetingResponse } from '@/api/types/meetings'
 
@@ -20,7 +18,6 @@ interface MeetingDetailHeaderProps {
 }
 
 function MeetingHeaderTitle({ meeting }: { meeting: MeetingResponse }) {
-  const statusBadgeClass = STATUS_BADGE_CLASSES[getMeetingStatusColor(meeting.status)]
   return (
     <div className="flex items-center gap-3">
       <Button asChild variant="ghost" size="icon-sm">
@@ -36,14 +33,7 @@ function MeetingHeaderTitle({ meeting }: { meeting: MeetingResponse }) {
           <span className="shrink-0 rounded border border-border bg-surface px-1.5 py-0.5 text-micro font-mono text-muted-foreground">
             {getProtocolLabel(meeting.protocol_type)}
           </span>
-          <span
-            className={cn(
-              'shrink-0 rounded-full border px-2 py-0.5 text-micro font-medium',
-              statusBadgeClass,
-            )}
-          >
-            {getMeetingStatusLabel(meeting.status)}
-          </span>
+          <MeetingStatusBadge status={meeting.status} />
         </div>
       </div>
     </div>

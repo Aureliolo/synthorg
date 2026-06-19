@@ -76,7 +76,7 @@ class ApprovalRepository(
     FilteredQueryRepository[ApprovalItem, ApprovalFilterSpec],
 ):
     async def save_many(
-        self, items: tuple[ApprovalItem, ...]
+        self, items: Sequence[ApprovalItem]
     ) -> None:
         # Bespoke bulk-insert optimisation; documented under D7.
         ...

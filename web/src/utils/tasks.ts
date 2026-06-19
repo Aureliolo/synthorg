@@ -1,6 +1,11 @@
-import type { Priority, TaskStatus, TaskType } from '@/api/types/enums'
+import { PRIORITY_VALUES, type Priority, type TaskStatus, type TaskType } from '@/api/types/enums'
 import type { Task } from '@/api/types/tasks'
 import type { SemanticColor } from '@/lib/utils'
+
+/** Narrow a raw string to ``Priority`` by membership, else ``null``. */
+export function parsePriority(value: string): Priority | null {
+  return (PRIORITY_VALUES as readonly string[]).includes(value) ? (value as Priority) : null
+}
 
 // ── Status color mapping ────────────────────────────────────
 

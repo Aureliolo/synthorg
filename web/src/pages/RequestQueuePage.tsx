@@ -251,6 +251,15 @@ function RequestQueueActiveView({ q }: { q: RequestQueueState }) {
           title="No requests yet"
           description="Submit a client request via POST /requests to start exercising the intake pipeline."
         />
+      ) : q.filteredRequests.length === 0 ? (
+        // Keep the filter bar above visible so the operator can adjust the
+        // search/status that filtered every request out, rather than seeing
+        // a wall of empty status columns.
+        <EmptyState
+          icon={Inbox}
+          title="No requests match your filters"
+          description="Adjust the search or status filter above to see the rest of the queue."
+        />
       ) : (
         <RequestQueueBoard
           filteredRequests={q.filteredRequests}

@@ -48,3 +48,10 @@ Dockerfile text eol=lf
 # while the index stores LF, creating phantom `git status` diffs in
 # generated/checked-in files like web/public/mockServiceWorker.js.
 web/** text=auto eol=lf
+
+# Generated artifacts -- mark so GitHub collapses them in diffs and
+# omits them from language statistics. The OpenAPI client types are
+# regenerated wholesale from the backend schema (never hand-edited),
+# so their churn should not dominate review diffs.
+web/src/api/types/openapi.gen.ts linguist-generated=true -diff
+web/src/api/types/*.gen.ts linguist-generated=true -diff

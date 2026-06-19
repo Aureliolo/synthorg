@@ -34,6 +34,7 @@ from synthorg.observability import (
 from synthorg.observability.events.a2a import (
     A2A_AGENT_CARD_CACHE_HIT,
     A2A_AGENT_CARD_CACHE_MISS,
+    A2A_AGENT_CARD_FAILED,
     A2A_AGENT_CARD_NOT_FOUND,
     A2A_AGENT_CARD_SERVED,
 )
@@ -44,7 +45,8 @@ logger = get_logger(__name__)
 
 # Module-level cache: (card_data, expires_at, fingerprint).
 _card_cache: dict[str, tuple[dict[str, JsonValue], float, str]] = {}
-_cache_lock = asyncio.Lock()
+# Module-level lock with process lifetime; never rebound across loops.
+_cache_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see above.
 # Module-level clock singleton; tests inject a FakeClock by passing
 # it explicitly to the cache helpers below.
 _default_clock: Clock = SystemClock()
@@ -147,7 +149,7 @@ async def _resolve_company_name(app_state: AppState) -> str:
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
-            A2A_AGENT_CARD_SERVED,
+            A2A_AGENT_CARD_FAILED,
             card_type="company",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
@@ -320,7 +322,7 @@ class WellKnownAgentCardController(Controller):
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
-                A2A_AGENT_CARD_SERVED,
+                A2A_AGENT_CARD_FAILED,
                 exc,
                 card_type="company",
                 reason="company_agent_card_build_failed",
@@ -377,7 +379,7 @@ class WellKnownAgentCardController(Controller):
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
-                A2A_AGENT_CARD_SERVED,
+                A2A_AGENT_CARD_FAILED,
                 exc,
                 card_type="agent",
                 agent_id=agent_id,
@@ -412,7 +414,7 @@ class WellKnownAgentCardController(Controller):
             reraise_critical(exc)
             log_exception_redacted(
                 logger,
-                A2A_AGENT_CARD_SERVED,
+                A2A_AGENT_CARD_FAILED,
                 exc,
                 card_type="agent",
                 agent_id=agent_id,

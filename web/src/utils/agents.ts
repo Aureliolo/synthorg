@@ -103,8 +103,6 @@ export function seniorityRank(level: SeniorityLevel | null): number {
   return level === null ? -1 : SENIORITY_RANK[level]
 }
 
-// Legacy alias retained for the local sort function below.
-const LEVEL_RANK = SENIORITY_RANK
 const STATUS_RANK: Record<AgentStatus, number> = {
   active: 0, onboarding: 1, on_leave: 2, terminated: 3,
 }
@@ -115,7 +113,7 @@ const STATUS_RANK: Record<AgentStatus, number> = {
  * tables so the sort respects the documented order rather than alpha.
  */
 function _sortValue(agent: DashboardAgentConfig, sortBy: AgentSortKey): string | number {
-  if (sortBy === 'level') return LEVEL_RANK[agent.level]
+  if (sortBy === 'level') return SENIORITY_RANK[agent.level]
   if (sortBy === 'status') return STATUS_RANK[agent.status ?? 'active']
   return agent[sortBy] ?? ''
 }

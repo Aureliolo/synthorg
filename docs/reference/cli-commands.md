@@ -54,7 +54,7 @@ Defaults shown below are compiled into the binary; tunable defaults are also rea
 | `logs` | `--until` | (none) | Show logs until timestamp or relative |
 | `logs` | `--timestamps` / `-t` | `false` | Show timestamps |
 | `logs` | `--no-log-prefix` | `false` | Suppress the service prefix |
-| `doctor` | `--checks` | `all` | Comma-separated check categories (`environment`, `health`, ...) |
+| `doctor` | `--checks` | `""` | Comma-separated check categories (`environment`, `health`, ...); empty runs all categories |
 | `doctor` | `--fix` | `false` | Auto-fix detected issues where supported |
 | `version` | `--short` | `false` | Print only the version string |
 
@@ -98,7 +98,7 @@ Defaults shown below are compiled into the binary; tunable defaults are also rea
 | Command | Description |
 |---------|-------------|
 | `completion <shell>` | Emit autocompletion script (`bash` / `zsh` / `fish` / `powershell`) |
-| `completion-install <shell>` | Write the autocompletion script into your shell startup |
+| `completion-install` | Detect your shell and write the autocompletion script into its startup |
 
 ## Scaffolding
 

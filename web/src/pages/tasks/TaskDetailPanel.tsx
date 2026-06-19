@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion } from 'motion/react'
 import { X, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -44,15 +44,31 @@ const PANEL_VARIANTS = {
   exit: { x: '100%', opacity: 0, transition: tweenExitFast },
 }
 
+function useFocusOnOpen() {
+  // WCAG 2.4.3: move focus into the modal on open so keyboard users reach
+  // its content without tabbing past the backdrop, and restore focus to the
+  // trigger on close.
+  const ref = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const previouslyFocused =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null
+    ref.current?.focus()
+    return () => {
+      previouslyFocused?.focus()
+    }
+  }, [])
+  return ref
+}
+
 function useEscapeToClose(onClose: () => void): void {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
-      if (
-        document.querySelector('[role="alertdialog"], [role="dialog"][aria-modal="true"]')
-      ) {
-        return
-      }
+      // A nested confirm dialog (cancel / delete) owns Escape while open; the
+      // panel's own ``role="dialog"`` is deliberately excluded from this guard.
+      if (document.querySelector('[role="alertdialog"]')) return
       onClose()
     }
     document.addEventListener('keydown', handleKeyDown)
@@ -71,6 +87,7 @@ export function TaskDetailPanel({
 }: TaskDetailPanelProps) {
   const dialogs = useTaskDetailDialogs({ task, onCancel, onDelete, onClose })
   const [transitioning, setTransitioning] = useState<TaskStatus | null>(null)
+  const panelRef = useFocusOnOpen()
 
   useEscapeToClose(onClose)
 
@@ -100,12 +117,15 @@ export function TaskDetailPanel({
         onClick={onClose}
       />
       <motion.aside
-        className="fixed top-0 right-0 z-50 flex h-full w-full max-w-lg flex-col border-l border-border bg-base shadow-lg"
+        ref={panelRef}
+        tabIndex={-1}
+        className="fixed top-0 right-0 z-50 flex h-full w-[var(--so-drawer-width-default)] max-w-[100vw] flex-col border-l border-border bg-base shadow-[var(--so-shadow-card-hover)] outline-none"
         variants={PANEL_VARIANTS}
         initial="initial"
         animate="animate"
         exit="exit"
         role="dialog"
+        aria-modal="true"
         aria-label={`Task detail: ${task.title}`}
       >
         <PanelHeader task={task} onClose={onClose} />
@@ -268,12 +288,15 @@ function useTaskDetailDialogs({
     return true
   }, [task.id, onDelete, onClose])
 
+  const openCancel = useCallback(() => setCancelOpen(true), [])
+  const openDelete = useCallback(() => setDeleteOpen(true), [])
+
   return {
     cancelOpen,
     deleteOpen,
     cancelReason,
-    openCancel: () => setCancelOpen(true),
-    openDelete: () => setDeleteOpen(true),
+    openCancel,
+    openDelete,
     setCancelOpen,
     setDeleteOpen,
     setCancelReason,

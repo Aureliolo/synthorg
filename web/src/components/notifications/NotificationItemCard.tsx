@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { AlertTriangle, Check, Info, X, XCircle } from 'lucide-react'
 import { Link } from 'react-router'
 
@@ -142,7 +143,7 @@ function NotificationActions({
   )
 }
 
-export function NotificationItemCard({
+function NotificationItemCardInner({
   item,
   onMarkRead,
   onDismiss,
@@ -182,3 +183,5 @@ export function NotificationItemCard({
     </div>
   )
 }
+
+export const NotificationItemCard = memo(NotificationItemCardInner)

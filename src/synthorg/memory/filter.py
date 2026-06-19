@@ -156,28 +156,22 @@ MemoryFilterStrategyName = Literal["off", "tag_based", "passthrough"]
 
 def build_memory_filter(
     strategy: MemoryFilterStrategyName,
-    *,
-    non_inferable_only: bool,
 ) -> MemoryFilterStrategy | None:
     """Resolve the post-ranking memory filter from the discriminator.
 
-    The default ``off`` strategy defers to the legacy
-    ``non_inferable_only`` flag (auto-creating a
-    :class:`TagBasedMemoryFilter` only when it is set), so the shipped
-    default reproduces the historical behaviour exactly.  ``tag_based``
-    and ``passthrough`` select their filter unconditionally.
+    ``off`` applies no filter; ``tag_based`` retains only
+    non-inferable-tagged memories; ``passthrough`` injects every ranked
+    memory.
 
     Args:
         strategy: The ``memory_filter_strategy`` discriminator.
-        non_inferable_only: Legacy flag consulted only for ``off``.
 
     Returns:
-        The selected filter, or ``None`` when ``off`` and
-        ``non_inferable_only`` is ``False`` (no filtering).
+        The selected filter, or ``None`` when ``off`` (no filtering).
     """
     match strategy:
         case "off":
-            return TagBasedMemoryFilter() if non_inferable_only else None
+            return None
         case "tag_based":
             return TagBasedMemoryFilter()
         case "passthrough":

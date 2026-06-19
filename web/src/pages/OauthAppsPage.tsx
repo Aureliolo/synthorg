@@ -8,6 +8,8 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
+import { SearchFilterSort } from '@/components/ui/search-filter-sort'
+import { SearchInput } from '@/components/ui/search-input'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { useConnectionsData } from '@/hooks/useConnectionsData'
 import { createLogger } from '@/lib/logger'
@@ -20,6 +22,25 @@ import { OauthAppCard } from './oauth-apps/OauthAppCard'
 
 const log = createLogger('oauth-apps-page')
 
+async function startOauthFlow(connection: Connection): Promise<void> {
+  try {
+    const response = await initiateOauth({ connection_name: connection.name })
+    useToastStore.getState().add({
+      variant: 'info',
+      title: 'OAuth flow started',
+      description: 'Complete authorization in the new tab.',
+    })
+    window.open(response.authorization_url, '_blank', 'noopener,noreferrer')
+  } catch (err) {
+    log.warn('OAuth initiate failed:', getErrorMessage(err))
+    useToastStore.getState().add({
+      variant: 'error',
+      title: 'Failed to start OAuth flow',
+      description: getErrorMessage(err),
+    })
+  }
+}
+
 type ModalState =
   | { kind: 'closed' }
   | { kind: 'create' }
@@ -29,6 +50,7 @@ interface OauthAppsContentProps {
   oauthApps: readonly Connection[]
   loading: boolean
   hasData: boolean
+  searchActive: boolean
   onEdit: (connection: Connection) => void
   onDelete: (connection: Connection) => void
   onConnect: (connection: Connection) => void
@@ -39,6 +61,7 @@ function OauthAppsContent({
   oauthApps,
   loading,
   hasData,
+  searchActive,
   onEdit,
   onDelete,
   onConnect,
@@ -47,9 +70,9 @@ function OauthAppsContent({
   if (loading && !hasData) {
     return <ConnectionsSkeleton />
   }
-  return (
-    <ErrorBoundary level="section">
-      {hasData ? (
+  if (oauthApps.length > 0) {
+    return (
+      <ErrorBoundary level="section">
         <StaggerGroup className="grid grid-cols-2 gap-grid-gap max-[767px]:grid-cols-1">
           {oauthApps.map((conn) => (
             <StaggerItem key={conn.name}>
@@ -62,15 +85,25 @@ function OauthAppsContent({
             </StaggerItem>
           ))}
         </StaggerGroup>
-      ) : (
-        <EmptyState
-          icon={KeyRound}
-          title="No OAuth apps registered"
-          description="Register an OAuth client app to reuse it across multiple connections."
-          action={{ label: 'Register app', onClick: onRegister }}
-        />
-      )}
-    </ErrorBoundary>
+      </ErrorBoundary>
+    )
+  }
+  if (searchActive) {
+    return (
+      <EmptyState
+        icon={KeyRound}
+        title="No matching OAuth apps"
+        description="No registered app matches your search. Clear the field to see them all."
+      />
+    )
+  }
+  return (
+    <EmptyState
+      icon={KeyRound}
+      title="No OAuth apps registered"
+      description="Register an OAuth client app to reuse it across multiple connections."
+      action={{ label: 'Register app', onClick: onRegister }}
+    />
   )
 }
 
@@ -105,38 +138,29 @@ export default function OauthAppsPage() {
   const deleteConnection = useConnectionsStore((s) => s.deleteConnection)
   const [modal, setModal] = useState<ModalState>({ kind: 'closed' })
   const [pendingDelete, setPendingDelete] = useState<Connection | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
 
-  const oauthApps = useMemo(
+  const allOauthApps = useMemo(
     () => connections.filter((c) => c.connection_type === 'oauth_app'),
     [connections],
   )
 
-  const handleConnect = async (connection: Connection) => {
-    try {
-      const response = await initiateOauth({ connection_name: connection.name })
-      useToastStore.getState().add({
-        variant: 'info',
-        title: 'OAuth flow started',
-        description: 'Complete authorization in the new tab.',
-      })
-      window.open(response.authorization_url, '_blank', 'noopener,noreferrer')
-    } catch (err) {
-      log.warn('OAuth initiate failed:', getErrorMessage(err))
-      useToastStore.getState().add({
-        variant: 'error',
-        title: 'Failed to start OAuth flow',
-        description: getErrorMessage(err),
-      })
-    }
-  }
+  const oauthApps = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return allOauthApps
+    return allOauthApps.filter(
+      (c) => c.name.toLowerCase().includes(q) || (c.base_url?.toLowerCase().includes(q) ?? false),
+    )
+  }, [allOauthApps, searchQuery])
 
-  const hasData = oauthApps.length > 0
+  const hasData = allOauthApps.length > 0
+  const searchActive = searchQuery.trim() !== ''
 
   return (
     <div className="flex flex-col gap-section-gap">
       <ListHeader
         title="OAuth Apps"
-        count={oauthApps.length}
+        count={allOauthApps.length}
         primaryAction={
           <Button size="sm" onClick={() => setModal({ kind: 'create' })}>
             <Plus className="mr-1.5 size-3.5" aria-hidden />
@@ -153,13 +177,27 @@ export default function OauthAppsPage() {
         />
       )}
 
+      {hasData && (
+        <SearchFilterSort
+          search={
+            <SearchInput
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="Search by app name or base URL"
+              ariaLabel="Search OAuth apps"
+            />
+          }
+        />
+      )}
+
       <OauthAppsContent
         oauthApps={oauthApps}
         loading={loading}
         hasData={hasData}
+        searchActive={searchActive}
         onEdit={(conn) => setModal({ kind: 'edit', connection: conn })}
         onDelete={(conn) => setPendingDelete(conn)}
-        onConnect={(conn) => void handleConnect(conn)}
+        onConnect={(conn) => void startOauthFlow(conn)}
         onRegister={() => setModal({ kind: 'create' })}
       />
 

@@ -28,16 +28,13 @@ The cost API lives at `/api/v1/costs`. Three core endpoints:
 
 ```bash
 # Summary for the current billing month.
-curl -s http://localhost:8000/api/v1/costs/summary \
-  -H "Authorization: Bearer $TOKEN" | jq
+curl -s -b cookies.txt http://localhost:3001/api/v1/costs/summary | jq
 
 # Per-agent breakdown.
-curl -s "http://localhost:8000/api/v1/costs/by/agent?since=2026-05-01" \
-  -H "Authorization: Bearer $TOKEN" | jq
+curl -s -b cookies.txt "http://localhost:3001/api/v1/costs/by/agent?since=2026-05-01" | jq
 
 # Per-project breakdown filtered to one project.
-curl -s "http://localhost:8000/api/v1/costs/by/project?project_id=proj-acme" \
-  -H "Authorization: Bearer $TOKEN" | jq
+curl -s -b cookies.txt "http://localhost:3001/api/v1/costs/by/project?project_id=proj-acme" | jq
 ```
 
 ## Worked example: route a Slack alert at 80% project budget
@@ -51,29 +48,24 @@ budget:
       monthly: 250.00
       currency: GBP
       alerts:
-        warning_at: 50
+        warn_at: 50
         critical_at: 80
         hard_stop_at: 95
 ```
 
-Configure the notification dispatcher to route critical alerts to Slack:
+Configure the notification dispatcher to route warning-and-above alerts to Slack:
 
 ```yaml
 notifications:
-  channels:
-    slack:
+  sinks:
+    - type: slack
       enabled: true
-      webhook_url: https://hooks.slack.com/services/.../...
-  routing:
-    - event: budget.project.warning
-      channels: [slack]
-      severity: warning
-    - event: budget.project.critical
-      channels: [slack]
-      severity: critical
+      params:
+        webhook_url: https://hooks.slack.com/services/.../...
+  min_severity: warning
 ```
 
-The enforcer fires `BUDGET_PROJECT_BUDGET_EXCEEDED` and the dispatcher routes the notification through the configured channels. On hard-stop (95% in the example), the project's tasks are auto-cancelled and a `notifications.budget_exhausted.send` event lands on the notification feed.
+The enforcer fires `BUDGET_PROJECT_BUDGET_EXCEEDED` and the dispatcher fans the notification out to every enabled sink at or above `min_severity`. On hard-stop (95% in the example), the project's tasks are auto-cancelled and a `notifications.budget_exhausted.send` event lands on the notification feed.
 
 ## Aggregation under concurrency
 

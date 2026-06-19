@@ -76,7 +76,7 @@ export function CategoryBreakdown({ ratio, currency }: CategoryBreakdownProps) {
           </div>
 
           {/* Legend */}
-          <div className="grid grid-cols-2 gap-grid-gap">
+          <div className="grid grid-cols-2 gap-grid-gap max-[479px]:grid-cols-1">
             {CATEGORIES.map((cat) => (
               <CategoryLegendRow
                 key={cat.key}

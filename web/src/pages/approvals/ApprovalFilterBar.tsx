@@ -5,6 +5,16 @@ import type { ApprovalRiskLevel, ApprovalStatus } from '@/api/types/enums'
 const STATUSES = ['pending', 'approved', 'rejected', 'expired'] as const satisfies readonly ApprovalStatus[]
 const RISK_LEVELS = ['critical', 'high', 'medium', 'low'] as const satisfies readonly ApprovalRiskLevel[]
 
+/** Narrow a raw select value to ``ApprovalStatus`` by membership, else ``undefined``. */
+function parseStatus(value: string): ApprovalStatus | undefined {
+  return (STATUSES as readonly string[]).includes(value) ? (value as ApprovalStatus) : undefined
+}
+
+/** Narrow a raw select value to ``ApprovalRiskLevel`` by membership, else ``undefined``. */
+function parseRiskLevel(value: string): ApprovalRiskLevel | undefined {
+  return (RISK_LEVELS as readonly string[]).includes(value) ? (value as ApprovalRiskLevel) : undefined
+}
+
 const SELECT_CLASS =
   'h-8 rounded-md border border-border bg-surface px-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-accent'
 
@@ -41,7 +51,7 @@ function ApprovalFilterControls({
     <div className="flex flex-wrap items-center gap-2">
       <select
         value={filters.status ?? ''}
-        onChange={(e) => onUpdate('status', (e.target.value || undefined) as ApprovalStatus | undefined)}
+        onChange={(e) => onUpdate('status', parseStatus(e.target.value))}
         className={SELECT_CLASS}
         aria-label="Filter by status"
       >
@@ -55,9 +65,7 @@ function ApprovalFilterControls({
 
       <select
         value={filters.riskLevel ?? ''}
-        onChange={(e) =>
-          onUpdate('riskLevel', (e.target.value || undefined) as ApprovalRiskLevel | undefined)
-        }
+        onChange={(e) => onUpdate('riskLevel', parseRiskLevel(e.target.value))}
         className={SELECT_CLASS}
         aria-label="Filter by risk level"
       >
@@ -168,7 +176,9 @@ export function ApprovalFilterBar({
   actionTypes,
 }: ApprovalFilterBarProps) {
   const updateFilter: UpdateFilterFn = (key, value) => {
-    onFiltersChange({ ...filters, [key]: value || undefined })
+    // Only the empty-string sentinel clears a filter; a future falsy
+    // non-string value (0 / false) must survive rather than be dropped.
+    onFiltersChange({ ...filters, [key]: value !== '' ? value : undefined })
   }
 
   return (

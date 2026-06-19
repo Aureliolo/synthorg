@@ -18,6 +18,7 @@ import asyncio
 import math
 from collections.abc import (
     AsyncIterator,
+    Callable,
     Mapping,
 )
 from contextlib import asynccontextmanager
@@ -36,6 +37,7 @@ from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 # ``emit_cost_record_from_context``, so they must resolve at runtime
 # when downstream tooling evaluates type hints.
 from synthorg.budget.tracker import CostTracker
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -349,29 +351,26 @@ def _build_cost_record(
     )
 
 
-async def emit_cost_record_from_context(
+async def _skip_build_and_submit(
     ctx: CostRecordingContext,
-    response: CompletionResponse,
+    usage: TokenUsage,
     *,
     model: str,
     provider: str,
+    build: Callable[[], CostRecord],
 ) -> None:
-    """Build and submit a :class:`CostRecord` from a completion response.
+    """Skip free no-ops, build the record, and submit it off-path.
 
-    Skips when the response carries zero cost AND zero tokens (matches
-    the engine's existing rule for free-tier no-ops).  Recording
-    failures are logged at WARNING and swallowed; the provider call's
-    user-visible result must not depend on recording success.
-
-    ``MemoryError`` and ``RecursionError`` propagate.
-
-    Args:
-        ctx: Active recording context.
-        response: Successful completion response from the provider.
-        model: Model identifier the provider returned for this call.
-        provider: Provider label resolved by the base class.
+    Shared by the completion and streaming emitters. A zero-cost AND
+    zero-token call is skipped (free-tier no-op). A build failure is
+    logged at WARNING and swallowed -- the provider call's user-visible
+    result must not depend on recording success. Otherwise the record is
+    submitted on a tracked background task so a slow tracker cannot add
+    user-visible latency; the task is bounded and owned by the
+    per-instance tracker (GC-safe, xdist-isolated). ``MemoryError`` /
+    ``RecursionError`` propagate.
     """
-    if _is_zero_usage(response.usage):
+    if _is_zero_usage(usage):
         logger.debug(
             PROVIDER_COST_SKIPPED,
             agent_id=ctx.agent_id,
@@ -383,7 +382,7 @@ async def emit_cost_record_from_context(
         return
 
     try:
-        record = _build_cost_record(ctx, response, model=model, provider=provider)
+        record = build()
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
@@ -412,12 +411,109 @@ async def emit_cost_record_from_context(
         _record_cost_in_background(ctx, record, provider=provider, model=model),
         name=f"cost_record:{ctx.agent_id}:{ctx.task_id}",
     )
-    # Track task on the active tracker so the event loop's GC can't
-    # drop the reference and cancel the recording mid-flight. The
-    # tracker's ``add_done_callback`` plumbing self-evicts the task
-    # once it completes; ownership on the per-instance tracker means
-    # xdist test isolation is automatic.
     ctx.cost_tracker.track_pending_record(task)
+
+
+async def emit_cost_record_from_context(
+    ctx: CostRecordingContext,
+    response: CompletionResponse,
+    *,
+    model: str,
+    provider: str,
+) -> None:
+    """Build and submit a :class:`CostRecord` from a completion response.
+
+    Skips free-tier no-ops, swallows recording failures, and submits the
+    record off the response path; see :func:`_skip_build_and_submit`.
+
+    Args:
+        ctx: Active recording context.
+        response: Successful completion response from the provider.
+        model: Model identifier the provider returned for this call.
+        provider: Provider label resolved by the base class.
+    """
+    await _skip_build_and_submit(
+        ctx,
+        response.usage,
+        model=model,
+        provider=provider,
+        build=lambda: _build_cost_record(ctx, response, model=model, provider=provider),
+    )
+
+
+def _build_cost_record_from_usage(
+    ctx: CostRecordingContext,
+    usage: TokenUsage,
+    *,
+    model: str,
+    provider: str,
+    finish_reason: FinishReason,
+) -> CostRecord:
+    """Construct a CostRecord directly from a terminal stream usage chunk.
+
+    Streaming responses surface token counts on the terminal
+    ``StreamEventType.USAGE`` chunk rather than a full
+    :class:`CompletionResponse`, and carry no ``_synthorg_*`` provider
+    metadata, so latency / cache / retry default to absent.
+
+    Returns:
+        A ``CostRecord`` populated from the active context + usage.
+    """
+    return CostRecord(
+        agent_id=ctx.agent_id,
+        task_id=ctx.task_id,
+        project_id=ctx.project_id,
+        provider=NotBlankStr(provider),
+        model=NotBlankStr(model),
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+        cost=usage.cost,
+        currency=ctx.currency,
+        timestamp=datetime.now(UTC),
+        call_category=ctx.call_category,
+        latency_ms=None,
+        cache_hit=None,
+        retry_count=None,
+        retry_reason=None,
+        finish_reason=finish_reason,
+        success=_is_successful_finish(finish_reason),
+    )
+
+
+async def emit_cost_record_from_usage(
+    ctx: CostRecordingContext,
+    usage: TokenUsage,
+    *,
+    model: str,
+    provider: str,
+    finish_reason: FinishReason = FinishReason.STOP,
+) -> None:
+    """Build and submit a CostRecord from a terminal stream usage chunk.
+
+    The streaming counterpart to :func:`emit_cost_record_from_context`: a
+    completed stream surfaces its token counts on the terminal ``USAGE``
+    chunk, so cost is recorded from that usage. Zero-usage and
+    failure-handling semantics mirror the completion path (skip free
+    no-ops; log + swallow recording failures off the response path).
+    ``MemoryError`` / ``RecursionError`` propagate.
+
+    Args:
+        ctx: Active recording context.
+        usage: Token usage from the stream's terminal USAGE chunk.
+        model: Model identifier for the call.
+        provider: Provider label resolved by the base class.
+        finish_reason: Terminal finish reason; streams carry none
+            per-chunk, so a cleanly-drained stream defaults to ``STOP``.
+    """
+    await _skip_build_and_submit(
+        ctx,
+        usage,
+        model=model,
+        provider=provider,
+        build=lambda: _build_cost_record_from_usage(
+            ctx, usage, model=model, provider=provider, finish_reason=finish_reason
+        ),
+    )
 
 
 async def _record_cost_in_background(
@@ -436,6 +532,10 @@ async def _record_cost_in_background(
     the asyncio event loop's default exception handler (loud crash
     is preferable to silent corruption); everything else is logged
     and swallowed.
+
+    Raises:
+        CancelledError: Propagated unchanged when the event loop
+            cancels this best-effort task during shutdown.
     """
     try:
         await asyncio.wait_for(
@@ -454,6 +554,10 @@ async def _record_cost_in_background(
             reason="cost_tracker_record_timeout",
         )
         return
+    except asyncio.CancelledError:
+        # Loop shutdown cancelling a pending best-effort cost task is
+        # expected; propagate cleanly rather than logging it as a failure.
+        raise
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
@@ -489,5 +593,6 @@ __all__ = [
     "cost_recording_scope",
     "current_cost_context",
     "emit_cost_record_from_context",
+    "emit_cost_record_from_usage",
     "resolve_currency",
 ]

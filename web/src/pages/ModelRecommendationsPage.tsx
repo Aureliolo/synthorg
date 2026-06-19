@@ -9,20 +9,41 @@ import { StatPill } from '@/components/ui/stat-pill'
 import { useRecommendationsStore } from '@/stores/recommendations'
 import { ModelRecommendationCard } from './agents/ModelRecommendationCard'
 
-function RefreshStatusBar() {
+function RefreshStatusSummary() {
   const status = useRecommendationsStore((s) => s.status)
+  const statusLoading = useRecommendationsStore((s) => s.statusLoading)
+  const statusError = useRecommendationsStore((s) => s.statusError)
+  if (status != null) {
+    return (
+      <>
+        <StatPill label="MODE" value={status.mode} />
+        <StatPill
+          label="AUTO-APPLY"
+          value={status.auto_apply_within_family ? 'on (in-family)' : 'off'}
+        />
+      </>
+    )
+  }
+  if (statusLoading) {
+    return <Skeleton className="h-6 w-40 rounded-full" />
+  }
+  if (statusError != null) {
+    return (
+      <span className="text-compact text-danger">
+        Could not load refresh status: {statusError}
+      </span>
+    )
+  }
+  return null
+}
+
+function RefreshStatusBar() {
   const refreshing = useRecommendationsStore((s) => s.refreshing)
   const runRefresh = useRecommendationsStore((s) => s.runRefresh)
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card p-card">
       <div className="flex flex-wrap items-center gap-2">
-        {status != null && <StatPill label="MODE" value={status.mode} />}
-        {status != null && (
-          <StatPill
-            label="AUTO-APPLY"
-            value={status.auto_apply_within_family ? 'on (in-family)' : 'off'}
-          />
-        )}
+        <RefreshStatusSummary />
         <span className="text-compact text-muted-foreground">
           Approvals reassign every pinned agent to the recommended model.
         </span>

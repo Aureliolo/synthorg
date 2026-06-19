@@ -25,9 +25,13 @@ from synthorg.observability.metrics_hub import (
     record_provider_error,
 )
 
-from .cost_recording import current_cost_context, emit_cost_record_from_context
+from .cost_recording import (
+    current_cost_context,
+    emit_cost_record_from_context,
+    emit_cost_record_from_usage,
+)
 from .errors import classify_provider_error
-from .models import CompletionResponse
+from .models import CompletionResponse, TokenUsage
 from .resilience.retry import RetryResult
 
 logger = get_logger(__name__)
@@ -153,6 +157,30 @@ async def record_cost_if_in_scope(
     ctx = current_cost_context()
     if ctx is not None:
         await emit_cost_record_from_context(ctx, result, model=model, provider=provider)
+
+
+async def record_stream_cost_if_in_scope(
+    usage: TokenUsage,
+    *,
+    model: str,
+    provider: str,
+) -> None:
+    """Emit a CostRecord from a stream's terminal USAGE chunk in scope.
+
+    The streaming counterpart to :func:`record_cost_if_in_scope`: when a
+    ``cost_recording_scope`` is open, the token counts surfaced on a
+    drained stream's terminal ``StreamEventType.USAGE`` chunk are
+    recorded. Sites without an open scope see no change; recording
+    errors are logged and swallowed inside ``emit_cost_record_from_usage``.
+
+    Args:
+        usage: Token usage from the stream's terminal USAGE chunk.
+        model: Model identifier for the call.
+        provider: The resolved provider name.
+    """
+    ctx = current_cost_context()
+    if ctx is not None:
+        await emit_cost_record_from_usage(ctx, usage, model=model, provider=provider)
 
 
 def record_call_failure(  # noqa: PLR0913

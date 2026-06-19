@@ -10,12 +10,10 @@ The company template YAML describes a synthetic organisation: its agents, depart
 ## Top-level shape
 
 ```yaml
-version: 1
-company:
-  name: Acme Robotics
-  description: ...
+company_name: Acme Robotics
+company_type: startup
 agents:
-  - id: ...
+  - name: ...
 departments:
   - name: ...
 sprints:
@@ -36,34 +34,24 @@ scoring:
   ...
 ```
 
-Every top-level key is optional except `version` and `company`. Missing sections fall back to the Pydantic-defined defaults.
+Every top-level key is optional except `company_name`. Missing sections fall back to the Pydantic-defined defaults.
 
-## `version`
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `version` | int | (required) | Schema version. Currently `1`. |
-
-A future incompatible change bumps the integer; the loader rejects unknown versions at startup with a typed error.
-
-## `company`
+## `company_name` / `company_type`
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `company.name` | str | (required) | Display name. |
-| `company.description` | str | `""` | Free-form description. |
-| `company.timezone` | str | `"UTC"` | IANA timezone identifier; used by ceremony scheduling. |
-| `company.locale` | str | `"en-GB"` | BCP 47 locale; drives number/date rendering on the dashboard. |
+| `company_name` | str | (required) | Company display name. |
+| `company_type` | enum | `custom` | Company template type (e.g. `startup`, `agency`, `full_company`). |
 
-The locale defaults to `en-GB` per the regional-defaults rule; see [docs/reference/regional-defaults.md](regional-defaults.md).
+Company-wide runtime settings (autonomy, default budget, communication pattern, tool access) live under the top-level `config:` block. The dashboard locale defaults to `en-GB` per the regional-defaults rule; see [docs/reference/regional-defaults.md](regional-defaults.md).
 
 ## `agents`
 
-A list of agent definitions; each must declare at least `id`, `role`, and `provider`.
+A list of agent definitions; each must declare at least `name`, `role`, and `provider`. The agent `id` is derived deterministically from `name` and is not authored by hand.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `id` | str | (required) | Stable agent identifier (kebab-case). |
+| `name` | str | (required) | Agent display name (unique within the company). |
 | `role` | str | (required) | Role name; matches a department's `roles` list. |
 | `provider` | str | (required) | Provider driver identifier. |
 | `model` | str | provider default | Model identifier (e.g. `example-medium-001`). |
@@ -97,10 +85,9 @@ A list of agent definitions; each must declare at least `id`, `role`, and `provi
 | `budget.total_monthly` | float | `0` | Monthly cap in `currency`. |
 | `budget.currency` | str | `GBP` | ISO 4217 code. |
 | `budget.reset_day` | int (1..28) | `1` | Day-of-month for the monthly reset. |
-| `budget.alerts.warning_at` | int (0..100) | `50` | Warning threshold percentage. |
-| `budget.alerts.critical_at` | int (0..100) | `80` | Critical threshold percentage. |
-| `budget.alerts.hard_stop_at` | int (0..100) | `95` | Hard-stop threshold percentage. |
-| `budget.daily_limit` | float | unset | Optional daily cap. |
+| `budget.alerts.warn_at` | int (0..100) | `75` | Warning threshold percentage. |
+| `budget.alerts.critical_at` | int (0..100) | `90` | Critical threshold percentage. |
+| `budget.alerts.hard_stop_at` | int (0..100) | `100` | Hard-stop threshold percentage. |
 | `budget.projects.<id>.monthly` | float | unset | Per-project monthly cap. |
 | `budget.risk_budget.enabled` | bool | `false` | Enable risk-weighted budget enforcement. |
 
@@ -133,24 +120,22 @@ integrations:
 
 ```yaml
 notifications:
-  channels:
-    slack:
+  sinks:
+    - type: slack
       enabled: true
-      webhook_url: ${SLACK_WEBHOOK}
-    email:
-      enabled: false
-  routing:
-    - event: budget.project.critical
-      channels: [slack]
-      severity: critical
+      params:
+        webhook_url: ${SLACK_WEBHOOK}
+    - type: console
+      enabled: true
+  min_severity: warning
 ```
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `notifications.channels.<name>.enabled` | bool | `false` | Activate the channel. |
-| `notifications.routing[].event` | str | (required) | Event-name prefix to match. |
-| `notifications.routing[].channels` | list[str] | (required) | Channel names to route to. |
-| `notifications.routing[].severity` | enum | `warning` | One of `info`, `warning`, `critical`. |
+| `notifications.sinks[].type` | enum | (required) | Adapter type: `console`, `ntfy`, `slack`, `email`. |
+| `notifications.sinks[].enabled` | bool | `true` | Activate the sink. |
+| `notifications.sinks[].params` | map[str,str] | `{}` | Adapter parameters (e.g. `webhook_url`). |
+| `notifications.min_severity` | enum | `info` | Minimum severity to dispatch; one of `info`, `warning`, `error`. |
 
 ## `security`
 
@@ -196,7 +181,7 @@ The loader applies the Pydantic schema, then runs validation hooks:
 
 - Currency consistency (`budget.currency` must match per-project currencies).
 - Cross-section references (`agents[].role` must appear in some `departments[].roles`).
-- Allowlist enforcement (channels in `notifications.routing[].channels` must exist).
+- Allowlist enforcement (`notifications.sinks[].type` must be a supported sink adapter).
 
 Failures surface at startup with a typed `ConfigValidationError` and a line/column pointer into the YAML.
 

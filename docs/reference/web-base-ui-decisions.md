@@ -21,7 +21,7 @@ When adding a new primitive, prefer the direct-import path; do not introduce a s
 | `Meter` | **Not adopted** | `ProgressGauge` already emits `role="meter"` + `aria-valuenow` / `valuemin` / `valuemax`. Base UI's Meter is a raw primitive without the styled circular / linear variants we need. |
 | `Select` | **Not adopted** | `SelectField` is a native `<select>`; we intentionally keep the native mobile picker for iOS / Android UX. Replacing with a custom dropdown would lose that. |
 | `Combobox`, `Autocomplete` | **Not adopted (for now)** | v1.4.0 adds passive keyboard nav + autofill improvements. No current typeahead call sites in the dashboard (connections page uses button grid, SelectField uses native `<select>`). Re-evaluate when filterable selects become a feature requirement. |
-| `OTP Field` | **Not adopted (preview)** | v1.4.0 preview component for one-time password / verification code input. Evaluate when auth / 2FA flows are built (post-v0.7). |
+| `OTP Field` | **Not adopted (preview)** | v1.4.0 preview component for one-time password / verification code input. Evaluate when authentication / 2FA flows are built. |
 
 ## Adding new primitives
 

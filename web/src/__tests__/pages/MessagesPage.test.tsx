@@ -164,7 +164,7 @@ describe('MessagesPage', () => {
       newMessageIds: new Set(),
     }
     renderPage('/messages?channel=%23eng&type=delegation')
-    expect(screen.getByText('Messages')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Messages' })).toBeInTheDocument()
   })
 
   it('ignores invalid type param', () => {

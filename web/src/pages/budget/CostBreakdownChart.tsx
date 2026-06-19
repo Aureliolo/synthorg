@@ -28,10 +28,11 @@ function DonutTooltipContent({ active, payload, currency }: {
   payload?: Array<{ payload: BreakdownSlice }> | undefined
   currency?: string | undefined
 }) {
-  if (!active || !payload?.length) return null
-  const slice = payload[0]!.payload
+  if (!active) return null
+  const slice = payload?.at(0)?.payload
+  if (!slice) return null
   return (
-    <div className="rounded-md border border-border bg-card px-3 py-2 text-xs shadow-md">
+    <div className="rounded-md border border-border bg-card px-3 py-2 text-xs shadow-[var(--so-shadow-card)]">
       <p className="mb-1 font-sans font-medium text-foreground">{slice.label}</p>
       <p className="font-mono text-foreground">{formatCurrency(slice.cost, currency)}</p>
       <p className="text-muted-foreground">{slice.percent.toFixed(1)}%</p>

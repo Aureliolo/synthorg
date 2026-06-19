@@ -86,3 +86,24 @@ export async function triggerScalingEvaluation(): Promise<
   )
   return unwrap(response)
 }
+
+export async function updateScalingStrategy(
+  strategyName: string,
+  enabled: boolean,
+): Promise<ScalingStrategyResponse> {
+  const response = await apiClient.put<ApiResponse<ScalingStrategyResponse>>(
+    `/scaling/strategies/${encodeURIComponent(strategyName)}`,
+    { enabled },
+  )
+  return unwrap(response)
+}
+
+export async function updateScalingPriority(
+  order: readonly string[],
+): Promise<readonly string[]> {
+  const response = await apiClient.put<ApiResponse<readonly string[]>>(
+    '/scaling/priority',
+    { order },
+  )
+  return unwrap(response)
+}

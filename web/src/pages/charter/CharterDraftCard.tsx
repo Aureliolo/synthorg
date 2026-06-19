@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import type { CharterEditRequest, ProjectCharter } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
@@ -112,7 +112,7 @@ function CharterDraftActions({
   )
 }
 
-export function CharterDraftCard({
+function CharterDraftCardInner({
   charter,
   busy,
   onSave,
@@ -192,3 +192,5 @@ export function CharterDraftCard({
     </SectionCard>
   )
 }
+
+export const CharterDraftCard = memo(CharterDraftCardInner)

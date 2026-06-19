@@ -76,14 +76,14 @@ Two blocking interrupt types:
 
 - Payload: `interrupt_id`, `tool_name`, `tool_args`, `evidence_package_id`,
   `timeout_seconds`
-- Resume: `POST /api/v1/events/resume/{interrupt_id}` with
+- Resume: `POST /api/v1/interrupts/{interrupt_id}/resume` with
   `{decision, feedback}`
 
 **Information Request Interrupt**: emitted when an agent needs
 mid-task clarification:
 
 - Payload: `interrupt_id`, `question`, `context_snippet`, `timeout_seconds`
-- Resume: `POST /api/v1/events/resume/{interrupt_id}` with `{response}`
+- Resume: `POST /api/v1/interrupts/{interrupt_id}/resume` with `{response}`
 
 Non-SSE polling fallback: `GET /api/v1/interrupts` +
 `POST /api/v1/interrupts/{id}/resume`. Used by CLI/integration tests and

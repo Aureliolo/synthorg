@@ -57,31 +57,25 @@ provider, zero LLM spend, unless noted):
   All modes opt-in, default off.
 - **Operations**: structured logging with correlation tracking and redaction,
   log shipping, Prometheus metrics, OTLP, HttpOnly-cookie multi-user sessions
-  with CSRF protection, Chainguard distroless images, Trivy + Grype scanning,
-  cosign signatures, and SLSA L3 provenance.
+  with CSRF protection, Wolfi apko-composed distroless images, Trivy + Grype
+  scanning, cosign signatures, and SLSA L3 provenance.
+- **Product studio substrate**: persistent project workspace with pluggable
+  git, brownfield codebase intake, living documentation, and a deep
+  requirements interview.
+- **Operate tier**: golden-company benchmark, mission control with run replay,
+  a cost forecast/kill-switch dial, a measurable learning curve, deterministic
+  replay, run narratives, and an adversarial red-team.
+- **Agent capability layer**: a knowledge and provenance retrieval substrate,
+  research mode, continual improvement, governed external API access, and
+  headless-browser and virtual-desktop testing.
 
 ## In active development
 
 These turn the wired runtime into a polished autonomous studio. The runtime,
 coordinator, intake, work pipeline, sandbox dispatch, and distributed-path
 consumers already run under deterministic harnesses; what remains is
-operator-facing maturity and real-provider acceptance. Each strand is tracked
-as an epic:
+operator-facing maturity and real-provider acceptance:
 
-- **Autonomous product studio substrate**
-  ([EPIC #1973](https://github.com/Aureliolo/synthorg/issues/1973)):
-  persistent project workspace with pluggable git, brownfield codebase
-  intake, living documentation, and a deep requirements interview.
-- **Best-in-class operate tier**
-  ([EPIC #1979](https://github.com/Aureliolo/synthorg/issues/1979)): a
-  golden-company benchmark, mission control with run replay, a cost
-  forecast/kill-switch dial, a measurable learning curve, deterministic
-  replay, run narratives, and an adversarial red-team.
-- **Agent capability layer**
-  ([EPIC #1987](https://github.com/Aureliolo/synthorg/issues/1987)): a
-  knowledge and provenance retrieval substrate, research mode, continual
-  improvement, governed external API access, headless-browser and
-  virtual-desktop testing.
 - **Self-improvement loop**: company-wide signals from existing subsystems
   producing deployment and product-level improvement proposals through a
   rule-first hybrid pipeline with mandatory human approval. Components built

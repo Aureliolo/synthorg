@@ -20,11 +20,14 @@ export interface MeetingsState {
 
   // Trigger
   triggering: boolean
+  deleting: boolean
 
   // Actions
   fetchMeetings: (filters?: MeetingFilters) => Promise<void>
   fetchMeeting: (meetingId: string) => Promise<void>
   triggerMeeting: (data: TriggerMeetingRequest) => Promise<MeetingResponse[]>
+  /** Delete a meeting record and drop it from the list. Returns false on failure. */
+  deleteMeeting: (meetingId: string) => Promise<boolean>
 
   // Real-time
   handleWsEvent: (event: WsEvent) => void

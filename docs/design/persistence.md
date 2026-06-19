@@ -174,9 +174,9 @@ database. The pattern is implemented by:
 
 - `TaskRepository.list_tasks` (filterable + paginated; documented in detail
   below).
-- `ConnectionRepository.list_all`, `list_by_type` (paginated since the
-  durable backends landed; in-memory stubs and durable repos share the
-  signature).
+- `ConnectionRepository.list_items`, `query` (the `IdKeyedRepository` +
+  `FilteredQueryRepository` generics; paginated since the durable backends
+  landed; in-memory stubs and durable repos share the signature).
 - `WebhookReceiptRepository.get_by_connection` (already had `limit`; gained
   `offset` so callers can walk the receipt log without re-issuing).
 - `SessionRepository.list_all`, `list_by_user`.
@@ -187,8 +187,8 @@ database. The pattern is implemented by:
   agent_id ASC` before slicing).
 - `OrgFactRepository.query` (existing `limit=5` default kept; `offset`
   added) and `list_by_category`.
-- `OntologyEntityRepository.list_entities`, `search` (legacy 1000-row cap
-  preserved when `limit=None`).
+- `OntologyEntityRepository.list_entities`, `search` (`limit` defaults to
+  `DEFAULT_LIST_LIMIT` with `offset` pagination, ordered by name).
 - `ApiKeyRepository.list_by_user`.
 
 API endpoints that expose these reads wrap the page in a `PaginatedResponse`

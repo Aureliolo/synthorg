@@ -142,7 +142,7 @@ function AdvancedOptionsPanel({
   return (
     <div
       id="advanced-options-panel"
-      className="grid grid-cols-3 gap-grid-gap rounded-lg border border-border p-card"
+      className="grid grid-cols-3 gap-grid-gap rounded-lg border border-border p-card max-[767px]:grid-cols-1"
     >
       <InputField
         label="Epochs"

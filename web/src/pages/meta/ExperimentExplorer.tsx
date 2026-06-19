@@ -1,25 +1,27 @@
 /**
- * Read-only experiment registry explorer.
+ * Experiment registry explorer.
  *
  * The experiment registry is keyed by experiment name (there is no
  * list-all endpoint), so the operator enters a key to inspect its
- * registered variants and recorded assignment history. Variant
- * registration and assignment are backend-/agent-only writes and are not
- * surfaced here; see the experiments controller docstring.
+ * registered variants and recorded assignment history, and can register a
+ * new variant against the loaded experiment. Assignment remains a runtime
+ * agent-only write; see the experiments controller docstring.
  */
 import { useCallback, useRef, useState } from 'react'
-import { FlaskConical } from 'lucide-react'
+import { FlaskConical, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { InputField } from '@/components/ui/input-field'
+import { SectionCard } from '@/components/ui/section-card'
 import { SkeletonText } from '@/components/ui/skeleton'
-import { listAssignments, listVariants } from '@/api/endpoints/experiments'
+import { listAssignments, listVariants, registerVariant } from '@/api/endpoints/experiments'
 import type { ExperimentAssignment, ExperimentVariant } from '@/api/types'
 import { createLogger } from '@/lib/logger'
+import { useToastStore } from '@/stores/toast'
 import { sanitizeForLog } from '@/utils/logging'
 import { formatDateTime, formatNumber } from '@/utils/format'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 
 const log = createLogger('ExperimentExplorer')
 
@@ -122,8 +124,92 @@ function ExperimentResults({ data }: { data: ExperimentData }) {
   )
 }
 
+interface VariantRegisterFormProps {
+  experiment: string
+  onRegistered: () => void
+}
+
+const DEFAULT_VARIANT_WEIGHT = 1
+
+function VariantRegisterForm({ experiment, onRegistered }: VariantRegisterFormProps) {
+  const [variant, setVariant] = useState('')
+  const [weight, setWeight] = useState(String(DEFAULT_VARIANT_WEIGHT))
+  const [description, setDescription] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  const parsedWeight = Number(weight)
+  const weightValid = Number.isInteger(parsedWeight) && parsedWeight >= 1
+  const valid = variant.trim() !== '' && weightValid
+
+  const handleSubmit = async () => {
+    if (!valid || submitting) return
+    setSubmitting(true)
+    try {
+      await registerVariant(experiment, {
+        variant: variant.trim(),
+        weight: parsedWeight,
+        ...(description.trim() ? { description: description.trim() } : {}),
+      })
+      useToastStore.getState().add({ variant: 'success', title: 'Variant registered' })
+      setVariant('')
+      setWeight(String(DEFAULT_VARIANT_WEIGHT))
+      setDescription('')
+      onRegistered()
+    } catch (err) {
+      useToastStore.getState().add({
+        variant: 'error',
+        ...getCrudErrorTitle(err, 'Could not register variant'),
+        description: getErrorMessage(err),
+      })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <SectionCard title="Register variant" icon={Plus}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          void handleSubmit()
+        }}
+        className="space-y-4"
+      >
+        <div className="grid grid-cols-[1fr_8rem] gap-grid-gap max-[479px]:grid-cols-1">
+          <InputField
+            label="Variant name"
+            value={variant}
+            onValueChange={setVariant}
+            required
+            placeholder="e.g. high-temperature"
+          />
+          <InputField
+            label="Weight"
+            type="number"
+            value={weight}
+            onValueChange={setWeight}
+            error={weightValid ? undefined : 'Weight must be a positive integer.'}
+          />
+        </div>
+        <InputField
+          label="Description"
+          value={description}
+          onValueChange={setDescription}
+          hint="Optional operator notes"
+        />
+        <div className="flex justify-end">
+          <Button type="submit" disabled={!valid || submitting}>
+            Register variant
+          </Button>
+        </div>
+      </form>
+    </SectionCard>
+  )
+}
+
 export function ExperimentExplorer() {
   const [key, setKey] = useState('')
+  const [loadedKey, setLoadedKey] = useState('')
   const [data, setData] = useState<ExperimentData>(EMPTY)
   // Monotonic request token: a slow earlier load must not overwrite the
   // display once a newer load has been issued for a different key.
@@ -132,6 +218,7 @@ export function ExperimentExplorer() {
   const load = useCallback((experiment: string) => {
     const trimmed = experiment.trim()
     if (trimmed === '') return
+    setLoadedKey(trimmed)
     const seq = requestSeqRef.current + 1
     requestSeqRef.current = seq
     setData({ ...EMPTY, loading: true })
@@ -189,6 +276,9 @@ export function ExperimentExplorer() {
         </Button>
       </div>
       <ExperimentResults data={data} />
+      {data.loaded && loadedKey !== '' && (
+        <VariantRegisterForm experiment={loadedKey} onRegistered={() => load(loadedKey)} />
+      )}
     </form>
   )
 }

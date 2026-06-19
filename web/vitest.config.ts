@@ -37,6 +37,12 @@ export default defineConfig({
     },
   },
   test: {
+    // Surface creeping per-test slowness before it compounds into a
+    // Dashboard Test wall-clock overrun: the default reporter flags any
+    // test slower than this (ms) so a regression shows up in the CI log
+    // and locally, rather than only as an eventual job-timeout
+    // cancellation.
+    slowTestThreshold: 1000,
     // Top-level ``coverage`` applies to the unit project (the only
     // project that runs under ``vitest run``); bench mode does not
     // emit coverage.

@@ -47,6 +47,7 @@ import { artifactsHandlers } from './artifacts'
 import { auditHandlers } from './audit'
 import { authHandlers } from './auth'
 import { backupHandlers } from './backup'
+import { brownfieldHandlers } from './brownfield'
 import { budgetHandlers } from './budget'
 import { capabilitiesHandlers } from './capabilities'
 import { charterHandlers } from './charter'
@@ -74,6 +75,7 @@ import { messagesHandlers } from './messages'
 import { metaHandlers } from './meta'
 import { metaAnalyticsHandlers } from './meta-analytics'
 import { oauthDefaultHandlers } from './oauth'
+import { objectivesHandlers } from './objectives'
 import { ontologyHandlers } from './ontology'
 import { personalitiesHandlers } from './personalities'
 import { projectBrainHandlers } from './projectBrain'
@@ -113,6 +115,7 @@ export const defaultHandlers = [
   ...auditHandlers,
   ...authHandlers,
   ...backupHandlers,
+  ...brownfieldHandlers,
   ...budgetHandlers,
   ...capabilitiesHandlers,
   ...charterHandlers,
@@ -140,6 +143,7 @@ export const defaultHandlers = [
   ...metaHandlers,
   ...metaAnalyticsHandlers,
   ...oauthDefaultHandlers,
+  ...objectivesHandlers,
   ...ontologyHandlers,
   ...personalitiesHandlers,
   ...projectBrainHandlers,

@@ -553,7 +553,7 @@ Scope inherited from [Page Structure & IA](page-structure.md). Desktop-first wit
 | Desktop | >= 1280px | Full (220px expanded) | Multi-column grids | `xl:` |
 | Desktop small | 1024 - 1279px | Auto-collapses to icon rail (56px) | Full width minus rail | `lg:` |
 | Tablet | 768 - 1023px | Hidden (hamburger toggle, 240px overlay) | Single column | `md:` |
-| Mobile | < 768px | Hidden | "Use desktop or CLI" message | default |
+| Mobile | < 768px | Hidden | "Desktop Required" overlay (`MobileUnsupportedOverlay`) | default |
 
 ### Layout Adaptations
 

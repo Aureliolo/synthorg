@@ -10,7 +10,7 @@ Numbers are stable identifiers; resolved questions are removed without renumberi
 |---|----------|--------|-------|
 | 1 | How deep should agent personality affect output? | Medium | Too deep leads to inconsistency; too shallow makes all agents feel the same. Capability-aware prompt profiles (#805) provide tier-based personality condensation. |
 | 4 | Should agents be able to create/modify other agents? | Medium | For example, a CTO "hires" a developer by creating a new agent config. |
-| 6 | What metrics define "good" agent performance? | Medium | Five-pillar evaluation framework (#1017) provides structure; quality scoring Layers 2+3 (#230) add an LLM judge and human override. |
+| 6 | What metrics define "good" agent performance? | Medium | The five-pillar evaluation framework provides structure; quality scoring layers add an LLM judge and human override. |
 
 ---
 
@@ -32,7 +32,7 @@ Numbers are stable identifiers; resolved questions are removed without renumberi
 
 | Risk | Severity | Mitigation |
 |------|----------|------------|
-| Over-engineering the MVP | High | Start with a minimal viable company (3-5 agents), add complexity iteratively. 9 company templates provide tested starting points. |
+| Over-engineering the MVP | High | Start with a minimal viable company (3-5 agents), add complexity iteratively. 12 company templates provide tested starting points. |
 | Config format becoming unwieldy | Medium | Good defaults, layered config (base + overrides), validation via Pydantic v2 models, setup wizard for guided configuration. |
 | Agent execution bottlenecks | Medium | Async execution, parallel agent processing, queue-based architecture. TaskGroup for structured concurrency. |
 | Data loss on crash | Medium | WAL mode SQLite, checkpoint recovery, backup/restore with scheduled retention. |

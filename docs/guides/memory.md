@@ -145,7 +145,7 @@ When an agent needs context, the retrieval pipeline queries the memory backend, 
 | `include_shared` | bool | `true` | Whether to query shared org memory |
 | `default_relevance` | float | `0.5` | Score for entries missing a relevance score |
 | `injection_point` | string | `"system"` | Where to inject: `"system"` (system prompt) or `"user"` |
-| `non_inferable_only` | bool | `false` | Only inject memories tagged as non-inferable |
+| `memory_filter_strategy` | string | `"off"` | Post-ranking filter: `"off"` (no filter), `"tag_based"` (only non-inferable-tagged memories), or `"passthrough"` (inject all) |
 | `fusion_strategy` | string | `"linear"` | Ranking fusion: `"linear"` (currently supported) |
 | `rrf_k` | int | `60` | RRF smoothing constant (only with RRF strategy, 1--1000) |
 
@@ -171,13 +171,11 @@ Beyond per-agent memory, SynthOrg supports shared organisational memory: knowled
 
 ```yaml
 org_memory:
-  backend: "hybrid_prompt_retrieval"
   core_policies:
     - "All code must pass review before merging."
     - "Customer data is never logged or stored in plain text."
     - "Budget decisions require CFO approval above 50 units in the configured currency."
   extended_store:
-    backend: "sqlite"
     max_retrieved_per_query: 5
 ```
 
@@ -185,7 +183,6 @@ org_memory:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `backend` | string | `"hybrid_prompt_retrieval"` | Org memory backend |
 | `core_policies` | list | `[]` | Policy texts injected into every agent's system prompt |
 | `extended_store` | ExtendedStoreConfig | *(defaults)* | Extended facts store |
 | `write_access` | WriteAccessConfig | *(defaults)* | Write access control |
@@ -305,7 +302,6 @@ memory:
         max_facts: 30
 
 org_memory:
-  backend: "hybrid_prompt_retrieval"
   core_policies:
     - "All research findings must be reproducible."
     - "Cite sources for all claims."

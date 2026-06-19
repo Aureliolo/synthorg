@@ -20,6 +20,7 @@ from pydantic import ValidationError
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.evidence import EvidencePackage
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.core.persistence_errors import (
     ConstraintViolationError,
     MalformedRowError,
@@ -42,12 +43,85 @@ from synthorg.persistence._shared import (
     format_iso_utc,
     validate_pagination_args,
 )
+from synthorg.persistence._shared.approval_transition import approval_decision_values
 from synthorg.persistence.approval_protocol import ApprovalFilterSpec
 from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
 
 _MAX_PAGE_LIMIT: int = 1_000
+
+# SQL-standard class codes (SQLSTATE). SQLite does not emit them, so its
+# integrity-failure messages are mapped onto these so the API integrity
+# handler can branch a uniqueness clash (409) apart from a foreign-key /
+# not-null violation (400) identically across both backends.
+_SQLSTATE_UNIQUE: str = "23505"
+_SQLSTATE_FOREIGN_KEY: str = "23503"
+_SQLSTATE_NOT_NULL: str = "23502"
+
+
+def _classify_sqlite_integrity(exc: sqlite3.IntegrityError) -> tuple[str, str | None]:
+    """Map a SQLite ``IntegrityError`` to a stable label + SQLSTATE.
+
+    Returns a stable constraint token (``table.column`` for unique /
+    not-null, a fixed label for foreign-key / check) rather than the raw
+    message, so a CHECK-constraint expression never leaks into the
+    surfaced ``constraint`` attribute, plus the Postgres-equivalent
+    SQLSTATE (``None`` when the failure does not map to a branch the API
+    handler distinguishes).
+
+    Returns:
+        ``(constraint_label, sqlstate)``.
+    """
+    head, _, target = str(exc).partition(":")
+    label = target.strip() or ConstraintViolationError.UNKNOWN_CONSTRAINT
+
+    # Prefer the extended result code: it classifies the violation kind
+    # reliably regardless of the SQLite build's localised message text,
+    # which the string parse below depends on. The message is still the
+    # only source for the ``table.column`` label, so both are used. A
+    # PRIMARY KEY clash is a uniqueness violation and maps to 23505.
+    # ``getattr`` (not direct access) so an IntegrityError without the
+    # attribute -- a non-driver-originated one -- degrades to the
+    # message-string fallback below instead of raising.
+    ext_code = getattr(exc, "sqlite_errorcode", None)
+    if ext_code in (
+        sqlite3.SQLITE_CONSTRAINT_UNIQUE,
+        sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY,
+    ):
+        return label, _SQLSTATE_UNIQUE
+    if ext_code == sqlite3.SQLITE_CONSTRAINT_NOTNULL:
+        return label, _SQLSTATE_NOT_NULL
+    if ext_code == sqlite3.SQLITE_CONSTRAINT_FOREIGNKEY:
+        return "foreign_key", _SQLSTATE_FOREIGN_KEY
+    if ext_code == sqlite3.SQLITE_CONSTRAINT_CHECK:
+        return "check_constraint", None
+
+    kind = normalize_ascii_lowercase(head)
+    if kind == "unique constraint failed":
+        return label, _SQLSTATE_UNIQUE
+    if kind == "not null constraint failed":
+        return label, _SQLSTATE_NOT_NULL
+    if kind == "foreign key constraint failed":
+        return "foreign_key", _SQLSTATE_FOREIGN_KEY
+    if kind == "check constraint failed":
+        return "check_constraint", None
+    return ConstraintViolationError.UNKNOWN_CONSTRAINT, None
+
+
+# Atomic status flip + optional decision triple. ``COALESCE`` keeps the
+# existing column when the caller omits a decision field (e.g. a plain
+# EXPIRED flip), so the same statement serves both a bare transition and
+# an approved/rejected decision. The triple's CHECK constraints are
+# enforced by the DB, not duplicated here.
+_TRANSITION_SQL = (
+    "UPDATE approvals SET "
+    "status = ?, "
+    "decided_at = COALESCE(?, decided_at), "
+    "decided_by = COALESCE(?, decided_by), "
+    "decision_reason = COALESCE(?, decision_reason) "
+    "WHERE id = ? AND status = ?"
+)
 
 _APPROVALS_UPSERT_SQL = """
     INSERT INTO approvals (
@@ -264,9 +338,11 @@ class SQLiteApprovalRepository:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
+                label, sqlstate = _classify_sqlite_integrity(exc)
                 raise ConstraintViolationError(
                     msg,
-                    constraint=str(exc),
+                    constraint=label,
+                    sqlstate=sqlstate,
                 ) from exc
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await _safe_rollback(
@@ -340,7 +416,10 @@ class SQLiteApprovalRepository:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-                raise ConstraintViolationError(msg, constraint=str(exc)) from exc
+                label, sqlstate = _classify_sqlite_integrity(exc)
+                raise ConstraintViolationError(
+                    msg, constraint=label, sqlstate=sqlstate
+                ) from exc
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await _safe_rollback(
                     self._db, operation="save_many", batch_size=len(items)
@@ -388,27 +467,9 @@ class SQLiteApprovalRepository:
                     rows = await cursor.fetchall()
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                # Log the rollback failure separately rather than
-                # suppressing it -- a silent rollback failure leaves
-                # the shared aiosqlite.Connection in an unknown state
-                # and the only diagnostic of why subsequent writes
-                # may start failing is then lost. Original ``exc`` is
-                # still chained on the QueryError so the caller sees
-                # the root cause.
-                try:
-                    await self._db.rollback()
-                except (sqlite3.Error, aiosqlite.Error) as rollback_exc:
-                    # ``logger.error`` (not ``logger.exception``):
-                    # the rollback failure is a structured event, not
-                    # a stack-trace dump. ``rollback_exc`` is captured
-                    # in ``error_type`` + ``error`` already.
-                    log_exception_redacted(
-                        logger,
-                        API_APPROVAL_REPO_FAILED,
-                        rollback_exc,
-                        batch_size=len(ids),
-                        phase="rollback",
-                    )
+                await _safe_rollback(
+                    self._db, operation="expire_if_pending", batch_size=len(ids)
+                )
                 msg = f"Failed to expire approval batch (size={len(ids)})"
                 logger.warning(
                     API_APPROVAL_REPO_FAILED,
@@ -668,7 +729,7 @@ class SQLiteApprovalRepository:
         entity_id: NotBlankStr,
         from_state: ApprovalStatus,
         to_state: ApprovalStatus,
-        **updates: object,  # noqa: ARG002
+        **updates: object,
     ) -> bool:
         """Atomic compare-and-set for approval state transitions (ADR-0001 D7).
 
@@ -676,29 +737,64 @@ class SQLiteApprovalRepository:
         the current persisted status matches ``from_state``. Returns ``True``
         iff the state transition succeeded.
 
-        ``**updates`` is ignored for now; future versions may support
-        ``expired_at`` and other status-correlated fields.
+        ``**updates`` carries the status-correlated decision triple
+        (``decided_at`` / ``decided_by`` / ``decision_reason``), written
+        atomically with the status flip so an ``approved`` / ``rejected``
+        CAS records who decided and when in the same row update. The
+        approvals CHECK constraints still apply: ``decided_at`` and
+        ``decided_by`` must be supplied together, and a ``rejected``
+        transition requires a non-blank ``decision_reason``; a violating
+        combination raises :class:`ConstraintViolationError`.
 
         Args:
             entity_id: The approval id.
             from_state: Expected current status.
             to_state: Target status.
-            **updates: Status-correlated fields (reserved, currently unused).
+            **updates: Status-correlated decision fields (``decided_at``,
+                ``decided_by``, ``decision_reason``).
 
         Returns:
             ``True`` iff the transition succeeded, ``False`` on state
             mismatch or when no row exists.
 
         Raises:
-            QueryError: On database errors.
+            ConstraintViolationError: When the decision triple violates a
+                table CHECK constraint.
+            QueryError: On database errors or an unknown ``updates`` key.
         """
-        sql = "UPDATE approvals SET status = ? WHERE id = ? AND status = ?"
-        params = (to_state.value, entity_id, from_state.value)
+        decided_at, decided_by, decision_reason = approval_decision_values(
+            entity_id, updates, format_decided_at=format_iso_utc
+        )
+        params = (
+            to_state.value,
+            decided_at,
+            decided_by,
+            decision_reason,
+            entity_id,
+            from_state.value,
+        )
         async with self._write_context():
             try:
-                async with self._db.execute(sql, params) as cursor:
-                    await self._db.commit()
+                async with self._db.execute(_TRANSITION_SQL, params) as cursor:
                     _db_rowcount = cursor.rowcount
+                    await self._db.commit()
+            except sqlite3.IntegrityError as exc:
+                await _safe_rollback(
+                    self._db,
+                    operation="transition_if",
+                    approval_id=entity_id,
+                )
+                msg = f"Constraint violation transitioning approval {entity_id!r}"
+                logger.warning(
+                    API_APPROVAL_REPO_FAILED,
+                    approval_id=entity_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                label, sqlstate = _classify_sqlite_integrity(exc)
+                raise ConstraintViolationError(
+                    msg, constraint=label, sqlstate=sqlstate
+                ) from exc
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await _safe_rollback(
                     self._db,
@@ -751,8 +847,8 @@ class SQLiteApprovalRepository:
         async with self._write_context():
             try:
                 async with self._db.execute(sql, params) as cursor:
-                    await self._db.commit()
                     _db_rowcount = cursor.rowcount
+                    await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await _safe_rollback(
                     self._db,
@@ -785,8 +881,8 @@ class SQLiteApprovalRepository:
         async with self._write_context():
             try:
                 async with self._db.execute(sql, (approval_id,)) as cursor:
-                    await self._db.commit()
                     _db_rowcount = cursor.rowcount
+                    await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await _safe_rollback(
                     self._db, operation="delete", approval_id=approval_id

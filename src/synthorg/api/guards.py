@@ -254,9 +254,8 @@ def require_org_mutation(
       target department (read from the path parameter named
       *department_param*) is in the user's ``scoped_departments``
 
-    If the user has no ``org_roles`` (empty tuple), falls back to
-    the existing ``HumanRole`` write-access check so legacy
-    installations without organisation-level roles still resolve.
+    A user with no ``org_roles`` is denied: organisation-level roles
+    are the sole authority for org-config mutation.
 
     Args:
         department_param: Path parameter name containing the target
@@ -280,19 +279,6 @@ def require_org_mutation(
             PermissionDeniedException: Raised on the corresponding failure path.
         """
         org_roles = _get_org_roles(connection)
-
-        # Backward compat: if no org_roles set, fall back to HumanRole
-        if not org_roles:
-            role = _get_role(connection)
-            if role in _WRITE_ROLES:
-                return
-            logger.warning(
-                API_GUARD_DENIED,
-                guard="require_org_mutation(fallback)",
-                role=role,
-                path=str(connection.url.path),
-            )
-            raise PermissionDeniedException(detail="Write access denied")
 
         # Owner and editor always allowed
         if _ORG_ROLE_OWNER in org_roles or _ORG_ROLE_EDITOR in org_roles:
@@ -323,6 +309,24 @@ def require_org_mutation(
             )
             raise PermissionDeniedException(
                 detail=f"Department admin access denied for {target_dept!r}",
+            )
+
+        # No org roles provisioned at all: name the missing configuration
+        # explicitly. Without this an operator on an install whose
+        # ``org_roles`` were never populated sees only a generic 403 with
+        # no pointer to the underlying setup gap.
+        if not org_roles:
+            logger.warning(
+                API_GUARD_DENIED,
+                guard="require_org_mutation(no_org_roles_provisioned)",
+                path=str(connection.url.path),
+            )
+            raise PermissionDeniedException(
+                detail=(
+                    "Org mutation access denied: no organisation roles are "
+                    "assigned to this account. Provision org roles to enable "
+                    "organisation-config changes."
+                ),
             )
 
         # Viewer or unrecognised role

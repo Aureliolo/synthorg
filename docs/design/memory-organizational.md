@@ -34,6 +34,8 @@ org_memory:
     policies: ["human"]                 # only humans write core policies
     adrs: ["human", "senior", "lead", "c_suite"]
     procedures: ["human", "senior", "lead", "c_suite"]
+    conventions: ["human", "senior", "lead", "c_suite"]
+    entity_definitions: ["human", "senior", "lead", "c_suite"]  # ontology sync publishes at senior authority
 ```
 
 `OrgMemoryBackend` stays a Protocol so future backends can substitute structurally, but the configuration discriminator is gone: `HybridPromptRetrievalBackend` is the single shipping implementation and is wired directly. New backends supply their own configuration block when they ship.

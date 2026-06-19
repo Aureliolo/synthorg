@@ -19,6 +19,7 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
   error: null,
   detailError: null,
   triggering: false,
+  deleting: false,
 
   ...createCrudActions(set, get),
   ...createWsHandler(set, get),

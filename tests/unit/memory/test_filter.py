@@ -82,19 +82,15 @@ class TestPassthroughMemoryFilter:
 class TestBuildMemoryFilter:
     """Tests for the memory-filter discriminator resolver."""
 
-    def test_off_without_non_inferable_is_none(self) -> None:
-        assert build_memory_filter("off", non_inferable_only=False) is None
-
-    def test_off_with_non_inferable_is_tag_based(self) -> None:
-        result = build_memory_filter("off", non_inferable_only=True)
-        assert isinstance(result, TagBasedMemoryFilter)
+    def test_off_is_none(self) -> None:
+        assert build_memory_filter("off") is None
 
     def test_tag_based_selection(self) -> None:
-        result = build_memory_filter("tag_based", non_inferable_only=False)
+        result = build_memory_filter("tag_based")
         assert isinstance(result, TagBasedMemoryFilter)
 
     def test_passthrough_selection(self) -> None:
-        result = build_memory_filter("passthrough", non_inferable_only=False)
+        result = build_memory_filter("passthrough")
         assert isinstance(result, PassthroughMemoryFilter)
 
 

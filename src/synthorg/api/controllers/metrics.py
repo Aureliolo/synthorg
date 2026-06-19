@@ -25,6 +25,12 @@ class MetricsController(Controller):
 
     Unauthenticated -- standard Prometheus scrape target.
     Follows the same pattern as ``HealthController``.
+
+    API-only by design: this exposes the Prometheus exposition format
+    for an external scraper (Prometheus / Grafana Agent). There is no
+    in-app dashboard viewer; operators graph these metrics in their own
+    observability stack, so the absence of a frontend surface is
+    intentional, not a coverage gap.
     """
 
     path = "/metrics"

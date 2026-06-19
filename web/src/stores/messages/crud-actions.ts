@@ -1,5 +1,6 @@
 import * as messagesApi from '@/api/endpoints/messages'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
+import { useToastStore } from '@/stores/toast'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 import {
@@ -135,6 +136,35 @@ async function fetchMoreMessagesImpl(
   }
 }
 
+async function deleteMessageImpl(
+  set: MessagesSet,
+  messageId: string,
+): Promise<boolean> {
+  set({ deleting: true })
+  try {
+    await messagesApi.deleteMessage(messageId)
+    set((s) => {
+      const nextMessages = s.messages.filter((m) => m.id !== messageId)
+      return {
+        deleting: false,
+        messages: nextMessages,
+        total: Math.max(0, s.total - (s.messages.length - nextMessages.length)),
+      }
+    })
+    useToastStore.getState().add({ variant: 'success', title: 'Message deleted' })
+    return true
+  } catch (err) {
+    log.error('deleteMessage failed:', getErrorMessage(err))
+    set({ deleting: false })
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, 'Could not delete message'),
+      description: getErrorMessage(err),
+    })
+    return false
+  }
+}
+
 export function createCrudActions(set: MessagesSet, get: MessagesGet) {
   return {
     fetchChannels: () => fetchChannelsImpl(set),
@@ -143,5 +173,6 @@ export function createCrudActions(set: MessagesSet, get: MessagesGet) {
       fetchMessagesImpl(set, channel, limit),
     fetchMoreMessages: (channel: string) =>
       fetchMoreMessagesImpl(set, get, channel),
+    deleteMessage: (messageId: string) => deleteMessageImpl(set, messageId),
   }
 }

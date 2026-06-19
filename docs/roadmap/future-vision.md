@@ -6,18 +6,13 @@ The longer-term direction for SynthOrg. Items here are either **planned** (sched
 
 | Feature | Status |
 |---------|--------|
-| TimescaleDB hypertable support for append-only time-series tables | Planned |
-| Multi-project support with project-scoped teams and isolated budgets | Planned |
 | Dynamic company scaling across clusters | Planned |
-| Plugin system | Planned |
-| Benchmarking suite | Planned |
-| REST API and dashboard UI for agent evolution | Planned |
-| OpenAPI TypeScript codegen for the dashboard | Planned |
 
 ## Backlog (Research Candidates)
 
 | Feature | Status |
 |---------|--------|
+| TimescaleDB hypertable support for append-only time-series tables | Research |
 | Community template marketplace | Research |
 | Inter-company communication beyond A2A | Research |
 | Shift system for agents | Research |
@@ -25,6 +20,7 @@ The longer-term direction for SynthOrg. Items here are either **planned** (sched
 | Advanced memory architecture (GraphRAG, consistency protocols, RL consolidation) | Research |
 | Kubernetes sandbox backend | Research |
 | Training mode (learn from senior agents) | Research |
+| Agent-controlled context compaction (agent-guided compaction tool, LLM summarisation, memory offload) | Research |
 
 ## Scaling Path
 

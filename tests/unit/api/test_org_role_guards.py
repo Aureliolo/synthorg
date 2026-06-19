@@ -133,31 +133,24 @@ class TestRequireOrgMutationViewer:
 
 
 @pytest.mark.unit
-class TestRequireOrgMutationFallback:
-    """Empty org_roles falls back to HumanRole write-access check."""
+class TestRequireOrgMutationNoOrgRoles:
+    """Empty org_roles is denied: org roles are the sole authority."""
 
     @pytest.mark.parametrize(
-        ("role", "should_pass"),
+        "role",
         [
-            (HumanRole.CEO, True),
-            (HumanRole.MANAGER, True),
-            (HumanRole.PAIR_PROGRAMMER, True),
-            (HumanRole.OBSERVER, False),
-            (HumanRole.BOARD_MEMBER, False),
+            HumanRole.CEO,
+            HumanRole.MANAGER,
+            HumanRole.PAIR_PROGRAMMER,
+            HumanRole.OBSERVER,
+            HumanRole.BOARD_MEMBER,
         ],
     )
-    def test_fallback_to_human_role(
-        self,
-        role: HumanRole,
-        should_pass: bool,
-    ) -> None:
+    def test_no_org_roles_rejected(self, role: HumanRole) -> None:
         guard = require_org_mutation(department_param="name")
         conn = _make_connection(role=role, org_roles=())
-        if should_pass:
+        with pytest.raises(
+            PermissionDeniedException,
+            match="mutation access denied",
+        ):
             guard(conn, None)
-        else:
-            with pytest.raises(
-                PermissionDeniedException,
-                match="Write access denied",
-            ):
-                guard(conn, None)

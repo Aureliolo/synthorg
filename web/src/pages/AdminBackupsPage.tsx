@@ -8,8 +8,8 @@
  * be required, so it is guarded by a destructive confirm that spells
  * that out.
  */
-import { useEffect, useState } from 'react'
-import { HardDrive, Loader2, Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { ChevronDown, ChevronUp, HardDrive, Loader2, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { useBackupsStore } from '@/stores/backups'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -22,6 +22,52 @@ import { formatDateTime, formatFileSize } from '@/utils/format'
 import type { BackupInfo } from '@/api/types/backup'
 
 type PendingAction = { kind: 'delete' | 'restore'; backupId: string }
+
+type BackupSortKey = 'timestamp' | 'size_bytes'
+
+const BACKUP_SORT_VALUE: Record<BackupSortKey, (b: BackupInfo) => number> = {
+  timestamp: (b) => new Date(b.timestamp).getTime(),
+  size_bytes: (b) => b.size_bytes,
+}
+
+interface BackupSort {
+  key: BackupSortKey
+  dir: 'asc' | 'desc'
+}
+
+function BackupSortHeader({
+  label,
+  sortKey,
+  sort,
+  onSort,
+  className,
+}: {
+  label: string
+  sortKey: BackupSortKey
+  sort: BackupSort
+  onSort: (key: BackupSortKey) => void
+  className?: string
+}) {
+  const isActive = sort.key === sortKey
+  return (
+    <th className={className}>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className="inline-flex items-center gap-1 font-medium hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
+        aria-label={`Sort by ${label}`}
+      >
+        {label}
+        {isActive &&
+          (sort.dir === 'asc' ? (
+            <ChevronUp className="size-3" aria-hidden="true" />
+          ) : (
+            <ChevronDown className="size-3" aria-hidden="true" />
+          ))}
+      </button>
+    </th>
+  )
+}
 
 interface DialogCopy {
   title: string
@@ -59,6 +105,21 @@ export default function AdminBackupsPage() {
   const deleteBackup = useBackupsStore((s) => s.deleteBackup)
   const restoreBackup = useBackupsStore((s) => s.restoreBackup)
   const [pending, setPending] = useState<PendingAction | null>(null)
+  const [sort, setSort] = useState<BackupSort>({ key: 'timestamp', dir: 'desc' })
+
+  const handleSort = (key: BackupSortKey) => {
+    setSort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+        : { key, dir: 'desc' },
+    )
+  }
+
+  const sortedBackups = useMemo(() => {
+    const valueOf = BACKUP_SORT_VALUE[sort.key]
+    const factor = sort.dir === 'asc' ? 1 : -1
+    return [...backups].sort((a, b) => (valueOf(a) - valueOf(b)) * factor)
+  }, [backups, sort])
 
   useEffect(() => {
     void fetchBackups()
@@ -83,11 +144,13 @@ export default function AdminBackupsPage() {
       )}
 
       <BackupsBody
-        backups={backups}
+        backups={sortedBackups}
         loading={loading}
         loadingMore={loadingMore}
         hasMore={hasMore}
         error={error}
+        sort={sort}
+        onSort={handleSort}
         onDelete={(id) => setPending({ kind: 'delete', backupId: id })}
         onRestore={(id) => setPending({ kind: 'restore', backupId: id })}
         onLoadMore={() => void fetchMoreBackups()}
@@ -122,6 +185,8 @@ interface BackupsBodyProps {
   loadingMore: boolean
   hasMore: boolean
   error: string | null
+  sort: BackupSort
+  onSort: (key: BackupSortKey) => void
   onDelete: (id: string) => void
   onRestore: (id: string) => void
   onLoadMore: () => void
@@ -133,6 +198,8 @@ function BackupsBody({
   loadingMore,
   hasMore,
   error,
+  sort,
+  onSort,
   onDelete,
   onRestore,
   onLoadMore,
@@ -161,9 +228,21 @@ function BackupsBody({
           <thead className="bg-surface text-left text-text-secondary">
             <tr>
               <th className="px-3 py-2 font-medium">Backup</th>
-              <th className="w-44 px-3 py-2 font-medium">Created</th>
+              <BackupSortHeader
+                label="Created"
+                sortKey="timestamp"
+                sort={sort}
+                onSort={onSort}
+                className="w-44 px-3 py-2 font-medium"
+              />
               <th className="w-28 px-3 py-2 font-medium">Trigger</th>
-              <th className="w-24 px-3 py-2 font-medium">Size</th>
+              <BackupSortHeader
+                label="Size"
+                sortKey="size_bytes"
+                sort={sort}
+                onSort={onSort}
+                className="w-24 px-3 py-2 font-medium"
+              />
               <th className="px-3 py-2 font-medium">Components</th>
               <th className="w-44 px-3 py-2" />
             </tr>

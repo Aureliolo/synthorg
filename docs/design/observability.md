@@ -149,7 +149,8 @@ Three correlation IDs propagated via `contextvars` (async-safe):
 - **`agent_id`**: Bound per agent execution context.
 
 All three are automatically injected into every log event by `merge_contextvars` in the
-structlog processor chain.
+structlog processor chain. (A WebSocket `session_id` is tracked separately at the
+connection layer and is not one of these structlog correlation contextvars.)
 
 ### Per-Logger Levels
 

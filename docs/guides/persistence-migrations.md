@@ -9,7 +9,9 @@ editing anything under `src/synthorg/persistence/`.
 may import `aiosqlite`, `sqlite3`, `psycopg`, or `psycopg_pool`, or
 emit raw SQL DDL/DML keywords in string literals.
 
-Two files are sanctioned exceptions:
+A small set of files are sanctioned exceptions. The authoritative list is the
+`_ALLOWLIST` frozenset in `scripts/check_persistence_boundary.py`; the two primary
+agent-facing entries are:
 
 - `src/synthorg/tools/database/schema_inspect.py`: agent-facing
   introspection tool; returns arbitrary DB metadata the repository
@@ -21,7 +23,8 @@ Two files are sanctioned exceptions:
 Enforced by `scripts/check_persistence_boundary.py` in pre-push and
 CI Lint. Opt-out on a single line with a trailing
 `# lint-allow: persistence-boundary -- <reason>` comment (the
-justification after `--` is required).
+justification after `--` is required); permanent exceptions belong in
+`_ALLOWLIST`.
 
 ## Tooling
 

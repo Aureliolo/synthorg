@@ -152,6 +152,20 @@ function useWizardUrlSync({
   stepsCompleted,
   navigate,
 }: WizardUrlSyncArgs): void {
+  // The effect re-fires whenever stepOrder / canNavigateTo / stepsCompleted
+  // change identity, even while `urlStep` stays on the same blocked or
+  // unknown value. Without this guard each re-fire stacks an identical
+  // toast. Keyed on the redirect reason + step so a genuinely new problem
+  // still notifies.
+  const lastToastKeyRef = useRef<string | null>(null)
+  const toastOnce = useCallback(
+    (key: string, toast: { title: string; description: string }) => {
+      if (lastToastKeyRef.current === key) return
+      lastToastKeyRef.current = key
+      useToastStore.getState().add({ variant: 'warning', ...toast })
+    },
+    [],
+  )
   useEffect(() => {
     if (!urlStep) {
       void navigate(`/setup/${stepOrder[0]}`, { replace: true })
@@ -159,12 +173,12 @@ function useWizardUrlSync({
     }
     if (isWizardStep(urlStep, stepOrder)) {
       if (canNavigateTo(urlStep)) {
+        lastToastKeyRef.current = null
         setStep(urlStep)
       } else {
         const firstIncomplete = stepOrder.find((s) => !stepsCompleted[s])
         const target = firstIncomplete ?? stepOrder[0]
-        useToastStore.getState().add({
-          variant: 'warning',
+        toastOnce(`incomplete:${urlStep}`, {
           title: 'Previous steps not complete',
           description: `Finish the earlier steps before jumping to ${urlStep}.`,
         })
@@ -172,14 +186,13 @@ function useWizardUrlSync({
       }
     } else {
       // Invalid step name in URL -- redirect to first step and tell the user.
-      useToastStore.getState().add({
-        variant: 'warning',
+      toastOnce(`unknown:${urlStep}`, {
         title: 'Unknown setup step',
         description: `"${urlStep}" is not a valid step. Returning to ${stepOrder[0]}.`,
       })
       void navigate(`/setup/${stepOrder[0]}`, { replace: true })
     }
-  }, [urlStep, stepOrder, canNavigateTo, setStep, stepsCompleted, navigate])
+  }, [urlStep, stepOrder, canNavigateTo, setStep, stepsCompleted, navigate, toastOnce])
 }
 
 interface WizardStepNavigation {

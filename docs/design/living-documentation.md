@@ -188,7 +188,7 @@ a later task. Validated end-to-end by
 - `test_versioned_read_via_git_show`
 
 Plus the per-component unit suite under `tests/unit/docs_engine/`
-(39 tests covering models, serializer, chunker, indexer, slug,
+(40 tests covering models, serializer, chunker, indexer, slug,
 PROJECT_DOC category) and the dual-backend persistence conformance
 under `tests/conformance/persistence/test_docs_repository.py`
-(24 SQLite + Postgres tests).
+(28 SQLite + Postgres tests).

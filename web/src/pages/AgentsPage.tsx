@@ -1,10 +1,12 @@
 import { useEffect } from 'react'
 import { AnimatePresence } from 'motion/react'
-import { Trash2 } from 'lucide-react'
+import { SearchX, Trash2 } from 'lucide-react'
 import { useRecommendationsStore } from '@/stores/recommendations'
+import { useAgentsStore } from '@/stores/agents'
 import { BulkActionBar } from '@/components/ui/bulk-action-bar'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
 import { Pagination } from '@/components/ui/pagination'
@@ -22,6 +24,7 @@ export default function AgentsPage() {
   const ctrl = useAgentsPageController()
   const { data } = ctrl
   const fetchRecommendations = useRecommendationsStore((s) => s.fetchRecommendations)
+  const clearFilters = useAgentsStore((s) => s.clearFilters)
 
   // Populate the pending-upgrade badge in the header; RecommendationsLink
   // is a pure display component fed by this fetch.
@@ -36,6 +39,11 @@ export default function AgentsPage() {
       ? undefined
       : `${formatNumber(data.filteredAgents.length)} of ${formatNumber(data.totalAgents)}`
 
+  // A non-empty roster filtered down to nothing is a distinct state from a
+  // genuinely empty company: surface it with a clear-filters affordance
+  // rather than the generic "no agents" grid state.
+  const filteredToEmpty = data.totalAgents > 0 && data.filteredAgents.length === 0
+
   return (
     <div className="space-y-section-gap">
       <ListHeader
@@ -46,11 +54,20 @@ export default function AgentsPage() {
       />
       <AgentsBanners ctrl={ctrl} />
       <AgentFilters />
-      <AgentGridView
-        agents={ctrl.pagination.paginatedItems}
-        selectedIds={ctrl.visibleSelected}
-        onToggleSelect={ctrl.handleToggleSelect}
-      />
+      {filteredToEmpty ? (
+        <EmptyState
+          icon={SearchX}
+          title="No agents match your filters"
+          description="Adjust or clear the active filters to see the rest of the roster."
+          action={{ label: 'Clear filters', onClick: clearFilters }}
+        />
+      ) : (
+        <AgentGridView
+          agents={ctrl.pagination.paginatedItems}
+          selectedIds={ctrl.visibleSelected}
+          onToggleSelect={ctrl.handleToggleSelect}
+        />
+      )}
       <Pagination
         page={ctrl.pagination.page}
         pageSize={ctrl.pagination.pageSize}

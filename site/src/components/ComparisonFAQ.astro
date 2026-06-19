@@ -10,7 +10,7 @@ const faqs = [
   },
   {
     question: "Is SynthOrg production-ready?",
-    answer: "Not yet, and we are specific about why. The platform and infrastructure are built and tested (Docker images with Chainguard distroless base, cosign verification, SLSA provenance, backup/restore, structured logging with redaction, dual-backend persistence, API, dashboard, CLI). However, the autonomous agent runtime that makes the organisation actually execute work is in active development; today, starting SynthOrg brings up the platform but does not yet run a company end to end. We rate ourselves 'planned' on the capabilities that depend on the runtime and 'full' only on what verifiably ships. Recommended for evaluation and following along, not production workloads.",
+    answer: "Not yet, and we are specific about why. The platform and infrastructure are built and tested (Docker images with Wolfi apko-composed distroless base, cosign verification, SLSA provenance, backup/restore, structured logging with redaction, dual-backend persistence, API, dashboard, CLI). However, the autonomous agent runtime that makes the organisation actually execute work is in active development; today, starting SynthOrg brings up the platform but does not yet run a company end to end. We rate ourselves 'planned' on the capabilities that depend on the runtime and 'full' only on what verifiably ships. Recommended for evaluation and following along, not production workloads.",
   },
   {
     question: "What about LangGraph for complex workflows?",
