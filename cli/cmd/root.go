@@ -198,6 +198,9 @@ func applyTunables(cmd *cobra.Command, opts *GlobalOpts) error {
 		tun.SelfUpdateHTTPTimeout, tun.SelfUpdateAPITimeout, tun.TUFFetchTimeout,
 	)
 	health.Configure(tun.HealthCheckTimeout)
+	// backup.go and root.go share package cmd, so the resolved cap is set
+	// directly on the package var rather than via a Configure() seam.
+	maxBackupResponseBytes = tun.MaxAPIResponseBytes
 
 	if tun.CustomRegistry {
 		opts.SkipVerify = true

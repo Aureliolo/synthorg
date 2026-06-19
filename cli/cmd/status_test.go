@@ -1,11 +1,70 @@
 package cmd
 
 import (
+	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
+	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 )
+
+// statusTestCmd builds a cobra command whose context carries GlobalOpts
+// pointing at dataDir, for exercising runStatus without the root wiring.
+func statusTestCmd(t *testing.T, dataDir string) *cobra.Command {
+	t.Helper()
+	cmd := &cobra.Command{}
+	ctx := SetGlobalOpts(context.Background(), &GlobalOpts{
+		DataDir:  dataDir,
+		Hints:    "auto",
+		Tunables: config.DefaultTunables(),
+	})
+	cmd.SetContext(ctx)
+	return cmd
+}
+
+func TestRunStatusValidatesIntervalBeforeCheck(t *testing.T) {
+	// A malformed --interval is a usage error even in --check mode: the
+	// interval is parsed and validated BEFORE the --check dispatch, so a
+	// scripted `status --check --interval bogus` no longer silently ignores
+	// the bad value.
+	prevInterval, prevCheck := statusInterval, statusCheck
+	t.Cleanup(func() { statusInterval, statusCheck = prevInterval, prevCheck })
+	statusInterval = "bogus"
+	statusCheck = true
+
+	err := runStatus(statusTestCmd(t, t.TempDir()), nil)
+	if err == nil || !strings.Contains(err.Error(), "invalid --interval") {
+		t.Fatalf("expected invalid --interval error, got %v", err)
+	}
+}
+
+func TestRunStatusCheckProbesDespiteUnloadableConfig(t *testing.T) {
+	// --check is a scripted probe that must still run when the config cannot
+	// be loaded: a corrupt config.json should fall back to the default port
+	// and attempt the probe (yielding an unreachable exit, since no backend
+	// is up in the test), NOT abort with a "loading config" error.
+	prevInterval, prevCheck := statusInterval, statusCheck
+	t.Cleanup(func() { statusInterval, statusCheck = prevInterval, prevCheck })
+	statusInterval = "2s"
+	statusCheck = true
+
+	dataDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dataDir, "config.json"), []byte("{ not json"), 0o600); err != nil {
+		t.Fatalf("writing corrupt config: %v", err)
+	}
+	err := runStatus(statusTestCmd(t, dataDir), nil)
+	if err == nil {
+		t.Fatal("expected a probe error (no backend running), got nil")
+	}
+	if strings.Contains(err.Error(), "loading config") {
+		t.Errorf("--check aborted on config load instead of falling back: %v", err)
+	}
+}
 
 func TestImageTag(t *testing.T) {
 	tests := []struct {
@@ -26,6 +85,37 @@ func TestImageTag(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFilterStatsByName(t *testing.T) {
+	const header = "NAME              CPU %   MEM USAGE / LIMIT   MEM %"
+	backendRow := "synthorg-backend  1.2%    100MiB / 2GiB       5%"
+	natsRow := "synthorg-nats     0.3%    20MiB / 2GiB        1%"
+	strayRow := "unrelated-box     0.5%    50MiB / 2GiB        2%"
+
+	t.Run("keeps header plus matching rows, drops strangers", func(t *testing.T) {
+		statsOut := strings.Join([]string{header, backendRow, strayRow, natsRow}, "\n") + "\n"
+		names := map[string]struct{}{"synthorg-backend": {}, "synthorg-nats": {}}
+		got := filterStatsByName(statsOut, names)
+		want := strings.Join([]string{header, backendRow, natsRow}, "\n")
+		if got != want {
+			t.Errorf("filterStatsByName mismatch\n got:\n%s\nwant:\n%s", got, want)
+		}
+	})
+
+	t.Run("returns empty when no data row matches", func(t *testing.T) {
+		statsOut := strings.Join([]string{header, strayRow}, "\n") + "\n"
+		names := map[string]struct{}{"synthorg-backend": {}}
+		if got := filterStatsByName(statsOut, names); got != "" {
+			t.Errorf("expected empty result, got %q", got)
+		}
+	})
+
+	t.Run("returns empty on empty input", func(t *testing.T) {
+		if got := filterStatsByName("", map[string]struct{}{"x": {}}); got != "" {
+			t.Errorf("expected empty result, got %q", got)
+		}
+	})
 }
 
 func TestHealthIcon(t *testing.T) {

@@ -48,11 +48,11 @@ var (
 	// (called from root.go PersistentPreRunE) overwrites this with the
 	// operator's resolved State.MaxAPIResponseBytes when set.
 	maxAPIResponseBytes  int64 = config.DefaultMaxAPIResponseBytes
-	maxBinaryBytes       int64 = 256 * 1024 * 1024 // 256 MiB for binary archives
-	maxArchiveEntryBytes int64 = 128 * 1024 * 1024 // 128 MiB per archive entry
+	maxBinaryBytes       int64 = config.DefaultMaxBinaryBytes
+	maxArchiveEntryBytes int64 = config.DefaultMaxArchiveEntryBytes
 
-	httpTimeout = 5 * time.Minute
-	apiTimeout  = 30 * time.Second
+	httpTimeout = config.DefaultSelfUpdateHTTPTimeout
+	apiTimeout  = config.DefaultSelfUpdateAPITimeout
 )
 
 // checkRedirectHost validates that each redirect hop stays within

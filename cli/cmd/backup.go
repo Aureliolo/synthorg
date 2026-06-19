@@ -255,17 +255,31 @@ var backupClient = &http.Client{}
 // minJWTSecretLen is the minimum acceptable length for the JWT signing secret.
 const minJWTSecretLen = 32
 
+// backupJWTExpiration is the lifetime of the short-lived CLI->backend admin
+// token minted by buildLocalJWT. Kept tight: the token only needs to survive
+// one backup/restore round-trip, so a short window bounds the blast radius if
+// it ever leaks from a process listing or proxy log.
+const backupJWTExpiration = 60 * time.Second
+
+// maxBackupResponseBytes caps how many bytes are read from a backup API
+// response. Defaults to the shared API-response default and is overwritten by
+// applyTunables (root.go PersistentPreRunE) with the operator's resolved
+// Tunables.MaxAPIResponseBytes, so the backup read cap tracks the same
+// env > state > default precedence as every other byte limit.
+var maxBackupResponseBytes = config.DefaultMaxAPIResponseBytes
+
 // buildLocalJWT generates a short-lived JWT signed with the shared secret so
 // the CLI can authenticate against the backend's admin endpoints. The token
-// uses HMAC-SHA256 (HS256) and expires after 60 seconds.
+// uses HMAC-SHA256 (HS256) and expires after backupJWTExpiration.
 func buildLocalJWT(secret string) (string, error) {
 	if len(secret) < minJWTSecretLen {
 		return "", fmt.Errorf("jwt_secret is too short (%d chars); minimum is %d", len(secret), minJWTSecretLen)
 	}
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
 	now := time.Now().Unix()
+	exp := now + int64(backupJWTExpiration.Seconds())
 	payload := base64.RawURLEncoding.EncodeToString(
-		fmt.Appendf(nil, `{"sub":"system","iss":"synthorg-cli","aud":"synthorg-backend","iat":%d,"exp":%d}`, now, now+60),
+		fmt.Appendf(nil, `{"sub":"system","iss":"synthorg-cli","aud":"synthorg-backend","iat":%d,"exp":%d}`, now, exp),
 	)
 	signingInput := header + "." + payload
 	mac := hmac.New(sha256.New, []byte(secret))
@@ -297,7 +311,7 @@ func backupAPIRequest(ctx context.Context, port int, method, path string, body [
 		return nil, 0, fmt.Errorf("backend unreachable: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1 MB limit
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxBackupResponseBytes))
 	if err != nil {
 		return nil, 0, fmt.Errorf("reading response: %w", err)
 	}
@@ -712,6 +726,16 @@ func handleRestartAfterRestore(ctx context.Context, cmd *cobra.Command, out, err
 		errOut.Warn(fmt.Sprintf("Could not detect Docker: %v", err))
 		errOut.HintNextStep("Run 'synthorg stop' then 'synthorg start' manually")
 		return fmt.Errorf("restore succeeded but post-restore restart failed: %w", err)
+	}
+
+	// Only stop containers that are actually running. When the stack is
+	// already down (a restore onto a stopped install), `compose down` is a
+	// pointless churn with a misleading "Stopping containers..." step; skip
+	// straight to the start hint so the operator sees an honest next action.
+	if psOut, psErr := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "-q"); psErr == nil &&
+		strings.TrimSpace(psOut) == "" {
+		out.HintNextStep("Run 'synthorg start' to bring the stack back up")
+		return nil
 	}
 
 	out.Step("Stopping containers for restart...")

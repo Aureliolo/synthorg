@@ -201,6 +201,14 @@ const (
 	DefaultMaxBinaryBytes       int64 = 256 * 1024 * 1024
 	DefaultMaxArchiveEntryBytes int64 = 128 * 1024 * 1024
 
+	// DefaultHealthResponseLimit caps how many bytes are read from a
+	// /readyz health response (and the equivalent diagnostic probe). The
+	// payload is a small JSON verdict; 64 KiB is generous headroom while
+	// still bounding a misbehaving or hostile endpoint. Shared by the
+	// health, diagnostics, and status read paths so the cap is defined
+	// once rather than duplicated as a bare 64*1024 literal at each site.
+	DefaultHealthResponseLimit int64 = 64 * 1024
+
 	// MaxBytesCeiling caps any user-provided size limit to prevent runaway
 	// allocations if someone sets a ridiculous value.
 	MaxBytesCeiling int64 = 1 * 1024 * 1024 * 1024

@@ -214,8 +214,8 @@ func TestBuildLocalJWT(t *testing.T) {
 	if exp == 0 {
 		t.Error("payload missing exp claim")
 	}
-	if exp-iat != 60 {
-		t.Errorf("expected exp-iat=60, got %v", exp-iat)
+	if wantWindow := backupJWTExpiration.Seconds(); exp-iat != wantWindow {
+		t.Errorf("expected exp-iat=%v, got %v", wantWindow, exp-iat)
 	}
 }
 
