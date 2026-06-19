@@ -585,3 +585,53 @@ class TestWsAuthLimitsValidation:
         assert state.ws_auth_limits.frame_timeout_seconds == 45
         assert state.ws_auth_limits.auth_revalidate_window_seconds == 90
         assert state.ws_auth_limits.auth_revalidate_max_failures == 7
+
+
+class TestDrainEntryBackgroundTasks:
+    """``drain_entry_background_tasks`` cancels/awaits the entry task sets."""
+
+    async def test_noop_when_no_tasks(self) -> None:
+        state = _make_state()
+        # No tasks tracked: the drain returns without awaiting anything.
+        await state.drain_entry_background_tasks()
+        assert state.objective_background_tasks == set()
+        assert state.brownfield_background_tasks == set()
+
+    async def test_awaits_tasks_that_finish_within_grace(self) -> None:
+        state = _make_state()
+        gate = asyncio.Event()
+
+        async def _work() -> None:
+            await gate.wait()
+
+        objective = asyncio.ensure_future(_work())
+        brownfield = asyncio.ensure_future(_work())
+        state.objective_background_tasks.add(objective)
+        state.brownfield_background_tasks.add(brownfield)
+        # Release the tasks so the bounded wait observes them finishing
+        # cleanly rather than cancelling stragglers.
+        gate.set()
+
+        await state.drain_entry_background_tasks()
+        assert objective.done()
+        assert not objective.cancelled()
+        assert brownfield.done()
+        assert not brownfield.cancelled()
+
+    async def test_cancels_stragglers_past_grace(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        state = _make_state()
+        # Shrink the grace so a never-completing task is cancelled promptly
+        # instead of holding the test for the full production window.
+        monkeypatch.setattr("synthorg.api.state._ENTRY_TASK_DRAIN_GRACE_SECONDS", 0.01)
+
+        async def _hang() -> None:
+            await asyncio.Event().wait()
+
+        straggler = asyncio.ensure_future(_hang())
+        state.objective_background_tasks.add(straggler)
+
+        await state.drain_entry_background_tasks()
+        assert straggler.done()
+        assert straggler.cancelled()

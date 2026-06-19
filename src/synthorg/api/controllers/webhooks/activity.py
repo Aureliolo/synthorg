@@ -7,11 +7,11 @@ from litestar import Controller, get
 from litestar.datastructures import State
 from litestar.params import QueryParameter
 
-from synthorg.api.controllers._webhooks_wiring import _get_activity_service
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.path_params import PathName
 from synthorg.integrations.connections.models import WebhookReceipt
+from synthorg.integrations.state import webhook_activity_service_of
 
 
 class WebhooksActivityController(Controller):
@@ -39,7 +39,7 @@ class WebhooksActivityController(Controller):
         Returns:
             ``ApiResponse[tuple[WebhookReceipt, ...]]`` instance.
         """
-        service = await _get_activity_service(state)
+        service = webhook_activity_service_of(state["app_state"])
         receipts = await service.list_activity(
             connection_name=connection_name,
             limit=limit,

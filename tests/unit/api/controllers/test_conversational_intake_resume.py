@@ -16,11 +16,18 @@ from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.models import WorkItem, WorkSource
 from synthorg.meta.chief_of_staff.models import ConversationalProposal
+from synthorg.meta.chief_of_staff.resume_service import ConversationalResumeService
 from synthorg.meta.state import MetaStateSlice
+from synthorg.persistence.conversation_invite_protocol import (
+    ConversationInviteRepository,
+)
+from synthorg.persistence.conversation_participant_protocol import (
+    ConversationParticipantRepository,
+)
 from synthorg.persistence.conversational_proposal_protocol import (
     ConversationalProposalFilterSpec,
 )
-from tests._shared import as_uuid, make_app_state, sid
+from tests._shared import as_uuid, make_app_state, mock_of, sid
 
 pytestmark = pytest.mark.unit
 
@@ -40,8 +47,24 @@ def _work_item_json() -> str:
 
 
 class _FakeProposalRepo:
+    """Complete ``ConversationalProposalRepository`` double (in-memory)."""
+
     def __init__(self) -> None:
         self.items: dict[str, ConversationalProposal] = {}
+
+    async def save(self, entity: ConversationalProposal, /) -> None:
+        self.items[str(entity.id)] = entity
+
+    async def get(self, entity_id: str, /) -> ConversationalProposal | None:
+        return self.items.get(entity_id)
+
+    async def delete(self, entity_id: str, /) -> bool:
+        return self.items.pop(entity_id, None) is not None
+
+    async def list_items(
+        self, *, limit: int = 100, offset: int = 0
+    ) -> tuple[ConversationalProposal, ...]:
+        return tuple(self.items.values())[offset : offset + limit]
 
     async def query(
         self,
@@ -57,6 +80,9 @@ class _FakeProposalRepo:
             or p.approval_id == filter_spec.approval_id
         ]
         return tuple(rows[offset : offset + limit])
+
+    async def count(self, filter_spec: ConversationalProposalFilterSpec) -> int:
+        return len(await self.query(filter_spec))
 
     async def transition_if(
         self,
@@ -93,14 +119,27 @@ def _make_app_state(
     """Build an AppState with the conversational-resume slices wired.
 
     The resume flow reads the approval store via
-    ``slice(ApprovalStateSlice).store``, the proposal repo via
-    ``slice(MetaStateSlice).conversational_proposal_repo``, and the work
-    pipeline via ``slice(EngineStateSlice).work_pipeline``.
+    ``slice(ApprovalStateSlice).store``, the proposal repo (through the
+    resume-service facade) via
+    ``slice(MetaStateSlice).conversational_resume_service``, and the work
+    pipeline via ``slice(EngineStateSlice).work_pipeline``. The service
+    is wired only when ``proposal_repo`` is present, so a ``None`` repo
+    exercises the controller's "resume service not wired" 503 path. The
+    invite / participant repos are unused by the intake flow, so typed
+    mocks stand in for them in the facade.
     """
+    meta_fields: dict[str, object] = {}
+    if proposal_repo is not None:
+        meta_fields["conversational_proposal_repo"] = proposal_repo
+        meta_fields["conversational_resume_service"] = ConversationalResumeService(
+            proposal_repo=proposal_repo,
+            invite_repo=mock_of[ConversationInviteRepository](),
+            participant_repo=mock_of[ConversationParticipantRepository](),
+        )
     return make_app_state(
         approval_store=approval_store,
         work_pipeline=pipeline,
-        slices={MetaStateSlice: {"conversational_proposal_repo": proposal_repo}},
+        slices={MetaStateSlice: meta_fields},
     )
 
 

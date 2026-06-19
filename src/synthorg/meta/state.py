@@ -21,6 +21,7 @@ from synthorg.meta.chief_of_staff.monitor import OrgInflectionMonitor
 from synthorg.meta.chief_of_staff.propose import (
     ChiefOfStaffProposer,
 )
+from synthorg.meta.chief_of_staff.resume_service import ConversationalResumeService
 from synthorg.meta.chief_of_staff.routing import RoleRouter
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.reports.service import ReportsService
@@ -54,6 +55,7 @@ class MetaStateSlice(BaseFeatureStateSlice):
     conversational_proposal_repo: ConversationalProposalRepository | None = None
     conversation_invite_repo: ConversationInviteRepository | None = None
     conversation_participant_repo: ConversationParticipantRepository | None = None
+    conversational_resume_service: ConversationalResumeService | None = None
     role_router: RoleRouter | None = None
     group_chat_service: GroupChatService | None = None
     conversational_actor: ConversationalActor | None = None
@@ -277,3 +279,23 @@ async def self_improvement_config_of(
     app_state.wire_if_field_absent(MetaStateSlice, "self_improvement_config", config)
     resolved = app_state.slice(MetaStateSlice).self_improvement_config
     return resolved if resolved is not None else config
+
+
+def conversational_resume_service_of(
+    app_state: AppStateSliceMixin,
+) -> ConversationalResumeService:
+    """Resolve the conversational resume service from its slice, or raise 503.
+
+    Wired (ungated) alongside the conversational repositories it wraps,
+    so a decided conversational approval still resolves after the
+    propose/invite features are toggled off. Absent only when
+    persistence cannot back the repositories, in which case the resume
+    flows' ownership guard has already raised a feature-specific 503.
+
+    Returns:
+        The wired conversational resume service.
+    """
+    return require_service(
+        app_state.slice(MetaStateSlice).conversational_resume_service,
+        "Conversational Resume Service",
+    )

@@ -79,6 +79,8 @@ from synthorg.observability.events.workflow_execution import (
     WORKFLOW_EXEC_SUBWORKFLOW_FRAME_PUSHED,
     WORKFLOW_EXEC_SUBWORKFLOW_NODE_COMPLETED,
 )
+from synthorg.settings.bridge_configs import EngineBridgeConfig
+from synthorg.settings.resolver import ConfigResolver
 
 if TYPE_CHECKING:
     from synthorg.persistence.workflow_definition_protocol import (
@@ -102,6 +104,14 @@ class WorkflowExecutionService:
         definition_repo: Repository for reading workflow definitions.
         execution_repo: Repository for persisting execution state.
         task_engine: Engine for creating concrete tasks.
+        config_resolver: Resolver for ``engine.max_subworkflow_depth``.
+            The cap is resolved once per :meth:`activate` (not at
+            construction) so a singleton service still honours operator
+            settings hot-reload (DB > env > code default). ``None`` (the
+            state-change observer's path, which never activates) falls
+            back to the :class:`EngineBridgeConfig` seed default.
+        subworkflow_registry: Registry for resolving SUBWORKFLOW nodes;
+            ``None`` disables subworkflow activation.
     """
 
     def __init__(
@@ -110,14 +120,30 @@ class WorkflowExecutionService:
         definition_repo: WorkflowDefinitionRepository,
         execution_repo: WorkflowExecutionRepository,
         task_engine: TaskEngine,
-        max_subworkflow_depth: int,
+        config_resolver: ConfigResolver | None = None,
         subworkflow_registry: SubworkflowRegistry | None = None,
     ) -> None:
         self._definition_repo = definition_repo
         self._execution_repo = execution_repo
         self._task_engine = task_engine
         self._subworkflow_registry = subworkflow_registry
-        self._max_subworkflow_depth = max_subworkflow_depth
+        self._config_resolver = config_resolver
+
+    async def _resolve_max_subworkflow_depth(self) -> int:
+        """Resolve the operator-tuned subworkflow depth cap.
+
+        Resolved per :meth:`activate` so a singleton service picks up a
+        live settings change without reconstruction. Falls back to the
+        ``EngineBridgeConfig`` seed default when no resolver is wired
+        (the observer path, which never activates).
+
+        Returns:
+            The configured ``engine.max_subworkflow_depth``.
+        """
+        if self._config_resolver is None:
+            return EngineBridgeConfig().max_subworkflow_depth
+        bridge = await self._config_resolver.get_engine_bridge_config()
+        return bridge.max_subworkflow_depth
 
     async def activate(
         self,
@@ -153,6 +179,10 @@ class WorkflowExecutionService:
 
         # 1. Load and validate
         definition = await self._load_and_validate(definition_id)
+        # Resolve the depth cap once per activation so a singleton
+        # service honours settings hot-reload without threading a stale
+        # construction-time value through the walk.
+        max_subworkflow_depth = await self._resolve_max_subworkflow_depth()
 
         # 2. Walk nodes in topological order, starting from the root frame.
         execution_id = uuid4()
@@ -173,6 +203,7 @@ class WorkflowExecutionService:
             execution_id=str(execution_id),
             project=project,
             activated_by=activated_by,
+            max_subworkflow_depth=max_subworkflow_depth,
         )
 
         # 3. Build and persist execution
@@ -262,6 +293,7 @@ class WorkflowExecutionService:
         execution_id: str,
         project: str,
         activated_by: str,
+        max_subworkflow_depth: int,
     ) -> dict[str, object]:
         """Walk one workflow graph inside a scoped execution frame.
 
@@ -337,6 +369,7 @@ class WorkflowExecutionService:
                 state=state,
                 skipped_nodes=skipped_nodes,
                 pending_assignments=pending_assignments,
+                max_subworkflow_depth=max_subworkflow_depth,
             )
             self._record_node(state, qualified, node_execution)
 
@@ -375,6 +408,7 @@ class WorkflowExecutionService:
         state: WalkState,
         skipped_nodes: set[str],
         pending_assignments: dict[str, str],
+        max_subworkflow_depth: int,
     ) -> WorkflowNodeExecution:
         """Dispatch a single node to its registered handler.
 
@@ -410,6 +444,7 @@ class WorkflowExecutionService:
             state=state,
             skipped_nodes=skipped_nodes,
             pending_assignments=pending_assignments,
+            max_subworkflow_depth=max_subworkflow_depth,
         )
         try:
             handler = _NODE_HANDLER_REGISTRY.get(node.type)
@@ -482,6 +517,7 @@ class WorkflowExecutionService:
         execution_id: str,
         project: str,
         activated_by: str,
+        max_subworkflow_depth: int,
     ) -> WorkflowNodeExecution:
         """Resolve a subworkflow node and walk the child graph in a new frame.
 
@@ -560,22 +596,22 @@ class WorkflowExecutionService:
             raise WorkflowExecutionError(msg)
 
         next_depth = frame.depth + 1
-        if next_depth > self._max_subworkflow_depth:
+        if next_depth > max_subworkflow_depth:
             logger.error(
                 WORKFLOW_EXEC_SUBWORKFLOW_DEPTH_EXCEEDED,
                 execution_id=execution_id,
                 node_id=qualified_id,
                 depth=next_depth,
-                max_depth=self._max_subworkflow_depth,
+                max_depth=max_subworkflow_depth,
             )
             msg = (
                 f"Subworkflow depth {next_depth} exceeds maximum "
-                f"{self._max_subworkflow_depth}"
+                f"{max_subworkflow_depth}"
             )
             raise SubworkflowDepthExceededError(
                 msg,
                 depth=next_depth,
-                max_depth=self._max_subworkflow_depth,
+                max_depth=max_subworkflow_depth,
             )
 
         child_definition = await self._subworkflow_registry.get(
@@ -620,6 +656,7 @@ class WorkflowExecutionService:
             execution_id=execution_id,
             project=project,
             activated_by=activated_by,
+            max_subworkflow_depth=max_subworkflow_depth,
         )
 
         # Project outputs back into the parent frame's mutable variable

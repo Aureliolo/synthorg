@@ -46,6 +46,14 @@ from synthorg.workers.execution_service import WorkerExecutionService
 _SHUTDOWN_GRACE_SECONDS: Final[float] = 8.0
 _SHUTDOWN_CLEANUP_SECONDS: Final[float] = 2.0
 
+# Grace window the objective / brownfield entry background tasks get to
+# finish at a turn boundary on shutdown before stragglers are cancelled.
+# These are fire-and-forget entry-processing tasks tracked only in their
+# in-memory sets, so without an explicit drain they are abandoned mid-flight
+# when the loop tears down (silent work loss). Kept short so the two drains
+# stay well within the orchestrator SIGKILL deadline.
+_ENTRY_TASK_DRAIN_GRACE_SECONDS: Final[float] = 3.0
+
 
 class AppState(AppStateSliceMixin):
     """Composition root: feature state slices + identity + primitive owners.
@@ -154,6 +162,33 @@ class AppState(AppStateSliceMixin):
             The mutable task set (callers add/discard their own tasks).
         """
         return self._brownfield_background_tasks
+
+    async def drain_entry_background_tasks(self) -> None:
+        """Drain in-flight objective / brownfield entry background tasks.
+
+        Gives the live tasks a bounded grace
+        (``_ENTRY_TASK_DRAIN_GRACE_SECONDS``) to finish at a turn boundary,
+        then cancels any straggler and awaits its cancellation so the
+        coroutine unwinds cleanly rather than being abandoned when the
+        loop tears down. Snapshots the sets up front because a completing
+        task's done-callback discards itself from the live set (mutation
+        during iteration). Idempotent and safe when both sets are empty.
+        """
+        pending = self._objective_background_tasks | self._brownfield_background_tasks
+        pending = {task for task in pending if not task.done()}
+        if not pending:
+            return
+        _, still_running = await asyncio.wait(
+            pending,
+            timeout=_ENTRY_TASK_DRAIN_GRACE_SECONDS,
+        )
+        for task in still_running:
+            task.cancel()
+        if still_running:
+            # Await the cancellations so the coroutines unwind before the
+            # loop closes; ``return_exceptions`` keeps one task's failure
+            # from masking the others.
+            await asyncio.gather(*still_running, return_exceptions=True)
 
     # -- Hot-swap seams (thin shims over ``wire``) -----------------------
     # Public names preserved for the boot install + ``post_setup_reinit``.

@@ -69,6 +69,13 @@ _RESUME_DRAIN_OUTER_SECONDS: Final[float] = (
 # 5.0s default deadline; mirror that plus the shared grace.
 _REVIEW_GATE_DRAIN_OUTER_SECONDS: Final[float] = 5.0 + _DRAIN_OUTER_GRACE_SECONDS
 
+# Outer backstop for the objective / brownfield entry-task drain. The drain
+# is internally bounded by ``_ENTRY_TASK_DRAIN_GRACE_SECONDS`` (3.0s in
+# api/state.py) plus the cancel-and-await of stragglers; the outer budget
+# exceeds that grace by the shared backstop so a task that shields
+# ``CancelledError`` cannot block the shutdown window.
+_ENTRY_TASK_DRAIN_OUTER_SECONDS: Final[float] = 3.0 + _DRAIN_OUTER_GRACE_SECONDS
+
 # Outer backstop for the cooperative multi-agent drain. ``initiate_shutdown``
 # is internally bounded (grace 8s + cancel-propagation 5s + cleanup 2s);
 # wrap it so a strategy that hangs before reaching its own deadlines cannot
@@ -180,6 +187,17 @@ async def _run_shutdown(  # noqa: PLR0913
             timeout=_REVIEW_GATE_DRAIN_OUTER_SECONDS,
             service="review_gate_drain",
         )
+    # Drain in-flight objective / brownfield entry-processing tasks (spawned
+    # fire-and-forget off the work-entry path and tracked only in their
+    # in-memory sets) so a submission mid-flight at SIGTERM unwinds cleanly
+    # instead of being abandoned when the loop tears down.
+    await _try_stop(
+        app_state.drain_entry_background_tasks(),
+        API_APP_SHUTDOWN,
+        "Failed to drain in-flight objective/brownfield entry tasks",
+        timeout=_ENTRY_TASK_DRAIN_OUTER_SECONDS,
+        service="entry_task_drain",
+    )
     # Disconnect training memory backend if auto-wired.
     if tasks.training_memory_backend is not None:
         # If this backend was published to the memory slice at startup, clear

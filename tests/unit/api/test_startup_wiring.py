@@ -160,9 +160,10 @@ class TestWireWorkflowObserver:
         ]
         assert fallback_logs == []
         assert len(task_engine.registered) == 1
-        # Observer's inner service captures the depth.
+        # Observer's inner service captures the live resolver (depth is
+        # resolved per activation, not cached at construction).
         inner = task_engine.registered[0]._service  # type: ignore[attr-defined]
-        assert inner._max_subworkflow_depth == 7
+        assert inner._config_resolver is resolver
 
     async def test_idempotent_when_observer_already_registered(self) -> None:
         from synthorg.engine.workflow.execution_observer import (

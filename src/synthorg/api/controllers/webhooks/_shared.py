@@ -19,7 +19,6 @@ from synthorg.api.api_core_state import idempotency_service_of
 from synthorg.api.controllers._webhooks_wiring import (
     _build_idem_key,
     _build_idem_scope,
-    _get_replay_protector,
 )
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.core.domain_errors import (
@@ -31,7 +30,10 @@ from synthorg.core.domain_errors import (
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import Connection, ConnectionType
 from synthorg.integrations.errors import WebhookProcessingError
-from synthorg.integrations.state import IntegrationsStateSlice
+from synthorg.integrations.state import (
+    IntegrationsStateSlice,
+    webhook_replay_protector_of,
+)
 from synthorg.integrations.webhooks.event_bus_bridge import publish_webhook_event
 from synthorg.integrations.webhooks.replay_protection import MAX_NONCE_CHARS
 from synthorg.integrations.webhooks.verifiers.factory import get_verifier
@@ -246,7 +248,7 @@ async def _check_replay_or_freshness(
         )
         msg = "Nonce exceeds maximum size"
         raise ConflictError(msg)
-    replay_protector = await _get_replay_protector(state)
+    replay_protector = webhook_replay_protector_of(state["app_state"])
     if nonce:
         if replay_protector.check_freshness(timestamp):
             return

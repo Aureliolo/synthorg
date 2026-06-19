@@ -45,11 +45,15 @@ from synthorg.meta.chief_of_staff.group_models import (
     GroupConverseArgs,
     InviteRequest,
 )
+from synthorg.meta.chief_of_staff.resume_service import ConversationalResumeService
 from synthorg.meta.state import MetaStateSlice
 from synthorg.persistence.conversation_participant_protocol import (
     ConversationParticipantFilterSpec,
 )
-from tests._shared import FakeClock, as_uuid, make_app_state, sid
+from synthorg.persistence.conversational_proposal_protocol import (
+    ConversationalProposalRepository,
+)
+from tests._shared import FakeClock, as_uuid, make_app_state, mock_of, sid
 from tests.unit.meta.chief_of_staff.group_chat_fakes import (
     FakeInviteRepo,
     FakeParticipantRepo,
@@ -132,10 +136,32 @@ async def _coordinator_with_roster(
             MetaStateSlice: {
                 "conversation_invite_repo": invite_repo,
                 "conversation_participant_repo": participant_repo,
+                "conversational_resume_service": _resume_service(
+                    invite_repo, participant_repo
+                ),
             }
         },
     )
     return coordinator, invite_repo, participant_repo, app_state
+
+
+def _resume_service(
+    invite_repo: FakeInviteRepo,
+    participant_repo: FakeParticipantRepo,
+) -> ConversationalResumeService:
+    """Build the resume-service facade the invite flow routes through.
+
+    The proposal repo is unused by the invite flow, so a typed mock
+    stands in for it.
+
+    Returns:
+        The facade wrapping the test's invite + participant doubles.
+    """
+    return ConversationalResumeService(
+        proposal_repo=mock_of[ConversationalProposalRepository](),
+        invite_repo=invite_repo,
+        participant_repo=participant_repo,
+    )
 
 
 def _invite_request(target: str = "CFO", reason: str = _REASON) -> InviteRequest:
@@ -508,6 +534,9 @@ class TestInviteResume:
                 MetaStateSlice: {
                     "conversation_invite_repo": invite_repo,
                     "conversation_participant_repo": participant_repo,
+                    "conversational_resume_service": _resume_service(
+                        invite_repo, participant_repo
+                    ),
                 }
             },
         )

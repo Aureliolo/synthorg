@@ -10,6 +10,7 @@ from litestar.datastructures import State
 from litestar.params import QueryParameter
 
 from synthorg._core.features import require_service
+from synthorg.api.api_core_state import analytics_read_service_of
 from synthorg.api.controllers.analytics._shared import (
     TrendsResponse,
     _resolve_agent_counts,
@@ -38,7 +39,6 @@ from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.events.analytics import ANALYTICS_TRENDS_QUERIED
 from synthorg.observability.events.api import API_REQUEST_ERROR
-from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)
 
@@ -135,9 +135,7 @@ async def _fetch_trend_data_points(
     # tracked, so report the current snapshot across all buckets.
     # Fetch the current task list so the runtime-state active count
     # reflects genuinely busy agents (not the config count).
-    from synthorg.persistence.task_protocol import TaskFilterSpec  # noqa: PLC0415
-
-    all_tasks = await persistence_of(app_state).tasks.query(TaskFilterSpec())
+    all_tasks = await analytics_read_service_of(app_state).list_tasks()
     active_count, _ = await _resolve_agent_counts(
         app_state,
         0,

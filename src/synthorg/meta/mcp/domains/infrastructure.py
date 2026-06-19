@@ -159,13 +159,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "trigger": {
                 "type": "string",
                 "description": "What initiated the backup",
-                "enum": [
-                    "scheduled",
-                    "manual",
-                    "shutdown",
-                    "startup",
-                    "pre_migration",
-                ],
+                "enum": ["scheduled", "manual", "shutdown", "startup", "pre_migration"],
             },
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
@@ -208,10 +202,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "backup_id": {"type": "string", "description": "Backup UUID to restore"},
             "idempotency_key": {
                 "type": "string",
-                "description": (
-                    "Retry-safe key: an identical key returns the cached "
-                    "restore result instead of re-running the restore."
-                ),
+                "description": "Identical key returns the cached restore result.",
             },
             **ADMIN_GUARDRAIL_PROPERTIES,
         },

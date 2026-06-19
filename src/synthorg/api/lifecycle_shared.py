@@ -10,12 +10,13 @@ both import them without an import cycle.
 
 import asyncio
 from collections.abc import Awaitable
-from typing import Protocol
+from typing import Final, Protocol
 
 from synthorg.api.bus_bridge import MessageBusBridge
 from synthorg.backup.service import BackupService
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.meeting.scheduler import MeetingScheduler
+from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.observability import (
     get_logger,
@@ -28,6 +29,14 @@ from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
 
 logger = get_logger(__name__)
+
+# Per-service stop budget for the runtime background services cleaned up on a
+# startup failure. The lifecycle-lock services (health probers, OAuth token
+# manager, webhook event bridge) can drain in-flight work up to
+# ``DEFAULT_DRAIN_TIMEOUT_SECONDS``; the quick poll-loop services (event
+# stream hub, tunnel provider) finish well inside it. A single bounded budget
+# keeps any one hung stop from blocking the rest of the reverse cleanup.
+_CLEANUP_STOP_TIMEOUT_SECONDS: Final[float] = DEFAULT_DRAIN_TIMEOUT_SECONDS
 
 
 # Structural seam over the optional synthorg[distributed] JetStreamTaskQueue;
@@ -142,8 +151,67 @@ async def _cleanup_on_failure(  # noqa: PLR0913
     started_backup_service: bool = False,
     approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None,
     started_approval_timeout_scheduler: bool = False,
+    event_stream_hub: _AsyncStartStop | None = None,
+    started_event_stream_hub: bool = False,
+    oauth_token_manager: _AsyncStartStop | None = None,
+    started_oauth_token_manager: bool = False,
+    integration_health_prober: _AsyncStartStop | None = None,
+    started_integration_health_prober: bool = False,
+    webhook_event_bridge: _AsyncStartStop | None = None,
+    started_webhook_event_bridge: bool = False,
+    provider_health_prober: _AsyncStartStop | None = None,
+    started_provider_health_prober: bool = False,
 ) -> None:
-    """Reverse cleanup on startup failure."""
+    """Reverse cleanup on startup failure.
+
+    The runtime background services (event stream hub, integration services,
+    health probers) start AFTER the core services, so they are stopped FIRST
+    here -- in reverse of their ``_run_startup`` start order. Each stop is
+    bounded by ``_CLEANUP_STOP_TIMEOUT_SECONDS`` so a hung drain cannot block
+    the rest of the reverse cleanup. Every runtime-service param defaults to
+    ``None`` / ``False`` so the core-only ``_safe_startup`` failure path
+    (which never started them) passes nothing and the blocks no-op.
+    """
+    if started_event_stream_hub and event_stream_hub is not None:
+        await _try_stop(
+            event_stream_hub.stop(),
+            API_APP_STARTUP,
+            "Cleanup: failed to stop event stream hub",
+            timeout=_CLEANUP_STOP_TIMEOUT_SECONDS,
+            service="event_stream_hub",
+        )
+    if started_oauth_token_manager and oauth_token_manager is not None:
+        await _try_stop(
+            oauth_token_manager.stop(),
+            API_APP_STARTUP,
+            "Cleanup: failed to stop OAuth token manager",
+            timeout=_CLEANUP_STOP_TIMEOUT_SECONDS,
+            service="oauth_token_manager",
+        )
+    if started_integration_health_prober and integration_health_prober is not None:
+        await _try_stop(
+            integration_health_prober.stop(),
+            API_APP_STARTUP,
+            "Cleanup: failed to stop integration health prober",
+            timeout=_CLEANUP_STOP_TIMEOUT_SECONDS,
+            service="integration_health_prober",
+        )
+    if started_webhook_event_bridge and webhook_event_bridge is not None:
+        await _try_stop(
+            webhook_event_bridge.stop(),
+            API_APP_STARTUP,
+            "Cleanup: failed to stop webhook event bridge",
+            timeout=_CLEANUP_STOP_TIMEOUT_SECONDS,
+            service="webhook_event_bridge",
+        )
+    if started_provider_health_prober and provider_health_prober is not None:
+        await _try_stop(
+            provider_health_prober.stop(),
+            API_APP_STARTUP,
+            "Cleanup: failed to stop provider health prober",
+            timeout=_CLEANUP_STOP_TIMEOUT_SECONDS,
+            service="provider_health_prober",
+        )
     if started_approval_timeout_scheduler and approval_timeout_scheduler is not None:
         await _try_stop(
             approval_timeout_scheduler.stop(),

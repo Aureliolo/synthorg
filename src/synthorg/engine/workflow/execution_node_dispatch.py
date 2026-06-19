@@ -82,6 +82,7 @@ class _WorkflowNodeProcessor(Protocol):
         execution_id: str,
         project: str,
         activated_by: str,
+        max_subworkflow_depth: int,
     ) -> WorkflowNodeExecution:
         """Resolve a SUBWORKFLOW node and walk the child graph in a frame."""
         ...
@@ -113,6 +114,7 @@ class _NodeDispatchContext:
     state: WalkState
     skipped_nodes: set[str]
     pending_assignments: dict[str, str]
+    max_subworkflow_depth: int
 
 
 async def _handle_terminal(
@@ -259,6 +261,7 @@ async def _handle_subworkflow(
         execution_id=ctx.execution_id,
         project=ctx.project,
         activated_by=ctx.activated_by,
+        max_subworkflow_depth=ctx.max_subworkflow_depth,
     )
 
 

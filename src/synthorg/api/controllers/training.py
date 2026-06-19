@@ -37,6 +37,7 @@ from synthorg.hr.training.models import (
     TrainingPlanStatus,
     TrainingResult,
 )
+from synthorg.hr.training.plan_service import TrainingPlanService
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_REQUEST_ERROR,
@@ -45,9 +46,24 @@ from synthorg.observability.events.api import (
 from synthorg.observability.events.training import (
     HR_TRAINING_PLAN_EXECUTION_ERROR,
 )
-from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)
+
+
+def _plan_service(app_state: AppState) -> TrainingPlanService:
+    """Return the wired training plan service or raise 503 when absent.
+
+    Reads (latest pending / latest plan / by id / latest result) route
+    through the service so the controller never touches the plan or
+    result repositories directly.
+
+    Returns:
+        The wired ``TrainingPlanService``.
+    """
+    return require_service(
+        app_state.slice(HrStateSlice).training_plan_service,
+        "Training Plan Service",
+    )
 
 
 async def _resolve_agent(
@@ -253,10 +269,7 @@ class TrainingController(Controller):
         # and the ``HR_TRAINING_PLAN_CREATED`` audit event happen in
         # one place.  Raises 503 when the service is not yet wired
         # (matches every other persistence-bound facade).
-        await require_service(
-            app_state.slice(HrStateSlice).training_plan_service,
-            "Training Plan Service",
-        ).create_plan(plan)
+        await _plan_service(app_state).create_plan(plan)
         return ApiResponse(data=_plan_to_response(plan))
 
     @post(
@@ -296,9 +309,8 @@ class TrainingController(Controller):
         identity = await _resolve_agent(app_state, agent_id)
         agent_id = str(identity.id)
 
-        plan = await persistence_of(app_state).training_plans.latest_pending(
-            NotBlankStr(agent_id),
-        )
+        plan_service = _plan_service(app_state)
+        plan = await plan_service.latest_pending(NotBlankStr(agent_id))
         if plan is None:
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
@@ -311,11 +323,6 @@ class TrainingController(Controller):
         # Raises 503 ServiceUnavailableError when not wired.
         service = require_service(
             app_state.slice(HrStateSlice).training_service, "Training Service"
-        )
-
-        plan_service = require_service(
-            app_state.slice(HrStateSlice).training_plan_service,
-            "Training Plan Service",
         )
         try:
             result = await service.execute(plan)
@@ -373,9 +380,7 @@ class TrainingController(Controller):
         identity = await _resolve_agent(app_state, agent_id)
         agent_id = str(identity.id)
 
-        result = await persistence_of(app_state).training_results.get_latest(
-            NotBlankStr(agent_id),
-        )
+        result = await _plan_service(app_state).latest_result(NotBlankStr(agent_id))
         if result is None:
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
@@ -420,9 +425,7 @@ class TrainingController(Controller):
         identity = await _resolve_agent(app_state, agent_id)
         agent_id = str(identity.id)
 
-        plan = await persistence_of(app_state).training_plans.latest_by_agent(
-            NotBlankStr(agent_id),
-        )
+        plan = await _plan_service(app_state).latest_by_agent(NotBlankStr(agent_id))
         if plan is None:
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
@@ -467,9 +470,7 @@ class TrainingController(Controller):
         identity = await _resolve_agent(app_state, agent_id)
         agent_id = str(identity.id)
 
-        plan = await persistence_of(app_state).training_plans.latest_pending(
-            NotBlankStr(agent_id),
-        )
+        plan = await _plan_service(app_state).latest_pending(NotBlankStr(agent_id))
         if plan is None:
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
@@ -526,9 +527,7 @@ class TrainingController(Controller):
         app_state: AppState = state.app_state
         identity = await _resolve_agent(app_state, agent_id)
 
-        plan = await persistence_of(app_state).training_plans.get(
-            NotBlankStr(plan_id),
-        )
+        plan = await _plan_service(app_state).get(NotBlankStr(plan_id))
         if plan is None:
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
@@ -575,10 +574,7 @@ class TrainingController(Controller):
         # ``update_overrides`` applies the diff, persists the new
         # plan, and emits ``HR_TRAINING_PLAN_OVERRIDES_UPDATED``
         # inside the service.
-        updated = await require_service(
-            app_state.slice(HrStateSlice).training_plan_service,
-            "Training Plan Service",
-        ).update_overrides(
+        updated = await _plan_service(app_state).update_overrides(
             plan,
             updates=updates,
         )

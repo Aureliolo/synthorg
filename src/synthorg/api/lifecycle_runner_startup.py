@@ -41,8 +41,11 @@ from synthorg.api.lifecycle_helpers.ticket_cleanup import (
 from synthorg.api.lifecycle_runner_support import (
     _LifecycleTasks,
     _wire_approval_gate,
+    _wire_webhook_request_services,
+    _wire_workflow_execution_service,
     _wire_workflow_observer,
 )
+from synthorg.api.lifecycle_shared import _cleanup_on_failure
 from synthorg.api.state import AppState
 from synthorg.api.webhook_cleanup import _webhook_receipt_cleanup_loop
 from synthorg.approval.state import ApprovalStateSlice
@@ -80,6 +83,146 @@ from synthorg.tools.state import ToolsStateSlice, tool_invocation_tracker_of
 from synthorg.workers.state import RuntimeStateSlice
 
 logger = get_logger(__name__)
+
+
+async def _start_runtime_background_services(
+    tasks: _LifecycleTasks,
+    app_state: AppState,
+) -> None:
+    """Start the provider health prober + integration background services.
+
+    Each individual service start stays non-fatal (a webhook / health /
+    OAuth poll-loop that cannot start must not abort boot), so its failure
+    is logged and swallowed. The whole section is wrapped, however, so that
+    if a *critical* (``MemoryError`` / ``RecursionError``, re-raised from an
+    inner block) or an unexpected raise propagates after some services
+    already started, those already-started services are stopped with a
+    bounded best-effort cleanup before the exception re-raises -- otherwise
+    they leak, because ``on_shutdown`` does not run once ``on_startup``
+    fails.
+    """
+    started_provider_health_prober = False
+    started_webhook_event_bridge = False
+    started_integration_health_prober = False
+    started_oauth_token_manager = False
+    started_event_stream_hub = False
+    integrations = app_state.slice(IntegrationsStateSlice)
+    communication = app_state.slice(CommunicationStateSlice)
+    webhook_event_bridge = integrations.webhook_event_bridge
+    try:
+        tasks.health_prober = await _maybe_start_health_prober(app_state)
+        started_provider_health_prober = tasks.health_prober is not None
+
+        # Start integration background services (non-fatal).
+        if webhook_event_bridge is not None:
+            try:
+                await webhook_event_bridge.start()
+                started_webhook_event_bridge = True
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                logger.warning(
+                    API_APP_STARTUP,
+                    phase="webhook_event_bridge_start",
+                    severity="non_fatal",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+        if integrations.health_prober_service is not None:
+            try:
+                await integrations.health_prober_service.start()
+                started_integration_health_prober = True
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                logger.warning(
+                    API_APP_STARTUP,
+                    phase="health_prober_service_start",
+                    severity="non_fatal",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+        if integrations.oauth_token_manager is not None:
+            try:
+                await integrations.oauth_token_manager.start()
+                started_oauth_token_manager = True
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                logger.warning(
+                    API_APP_STARTUP,
+                    phase="oauth_token_manager_start",
+                    severity="non_fatal",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+        if communication.escalation_sweeper is not None:
+            try:
+                await communication.escalation_sweeper.start()
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                logger.warning(
+                    API_APP_STARTUP,
+                    phase="escalation_sweeper_start",
+                    severity="non_fatal",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+        if communication.escalation_notify_subscriber is not None:
+            try:
+                await communication.escalation_notify_subscriber.start()
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                logger.warning(
+                    API_APP_STARTUP,
+                    phase="escalation_notify_subscriber_start",
+                    severity="non_fatal",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+        # EventStreamHub inactivity-TTL janitor. Without this, an SSE client
+        # that disconnects without unsubscribe (browser-tab kill, network
+        # partition) leaks its queue + per-session dedup window for the
+        # lifetime of the process.
+        if communication.event_stream_hub is not None:
+            try:
+                (
+                    idle_ttl,
+                    janitor_interval,
+                ) = await _resolve_event_stream_janitor_settings(app_state)
+                await communication.event_stream_hub.start(
+                    idle_ttl_seconds=idle_ttl,
+                    janitor_interval_seconds=janitor_interval,
+                )
+                started_event_stream_hub = True
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                logger.warning(
+                    API_APP_STARTUP,
+                    phase="event_stream_hub_start",
+                    severity="non_fatal",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+    except Exception:
+        # A propagating exception (a re-raised critical, or an unexpected
+        # raise from the prober start / janitor-settings resolve) would leak
+        # whatever already started. Stop those services in reverse order with
+        # a bounded best-effort cleanup, then re-raise the original error.
+        await _cleanup_on_failure(
+            persistence=None,
+            started_persistence=False,
+            message_bus=None,
+            started_bus=False,
+            event_stream_hub=communication.event_stream_hub,
+            started_event_stream_hub=started_event_stream_hub,
+            oauth_token_manager=integrations.oauth_token_manager,
+            started_oauth_token_manager=started_oauth_token_manager,
+            integration_health_prober=integrations.health_prober_service,
+            started_integration_health_prober=started_integration_health_prober,
+            webhook_event_bridge=webhook_event_bridge,
+            started_webhook_event_bridge=started_webhook_event_bridge,
+            provider_health_prober=tasks.health_prober,
+            started_provider_health_prober=started_provider_health_prober,
+        )
+        raise
 
 
 async def _run_startup(  # noqa: PLR0913
@@ -286,6 +429,8 @@ async def _run_startup(  # noqa: PLR0913
     if persistence is not None:
         try:
             await _wire_workflow_observer(task_engine, persistence, app_state)
+            _wire_workflow_execution_service(persistence, app_state)
+            _wire_webhook_request_services(persistence, app_state)
         except Exception as exc:
             reraise_critical(exc)
             log_exception_redacted(
@@ -501,92 +646,4 @@ async def _run_startup(  # noqa: PLR0913
             "Failed to stop prior health prober before restart",
         )
         tasks.health_prober = None
-    tasks.health_prober = await _maybe_start_health_prober(app_state)
-
-    # Start integration background services (non-fatal).
-    webhook_event_bridge = app_state.slice(IntegrationsStateSlice).webhook_event_bridge
-    if webhook_event_bridge is not None:
-        try:
-            await webhook_event_bridge.start()
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                API_APP_STARTUP,
-                phase="webhook_event_bridge_start",
-                severity="non_fatal",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-    integrations = app_state.slice(IntegrationsStateSlice)
-    communication = app_state.slice(CommunicationStateSlice)
-    if integrations.health_prober_service is not None:
-        try:
-            await integrations.health_prober_service.start()
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                API_APP_STARTUP,
-                phase="health_prober_service_start",
-                severity="non_fatal",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-    if integrations.oauth_token_manager is not None:
-        try:
-            await integrations.oauth_token_manager.start()
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                API_APP_STARTUP,
-                phase="oauth_token_manager_start",
-                severity="non_fatal",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-    if communication.escalation_sweeper is not None:
-        try:
-            await communication.escalation_sweeper.start()
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                API_APP_STARTUP,
-                phase="escalation_sweeper_start",
-                severity="non_fatal",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-    if communication.escalation_notify_subscriber is not None:
-        try:
-            await communication.escalation_notify_subscriber.start()
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                API_APP_STARTUP,
-                phase="escalation_notify_subscriber_start",
-                severity="non_fatal",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-    # EventStreamHub inactivity-TTL janitor. Without this, an SSE client that
-    # disconnects without unsubscribe (browser-tab kill, network partition)
-    # leaks its queue + per-session dedup window for the lifetime of the
-    # process.
-    if communication.event_stream_hub is not None:
-        try:
-            (
-                idle_ttl,
-                janitor_interval,
-            ) = await _resolve_event_stream_janitor_settings(app_state)
-            await communication.event_stream_hub.start(
-                idle_ttl_seconds=idle_ttl,
-                janitor_interval_seconds=janitor_interval,
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                API_APP_STARTUP,
-                phase="event_stream_hub_start",
-                severity="non_fatal",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
+    await _start_runtime_background_services(tasks, app_state)

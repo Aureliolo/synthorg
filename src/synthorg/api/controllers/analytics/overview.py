@@ -10,6 +10,7 @@ from litestar import Controller, get
 from litestar.datastructures import State
 
 from synthorg._core.features import require_service
+from synthorg.api.api_core_state import analytics_read_service_of
 from synthorg.api.controllers.analytics._shared import (
     OverviewMetrics,
     _resolve_agent_counts,
@@ -31,7 +32,6 @@ from synthorg.core.task_enums import TaskStatus
 from synthorg.observability import get_logger
 from synthorg.observability.events.analytics import ANALYTICS_OVERVIEW_QUERIED
 from synthorg.observability.events.api import API_REQUEST_ERROR
-from synthorg.persistence.state import persistence_of
 from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
@@ -137,15 +137,13 @@ class AnalyticsOverviewController(Controller):
         Raises:
             ServiceUnavailableError: Raised on the corresponding failure path.
         """
-        from synthorg.persistence.task_protocol import TaskFilterSpec  # noqa: PLC0415
-
         app_state: AppState = state.app_state
         now = datetime.now(UTC)
 
         try:
             async with asyncio.TaskGroup() as tg:
                 t_tasks = tg.create_task(
-                    persistence_of(app_state).tasks.query(TaskFilterSpec()),
+                    analytics_read_service_of(app_state).list_tasks(),
                 )
                 t_cost = tg.create_task(
                     require_service(
