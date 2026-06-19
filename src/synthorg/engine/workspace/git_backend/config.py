@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.clock import Clock
 from synthorg.core.project_enums import GitBackendType
+from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.persistence.secret_backends.protocol import SecretBackend
 
@@ -80,14 +81,13 @@ class GitBackendConfig(BaseModel):
 
     kind: GitBackendType = GitBackendType.EMBEDDED
     # EMBEDDED: subdirectory under the workspace base holding bare repos.
-    embedded_subdir: str = Field(
+    embedded_subdir: NotBlankStr = Field(
         default=_DEFAULT_EMBEDDED_SUBDIR,
-        min_length=1,
     )
     # LOCAL_PATH: caller-supplied existing git repository path.
-    local_repo_path: str | None = Field(default=None, min_length=1)
+    local_repo_path: NotBlankStr | None = Field(default=None)
     # EXTERNAL_REMOTE: connection-catalog name for the forge connection.
-    remote_connection_name: str | None = Field(default=None, min_length=1)
+    remote_connection_name: NotBlankStr | None = Field(default=None)
     # Maximum seconds any single git subprocess may run.
     git_cmd_timeout_seconds: float = Field(
         default=_DEFAULT_GIT_CMD_TIMEOUT_SECONDS,

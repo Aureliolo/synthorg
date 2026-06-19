@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, cast, override
 from uuid import UUID, uuid4
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.actor_context import ActorIdentity, ActorKind, actor_scope
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.company import (
@@ -110,9 +111,11 @@ class CompanyReadService:
 
         The payload is validated against :class:`UpdateCompanyRequest`
         here so unknown keys are rejected before reaching the mutation
-        service.  The call then matches the target signature
-        ``update_company(data, *, saved_by=...)`` -- ``actor_id`` is
-        recorded as ``saved_by`` in the persisted snapshot.
+        service.  ``actor_id`` is bound to the actor-context seam for the
+        call so the mutation service's snapshot leaf attributes the
+        version to this caller (the MCP layer is bypassed by the
+        HTTP-only ``AuthContextMiddleware``, so the binding is explicit
+        here).
 
         Returns:
             The updated company snapshot returned by the mutation service.
@@ -133,7 +136,9 @@ class CompanyReadService:
                 "OrgMutationService does not expose update_company",
             )
         data = UpdateCompanyRequest.model_validate(dict(payload))
-        result = await fn(data, saved_by=actor_id)
+        actor = ActorIdentity(actor_id=actor_id, kind=ActorKind.HUMAN, label=actor_id)
+        with actor_scope(actor):
+            result = await fn(data)
         logger.info(COMPANY_UPDATED_VIA_MCP, actor_id=actor_id)
         return result
 

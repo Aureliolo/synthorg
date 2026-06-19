@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from typing import Final
 
 from synthorg.budget._aggregation import group_by_agent
+from synthorg.budget._enforcer_helpers import _ALERT_LEVEL_ORDER
 from synthorg.budget._optimizer_helpers import (
     _build_efficiency_from_records,
     _compute_alert_level,
@@ -22,7 +23,7 @@ from synthorg.budget._optimizer_helpers import (
     _detect_spike_anomaly,
 )
 from synthorg.budget._optimizer_routing import _CostOptimizerRoutingMixin
-from synthorg.budget.billing import billing_period_start
+from synthorg.budget._utilization import compute_monthly_cost
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.currency import format_cost
 from synthorg.budget.enums import BudgetAlertLevel
@@ -48,14 +49,6 @@ from synthorg.providers.routing.resolver import ModelResolver
 
 logger = get_logger(__name__)
 _DEFAULT_WINDOW_COUNT: Final[int] = 5
-
-# Same ordering as BudgetEnforcer._ALERT_LEVEL_ORDER
-_ALERT_LEVEL_ORDER: dict[BudgetAlertLevel, int] = {
-    BudgetAlertLevel.NORMAL: 0,
-    BudgetAlertLevel.WARNING: 1,
-    BudgetAlertLevel.CRITICAL: 2,
-    BudgetAlertLevel.HARD_STOP: 3,
-}
 
 # Maximum number of time windows for anomaly detection to avoid
 # excessive memory/compute from pathological inputs.
@@ -314,10 +307,7 @@ class CostOptimizer(_CostOptimizerRoutingMixin):
                 conditions=(),
             )
 
-        period_start = billing_period_start(cfg.reset_day, now=now)
-        monthly_cost = await self._cost_tracker.get_total_cost(
-            start=period_start,
-        )
+        monthly_cost = await compute_monthly_cost(cfg, self._cost_tracker, now=now)
         remaining = round(
             cfg.total_monthly - monthly_cost,
             BUDGET_ROUNDING_PRECISION,

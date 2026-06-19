@@ -127,7 +127,7 @@ class SettingsObservabilityController(Controller):
     @post(
         "/observability/sinks/_test",
         guards=[require_ceo_or_manager],
-        sync_to_thread=False,
+        sync_to_thread=True,
     )
     def test_sink_config(
         self,

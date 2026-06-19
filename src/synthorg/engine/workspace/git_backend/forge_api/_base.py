@@ -1,5 +1,6 @@
 """Shared httpx lifecycle for the per-forge REST clients."""
 
+from collections.abc import Mapping
 from typing import Self
 
 import httpx
@@ -24,7 +25,7 @@ class BaseForgeClient:
         self,
         *,
         api_base_url: str,
-        headers: dict[str, str],
+        headers: Mapping[str, str],
         timeout: float,
     ) -> None:
         # Trailing slash is load-bearing: httpx resolves a relative
@@ -32,7 +33,9 @@ class BaseForgeClient:
         # forge hosted under a path prefix (``/api/v3``, ``/api/v4``)
         # would lose that prefix when joining the relative endpoint.
         self._api_base_url = api_base_url.rstrip("/") + "/"
-        self._headers = headers
+        # Copy-on-store so a later mutation of the caller's header map
+        # cannot retroactively change this client's auth/headers.
+        self._headers: dict[str, str] = dict(headers)
         self._timeout = timeout
         self.__client: httpx.AsyncClient | None = None
 

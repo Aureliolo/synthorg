@@ -6,16 +6,13 @@ sinks (console, email, Slack, ntfy, etc.).
 """
 
 from datetime import UTC, datetime
-from typing import ClassVar, Final, Protocol, override, runtime_checkable
+from typing import ClassVar, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ValidationError
 
+from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.notifications.models import (
-    Notification,
-    NotificationCategory,
-    NotificationSeverity,
-)
+from synthorg.notifications.models import Notification
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.communication import (
     COMM_TOOL_NOTIFICATION_SEND_FAILED,
@@ -43,13 +40,6 @@ class NotificationDispatcherProtocol(Protocol):
 
 
 logger = get_logger(__name__)
-
-_VALID_CATEGORIES: Final[frozenset[str]] = frozenset(
-    m.value for m in NotificationCategory
-)
-_VALID_SEVERITIES: Final[frozenset[str]] = frozenset(
-    m.value for m in NotificationSeverity
-)
 
 
 class NotificationSenderTool(BaseCommunicationTool):
@@ -114,6 +104,10 @@ class NotificationSenderTool(BaseCommunicationTool):
 
         Returns:
             A ``ToolExecutionResult`` with dispatch status.
+
+        Raises:
+            ValidationError: If the arguments fail typed-boundary
+                validation (the invoker boundary handles it).
         """
         if self._dispatcher is None:
             logger.warning(
@@ -128,77 +122,36 @@ class NotificationSenderTool(BaseCommunicationTool):
                 is_error=True,
             )
 
-        raw_body = arguments.get("body", "")
-        if not isinstance(raw_body, str):
+        # ``parse_typed`` validates ``category`` / ``severity`` against
+        # the notification enums and enforces non-blank ``title`` /
+        # ``source``, so the membership and isinstance checks below are
+        # handled once at the typed boundary. Emit the tool-specific
+        # failure event before re-raising so a validation failure is
+        # observable under this tool's event (not only the generic invoker
+        # error), while the invoker boundary still owns ValidationError.
+        try:
+            args = parse_typed(
+                "tool.notification_sender", arguments, NotificationSenderArgs
+            )
+        except ValidationError as exc:
             logger.warning(
                 COMM_TOOL_NOTIFICATION_SEND_FAILED,
-                error="invalid_body",
+                reason="invalid_arguments",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
-            return ToolExecutionResult(
-                content="'body' must be a string if provided.",
-                is_error=True,
-            )
-        body = raw_body
-        required_fields = {
-            "category": arguments.get("category"),
-            "severity": arguments.get("severity"),
-            "title": arguments.get("title"),
-            "source": arguments.get("source"),
-        }
-        for field_name, field_val in required_fields.items():
-            if not isinstance(field_val, str) or not field_val:
-                logger.warning(
-                    COMM_TOOL_NOTIFICATION_SEND_FAILED,
-                    error="missing_field",
-                    field=field_name,
-                )
-                return ToolExecutionResult(
-                    content=(
-                        f"'{field_name}' is required and must be a non-empty string."
-                    ),
-                    is_error=True,
-                )
-
-        category_str: str = required_fields["category"]  # type: ignore[assignment]
-        severity_str: str = required_fields["severity"]  # type: ignore[assignment]
-        title: str = required_fields["title"]  # type: ignore[assignment]
-        source: str = required_fields["source"]  # type: ignore[assignment]
-
-        if category_str not in _VALID_CATEGORIES:
-            logger.warning(
-                COMM_TOOL_NOTIFICATION_SEND_FAILED,
-                error="invalid_category",
-                category=category_str,
-            )
-            return ToolExecutionResult(
-                content=(
-                    f"Invalid category: {category_str!r}. "
-                    f"Must be one of: {sorted(_VALID_CATEGORIES)}"
-                ),
-                is_error=True,
-            )
-
-        if severity_str not in _VALID_SEVERITIES:
-            logger.warning(
-                COMM_TOOL_NOTIFICATION_SEND_FAILED,
-                error="invalid_severity",
-                severity=severity_str,
-            )
-            return ToolExecutionResult(
-                content=(
-                    f"Invalid severity: {severity_str!r}. "
-                    f"Must be one of: {sorted(_VALID_SEVERITIES)}"
-                ),
-                is_error=True,
-            )
+            raise
+        category_str = args.category.value
+        severity_str = args.severity.value
+        title = args.title
 
         try:
             notification = Notification(
-                category=NotificationCategory(category_str),
-                severity=NotificationSeverity(severity_str),
-                title=title,
-                body=body,
-                source=source,
+                category=args.category,
+                severity=args.severity,
+                title=args.title,
+                body=args.body,
+                source=args.source,
                 timestamp=datetime.now(UTC),
             )
         except (ValueError, TypeError, ValidationError) as exc:

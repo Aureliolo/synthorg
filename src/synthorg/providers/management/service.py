@@ -81,9 +81,6 @@ from synthorg.providers.management._helpers import (
 )
 from synthorg.providers.management.allowlist import DiscoveryAllowlistManager
 from synthorg.providers.management.audit_service import ProviderAuditService
-from synthorg.providers.management.capability_dtos import (
-    ProviderAuditActor,
-)
 from synthorg.providers.management.dtos import (
     CreateFromPresetRequest,
     CreateProviderRequest,
@@ -324,8 +321,6 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
     async def create_provider(
         self,
         request: CreateProviderRequest,
-        *,
-        actor: ProviderAuditActor | None = None,
     ) -> ProviderConfig:
         """Create a new provider.
 
@@ -361,7 +356,6 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             await self._audit(
                 provider_name=request.name,
                 event_type="provider_created",
-                actor=actor,
                 payload={
                     "driver": new_config.driver,
                     "auth_type": new_config.auth_type.value,
@@ -374,8 +368,6 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         self,
         name: str,
         request: UpdateProviderRequest,
-        *,
-        actor: ProviderAuditActor | None = None,
     ) -> ProviderConfig:
         """Update an existing provider.
 
@@ -413,7 +405,6 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             await self._audit(
                 provider_name=name,
                 event_type="provider_updated",
-                actor=actor,
                 payload=_diff_provider_update(existing, updated),
             )
             return updated
@@ -421,14 +412,11 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
     async def delete_provider(
         self,
         name: str,
-        *,
-        actor: ProviderAuditActor | None = None,
     ) -> None:
         """Delete a provider.
 
         Args:
             name: Provider name to delete.
-            actor: Optional audit actor; defaults to ``_SYSTEM_ACTOR``.
 
         Raises:
             ProviderNotFoundError: If the provider does not exist.
@@ -452,7 +440,6 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             await self._audit(
                 provider_name=name,
                 event_type="provider_deleted",
-                actor=actor,
                 payload={
                     "driver": removed_config.driver,
                     "auth_type": removed_config.auth_type.value,
@@ -628,8 +615,6 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
     async def create_from_preset(
         self,
         request: CreateFromPresetRequest,
-        *,
-        actor: ProviderAuditActor | None = None,
     ) -> ProviderConfig:
         """Create a provider from a preset template.
 
@@ -691,7 +676,7 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             models=models,
             preset_name=preset.name,
         )
-        return await self.create_provider(create_request, actor=actor)
+        return await self.create_provider(create_request)
 
     async def _maybe_discover_preset_models(
         self,
@@ -1060,15 +1045,12 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         self,
         name: str,
         model_id: str,
-        *,
-        actor: ProviderAuditActor | None = None,
     ) -> None:
         """Delete a model from a local provider.
 
         Args:
             name: Provider name.
             model_id: Model identifier to delete.
-            actor: Optional audit actor; defaults to ``_SYSTEM_ACTOR``.
 
         Raises:
             ProviderNotFoundError: If the provider does not exist.
@@ -1093,7 +1075,6 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         await self._audit(
             provider_name=name,
             event_type="model_removed",
-            actor=actor,
             payload={"model_id": model_id},
         )
 
@@ -1102,8 +1083,6 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         name: str,
         model_id: str,
         local_params: LocalModelParams,
-        *,
-        actor: ProviderAuditActor | None = None,
     ) -> ProviderConfig:
         """Update per-model launch parameters for a local provider.
 
@@ -1111,7 +1090,6 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             name: Provider name.
             model_id: Model identifier.
             local_params: New launch parameters.
-            actor: Optional audit actor; defaults to ``_SYSTEM_ACTOR``.
 
         Returns:
             Updated provider configuration.
@@ -1174,7 +1152,6 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             await self._audit(
                 provider_name=name,
                 event_type="model_config_updated",
-                actor=actor,
                 payload=payload,
             )
             return updated

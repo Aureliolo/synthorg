@@ -126,6 +126,14 @@ func collectHealth(ctx context.Context, r *Report, backendPort int) {
 		r.Errors = append(r.Errors, fmt.Sprintf("health read: %v", readErr))
 	}
 	r.HealthStatus = fmt.Sprintf("%d", resp.StatusCode)
+	if resp.StatusCode == http.StatusTooManyRequests {
+		// A 429 means the backend is alive but throttling; annotate so the
+		// report does not read as an outright failure.
+		r.Errors = append(
+			r.Errors,
+			"health: rate-limited (429); backend alive but throttling",
+		)
+	}
 	// Pretty-print JSON health body for readability.
 	var parsed map[string]any
 	if json.Unmarshal(body, &parsed) == nil {

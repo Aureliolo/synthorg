@@ -59,6 +59,13 @@ logger = get_logger(__name__)
 # Word tokenization: split on non-alphanumeric characters.
 _WORD_RE: Final[re.Pattern[str]] = re.compile(r"[a-z0-9]+")
 
+# Token ceiling for each cross-provider confirmation completion.
+_UNCERTAINTY_MAX_TOKENS: Final[int] = 512
+
+# Confidence blend: embedding cosine dominates keyword overlap.
+_WEIGHT_EMBEDDING_SIM: Final[float] = 0.6
+_WEIGHT_KEYWORD_OVERLAP: Final[float] = 0.4
+
 
 # ── Models ────────────────────────────────────────────────────────
 
@@ -325,7 +332,11 @@ class UncertaintyChecker:
         # Compute similarity metrics.
         keyword_overlap = _compute_keyword_overlap(responses)
         embedding_sim = _compute_tfidf_cosine_similarity(responses)
-        confidence = min(1.0, 0.6 * embedding_sim + 0.4 * keyword_overlap)
+        confidence = min(
+            1.0,
+            _WEIGHT_EMBEDDING_SIM * embedding_sim
+            + _WEIGHT_KEYWORD_OVERLAP * keyword_overlap,
+        )
 
         if confidence < self._config.low_confidence_threshold:
             logger.warning(
@@ -409,7 +420,10 @@ class UncertaintyChecker:
                 content=wrap_untrusted(TAG_TASK_DATA, prompt),
             ),
         ]
-        config = CompletionConfig(temperature=0.0, max_tokens=512)
+        config = CompletionConfig(
+            temperature=0.0,
+            max_tokens=_UNCERTAINTY_MAX_TOKENS,
+        )
 
         results: list[str] = []
 

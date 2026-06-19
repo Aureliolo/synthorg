@@ -1,7 +1,8 @@
 """Agent-related helpers for the first-run setup controller.
 
-Handles template agent expansion, model matching, and persistence
-operations that were previously inline in ``setup.py``.
+Handles template agent expansion, model matching, and the persistence
+operations the setup controller delegates out to keep its module size
+within budget.
 """
 
 import json

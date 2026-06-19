@@ -4,6 +4,7 @@ Generates proposals for structural changes to the organization:
 new roles, department restructuring, workflow modifications.
 """
 
+from typing import Final
 from uuid import uuid4
 
 from pydantic import JsonValue
@@ -23,6 +24,10 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.meta import META_PROPOSAL_GENERATED
 
 logger = get_logger(__name__)
+
+# Per-rule proposal confidences.
+_CONFIDENCE_REVIEW_PIPELINE: Final[float] = 0.55
+_CONFIDENCE_SPECIALIST_ROLE: Final[float] = 0.5
 
 
 class ArchitectureProposalStrategy:
@@ -143,7 +148,7 @@ class ArchitectureProposalStrategy:
                 ),
                 validation_check=("Review pipeline matches original config"),
             ),
-            confidence=0.55,
+            confidence=_CONFIDENCE_REVIEW_PIPELINE,
             source_rule="coordination_cost_ratio",
         )
 
@@ -192,6 +197,6 @@ class ArchitectureProposalStrategy:
                 ),
                 validation_check=("bottleneck_specialist role does not exist"),
             ),
-            confidence=0.5,
+            confidence=_CONFIDENCE_SPECIALIST_ROLE,
             source_rule="straggler_bottleneck",
         )

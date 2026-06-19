@@ -31,6 +31,9 @@ from synthorg.observability.events.procedural_memory import (
 logger = get_logger(__name__)
 _DEFAULT_MIN_QUALITY_SCORE: Final[float] = 8.0
 
+# Confidence (0-1) is scaled onto the 0-10 quality-score axis.
+_QUALITY_SCORE_SCALE: Final[float] = 10.0
+
 
 class SuccessCaptureStrategy:
     """Captures procedural memories from successful task executions.
@@ -99,8 +102,8 @@ class SuccessCaptureStrategy:
         if proposal is None:
             return None
 
-        # Check quality threshold (confidence * 10)
-        quality_score = proposal.confidence * 10.0
+        # Check quality threshold (confidence scaled onto the 0-10 axis).
+        quality_score = proposal.confidence * _QUALITY_SCORE_SCALE
         if quality_score < self._min_quality_score:
             logger.info(
                 PROCEDURAL_CAPTURE_QUALITY_BELOW_THRESHOLD,

@@ -19,18 +19,18 @@ export interface UseConnectionsDataReturn {
   checkingHealth: readonly string[]
 }
 
-const HEALTH_ORDER: Record<ConnectionHealthStatus, number> = {
+const HEALTH_ORDER = {
   unhealthy: 0,
   degraded: 1,
   unknown: 2,
   healthy: 3,
-}
+} as const satisfies Record<ConnectionHealthStatus, number>
 
 function _effectiveHealth(
   conn: Connection,
   healthMap: Record<string, HealthReport>,
 ): ConnectionHealthStatus {
-  return healthMap[conn.name]?.status ?? conn.health_status
+  return healthMap[conn.name]?.status ?? conn.health.status
 }
 
 type ConnComparator = (

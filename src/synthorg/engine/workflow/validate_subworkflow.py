@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+from synthorg.core.iso_datetime import is_valid_iso_datetime
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowIODeclaration,
@@ -75,12 +76,7 @@ def _literal_matches_type(
         if isinstance(value, datetime):
             return True
         if isinstance(value, str):
-            try:
-                datetime.fromisoformat(value)
-            except ValueError:
-                return False
-            else:
-                return True
+            return is_valid_iso_datetime(value)
         return False
     return True
 

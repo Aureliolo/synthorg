@@ -403,7 +403,7 @@ async def emit_cost_record_from_context(
     # background task is bounded by the same timeout so a hung
     # tracker doesn't accumulate forever-pending tasks; failures
     # (timeout, exception) are logged in the task itself with the
-    # same structured event the inline path used to emit.  The
+    # same ``PROVIDER_COST_RECORDED`` structured event.  The
     # ``PROVIDER_COST_RECORDED`` INFO log fires from
     # ``_record_cost_in_background`` only after the tracker actually
     # accepts the record, so a hung/failing tracker no longer produces

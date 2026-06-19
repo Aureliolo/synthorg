@@ -8917,16 +8917,11 @@ export type components = {
              * @description datetime with the constraint that the value must have timezone info
              */
             readonly created_at: string;
+            readonly health: components["schemas"]["ConnectionHealth"];
             /** @default true */
             readonly health_check_enabled: boolean;
-            readonly health_status: components["schemas"]["ConnectionStatus"];
             /** Format: uuid */
             readonly id: string;
-            /**
-             * Format: date-time
-             * @description datetime with the constraint that the value must have timezone info
-             */
-            readonly last_health_check_at: string | null;
             readonly metadata: {
                 readonly [key: string]: string;
             };
@@ -8943,6 +8938,15 @@ export type components = {
             readonly updated_at: string;
             /** @description Per-connection override for webhook-receipt retention (days). None = use the global default; 0 = never sweep this connection's receipts. */
             readonly webhook_receipt_retention_days: number | null;
+        };
+        /** ConnectionHealth */
+        readonly ConnectionHealth: {
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly last_check_at: string | null;
+            readonly status: components["schemas"]["ConnectionStatus"];
         };
         /**
          * ConnectionStatus

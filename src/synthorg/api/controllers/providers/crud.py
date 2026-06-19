@@ -7,7 +7,6 @@ from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg._core.features import require_service
 from synthorg.api.controllers._provider_helpers import enrich_with_usage
-from synthorg.api.controllers._workflow_helpers import audit_actor_from_context
 from synthorg.api.dto import (
     DEFAULT_LIMIT,
     ApiResponse,
@@ -218,11 +217,9 @@ class ProviderCrudController(Controller):
         # Strip preset_name from external requests -- only
         # create_from_preset may set it (capability flag injection).
         safe_data = data.model_copy(update={"preset_name": None})
-        actor = audit_actor_from_context()
         try:
             config = await provider_management_of(app_state).create_provider(
                 safe_data,
-                actor=actor,
             )
         except ProviderAlreadyExistsError as exc:
             logger.warning(
@@ -271,11 +268,9 @@ class ProviderCrudController(Controller):
                 validation fails.
         """
         app_state: AppState = state.app_state
-        actor = audit_actor_from_context()
         try:
             config = await provider_management_of(app_state).create_from_preset(
                 data,
-                actor=actor,
             )
         except ProviderAlreadyExistsError as exc:
             logger.warning(
@@ -322,12 +317,10 @@ class ProviderCrudController(Controller):
             ValidationError: If the update fails validation.
         """
         app_state: AppState = state.app_state
-        actor = audit_actor_from_context()
         try:
             config = await provider_management_of(app_state).update_provider(
                 name,
                 data,
-                actor=actor,
             )
         except ProviderNotFoundError as exc:
             logger.warning(
@@ -369,9 +362,8 @@ class ProviderCrudController(Controller):
             NotFoundError: If the provider does not exist.
         """
         app_state: AppState = state.app_state
-        actor = audit_actor_from_context()
         try:
-            await provider_management_of(app_state).delete_provider(name, actor=actor)
+            await provider_management_of(app_state).delete_provider(name)
         except ProviderNotFoundError as exc:
             logger.warning(
                 API_RESOURCE_NOT_FOUND,

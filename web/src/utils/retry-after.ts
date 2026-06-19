@@ -99,6 +99,23 @@ export function parseRetryAfterMs(
   return ms
 }
 
+/**
+ * Thrown when a request terminally fails with HTTP 429 (the transparent
+ * retry budget is exhausted or the request was not replayable). Carries the
+ * parsed ``Retry-After`` wait in milliseconds (``0`` when the server gave no
+ * hint) so callers can surface a precise back-off to the user instead of a
+ * generic "HTTP 429".
+ */
+export class RateLimitedError extends Error {
+  readonly retryAfterMs: number
+
+  constructor(retryAfterMs: number) {
+    super('Rate limited (HTTP 429)')
+    this.name = 'RateLimitedError'
+    this.retryAfterMs = retryAfterMs
+  }
+}
+
 /** A minimal HTTP response the retry loop can inspect across transports. */
 export interface RetryableResponse {
   readonly status: number

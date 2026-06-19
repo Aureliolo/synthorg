@@ -170,6 +170,27 @@ def resolve_decided_by(explicit: str | None = None) -> str:
     return actor.label or actor.actor_id
 
 
+def resolve_actor_label(default: str) -> str:
+    """Return the bound actor's display identity, or *default* if unbound.
+
+    The non-raising counterpart of :func:`resolve_decided_by`: a leaf
+    that attributes provenance but tolerates a human-less background
+    path (e.g. an automated apply loop) gets *default* instead of an
+    exception. The bound actor's ``label`` (else ``actor_id``) is used
+    so the value matches what callers historically threaded.
+
+    Args:
+        default: Attribution to use when no actor is bound.
+
+    Returns:
+        The bound actor's display identity, or *default*.
+    """
+    actor = _actor_var.get()
+    if actor is None:
+        return default
+    return actor.label or actor.actor_id
+
+
 def clear_actor() -> None:
     """Remove any bound actor from the current context."""
     _actor_var.set(None)
@@ -215,7 +236,11 @@ def with_actor(
 
     Note:
         Synchronous functions only. Applying it to an ``async def``
-        raises :exc:`TypeError`; use :func:`with_actor_async`.
+        raises :exc:`TypeError`; use :func:`with_actor_async`. The
+        sync/async decorator split is intentional: production code binds
+        the actor via the :func:`actor_scope` context manager; these
+        decorators are provided for decorator-style use (currently the
+        test suite), not for any current production call site.
 
     Args:
         actor: The identity to bind around each call.

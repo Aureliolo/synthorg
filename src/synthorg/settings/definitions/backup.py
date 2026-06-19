@@ -11,7 +11,7 @@ _r.register(
         namespace=SettingNamespace.BACKUP,
         key="enabled",
         type=SettingType.BOOLEAN,
-        default="false",
+        default="true",
         description="Enable automatic backups",
         group="General",
     )

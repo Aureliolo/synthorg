@@ -4,6 +4,7 @@ Defines config models for controlling which coordination metrics are
 collected, error taxonomy, and orchestration alert thresholds.
 """
 
+from collections.abc import Mapping
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Self
@@ -175,7 +176,7 @@ class ErrorTaxonomyConfig(BaseModel):
         default=False,
         description="Whether error taxonomy tracking is enabled",
     )
-    detectors: dict[ErrorCategory, DetectorCategoryConfig] = Field(
+    detectors: Mapping[ErrorCategory, DetectorCategoryConfig] = Field(
         default_factory=_default_detectors,
         description="Per-category detector configuration",
     )
@@ -207,6 +208,16 @@ class ErrorTaxonomyConfig(BaseModel):
     def categories(self) -> tuple[ErrorCategory, ...]:
         """Active error categories derived from detectors dict."""
         return tuple(self.detectors)
+
+    @model_validator(mode="after")
+    def _freeze_detectors(self) -> Self:
+        """Wrap ``detectors`` in a read-only proxy at construction.
+
+        Returns:
+            The instance with ``detectors`` replaced by a ``MappingProxyType``.
+        """
+        object.__setattr__(self, "detectors", MappingProxyType(dict(self.detectors)))
+        return self
 
 
 # Default orchestration-overhead alert thresholds.  Documented as a

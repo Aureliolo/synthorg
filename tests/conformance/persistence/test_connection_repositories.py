@@ -22,6 +22,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import (
     AuthMethod,
     Connection,
+    ConnectionHealth,
     ConnectionStatus,
     ConnectionType,
     OAuthState,
@@ -52,8 +53,7 @@ def _connection(  # noqa: PLR0913
         secret_refs=secret_refs,
         rate_limiter=rate_limiter,
         health_check_enabled=True,
-        health_status=health_status,
-        last_health_check_at=None,
+        health=ConnectionHealth(status=health_status, last_check_at=None),
         metadata=metadata or {},
     )
 

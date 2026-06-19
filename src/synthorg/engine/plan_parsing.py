@@ -7,6 +7,7 @@ stripping), then falls back to structured text parsing.
 
 import json
 import re
+from typing import Final
 
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
@@ -17,6 +18,11 @@ from synthorg.providers.models import CompletionResponse
 from .plan_models import ExecutionPlan, PlanStep
 
 logger = get_logger(__name__)
+
+# Cap step count at parse time to prevent unbounded allocation from
+# misbehaving LLM output (individual loop configs may truncate
+# further). Internal by design: not exposed to the settings registry.
+_MAX_PARSE_STEPS: Final[int] = 50
 
 _PLANNING_PROMPT = """\
 You are a planning agent. Analyze the task and create a step-by-step \
@@ -222,11 +228,6 @@ def _data_to_plan(
         )
         return None
 
-    # Internal constant by design: cap step count at parse time to
-    # prevent unbounded allocation from misbehaving LLM output
-    # (individual loop configs may truncate further).  Not exposed
-    # to the settings registry.
-    _MAX_PARSE_STEPS = 50  # noqa: N806
     if len(raw_steps) > _MAX_PARSE_STEPS:
         logger.warning(
             EXECUTION_PLAN_PARSE_ERROR,

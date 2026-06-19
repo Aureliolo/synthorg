@@ -68,7 +68,7 @@ class SetupLocalesController(Controller):
 
         return ApiResponse(
             data=AvailableLocalesResponse(
-                regions={k: list(v) for k, v in LOCALE_REGIONS.items()},
+                regions={k: tuple(v) for k, v in LOCALE_REGIONS.items()},
                 display_names=dict(LOCALE_DISPLAY_NAMES),
             ),
         )
@@ -96,7 +96,7 @@ class SetupLocalesController(Controller):
         app_state: AppState = state.app_state
         settings_svc = settings_service_of(app_state)
         locales = await _read_name_locales(settings_svc, resolve=False)
-        stored = locales or [ALL_LOCALES_SENTINEL]
+        stored = tuple(locales) if locales else (ALL_LOCALES_SENTINEL,)
         logger.debug(SETUP_NAME_LOCALES_LISTED, count=len(stored))
         return ApiResponse(
             data=SetupNameLocalesResponse(locales=stored),

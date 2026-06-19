@@ -17,7 +17,6 @@ satisfies it automatically.
 from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.text_estimation import approx_tokens
 from synthorg.core.types import NotBlankStr
 from synthorg.providers.models import ChatMessage, ToolDefinition
 
@@ -68,27 +67,6 @@ class TokenEstimator(Protocol):
             Estimated token count (non-negative).
         """
         ...
-
-
-class DefaultTokenEstimator:
-    """Heuristic token estimator backed by ``approx_tokens``.
-
-    Suitable for rough budget enforcement when a model-specific
-    tokenizer is unavailable.
-    """
-
-    def estimate_tokens(self, text: str) -> int:
-        """Estimate tokens via ``synthorg.core.text_estimation.approx_tokens``.
-
-        Returns 0 for empty text, at least 1 for any non-empty text.
-
-        Args:
-            text: The text to estimate tokens for.
-
-        Returns:
-            Estimated token count (non-negative).
-        """
-        return approx_tokens(text)
 
 
 @runtime_checkable

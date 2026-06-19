@@ -3,10 +3,21 @@
  */
 
 /**
+ * Per-connection health view, mirroring ``ConnectionHealth`` from
+ * ``@/api/types``. The connections page reads ``health.status`` /
+ * ``health.last_check_at``; a flat ``health_status`` field crashes the
+ * card on the nested access.
+ */
+export interface MockConnectionHealth {
+  status: 'unknown' | 'healthy' | 'degraded' | 'unhealthy'
+  last_check_at: string | null
+}
+
+/**
  * Connection, mirroring ``Connection`` from ``@/api/types`` (the wire
  * shape ``/connections`` returns). The connections page reads
- * ``secret_refs`` / ``rate_limiter`` / the ``health_*`` fields, so the
- * earlier minimal shape left the row crashing or unrendered.
+ * ``secret_refs`` / ``rate_limiter`` / the nested ``health`` object, so
+ * the earlier minimal shape left the row crashing or unrendered.
  */
 export interface MockConnection {
   id: string
@@ -15,8 +26,7 @@ export interface MockConnection {
   auth_method: 'bearer_token' | 'api_key' | 'oauth2' | 'jwt'
   base_url: string | null
   health_check_enabled: boolean
-  health_status: 'unknown' | 'healthy' | 'degraded' | 'unhealthy'
-  last_health_check_at: string | null
+  health: MockConnectionHealth
   metadata: Record<string, string>
   rate_limiter: unknown | null
   secret_refs: unknown[]
@@ -36,8 +46,10 @@ export function makeConnection(
     auth_method: 'jwt',
     base_url: 'https://peer.example.com',
     health_check_enabled: true,
-    health_status: 'unknown',
-    last_health_check_at: null,
+    health: {
+      status: 'unknown',
+      last_check_at: null,
+    },
     metadata: {},
     rate_limiter: null,
     secret_refs: [],

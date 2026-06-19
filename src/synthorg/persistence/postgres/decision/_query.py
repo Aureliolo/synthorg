@@ -25,13 +25,17 @@ from synthorg.observability.events.persistence.decision_record import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import validate_pagination_args
+from synthorg.persistence._shared.decision_sql import (
+    DECISION_COLS as _COLS,
+)
+from synthorg.persistence._shared.decision_sql import (
+    DECISION_MAX_PAGE_LIMIT as _MAX_PAGE_LIMIT,
+)
+from synthorg.persistence._shared.decision_sql import (
+    resolve_role_column,
+)
 from synthorg.persistence.decision_protocol import DecisionFilterSpec, DecisionRole
 from synthorg.persistence.postgres.decision._base import _DecisionRepoBase
-from synthorg.persistence.postgres.decision._sql import (
-    _COLS,
-    _MAX_PAGE_LIMIT,
-    _ROLE_TO_COLUMN,
-)
 
 logger = get_logger(__name__)
 
@@ -245,36 +249,14 @@ class _QueryMixin(_DecisionRepoBase):
                 ``limit`` / ``offset`` fail the type or bounds check,
                 or if the underlying ``psycopg`` query raises.
         """
-        # Runtime defense: validate role is in the closed set
-        role_obj: object = role
-        if not isinstance(role_obj, str):
-            got = type(role_obj).__name__
-            msg = f"role must be 'executor' or 'reviewer', got {got}"
-            logger.warning(
-                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
-                agent_id=agent_id,
-                role_type=got,
-                error=msg,
-            )
-            raise QueryError(msg)
-        role_str: str = role_obj
-        try:
-            column = _ROLE_TO_COLUMN[role_str]
-        except KeyError as exc:
-            msg = f"role must be 'executor' or 'reviewer', got {role_str!r}"
-            logger.warning(
-                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
-                agent_id=agent_id,
-                role=role_str,
-                error=msg,
-            )
-            raise QueryError(msg) from exc
+        # Runtime defense: validate role is in the closed set.
+        column = resolve_role_column(role, agent_id=agent_id)
         validate_pagination_args(
             limit,
             offset,
             event=PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
             agent_id=agent_id,
-            role=role_str,
+            role=role,
         )
         effective_limit = min(limit, _MAX_PAGE_LIMIT)
         try:

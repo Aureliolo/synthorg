@@ -17,6 +17,7 @@ from synthorg.observability.events.trust import (
     TRUST_EVALUATE_COMPLETE,
     TRUST_EVALUATE_START,
 )
+from synthorg.security.trust._criteria_helpers import meets_tasks_and_quality
 from synthorg.security.trust.config import MilestoneCriteria, TrustConfig
 from synthorg.security.trust.levels import (
     TRANSITION_KEYS,
@@ -196,19 +197,11 @@ class MilestoneTrustStrategy:
             ``True`` when the best single-window task count and quality
             score meet the milestone's thresholds.
         """
-        # Best single-window task count (not cumulative total)
-        max_tasks_completed = 0
-        for window in snapshot.windows:
-            max_tasks_completed = max(max_tasks_completed, window.tasks_completed)
-
-        if max_tasks_completed < milestone.tasks_completed:
-            return False
-
-        quality = snapshot.overall_quality_score
-        if quality is not None and quality < milestone.quality_score_min:
-            return False
-
-        return not (quality is None and milestone.quality_score_min > 0.0)
+        return meets_tasks_and_quality(
+            snapshot,
+            tasks_completed_min=milestone.tasks_completed,
+            quality_score_min=milestone.quality_score_min,
+        )
 
     @staticmethod
     def _check_time_and_history(

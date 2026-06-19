@@ -16,6 +16,9 @@ logger = get_logger(__name__)
 
 _MAX_SCORE: float = 10.0
 
+# Record count at which collaboration-score confidence saturates to 1.0.
+_CONFIDENCE_SATURATION_RECORDS: float = 10.0
+
 # Default component weights (sum to 1.0).
 _DEFAULT_WEIGHTS: dict[str, float] = {
     "delegation_success": 0.25,
@@ -139,7 +142,7 @@ class BehavioralTelemetryStrategy:
         final_score = max(0.0, min(_MAX_SCORE, weighted_sum))
 
         component_scores = tuple((k, round(v, 4)) for k, v in sorted(available.items()))
-        confidence = min(1.0, len(records) / 10.0)
+        confidence = min(1.0, len(records) / _CONFIDENCE_SATURATION_RECORDS)
 
         result = CollaborationScoreResult(
             score=round(final_score, 4),

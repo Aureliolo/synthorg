@@ -12,11 +12,18 @@ automatically.
 
 from typing import ClassVar, cast, override
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.security.autonomy.enums import ToolCategory
-from synthorg.tools._misc_args import EchoArgs
 from synthorg.tools.base import BaseTool, ToolExecutionResult
+
+
+class EchoArgs(BaseModel):
+    """Args for the example ``echo`` tool."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    message: str = Field(description="Message to echo back")
 
 
 class EchoTool(BaseTool):

@@ -10,6 +10,7 @@ than poisoning startup.
 
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.meta.config import SelfImprovementConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 
@@ -90,7 +91,11 @@ async def _wire_reports_service(app_state: AppState) -> None:
     logger.info(API_APP_STARTUP, service="reports", note="wired")
 
 
-async def _wire_org_inflection_monitor(app_state: AppState) -> None:
+async def _wire_org_inflection_monitor(
+    app_state: AppState,
+    *,
+    si_config: SelfImprovementConfig,
+) -> None:
     """Start the org-inflection monitor daemon behind ``alerts_enabled``.
 
     Best-effort + idempotent. Gated on the wired signals facade (shares its
@@ -99,7 +104,6 @@ async def _wire_org_inflection_monitor(app_state: AppState) -> None:
     runner. A missing signals facade or a disabled flag leaves it unstarted.
     """
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
-    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
     if app_state.slice(MetaStateSlice).org_inflection_monitor is not None:
         return
@@ -121,12 +125,8 @@ async def _wire_org_inflection_monitor(app_state: AppState) -> None:
     from synthorg.meta.chief_of_staff.monitor import (  # noqa: PLC0415
         OrgInflectionMonitor,
     )
-    from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
 
     try:
-        si_config = await load_self_improvement_config(
-            app_state.slice(SettingsStateSlice).settings_service,
-        )
         cos_config = si_config.chief_of_staff
         if not cos_config.alerts_enabled:
             logger.info(
@@ -163,7 +163,10 @@ async def _wire_org_inflection_monitor(app_state: AppState) -> None:
     logger.info(API_APP_STARTUP, service="org_inflection_monitor", note="wired")
 
 
-async def _wire_analytics_collector(app_state: AppState) -> None:
+async def _wire_analytics_collector(
+    *,
+    si_config: SelfImprovementConfig,
+) -> None:
     """Configure the cross-deployment analytics collector role.
 
     Best-effort. The collector is the receiver side of cross-deployment
@@ -176,19 +179,14 @@ async def _wire_analytics_collector(app_state: AppState) -> None:
         configure_analytics_controller,
         is_analytics_collector_configured,
     )
-    from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
     from synthorg.meta.telemetry.factory import (  # noqa: PLC0415
         build_analytics_collector,
         build_recommender,
     )
-    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
     if is_analytics_collector_configured():
         return
     try:
-        si_config = await load_self_improvement_config(
-            app_state.slice(SettingsStateSlice).settings_service,
-        )
         collector = build_analytics_collector(si_config)
         if collector is None:
             logger.info(

@@ -41,6 +41,18 @@ from synthorg.meta.mcp.errors import ArgumentValidationError, GuardrailViolation
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,
 )
+from synthorg.meta.mcp.handlers.common_args import (
+    PAGINATION_ARG_LIMIT as _ARG_LIMIT,
+)
+from synthorg.meta.mcp.handlers.common_args import (
+    PAGINATION_ARG_OFFSET as _ARG_OFFSET,
+)
+from synthorg.meta.mcp.handlers.common_args import (
+    PAGINATION_TY_NON_NEG_INT as _TY_NON_NEG_INT,
+)
+from synthorg.meta.mcp.handlers.common_args import (
+    PAGINATION_TY_POS_INT as _TY_POS_INT,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_HANDLER_CAPABILITY_GAP,
@@ -52,11 +64,6 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
-
-_ARG_OFFSET = "offset"
-_ARG_LIMIT = "limit"
-_TY_NON_NEG_INT = "non-negative int"
-_TY_POS_INT = "positive int"
 
 _GR_MISSING_ACTOR: Literal["missing_actor"] = "missing_actor"
 _GR_MISSING_CONFIRM: Literal["missing_confirm"] = "missing_confirm"

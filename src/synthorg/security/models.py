@@ -142,7 +142,7 @@ class SecurityContext(BaseModel):
 
     tool_name: NotBlankStr
     tool_category: ToolCategory
-    action_type: str
+    action_type: NotBlankStr
     arguments: dict[str, object] = Field(default_factory=dict)
     agent_id: NotBlankStr | None = None
     task_id: NotBlankStr | None = None
@@ -207,7 +207,7 @@ class AuditEntry(BaseModel):
     task_id: NotBlankStr | None = None
     tool_name: NotBlankStr
     tool_category: ToolCategory
-    action_type: str
+    action_type: NotBlankStr
     arguments_hash: _HEX_SHA256
     verdict: AuditVerdictStr
     risk_level: ApprovalRiskLevel

@@ -6,6 +6,7 @@ Trigger -> build context -> proposer -> guards -> adapter.apply.
 import asyncio
 import copy
 from types import MappingProxyType
+from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -44,6 +45,9 @@ from synthorg.observability.events.evolution import (
 )
 
 logger = get_logger(__name__)
+
+# Procedural-memory entries pulled as context for an evolution proposal.
+_EVOLUTION_CONTEXT_MEMORY_LIMIT: Final[int] = 10
 
 
 class EvolutionService:
@@ -464,7 +468,7 @@ class EvolutionService:
                 MemoryQuery(
                     text="procedural evolution context",
                     categories=frozenset([MemoryCategory.PROCEDURAL]),
-                    limit=10,
+                    limit=_EVOLUTION_CONTEXT_MEMORY_LIMIT,
                 ),
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised

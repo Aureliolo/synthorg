@@ -371,13 +371,18 @@ class TestOtlpExportRetry:
     """OtlpHandler retries transient export failures (Pattern C/Sync)."""
 
     @staticmethod
-    def _no_backoff(handler: OtlpHandler) -> None:
+    def _no_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
         # Avoid real backoff sleeps in the retry loop.
-        handler._backoff_delay = lambda attempt: 0.0  # type: ignore[method-assign]
+        monkeypatch.setattr(
+            "synthorg.observability.otlp_handler.backoff_delay",
+            lambda _attempt: 0.0,
+        )
 
-    def test_export_retries_then_succeeds(self) -> None:
+    def test_export_retries_then_succeeds(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         handler = _make_handler(batch_size=100, timeout=1.0)
-        self._no_backoff(handler)
+        self._no_backoff(monkeypatch)
         try:
             error = OSError("connection refused")
             with patch(
@@ -391,10 +396,12 @@ class TestOtlpExportRetry:
         finally:
             handler.close()
 
-    def test_export_exhausts_retries_and_drops(self) -> None:
+    def test_export_exhausts_retries_and_drops(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         handler = _make_handler(batch_size=100, timeout=1.0)
         handler._max_retries = 1
-        self._no_backoff(handler)
+        self._no_backoff(monkeypatch)
         outcomes: list[tuple[str, int]] = []
         handler.set_export_callback(lambda o, d: outcomes.append((o, d)))
         try:
@@ -410,9 +417,9 @@ class TestOtlpExportRetry:
         finally:
             handler.close()
 
-    def test_export_4xx_not_retried(self) -> None:
+    def test_export_4xx_not_retried(self, monkeypatch: pytest.MonkeyPatch) -> None:
         handler = _make_handler(batch_size=100, timeout=1.0)
-        self._no_backoff(handler)
+        self._no_backoff(monkeypatch)
         try:
             http_error = urllib.error.HTTPError(
                 url="http://localhost:4318/v1/logs",

@@ -8,7 +8,6 @@ from collections.abc import (
 from litestar import Controller, get, post
 from litestar.datastructures import State
 
-from synthorg.api.controllers._workflow_helpers import audit_actor_from_context
 from synthorg.api.dto import (
     DEFAULT_LIMIT,
     ApiResponse,
@@ -186,12 +185,10 @@ class ProviderModelsController(Controller):
                 persisted on the provider.
         """
         app_state: AppState = state.app_state
-        actor = audit_actor_from_context()
         try:
             updated = await provider_management_of(app_state).add_model(
                 name,
                 data,
-                actor=actor,
             )
         except ProviderNotFoundError as exc:
             msg = f"Provider {name!r} not found"
@@ -241,12 +238,10 @@ class ProviderModelsController(Controller):
             ValidationError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
-        actor = audit_actor_from_context()
         try:
             result = await provider_management_of(app_state).sync_models(
                 name,
                 data,
-                actor=actor,
             )
         except ProviderNotFoundError as exc:
             msg = f"Provider {name!r} not found"

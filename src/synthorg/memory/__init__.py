@@ -17,6 +17,7 @@ Query reformulation: ``QueryReformulator``, ``SufficiencyChecker``,
 ``LLMQueryReformulator``, ``LLMSufficiencyChecker``.
 """
 
+from synthorg.core.text_estimation import DefaultTokenEstimator
 from synthorg.memory.backends.mem0 import (
     Mem0EmbedderConfig,
     Mem0MemoryBackend,
@@ -51,7 +52,6 @@ from synthorg.memory.errors import (
 )
 from synthorg.memory.factory import create_memory_backend
 from synthorg.memory.injection import (
-    DefaultTokenEstimator,
     InjectionPoint,
     InjectionStrategy,
     MemoryInjectionStrategy,

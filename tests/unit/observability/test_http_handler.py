@@ -11,6 +11,7 @@ import pytest
 import structlog.testing
 from structlog.stdlib import ProcessorFormatter
 
+from synthorg.observability._sync_backoff import backoff_delay
 from synthorg.observability.config import SinkConfig
 from synthorg.observability.enums import LogLevel, SinkType
 from synthorg.observability.events.metrics import METRICS_LOG_SINK_CALLBACK_ERROR
@@ -208,9 +209,13 @@ class TestHttpBatchHandler:
     def test_retry_on_failure(
         self,
         handler_cleanup: list[logging.Handler],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         handler = _make_handler(batch_size=100, max_retries=2)
-        handler._backoff_delay = lambda attempt: 0.0  # type: ignore[method-assign]
+        monkeypatch.setattr(
+            "synthorg.observability.http_handler.backoff_delay",
+            lambda _attempt: 0.0,
+        )
 
         error = OSError("connection refused")
         with patch(
@@ -226,9 +231,13 @@ class TestHttpBatchHandler:
     def test_max_retries_exhausted_drops_batch(
         self,
         handler_cleanup: list[logging.Handler],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         handler = _make_handler(batch_size=100, max_retries=1)
-        handler._backoff_delay = lambda attempt: 0.0  # type: ignore[method-assign]
+        monkeypatch.setattr(
+            "synthorg.observability.http_handler.backoff_delay",
+            lambda _attempt: 0.0,
+        )
 
         error = OSError("connection refused")
         with patch(
@@ -421,12 +430,13 @@ class TestHttpBackoff:
         handler = _make_handler()
         handler_cleanup.append(handler)
         # base 0.5, factor 2, cap 8.0: 0.5, 1, 2, 4, 8, then capped.
-        delays = [handler._backoff_delay(attempt) for attempt in range(6)]
+        delays = [backoff_delay(attempt) for attempt in range(6)]
         assert delays == [0.5, 1.0, 2.0, 4.0, 8.0, 8.0]
 
     def test_retries_complete_during_shutdown_drain(
         self,
         handler_cleanup: list[logging.Handler],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Retries run to completion even with shutdown set.
 
@@ -437,7 +447,10 @@ class TestHttpBackoff:
         """
         handler = _make_handler(batch_size=100, max_retries=2)
         handler_cleanup.append(handler)
-        handler._backoff_delay = lambda attempt: 0.0  # type: ignore[method-assign]
+        monkeypatch.setattr(
+            "synthorg.observability.http_handler.backoff_delay",
+            lambda _attempt: 0.0,
+        )
         handler._shutdown.set()
         with patch(
             "urllib.request.urlopen",

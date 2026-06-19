@@ -22,6 +22,15 @@ layers. Four shapes live here so each pattern is written once:
 The two relaxed parsers keep an already-aware datetime exactly as parsed
 (no UTC re-normalisation) so callers that store the value keep the source
 offset.
+
+Two further one-liners centralise patterns that recurred across the
+codebase:
+
+* :func:`is_valid_iso_datetime` -- a boolean probe wrapping the
+  ``datetime.fromisoformat`` try/except that several validators
+  duplicated.
+* :func:`now_iso_utc` -- the canonical ``datetime.now(UTC).isoformat()``
+  current-timestamp string.
 """
 
 from datetime import UTC, datetime
@@ -117,3 +126,36 @@ def parse_git_log_timestamp(raw: str) -> datetime | None:
     if parsed.tzinfo is None:
         return None
     return parsed
+
+
+def is_valid_iso_datetime(value: str) -> bool:
+    """Return whether ``value`` parses as an ISO 8601 datetime.
+
+    Centralises the ``datetime.fromisoformat`` try/except guard that
+    several validators duplicated. Offset presence is not checked; this
+    is a parseability probe only.
+
+    Args:
+        value: The candidate ISO 8601 string.
+
+    Returns:
+        ``True`` when ``value`` parses, ``False`` otherwise.
+    """
+    try:
+        datetime.fromisoformat(value)
+    except ValueError, TypeError:
+        return False
+    return True
+
+
+def now_iso_utc() -> str:
+    """Return the current UTC instant as an ISO 8601 string.
+
+    The canonical replacement for inline ``datetime.now(UTC).isoformat()``
+    expressions.
+
+    Returns:
+        The current time formatted as an ISO 8601 string with a UTC
+        offset.
+    """
+    return datetime.now(UTC).isoformat()

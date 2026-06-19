@@ -15,6 +15,7 @@ from typing import Final
 
 from synthorg.budget.risk_config import RiskBudgetConfig
 from synthorg.budget.risk_record import RiskRecord
+from synthorg.core.datetime_guards import validate_datetime_range
 from synthorg.observability import get_logger
 from synthorg.observability.events.risk_budget import (
     RISK_BUDGET_AGENT_QUERIED,
@@ -128,7 +129,7 @@ class RiskTracker:
         Raises:
             ValueError: If ``start >= end``.
         """
-        _validate_time_range(start, end)
+        validate_datetime_range(start, end)
         logger.debug(RISK_BUDGET_TOTAL_QUERIED, start=start, end=end)
         snapshot = await self._snapshot()
         filtered = _filter_records(snapshot, start=start, end=end)
@@ -154,7 +155,7 @@ class RiskTracker:
         Raises:
             ValueError: If ``start >= end``.
         """
-        _validate_time_range(start, end)
+        validate_datetime_range(start, end)
         logger.debug(
             RISK_BUDGET_AGENT_QUERIED,
             agent_id=agent_id,
@@ -190,7 +191,7 @@ class RiskTracker:
         Raises:
             ValueError: If ``start >= end``.
         """
-        _validate_time_range(start, end)
+        validate_datetime_range(start, end)
         logger.debug(
             RISK_BUDGET_TASK_QUERIED,
             task_id=task_id,
@@ -230,7 +231,7 @@ class RiskTracker:
         Raises:
             ValueError: If ``start >= end``.
         """
-        _validate_time_range(start, end)
+        validate_datetime_range(start, end)
         logger.debug(
             RISK_BUDGET_RECORDS_QUERIED,
             agent_id=agent_id,
@@ -291,20 +292,6 @@ class RiskTracker:
 
 
 # ── Module-level pure helpers ────────────────────────────────────
-
-
-def _validate_time_range(
-    start: datetime | None,
-    end: datetime | None,
-) -> None:
-    """Raise ValueError if start >= end.
-
-    Raises:
-        ValueError: If an argument fails domain validation.
-    """
-    if start is not None and end is not None and start >= end:
-        msg = f"start ({start.isoformat()}) must be before end ({end.isoformat()})"
-        raise ValueError(msg)
 
 
 def _filter_records(  # noqa: PLR0913

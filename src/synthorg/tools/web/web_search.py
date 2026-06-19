@@ -11,6 +11,7 @@ from typing import ClassVar, Final, Protocol, cast, override, runtime_checkable
 from pydantic import BaseModel, ConfigDict
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.web import (
     WEB_SEARCH_FAILED,
@@ -39,7 +40,7 @@ class SearchResult(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    title: str
+    title: NotBlankStr
     url: str
     snippet: str
 

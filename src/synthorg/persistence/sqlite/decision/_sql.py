@@ -9,28 +9,15 @@ decisions.
 
 import json
 import sqlite3
-from datetime import UTC, datetime
-from types import MappingProxyType
+from datetime import datetime
 from typing import Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decisions import DecisionOutcome
-
-_MAX_PAGE_LIMIT: Final[int] = 1_000
-
-
-_COLS = (
-    "id, task_id, approval_id, executing_agent_id, reviewer_agent_id, "
-    "decision, reason, criteria_snapshot, recorded_at, version, metadata"
+from synthorg.persistence._shared import format_iso_utc
+from synthorg.persistence._shared.decision_sql import (
+    unfreeze_for_json as _unfreeze_for_json,
 )
-
-# Maps ``DecisionRole`` Literal values to their corresponding column
-# name.  Keeps the dynamic-column SQL in ``list_by_agent`` bounded to a
-# closed set of identifiers that are never user-supplied.
-_ROLE_TO_COLUMN: Final[dict[str, str]] = {
-    "executor": "executing_agent_id",
-    "reviewer": "reviewer_agent_id",
-}
 
 _INSERT_SQL: Final[str] = """\
 INSERT INTO decision_records (
@@ -76,30 +63,13 @@ def _build_insert_params(  # noqa: PLR0913
         "decision": decision.value,
         "reason": reason,
         "criteria_snapshot": json.dumps(list(criteria_snapshot)),
-        "recorded_at": recorded_at.astimezone(UTC).isoformat(),
+        "recorded_at": format_iso_utc(recorded_at),
         # ``metadata`` may contain ``MappingProxyType`` (from the draft
         # record's frozen view) at arbitrary nesting depth; unwrap
         # recursively so ``json.dumps`` only sees plain dicts and
         # lists.
         "metadata": json.dumps(_unfreeze_for_json(metadata)),
     }
-
-
-def _unfreeze_for_json(value: object) -> object:
-    """Recursively convert MappingProxyType/tuple/frozenset to JSON primitives.
-
-    Returns:
-        Result of type ``object``.
-    """
-    if isinstance(value, MappingProxyType):
-        return {k: _unfreeze_for_json(v) for k, v in value.items()}
-    if isinstance(value, dict):
-        return {k: _unfreeze_for_json(v) for k, v in value.items()}
-    if isinstance(value, tuple | list):
-        return [_unfreeze_for_json(item) for item in value]
-    if isinstance(value, frozenset | set):
-        return [_unfreeze_for_json(item) for item in value]
-    return value
 
 
 def _is_structural_constraint_error(exc: sqlite3.IntegrityError) -> bool:

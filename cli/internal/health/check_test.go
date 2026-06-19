@@ -2,12 +2,83 @@ package health
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestParseRetryAfterSeconds(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		header string
+		want   time.Duration
+	}{
+		{name: "empty", header: "", want: 0},
+		{name: "delta_seconds", header: "30", want: 30 * time.Second},
+		{name: "zero", header: "0", want: 0},
+		{name: "negative", header: "-5", want: 0},
+		{name: "garbage", header: "soon", want: 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := parseRetryAfterSeconds(tc.header); got != tc.want {
+				t.Fatalf("parseRetryAfterSeconds(%q) = %s, want %s", tc.header, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseRetryAfterSecondsHTTPDate(t *testing.T) {
+	t.Parallel()
+	future := time.Now().Add(time.Hour).UTC().Format(http.TimeFormat)
+	if got := parseRetryAfterSeconds(future); got <= 0 || got > time.Hour+time.Minute {
+		t.Fatalf("future HTTP-date parsed to %s, want a positive sub-hour delay", got)
+	}
+	past := time.Now().Add(-time.Hour).UTC().Format(http.TimeFormat)
+	if got := parseRetryAfterSeconds(past); got != 0 {
+		t.Fatalf("past HTTP-date parsed to %s, want 0", got)
+	}
+}
+
+func TestCheckOnce429ReturnsRateLimitedError(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "12")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+
+	err := checkOnce(context.Background(), srv.URL)
+	var rle *RateLimitedError
+	if !errors.As(err, &rle) {
+		t.Fatalf("expected *RateLimitedError, got %v", err)
+	}
+	if rle.RetryAfter != 12*time.Second {
+		t.Fatalf("RetryAfter = %s, want 12s", rle.RetryAfter)
+	}
+}
+
+func TestCheckOnce429NoHeader(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+
+	err := checkOnce(context.Background(), srv.URL)
+	var rle *RateLimitedError
+	if !errors.As(err, &rle) {
+		t.Fatalf("expected *RateLimitedError, got %v", err)
+	}
+	if rle.RetryAfter != 0 {
+		t.Fatalf("RetryAfter = %s, want 0", rle.RetryAfter)
+	}
+}
 
 func TestWaitForHealthySuccess(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -9,8 +9,6 @@ guard used by both query parameters.
 
 from datetime import UTC, datetime
 
-from litestar import Request
-from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
@@ -24,10 +22,8 @@ from synthorg.communication.event_stream.interrupt import (
     ResumeDecision,
 )
 from synthorg.communication.state import CommunicationStateSlice
-from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.domain_errors import (
     NotFoundError,
-    UnauthorizedError,
     ValidationError,
 )
 from synthorg.core.types import NotBlankStr
@@ -92,20 +88,6 @@ def _require_interrupt_store(app_state: AppState) -> InterruptStore:
         msg = "Interrupt store not configured"
         raise NotFoundError(msg)
     return store
-
-
-def _require_auth(request: Request[object, object, State]) -> AuthenticatedUser:
-    """Return the auth or raise when unavailable.
-
-    Raises:
-        UnauthorizedError: Raised on the corresponding failure path.
-    """
-    auth_user = request.scope.get("user")
-    if not isinstance(auth_user, AuthenticatedUser):
-        logger.warning(API_REQUEST_ERROR, reason="interrupt_resume_unauthenticated")
-        msg = "Authentication required"
-        raise UnauthorizedError(msg)
-    return auth_user
 
 
 def _validate_resume_payload(

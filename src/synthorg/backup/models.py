@@ -5,12 +5,12 @@ request/response models for the restore workflow.
 """
 
 import re
-from datetime import datetime
 from enum import StrEnum
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from synthorg.core.iso_datetime import is_valid_iso_datetime
 from synthorg.core.types import NotBlankStr
 
 _BACKUP_ID_RE = re.compile(r"^[0-9a-f]{12}$")
@@ -72,11 +72,9 @@ class BackupManifest(BaseModel):
         Raises:
             ValueError: When ``v`` is not a valid ISO 8601 timestamp.
         """
-        try:
-            datetime.fromisoformat(v)
-        except ValueError as exc:
+        if not is_valid_iso_datetime(v):
             msg = f"Invalid ISO 8601 timestamp: {v}"
-            raise ValueError(msg) from exc
+            raise ValueError(msg)
         return v
 
     @field_validator("checksum")

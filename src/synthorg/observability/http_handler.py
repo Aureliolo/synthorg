@@ -19,6 +19,7 @@ from structlog.typing import Processor
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
+from synthorg.observability._sync_backoff import backoff_delay
 from synthorg.observability.config import SinkConfig
 from synthorg.observability.events.metrics import (
     METRICS_LOG_SINK_CALLBACK_ERROR,
@@ -42,12 +43,10 @@ _DEFAULT_FLUSH_INTERVAL_SECONDS: Final[float] = 5.0
 _DEFAULT_TIMEOUT_SECONDS: Final[float] = 10.0
 _DEFAULT_MAX_RETRIES: Final[int] = 3
 
-# Bounded exponential backoff between send attempts (Pattern C/Sync):
-# delay(attempt) = min(base * factor**attempt, cap). The wait is
-# non-interruptible so that retries run to completion during shutdown.
-_RETRY_BACKOFF_BASE_SECONDS: Final[float] = 0.5
-_RETRY_BACKOFF_FACTOR: Final[int] = 2
-_RETRY_BACKOFF_CAP_SECONDS: Final[float] = 8.0
+# Bounded exponential backoff between send attempts (Pattern C/Sync)
+# lives in ``observability._sync_backoff`` so this sink and the OTLP
+# sink share one formula. The wait is non-interruptible so that retries
+# run to completion during shutdown.
 
 # Naming the flusher thread lets emit() drop records produced from the
 # handler's own export-failure logging: that diagnostic propagates back
@@ -272,16 +271,6 @@ class HttpBatchHandler(logging.Handler):
             return
         self._invoke_export_callback("success", format_drops)
 
-    def _backoff_delay(self, attempt: int) -> float:
-        """Bounded exponential backoff for retry *attempt* (0-indexed).
-
-        Returns:
-            Seconds to wait before the next attempt, capped at
-            ``_RETRY_BACKOFF_CAP_SECONDS``.
-        """
-        delay = _RETRY_BACKOFF_BASE_SECONDS * float(_RETRY_BACKOFF_FACTOR**attempt)
-        return min(delay, _RETRY_BACKOFF_CAP_SECONDS)
-
     def _send_with_retries(
         self,
         request: urllib.request.Request,
@@ -320,7 +309,7 @@ class HttpBatchHandler(logging.Handler):
                     # being dropped mid-flight: shutdown is always set
                     # during the final drain, so an interruptible wait here
                     # would abandon the very logs close() is trying to ship.
-                    time.sleep(self._backoff_delay(attempt))
+                    time.sleep(backoff_delay(attempt))
                     continue
             else:
                 return None
@@ -336,7 +325,7 @@ class HttpBatchHandler(logging.Handler):
         # bounded backoff between them. Since the backoff uses time.sleep
         # and is non-interruptible, this is an upper bound.
         backoff_total = sum(
-            self._backoff_delay(attempt) for attempt in range(self._max_retries)
+            backoff_delay(attempt) for attempt in range(self._max_retries)
         )
         join_timeout = (1 + self._max_retries) * self._timeout + backoff_total
         self._flusher.join(timeout=join_timeout)

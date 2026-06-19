@@ -17,6 +17,7 @@ from synthorg.budget._enforcer_helpers import (
     _build_checker_closure,
     _compute_thresholds,
 )
+from synthorg.budget._utilization import compute_monthly_cost, utilization_pct
 from synthorg.budget.billing import billing_period_start, daily_period_start
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.currency import format_cost
@@ -213,10 +214,7 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
         if cfg.total_monthly <= 0:
             return None
         try:
-            period_start = billing_period_start(cfg.reset_day)
-            monthly_cost = await self._cost_tracker.get_total_cost(
-                start=period_start,
-            )
+            monthly_cost = await compute_monthly_cost(cfg, self._cost_tracker)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(
@@ -224,7 +222,7 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             )
             return None
         else:
-            pct = monthly_cost / cfg.total_monthly * 100
+            pct = utilization_pct(monthly_cost, cfg)
             logger.debug(
                 BUDGET_UTILIZATION_QUERIED,
                 monthly_cost=monthly_cost,

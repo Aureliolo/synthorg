@@ -86,7 +86,7 @@ class TestSetup:
         user = User(
             id=str(as_uuid("existing-ceo")),
             username="existing",
-            password_hash=await svc.hash_password_async("test-password-12chars"),
+            password_hash=await svc.hash_password("test-password-12chars"),
             role=HumanRole.CEO,
             must_change_password=False,
             created_at=now,
@@ -578,12 +578,12 @@ class TestWsTicket:
         ticket = data["ticket"]
 
         app_state = async_test_client.app.state["app_state"]
-        user = ticket_store_of(app_state).validate_and_consume(ticket)
+        user = await ticket_store_of(app_state).validate_and_consume(ticket)
         assert user is not None
         assert user.auth_method.value == "ws_ticket"
 
         # Single-use: second consume fails
-        assert ticket_store_of(app_state).validate_and_consume(ticket) is None
+        assert await ticket_store_of(app_state).validate_and_consume(ticket) is None
 
 
 @pytest.mark.unit
@@ -610,7 +610,7 @@ class TestSystemUserBlocking:
         system_user = User(
             id=SYSTEM_USER_ID,
             username=SYSTEM_USERNAME,
-            password_hash=await svc.hash_password_async("irrelevant-password-12"),
+            password_hash=await svc.hash_password("irrelevant-password-12"),
             role=HumanRole.SYSTEM,
             must_change_password=False,
             created_at=now,
@@ -652,7 +652,7 @@ class TestSystemUserBlocking:
         system_user = User(
             id=SYSTEM_USER_ID,
             username=SYSTEM_USERNAME,
-            password_hash=await svc.hash_password_async("irrelevant-password-12"),
+            password_hash=await svc.hash_password("irrelevant-password-12"),
             role=HumanRole.SYSTEM,
             must_change_password=False,
             created_at=now,

@@ -5,6 +5,13 @@ import type { WsChannel, WsEvent } from '@/api/types/websocket'
 const VALID_WS_CHANNELS: ReadonlySet<string> = new Set(WS_CHANNELS)
 
 /**
+ * Module-scoped UTF-8 encoder for byte-length estimation. Lifted out of
+ * ``estimateByteLength`` so a hot per-message call does not allocate a fresh
+ * ``TextEncoder`` on every frame.
+ */
+const _encoder = new TextEncoder()
+
+/**
  * Known valid event_type values for runtime validation (defence-in-depth
  * mirror of WS_EVENT_TYPE_VALUES). A future server roll-out that emits an
  * event_type the client does not know about gets dropped here with a
@@ -46,5 +53,5 @@ export function isWsChannelArray(arr: unknown): arr is WsChannel[] {
 
 /** Estimate byte length of a string (accounts for multi-byte characters). */
 export function estimateByteLength(str: string): number {
-  return new TextEncoder().encode(str).byteLength
+  return _encoder.encode(str).byteLength
 }

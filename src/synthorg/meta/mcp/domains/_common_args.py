@@ -75,7 +75,7 @@ def _validate_iso_8601_aware_datetime(value: str) -> str:
 
     Mirrors :func:`synthorg.meta.mcp.handlers.common_args._parse_iso_datetime`
     so the typed-args boundary catches the same shape of bad input the
-    legacy dict-path helper rejects.  Returns ``value`` unchanged on
+    dict-path helper rejects.  Returns ``value`` unchanged on
     success; handlers continue to receive the raw string and pass it to
     :func:`parse_time_window` for the final tz-aware parse + ordering
     check.
@@ -131,7 +131,7 @@ class PaginationFields(_ArgsBase):
 
     Bounds and defaults MUST stay in lockstep with
     :func:`synthorg.meta.mcp.handlers.common_args.coerce_pagination`
-    (the legacy validator used by handlers that still take
+    (the dict-based validator used by handlers that take
     ``arguments: dict``).  ``offset >= 0``, ``limit > 0`` and
     ``limit <= 500`` mirror its bounds; the ``default=50`` mirrors
     ``DEFAULT_LIMIT`` in that module.  When changing one, change the

@@ -3,10 +3,11 @@
 Supports Python, JavaScript, and Bash via configurable sandbox backends.
 """
 
-from typing import ClassVar, Final, cast, override
+from typing import ClassVar, Final, Literal, override
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.boundary import parse_typed
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.execution_identity import current_execution_identity
@@ -15,7 +16,6 @@ from synthorg.observability.events.code_runner import (
     CODE_RUNNER_EXECUTE_FAILED,
     CODE_RUNNER_EXECUTE_START,
     CODE_RUNNER_EXECUTE_SUCCESS,
-    CODE_RUNNER_INVALID_LANGUAGE,
 )
 from synthorg.observability.events.deliverable_receipts import (
     TEST_RUN_RECORD_FAILED,
@@ -27,13 +27,38 @@ from synthorg.persistence.code_execution_protocol import (
     CodeExecutionRecordRepository,
 )
 from synthorg.security.autonomy.enums import ToolCategory
-from synthorg.tools._misc_args import CodeRunnerArgs
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.sandbox.errors import SandboxError
 from synthorg.tools.sandbox.protocol import SandboxBackend
 from synthorg.tools.sandbox.result import SandboxResult
 
 logger = get_logger(__name__)
+
+CodeRunnerLanguage = Literal["python", "javascript", "bash"]
+
+
+class CodeRunnerArgs(BaseModel):
+    """Args for ``code_runner``."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    code: str = Field(description="Source code to execute")
+    language: CodeRunnerLanguage = Field(description="Programming language of the code")
+    timeout: float | None = Field(
+        default=None,
+        ge=1,
+        le=600,
+        description="Optional timeout in seconds (minimum 1)",
+    )
+    purpose: Literal["general", "tests"] = Field(
+        default="general",
+        description=(
+            "Set to 'tests' when this run executes the project's test "
+            "suite, so its structured result is captured for the "
+            "deliverable's provenance receipt"
+        ),
+    )
+
 
 _LANGUAGE_COMMANDS: Final[dict[str, tuple[str, str]]] = {
     "python": ("python3", "-c"),
@@ -62,6 +87,7 @@ class CodeRunnerTool(BaseTool):
         sandbox: SandboxBackend,
         code_execution_records: CodeExecutionRecordRepository | None = None,
         clock: Clock | None = None,
+        output_tail_limit: int = _OUTPUT_TAIL_LIMIT,
     ) -> None:
         """Initialize the code runner tool.
 
@@ -75,6 +101,15 @@ class CodeRunnerTool(BaseTool):
             clock: Clock seam for the capture record's ``executed_at``;
                 defaults to ``SystemClock`` and is overridden with a
                 ``FakeClock`` in tests.
+            output_tail_limit: Maximum characters of captured
+                stdout/stderr kept on a test record. Resolved from the
+                ``tools.code_runner_output_tail_limit`` setting at the
+                wiring boundary, defaulting to ``_OUTPUT_TAIL_LIMIT``.
+
+        Raises:
+            ValueError: When ``output_tail_limit`` is not a positive
+                integer (a non-positive cap would defeat the tail slice
+                and persist oversized output records).
         """
         super().__init__(
             name="code_runner",
@@ -88,6 +123,13 @@ class CodeRunnerTool(BaseTool):
         self._sandbox = sandbox
         self._code_execution_records = code_execution_records
         self._clock = clock or SystemClock()
+        if not isinstance(output_tail_limit, int) or output_tail_limit <= 0:
+            msg = (
+                "output_tail_limit must be a positive integer, "
+                f"got {output_tail_limit!r}"
+            )
+            raise ValueError(msg)
+        self._output_tail_limit = output_tail_limit
 
     @override
     async def execute(
@@ -104,21 +146,14 @@ class CodeRunnerTool(BaseTool):
         Returns:
             A ``ToolExecutionResult`` with execution output.
         """
-        code = cast("str", arguments["code"])
-        language = cast("str", arguments["language"])
-        timeout = cast("float | None", arguments.get("timeout"))
-        purpose = cast("str", arguments.get("purpose", "general"))
-
-        if language not in _LANGUAGE_COMMANDS:
-            logger.warning(
-                CODE_RUNNER_INVALID_LANGUAGE,
-                language=language,
-            )
-            return ToolExecutionResult(
-                content=f"Unsupported language: {language!r}. "
-                f"Supported: {sorted(_LANGUAGE_COMMANDS)}",
-                is_error=True,
-            )
+        # ``parse_typed`` validates ``language`` against the
+        # ``CodeRunnerLanguage`` literal, so an out-of-set language is
+        # rejected at the boundary and the command lookup below is total.
+        args = parse_typed("tool.code_runner", arguments, CodeRunnerArgs)
+        code = args.code
+        language = args.language
+        timeout = args.timeout
+        purpose = args.purpose
 
         command, flag = _LANGUAGE_COMMANDS[language]
 
@@ -210,8 +245,12 @@ class CodeRunnerTool(BaseTool):
         if identity is None or identity.project_id is None:
             return
         command_repr = f"{command} {flag} {code}"[:_COMMAND_REPR_LIMIT]
-        stdout_tail = result.stdout[-_OUTPUT_TAIL_LIMIT:] if result.stdout else None
-        stderr_tail = result.stderr[-_OUTPUT_TAIL_LIMIT:] if result.stderr else None
+        stdout_tail = (
+            result.stdout[-self._output_tail_limit :] if result.stdout else None
+        )
+        stderr_tail = (
+            result.stderr[-self._output_tail_limit :] if result.stderr else None
+        )
         try:
             await self._code_execution_records.append(
                 CodeExecutionRecord(

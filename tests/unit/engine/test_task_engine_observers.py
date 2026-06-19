@@ -13,6 +13,8 @@ from synthorg.engine.task_engine_models import (
     TaskStateChanged,
     TransitionTaskMutation,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence.task_protocol import TaskFilterSpec
 
 
 async def _flush_observers(engine: TaskEngine, *, budget: float = 1.0) -> None:
@@ -46,39 +48,40 @@ class FakeTaskRepo:
     async def get(self, task_id: str) -> Task | None:
         return self._store.get(task_id)
 
-    async def list_tasks(
+    async def save_many(self, entities: tuple[Task, ...], /) -> None:
+        for task in entities:
+            self._store[str(task.id)] = task
+
+    async def list_items(
         self,
         *,
-        status: TaskStatus | None = None,
-        assigned_to: str | None = None,
-        project: str | None = None,
-        limit: int | None = None,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Task, ...]:
         tasks = list(self._store.values())
-        if status is not None:
-            tasks = [t for t in tasks if t.status is status]
-        if assigned_to is not None:
-            tasks = [t for t in tasks if t.assigned_to == assigned_to]
-        if project is not None:
-            tasks = [t for t in tasks if t.project == project]
-        return tuple(tasks)
+        return tuple(tasks[offset : offset + limit])
 
-    async def count_tasks(
-        self,
-        *,
-        status: TaskStatus | None = None,
-        assigned_to: str | None = None,
-        project: str | None = None,
-    ) -> int:
+    def _matching(self, filter_spec: TaskFilterSpec) -> list[Task]:
         tasks = list(self._store.values())
-        if status is not None:
-            tasks = [t for t in tasks if t.status is status]
-        if assigned_to is not None:
-            tasks = [t for t in tasks if t.assigned_to == assigned_to]
-        if project is not None:
-            tasks = [t for t in tasks if t.project == project]
-        return len(tasks)
+        if filter_spec.status is not None:
+            tasks = [t for t in tasks if t.status is filter_spec.status]
+        if filter_spec.assigned_to is not None:
+            tasks = [t for t in tasks if t.assigned_to == filter_spec.assigned_to]
+        if filter_spec.project is not None:
+            tasks = [t for t in tasks if t.project == filter_spec.project]
+        return tasks
+
+    async def query(
+        self,
+        filter_spec: TaskFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[Task, ...]:
+        return tuple(self._matching(filter_spec)[offset : offset + limit])
+
+    async def count(self, filter_spec: TaskFilterSpec) -> int:
+        return len(self._matching(filter_spec))
 
     async def delete(self, task_id: str) -> bool:
         return self._store.pop(task_id, None) is not None
@@ -308,7 +311,9 @@ class TestRegisterObserver:
             requested_by="test",
         )
         assert task1 is not None
+        assert task1.title == "Task 1"
         assert task2 is not None
+        assert task2.title == "Task 2"
         # Unblock the observer for clean teardown
         gate.set()
         await _flush_observers(started_engine)

@@ -4,6 +4,7 @@ from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.communication.config import CommunicationToolsConfig, EmailConfig
@@ -52,9 +53,10 @@ class TestEmailSenderTool:
         comm_config: CommunicationToolsConfig,
     ) -> None:
         tool = EmailSenderTool(config=comm_config)
-        result = await tool.execute(arguments={"to": [], "subject": "Test"})
-        assert result.is_error
-        assert "At least one recipient" in result.content
+        # The args model's ``min_length=1`` on ``to`` rejects an empty
+        # recipient list at the typed boundary.
+        with pytest.raises(ValidationError, match="to"):
+            await tool.execute(arguments={"to": [], "subject": "Test"})
 
     async def test_execute_too_many_recipients(self) -> None:
         config = CommunicationToolsConfig(
@@ -165,14 +167,15 @@ class TestEmailSenderTool:
         comm_config: CommunicationToolsConfig,
     ) -> None:
         tool = EmailSenderTool(config=comm_config)
-        result = await tool.execute(
-            arguments={
-                "to": ["attacker@ex.com\nBcc: victim@ex.com"],
-                "subject": "Test",
-            }
-        )
-        assert result.is_error
-        assert "invalid characters" in result.content
+        # The loose RFC 5322 address regex on every recipient rejects a
+        # CR/LF header-injection payload at the typed boundary.
+        with pytest.raises(ValidationError, match="to"):
+            await tool.execute(
+                arguments={
+                    "to": ["attacker@ex.com\nBcc: victim@ex.com"],
+                    "subject": "Test",
+                }
+            )
         mock_send.assert_not_called()
 
     def test_parameters_schema_requires_to_and_subject(

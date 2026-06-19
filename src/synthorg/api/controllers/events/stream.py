@@ -14,10 +14,10 @@ from litestar.datastructures import State
 from litestar.params import QueryParameter
 from litestar.response import ServerSentEvent
 
+from synthorg.api.auth.controller_helpers import require_authenticated_user
 from synthorg.api.controllers.events._shared import (
     _SESSION_ID_PATTERN,
     ResumeInterruptRequest,
-    _require_auth,
     _require_interrupt_store,
     _resolve_interrupt,
 )
@@ -132,7 +132,7 @@ class EventStreamController(Controller):
         """
         app_state: AppState = state.app_state
         store = _require_interrupt_store(app_state)
-        auth_user = _require_auth(request)
+        auth_user = require_authenticated_user(request)
         return await _resolve_interrupt(
             store,
             interrupt_id,

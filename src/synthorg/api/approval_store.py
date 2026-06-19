@@ -57,6 +57,7 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_STATUS_TRANSITIONED,
 )
 from synthorg.observability.metrics_hub import record_approval_decision
+from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 from synthorg.persistence.approval_protocol import (
     ApprovalFilterSpec,
     ApprovalRepository,
@@ -165,7 +166,9 @@ class ApprovalStore(ApprovalExpirationMixin):
 
         Bypasses ``self._lock`` -- callers must guarantee no async
         operations are in flight. Production code MUST use the async
-        ``clear`` instead.
+        ``clear`` instead. This sync companion is intentional: it is
+        exposed only through the ``SyncResettableApprovalStore`` protocol
+        consumed by test fixtures, never by production wiring.
         """
         cleared_count = len(self._items)
         self._items.clear()
@@ -396,7 +399,7 @@ class ApprovalStore(ApprovalExpirationMixin):
             if status in {None, ApprovalStatus.PENDING, ApprovalStatus.EXPIRED}
             else status
         )
-        page_size = 100
+        page_size = DEFAULT_LIST_LIMIT
         result: list[ApprovalItem] = []
         offset = 0
         # lint-allow: long-running-loop-kill-switch -- bounded paginated scan

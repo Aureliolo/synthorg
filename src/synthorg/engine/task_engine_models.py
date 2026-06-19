@@ -6,6 +6,7 @@ All mutation requests are frozen Pydantic models, discriminated by a
 """
 
 import copy
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Final, Literal, Self
@@ -151,7 +152,7 @@ class UpdateTaskMutation(BaseModel):
     request_id: NotBlankStr = Field(description="Unique request identifier")
     requested_by: NotBlankStr = Field(description="Identity of the requester")
     task_id: NotBlankStr = Field(description="Target task identifier")
-    updates: dict[str, object] = Field(description="Field-value pairs to apply")
+    updates: Mapping[str, object] = Field(description="Field-value pairs to apply")
     expected_version: int | None = Field(
         default=None,
         ge=1,
@@ -168,16 +169,13 @@ class UpdateTaskMutation(BaseModel):
         if forbidden:
             msg = f"Cannot update immutable fields: {sorted(forbidden)}"
             raise ValueError(msg)
-        return self
-
-    def __init__(self, **data: object) -> None:
-        super().__init__(**data)
-        # Deep-copy and wrap in MappingProxyType for full immutability.
+        # Deep-copy + wrap for full immutability once validation passes.
         object.__setattr__(
             self,
             "updates",
             MappingProxyType(copy.deepcopy(dict(self.updates))),
         )
+        return self
 
 
 _IMMUTABLE_OVERRIDE_FIELDS: frozenset[str] = _ALWAYS_IMMUTABLE_FIELDS | {"status"}
@@ -209,7 +207,7 @@ class TransitionTaskMutation(BaseModel):
     task_id: NotBlankStr = Field(description="Target task identifier")
     target_status: TaskStatus = Field(description="Desired target status")
     reason: NotBlankStr = Field(description="Reason for the transition")
-    overrides: dict[str, object] = Field(
+    overrides: Mapping[str, object] = Field(
         default_factory=dict,
         description="Additional field overrides",
     )
@@ -229,16 +227,13 @@ class TransitionTaskMutation(BaseModel):
         if forbidden:
             msg = f"Cannot override immutable fields: {sorted(forbidden)}"
             raise ValueError(msg)
-        return self
-
-    def __init__(self, **data: object) -> None:
-        super().__init__(**data)
-        # Deep-copy and wrap in MappingProxyType for full immutability.
+        # Deep-copy + wrap for full immutability once validation passes.
         object.__setattr__(
             self,
             "overrides",
             MappingProxyType(copy.deepcopy(dict(self.overrides))),
         )
+        return self
 
 
 class DeleteTaskMutation(BaseModel):

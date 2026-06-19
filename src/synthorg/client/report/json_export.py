@@ -1,11 +1,11 @@
 """JSON archival export report strategy."""
 
-from datetime import UTC, datetime
 from typing import Final
 
 from pydantic import JsonValue
 
 from synthorg.client.models import SimulationMetrics
+from synthorg.core.iso_datetime import now_iso_utc
 
 _SCHEMA_VERSION: Final[str] = "1.0"
 
@@ -26,6 +26,6 @@ class JsonExportReport:
         return {
             "format": "json_export",
             "schema_version": _SCHEMA_VERSION,
-            "exported_at": datetime.now(UTC).isoformat(),
+            "exported_at": now_iso_utc(),
             "metrics": metrics.model_dump(mode="json"),
         }

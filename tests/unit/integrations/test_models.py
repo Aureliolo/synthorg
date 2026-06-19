@@ -29,7 +29,7 @@ class TestConnectionModel:
         )
         assert conn.name == "test"
         assert conn.connection_type == ConnectionType.GITHUB
-        assert conn.health_status == ConnectionStatus.UNKNOWN
+        assert conn.health.status == ConnectionStatus.UNKNOWN
         assert conn.secret_refs == ()
         assert conn.metadata == {}
 

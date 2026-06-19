@@ -14,29 +14,56 @@ Discovery tools signal load/unload state changes via
 import json
 from typing import ClassVar, Protocol, override, runtime_checkable
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.tool_disclosure import (
     ToolL1Metadata,
     ToolL2Body,
     ToolL3Resource,
 )
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import (
     TOOL_DISCLOSURE_MANAGER_BOUND,
     TOOL_DISCLOSURE_MANAGER_NOT_BOUND,
 )
 from synthorg.security.autonomy.enums import ToolCategory
-from synthorg.tools._misc_args import (
-    ListToolsArgs,
-    LoadToolArgs,
-    LoadToolResourceArgs,
-)
 
 from .base import BaseTool, ToolExecutionResult
 from .errors import ToolParameterError
 
 logger = get_logger(__name__)
+
+_DISCOVERY_ARGS_CONFIG = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+
+class ListToolsArgs(BaseModel):
+    """Args for ``list_tools``: optional category filter."""
+
+    model_config = _DISCOVERY_ARGS_CONFIG
+
+    category: NotBlankStr | None = Field(
+        default=None,
+        description="Optional tool-category filter",
+    )
+
+
+class LoadToolArgs(BaseModel):
+    """Args for ``load_tool``."""
+
+    model_config = _DISCOVERY_ARGS_CONFIG
+
+    tool_name: NotBlankStr = Field(description="Tool name to load")
+
+
+class LoadToolResourceArgs(BaseModel):
+    """Args for ``load_tool_resource``."""
+
+    model_config = _DISCOVERY_ARGS_CONFIG
+
+    tool_name: NotBlankStr = Field(description="Tool name")
+    resource_id: NotBlankStr = Field(description="L3 resource identifier")
+
 
 # ── Disclosure manager protocol ──────────────────────────────────
 

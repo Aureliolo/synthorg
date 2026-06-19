@@ -25,6 +25,7 @@ from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.enums import MessageType
 from synthorg.communication.message import Message, MessageMetadata, TextPart
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.iso_datetime import now_iso_utc
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import SECURITY_SETTINGS_CHANGED
@@ -96,11 +97,6 @@ def _emit_security_setting_changed(
     if key is not None:
         payload["key"] = key
     logger.info(SECURITY_SETTINGS_CHANGED, **payload)
-
-
-def _now_iso() -> str:
-    """Return current UTC time as ISO 8601 string."""
-    return datetime.now(UTC).isoformat()
 
 
 def _env_var_name(namespace: str, key: str) -> str:
@@ -766,7 +762,7 @@ class SettingsService:
             raise
 
         store_value = self._encrypt_if_sensitive(definition, value)
-        updated_at = _now_iso()
+        updated_at = now_iso_utc()
         entity = SettingRow(
             namespace=NotBlankStr(namespace),
             key=NotBlankStr(key),
@@ -860,7 +856,7 @@ class SettingsService:
             )
             raise ValueError(msg)
 
-        updated_at = _now_iso()
+        updated_at = now_iso_utc()
         prepared, definitions = self._prepare_set_many(
             items,
             updated_at,

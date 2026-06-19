@@ -216,6 +216,7 @@ export type ConfirmSupersessionRequest = components['schemas']['ConfirmSupersess
 export type Conflict = components['schemas']['Conflict']
 export type ConflictPosition = components['schemas']['ConflictPosition']
 export type Connection = components['schemas']['Connection']
+export type ConnectionHealth = components['schemas']['ConnectionHealth']
 export type ConversationParticipant = components['schemas']['ConversationParticipant']
 export type ConversationalActResult = components['schemas']['ConversationalActResult']
 export type ConversationalProposeRequest = components['schemas']['ConversationalProposeRequest']

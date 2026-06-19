@@ -22,8 +22,7 @@ export function buildConnection(
     auth_method: 'bearer_token',
     base_url: null,
     health_check_enabled: true,
-    health_status: 'unknown',
-    last_health_check_at: null,
+    health: { status: 'unknown', last_check_at: null },
     metadata: {},
     rate_limiter: null,
     secret_refs: [],
@@ -44,8 +43,7 @@ const mockConnections: Connection[] = [
     connection_type: 'github',
     auth_method: 'bearer_token',
     base_url: 'https://api.github.com',
-    health_status: 'healthy',
-    last_health_check_at: NOW,
+    health: { status: 'healthy', last_check_at: NOW },
     created_at: '2026-04-01T09:00:00Z',
   }),
   buildConnection({
@@ -53,8 +51,7 @@ const mockConnections: Connection[] = [
     name: 'dev-slack',
     connection_type: 'slack',
     auth_method: 'bearer_token',
-    health_status: 'degraded',
-    last_health_check_at: NOW,
+    health: { status: 'degraded', last_check_at: NOW },
     created_at: '2026-04-02T10:30:00Z',
   }),
   buildConnection({
@@ -62,8 +59,7 @@ const mockConnections: Connection[] = [
     name: 'ops-smtp',
     connection_type: 'smtp',
     auth_method: 'basic_auth',
-    health_status: 'unhealthy',
-    last_health_check_at: NOW,
+    health: { status: 'unhealthy', last_check_at: NOW },
     created_at: '2026-04-03T11:15:00Z',
   }),
   buildConnection({
@@ -71,8 +67,7 @@ const mockConnections: Connection[] = [
     name: 'reporting-db',
     connection_type: 'database',
     auth_method: 'basic_auth',
-    health_status: 'healthy',
-    last_health_check_at: NOW,
+    health: { status: 'healthy', last_check_at: NOW },
     created_at: '2026-04-04T08:00:00Z',
   }),
   buildConnection({
@@ -81,7 +76,7 @@ const mockConnections: Connection[] = [
     connection_type: 'generic_http',
     auth_method: 'api_key',
     base_url: 'https://billing.example.com',
-    health_status: 'unknown',
+    health: { status: 'unknown', last_check_at: null },
     created_at: '2026-04-05T14:20:00Z',
   }),
   buildConnection({
@@ -90,7 +85,7 @@ const mockConnections: Connection[] = [
     connection_type: 'oauth_app',
     auth_method: 'oauth2',
     health_check_enabled: false,
-    health_status: 'unknown',
+    health: { status: 'unknown', last_check_at: null },
     created_at: '2026-04-06T09:45:00Z',
   }),
 ]
@@ -134,11 +129,11 @@ export const connectionsList = [
     return HttpResponse.json(
       successFor<typeof checkConnectionHealth>({
         connection_name: conn.name,
-        status: conn.health_status,
-        latency_ms: conn.health_status === 'healthy' ? 42 : null,
-        error_detail: conn.health_status === 'unhealthy' ? 'Connection refused' : null,
+        status: conn.health.status,
+        latency_ms: conn.health.status === 'healthy' ? 42 : null,
+        error_detail: conn.health.status === 'unhealthy' ? 'Connection refused' : null,
         checked_at: NOW,
-        consecutive_failures: conn.health_status === 'unhealthy' ? 4 : 0,
+        consecutive_failures: conn.health.status === 'unhealthy' ? 4 : 0,
       }),
     )
   }),

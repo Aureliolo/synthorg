@@ -7,7 +7,6 @@ tunnel wiring path, and the once-only contract on `set_ontology_service`.
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Never, cast, override
 from unittest.mock import AsyncMock
 
@@ -43,7 +42,7 @@ from synthorg.memory.embedding.fine_tune_orchestrator import FineTuneOrchestrato
 from synthorg.memory.embedding.training_sources import TrajectoryTrainingDataSource
 from synthorg.memory.state import MemoryStateSlice
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
-from synthorg.meta.config import load_self_improvement_config
+from synthorg.meta.config import SelfImprovementConfig
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_SERVICE_AUTO_WIRED,
@@ -556,12 +555,8 @@ class TestWireRunNarrator:
     ) -> None:
         # A narrator-construction failure must not abort startup: the
         # pipeline is simply left narrator-less and the failure is logged.
-        enabled = SimpleNamespace(
+        enabled = SelfImprovementConfig(
             chief_of_staff=ChiefOfStaffConfig(narrative_enabled=True)
-        )
-        monkeypatch.setattr(
-            "synthorg.meta.config.load_self_improvement_config",
-            AsyncMock(spec=load_self_improvement_config, return_value=enabled),
         )
 
         def _boom(*_: object, **__: object) -> None:
@@ -581,6 +576,7 @@ class TestWireRunNarrator:
                 state,
                 provider_registry=mock_of[ProviderRegistry](),
                 cost_tracker=None,
+                si_config=enabled,
             )
 
         failed = [
@@ -596,12 +592,8 @@ class TestWireRunNarrator:
     ) -> None:
         # MemoryError / RecursionError are interpreter-level criticals: the
         # best-effort handler must let them propagate, not swallow them.
-        enabled = SimpleNamespace(
+        enabled = SelfImprovementConfig(
             chief_of_staff=ChiefOfStaffConfig(narrative_enabled=True)
-        )
-        monkeypatch.setattr(
-            "synthorg.meta.config.load_self_improvement_config",
-            AsyncMock(spec=load_self_improvement_config, return_value=enabled),
         )
 
         def _boom(*_: object, **__: object) -> None:
@@ -620,6 +612,7 @@ class TestWireRunNarrator:
                 state,
                 provider_registry=mock_of[ProviderRegistry](),
                 cost_tracker=None,
+                si_config=enabled,
             )
 
 

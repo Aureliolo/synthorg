@@ -69,9 +69,9 @@ class TestRetentionConfigFrozen:
 
 @pytest.mark.unit
 class TestBackupConfigDefaults:
-    def test_enabled_defaults_false(self) -> None:
+    def test_enabled_defaults_true(self) -> None:
         cfg = BackupConfig()
-        assert cfg.enabled is False
+        assert cfg.enabled is True
 
     def test_default_path(self) -> None:
         cfg = BackupConfig()

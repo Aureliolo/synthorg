@@ -6,6 +6,7 @@ import pytest
 from typeguard import suppress_type_checks
 
 from synthorg.core.memory_enums import MemoryCategory
+from synthorg.core.text_estimation import DefaultTokenEstimator
 from synthorg.engine.prompt_safety import (
     TAG_MEMORY_ENTRY,
     untrusted_content_directive,
@@ -14,10 +15,7 @@ from synthorg.memory.formatter import (
     _format_memory_context,
     format_memory_context_with_directive,
 )
-from synthorg.memory.injection import (
-    DefaultTokenEstimator,
-    InjectionPoint,
-)
+from synthorg.memory.injection import InjectionPoint
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.ranking import ScoredMemory
 from synthorg.providers.enums import MessageRole

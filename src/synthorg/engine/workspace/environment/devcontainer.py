@@ -188,6 +188,19 @@ class DevcontainerEnvironmentStrategy:
         )
         return ScaffoldResult(files_written=(rel,), seeded=True)
 
+    def _read_config_and_hash(
+        self, workspace_path: Path
+    ) -> tuple[dict[str, object], NotBlankStr]:
+        """Read the declaration and compute its hash in one blocking call.
+
+        Both halves touch the filesystem; bundling them lets the caller
+        offload the whole declaration read to a single ``asyncio.to_thread``.
+
+        Returns:
+            The parsed declaration dict and its SHA-256 declaration hash.
+        """
+        return self._read_config(workspace_path), self.declaration_hash(workspace_path)
+
     def _read_config(self, workspace_path: Path) -> dict[str, object]:
         path = self._declaration_path(workspace_path)
         if not path.is_file():
@@ -447,8 +460,9 @@ class DevcontainerEnvironmentStrategy:
                 f"build/test categories resolve to {sandbox_kind!r}"
             )
             raise EnvironmentBackendUnavailableError(msg)
-        config = self._read_config(workspace_path)
-        declaration_hash = self.declaration_hash(workspace_path)
+        config, declaration_hash = await asyncio.to_thread(
+            self._read_config_and_hash, workspace_path
+        )
         logger.info(
             ENVIRONMENT_PROVISION_START,
             project_id=str(project_id),

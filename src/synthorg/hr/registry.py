@@ -91,12 +91,12 @@ class AgentRegistryService:
         clear -- the registry is either fully empty or in the state
         the contending writer claimed.
 
-        New async test fixtures should call ``await registry.clear()``
-        directly. The legacy sync entry point used to live on this
-        class as ``reset_for_test_sync``; it has been moved to
-        :mod:`synthorg.hr.registry_testing` so the lock-bypass cannot
-        be invoked from production code by autocomplete. Sync pytest
-        fixtures (``tests/unit/api/conftest.py``) call
+        Async test fixtures call ``await registry.clear()`` directly.
+        The sync reset entry point lives in
+        :mod:`synthorg.hr.registry_testing` (not on this class) so the
+        lock-bypass cannot be invoked from production code by
+        autocomplete. Sync pytest fixtures
+        (``tests/unit/api/conftest.py``) call
         ``reset_registry_for_test_sync(registry)`` from that module.
         """
         async with self._lock:

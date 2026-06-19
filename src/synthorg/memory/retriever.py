@@ -10,13 +10,11 @@ from datetime import UTC, datetime
 import synthorg.memory.errors as memory_errors
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
+from synthorg.core.text_estimation import DefaultTokenEstimator
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.filter import MemoryFilterStrategy, build_memory_filter
 from synthorg.memory.formatter import format_memory_context_with_directive
-from synthorg.memory.injection import (
-    DefaultTokenEstimator,
-    TokenEstimator,
-)
+from synthorg.memory.injection import TokenEstimator
 from synthorg.memory.models import MemoryQuery
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.ranking import (

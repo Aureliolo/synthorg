@@ -1,7 +1,5 @@
 """Review pipeline endpoints at /reviews."""
 
-from datetime import UTC, datetime
-
 from litestar import Controller, Request, get, post
 from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict, Field
@@ -23,6 +21,7 @@ from synthorg.core.domain_errors import (
     ConflictError,
     ServiceUnavailableError,
 )
+from synthorg.core.iso_datetime import now_iso_utc
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import TaskNotFoundError
 from synthorg.engine.review.models import (
@@ -234,7 +233,7 @@ class ReviewController(Controller):
             metadata={
                 "decided_by": decided_by,
                 "manual_override": True,
-                "decided_at": datetime.now(UTC).isoformat(),
+                "decided_at": now_iso_utc(),
             },
         )
         pipeline_result = PipelineResult(

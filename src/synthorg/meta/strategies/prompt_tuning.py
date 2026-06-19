@@ -5,6 +5,7 @@ as constitutional principles. Supports three evolution modes:
 org-wide (default), override, and advisory.
 """
 
+from typing import Final
 from uuid import uuid4
 
 from pydantic import JsonValue
@@ -25,6 +26,10 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.meta import META_PROPOSAL_GENERATED
 
 logger = get_logger(__name__)
+
+# Per-rule proposal confidences.
+_CONFIDENCE_QUALITY_DECLINING: Final[float] = 0.6
+_CONFIDENCE_ERROR_SPIKE: Final[float] = 0.55
 
 
 class PromptTuningStrategy:
@@ -149,7 +154,7 @@ class PromptTuningStrategy:
                 ),
                 validation_check=("Quality focus principle is not in any agent prompt"),
             ),
-            confidence=0.6,
+            confidence=_CONFIDENCE_QUALITY_DECLINING,
             source_rule="quality_declining",
         )
 
@@ -204,6 +209,6 @@ class PromptTuningStrategy:
                     "Error awareness principle is not in any agent prompt"
                 ),
             ),
-            confidence=0.55,
+            confidence=_CONFIDENCE_ERROR_SPIKE,
             source_rule="error_spike",
         )

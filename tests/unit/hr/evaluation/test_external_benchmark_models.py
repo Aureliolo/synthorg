@@ -32,7 +32,7 @@ class TestEvalTestCase:
         assert case.metadata == {}
 
     def test_metadata_deepcopy(self) -> None:
-        original = {"key": ["value"]}
+        original: dict[str, object] = {"key": ["value"]}
         case = EvalTestCase(
             id="case-1",
             behavior_tags=(BehaviorTag.RETRIEVAL,),
@@ -41,7 +41,9 @@ class TestEvalTestCase:
             metadata=original,
         )
         # Mutating original should not affect the model.
-        original["key"].append("mutated")
+        inner = original["key"]
+        assert isinstance(inner, list)
+        inner.append("mutated")
         assert case.metadata == {"key": ["value"]}
 
 

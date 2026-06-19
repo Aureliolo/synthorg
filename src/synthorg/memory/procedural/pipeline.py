@@ -5,6 +5,7 @@ invokes the proposer, stores the resulting procedural memory entry,
 and optionally materializes a SKILL.md file.
 """
 
+import asyncio
 from pathlib import Path
 
 import yaml
@@ -258,7 +259,8 @@ async def _store_and_materialize(
 
     if config is not None and config.skill_md_directory is not None:
         try:
-            skill_path = materialize_skill_md(
+            skill_path = await asyncio.to_thread(
+                materialize_skill_md,
                 proposal,
                 task_id,
                 config.skill_md_directory,

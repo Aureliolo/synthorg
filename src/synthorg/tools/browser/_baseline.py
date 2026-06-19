@@ -7,10 +7,10 @@ boundary is filesystem-only; no sqlite / psycopg involvement.
 
 import hashlib
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
 
+from synthorg.core.iso_datetime import now_iso_utc
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.browser import (
     BROWSER_BASELINE_CREATED,
@@ -147,7 +147,7 @@ class WorkspaceBaselineStore:
         payload = {
             "spec_name": spec_name,
             "screenshot_name": screenshot_name,
-            "captured_at_iso": datetime.now(UTC).isoformat(),
+            "captured_at_iso": now_iso_utc(),
             "chromium_image": chromium_image,
             "axe_version": AXE_VERSION_PIN,
             "sha256": hashlib.sha256(png_bytes).hexdigest(),

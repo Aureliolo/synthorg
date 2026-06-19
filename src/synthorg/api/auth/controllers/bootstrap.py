@@ -101,7 +101,7 @@ class AuthBootstrapController(Controller):
             raise ConflictError(msg)
 
         now = datetime.now(UTC)
-        password_hash = await auth_service.hash_password_async(data.password)
+        password_hash = await auth_service.hash_password(data.password)
         user = User(
             id=str(uuid.uuid4()),
             username=data.username,

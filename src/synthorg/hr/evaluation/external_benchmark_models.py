@@ -46,11 +46,19 @@ class EvalTestCase(BaseModel):
         description="Additional benchmark-specific metadata",
     )
 
-    def __init__(self, **data: object) -> None:
-        """Deep-copy metadata dict at construction boundary."""
-        if "metadata" in data and isinstance(data["metadata"], dict):
-            data["metadata"] = copy.deepcopy(data["metadata"])
-        super().__init__(**data)
+    @model_validator(mode="before")
+    @classmethod
+    def _deep_copy_metadata(cls, data: object) -> object:
+        """Deep-copy the supplied metadata dict at the construction boundary.
+
+        Returns:
+            The input with ``metadata`` replaced by a deep copy, so a
+            later mutation of the caller's dict cannot reach into this
+            frozen record's nested metadata.
+        """
+        if isinstance(data, dict) and isinstance(data.get("metadata"), dict):
+            return {**data, "metadata": copy.deepcopy(data["metadata"])}
+        return data
 
 
 class BenchmarkGrade(BaseModel):

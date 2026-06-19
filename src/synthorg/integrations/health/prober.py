@@ -258,7 +258,7 @@ class HealthProberService:
             )
             return
 
-        old_status = conn.health_status
+        old_status = conn.health.status
         now = self._clock.now()
         new_status = await self._classify_status(name, report.status)
 

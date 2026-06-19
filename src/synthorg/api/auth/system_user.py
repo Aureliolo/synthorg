@@ -99,7 +99,7 @@ async def ensure_system_user(
 
     # Generate a random password nobody will ever know.
     random_password = os.urandom(64).hex()
-    password_hash = await auth_service.hash_password_async(random_password)
+    password_hash = await auth_service.hash_password(random_password)
 
     now = datetime.now(UTC)
     user = User(

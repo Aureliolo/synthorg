@@ -6,8 +6,8 @@ from email.utils import format_datetime
 import pytest
 
 from synthorg.core.completion_enums import FinishReason
+from synthorg.core.resilience import parse_retry_after_seconds
 from synthorg.providers.drivers.mappers import (
-    _parse_retry_after_seconds,
     extract_retry_after,
     extract_tool_calls,
     map_finish_reason,
@@ -413,14 +413,14 @@ class TestExtractRetryAfter:
     def test_future_http_date_parsed_to_delay(self) -> None:
         """An RFC 9110 HTTP-date in the future yields the delay in seconds.
 
-        Uses the injectable ``now`` seam on ``_parse_retry_after_seconds``
+        Uses the injectable ``now`` seam on ``parse_retry_after_seconds``
         so the delta is exact and the test does not depend on wall-clock
         timing. ``format_datetime`` truncates to whole seconds, so the
         reference instant is floored to match.
         """
         now = datetime.now(UTC).replace(microsecond=0)
         future = now + timedelta(hours=1)
-        result = _parse_retry_after_seconds(
+        result = parse_retry_after_seconds(
             format_datetime(future, usegmt=True), now=now
         )
         assert result == pytest.approx(3600.0)
@@ -449,5 +449,5 @@ class TestExtractRetryAfter:
         """
         now = datetime.now(UTC).replace(microsecond=0)
         future_naive = (now + timedelta(hours=1)).replace(tzinfo=None)
-        result = _parse_retry_after_seconds(format_datetime(future_naive), now=now)
+        result = parse_retry_after_seconds(format_datetime(future_naive), now=now)
         assert result == pytest.approx(3600.0)

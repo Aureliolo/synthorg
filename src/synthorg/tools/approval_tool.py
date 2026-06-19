@@ -10,11 +10,13 @@ from datetime import UTC, datetime
 from typing import ClassVar, override
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.core.validation import is_valid_action_type
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.approval_gate import (
@@ -25,11 +27,35 @@ from synthorg.observability.events.approval_gate import (
 )
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.security.timeout.protocol import RiskTierClassifier
-from synthorg.tools._misc_args import RequestHumanApprovalArgs
 
 from .base import BaseTool, ToolExecutionResult
 
 logger = get_logger(__name__)
+
+
+class RequestHumanApprovalArgs(BaseModel):
+    """Args for ``request_human_approval``.
+
+    The ``action_type`` must be in ``category:action`` format; that
+    structural check (presence of exactly one ``:`` with non-empty
+    halves) lives inside the tool body where the message can name the
+    expected format and link to ``DEFAULT_CATEGORY_ACTION_MAP``.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    action_type: NotBlankStr = Field(
+        max_length=128,
+        description="Action type in category:action format",
+    )
+    title: NotBlankStr = Field(
+        max_length=256,
+        description="Short summary of the approval request",
+    )
+    description: NotBlankStr = Field(
+        max_length=4096,
+        description="Detailed explanation of what needs approval",
+    )
 
 
 class RequestHumanApprovalTool(BaseTool):
@@ -92,26 +118,10 @@ class RequestHumanApprovalTool(BaseTool):
             metadata on success, or an error result on failure.
         """
         try:
-            action_type = arguments["action_type"]
-            title = arguments["title"]
-            description = arguments["description"]
-        except KeyError as exc:
-            return ToolExecutionResult(
-                content=(
-                    f"Missing required argument: {safe_error_description(exc)}. "
-                    f"Required: action_type, title, description"
-                ),
-                is_error=True,
+            args = parse_typed(
+                "tool.request_human_approval", arguments, RequestHumanApprovalArgs
             )
-
-        if (
-            not isinstance(action_type, str)
-            or not isinstance(title, str)
-            or not isinstance(description, str)
-            or not action_type.strip()
-            or not title.strip()
-            or not description.strip()
-        ):
+        except ValidationError:
             return ToolExecutionResult(
                 content=(
                     "Arguments action_type, title, and description "
@@ -120,9 +130,9 @@ class RequestHumanApprovalTool(BaseTool):
                 is_error=True,
             )
 
-        action_type = action_type.strip()
-        title = title.strip()
-        description = description.strip()
+        action_type = args.action_type.strip()
+        title = args.title.strip()
+        description = args.description.strip()
 
         validation_error = self._validate_action_type(action_type)
         if validation_error is not None:

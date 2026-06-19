@@ -2,6 +2,7 @@ import { createLogger } from '@/lib/logger'
 import { getCsrfToken } from '@/utils/csrf'
 import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
 import { fetchWithRetryAfter } from '@/utils/fetch-with-retry'
+import { parseRetryAfterMs, RateLimitedError } from '@/utils/retry-after'
 import { apiClient, unwrap, unwrapVoid } from '../../client'
 import type {
   AddModelRequest,
@@ -36,12 +37,21 @@ function _parseSseLine(line: string): SseLine {
 }
 
 function _decodeSsePayload(raw: string): PullProgressEvent | null {
+  let parsed: unknown
   try {
-    return JSON.parse(raw) as PullProgressEvent
+    parsed = JSON.parse(raw)
   } catch {
     log.warn('Malformed JSON in pull stream line')
     return null
   }
+  // Reject non-objects before casting: the dispatcher reads
+  // ``error`` / ``status`` off the payload, so a bare string / number /
+  // array from a malformed stream must not slip through as an event.
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    log.warn('Unexpected non-object payload in pull stream line')
+    return null
+  }
+  return parsed as PullProgressEvent
 }
 
 function _dispatchSseEvent(
@@ -89,13 +99,25 @@ async function _handlePullUnauthorized(): Promise<void> {
   try {
     mod = await import('@/stores/auth')
   } catch (importErr: unknown) {
-    log.error('Auth store cleanup failed during SSE 401 handling:', importErr)
+    log.error('Auth store cleanup failed during SSE 401 handling', importErr)
     if (window.location.pathname !== '/login' && window.location.pathname !== '/setup') {
       window.location.href = '/login'
     }
     return
   }
   mod.useAuthStore.getState().handleUnauthorized()
+}
+
+async function _raisePullFailure(response: Response): Promise<never> {
+  if (response.status === 401) await _handlePullUnauthorized()
+  if (response.status === 429) {
+    // The retry budget is exhausted; surface a typed rate-limit error
+    // carrying the server's Retry-After hint so the caller can show a
+    // precise back-off instead of a generic HTTP 429.
+    const retryAfter = response.headers.get('retry-after') ?? undefined
+    throw new RateLimitedError(parseRetryAfterMs(retryAfter, null))
+  }
+  throw new Error(`Pull failed: HTTP ${response.status}`)
 }
 
 async function _openPullStream(
@@ -126,8 +148,7 @@ async function _openPullStream(
   )
 
   if (!response.ok || !response.body) {
-    if (response.status === 401) await _handlePullUnauthorized()
-    throw new Error(`Pull failed: HTTP ${response.status}`)
+    await _raisePullFailure(response)
   }
   return response
 }

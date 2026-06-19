@@ -200,7 +200,9 @@ class NixEnvironmentStrategy:
             )
             msg = "nix dev shell failed to build"
             raise EnvironmentProvisionError(msg)
-        declaration_hash = self.declaration_hash(workspace_path)
+        declaration_hash = await asyncio.to_thread(
+            self.declaration_hash, workspace_path
+        )
         logger.info(
             ENVIRONMENT_PROVISIONED,
             project_id=str(project_id),

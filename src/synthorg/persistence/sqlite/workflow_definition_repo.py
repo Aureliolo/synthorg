@@ -9,7 +9,6 @@ the SQL statements live in
 """
 
 import sqlite3
-from datetime import UTC
 
 import aiosqlite
 
@@ -29,6 +28,7 @@ from synthorg.observability.events.persistence.workflow_def import (
     PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import format_iso_utc
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence._shared.workflow_definition_marshalling import (
     WORKFLOW_DEFINITION_COLUMNS,
@@ -156,7 +156,7 @@ class SQLiteWorkflowDefinitionRepository:
                         1 if definition.is_subworkflow else 0,
                         nodes_json,
                         edges_json,
-                        definition.updated_at.astimezone(UTC).isoformat(),
+                        format_iso_utc(definition.updated_at),
                         definition.revision,
                         str(definition.id),
                         definition.revision - 1,
@@ -234,8 +234,8 @@ class SQLiteWorkflowDefinitionRepository:
                         nodes_json,
                         edges_json,
                         definition.created_by,
-                        definition.created_at.astimezone(UTC).isoformat(),
-                        definition.updated_at.astimezone(UTC).isoformat(),
+                        format_iso_utc(definition.created_at),
+                        format_iso_utc(definition.updated_at),
                         definition.revision,
                     ),
                 ) as cursor:
@@ -289,8 +289,8 @@ class SQLiteWorkflowDefinitionRepository:
                         nodes_json,
                         edges_json,
                         entity.created_by,
-                        entity.created_at.astimezone(UTC).isoformat(),
-                        entity.updated_at.astimezone(UTC).isoformat(),
+                        format_iso_utc(entity.created_at),
+                        format_iso_utc(entity.updated_at),
                         entity.revision,
                     ),
                 ) as cursor:

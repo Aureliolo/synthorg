@@ -58,8 +58,8 @@ class BackupServiceArchiveMixin:
         backups) -- important when the on-disk history grows.
 
         Args:
-            limit: Maximum number of entries to return.  ``None`` keeps
-                the legacy behaviour of listing every entry.
+            limit: Maximum number of entries to return.  ``None``
+                returns all entries without a limit.
             offset: Number of entries to skip from the newest.
 
         Returns:

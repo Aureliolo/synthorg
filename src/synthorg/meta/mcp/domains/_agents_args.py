@@ -137,9 +137,8 @@ class AutonomyUpdateArgs(_ArgsBase):
     """Args for ``autonomy.update``.
 
     ``reason`` requires at least 3 non-whitespace characters after
-    stripping; the legacy JSON Schema pattern is mirrored as a
-    Pydantic ``min_length`` (we let the field's
-    :class:`NotBlankStr` strip behaviour handle leading/trailing
+    stripping, enforced as a Pydantic ``min_length`` (the field's
+    :class:`NotBlankStr` strip behaviour handles leading/trailing
     whitespace before the length check).
     """
 

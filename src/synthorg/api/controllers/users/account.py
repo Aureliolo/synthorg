@@ -134,7 +134,7 @@ class UserController(Controller):
         auth_service = require_service(
             app_state.slice(ApiCoreStateSlice).auth_service, "Auth Service"
         )
-        password_hash = await auth_service.hash_password_async(
+        password_hash = await auth_service.hash_password(
             data.password,
         )
         user = User(

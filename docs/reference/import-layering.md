@@ -127,6 +127,27 @@ light abstractions (config / models / protocols) or empty, and place
 genuinely shared types in a light leaf package (`core.*` or
 `execution.*`) rather than reaching up into a heavy hub.
 
+## Deferred imports (`# noqa: PLC0415`)
+
+A deliberate function-body import (`from x import Y  # noqa: PLC0415`)
+is the sanctioned tool for breaking a construction-time edge that would
+otherwise be a module-level cycle or pull a heavy subgraph at import
+time. The canonical site is slice construction: `budget/_construction.py`
+imports its trackers inside the builder so the slice module stays a light
+leaf (config / models only) and the heavy implementation is loaded lazily
+when the slice is actually built, not when the package is imported.
+
+Discipline:
+
+- Reach for a deferred import only to break a real cycle or keep a hub
+  `__init__` / leaf module cold-importable (see the cold-import smoke
+  test above); never as a blanket style.
+- Always pair it with `# noqa: PLC0415` so the suppression is explicit
+  and greppable, and keep the import at the top of the function body.
+- Prefer the structural fix (move the shared type to a `core.*` /
+  `execution.*` leaf) when one exists; a deferred import is the fallback
+  when the dependency is genuinely construction-time only.
+
 ## Changing the contracts
 
 - **Adding a contract**: add a `[importlinter:contract:<id>]` block, run

@@ -11,8 +11,10 @@ skipped, and the pipeline continues with the remaining candidates.
 """
 
 import asyncio
+from collections.abc import Mapping
 from datetime import datetime
 from itertools import chain
+from types import MappingProxyType
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -64,7 +66,7 @@ class ResearchService:
         self,
         *,
         planner: QueryPlanner,
-        sources: dict[ResearchSourceType, RetrievalSource],
+        sources: Mapping[ResearchSourceType, RetrievalSource],
         triage: CredibilityTriage,
         deduplicator: Deduplicator,
         synthesizer: Synthesizer,
@@ -73,7 +75,11 @@ class ResearchService:
         per_query_limit: int = RESEARCH_DEFAULT_PER_QUERY_LIMIT,
     ) -> None:
         self._planner = planner
-        self._sources = sources
+        # Copy-on-store: a read-only snapshot so a later mutation of the
+        # caller's source map cannot change which sources this run uses.
+        self._sources: Mapping[ResearchSourceType, RetrievalSource] = MappingProxyType(
+            dict(sources)
+        )
         self._triage = triage
         self._deduplicator = deduplicator
         self._synthesizer = synthesizer

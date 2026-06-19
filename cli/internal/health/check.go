@@ -4,9 +4,11 @@ package health
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -15,6 +17,60 @@ type healthResponse struct {
 	Data struct {
 		Status string `json:"status"`
 	} `json:"data"`
+}
+
+// RateLimitedError reports an HTTP 429 from the health endpoint. The
+// backend is alive but throttling, so callers should back off rather than
+// treat the probe as a hard failure. RetryAfter carries the server's
+// Retry-After hint (zero when absent or unparseable).
+type RateLimitedError struct {
+	RetryAfter time.Duration
+}
+
+func (e *RateLimitedError) Error() string {
+	if e.RetryAfter > 0 {
+		return fmt.Sprintf("health endpoint rate-limited; retry after %s", e.RetryAfter)
+	}
+	return "health endpoint rate-limited"
+}
+
+// parseRetryAfterSeconds reads a Retry-After header into a duration,
+// honouring both forms RFC 9110 10.2.3 permits: an integer delta-seconds
+// and an HTTP-date. A past HTTP-date, a negative delta, or a malformed
+// value yields zero so the caller falls back to its own cadence.
+func parseRetryAfterSeconds(header string) time.Duration {
+	if header == "" {
+		return 0
+	}
+	if secs, err := strconv.Atoi(header); err == nil {
+		if secs < 0 {
+			return 0
+		}
+		return time.Duration(secs) * time.Second
+	}
+	if when, err := http.ParseTime(header); err == nil {
+		if delay := time.Until(when); delay > 0 {
+			return delay
+		}
+	}
+	return 0
+}
+
+// honourRetryAfter waits for a 429 Retry-After hint carried by err,
+// bounded by ctx. It returns nil when there is no hint or the wait
+// completes, and ctx.Err() if the deadline elapses during the wait so
+// the caller can stop polling.
+func honourRetryAfter(ctx context.Context, err error) error {
+	var rle *RateLimitedError
+	if !errors.As(err, &rle) || rle.RetryAfter <= 0 {
+		return nil
+	}
+	select {
+	case <-time.After(rle.RetryAfter):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // WaitForHealthy polls the health endpoint until it returns status "ok" or the
@@ -44,6 +100,9 @@ func WaitForHealthy(ctx context.Context, url string, timeout, interval, initialD
 		case <-ticker.C:
 			if err := checkOnce(ctx, url); err != nil {
 				lastErr = err
+				if waitErr := honourRetryAfter(ctx, err); waitErr != nil {
+					return fmt.Errorf("health check timed out (last error: %w)", lastErr)
+				}
 				continue
 			}
 			return nil
@@ -89,6 +148,12 @@ func checkOnce(ctx context.Context, url string) error {
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 	if err != nil {
 		return err
+	}
+
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return &RateLimitedError{
+			RetryAfter: parseRetryAfterSeconds(resp.Header.Get("Retry-After")),
+		}
 	}
 
 	if resp.StatusCode != http.StatusOK {

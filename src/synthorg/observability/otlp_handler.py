@@ -23,6 +23,7 @@ from structlog.typing import Processor
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import strip_trailing_slash
 from synthorg.observability import safe_error_description
+from synthorg.observability._sync_backoff import backoff_delay
 from synthorg.observability.config import SinkConfig
 from synthorg.observability.enums import OtlpProtocol
 from synthorg.observability.events.metrics import (
@@ -69,12 +70,10 @@ _DEFAULT_FLUSH_INTERVAL_SECONDS: Final[float] = 5.0
 _DEFAULT_TIMEOUT_SECONDS: Final[float] = 10.0
 _DEFAULT_MAX_RETRIES: Final[int] = 3
 
-# Bounded exponential backoff between export attempts (Pattern C/Sync):
-# delay(attempt) = min(base * factor**attempt, cap). The wait is
-# non-interruptible so that retries run to completion during shutdown.
-_RETRY_BACKOFF_BASE_SECONDS: Final[float] = 0.5
-_RETRY_BACKOFF_FACTOR: Final[int] = 2
-_RETRY_BACKOFF_CAP_SECONDS: Final[float] = 8.0
+# Bounded exponential backoff between export attempts (Pattern C/Sync)
+# lives in ``observability._sync_backoff`` so this sink and the HTTP
+# sink share one formula. The wait is non-interruptible so that retries
+# run to completion during shutdown.
 _HTTP_CLIENT_ERROR_FLOOR: Final[int] = 400
 _HTTP_SERVER_ERROR_FLOOR: Final[int] = 500
 
@@ -379,16 +378,6 @@ class OtlpHandler(logging.Handler):
             return
         self._invoke_export_callback("success", format_drops)
 
-    def _backoff_delay(self, attempt: int) -> float:
-        """Bounded exponential backoff for retry *attempt* (0-indexed).
-
-        Returns:
-            Seconds to wait before the next attempt, capped at
-            ``_RETRY_BACKOFF_CAP_SECONDS``.
-        """
-        delay = _RETRY_BACKOFF_BASE_SECONDS * float(_RETRY_BACKOFF_FACTOR**attempt)
-        return min(delay, _RETRY_BACKOFF_CAP_SECONDS)
-
     def _send_with_retries(
         self,
         request: urllib.request.Request,
@@ -427,7 +416,7 @@ class OtlpHandler(logging.Handler):
                     # being dropped mid-flight: shutdown is always set
                     # during the final drain, so an interruptible wait here
                     # would abandon the very records close() is exporting.
-                    time.sleep(self._backoff_delay(attempt))
+                    time.sleep(backoff_delay(attempt))
                     continue
             else:
                 return None
@@ -470,7 +459,7 @@ class OtlpHandler(logging.Handler):
         # Since the backoff uses time.sleep and is non-interruptible, this
         # is an upper bound.
         backoff_total = sum(
-            self._backoff_delay(attempt) for attempt in range(self._max_retries)
+            backoff_delay(attempt) for attempt in range(self._max_retries)
         )
         join_timeout = (1 + self._max_retries) * self._timeout + backoff_total
         if self._flusher.is_alive():

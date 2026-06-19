@@ -8,13 +8,12 @@ from litestar.datastructures import State
 from pydantic import AwareDatetime, BaseModel, ConfigDict, ValidationError
 
 from synthorg._core.features import require_service
+from synthorg.api.auth.controller_helpers import require_authenticated_user
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
-from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.boundary import parse_typed
-from synthorg.core.domain_errors import UnauthorizedError
 from synthorg.core.domain_errors import ValidationError as DomainValidationError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -191,10 +190,7 @@ class SettingsSecurityController(Controller):
         # The class guard already enforces CEO/manager, but resolve the
         # identity fail-closed rather than via a bare ``scope["user"]`` key
         # access that would 500 if the guard chain were ever reordered.
-        actor = request.scope.get("user")
-        if not isinstance(actor, AuthenticatedUser):
-            msg = "Authentication required"
-            raise UnauthorizedError(msg)
+        actor = require_authenticated_user(request)
         try:
             validated = parse_typed(
                 "settings.security",

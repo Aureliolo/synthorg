@@ -5,9 +5,11 @@ Frozen Pydantic configuration model with safe defaults for all
 training pipeline components.
 """
 
-from typing import Final
+from collections.abc import Mapping
+from types import MappingProxyType
+from typing import Final, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.training.models import ContentType
@@ -112,7 +114,7 @@ class TrainingConfig(BaseModel):
         default="role_top_performers",
         description="Source selector strategy name",
     )
-    source_selector_config: dict[str, _ConfigValue] = Field(
+    source_selector_config: Mapping[str, _ConfigValue] = Field(
         default_factory=_default_selector_config,
         description="Serialized config for the selector",
     )
@@ -126,11 +128,11 @@ class TrainingConfig(BaseModel):
         default="relevance",
         description="Curation strategy name",
     )
-    curation_strategy_config: dict[str, _ConfigValue] = Field(
+    curation_strategy_config: Mapping[str, _ConfigValue] = Field(
         default_factory=_default_curation_config,
         description="Serialized config for curation",
     )
-    default_volume_caps: dict[ContentType, int] = Field(
+    default_volume_caps: Mapping[ContentType, int] = Field(
         default_factory=_default_volume_caps,
         description="Default per-content-type hard limits",
     )
@@ -151,3 +153,29 @@ class TrainingConfig(BaseModel):
         default=("learned_from_seniors",),
         description="Default tags applied to stored items",
     )
+
+    @model_validator(mode="after")
+    def _freeze_config_mappings(self) -> Self:
+        """Wrap the serialized config mappings in read-only proxies.
+
+        Returns:
+            The instance with ``source_selector_config`` /
+            ``curation_strategy_config`` / ``default_volume_caps``
+            replaced by ``MappingProxyType`` views.
+        """
+        object.__setattr__(
+            self,
+            "source_selector_config",
+            MappingProxyType(dict(self.source_selector_config)),
+        )
+        object.__setattr__(
+            self,
+            "curation_strategy_config",
+            MappingProxyType(dict(self.curation_strategy_config)),
+        )
+        object.__setattr__(
+            self,
+            "default_volume_caps",
+            MappingProxyType(dict(self.default_volume_caps)),
+        )
+        return self

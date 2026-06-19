@@ -75,7 +75,7 @@ class OrgDepartmentMutationsMixin:
         """Persist the department roster under optimistic-concurrency control."""
         raise NotImplementedError
 
-    async def _snapshot_company(self, saved_by: str) -> None:  # pragma: no cover
+    async def _snapshot_company(self) -> None:  # pragma: no cover
         """Record a company snapshot attributed to the saver."""
         raise NotImplementedError
 
@@ -110,8 +110,6 @@ class OrgDepartmentMutationsMixin:
     async def create_department(
         self,
         data: CreateDepartmentRequest,
-        *,
-        saved_by: str = "api",
     ) -> Department:
         """Create a new department.
 
@@ -163,7 +161,7 @@ class OrgDepartmentMutationsMixin:
                 new_departments,
                 expected_updated_at=version,
             )
-            await self._snapshot_company(saved_by=saved_by)
+            await self._snapshot_company()
 
         await CASRetryHandler(resource="org_mutation").execute(read, write)
 
@@ -181,7 +179,6 @@ class OrgDepartmentMutationsMixin:
         data: UpdateDepartmentRequest,
         *,
         if_match: str | None = None,
-        saved_by: str = "api",
     ) -> Department:
         """Update an existing department.
 
@@ -245,7 +242,7 @@ class OrgDepartmentMutationsMixin:
                 new_departments,
                 expected_updated_at=version,
             )
-            await self._snapshot_company(saved_by=saved_by)
+            await self._snapshot_company()
 
         await CASRetryHandler(resource="org_mutation").execute(read, write)
 
@@ -259,8 +256,6 @@ class OrgDepartmentMutationsMixin:
     async def delete_department(
         self,
         name: str,
-        *,
-        saved_by: str = "api",
     ) -> None:
         """Delete a department.
 
@@ -329,7 +324,7 @@ class OrgDepartmentMutationsMixin:
                     ("company", "agents"): payload["agents_version"],
                 },
             )
-            await self._snapshot_company(saved_by=saved_by)
+            await self._snapshot_company()
 
         await CASRetryHandler(resource="org_mutation").execute(read, write)
         logger.info(API_DEPARTMENT_DELETED, department=name)
@@ -362,8 +357,6 @@ class OrgDepartmentMutationsMixin:
     async def reorder_departments(
         self,
         data: ReorderDepartmentsRequest,
-        *,
-        saved_by: str = "api",
     ) -> tuple[Department, ...]:
         """Reorder departments.
 
@@ -395,7 +388,7 @@ class OrgDepartmentMutationsMixin:
         ) -> None:
             """Run write."""
             await self._write_departments(reordered, expected_updated_at=version)
-            await self._snapshot_company(saved_by=saved_by)
+            await self._snapshot_company()
 
         reordered = await CASRetryHandler(resource="org_mutation").execute(
             read,

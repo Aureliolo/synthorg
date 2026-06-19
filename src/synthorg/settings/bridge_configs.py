@@ -250,9 +250,9 @@ class ApiBridgeConfig(BaseModel):
     request_max_body_size_bytes: int = Field(
         default=52_428_800, ge=1_000_000, le=536_870_912
     )
-    max_lifecycle_events_per_query: int = Field(default=10_000, ge=100, le=1_000_000)
-    max_audit_records_per_query: int = Field(default=10_000, ge=100, le=1_000_000)
-    max_metrics_per_query: int = Field(default=10_000, ge=100, le=1_000_000)
+    max_lifecycle_events_per_query: int = Field(default=1_000, ge=100, le=1_000_000)
+    max_audit_records_per_query: int = Field(default=1_000, ge=100, le=1_000_000)
+    max_metrics_per_query: int = Field(default=1_000, ge=100, le=1_000_000)
     max_meeting_context_keys: int = Field(default=20, ge=5, le=100)
     rate_limit_gc_every_n_acquires: int = Field(default=1024, ge=64, le=65_536)
     rate_limit_gc_min_horizon_seconds: int = Field(default=60, ge=1, le=3600)

@@ -43,7 +43,10 @@ _ARGS_CONFIG = ConfigDict(
 # single ``@`` between two non-empty groups and must not contain any
 # control characters that would smuggle into SMTP headers.  Strict
 # RFC compliance is the SMTP backend's job; this guard catches obvious
-# garbage at the LLM-facing surface.
+# garbage at the LLM-facing surface. This regex is the recipient-side
+# header-injection guard: ``email_sender`` relies on it to reject CR/LF
+# in attacker-supplied ``to``/``cc``/``bcc`` addresses, so the excluded
+# character class must keep ``\r\n``.
 _EMAIL_RE = r"^[^@\r\n\t \"]+@[^@\r\n\t \"]+\.[^@\r\n\t \"]+$"
 
 EmailAddress = Annotated[

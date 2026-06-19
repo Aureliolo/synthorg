@@ -13,7 +13,6 @@ from litestar.response import ServerSentEvent
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.controllers._provider_helpers import sse_error
-from synthorg.api.controllers._workflow_helpers import audit_actor_from_context
 from synthorg.api.dto import ApiResponse
 from synthorg.api.dto_providers import (
     ProviderModelResponse,
@@ -186,12 +185,10 @@ class ProviderLocalModelsController(Controller):
             DomainError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
-        actor = audit_actor_from_context()
         try:
             await provider_management_of(app_state).delete_model(
                 name,
                 model_id,
-                actor=actor,
             )
         except ProviderNotFoundError as exc:
             msg = f"Provider {name!r} not found"
@@ -271,13 +268,11 @@ class ProviderLocalModelsController(Controller):
             DomainError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
-        actor = audit_actor_from_context()
         try:
             updated = await provider_management_of(app_state).update_model_config(
                 name,
                 model_id,
                 data.local_params,
-                actor=actor,
             )
         except ProviderNotFoundError as exc:
             msg = f"Provider {name!r} not found"

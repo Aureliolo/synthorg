@@ -13,6 +13,7 @@ from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.iso_datetime import is_valid_iso_datetime
 from synthorg.core.state_machine import StateMachine
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
@@ -180,11 +181,9 @@ class Sprint(BaseModel):
                 if not value.strip():
                     msg = f"{field_name} must not be whitespace-only"
                     raise ValueError(msg)
-                try:
-                    datetime.fromisoformat(value)
-                except ValueError as exc:
+                if not is_valid_iso_datetime(value):
                     msg = f"{field_name} must be a valid ISO 8601 string, got {value!r}"
-                    raise ValueError(msg) from exc
+                    raise ValueError(msg)
         return self
 
     @model_validator(mode="after")

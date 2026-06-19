@@ -4,7 +4,6 @@ import asyncio
 import re
 import shutil
 from copy import deepcopy
-from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING
@@ -29,6 +28,7 @@ from synthorg.backup.retention import RetentionManager
 from synthorg.backup.scheduler import BackupScheduler
 from synthorg.backup.service_archive import BackupServiceArchiveMixin
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.iso_datetime import now_iso_utc
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -185,7 +185,7 @@ class BackupService(BackupServiceArchiveMixin):
             The manifest for the created backup.
         """
         backup_id = uuid4().hex[:12]
-        timestamp = datetime.now(UTC).isoformat()
+        timestamp = now_iso_utc()
         effective_components = components or self._config.include
 
         if compress is None:

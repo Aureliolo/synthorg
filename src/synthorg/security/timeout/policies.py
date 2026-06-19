@@ -1,5 +1,7 @@
 """Timeout policy implementations -- wait, deny, tiered, escalation chain."""
 
+from collections.abc import Mapping
+from types import MappingProxyType
 from typing import Final
 
 from synthorg.approval.enums import ApprovalRiskLevel
@@ -128,10 +130,13 @@ class TieredTimeoutPolicy:
     def __init__(
         self,
         *,
-        tiers: dict[str, TierConfig],
+        tiers: Mapping[str, TierConfig],
         classifier: RiskTierClassifier,
     ) -> None:
-        self._tiers = tiers
+        # Copy-on-store: a read-only snapshot decoupled from the
+        # caller's mapping so a later external mutation cannot change
+        # the tier table this policy evaluates against.
+        self._tiers: Mapping[str, TierConfig] = MappingProxyType(dict(tiers))
         self._classifier = classifier
 
     async def determine_action(

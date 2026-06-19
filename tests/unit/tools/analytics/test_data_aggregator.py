@@ -3,6 +3,7 @@
 from typing import cast
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.analytics.config import AnalyticsToolsConfig
@@ -108,29 +109,29 @@ class TestDataAggregatorTool:
         mock_provider: MockAnalyticsProvider,
     ) -> None:
         tool = DataAggregatorTool(provider=mock_provider)
-        result = await tool.execute(
-            arguments={
-                "metrics": ["total_cost"],
-                "period": "invalid",
-            }
-        )
-        assert result.is_error
-        assert "Invalid period" in result.content
+        # The AggregationPeriod literal rejects an out-of-set period at
+        # the typed boundary before the provider is queried.
+        with pytest.raises(ValidationError, match="period"):
+            await tool.execute(
+                arguments={
+                    "metrics": ["total_cost"],
+                    "period": "invalid",
+                }
+            )
 
     async def test_execute_invalid_group_by(
         self,
         mock_provider: MockAnalyticsProvider,
     ) -> None:
         tool = DataAggregatorTool(provider=mock_provider)
-        result = await tool.execute(
-            arguments={
-                "metrics": ["total_cost"],
-                "period": "7d",
-                "group_by": "invalid",
-            }
-        )
-        assert result.is_error
-        assert "Invalid group_by" in result.content
+        with pytest.raises(ValidationError, match="group_by"):
+            await tool.execute(
+                arguments={
+                    "metrics": ["total_cost"],
+                    "period": "7d",
+                    "group_by": "invalid",
+                }
+            )
 
     async def test_execute_provider_error(
         self,
@@ -186,30 +187,30 @@ class TestDataAggregatorTool:
         mock_provider: MockAnalyticsProvider,
     ) -> None:
         tool = DataAggregatorTool(provider=mock_provider)
-        result = await tool.execute(
-            arguments={
-                "metrics": ["total_cost"],
-                "period": "custom",
-            }
-        )
-        assert result.is_error
-        assert "start_date" in result.content
+        # The args-model validator enforces the custom-period cross-field
+        # rule (both dates required) at the typed boundary.
+        with pytest.raises(ValidationError, match="start_date"):
+            await tool.execute(
+                arguments={
+                    "metrics": ["total_cost"],
+                    "period": "custom",
+                }
+            )
 
     async def test_execute_invalid_date_format(
         self,
         mock_provider: MockAnalyticsProvider,
     ) -> None:
         tool = DataAggregatorTool(provider=mock_provider)
-        result = await tool.execute(
-            arguments={
-                "metrics": ["total_cost"],
-                "period": "custom",
-                "start_date": "not-a-date",
-                "end_date": "2026-01-31",
-            }
-        )
-        assert result.is_error
-        assert "Invalid start_date" in result.content
+        with pytest.raises(ValidationError, match="start_date"):
+            await tool.execute(
+                arguments={
+                    "metrics": ["total_cost"],
+                    "period": "custom",
+                    "start_date": "not-a-date",
+                    "end_date": "2026-01-31",
+                }
+            )
 
     def test_mock_provider_satisfies_protocol(
         self,

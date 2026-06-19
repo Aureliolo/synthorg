@@ -27,6 +27,7 @@ import copy
 from collections.abc import Mapping
 from datetime import datetime
 
+from synthorg.core.iso_datetime import is_valid_iso_datetime
 from synthorg.engine.errors import SubworkflowIOError
 from synthorg.engine.workflow.definition import WorkflowIODeclaration
 from synthorg.engine.workflow.enums import WorkflowValueType
@@ -148,14 +149,12 @@ def _validate_value_type(
         return
     if expected is WorkflowValueType.DATETIME:
         if isinstance(value, str):
-            try:
-                datetime.fromisoformat(value)
-            except ValueError:
+            if not is_valid_iso_datetime(value):
                 msg = (
                     f"Declaration {name!r} expects DATETIME"
                     f" (ISO-8601 string or datetime), got {value!r}"
                 )
-                raise SubworkflowIOError(msg) from None
+                raise SubworkflowIOError(msg)
             return
         if not isinstance(value, datetime):
             msg = f"Declaration {name!r} expects DATETIME, got {type(value).__name__}"

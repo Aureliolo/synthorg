@@ -74,7 +74,7 @@ async def _verify_current_password(
         msg = "User not found"
         raise UnauthorizedError(msg)
 
-    if not await auth_service.verify_password_async(
+    if not await auth_service.verify_password(
         data.current_password, user.password_hash
     ):
         logger.warning(
@@ -234,7 +234,7 @@ class AuthCredentialsController(Controller):
         )
 
         now = datetime.now(UTC)
-        new_hash = await auth_service.hash_password_async(data.new_password)
+        new_hash = await auth_service.hash_password(data.new_password)
         updated_user = user.model_copy(
             update={
                 "password_hash": new_hash,

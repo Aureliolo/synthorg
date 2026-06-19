@@ -9,6 +9,7 @@ substrate (no brain, no cassette, no red-team report for the run) yields
 an empty / ``None`` section rather than failing the build.
 """
 
+import asyncio
 import hashlib
 from typing import Final
 from uuid import uuid4
@@ -116,7 +117,7 @@ class ReceiptBuilder:
             decisions=await self._decisions(task),
             tests=await self._tests(execution_id),
             red_team=await self._red_team(execution_id),
-            cassette=self._cassette(),
+            cassette=await asyncio.to_thread(self._cassette),
         )
 
     async def _sources(

@@ -4,6 +4,8 @@ from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from pydantic import ValidationError
+from typeguard import suppress_type_checks
 
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.code_runner import CodeRunnerTool
@@ -60,6 +62,23 @@ class TestCodeRunnerInit:
         assert "language" in props
         assert "timeout" in props
         assert cast(JsonDict, schema)["required"] == ["code", "language"]
+
+    def test_rejects_non_positive_output_tail_limit(self) -> None:
+        sandbox = _make_mock_sandbox()
+        with pytest.raises(ValueError, match="positive integer"):
+            CodeRunnerTool(sandbox=sandbox, output_tail_limit=0)
+
+    def test_rejects_non_integer_output_tail_limit(self) -> None:
+        # A positive float passes the ``> 0`` guard but would crash the
+        # ``[-limit:]`` slice; the isinstance check rejects it up front.
+        # Suppress typeguard so the runtime guard (not the test-only
+        # boundary check) is what raises -- production runs without it.
+        sandbox = _make_mock_sandbox()
+        with (
+            suppress_type_checks(),
+            pytest.raises(ValueError, match="positive integer"),
+        ):
+            CodeRunnerTool(sandbox=sandbox, output_tail_limit=cast(int, 1.5))
 
 
 # ── Language mapping ────────────────────────────────────────────
@@ -171,13 +190,12 @@ class TestCodeRunnerErrors:
         sandbox = _make_mock_sandbox()
         tool = CodeRunnerTool(sandbox=sandbox)
 
-        result = await tool.execute(
-            arguments={"code": "puts 'hi'", "language": "ruby"},
-        )
-
-        assert result.is_error
-        assert "Unsupported language" in result.content
-        assert "ruby" in result.content
+        # The CodeRunnerLanguage literal rejects an out-of-set language at
+        # the typed boundary before the sandbox is touched.
+        with pytest.raises(ValidationError, match="language"):
+            await tool.execute(
+                arguments={"code": "puts 'hi'", "language": "ruby"},
+            )
         sandbox.execute.assert_not_awaited()
 
 
@@ -224,7 +242,7 @@ class TestCodeRunnerMissingParams:
         sandbox = _make_mock_sandbox()
         tool = CodeRunnerTool(sandbox=sandbox)
 
-        with pytest.raises(KeyError, match="code"):
+        with pytest.raises(ValidationError, match="code"):
             await tool.execute(
                 arguments={"language": "python"},
             )
@@ -233,7 +251,7 @@ class TestCodeRunnerMissingParams:
         sandbox = _make_mock_sandbox()
         tool = CodeRunnerTool(sandbox=sandbox)
 
-        with pytest.raises(KeyError, match="language"):
+        with pytest.raises(ValidationError, match="language"):
             await tool.execute(
                 arguments={"code": "print(1)"},
             )

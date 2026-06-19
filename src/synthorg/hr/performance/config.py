@@ -1,5 +1,7 @@
 """Performance tracking configuration."""
 
+from collections.abc import Mapping
+from types import MappingProxyType
 from typing import ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -57,7 +59,7 @@ class PerformanceConfig(BaseModel):
         default=-0.05,
         description="Slope threshold for declining trend",
     )
-    collaboration_weights: dict[str, float] | None = Field(
+    collaboration_weights: Mapping[str, float] | None = Field(
         default=None,
         description="Custom weights for collaboration scoring components",
     )
@@ -156,4 +158,20 @@ class PerformanceConfig(BaseModel):
                 f"{total}, must sum to 1.0"
             )
             raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _freeze_collaboration_weights(self) -> Self:
+        """Wrap ``collaboration_weights`` in a read-only proxy at construction.
+
+        Returns:
+            The instance with the weights mapping replaced by a
+            ``MappingProxyType`` (no-op when ``None``).
+        """
+        if self.collaboration_weights is not None:
+            object.__setattr__(
+                self,
+                "collaboration_weights",
+                MappingProxyType(dict(self.collaboration_weights)),
+            )
         return self

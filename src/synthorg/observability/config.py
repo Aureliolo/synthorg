@@ -11,8 +11,11 @@ configuration.  All models are immutable and validated on construction.
 """
 
 from collections import Counter
+from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import PurePath, PurePosixPath, PureWindowsPath
-from typing import Final, Self
+from types import MappingProxyType
+from typing import Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -37,6 +40,44 @@ _DEFAULT_OTLP_EXPORT_INTERVAL: Final[float] = 5.0
 _DEFAULT_OTLP_BATCH_SIZE: Final[int] = 100
 _DEFAULT_OTLP_TIMEOUT: Final[float] = 10.0
 _DEFAULT_OTLP_MAX_RETRIES: Final[int] = 3
+
+
+@dataclass(frozen=True)
+class _SinkTypeDescriptor:
+    """Per-sink-type field contract.
+
+    Drives :meth:`SinkConfig._validate_sink_type_fields`: the sink
+    validates the field group it ``owns`` and rejects every other
+    group, so a new sink type is one mapping entry instead of another
+    ``match`` arm.
+
+    Attributes:
+        owns: The field group this sink type validates (``"file"`` /
+            ``"syslog"`` / ``"http"`` / ``"otlp"``), or ``None`` when the
+            sink type owns no group (CONSOLE, PROMETHEUS).
+        require_json: Whether the sink type must carry ``json_format``.
+    """
+
+    owns: Literal["file", "syslog", "http", "otlp"] | None
+    require_json: bool = False
+
+
+# Closed set of mutually-exclusive sink field groups. A sink validates
+# the group it owns and rejects the rest.
+_SINK_FIELD_GROUPS: Final[tuple[str, ...]] = ("file", "syslog", "http", "otlp")
+
+_SINK_TYPE_DESCRIPTORS: Final[Mapping[SinkType, _SinkTypeDescriptor]] = (
+    MappingProxyType(
+        {
+            SinkType.FILE: _SinkTypeDescriptor(owns="file"),
+            SinkType.CONSOLE: _SinkTypeDescriptor(owns=None),
+            SinkType.SYSLOG: _SinkTypeDescriptor(owns="syslog", require_json=True),
+            SinkType.HTTP: _SinkTypeDescriptor(owns="http", require_json=True),
+            SinkType.PROMETHEUS: _SinkTypeDescriptor(owns=None),
+            SinkType.OTLP: _SinkTypeDescriptor(owns="otlp", require_json=True),
+        }
+    )
+)
 
 
 class RotationConfig(BaseModel):
@@ -226,38 +267,27 @@ class SinkConfig(BaseModel):
             ValueError: If the sink omits a field required for its type
                 or sets a field forbidden for its type.
         """
-        match self.sink_type:
-            case SinkType.FILE:
-                self._validate_file_fields()
-                self._reject_otlp_fields("FILE")
-            case SinkType.CONSOLE:
-                self._reject_file_fields("CONSOLE")
-                self._reject_syslog_fields("CONSOLE")
-                self._reject_http_fields("CONSOLE")
-                self._reject_otlp_fields("CONSOLE")
-            case SinkType.SYSLOG:
-                self._reject_file_fields("SYSLOG")
-                self._validate_syslog_fields()
-                self._reject_http_fields("SYSLOG")
-                self._require_json_format("SYSLOG")
-                self._reject_otlp_fields("SYSLOG")
-            case SinkType.HTTP:
-                self._reject_file_fields("HTTP")
-                self._reject_syslog_fields("HTTP")
-                self._validate_http_fields()
-                self._require_json_format("HTTP")
-                self._reject_otlp_fields("HTTP")
-            case SinkType.PROMETHEUS:
-                self._reject_file_fields("PROMETHEUS")
-                self._reject_syslog_fields("PROMETHEUS")
-                self._reject_http_fields("PROMETHEUS")
-                self._reject_otlp_fields("PROMETHEUS")
-            case SinkType.OTLP:
-                self._reject_file_fields("OTLP")
-                self._reject_syslog_fields("OTLP")
-                self._reject_http_fields("OTLP")
-                self._validate_otlp_fields()
-                self._require_json_format("OTLP")
+        descriptor = _SINK_TYPE_DESCRIPTORS[self.sink_type]
+        label = self.sink_type.name
+        validators = {
+            "file": self._validate_file_fields,
+            "syslog": self._validate_syslog_fields,
+            "http": self._validate_http_fields,
+            "otlp": self._validate_otlp_fields,
+        }
+        rejecters = {
+            "file": self._reject_file_fields,
+            "syslog": self._reject_syslog_fields,
+            "http": self._reject_http_fields,
+            "otlp": self._reject_otlp_fields,
+        }
+        for group in _SINK_FIELD_GROUPS:
+            if group == descriptor.owns:
+                validators[group]()
+            else:
+                rejecters[group](label)
+        if descriptor.require_json:
+            self._require_json_format(label)
         return self
 
     def _validate_file_fields(self) -> None:
@@ -284,8 +314,6 @@ class SinkConfig(BaseModel):
         if ".." in path.parts:
             msg = f"file_path must not contain '..' components: {self.file_path}"
             raise ValueError(msg)
-        self._reject_syslog_fields("FILE")
-        self._reject_http_fields("FILE")
 
     def _reject_file_fields(self, sink_label: str) -> None:
         """Reject FILE-only fields on a non-FILE sink.

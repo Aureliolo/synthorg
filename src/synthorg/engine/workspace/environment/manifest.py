@@ -253,7 +253,7 @@ class ManifestEnvironmentStrategy:
                 raising).
         """
         del sandbox_kind  # manifest bootstrap runs in any backend
-        manifest = self._read_manifest(workspace_path)
+        manifest = await asyncio.to_thread(self._read_manifest, workspace_path)
         logger.info(
             ENVIRONMENT_PROVISION_START,
             project_id=str(project_id),

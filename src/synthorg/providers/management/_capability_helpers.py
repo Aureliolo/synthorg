@@ -9,6 +9,7 @@ discriminated-union DTO and the system-actor constant is a sentinel.
 from datetime import UTC, datetime
 from typing import Final
 
+from synthorg.core.actor_context import current_actor
 from synthorg.core.iso_datetime import format_iso_utc
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import PROVIDER_VALIDATION_FAILED
@@ -21,11 +22,32 @@ from synthorg.providers.management.capability_dtos import (
 
 logger = get_logger(__name__)
 
-# Bookkeeping actor used when the mutation entry point lacks a
-# request-scoped actor (background bootstrap, file-driven hot-reload,
-# tests).  Real user mutations pass an explicit ``ProviderAuditActor``
-# from the controller derived from ``AuthenticatedUser``.
+# Bookkeeping actor used when the mutation runs with no actor bound to
+# the context seam (background bootstrap, file-driven hot-reload, tests).
+# Human mutations bind a HUMAN ``ActorIdentity`` at the HTTP boundary
+# (``AuthContextMiddleware``); the audit leaf maps it to a
+# ``ProviderAuditActor`` via :func:`provider_actor_from_context`.
 SYSTEM_ACTOR = ProviderAuditActor(id="system", label="provider-management")
+
+
+def provider_actor_from_context() -> ProviderAuditActor:
+    """Resolve the provider audit actor from the bound actor seam.
+
+    Reads the :class:`~synthorg.core.actor_context.ActorIdentity` bound
+    by ``AuthContextMiddleware`` (or an explicit ``actor_scope``) and
+    maps it to a :class:`ProviderAuditActor`. The mapping preserves the
+    identity the controller historically threaded: ``id`` is the actor's
+    stable id and ``label`` its human-readable name. Background paths
+    that bind no actor fall back to :data:`SYSTEM_ACTOR`.
+
+    Returns:
+        The actor to attribute the audit row to.
+    """
+    actor = current_actor()
+    if actor is None:
+        return SYSTEM_ACTOR
+    return ProviderAuditActor(id=actor.actor_id, label=actor.label or actor.actor_id)
+
 
 _SECRET_SHORT_THRESHOLD: Final[int] = 8
 

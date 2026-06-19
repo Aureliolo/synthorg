@@ -24,13 +24,17 @@ from synthorg.observability.events.persistence.decision_record import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import validate_pagination_args
+from synthorg.persistence._shared.decision_sql import (
+    DECISION_COLS as _COLS,
+)
+from synthorg.persistence._shared.decision_sql import (
+    DECISION_MAX_PAGE_LIMIT as _MAX_PAGE_LIMIT,
+)
+from synthorg.persistence._shared.decision_sql import (
+    resolve_role_column,
+)
 from synthorg.persistence.decision_protocol import DecisionFilterSpec, DecisionRole
 from synthorg.persistence.sqlite.decision._base import _DecisionRepoBase
-from synthorg.persistence.sqlite.decision._sql import (
-    _COLS,
-    _MAX_PAGE_LIMIT,
-    _ROLE_TO_COLUMN,
-)
 
 logger = get_logger(__name__)
 
@@ -269,49 +273,15 @@ class _QueryMixin(_DecisionRepoBase):
         """
         # Runtime defense in depth: the Literal prevents type-safe
         # callers from passing bad values, but untyped callers can
-        # still pass anything.  Check the input TYPE first so a
-        # list/dict/None argument raises ``ValueError`` with the
-        # same message shape as an unknown-string role, instead of
-        # a surprising ``TypeError`` (unhashable) inside the dict
-        # lookup.  Using a dict lookup instead of if/elif keeps the
-        # column name derivation closed over a bounded set of
-        # hard-coded identifiers (see the closed-set comment on
-        # the SQL query below).  mypy narrows ``role`` to
-        # ``Literal[...]`` and treats this branch as unreachable,
-        # which is exactly the static case -- but runtime callers
-        # can still defeat the Literal.
-        # Cast to ``object`` so mypy doesn't narrow to ``Literal``
-        # and mark the untyped-caller defense as unreachable.
-        role_obj: object = role
-        if not isinstance(role_obj, str):
-            msg = (
-                f"role must be 'executor' or 'reviewer', got {type(role_obj).__name__}"
-            )
-            logger.warning(
-                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
-                agent_id=agent_id,
-                role_type=type(role_obj).__name__,
-                error=msg,
-            )
-            raise QueryError(msg)
-        role_str: str = role_obj
-        try:
-            column = _ROLE_TO_COLUMN[role_str]
-        except KeyError as exc:
-            msg = f"role must be 'executor' or 'reviewer', got {role_str!r}"
-            logger.warning(
-                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
-                agent_id=agent_id,
-                role=role_str,
-                error=msg,
-            )
-            raise QueryError(msg) from exc
+        # still pass anything; ``resolve_role_column`` validates the
+        # role against the closed set and rejects anything else.
+        column = resolve_role_column(role, agent_id=agent_id)
         validate_pagination_args(
             limit,
             offset,
             event=PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
             agent_id=agent_id,
-            role=role_str,
+            role=role,
         )
         effective_limit = min(limit, _MAX_PAGE_LIMIT)
         try:

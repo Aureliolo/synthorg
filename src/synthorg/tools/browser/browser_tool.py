@@ -20,7 +20,6 @@ import asyncio
 import json
 import re
 import shutil
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import (
     ClassVar,
@@ -37,6 +36,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.iso_datetime import now_iso_utc
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.browser import (
     BROWSER_ARGS_VALIDATION_FAILED,
@@ -737,16 +737,45 @@ class BrowserTool(BaseTool):
                     "baseline_path": str(baseline_path),
                 },
             )
-        adopted = self._baselines.adopt_current_as_baseline(
-            spec_name=args.spec_name,
-            screenshot_name=args.screenshot_name,
+        # Bind the asserted-non-None names into locals so the blocking
+        # closure keeps the ``str`` narrowing across the thread boundary.
+        spec_name = args.spec_name
+        screenshot_name = args.screenshot_name
+
+        def _adopt_and_write_sidecar() -> Path:
+            """Adopt the current screenshot and write its sidecar (blocking).
+
+            Returns:
+                The adopted baseline path.
+            """
+            adopted_path = self._baselines.adopt_current_as_baseline(
+                spec_name=spec_name,
+                screenshot_name=screenshot_name,
+            )
+            self._baselines.write_sidecar(
+                spec_name=spec_name,
+                screenshot_name=screenshot_name,
+                png_bytes=adopted_path.read_bytes(),
+                chromium_image=self._settings.image_pin,
+            )
+            return adopted_path
+
+        # The worker thread writes the adopted baseline + sidecar while
+        # the caller still holds the per-(spec, screenshot) lock. Shield
+        # the offload so a cancellation drains the thread to completion
+        # (under the held lock) before unwinding -- otherwise the lock
+        # releases mid-write and a concurrent task can race the files.
+        adoption_task = asyncio.create_task(
+            asyncio.to_thread(_adopt_and_write_sidecar),
         )
-        self._baselines.write_sidecar(
-            spec_name=args.spec_name,
-            screenshot_name=args.screenshot_name,
-            png_bytes=adopted.read_bytes(),
-            chromium_image=self._settings.image_pin,
-        )
+        try:
+            adopted = await asyncio.shield(adoption_task)
+        except asyncio.CancelledError:
+            try:
+                await asyncio.shield(adoption_task)
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+            raise
         logger.info(
             BROWSER_DIFF_SUCCESS,
             spec=args.spec_name,
@@ -833,9 +862,12 @@ class BrowserTool(BaseTool):
             The decoded executor result envelope.
 
         Raises:
-            BrowserLaunchError: If the related operation fails.
-            map_executor_error: Raised when the relevant invariant fails.
-            BrowserDomainError: If the related operation fails.
+            BrowserLaunchError: If the sandbox launch, execution, or
+                timeout fails.
+            BrowserDomainError: If the executor returns non-JSON or
+                non-object output, or reports an error status (mapped
+                onto a ``BrowserDomainError`` subclass via
+                ``map_executor_error``).
         """
         executor_container = (
             f"{CONTAINER_WORKSPACE_ROOT}/{_DEPLOY_SUBDIR}/{_EXECUTOR_DEPLOY_NAME}"
@@ -922,7 +954,12 @@ class BrowserTool(BaseTool):
         if decoded.get("status") != "ok":
             err_type = str(decoded.get("error_type", "BrowserDomainError"))
             message = decoded.get("message", "executor returned an error")
-            raise map_executor_error(err_type, str(message), operation)
+            mapped_error: BrowserDomainError = map_executor_error(
+                err_type,
+                str(message),
+                operation,
+            )
+            raise mapped_error
 
         return cast("_ExecutorResult", decoded)
 
@@ -1030,7 +1067,7 @@ class BrowserTool(BaseTool):
             ),
             file_size_bytes=int(ss_payload.get("file_size_bytes", 0)),
             full_page=bool(ss_payload.get("full_page", False)),
-            captured_at_iso=datetime.now(UTC).isoformat(),
+            captured_at_iso=now_iso_utc(),
             sha256=sha,
         )
 

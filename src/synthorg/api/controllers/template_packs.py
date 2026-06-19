@@ -48,7 +48,7 @@ class PackInfoResponse(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     name: NotBlankStr
-    display_name: str
+    display_name: NotBlankStr
     description: str
     source: Literal["builtin", "user"]
     tags: tuple[str, ...]

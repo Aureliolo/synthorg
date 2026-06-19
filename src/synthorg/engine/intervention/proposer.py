@@ -10,7 +10,7 @@ obsolete.
 
 import json
 import re
-from typing import Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker import CostTracker
@@ -35,8 +35,8 @@ _SYSTEM_AGENT_ID: NotBlankStr = NotBlankStr("system")
 
 logger = get_logger(__name__)
 
-_PROPOSER_TEMPERATURE: float = 0.1
-_PROPOSER_MAX_TOKENS: int = 1024
+_PROPOSER_TEMPERATURE: Final[float] = 0.1
+_PROPOSER_MAX_TOKENS: Final[int] = 1024
 
 _SYSTEM_PROMPT = (
     "You assess which in-flight tasks an operator steering directive makes "

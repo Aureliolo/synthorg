@@ -252,6 +252,44 @@ _r.register(
     )
 )
 
+# ── Git log result cap ───────────────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="git_log_max_count",
+        type=SettingType.INTEGER,
+        default="100",
+        description=(
+            "Upper bound on the number of commits the git_log tool"
+            " returns; a per-call max_count above this is clamped down."
+        ),
+        group="Git",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=10_000,
+    )
+)
+
+# ── Code runner output tail cap ──────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="code_runner_output_tail_limit",
+        type=SettingType.INTEGER,
+        default="2000",
+        description=(
+            "Maximum characters of captured stdout/stderr the code_runner"
+            " tool keeps on a test-execution record."
+        ),
+        group="Code Execution",
+        level=SettingLevel.ADVANCED,
+        min_value=100,
+        max_value=1_000_000,
+    )
+)
+
 # ── Headless browser tool (Playwright) ───────────────────────────
 
 _r.register(

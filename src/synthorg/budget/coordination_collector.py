@@ -75,6 +75,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _MIN_TEAM_SIZE: int = 2
+_MS_PER_SECOND: float = 1000.0
 
 
 class CollectionInputs(NamedTuple):
@@ -295,7 +296,7 @@ class CoordinationMetricsCollector:
         from synthorg.budget.baseline_store import BaselineRecord  # noqa: PLC0415
 
         duration_seconds = (
-            sum(t.latency_ms or 0.0 for t in execution_result.turns) / 1000.0
+            sum(t.latency_ms or 0.0 for t in execution_result.turns) / _MS_PER_SECOND
         )
         if duration_seconds <= 0:
             self._log_single_agent_completed(agent_id, task_id)

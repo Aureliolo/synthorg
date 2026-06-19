@@ -19,6 +19,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from synthorg.core.iso_datetime import is_valid_iso_datetime
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.enums import (
     WorkflowEdgeType,
@@ -72,12 +73,13 @@ def _check_default_type(name: str, default: object, vtype: WorkflowValueType) ->
             f" {vtype.value}, got {type(default).__name__}"
         )
         raise ValueError(msg)  # noqa: TRY004 -- Pydantic needs ValueError
-    if vtype is WorkflowValueType.DATETIME and isinstance(default, str):
-        try:
-            datetime.fromisoformat(default)
-        except ValueError as exc:
-            msg = f"Declaration {name!r}: DATETIME default is not valid ISO-8601"
-            raise ValueError(msg) from exc
+    if (
+        vtype is WorkflowValueType.DATETIME
+        and isinstance(default, str)
+        and not is_valid_iso_datetime(default)
+    ):
+        msg = f"Declaration {name!r}: DATETIME default is not valid ISO-8601"
+        raise ValueError(msg)
     if (
         vtype is WorkflowValueType.FLOAT
         and isinstance(default, (int, float))

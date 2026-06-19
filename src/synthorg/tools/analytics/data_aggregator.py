@@ -6,11 +6,11 @@ shipped -- users inject a provider at construction time.
 """
 
 import asyncio
-from datetime import datetime
-from typing import ClassVar, Final, Protocol, cast, override, runtime_checkable
+from typing import ClassVar, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, JsonValue
 
+from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.analytics import (
@@ -26,12 +26,6 @@ from synthorg.tools.analytics.config import AnalyticsToolsConfig
 from synthorg.tools.base import ToolExecutionResult
 
 logger = get_logger(__name__)
-
-_VALID_PERIODS: Final[frozenset[str]] = frozenset({"7d", "30d", "90d", "custom"})
-
-_VALID_GROUP_BY: Final[frozenset[str]] = frozenset(
-    {"day", "week", "month", "agent", "department"}
-)
 
 
 @runtime_checkable
@@ -115,21 +109,17 @@ class DataAggregatorTool(BaseAnalyticsTool):
         )
         self._provider = provider
 
-    def _validate_query_params(
-        self,
-        metrics: list[str],
-        period: str,
-        group_by: str | None,
-        start_date: str | None,
-        end_date: str | None,
-    ) -> ToolExecutionResult | None:
-        """Validate query parameters.
+    def _check_metrics_allowed(self, metrics: list[str]) -> ToolExecutionResult | None:
+        """Reject metric names outside the configured allowlist.
 
-        Returns a ``ToolExecutionResult`` error if validation fails,
-        or ``None`` if all parameters are valid.
+        Structural validation (period / group_by Literals, ISO 8601
+        dates, the custom-period cross-field rules) is enforced by
+        ``DataAggregatorArgs`` at the typed boundary; only this domain
+        allowlist check remains.
 
         Returns:
-            The resulting ``ToolExecutionResult``, or ``None`` when unavailable.
+            An error ``ToolExecutionResult`` when a metric is blocked,
+            else ``None``.
         """
         blocked = [m for m in metrics if not self._is_metric_allowed(m)]
         if blocked:
@@ -145,67 +135,6 @@ class DataAggregatorTool(BaseAnalyticsTool):
                 ),
                 is_error=True,
             )
-
-        if period not in _VALID_PERIODS:
-            logger.warning(
-                ANALYTICS_TOOL_QUERY_FAILED,
-                error="invalid_period",
-                period=period,
-            )
-            return ToolExecutionResult(
-                content=(
-                    f"Invalid period: {period!r}. "
-                    f"Must be one of: {sorted(_VALID_PERIODS)}"
-                ),
-                is_error=True,
-            )
-
-        if period == "custom" and (not start_date or not end_date):
-            logger.warning(
-                ANALYTICS_TOOL_QUERY_FAILED,
-                error="missing_custom_dates",
-            )
-            return ToolExecutionResult(
-                content="Custom period requires both start_date and end_date.",
-                is_error=True,
-            )
-
-        for date_label, date_val in (
-            ("start_date", start_date),
-            ("end_date", end_date),
-        ):
-            if date_val is not None:
-                try:
-                    datetime.fromisoformat(date_val)
-                except ValueError:
-                    logger.warning(
-                        ANALYTICS_TOOL_QUERY_FAILED,
-                        error="invalid_date",
-                        field=date_label,
-                        value=date_val,
-                    )
-                    return ToolExecutionResult(
-                        content=(
-                            f"Invalid {date_label}: {date_val!r}. "
-                            f"Must be ISO 8601 format."
-                        ),
-                        is_error=True,
-                    )
-
-        if group_by is not None and group_by not in _VALID_GROUP_BY:
-            logger.warning(
-                ANALYTICS_TOOL_QUERY_FAILED,
-                error="invalid_group_by",
-                group_by=group_by,
-            )
-            return ToolExecutionResult(
-                content=(
-                    f"Invalid group_by: {group_by!r}. "
-                    f"Must be one of: {sorted(_VALID_GROUP_BY)}"
-                ),
-                is_error=True,
-            )
-
         return None
 
     @override
@@ -236,48 +165,20 @@ class DataAggregatorTool(BaseAnalyticsTool):
                 is_error=True,
             )
 
-        metrics = arguments.get("metrics")
-        period = arguments.get("period")
-        if (
-            not isinstance(metrics, (list, tuple))
-            or not metrics
-            or any(not isinstance(metric, str) for metric in metrics)
-        ):
-            logger.warning(
-                ANALYTICS_TOOL_QUERY_FAILED,
-                error="missing_or_invalid_metrics",
-            )
-            return ToolExecutionResult(
-                content="'metrics' must be a non-empty list of strings.",
-                is_error=True,
-            )
-        if not isinstance(period, str) or not period:
-            logger.warning(
-                ANALYTICS_TOOL_QUERY_FAILED,
-                error="missing_or_invalid_period",
-            )
-            return ToolExecutionResult(
-                content="'period' must be a non-empty string.",
-                is_error=True,
-            )
-        metric_names: list[str] = list(metrics)
-        group_by = cast("str | None", arguments.get("group_by"))
-        start_date = cast("str | None", arguments.get("start_date"))
-        end_date = cast("str | None", arguments.get("end_date"))
+        args = parse_typed("tool.data_aggregator", arguments, DataAggregatorArgs)
+        metric_names: list[str] = list(args.metrics)
+        period = args.period
+        group_by = args.group_by
+        start_date = args.start_date
+        end_date = args.end_date
 
-        error = self._validate_query_params(
-            metric_names,
-            period,
-            group_by,
-            start_date,
-            end_date,
-        )
+        error = self._check_metrics_allowed(metric_names)
         if error is not None:
             return error
 
         logger.info(
             ANALYTICS_TOOL_QUERY_START,
-            metrics=metrics,
+            metrics=metric_names,
             period=period,
             group_by=group_by,
         )
@@ -298,7 +199,7 @@ class DataAggregatorTool(BaseAnalyticsTool):
                 ANALYTICS_TOOL_QUERY_FAILED,
                 error="query_timeout",
                 timeout=self._config.query_timeout,
-                metrics=metrics,
+                metrics=metric_names,
             )
             return ToolExecutionResult(
                 content=(
@@ -311,7 +212,7 @@ class DataAggregatorTool(BaseAnalyticsTool):
             logger.warning(
                 ANALYTICS_TOOL_QUERY_FAILED,
                 error="provider_error",
-                metrics=metrics,
+                metrics=metric_names,
                 period=period,
             )
             return ToolExecutionResult(
@@ -331,7 +232,7 @@ class DataAggregatorTool(BaseAnalyticsTool):
 
         logger.info(
             ANALYTICS_TOOL_QUERY_SUCCESS,
-            metrics=metrics,
+            metrics=metric_names,
             result_keys=sorted(sanitized.keys()),
         )
 

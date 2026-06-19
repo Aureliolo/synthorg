@@ -635,28 +635,21 @@ class TestListTasksPushDownPagination:
         finally:
             await eng.stop(timeout=2.0)
 
-    async def test_repo_offset_only_with_no_limit_still_skips_rows(
+    async def test_repo_offset_skips_leading_rows(
         self,
         persistence: FakePersistence,
     ) -> None:
-        """Repository-direct offset-only semantics must still skip rows.
+        """Repository-direct ``offset`` must skip the leading rows.
 
         This is a **repository-contract** regression test, not an engine
         test: ``TaskEngine.list_tasks`` rejects ``offset > 0`` without a
-        matching ``limit`` (see
-        :meth:`TaskEngine._validate_pagination`), but callers that go
-        straight to ``persistence.tasks.query`` are a legitimate
-        downstream scenario (ad-hoc admin scripts, future services that
-        don't need the engine's total-count guarantees).  The repository
-        must therefore preserve offset-only semantics: ``limit=None,
-        offset=N`` drops the leading ``N`` rows and returns the rest.
-
-        Regression target: the original push-down implementation only
-        emitted ``LIMIT ? OFFSET ?`` when ``limit`` was set, silently
-        dropping ``offset`` for unbounded queries (and, on SQLite,
-        emitting invalid SQL because ``OFFSET`` requires a preceding
-        ``LIMIT``).  The fake here mirrors that contract so regressions
-        in production repos surface in fake-backed tests too.
+        matching ``limit`` (see :meth:`TaskEngine._validate_pagination`),
+        but callers that go straight to ``persistence.tasks.query`` are a
+        legitimate downstream scenario (ad-hoc admin scripts, future
+        services that don't need the engine's total-count guarantees).
+        The repository must therefore drop the leading ``offset`` rows and
+        return the rest of the window, matching the production repos'
+        ``LIMIT ? OFFSET ?`` push-down (which always pairs the two).
         """
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
         await eng.start()
@@ -668,12 +661,13 @@ class TestListTasksPushDownPagination:
                 )
             full, _ = await eng.list_tasks(limit=10, offset=0)
             # Go directly to the repository -- the engine would reject
-            # ``limit=None, offset=2`` at the validation boundary.
+            # ``offset=2`` without a paired limit at the validation
+            # boundary.
             from synthorg.persistence.task_protocol import TaskFilterSpec
 
             tail_tuple = await persistence.tasks.query(
                 TaskFilterSpec(),
-                limit=None,
+                limit=10,
                 offset=2,
             )
             assert [t.id for t in tail_tuple] == [t.id for t in full][2:]

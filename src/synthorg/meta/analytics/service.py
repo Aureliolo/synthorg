@@ -39,6 +39,9 @@ _DEFAULT_SAMPLE_COUNT: Final[int] = 8
 
 _MAX_HISTORY_SAMPLE_COUNT: Final[int] = 128
 
+_SECONDS_PER_HOUR: Final[float] = 3600.0
+_HOURS_PER_DAY: Final[float] = 24.0
+
 
 class AnalyticsService:
     """Read-only analytics view built on top of :class:`SignalsService`.
@@ -141,8 +144,8 @@ class AnalyticsService:
             since=since,
             until=until,
         )
-        window_hours = (until - since).total_seconds() / 3600
-        daily_rate = budget.total_spend / window_hours * 24.0
+        window_hours = (until - since).total_seconds() / _SECONDS_PER_HOUR
+        daily_rate = budget.total_spend / window_hours * _HOURS_PER_DAY
         return AnalyticsForecast(
             horizon_days=horizon_days,
             days_until_budget_exhausted=budget.days_until_exhausted,

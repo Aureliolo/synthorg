@@ -1,19 +1,22 @@
-"""Tests for typed args of single-tool / small-cluster domains."""
+"""Tests for typed args of single-tool / small-cluster domains.
+
+Each args model lives in its consuming tool module; this suite exercises
+them from those homes.
+"""
 
 import pytest
 from pydantic import ValidationError
 
-from synthorg.tools._misc_args import (
-    CodeRunnerArgs,
-    CompactContextArgs,
-    EchoArgs,
+from synthorg.tools.approval_tool import RequestHumanApprovalArgs
+from synthorg.tools.code_runner import CodeRunnerArgs
+from synthorg.tools.context.compact_context import CompactContextArgs
+from synthorg.tools.discovery import (
     ListToolsArgs,
     LoadToolArgs,
     LoadToolResourceArgs,
-    MCPBridgeArgs,
-    RequestHumanApprovalArgs,
-    ShellCommandArgs,
 )
+from synthorg.tools.examples.echo import EchoArgs
+from synthorg.tools.terminal.shell_command import ShellCommandArgs
 
 
 class TestShellCommandArgs:
@@ -129,17 +132,3 @@ class TestMiscArgs:
     def test_compact_context_blank_reason_rejected(self) -> None:
         with pytest.raises(ValidationError):
             CompactContextArgs(strategy="summarize", reason="   ")
-
-    @pytest.mark.unit
-    def test_mcp_bridge_default_arguments(self) -> None:
-        args = MCPBridgeArgs(server_name="filesystem", tool_name="read")
-        assert args.arguments == {}
-
-    @pytest.mark.unit
-    def test_mcp_bridge_with_arguments(self) -> None:
-        args = MCPBridgeArgs(
-            server_name="filesystem",
-            tool_name="read",
-            arguments={"path": "/etc/hosts"},
-        )
-        assert args.arguments == {"path": "/etc/hosts"}

@@ -198,3 +198,22 @@ _r.register(
         max_value=1000,
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COCKPIT,
+        key="steering_propose_candidate_limit",
+        type=SettingType.INTEGER,
+        default="100",
+        description=(
+            "Per-status cap on in-flight candidate tasks gathered for a"
+            " PROPOSE-mode supersession refinement; bounds the task set"
+            " the proposer LLM sees so a busy project cannot exceed the"
+            " prompt budget."
+        ),
+        group="Intervention",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=1000,
+    )
+)

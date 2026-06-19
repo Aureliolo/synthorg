@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.memory.injection import DefaultTokenEstimator
+from synthorg.core.text_estimation import DefaultTokenEstimator
 from synthorg.ontology.injection.prompt import (
     PromptInjectionStrategy,
     format_entity,

@@ -41,6 +41,7 @@ explicit overwrite, allowlisted reads would never advertise the
 validator-friendly policy and clients would not retain ETags.
 """
 
+import asyncio
 import hashlib
 from dataclasses import dataclass, field
 
@@ -75,6 +76,9 @@ _ETAG_PATH_PREFIXES: tuple[str, ...] = (
     "/api/v1/departments",
     "/api/v1/company",
     "/api/v1/meta/analytics",
+    "/api/v1/security/audit",
+    "/api/v1/tasks",
+    "/api/v1/activities",
     "/api/v1/healthz",
     "/api/v1/readyz",
 )
@@ -362,7 +366,9 @@ async def _emit_response(
     headers: list[tuple[bytes, bytes]] = (
         list(headers_value) if isinstance(headers_value, list | tuple) else []
     )
-    etag = compute_etag(body)
+    # Offload the SHA-256 digest off the event loop; a large buffered
+    # body would otherwise block other requests during hashing.
+    etag = await asyncio.to_thread(compute_etag, body)
     # Cache-Control policy is shared with the streaming branch via
     # ``_apply_cache_control``; the ETag is buffered-only so it is
     # dropped + reinstalled here, not in the shared helper.

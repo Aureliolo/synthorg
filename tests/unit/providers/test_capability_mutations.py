@@ -26,6 +26,7 @@ from synthorg.api.dto_provider_capabilities import (
 )
 from synthorg.api.state import AppState
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig, RootConfig
+from synthorg.core.actor_context import ActorIdentity, ActorKind, actor_scope
 from synthorg.core.domain_errors import ConflictError
 from synthorg.core.resilience_config import RateLimiterConfig
 from synthorg.persistence.provider_audit_protocol import ProviderAuditFilterSpec
@@ -213,7 +214,6 @@ class TestRateLimitsUpdate:
         result = await service.update_rate_limits(
             "cloud-test",
             RateLimitsUpdateRequest(requests_per_minute=120),
-            actor=actor,
         )
         assert result.requests_per_minute == 120
         # Concurrent stays at the persisted default (0 = unlimited).
@@ -227,7 +227,6 @@ class TestRateLimitsUpdate:
         result = await service.update_rate_limits(
             "cloud-test",
             RateLimitsUpdateRequest(concurrent_requests=4),
-            actor=actor,
         )
         assert result.requests_per_minute == 0
         assert result.concurrent_requests == 4
@@ -241,10 +240,48 @@ class TestRateLimitsUpdate:
         await service.update_rate_limits(
             "cloud-test",
             RateLimitsUpdateRequest(requests_per_minute=60),
-            actor=actor,
         )
         assert len(audit_repo.records) == 1
         assert audit_repo.records[0].event_type == "provider_rate_limits_updated"
+
+    async def test_audit_actor_resolved_from_context(
+        self,
+        service: ProviderManagementService,
+        audit_repo: _FakeAuditRepo,
+    ) -> None:
+        """A bound HUMAN actor reaches the audit row without threading.
+
+        The mutation method no longer accepts an ``actor`` argument; the
+        audit leaf resolves it from the ``actor_context`` seam that
+        ``AuthContextMiddleware`` binds on every authenticated request.
+        """
+        bound = ActorIdentity(
+            actor_id="user-1",
+            kind=ActorKind.HUMAN,
+            label="Operator",
+        )
+        with actor_scope(bound):
+            await service.update_rate_limits(
+                "cloud-test",
+                RateLimitsUpdateRequest(requests_per_minute=42),
+            )
+        assert len(audit_repo.records) == 1
+        recorded_actor = audit_repo.records[0].actor
+        assert recorded_actor.id == "user-1"
+        assert recorded_actor.label == "Operator"
+
+    async def test_audit_actor_falls_back_to_system_without_binding(
+        self,
+        service: ProviderManagementService,
+        audit_repo: _FakeAuditRepo,
+    ) -> None:
+        """No bound actor (background path) attributes the system sentinel."""
+        await service.update_rate_limits(
+            "cloud-test",
+            RateLimitsUpdateRequest(requests_per_minute=24),
+        )
+        assert len(audit_repo.records) == 1
+        assert audit_repo.records[0].actor.id == "system"
 
 
 @pytest.mark.unit
@@ -258,7 +295,6 @@ class TestModelMutations:
         result = await service.add_model(
             "cloud-test",
             AddModelRequest(model=new_model),
-            actor=actor,
         )
         assert any(m.id == "example-large-001" for m in result.models)
 
@@ -278,7 +314,6 @@ class TestModelMutations:
             await service.add_model(
                 "cloud-test",
                 AddModelRequest(model=existing),
-                actor=actor,
             )
 
 
@@ -296,7 +331,6 @@ class TestCredentialsRotation:
         result = await service.rotate_credentials(
             "cloud-test",
             request,
-            actor=actor,
         )
         assert result.api_key == "rotated-secret-y"
         # Round-trip the config to confirm rotation persisted: the
@@ -330,7 +364,6 @@ class TestCredentialsRotation:
             await service.rotate_credentials(
                 "cloud-test",
                 request,
-                actor=actor,
             )
 
 
@@ -388,7 +421,6 @@ class TestRotateCredentialsAllAuthTypes:
         result = await service.rotate_credentials(
             "cloud-test",
             request,
-            actor=actor,
         )
         assert result.subscription_token == "rotated-sub-token-y"
         assert result.tos_accepted_at is not None
@@ -415,7 +447,6 @@ class TestRotateCredentialsAllAuthTypes:
         result = await service.rotate_credentials(
             "cloud-test",
             request,
-            actor=actor,
         )
         assert result.custom_header_name == "X-Rotated-Token"
         assert result.custom_header_value == "rotated-header-zzz"
@@ -447,7 +478,6 @@ class TestRotateCredentialsAllAuthTypes:
         result = await service.rotate_credentials(
             "cloud-test",
             request,
-            actor=actor,
         )
         assert result.oauth_client_secret == "rotated-oauth-secret-yyy"
         assert result.oauth_client_id == "client-id-rotated"
@@ -486,7 +516,6 @@ class TestSyncModels:
         result = await service.sync_models(
             "cloud-test",
             SyncModelsRequest(replace_existing=True),
-            actor=actor,
         )
         assert result.added == ("new-model-001",)
         assert result.removed == ("old-model-001",)
@@ -514,7 +543,6 @@ class TestSyncModels:
         result = await service.sync_models(
             "cloud-test",
             SyncModelsRequest(replace_existing=False),
-            actor=actor,
         )
         assert result.added == ("added-model-001",)
         assert result.removed == ()
@@ -555,7 +583,6 @@ class TestSyncModels:
             await service.sync_models(
                 "cloud-test",
                 SyncModelsRequest(replace_existing=True),
-                actor=actor,
             )
 
     async def test_sync_rejects_when_models_added_between_pre_discover_and_lock(
@@ -590,7 +617,6 @@ class TestSyncModels:
             await service.sync_models(
                 "cloud-test",
                 SyncModelsRequest(replace_existing=True),
-                actor=actor,
             )
 
 
@@ -623,7 +649,6 @@ class TestSubscriptionRotationToSGuard:
             await service.rotate_credentials(
                 "cloud-test",
                 request,
-                actor=actor,
             )
         # Audit row must NOT be written when validation rejects.
         assert len(audit_repo.records) == 0
@@ -687,7 +712,6 @@ class TestAuditFailureIsolation:
         result = await svc.update_rate_limits(
             "cloud-test",
             RateLimitsUpdateRequest(requests_per_minute=99),
-            actor=actor,
         )
         assert result.requests_per_minute == 99
 

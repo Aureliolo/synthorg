@@ -32,14 +32,21 @@ from typing import Final, cast, overload
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.errors import ArgumentValidationError
 
-_ARG_OFFSET = "offset"
-_ARG_LIMIT = "limit"
+# Shared with ``common.paginate_sequence`` (the in-memory pager applies the
+# same offset/limit bounds), so these are the public single source of truth.
+PAGINATION_ARG_OFFSET = "offset"
+PAGINATION_ARG_LIMIT = "limit"
+PAGINATION_TY_NON_NEG_INT = "non-negative int"
+PAGINATION_TY_POS_INT = "positive int"
+
+_ARG_OFFSET = PAGINATION_ARG_OFFSET
+_ARG_LIMIT = PAGINATION_ARG_LIMIT
 _ARG_SINCE = "since"
 _ARG_UNTIL = "until"
 _ARG_ACTOR = "actor"
 
-_TY_NON_NEG_INT = "non-negative int"
-_TY_POS_INT = "positive int"
+_TY_NON_NEG_INT = PAGINATION_TY_NON_NEG_INT
+_TY_POS_INT = PAGINATION_TY_POS_INT
 _TY_NON_BLANK = "non-blank string"
 _TY_AGENT = "identified agent"
 _TY_ISO_DT = "ISO 8601 datetime string"

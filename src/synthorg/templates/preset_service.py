@@ -6,13 +6,13 @@ Merges builtin presets (from code) with user-defined custom presets
 
 import json
 import re
-from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, JsonValue
 from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.core.agent import PersonalityConfig
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
+from synthorg.core.iso_datetime import now_iso_utc
 from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -305,7 +305,7 @@ class PersonalityPresetService:
             sort_keys=True,
         )
         description = str(config.get("description", ""))
-        now = datetime.now(UTC).isoformat()
+        now = now_iso_utc()
 
         await self._repo.save(
             Preset(
@@ -368,7 +368,7 @@ class PersonalityPresetService:
             sort_keys=True,
         )
         description = str(config.get("description", ""))
-        now = datetime.now(UTC).isoformat()
+        now = now_iso_utc()
 
         await self._repo.save(
             Preset(

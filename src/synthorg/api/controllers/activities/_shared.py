@@ -246,7 +246,7 @@ async def _resolve_currency(
         RecursionError: Raised on the corresponding failure path.
     """
     try:
-        budget_cfg = await config_resolver_of(app_state).get_budget_config()
+        currency = await config_resolver_of(app_state).get_str("budget", "currency")
     except MemoryError, RecursionError:
         logger.error(
             API_REQUEST_ERROR,
@@ -266,7 +266,7 @@ async def _resolve_currency(
         degraded.append(_SRC_BUDGET_CONFIG)
         return DEFAULT_CURRENCY
     else:
-        return budget_cfg.currency
+        return currency
 
 
 async def _build_timeline(

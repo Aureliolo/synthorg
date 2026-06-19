@@ -10,6 +10,7 @@ import copy
 import json
 from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
+from typing import Final
 from uuid import uuid4
 
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
@@ -43,6 +44,10 @@ from synthorg.observability.events.skill_evolver import (
 )
 
 logger = get_logger(__name__)
+
+# Systemic-failure pattern confidence: baseline plus failure-rate weight.
+_CONFIDENCE_BASELINE: Final[float] = 0.5
+_CONFIDENCE_FAILURE_WEIGHT: Final[float] = 0.5
 
 
 class AutonomousSkillEvolver:
@@ -313,7 +318,8 @@ class AutonomousSkillEvolver:
                 f"Pattern seen by {len(pattern.agent_ids)} distinct "
                 f"agents, indicating a systemic issue"
             ),
-            confidence=0.5 + 0.5 * pattern.failure_rate,
+            confidence=_CONFIDENCE_BASELINE
+            + _CONFIDENCE_FAILURE_WEIGHT * pattern.failure_rate,
             tags=("evolver-generated", "org-scope"),
             scope=ProceduralMemoryScope.ORG,
         )

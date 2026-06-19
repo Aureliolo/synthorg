@@ -14,6 +14,49 @@ elsewhere).
 """
 
 import math
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
+
+
+def parse_retry_after_seconds(
+    raw: object,
+    now: datetime | None = None,
+) -> float | None:
+    """Parse a ``Retry-After`` value into a delay in seconds.
+
+    Accepts both RFC 9110 10.2.3 forms: a delta-seconds number
+    (``"120"``) and an HTTP-date (``"Wed, 21 Oct 2026 07:28:00 GMT"``).
+    An HTTP-date is converted to the delay from ``now``; a past date
+    yields a negative delay, which a caller's finite/non-negative guard
+    (:func:`coerce_finite_nonneg_seconds`) rejects. Returns ``None`` when
+    the value matches neither form.
+
+    Args:
+        raw: The raw header value (delta-seconds string or HTTP-date).
+        now: Reference instant for the HTTP-date delta; defaults to the
+            current UTC time. Injectable so tests are deterministic
+            without depending on wall-clock timing.
+
+    Returns:
+        The parsed seconds (possibly negative for a past date), or
+        ``None`` when unparseable.
+    """
+    try:
+        return float(raw)  # type: ignore[arg-type]
+    except ValueError, TypeError, OverflowError:
+        pass
+    if not isinstance(raw, str):
+        return None
+    try:
+        retry_dt = parsedate_to_datetime(raw)
+    except ValueError, TypeError:
+        return None
+    if retry_dt.tzinfo is None:
+        retry_dt = retry_dt.replace(tzinfo=UTC)
+    current = now if now is not None else datetime.now(UTC)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=UTC)
+    return (retry_dt - current).total_seconds()
 
 
 def coerce_finite_nonneg_seconds(raw: object) -> float | None:

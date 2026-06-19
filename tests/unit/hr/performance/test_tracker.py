@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from synthorg.core.task import AcceptanceCriterion
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import TrendDirection
 from synthorg.hr.performance.models import (
@@ -40,7 +41,7 @@ class MockQualityStrategy:
         agent_id: NotBlankStr,
         task_id: NotBlankStr,
         task_result: TaskMetricRecord,
-        acceptance_criteria: tuple[object, ...],
+        acceptance_criteria: tuple[AcceptanceCriterion, ...],
     ) -> QualityScoreResult:
         return QualityScoreResult(
             score=8.0,
@@ -378,10 +379,13 @@ class TestGetSnapshot:
     async def test_snapshot_uses_current_time_when_now_none(self) -> None:
         tracker = _make_tracker()
 
+        before = datetime.now(UTC)
         snapshot = await tracker.get_snapshot(NotBlankStr("agent-001"))
+        after = datetime.now(UTC)
 
-        # Should be close to current time
-        assert snapshot.computed_at is not None
+        # With no injected clock the snapshot stamps the wall-clock now,
+        # so it must fall within the window the call spanned.
+        assert before <= snapshot.computed_at <= after
 
 
 @pytest.mark.unit

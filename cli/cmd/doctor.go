@@ -169,6 +169,9 @@ func saveDiagnosticFile(out *ui.UI, safeDir string, report diagnostics.Report) {
 func printDoctorFooter(out *ui.UI, state config.State, report diagnostics.Report) doctorStatus {
 	_, _ = fmt.Fprintln(out.Writer())
 	out.Section("Links")
+	// localhost is correct here: the CLI runs on the same host as the
+	// docker-compose stack it manages, so these are the operator's own
+	// machine-local dashboard and API-docs URLs.
 	out.Link("Dashboard", fmt.Sprintf("http://localhost:%d", state.WebPort))
 	out.Link("API docs", fmt.Sprintf("http://localhost:%d/docs/api", state.BackendPort))
 	_, _ = fmt.Fprintln(out.Writer())

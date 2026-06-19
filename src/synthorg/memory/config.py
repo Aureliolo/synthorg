@@ -246,11 +246,13 @@ class CompanyMemoryConfig(BaseModel):
             field="backend",
             namespace=SettingNamespace.MEMORY,
             key="backend",
+            only_if_env_set=True,
         ),
         MirrorField(
             field="level",
             namespace=SettingNamespace.MEMORY,
             key="default_level",
+            only_if_env_set=True,
         ),
     )
 
@@ -259,7 +261,7 @@ class CompanyMemoryConfig(BaseModel):
         description="Memory backend name",
     )
     level: MemoryLevel = Field(
-        default=MemoryLevel.SESSION,
+        default=MemoryLevel.PERSISTENT,
         description="Default memory persistence level",
     )
     storage: MemoryStorageConfig = Field(

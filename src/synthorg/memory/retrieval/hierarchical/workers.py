@@ -38,6 +38,11 @@ from synthorg.observability.events.memory import (
 logger = get_logger(__name__)
 
 _DEFAULT_EPISODIC_WINDOW_HOURS: Final[int] = 72
+_SECONDS_PER_HOUR: Final[int] = 3600
+
+# Episodic re-ranking blend: relevance vs recency.
+_WEIGHT_RELEVANCE: Final[float] = 0.4
+_WEIGHT_RECENCY: Final[float] = 0.6
 
 
 def _scored_to_candidate(
@@ -366,7 +371,7 @@ class EpisodicWorker:
                 worker=self.name,
             )
             now = datetime.now(UTC)
-            window_seconds = self._time_window_hours * 3600
+            window_seconds = self._time_window_hours * _SECONDS_PER_HOUR
             candidates_list: list[RetrievalCandidate] = []
             fallback_relevance = self._config.default_relevance
             for e in entries:
@@ -388,7 +393,8 @@ class EpisodicWorker:
                         entry=e,
                         relevance_score=relevance,
                         recency_score=recency,
-                        combined_score=0.4 * relevance + 0.6 * recency,
+                        combined_score=_WEIGHT_RELEVANCE * relevance
+                        + _WEIGHT_RECENCY * recency,
                         source_worker=self.name,
                     )
                 )

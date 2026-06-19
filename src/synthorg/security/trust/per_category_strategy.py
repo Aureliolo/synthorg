@@ -14,6 +14,7 @@ from synthorg.observability.events.trust import (
     TRUST_EVALUATE_FAILED,
     TRUST_EVALUATE_START,
 )
+from synthorg.security.trust._criteria_helpers import meets_tasks_and_quality
 from synthorg.security.trust.config import CategoryTrustCriteria, TrustConfig
 from synthorg.security.trust.levels import TRUST_LEVEL_ORDER, TRUST_LEVEL_RANK
 from synthorg.security.trust.models import TrustEvaluationResult, TrustState
@@ -158,17 +159,8 @@ class PerCategoryTrustStrategy:
         Returns:
             True if the criteria are met.
         """
-        # Best single-window task count (not cumulative total)
-        max_tasks_completed = 0
-        for window in snapshot.windows:
-            max_tasks_completed = max(max_tasks_completed, window.tasks_completed)
-
-        if max_tasks_completed < criteria_config.tasks_completed:
-            return False
-
-        quality = snapshot.overall_quality_score
-        quality_min = criteria_config.quality_score_min
-        if quality is not None and quality < quality_min:
-            return False
-
-        return not (quality is None and quality_min > 0.0)
+        return meets_tasks_and_quality(
+            snapshot,
+            tasks_completed_min=criteria_config.tasks_completed,
+            quality_score_min=criteria_config.quality_score_min,
+        )

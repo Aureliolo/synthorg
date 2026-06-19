@@ -62,6 +62,10 @@ _r.register(
         description=(
             "LLM model identifier the coordinator's task decomposition"
             " strategy invokes against the first registered provider."
+            " Must be non-blank: a provider-present boot builds the"
+            " coordinator eagerly and the decomposition strategy rejects"
+            " an empty model, so the default is a vendor-agnostic"
+            " placeholder operators override for their model catalogue."
             " Resolved at boot; a runtime change applies on the next"
             " coordinator rebuild (provider re-init)."
         ),

@@ -61,7 +61,7 @@ async def _assemble_overview(  # noqa: PLR0913
     counts = Counter(t.status.value for t in all_tasks)
     by_status = {s.value: counts.get(s.value, 0) for s in TaskStatus}
 
-    budget_cfg = await config_resolver_of(app_state).get_budget_config()
+    currency = await config_resolver_of(app_state).get_str("budget", "currency")
     budget = await _resolve_budget_context(app_state, total_cost, now=now)
     # Overview sparkline uses daily buckets intentionally (not hourly
     # like /trends?period=7d) to produce a compact 7-point sparkline.
@@ -101,7 +101,7 @@ async def _assemble_overview(  # noqa: PLR0913
         cost_7d_trend=cost_7d,
         active_agents_count=active,
         idle_agents_count=idle,
-        currency=budget_cfg.currency,
+        currency=currency,
     )
 
 

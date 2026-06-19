@@ -7,10 +7,11 @@ all git tools.
 """
 
 from pathlib import Path
-from typing import ClassVar, Final, cast, override
+from typing import ClassVar, Final, override
 
 from pydantic import BaseModel
 
+from synthorg.core.boundary import parse_typed
 from synthorg.observability import get_logger
 from synthorg.observability.events.git import (
     GIT_CLONE_DNS_PINNED,
@@ -162,7 +163,11 @@ class GitCloneTool(_BaseGitTool):
         Returns:
             A ``ToolExecutionResult`` with the clone output.
         """
-        url = cast("str", arguments["url"])
+        # ``GitCloneArgs`` enforces a non-blank ``url`` and the
+        # ``depth >= 1`` bound; URL scheme/SSRF validation stays here
+        # because the network policy is per-instance.
+        args = parse_typed("tool.git_clone", arguments, GitCloneArgs)
+        url = args.url
 
         if not is_allowed_clone_scheme(url):
             logger.warning(
@@ -179,23 +184,23 @@ class GitCloneTool(_BaseGitTool):
                 is_error=True,
             )
 
-        args = ["clone"]
+        git_args = ["clone"]
 
-        if branch := cast("str | None", arguments.get("branch")):
-            if err := self._check_git_arg(branch, param="branch"):
+        if args.branch:
+            if err := self._check_git_arg(args.branch, param="branch"):
                 return err
-            args.extend(["--branch", branch])
+            git_args.extend(["--branch", args.branch])
 
-        if depth := arguments.get("depth"):
-            args.extend(["--depth", str(depth)])
+        if args.depth:
+            git_args.extend(["--depth", str(args.depth)])
 
-        args.append("--")
-        args.append(url)
+        git_args.append("--")
+        git_args.append(url)
 
-        if directory := cast("str | None", arguments.get("directory")):
-            if err := self._check_paths([directory]):
+        if args.directory:
+            if err := self._check_paths([args.directory]):
                 return err
-            args.append(directory)
+            git_args.append(args.directory)
 
         # SSRF prevention: validate hostname/IP after all local checks.
         validation = await validate_clone_url_host(url, self._network_policy)
@@ -203,9 +208,9 @@ class GitCloneTool(_BaseGitTool):
             return ToolExecutionResult(content=validation, is_error=True)
 
         # TOCTOU DNS rebinding mitigation
-        result = await self._apply_toctou_mitigation(args, validation)
+        result = await self._apply_toctou_mitigation(git_args, validation)
         if isinstance(result, ToolExecutionResult):
             return result
-        args = result
+        git_args = result
 
-        return await self._run_git(args, deadline=_CLONE_TIMEOUT)
+        return await self._run_git(git_args, deadline=_CLONE_TIMEOUT)

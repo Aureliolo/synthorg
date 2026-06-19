@@ -12,6 +12,7 @@ import httpx
 from pydantic import JsonValue
 
 from synthorg.a2a.models import (
+    A2AMessage,
     A2ATask,
     JsonRpcRequest,
     JsonRpcResponse,
@@ -95,13 +96,14 @@ class A2AClient:
     async def send_message(
         self,
         peer_name: str,
-        message_params: dict[str, JsonValue],
+        message: A2AMessage,
     ) -> A2ATask:
         """Send a ``message/send`` request to an external peer.
 
         Args:
             peer_name: Connection name of the target peer.
-            message_params: JSON-RPC params for message/send.
+            message: Validated A2A message to deliver; serialised to the
+                JSON-RPC ``message`` param via ``model_dump(mode="json")``.
 
         Returns:
             A2A task from the peer's response.
@@ -112,7 +114,7 @@ class A2AClient:
         return await self._call_method(
             peer_name,
             "message/send",
-            message_params,
+            {"message": message.model_dump(mode="json")},
         )
 
     async def get_task(

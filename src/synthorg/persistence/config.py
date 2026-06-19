@@ -141,6 +141,9 @@ class PostgresConfig(BaseModel):
     # ``postgresql://synthorg:<pw>@postgres:5432/synthorg``) into the
     # backend container's environment, where ``postgres`` resolves via
     # docker-compose internal DNS.
+    # The localhost default is the safe local-dev value; production
+    # deployments override the whole DSN via SYNTHORG_DATABASE_URL (where
+    # ``postgres`` resolves via docker-compose internal DNS, per above).
     host: NotBlankStr = Field(
         default="localhost",
         description="Database host",

@@ -174,7 +174,11 @@ def with_correlation(
     Note:
         This decorator is for **synchronous** functions only.  Applying
         it to an ``async def`` function raises :exc:`TypeError`.  For
-        async functions, use :func:`with_correlation_async` instead.
+        async functions, use :func:`with_correlation_async` instead. The
+        sync/async split is intentional: a wrapper's outer return type
+        must match the decorated function's call convention (sync vs
+        ``async def``), even though the contextvar binding itself is
+        sync-transparent.
 
     Args:
         request_id: Request correlation identifier to bind.

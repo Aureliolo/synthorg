@@ -7,6 +7,7 @@ via ``DetectorVariant.LLM_SEMANTIC`` in the per-category config.
 """
 
 import json
+from abc import ABC, abstractmethod
 from types import MappingProxyType
 from typing import Final, override
 
@@ -203,7 +204,7 @@ def _build_conversation_text(
     return "\n".join(parts)
 
 
-class _BaseSemanticDetector:
+class _BaseSemanticDetector(ABC):
     """Base class for LLM-backed semantic detectors.
 
     Handles provider invocation, budget tracking, and response
@@ -218,10 +219,14 @@ class _BaseSemanticDetector:
     """
 
     @property
+    @abstractmethod
     def category(self) -> ErrorCategory:
-        """Error category -- must be overridden by subclasses."""
-        msg = "Subclasses must override category"
-        raise NotImplementedError(msg)
+        """Error category this detector targets."""
+
+    @property
+    @abstractmethod
+    def supported_scopes(self) -> frozenset[DetectionScope]:
+        """Detection scopes this detector can operate on."""
 
     def __init__(  # noqa: PLR0913
         self,
@@ -245,10 +250,9 @@ class _BaseSemanticDetector:
             max_tokens=max_tokens,
         )
 
+    @abstractmethod
     def _prompt(self, conversation_text: str) -> str:
-        """Build the analysis prompt.  Override in subclasses."""
-        msg = "Subclasses must override _prompt"
-        raise NotImplementedError(msg)
+        """Build the analysis prompt for this detector's category."""
 
     async def detect(
         self,
@@ -385,13 +389,14 @@ class _BaseSemanticDetector:
 class SemanticContradictionDetector(_BaseSemanticDetector):
     """LLM-backed detector for logical contradictions."""
 
-    @override
     @property
+    @override
     def category(self) -> ErrorCategory:
         """Error category this detector targets."""
         return ErrorCategory.LOGICAL_CONTRADICTION
 
     @property
+    @override
     def supported_scopes(self) -> frozenset[DetectionScope]:
         """Detection scopes this detector can operate on."""
         return frozenset({DetectionScope.SAME_TASK})
@@ -415,13 +420,14 @@ class SemanticContradictionDetector(_BaseSemanticDetector):
 class SemanticNumericalVerificationDetector(_BaseSemanticDetector):
     """LLM-backed detector for numerical inconsistencies."""
 
-    @override
     @property
+    @override
     def category(self) -> ErrorCategory:
         """Error category this detector targets."""
         return ErrorCategory.NUMERICAL_DRIFT
 
     @property
+    @override
     def supported_scopes(self) -> frozenset[DetectionScope]:
         """Detection scopes this detector can operate on."""
         return frozenset(
@@ -447,13 +453,14 @@ class SemanticNumericalVerificationDetector(_BaseSemanticDetector):
 class SemanticMissingReferenceDetector(_BaseSemanticDetector):
     """LLM-backed detector for missing entity references."""
 
-    @override
     @property
+    @override
     def category(self) -> ErrorCategory:
         """Error category this detector targets."""
         return ErrorCategory.CONTEXT_OMISSION
 
     @property
+    @override
     def supported_scopes(self) -> frozenset[DetectionScope]:
         """Detection scopes this detector can operate on."""
         return frozenset(
@@ -479,13 +486,14 @@ class SemanticMissingReferenceDetector(_BaseSemanticDetector):
 class SemanticCoordinationDetector(_BaseSemanticDetector):
     """LLM-backed detector for coordination breakdowns."""
 
-    @override
     @property
+    @override
     def category(self) -> ErrorCategory:
         """Error category this detector targets."""
         return ErrorCategory.COORDINATION_FAILURE
 
     @property
+    @override
     def supported_scopes(self) -> frozenset[DetectionScope]:
         """Detection scopes this detector can operate on."""
         return frozenset({DetectionScope.TASK_TREE})

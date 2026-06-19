@@ -16,6 +16,7 @@ from litestar.channels import ChannelsPlugin
 from litestar.datastructures import State
 
 from synthorg._core.features import require_service
+from synthorg.api.auth.controller_helpers import require_authenticated_user
 from synthorg.api.channels import CHANNEL_APPROVALS, get_channels_plugin
 from synthorg.api.controllers._approval_review_gate import (
     preflight_review_gate,
@@ -34,7 +35,6 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     ConflictError,
     ServiceUnavailableError,
-    UnauthorizedError,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
@@ -47,7 +47,6 @@ from synthorg.observability.events.approval_gate import (
 from synthorg.observability.events.security import (
     SECURITY_APPROVAL_APPROVED,
     SECURITY_APPROVAL_REJECTED,
-    SECURITY_AUTH_FAILED,
 )
 from synthorg.observability.metrics_hub import record_approval_decision
 
@@ -173,17 +172,7 @@ def _resolve_decision(
         )
         raise ConflictError(msg)
 
-    auth_user = request.scope.get("user")
-    if not isinstance(auth_user, AuthenticatedUser):
-        msg = "Authentication required"
-        logger.warning(
-            SECURITY_AUTH_FAILED,
-            approval_id=approval_id,
-            note="No authenticated user in request scope",
-        )
-        raise UnauthorizedError(msg)
-
-    return auth_user
+    return require_authenticated_user(request)
 
 
 def _log_approval_decision(

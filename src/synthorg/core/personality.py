@@ -24,6 +24,9 @@ _WEIGHT_BIG_FIVE: Final[float] = 0.6
 _WEIGHT_COLLABORATION: Final[float] = 0.2
 _WEIGHT_CONFLICT: Final[float] = 0.2
 
+# Extraversion complement scores best at a moderate gap (tent function).
+_BF_EXTRAVERSION_OPTIMAL_DIFF: Final[float] = 0.3
+
 # Big Five dimension weights (sum to 1.0 within the Big Five component).
 _BF_OPENNESS: Final[float] = 0.2
 _BF_CONSCIENTIOUSNESS: Final[float] = 0.25
@@ -138,10 +141,10 @@ def _big_five_score(a: PersonalityConfig, b: PersonalityConfig) -> float:
     agree_sim = 1.0 - abs(a.agreeableness - b.agreeableness)
     stress_sim = 1.0 - abs(a.stress_response - b.stress_response)
 
-    # Extraversion: moderate difference is ideal (complement).
-    # Peak at 0.3 difference, using a tent-function scoring.
+    # Extraversion: moderate difference is ideal (complement), peaking
+    # at ``_BF_EXTRAVERSION_OPTIMAL_DIFF`` via tent-function scoring.
     extra_diff = abs(a.extraversion - b.extraversion)
-    optimal_diff = 0.3
+    optimal_diff = _BF_EXTRAVERSION_OPTIMAL_DIFF
     extra_score = 1.0 - abs(extra_diff - optimal_diff) / max(
         optimal_diff, 1.0 - optimal_diff
     )

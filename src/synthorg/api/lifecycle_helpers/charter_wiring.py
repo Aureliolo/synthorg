@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from synthorg.api.state import AppState
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.meta.config import SelfImprovementConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.observability.events.charter import CHARTER_SUBSTRATE_UNAVAILABLE
@@ -37,6 +38,7 @@ async def _wire_charter_engine(
     provider_registry: ProviderRegistry | None,
     persistence: PersistenceBackend | None,
     cost_tracker: CostTracker | None,
+    si_config: SelfImprovementConfig,
 ) -> None:
     """Wire the deep CEO-interview charter engine behind a provider + persistence."""
     from synthorg.meta.charter.state import CharterStateSlice  # noqa: PLC0415
@@ -52,10 +54,10 @@ async def _wire_charter_engine(
         return
     try:
         built = await _build_charter_interview(
-            app_state,
             provider_registry=provider_registry,
             persistence=persistence,
             cost_tracker=cost_tracker,
+            si_config=si_config,
         )
         if built is None:
             return
@@ -86,11 +88,11 @@ async def _wire_charter_engine(
 
 
 async def _build_charter_interview(
-    app_state: AppState,
     *,
     provider_registry: ProviderRegistry,
     persistence: PersistenceBackend,
     cost_tracker: CostTracker | None,
+    si_config: SelfImprovementConfig,
 ) -> (
     tuple[CharterInterviewService, CharterRepository, ConversationalRepositories] | None
 ):
@@ -106,18 +108,13 @@ async def _build_charter_interview(
     from synthorg.meta.charter.service import (  # noqa: PLC0415
         CharterInterviewService,
     )
-    from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
     from synthorg.persistence.charter_factory import (  # noqa: PLC0415
         build_charter_repository,
     )
     from synthorg.persistence.conversational_factory import (  # noqa: PLC0415
         build_conversational_repositories,
     )
-    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
-    si_config = await load_self_improvement_config(
-        app_state.slice(SettingsStateSlice).settings_service,
-    )
     charter_config = si_config.charter
     if not charter_config.interview_enabled:
         return None

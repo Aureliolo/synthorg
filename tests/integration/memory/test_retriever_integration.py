@@ -9,8 +9,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from synthorg.core.memory_enums import MemoryCategory
+from synthorg.core.text_estimation import DefaultTokenEstimator
 from synthorg.engine.prompt_safety import TAG_MEMORY_ENTRY
-from synthorg.memory.injection import DefaultTokenEstimator
 from synthorg.memory.models import (
     MemoryEntry,
     MemoryMetadata,

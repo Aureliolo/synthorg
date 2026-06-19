@@ -14,6 +14,7 @@ helpers it calls through.
 from datetime import datetime, timedelta
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.collections import dedupe_preserving_order
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.meta.chief_of_staff.enums import ConversationParticipantStatus
@@ -45,13 +46,7 @@ def dedupe_participants(participants: tuple[NotBlankStr, ...]) -> list[NotBlankS
     Returns:
         The de-duplicated agent ids.
     """
-    seen: set[str] = set()
-    result: list[NotBlankStr] = []
-    for participant in participants:
-        if participant not in seen:
-            seen.add(participant)
-            result.append(participant)
-    return result
+    return list(dedupe_preserving_order(participants))
 
 
 async def resolve_identities(

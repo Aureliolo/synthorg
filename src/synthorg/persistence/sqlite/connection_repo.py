@@ -22,6 +22,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import (
     AuthMethod,
     Connection,
+    ConnectionHealth,
     ConnectionStatus,
     ConnectionType,
     SecretRef,
@@ -96,9 +97,13 @@ def _row_to_connection(row: aiosqlite.Row) -> Connection:
         secret_refs=secret_refs,
         rate_limiter=rate_limiter,
         health_check_enabled=bool(health_check_enabled),
-        health_status=ConnectionStatus(health_status),
-        last_health_check_at=(
-            coerce_row_timestamp(last_health_check_at) if last_health_check_at else None
+        health=ConnectionHealth(
+            status=ConnectionStatus(health_status),
+            last_check_at=(
+                coerce_row_timestamp(last_health_check_at)
+                if last_health_check_at
+                else None
+            ),
         ),
         metadata=metadata,
         webhook_receipt_retention_days=(
@@ -148,8 +153,8 @@ class SQLiteConnectionRepository:
         created_at_iso = format_iso_utc(connection.created_at)
         updated_at_iso = format_iso_utc(connection.updated_at)
         last_health_check_at_iso = (
-            format_iso_utc(connection.last_health_check_at)
-            if connection.last_health_check_at is not None
+            format_iso_utc(connection.health.last_check_at)
+            if connection.health.last_check_at is not None
             else None
         )
         async with self._write_context():
@@ -189,7 +194,7 @@ class SQLiteConnectionRepository:
                         rate_limit_rpm,
                         rate_limit_concurrent,
                         1 if connection.health_check_enabled else 0,
-                        connection.health_status.value,
+                        connection.health.status.value,
                         last_health_check_at_iso,
                         metadata_json,
                         connection.webhook_receipt_retention_days,

@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.core.memory_enums import MemoryCategory
+from synthorg.core.text_estimation import DefaultTokenEstimator
 from synthorg.engine.prompt_safety import (
     TAG_MEMORY_ENTRY,
     untrusted_content_directive,
@@ -20,7 +21,6 @@ from synthorg.memory.formatter import (
     _format_memory_context,
     format_memory_context_with_directive,
 )
-from synthorg.memory.injection import DefaultTokenEstimator
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.ranking import ScoredMemory
 

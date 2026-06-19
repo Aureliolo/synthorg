@@ -6,10 +6,12 @@ truncated at ``max_output_bytes``.
 """
 
 from pathlib import Path
-from typing import ClassVar, cast, override
+from typing import ClassVar, override
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from synthorg.core.boundary import parse_typed
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.terminal import (
     TERMINAL_COMMAND_FAILED,
@@ -17,7 +19,6 @@ from synthorg.observability.events.terminal import (
     TERMINAL_COMMAND_SUCCESS,
     TERMINAL_COMMAND_TIMEOUT,
 )
-from synthorg.tools._misc_args import ShellCommandArgs
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.sandbox.errors import SandboxError
 from synthorg.tools.sandbox.protocol import SandboxBackend
@@ -25,6 +26,29 @@ from synthorg.tools.terminal.base_terminal_tool import BaseTerminalTool
 from synthorg.tools.terminal.config import TerminalConfig
 
 logger = get_logger(__name__)
+
+
+class ShellCommandArgs(BaseModel):
+    """Args for ``shell_command``.
+
+    Allowlist / blocklist enforcement and ``working_directory`` policy
+    stay inside the tool body because they depend on per-instance
+    sandbox configuration.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    command: NotBlankStr = Field(description="Shell command to execute")
+    working_directory: NotBlankStr | None = Field(
+        default=None,
+        description="Working directory (relative to workspace)",
+    )
+    timeout: float | None = Field(
+        default=None,
+        ge=1,
+        le=600,
+        description="Command timeout in seconds",
+    )
 
 
 class ShellCommandTool(BaseTerminalTool):
@@ -127,13 +151,25 @@ class ShellCommandTool(BaseTerminalTool):
         Returns:
             A ``ToolExecutionResult`` with command output.
         """
-        command = cast("str", arguments["command"])
-        working_dir = cast("str | None", arguments.get("working_directory"))
-        raw_timeout = arguments.get("timeout")
+        try:
+            args = parse_typed("tool.shell_command", arguments, ShellCommandArgs)
+        except ValidationError as exc:
+            logger.warning(
+                TERMINAL_COMMAND_FAILED,
+                reason="invalid_arguments",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return ToolExecutionResult(
+                content=(
+                    "Invalid shell command arguments: a non-empty command is required"
+                ),
+                is_error=True,
+            )
+        command = args.command
+        working_dir = args.working_directory
         timeout: float = (
-            cast("float", raw_timeout)
-            if raw_timeout is not None
-            else self._config.default_timeout
+            args.timeout if args.timeout is not None else self._config.default_timeout
         )
 
         if not command.strip():

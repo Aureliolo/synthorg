@@ -8,6 +8,9 @@ counting and a ``DefaultTokenEstimator`` backed by the shared
 
 from typing import Protocol, runtime_checkable
 
+from synthorg.core.text_estimation import (
+    DefaultTokenEstimator as _BaseTokenEstimator,
+)
 from synthorg.core.text_estimation import approx_tokens
 from synthorg.providers.models import ChatMessage
 
@@ -46,28 +49,19 @@ class PromptTokenEstimator(Protocol):
         ...
 
 
-class DefaultTokenEstimator:
-    """Heuristic token estimator using character-count approximation.
+class DefaultTokenEstimator(_BaseTokenEstimator):
+    """Conversation-aware superset of the core text estimator.
 
-    Delegates to ``synthorg.core.text_estimation.approx_tokens``.
-    Suitable for rough estimates; swap in a tiktoken-based estimator
-    for precision.
+    Inherits ``estimate_tokens`` from
+    ``synthorg.core.text_estimation.DefaultTokenEstimator`` (the single
+    canonical heuristic) and adds ``estimate_conversation_tokens``, which
+    couples to the provider ``ChatMessage`` shape that ``core`` does not
+    import. Suitable for rough estimates; swap in a tiktoken-based
+    estimator for precision.
     """
 
     _PER_MESSAGE_OVERHEAD: int = 4
     """Overhead tokens per message for role tags and structure."""
-
-    def estimate_tokens(self, text: str) -> int:
-        """Estimate tokens via the shared chars-per-token heuristic.
-
-        Args:
-            text: The text to estimate tokens for.
-
-        Returns:
-            Estimated token count: ``0`` for empty text, otherwise at
-            least ``1``.
-        """
-        return approx_tokens(text)
 
     def estimate_conversation_tokens(
         self,

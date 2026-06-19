@@ -84,6 +84,9 @@ SCALING_STRATEGY_PRIORITY_FALLBACK: Final[int] = 999
 
 # ── Server (bootstrap-only) ──────────────────────────────────────
 
+# The 127.0.0.1 default is the safe local-dev bind; production
+# deployments override it (e.g. 0.0.0.0 behind a reverse proxy) via the
+# SYNTHORG_API_SERVER_HOST env var resolved by RootConfig at startup.
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.API,
@@ -650,7 +653,7 @@ _r.register(
         namespace=SettingNamespace.API,
         key="max_lifecycle_events_per_query",
         type=SettingType.INTEGER,
-        default="10000",
+        default="1000",
         description=(
             "Maximum lifecycle events returned by the activities endpoint"
             " for a single query"
@@ -667,7 +670,7 @@ _r.register(
         namespace=SettingNamespace.API,
         key="max_audit_records_per_query",
         type=SettingType.INTEGER,
-        default="10000",
+        default="1000",
         description=(
             "Maximum audit records returned by the audit endpoint for a single query"
         ),
@@ -683,7 +686,7 @@ _r.register(
         namespace=SettingNamespace.API,
         key="max_metrics_per_query",
         type=SettingType.INTEGER,
-        default="10000",
+        default="1000",
         description=(
             "Maximum metrics records returned by the coordination metrics"
             " endpoint for a single query"

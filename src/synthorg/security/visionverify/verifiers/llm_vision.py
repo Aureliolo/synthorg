@@ -96,7 +96,7 @@ _DEGRADED_DESCRIPTION: Final[str] = (
     "The vision verifier could not parse a structured verdict from the model."
 )
 
-_VERDICT_ARGS_CONFIG = ConfigDict(frozen=True, extra="forbid")
+_VERDICT_ARGS_CONFIG = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
 
 class _FindingArgs(BaseModel):

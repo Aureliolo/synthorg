@@ -16,8 +16,7 @@ const mockConnections = [
     auth_method: 'bearer_token',
     base_url: 'https://api.github.com',
     health_check_enabled: true,
-    health_status: 'healthy',
-    last_health_check_at: NOW,
+    health: { status: 'healthy', last_check_at: NOW },
     metadata: {},
     created_at: '2026-04-01T09:00:00Z',
     updated_at: NOW,
@@ -28,8 +27,7 @@ const mockConnections = [
     auth_method: 'bearer_token',
     base_url: null,
     health_check_enabled: true,
-    health_status: 'degraded',
-    last_health_check_at: NOW,
+    health: { status: 'degraded', last_check_at: NOW },
     metadata: {},
     created_at: '2026-04-02T10:30:00Z',
     updated_at: NOW,
@@ -38,7 +36,7 @@ const mockConnections = [
 
 const mockHealthReports = mockConnections.map((c) => ({
   connection_name: c.name,
-  status: c.health_status,
+  status: c.health.status,
   latency_ms: 42,
   error_detail: null,
   checked_at: NOW,

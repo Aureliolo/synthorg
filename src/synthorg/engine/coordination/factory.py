@@ -241,7 +241,7 @@ def build_coordinator(  # noqa: PLR0913
            *routing_scorer_config* (operator-tunable weights resolved
            from ``EngineBridgeConfig`` via
            :meth:`RoutingScorerConfig.from_bridge_config`) if provided,
-           else with the legacy ``min_score`` override only
+           else with the ``min_score`` scalar override only
         5. ``TopologySelector(config.auto_topology_rules)``
         6. ``TaskRoutingService(scorer, topology_selector)``
         7. ``ParallelExecutor(engine=engine)``
@@ -265,7 +265,7 @@ def build_coordinator(  # noqa: PLR0913
         git_backend: Optional pluggable git backend; when provided, the
             workspace service routes per-project merge+push through the
             serial :class:`PushQueueCoordinator` for forge-collision
-            safety. ``None`` keeps the legacy in-process merge path.
+            safety. ``None`` keeps the in-process merge path.
         shutdown_manager: Optional shutdown manager for the executor.
         performance_tracker: Optional tracker for recording
             per-agent coordination contributions.

@@ -10,8 +10,9 @@ methods are supported (backward compatible):
    first message.  Keeps the ticket out of URLs, logs, and browser
    history.
 
-2. **Query-param auth** (legacy): connect to ``/api/v1/ws?ticket=<t>``.
-   Validated before ``accept()`` so invalid tickets never upgrade.
+2. **Query-param auth** (fallback for clients that cannot send a
+   first message): connect to ``/api/v1/ws?ticket=<t>``. Validated
+   before ``accept()`` so invalid tickets never upgrade.
 
 After authentication, clients send JSON messages to subscribe/
 unsubscribe from named channels with optional payload filters.
@@ -96,7 +97,7 @@ _WS_CLOSE_BACKPRESSURE: int = 1013
 _WS_CLOSE_AUTH_FAILED: int = 4001
 _WS_CLOSE_FORBIDDEN: int = 4003
 
-# Upper bound on the legacy ``?ticket=`` query parameter before it is even
+# Upper bound on the ``?ticket=`` query parameter before it is even
 # looked up in the ticket store. A ticket is ``token_urlsafe(N)`` where N is
 # ``security.auth_token_bytes`` (max 64), so the longest legitimate ticket is
 # ceil(64 * 4 / 3) = 86 chars; double it as a generous ceiling so an oversized
@@ -137,7 +138,7 @@ async def _validate_ticket(
     ticket_store = require_service(
         app_state.slice(ApiCoreStateSlice).ticket_store, "WS Ticket Store"
     )
-    user: AuthenticatedUser | None = ticket_store.validate_and_consume(
+    user: AuthenticatedUser | None = await ticket_store.validate_and_consume(
         ticket,
     )
     if user is None:
@@ -249,7 +250,7 @@ async def _auth_from_first_message(
     ticket_store = require_service(
         app_state.slice(ApiCoreStateSlice).ticket_store, "WS Ticket Store"
     )
-    user: AuthenticatedUser | None = ticket_store.validate_and_consume(
+    user: AuthenticatedUser | None = await ticket_store.validate_and_consume(
         ticket,
     )
     if user is None:
@@ -864,7 +865,7 @@ async def ws_handler(
        accept the upgrade, then send ``{"action": "auth", "ticket": "..."}``
        as the first message.  Keeps the ticket out of URLs and logs.
 
-    2. **Query-param auth** (legacy): connect with ``?ticket=<ticket>``.
+    2. **Query-param auth** (fallback): connect with ``?ticket=<ticket>``.
        Validated and consumed before ``accept()``.
     """
     auth_result = await _authenticate_ws(socket)
@@ -994,7 +995,7 @@ async def _receive_loop(  # noqa: PLR0913 -- optional backpressure + clock + tim
     conn_user: AuthenticatedUser,
     outbound_queue: asyncio.Queue[bytes],
     *,
-    frame_timeout_seconds: int | None = None,
+    frame_timeout_seconds: float | None = None,
     backpressure: _BackpressureTracker | None = None,
     clock: Clock | None = None,
 ) -> None:

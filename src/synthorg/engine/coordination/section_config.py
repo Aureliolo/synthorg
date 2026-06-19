@@ -53,22 +53,26 @@ class CoordinationSectionConfig(BaseModel):
             namespace=SettingNamespace.COORDINATION,
             key="fail_fast",
             parse=parse_bool,
+            only_if_env_set=True,
         ),
         MirrorField(
             field="enable_workspace_isolation",
             namespace=SettingNamespace.COORDINATION,
             key="enable_workspace_isolation",
             parse=parse_bool,
+            only_if_env_set=True,
         ),
         MirrorField(
             field="base_branch",
             namespace=SettingNamespace.COORDINATION,
             key="base_branch",
+            only_if_env_set=True,
         ),
         MirrorField(
             field="decomposition_model",
             namespace=SettingNamespace.COORDINATION,
             key="decomposition_model",
+            only_if_env_set=True,
         ),
         MirrorField(
             field="max_stall_count",
@@ -89,16 +93,19 @@ class CoordinationSectionConfig(BaseModel):
             namespace=SettingNamespace.COORDINATION,
             key="enable_coordination_middleware",
             parse=parse_bool,
+            only_if_env_set=True,
         ),
         MirrorField(
             field="replan_strategy",
             namespace=SettingNamespace.COORDINATION,
             key="replan_strategy",
+            only_if_env_set=True,
         ),
         MirrorField(
             field="orchestrator_strategy",
             namespace=SettingNamespace.COORDINATION,
             key="orchestrator_strategy",
+            only_if_env_set=True,
         ),
         MirrorField(
             field="max_delegation_rounds",
@@ -139,8 +146,10 @@ class CoordinationSectionConfig(BaseModel):
         description=(
             "LLM model identifier used by the coordinator's task "
             "decomposition strategy. Resolved against the first "
-            "registered provider at boot. Overridable via the "
-            "SYNTHORG_COORDINATION_DECOMPOSITION_MODEL environment "
+            "registered provider at boot. Must be non-blank: a "
+            "provider-present boot builds the coordinator eagerly and the "
+            "decomposition strategy rejects an empty model. Overridable via "
+            "the SYNTHORG_COORDINATION_DECOMPOSITION_MODEL environment "
             "variable (precedence: DB > env > this code default), "
             "applied on the next coordinator rebuild."
         ),

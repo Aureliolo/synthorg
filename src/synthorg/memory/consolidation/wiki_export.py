@@ -7,12 +7,12 @@ three-view filesystem tree: ``raw/``, ``wiki/``, and ``index.md``.
 import asyncio
 import builtins
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.iso_datetime import now_iso_utc
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.consolidation.config import WikiExportConfig
 from synthorg.memory.models import MemoryQuery
@@ -99,9 +99,14 @@ class WikiExporter:
         root = Path(self._config.export_root)
         raw_dir = root / "raw"
         wiki_dir = root / "wiki"
-        try:
+
+        def _make_export_dirs() -> None:
+            """Create the raw + wiki export directories (blocking)."""
             raw_dir.mkdir(parents=True, exist_ok=True)
             wiki_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            await asyncio.to_thread(_make_export_dirs)
         except OSError as exc:
             logger.warning(
                 WIKI_EXPORT_FAILED,
@@ -131,7 +136,7 @@ class WikiExporter:
                 wiki_dir,
             )
 
-        self._write_index(root, raw_count, compressed_count)
+        await asyncio.to_thread(self._write_index, root, raw_count, compressed_count)
 
         logger.info(
             WIKI_EXPORT_COMPLETE,
@@ -355,7 +360,7 @@ class WikiExporter:
             MemoryError: If the related operation fails.
             RecursionError: If the related operation fails.
         """
-        now = datetime.now(UTC).isoformat()
+        now = now_iso_utc()
         index_content = (
             f"# Memory Wiki Export\n\n"
             f"**Exported at:** {now}\n\n"
