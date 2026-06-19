@@ -42,6 +42,7 @@ class IntegrationsBundle:
     """Services auto-wired by :func:`auto_wire_integrations`."""
 
     connection_catalog: ConnectionCatalog | None = None
+    provider_credential_catalog: ConnectionCatalog | None = None
     oauth_token_manager: OAuthTokenManager | None = None
     health_prober_service: HealthProberService | None = None
     tunnel_provider: TunnelProvider | None = None
@@ -275,7 +276,13 @@ def auto_wire_integrations(  # noqa: PLR0913
         effective_config.integrations.tunnel.auth_token_env,
     )
 
-    if not (effective_config.integrations.enabled and persistence is not None):
+    # The credential catalog is built whenever persistence is connected,
+    # independent of ``integrations.enabled``: LLM provider authentication
+    # resolves credentials through it, so gating it on the integrations
+    # feature flag would regress provider auth on a minimal install. Only the
+    # integrations-specific surfaces (health prober, OAuth, webhooks,
+    # rate-limit coordinator) below stay gated on the flag.
+    if persistence is None:
         return bundle
 
     try:
@@ -346,11 +353,24 @@ def auto_wire_integrations(  # noqa: PLR0913
                     "connection repository for integrations wiring"
                 ),
             )
-        bundle.connection_catalog = ConnectionCatalog(
+        catalog = ConnectionCatalog(
             repository=connections_repo,
             secret_backend=secret_backend,
         )
-        bind_health_check_catalog(bundle.connection_catalog)
+        # Always-on: provider credential resolution depends on this.
+        bundle.provider_credential_catalog = catalog
+        logger.info(API_SERVICE_AUTO_WIRED, service="provider_credential_catalog")
+
+        # Everything below is the integrations feature surface; gate it on the
+        # flag. When integrations is off the catalog above still backs provider
+        # auth, but the connection-management / webhook / OAuth / health
+        # machinery (and the integrations controllers that read
+        # ``connection_catalog``) stay dormant.
+        if not effective_config.integrations.enabled:
+            return bundle
+
+        bundle.connection_catalog = catalog
+        bind_health_check_catalog(catalog)
         logger.info(API_SERVICE_AUTO_WIRED, service="connection_catalog")
 
         health_cfg = effective_config.integrations.health

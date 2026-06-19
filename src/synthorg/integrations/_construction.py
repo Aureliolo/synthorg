@@ -18,6 +18,7 @@ def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
     app_state.swap_slice(
         IntegrationsStateSlice.model_construct(
             connection_catalog=integrations.connection_catalog,
+            provider_credential_catalog=integrations.provider_credential_catalog,
             oauth_token_manager=integrations.oauth_token_manager,
             health_prober_service=integrations.health_prober_service,
             tunnel_provider=integrations.tunnel_provider,
