@@ -48,6 +48,7 @@ def _make_budget_config(  # noqa: PLR0913
     per_agent_daily_limit: float = 10.0,
     per_task_limit: float = 5.0,
     reset_day: int = 1,
+    run_hard_ceiling: float = 0.0,
     auto_downgrade: AutoDowngradeConfig | None = None,
 ) -> BudgetConfig:
     return BudgetConfig(
@@ -60,6 +61,7 @@ def _make_budget_config(  # noqa: PLR0913
         per_agent_daily_limit=per_agent_daily_limit,
         per_task_limit=per_task_limit,
         reset_day=reset_day,
+        run_hard_ceiling=run_hard_ceiling,
         auto_downgrade=auto_downgrade or AutoDowngradeConfig(),
     )
 

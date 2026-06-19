@@ -249,7 +249,7 @@ class ApiBridgeConfig(BaseModel):
     max_rpm_default: int = Field(default=60, ge=1, le=100_000)
     compression_minimum_size_bytes: int = Field(default=1000, ge=100, le=10_000)
     request_max_body_size_bytes: int = Field(
-        default=52_428_800, ge=1_000_000, le=536_870_912
+        default=10_485_760, ge=1_000_000, le=536_870_912
     )
     max_lifecycle_events_per_query: int = Field(default=1_000, ge=100, le=1_000_000)
     max_audit_records_per_query: int = Field(default=1_000, ge=100, le=1_000_000)
