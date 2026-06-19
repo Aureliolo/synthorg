@@ -38,3 +38,12 @@ RESEARCH_RUN_FAILED: Final[str] = "research.run.failed"
 
 RESEARCH_LLM_OUTPUT_INVALID: Final[str] = "research.llm.output_invalid"
 """Emitted at WARNING when an LLM stage returns unparseable structured output."""
+
+RESEARCH_BUDGET_EXCEEDED: Final[str] = "research.budget.exceeded"
+"""Emitted at WARNING before a run is rejected for exceeding its cost budget."""
+
+RESEARCH_SYNTHESIS_FAILED: Final[str] = "research.synthesis.failed"
+"""Emitted at WARNING before a synthesis/citation-binding step rejects its input."""
+
+RESEARCH_UNAVAILABLE: Final[str] = "research.unavailable"
+"""Emitted at WARNING before a factory rejects a disabled / unwired research path."""

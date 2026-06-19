@@ -26,6 +26,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.workspace._git_subprocess import run_git_subprocess
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.project_brain import (
+    BRAIN_ENTRY_COMMIT_FAILED,
     BRAIN_ENTRY_COMMIT_PUSHED,
     BRAIN_SNAPSHOT_FAILED,
     BRAIN_SNAPSHOT_WRITTEN,
@@ -196,6 +197,11 @@ class BrainWriter:
                     f"git checkout {BRAIN_BRANCH_NAME} failed: "
                     f"{stderr.strip() or 'unknown error'}"
                 )
+                logger.warning(
+                    BRAIN_ENTRY_COMMIT_FAILED,
+                    step="checkout_existing_branch",
+                    error_type=BrainCommitError.__name__,
+                )
                 raise BrainCommitError(msg)
             return
         rc_branch, _, stderr = await run_git_subprocess(
@@ -211,6 +217,11 @@ class BrainWriter:
             msg = (
                 f"git checkout -b {BRAIN_BRANCH_NAME} from "
                 f"{default_branch} failed: {stderr.strip() or 'unknown error'}"
+            )
+            logger.warning(
+                BRAIN_ENTRY_COMMIT_FAILED,
+                step="create_branch",
+                error_type=BrainCommitError.__name__,
             )
             raise BrainCommitError(msg)
 
@@ -240,6 +251,12 @@ class BrainWriter:
         )
         if rc_add != 0:
             msg = f"git add {rel} failed: {stderr_add.strip() or 'unknown error'}"
+            logger.warning(
+                BRAIN_ENTRY_COMMIT_FAILED,
+                step="git_add",
+                entry_id=entry.entry_id,
+                error_type=BrainCommitError.__name__,
+            )
             raise BrainCommitError(msg)
         message = f"brain({entry.entry_kind.value}): {entry.entry_id} r{entry.revision}"
         rc_commit, _, stderr_commit = await run_git_subprocess(
@@ -260,6 +277,12 @@ class BrainWriter:
                 f"git commit failed for {rel}: "
                 f"{stderr_commit.strip() or 'unknown error'}"
             )
+            logger.warning(
+                BRAIN_ENTRY_COMMIT_FAILED,
+                step="git_commit",
+                entry_id=entry.entry_id,
+                error_type=BrainCommitError.__name__,
+            )
             raise BrainCommitError(msg)
         rc_sha, sha_out, stderr_sha = await run_git_subprocess(
             repo_root,
@@ -270,5 +293,11 @@ class BrainWriter:
         )
         if rc_sha != 0 or not sha_out.strip():
             msg = f"git rev-parse HEAD failed: {stderr_sha.strip() or 'no output'}"
+            logger.warning(
+                BRAIN_ENTRY_COMMIT_FAILED,
+                step="rev_parse_head",
+                entry_id=entry.entry_id,
+                error_type=BrainCommitError.__name__,
+            )
             raise BrainCommitError(msg)
         return NotBlankStr(sha_out.strip())

@@ -222,6 +222,11 @@ class ToolsmithCycleScheduler:
         stop_event = self._stop_event
         if stop_event is None:  # defensive; start() guarantees non-None
             msg = "_run invoked without an initialised stop event"
+            logger.error(
+                TOOLSMITH_CYCLE_SCHEDULER_FAILED,
+                reason="run_without_stop_event",
+                error_type=RuntimeError.__name__,
+            )
             raise RuntimeError(msg)
         while not stop_event.is_set():
             if await self._resolve_cycle_enabled():

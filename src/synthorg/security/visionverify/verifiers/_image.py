@@ -14,7 +14,11 @@ from typing import Final
 import numpy as np
 from PIL import Image, UnidentifiedImageError
 
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.vision_verify import VISION_SCREENSHOT_REJECTED
 from synthorg.security.visionverify.errors import VisionScreenshotError
+
+logger = get_logger(__name__)
 
 _RGB_CHANNELS: Final[int] = 3
 _MAX_CHANNEL_VALUE: Final[int] = 255
@@ -35,14 +39,29 @@ def resolve_screenshot(workspace: Path, workspace_path: str) -> Path:
     """
     if ".." in Path(workspace_path).parts:
         msg = "screenshot path must not contain '..' segments"
+        logger.warning(
+            VISION_SCREENSHOT_REJECTED,
+            reason="traversal_segment",
+            error_type=VisionScreenshotError.__name__,
+        )
         raise VisionScreenshotError(msg, context={"path": workspace_path})
     candidate = (workspace / workspace_path).resolve()
     root = workspace.resolve()
     if not candidate.is_relative_to(root):
         msg = "screenshot path must resolve under the workspace root"
+        logger.warning(
+            VISION_SCREENSHOT_REJECTED,
+            reason="escapes_workspace_root",
+            error_type=VisionScreenshotError.__name__,
+        )
         raise VisionScreenshotError(msg, context={"path": workspace_path})
     if not candidate.is_file():
         msg = "screenshot file does not exist"
+        logger.warning(
+            VISION_SCREENSHOT_REJECTED,
+            reason="file_missing",
+            error_type=VisionScreenshotError.__name__,
+        )
         raise VisionScreenshotError(msg, context={"path": workspace_path})
     return candidate
 
@@ -64,6 +83,12 @@ def mean_rgb(path: Path) -> tuple[int, int, int]:
             array = np.asarray(rgb, dtype=np.float64)
     except (UnidentifiedImageError, OSError, ValueError) as exc:
         msg = "screenshot could not be decoded as an image"
+        logger.warning(
+            VISION_SCREENSHOT_REJECTED,
+            reason="decode_failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         raise VisionScreenshotError(
             msg,
             context={"error_type": type(exc).__name__},

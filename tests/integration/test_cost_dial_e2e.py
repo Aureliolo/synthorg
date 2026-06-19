@@ -107,6 +107,25 @@ class _InMemoryForecastRepo:
         self.rows[entity_id] = row.model_copy(update=merged)
         return True
 
+    async def raise_ceiling_if_halted(
+        self,
+        entity_id: UUID,
+        *,
+        new_ceiling: float,
+        updated_at: datetime,
+    ) -> bool:
+        row = self.rows.get(entity_id)
+        if row is None or row.halt_context is None:
+            return False
+        self.rows[entity_id] = row.model_copy(
+            update={
+                "ceiling_amount": new_ceiling,
+                "halt_context": None,
+                "updated_at": updated_at,
+            }
+        )
+        return True
+
     async def query(
         self, filter_spec: object, *, limit: int = 100, offset: int = 0
     ) -> tuple[Forecast, ...]:

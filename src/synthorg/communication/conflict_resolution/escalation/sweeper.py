@@ -28,7 +28,7 @@ from synthorg.observability.events.conflict import (
 )
 from synthorg.observability.metrics_hub import record_escalation_outcome
 from synthorg.settings.kill_switch import resolve_bool_with_fallback
-from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
 _DEFAULT_INTERVAL_SECONDS: Final[float] = 30.0
@@ -42,7 +42,7 @@ class EscalationExpirationSweeper:
         store: EscalationQueueStore,
         *,
         interval_seconds: float = _DEFAULT_INTERVAL_SECONDS,
-        config_resolver: ConfigResolver | None = None,
+        config_resolver: ConfigResolverProtocol | None = None,
     ) -> None:
         """Initialise the sweeper.
 

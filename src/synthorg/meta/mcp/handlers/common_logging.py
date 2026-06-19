@@ -23,8 +23,10 @@ source regardless of which domain emitted the event.
 """
 
 from synthorg.meta.mcp.errors import GuardrailViolationError
+from synthorg.meta.mcp.handlers.common_args import actor_label
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
+    MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_ARGUMENT_INVALID,
     MCP_HANDLER_GUARDRAIL_VIOLATED,
     MCP_HANDLER_INVOKE_FAILED,
@@ -167,6 +169,40 @@ def log_handler_invoke_failed(
         error=safe_error_description(exc),
         **context,
     )
+
+
+def log_handler_admin_op_executed(
+    tool: str,
+    *,
+    reason: str,
+    actor: object,
+    target_id: str | None = None,
+) -> None:
+    """Emit ``MCP_ADMIN_OP_EXECUTED`` once on a successful admin op.
+
+    Called by every admin handler after the destructive operation has
+    succeeded (and only then), so the signed audit chain records who ran
+    what, why, and against which target. ``require_admin_guardrails``
+    guarantees a real, attributable actor, so ``actor_label`` resolves
+    to a concrete identifier rather than the anonymous fallback.
+
+    Args:
+        tool: Full ``synthorg_<domain>_<action>`` tool name.
+        reason: The validated operator-supplied reason (from the
+            guardrail return tuple).
+        actor: The resolved calling agent identity.
+        target_id: Identifier of the entity the op acted on, when the
+            op targets a specific record (omitted for collection-wide
+            ops that have no single target).
+    """
+    fields: dict[str, object] = {
+        "tool_name": tool,
+        "actor_agent_id": actor_label(actor),
+        "reason": reason,
+    }
+    if target_id is not None:
+        fields["target_id"] = target_id
+    logger.info(MCP_ADMIN_OP_EXECUTED, **fields)
 
 
 def log_handler_guardrail_violated(

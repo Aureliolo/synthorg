@@ -16,6 +16,7 @@ from synthorg.engine.loop_protocol import (
     TerminationReason,
 )
 from synthorg.engine.prompt_safety import (
+    ALL_FENCE_TAGS,
     TAG_BRAIN_STATE,
     TAG_CODE_DIFF,
     TAG_CONFIG_VALUE,
@@ -82,6 +83,20 @@ _FENCE_TAGS: Final[tuple[str, ...]] = (
     TAG_RESEARCH_SOURCE,
     TAG_BRAIN_STATE,
 )
+
+# Import-time guard: every fence tag in the prompt-safety registry must
+# appear in ``_FENCE_TAGS`` so its closing-tag breakout attempts are
+# detected.  A new ``TAG_*`` constant added to ``prompt_safety`` without
+# being listed here fails fast at import rather than silently dropping
+# out of injection-detection coverage.
+_MISSING_FENCE_TAGS = ALL_FENCE_TAGS - set(_FENCE_TAGS)
+if _MISSING_FENCE_TAGS:
+    _missing = ", ".join(sorted(_MISSING_FENCE_TAGS))
+    _msg = (
+        f"_FENCE_TAGS is missing prompt-safety registry tags: {_missing}. "
+        f"Add them so closing-tag breakout detection stays complete."
+    )
+    raise ValueError(_msg)
 
 _INJECTION_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
     re.compile(r"ignore\s+(all|previous|prior)\s+instructions?", re.IGNORECASE),

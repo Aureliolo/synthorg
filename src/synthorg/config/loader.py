@@ -20,6 +20,7 @@ from synthorg.config.utils import deep_merge
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.config import (
     CONFIG_DISCOVERY_FOUND,
+    CONFIG_DISCOVERY_NOT_FOUND,
     CONFIG_DISCOVERY_STARTED,
     CONFIG_ENV_VAR_RESOLVED,
     CONFIG_LINE_MAP_COMPOSE_FAILED,
@@ -141,6 +142,12 @@ def _parse_yaml_string(
         return {}
     if not isinstance(data, dict):
         msg = f"Expected YAML mapping at top level, got {type(data).__name__}"
+        logger.warning(
+            CONFIG_PARSE_FAILED,
+            source=source_name,
+            reason="non_mapping_top_level",
+            error_type=ConfigParseError.__name__,
+        )
         raise ConfigParseError(
             msg,
             locations=(ConfigLocation(file_path=source_name),),
@@ -298,6 +305,12 @@ def _resolve_env_var_match(
     if default is not None:
         return default
     msg = f"Environment variable '{var_name}' is not set and no default was provided"
+    logger.warning(
+        CONFIG_VALIDATION_FAILED,
+        var_name=var_name,
+        reason="env_var_unset_no_default",
+        error_type=ConfigValidationError.__name__,
+    )
     raise ConfigValidationError(
         msg,
         locations=(ConfigLocation(file_path=source_file),),
@@ -393,6 +406,11 @@ def discover_config() -> Path:
     searched = [str(c) for c in candidates]
     msg = "No configuration file found. Searched:\n" + "\n".join(
         f"  - {p}" for p in searched
+    )
+    logger.warning(
+        CONFIG_DISCOVERY_NOT_FOUND,
+        searched=searched,
+        error_type=ConfigFileNotFoundError.__name__,
     )
     raise ConfigFileNotFoundError(
         msg,

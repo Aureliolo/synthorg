@@ -13,6 +13,10 @@ from synthorg.core.slug import kebab_slug
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import DOCS_SLUG_MAX_LENGTH
 from synthorg.docs_engine.errors import DocValidationError
+from synthorg.observability import get_logger
+from synthorg.observability.events.docs import DOC_VALIDATION_FAILED
+
+logger = get_logger(__name__)
 
 _FALLBACK_SLUG: NotBlankStr = NotBlankStr("doc")
 _MAX_SUFFIX: int = 10_000
@@ -52,6 +56,11 @@ def derive_slug(
             return candidate
         suffix += 1
     msg = f"Could not derive a unique slug from {title!r} (exhausted suffix space)"
+    logger.warning(
+        DOC_VALIDATION_FAILED,
+        reason="slug_suffix_space_exhausted",
+        error_type=DocValidationError.__name__,
+    )
     raise DocValidationError(msg)
 
 

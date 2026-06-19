@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
     ONTOLOGY_ENTITY_DECORATOR_REGISTERED,
+    ONTOLOGY_ENTITY_DUPLICATE,
 )
 from synthorg.ontology.errors import OntologyDuplicateError
 from synthorg.ontology.models import (
@@ -215,6 +216,11 @@ def ontology_entity(
         with _REGISTRY_LOCK:
             if name in _RAW_REGISTRY:
                 msg = f"Entity '{name}' is already registered"
+                logger.warning(
+                    ONTOLOGY_ENTITY_DUPLICATE,
+                    entity_name=name,
+                    error_type=OntologyDuplicateError.__name__,
+                )
                 raise OntologyDuplicateError(msg)
             _RAW_REGISTRY[name] = _RegistryEntry(
                 cls=target_cls,

@@ -42,15 +42,21 @@ export function isBenignError(reason: unknown): boolean {
  * to DEBUG so they do not toast or pollute the error sink. Everything
  * else logs via the structured logger and surfaces a low-noise toast
  * in production.
+ *
+ * Returns an idempotent uninstall function that detaches both window
+ * listeners and resets the install guard, so a test (or a hot-reload)
+ * that installs handlers can tear them down without leaking listeners.
+ * A second call while already installed, or a call in a non-window
+ * (SSR) context, returns a no-op uninstaller.
  */
 let installed = false
 
-export function installGlobalErrorHandlers(): void {
-  if (installed) return
-  if (typeof window === 'undefined') return
+export function installGlobalErrorHandlers(): () => void {
+  if (installed) return () => {}
+  if (typeof window === 'undefined') return () => {}
   installed = true
 
-  window.addEventListener('unhandledrejection', (event: PromiseRejectionEvent) => {
+  const onUnhandledRejection = (event: PromiseRejectionEvent): void => {
     const reason: unknown = event.reason
     const formatted = formatReason(reason)
     if (isBenignError(reason)) {
@@ -63,9 +69,9 @@ export function installGlobalErrorHandlers(): void {
       reason: sanitizeForLog(formatted),
     })
     notifyOperator(TOAST_TITLE, formatted)
-  })
+  }
 
-  window.addEventListener('error', (event: ErrorEvent) => {
+  const onError = (event: ErrorEvent): void => {
     // Some browser errors only carry message / filename / lineno /
     // colno and have a null ``event.error`` (cross-origin script
     // failures, certain resource-load errors, etc.). Falling back to
@@ -88,7 +94,16 @@ export function installGlobalErrorHandlers(): void {
       reason: sanitizeForLog(reason),
     })
     notifyOperator(TOAST_TITLE, reason)
-  })
+  }
+
+  window.addEventListener('unhandledrejection', onUnhandledRejection)
+  window.addEventListener('error', onError)
+
+  return () => {
+    window.removeEventListener('unhandledrejection', onUnhandledRejection)
+    window.removeEventListener('error', onError)
+    installed = false
+  }
 }
 
 function formatReason(reason: unknown): string {

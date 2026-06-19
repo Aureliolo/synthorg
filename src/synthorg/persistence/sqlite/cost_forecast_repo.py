@@ -38,6 +38,7 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import format_iso_utc, validate_pagination_args
 from synthorg.persistence._shared.cost_forecast_marshalling import (
     COST_FORECAST_COLUMNS,
+    FORECAST_CLEAR_HALT_SQL_QMARK,
     build_cost_forecast_where,
     forecast_save_params,
     row_to_forecast,
@@ -412,6 +413,52 @@ class SQLiteCostForecastRepository:
                 logger.warning(
                     PERSISTENCE_COST_FORECAST_FAILED,
                     operation="transition_if",
+                    forecast_id=str(entity_id),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+        return _db_rowcount > 0
+
+    async def raise_ceiling_if_halted(
+        self,
+        entity_id: UUID,
+        *,
+        new_ceiling: float,
+        updated_at: datetime,
+    ) -> bool:
+        """Atomically raise the ceiling and clear the halt, if still halted.
+
+        Optimistic-concurrency conditional write (ADR-0001 D7): updates
+        only while ``halted_at IS NOT NULL``, so a concurrent ceiling
+        raise that already resumed the run leaves the row unmatched and
+        the second writer is told it lost rather than silently no-op'ing.
+
+        Returns:
+            ``True`` when the halted row was updated; ``False`` when the
+            row was not halted (already resumed) or is missing.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        params = (float(new_ceiling), format_iso_utc(updated_at), str(entity_id))
+        async with self._write_context():
+            try:
+                async with self._db.execute(
+                    FORECAST_CLEAR_HALT_SQL_QMARK, params
+                ) as cursor:
+                    await self._db.commit()
+                    _db_rowcount = cursor.rowcount
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await _safe_rollback(
+                    self._db,
+                    operation="raise_ceiling_if_halted",
+                    forecast_id=str(entity_id),
+                )
+                msg = f"Failed to raise ceiling for forecast {entity_id!r}"
+                logger.warning(
+                    PERSISTENCE_COST_FORECAST_FAILED,
+                    operation="raise_ceiling_if_halted",
                     forecast_id=str(entity_id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),

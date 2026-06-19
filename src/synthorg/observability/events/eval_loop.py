@@ -7,6 +7,10 @@ EVAL_LOOP_CYCLE_COMPLETE: Final[str] = "eval.loop.cycle_complete"
 EVAL_LOOP_CYCLE_FAILED: Final[str] = "eval.loop.cycle_failed"
 EVAL_LOOP_PATTERN_IDENTIFIED: Final[str] = "eval.loop.pattern_identified"
 EVAL_LOOP_BENCHMARK_EXECUTED: Final[str] = "eval.loop.benchmark_executed"
+EVAL_LOOP_BENCHMARK_ALREADY_REGISTERED: Final[str] = (
+    "eval.loop.benchmark_already_registered"
+)
+EVAL_LOOP_BENCHMARK_NOT_FOUND: Final[str] = "eval.loop.benchmark_not_found"
 EVAL_LOOP_BASELINE_LOADED: Final[str] = "eval.loop.baseline_loaded"
 EVAL_LOOP_METRICS_COMPUTED: Final[str] = "eval.loop.metrics_computed"
 EVAL_LOOP_AGENT_EVAL_FAILED: Final[str] = "eval.loop.agent_eval_failed"

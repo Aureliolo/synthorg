@@ -1709,7 +1709,7 @@ class TestDomainErrorFamilyClassVarHttpMapping:
                 "synthorg.hr.errors",
                 "AgentNotFoundError",
                 404,
-                ErrorCode.RESOURCE_NOT_FOUND,
+                ErrorCode.AGENT_NOT_FOUND,
                 ErrorCategory.NOT_FOUND,
             ),
             (

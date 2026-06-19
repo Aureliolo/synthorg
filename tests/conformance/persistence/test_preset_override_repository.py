@@ -170,3 +170,73 @@ async def test_list_items_orders_by_preset_name(backend: PersistenceBackend) -> 
     page = await repo.list_items(limit=10)
     names = [row.preset_name for row in page]
     assert names == sorted(names)
+
+
+_T0 = datetime(2026, 5, 20, 12, 0, tzinfo=UTC)
+_T1 = datetime(2026, 5, 20, 12, 5, tzinfo=UTC)
+
+
+def _override_at(updated_at: datetime, *, base_url: str) -> PresetOverride:
+    return _override(base_url=base_url).model_copy(update={"updated_at": updated_at})
+
+
+async def test_save_if_unchanged_inserts_when_absent(
+    backend: PersistenceBackend,
+) -> None:
+    repo = backend.preset_overrides
+    written = await repo.save_if_unchanged(
+        _override_at(_T0, base_url="https://fresh.example.com/v1"),
+        expected_updated_at=None,
+    )
+    assert written is True
+    loaded = await repo.get("test-cloud-provider")
+    assert loaded is not None
+    assert loaded.updated_at == _T0
+
+
+async def test_save_if_unchanged_rejects_insert_when_row_appeared(
+    backend: PersistenceBackend,
+) -> None:
+    repo = backend.preset_overrides
+    await repo.save(_override(base_url="https://winner.example.com/v1"))
+    # A second writer that read "no row" must lose to the row that landed.
+    written = await repo.save_if_unchanged(
+        _override_at(_T1, base_url="https://loser.example.com/v1"),
+        expected_updated_at=None,
+    )
+    assert written is False
+    loaded = await repo.get("test-cloud-provider")
+    assert loaded is not None
+    assert loaded.base_url == "https://winner.example.com/v1"
+
+
+async def test_save_if_unchanged_updates_on_matching_timestamp(
+    backend: PersistenceBackend,
+) -> None:
+    repo = backend.preset_overrides
+    await repo.save(_override_at(_T0, base_url="https://old.example.com/v1"))
+    written = await repo.save_if_unchanged(
+        _override_at(_T1, base_url="https://new.example.com/v1"),
+        expected_updated_at=_T0,
+    )
+    assert written is True
+    loaded = await repo.get("test-cloud-provider")
+    assert loaded is not None
+    assert loaded.base_url == "https://new.example.com/v1"
+    assert loaded.updated_at == _T1
+
+
+async def test_save_if_unchanged_rejects_stale_timestamp(
+    backend: PersistenceBackend,
+) -> None:
+    repo = backend.preset_overrides
+    # The stored row has moved on to _T1; a writer that read _T0 is stale.
+    await repo.save(_override_at(_T1, base_url="https://current.example.com/v1"))
+    written = await repo.save_if_unchanged(
+        _override_at(_T0, base_url="https://stale.example.com/v1"),
+        expected_updated_at=_T0,
+    )
+    assert written is False
+    loaded = await repo.get("test-cloud-provider")
+    assert loaded is not None
+    assert loaded.base_url == "https://current.example.com/v1"

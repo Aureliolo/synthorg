@@ -62,6 +62,7 @@ from synthorg.observability.events.chief_of_staff import (
     COS_CONVERSATION_STATUS_TRANSITIONED,
     COS_PROPOSE_CAP_REACHED,
     COS_PROPOSE_CLARIFICATION,
+    COS_PROPOSE_CONVERSATION_REJECTED,
     COS_PROPOSE_FAILED,
     COS_PROPOSE_RESPONSE_INVALID,
     COS_PROPOSE_TURN,
@@ -295,6 +296,12 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
             return conversation
         existing = await self._conversation_repo.get(args.conversation_id)
         if existing is None:
+            logger.warning(
+                COS_PROPOSE_CONVERSATION_REJECTED,
+                conversation_id=args.conversation_id,
+                reason="not_found",
+                error_type=ConversationNotFoundError.__name__,
+            )
             raise ConversationNotFoundError(conversation_id=args.conversation_id)
         # Authorisation: only the original creator may resume a
         # conversation. A caller who learns a foreign conversation_id
@@ -303,8 +310,20 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         # break. Map ownership mismatch to NotFound so the response
         # cannot be used to probe existence either.
         if existing.created_by != args.created_by:
+            logger.warning(
+                COS_PROPOSE_CONVERSATION_REJECTED,
+                conversation_id=args.conversation_id,
+                reason="not_owner",
+                error_type=ConversationNotFoundError.__name__,
+            )
             raise ConversationNotFoundError(conversation_id=args.conversation_id)
         if existing.status is ConversationStatus.CLOSED:
+            logger.warning(
+                COS_PROPOSE_CONVERSATION_REJECTED,
+                conversation_id=str(existing.id),
+                reason="conversation_closed",
+                error_type=ConversationClosedError.__name__,
+            )
             raise ConversationClosedError(conversation_id=str(existing.id))
         return existing
 
@@ -388,6 +407,11 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
             ),
         )
         if parsed is None:
+            logger.warning(
+                COS_PROPOSE_RESPONSE_INVALID,
+                reason="llm_response_not_parseable",
+                error_type=ConversationalProposeResponseInvalidError.__name__,
+            )
             raise ConversationalProposeResponseInvalidError
         try:
             return ProposeDecision.model_validate(parsed)

@@ -62,6 +62,7 @@ from synthorg.observability.events.docs import (
     DOC_SEARCH_COMPLETE,
     DOC_SEARCH_START,
     DOC_SLUG_DERIVED,
+    DOC_VALIDATION_FAILED,
 )
 from synthorg.persistence.docs_protocol import DocsFilterSpec, DocsRepository
 
@@ -264,6 +265,13 @@ class DocsService:
                 f"version {version!r} is not a valid commit SHA "
                 f"(expected {_MIN_SHA_LENGTH}-{_MAX_SHA_LENGTH} hex chars)"
             )
+            logger.warning(
+                DOC_VALIDATION_FAILED,
+                project_id=project_id,
+                slug=slug,
+                reason="invalid_commit_sha",
+                error_type=DocValidationError.__name__,
+            )
             raise DocValidationError(msg)
         metadata = await self._repo.get((project_id, slug))
         if metadata is None:
@@ -386,6 +394,12 @@ class DocsService:
         metadata = await self._repo.get((project_id, slug))
         if metadata is None:
             msg = f"living doc {project_id!r}/{slug!r} not found"
+            logger.warning(
+                DOC_NOT_FOUND,
+                project_id=project_id,
+                slug=slug,
+                error_type=DocNotFoundError.__name__,
+            )
             raise DocNotFoundError(msg)
         workspace = await self._workspace_service.get_or_provision(project_id)
         repo_root = Path(workspace.workspace_path)
@@ -405,6 +419,13 @@ class DocsService:
             msg = (
                 f"git log failed for {project_id!r}/{slug!r}: "
                 f"{stderr.strip() or 'unknown error'}"
+            )
+            logger.warning(
+                DOC_NOT_FOUND,
+                project_id=project_id,
+                slug=slug,
+                reason="git_log_failed",
+                error_type=DocNotFoundError.__name__,
             )
             raise DocNotFoundError(msg)
         versions = tuple(
@@ -441,6 +462,13 @@ class DocsService:
                 msg = (
                     f"living doc {project_id!r}/{supplied_slug!r} not found; "
                     f"an explicit slug targets the update path"
+                )
+                logger.warning(
+                    DOC_NOT_FOUND,
+                    project_id=project_id,
+                    slug=supplied_slug,
+                    reason="explicit_slug_update_target_missing",
+                    error_type=DocNotFoundError.__name__,
                 )
                 raise DocNotFoundError(msg)
             return supplied_slug, prior
@@ -510,6 +538,12 @@ class DocsService:
         )
         if ancestry_rc != 0:
             msg = f"version {version!r} is not reachable from {DOCS_BRANCH_NAME!r}"
+            logger.warning(
+                DOC_NOT_FOUND,
+                version=version,
+                reason="version_not_reachable",
+                error_type=DocNotFoundError.__name__,
+            )
             raise DocNotFoundError(msg)
         rc, stdout_text, stderr = await run_git_subprocess(
             repo_root,
@@ -522,6 +556,12 @@ class DocsService:
             msg = (
                 f"git show {version}:{rel_path} failed: "
                 f"{stderr.strip() or 'unknown error'}"
+            )
+            logger.warning(
+                DOC_NOT_FOUND,
+                version=version,
+                reason="git_show_failed",
+                error_type=DocNotFoundError.__name__,
             )
             raise DocNotFoundError(msg)
         return stdout_text.encode("utf-8")

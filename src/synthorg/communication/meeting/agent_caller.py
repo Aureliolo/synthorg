@@ -38,7 +38,7 @@ from synthorg.core.domain_errors import DomainError, NotFoundError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_persona import render_agent_system_prompt
-from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.registry_protocol import AgentRegistryProtocol
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meeting import (
     MEETING_AGENT_CALL_FAILED,
@@ -75,7 +75,7 @@ class UnknownMeetingAgentError(NotFoundError):
 
 def build_meeting_agent_caller(
     *,
-    agent_registry: AgentRegistryService,
+    agent_registry: AgentRegistryProtocol,
     provider_registry: ProviderRegistry,
     cost_tracker: CostTracker | None = None,
 ) -> AgentCaller:

@@ -19,6 +19,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.research import (
+    RESEARCH_BUDGET_EXCEEDED,
     RESEARCH_RUN_COMPLETED,
     RESEARCH_RUN_DEDUPLICATED,
     RESEARCH_RUN_FAILED,
@@ -297,6 +298,12 @@ class ResearchService:
         """
         if total_cost > brief.max_cost:
             msg = f"research run cost {total_cost} exceeded budget of {brief.max_cost}"
+            logger.warning(
+                RESEARCH_BUDGET_EXCEEDED,
+                total_cost=str(total_cost),
+                max_cost=str(brief.max_cost),
+                error_type=ResearchBudgetExceededError.__name__,
+            )
             raise ResearchBudgetExceededError(msg)
 
     @staticmethod

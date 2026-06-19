@@ -38,10 +38,10 @@ from synthorg.observability.events.classification import (
     DETECTOR_PARSE_ERROR,
     DETECTOR_START,
 )
-from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
+from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 _DEFAULT_MAX_TOKENS: Final[int] = 1024
@@ -226,7 +226,7 @@ class _BaseSemanticDetector:
     def __init__(  # noqa: PLR0913
         self,
         *,
-        provider: BaseCompletionProvider,
+        provider: CompletionProvider,
         model_id: str,
         budget_tracker: ClassificationBudgetTracker | None = None,
         temperature: float = 0.0,

@@ -14,7 +14,6 @@ import contextlib
 import threading
 from collections import deque
 from collections.abc import Callable
-from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Final
 from uuid import uuid4
@@ -23,6 +22,7 @@ from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.channel import Channel
 from synthorg.communication.enums import ChannelType, MessageType
 from synthorg.communication.message import DataPart, Message
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.errors import ConnectionRateLimitError
 from synthorg.observability import get_logger, safe_error_description
@@ -32,25 +32,10 @@ from synthorg.observability.events.integrations import (
     RATE_LIMIT_COORDINATOR_STOPPED,
 )
 
-
-def _wall_clock_seconds() -> float:
-    """Current wall-clock seconds since the Unix epoch.
-
-    Used in preference to ``time.monotonic()`` for cross-worker
-    coordination. Monotonic clocks are process-local, so their
-    values are meaningless when published over the message bus
-    to other workers.
-
-    Returns:
-        The current wall-clock time as a Unix epoch float (seconds
-        since 1970-01-01 UTC).
-    """
-    return datetime.now(UTC).timestamp()
-
-
 logger = get_logger(__name__)
 
 _DEFAULT_MAX_RPM: Final[int] = 60
+_RPM_WINDOW_SECONDS: Final[float] = 60.0
 
 _RATELIMIT_CHANNEL = Channel(name="#ratelimit", type=ChannelType.TOPIC)
 _POLL_TIMEOUT: Final[float] = 0.5
@@ -64,6 +49,12 @@ class SharedRateLimitCoordinator:
         bus: The message bus instance.
         connection_name: Connection to rate-limit.
         max_rpm: Maximum requests per minute (global across workers).
+        clock: Clock seam for the sliding-window timestamps; tests
+            inject a ``FakeClock``. Defaults to ``SystemClock``. Wall
+            clock (``now().timestamp()``) is used in preference to a
+            monotonic clock because window entries are published over
+            the message bus to other workers, where process-local
+            monotonic values would be meaningless.
     """
 
     def __init__(
@@ -72,10 +63,12 @@ class SharedRateLimitCoordinator:
         connection_name: str,
         *,
         max_rpm: int = _DEFAULT_MAX_RPM,
+        clock: Clock | None = None,
     ) -> None:
         self._bus = bus
         self._connection_name = connection_name
         self._max_rpm = max_rpm
+        self._clock = clock or SystemClock()
         self._window: deque[float] = deque()
         # Eager init: ``acquire`` is a hot-path call that runs before
         # the polling task starts; the window lock must be present.
@@ -211,7 +204,7 @@ class SharedRateLimitCoordinator:
         await self._ensure_started()
 
         async with self._window_lock:
-            now = _wall_clock_seconds()
+            now = self._clock.now().timestamp()
             self._evict_old(now)
 
             if len(self._window) >= self._max_rpm:
@@ -237,17 +230,23 @@ class SharedRateLimitCoordinator:
             await self._publish_acquire(now)
 
     def _evict_old(self, now: float) -> None:
-        """Remove entries older than 60 seconds."""
-        cutoff = now - 60.0
-        while self._window and self._window[0] < cutoff:
-            self._window.popleft()
+        """Remove every entry older than the RPM sliding window.
+
+        Filters the whole deque rather than only its prefix: ``_ingest``
+        appends remote acquire timestamps in bus-delivery order, not
+        chronological order, so an expired entry can sit behind a newer
+        one. A prefix-only ``popleft`` sweep would leave such stragglers
+        in place, inflating the window count and causing false denials.
+        """
+        cutoff = now - _RPM_WINDOW_SECONDS
+        self._window = deque(ts for ts in self._window if ts >= cutoff)
 
     async def _publish_acquire(self, acquired_at: float) -> None:
         """Publish an acquire event for other workers."""
         if not self._distributed:
             return
         message = Message(
-            timestamp=datetime.now(UTC),
+            timestamp=self._clock.now(),
             sender=f"ratelimit:{self._connection_name}",
             to=_RATELIMIT_CHANNEL.name,
             type=MessageType.ANNOUNCEMENT,
@@ -334,7 +333,7 @@ class SharedRateLimitCoordinator:
             if isinstance(ts, int | float):
                 async with self._window_lock:
                     self._window.append(float(ts))
-                    self._evict_old(_wall_clock_seconds())
+                    self._evict_old(self._clock.now().timestamp())
 
 
 _coordinator_factory: Callable[[str], SharedRateLimitCoordinator] | None = None

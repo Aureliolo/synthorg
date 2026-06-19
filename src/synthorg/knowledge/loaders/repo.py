@@ -20,6 +20,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.knowledge import (
     KNOWLEDGE_SOURCE_FILE_SKIPPED,
     KNOWLEDGE_SOURCE_LOADED,
+    KNOWLEDGE_SOURCE_UNAVAILABLE,
 )
 from synthorg.versioning.hashing import compute_text_hash
 
@@ -113,6 +114,12 @@ class RepoLoader:
         root = Path(source.uri)
         if not root.is_dir():
             msg = f"Repository path is not a directory: {source.uri!r}"
+            logger.warning(
+                KNOWLEDGE_SOURCE_UNAVAILABLE,
+                source_id=source.source_id,
+                reason="not_a_directory",
+                error_type=KnowledgeSourceUnavailableError.__name__,
+            )
             raise KnowledgeSourceUnavailableError(msg)
         units: list[RawUnit] = []
         hash_parts: list[str] = []

@@ -157,7 +157,18 @@ class EscalationDecisionError(ConflictResolutionError):
     (:class:`EscalationDecisionShapeError`) or the decision references
     an agent outside the conflict
     (:class:`EscalationDecisionAgentError`).
+
+    A rejected human decision is a 422 client error, not the 500 its
+    ``CommunicationError`` ancestor would imply: the operator supplied
+    an unacceptable decision and can correct and retry. Registered in
+    ``EXCEPTION_HANDLERS`` so it maps directly rather than being
+    rewrapped at the controller.
     """
+
+    status_code: ClassVar[int] = 422
+    error_code: ClassVar[ErrorCode] = ErrorCode.ESCALATION_DECISION_INVALID
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "Escalation decision is invalid"
 
 
 class EscalationDecisionShapeError(EscalationDecisionError):

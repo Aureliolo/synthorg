@@ -1,4 +1,40 @@
-import { isBenignError } from '@/lib/global-error-handlers'
+import { installGlobalErrorHandlers, isBenignError } from '@/lib/global-error-handlers'
+
+describe('installGlobalErrorHandlers', () => {
+  it('attaches both window listeners and detaches them on uninstall', () => {
+    const add = vi.spyOn(window, 'addEventListener')
+    const remove = vi.spyOn(window, 'removeEventListener')
+
+    const uninstall = installGlobalErrorHandlers()
+
+    const addedEvents = add.mock.calls.map((call) => call[0])
+    expect(addedEvents).toContain('unhandledrejection')
+    expect(addedEvents).toContain('error')
+
+    uninstall()
+
+    const removedEvents = remove.mock.calls.map((call) => call[0])
+    expect(removedEvents).toContain('unhandledrejection')
+    expect(removedEvents).toContain('error')
+
+    add.mockRestore()
+    remove.mockRestore()
+  })
+
+  it('is idempotent: a second install while active is a no-op uninstaller', () => {
+    const first = installGlobalErrorHandlers()
+    const add = vi.spyOn(window, 'addEventListener')
+
+    // Already installed -> returns a no-op and attaches nothing new.
+    const second = installGlobalErrorHandlers()
+    expect(add).not.toHaveBeenCalled()
+    second()
+
+    add.mockRestore()
+    // The real uninstaller resets the guard so a later install re-arms.
+    first()
+  })
+})
 
 describe('isBenignError', () => {
   it.each([

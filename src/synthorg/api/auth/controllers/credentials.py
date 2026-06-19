@@ -34,6 +34,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_AUTH_FAILED,
     SECURITY_AUTH_PASSWORD_CHANGED,
+    SECURITY_AUTH_TOKEN_ISSUED,
     SECURITY_SESSION_REVOKED,
 )
 from synthorg.persistence.protocol import PersistenceBackend
@@ -143,6 +144,14 @@ async def _rotate_session_and_build_response(
     )
     auth_config = get_auth_config(app_state)
 
+    # Signed audit-chain record of the credential exchange: the
+    # password rotation mints a fresh session token.
+    logger.info(
+        SECURITY_AUTH_TOKEN_ISSUED,
+        user_id=updated_user.id,
+        session_id=session_id,
+        principal=updated_user.id,
+    )
     logger.info(
         SECURITY_AUTH_PASSWORD_CHANGED,
         user_id=updated_user.id,

@@ -23,6 +23,12 @@ from pydantic import ValidationError
 from synthorg.api.auth.system_user import is_system_user
 from synthorg.core.auth.models import ApiKey, OrgRole, User
 from synthorg.core.auth.roles import HumanRole
+from synthorg.core.constraint_tokens import (
+    IDX_SINGLE_CEO,
+    LAST_CEO_TRIGGER,
+    LAST_OWNER_TRIGGER,
+    USERS_USERNAME_UNIQUE,
+)
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -54,12 +60,6 @@ from synthorg.persistence._shared.datetime_marshaller import (
 )
 from synthorg.persistence._shared.pagination import (
     validate_pagination_args,
-)
-from synthorg.persistence.constraint_tokens import (
-    IDX_SINGLE_CEO,
-    LAST_CEO_TRIGGER,
-    LAST_OWNER_TRIGGER,
-    USERS_USERNAME_UNIQUE,
 )
 from synthorg.persistence.sqlite._shared import WriteContext
 from synthorg.persistence.user_protocol import (

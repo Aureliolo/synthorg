@@ -51,6 +51,10 @@ COS_PROPOSE_PROPOSED: Final[str] = "chief_of_staff.propose.proposed"
 COS_PROPOSE_CAP_REACHED: Final[str] = "chief_of_staff.propose.cap_reached"
 COS_PROPOSE_RESPONSE_INVALID: Final[str] = "chief_of_staff.propose.response_invalid"
 COS_PROPOSE_FAILED: Final[str] = "chief_of_staff.propose.failed"
+COS_PROPOSE_CONVERSATION_REJECTED: Final[str] = (
+    "chief_of_staff.propose.conversation_rejected"
+)
+COS_ACTOR_AGENT_NOT_FOUND: Final[str] = "chief_of_staff.actor.agent_not_found"
 COS_CONVERSATION_STATUS_TRANSITIONED: Final[str] = (
     "chief_of_staff.conversation.status_transitioned"
 )
@@ -64,6 +68,7 @@ COS_ROUTING_RESPONSE_INVALID: Final[str] = "chief_of_staff.routing.response_inva
 # -- Multi-agent group chat --------------------------------------------
 
 COS_GROUP_ROUND_STARTED: Final[str] = "chief_of_staff.group_chat.round_started"
+COS_GROUP_CHAT_REJECTED: Final[str] = "chief_of_staff.group_chat.rejected"
 COS_GROUP_CONTRIBUTION: Final[str] = "chief_of_staff.group_chat.contribution"
 COS_GROUP_CONTRIBUTION_FAILED: Final[str] = (
     "chief_of_staff.group_chat.contribution_failed"

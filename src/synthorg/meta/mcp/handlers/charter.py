@@ -38,6 +38,7 @@ from synthorg.meta.mcp.handler_protocol import (
 from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import err, ok, require_admin_guardrails
 from synthorg.meta.mcp.handlers.common_logging import (
+    log_handler_admin_op_executed,
     log_handler_argument_invalid,
     log_handler_guardrail_violated,
     log_handler_invoke_failed,
@@ -193,7 +194,7 @@ async def _charter_cancel(
         # actually authorises the ``enforce_ownership=False`` bypass.
         # Without it a caller invoking the handler map directly could
         # cancel another user's draft.
-        require_admin_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         svc = _require_charter_service(app_state)
         charter_id = typed_args(arguments, CharterCancelArgs).charter_id
         cancelled = await svc.cancel_charter(
@@ -202,6 +203,12 @@ async def _charter_cancel(
             enforce_ownership=False,
         )
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_CANCEL)
+        log_handler_admin_op_executed(
+            _TOOL_CANCEL,
+            reason=reason,
+            actor=resolved_actor,
+            target_id=str(charter_id),
+        )
         return ok(cancelled.model_dump(mode="json"))
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(_TOOL_CANCEL, exc)
@@ -223,11 +230,17 @@ async def _charter_approve(
 ) -> str:
     """Return charter approve."""
     try:
-        require_admin_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         dispatcher = _require_charter_dispatcher(app_state)
         charter_id = typed_args(arguments, CharterApproveArgs).charter_id
         result = await dispatcher.approve(charter_id, approved_by=_actor_id(actor))
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_APPROVE)
+        log_handler_admin_op_executed(
+            _TOOL_APPROVE,
+            reason=reason,
+            actor=resolved_actor,
+            target_id=str(charter_id),
+        )
         return ok(result.model_dump(mode="json"))
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(_TOOL_APPROVE, exc)

@@ -11,3 +11,5 @@ REPORTING_PERIOD_COMPUTED: Final[str] = "reporting.period.computed"
 # MCP ReportsService.
 REPORT_GENERATED: Final[str] = "reporting.report.generated"
 REPORT_LISTED: Final[str] = "reporting.report.listed"
+REPORTING_REQUEST_INVALID: Final[str] = "reporting.request.invalid"
+REPORTING_RENDER_INVARIANT_VIOLATED: Final[str] = "reporting.render.invariant_violated"

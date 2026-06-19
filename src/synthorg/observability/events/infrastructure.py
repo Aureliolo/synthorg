@@ -7,6 +7,10 @@ providers, users, audit, health) have dedicated event modules.
 
 from typing import Final
 
+# -- Facade capability guards -------------------------------------------
+
+INFRA_CAPABILITY_UNSUPPORTED: Final[str] = "infrastructure.capability.unsupported"
+
 # -- Project lifecycle MCP audit events ---------------------------------
 
 PROJECT_CREATED_VIA_MCP: Final[str] = "infrastructure.project.created_via_mcp"

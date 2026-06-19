@@ -16,6 +16,7 @@ from typing import ClassVar
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+from synthorg.core.pagination import collect_all
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
     SubworkflowIOError,
@@ -46,7 +47,6 @@ from synthorg.observability.events.workflow_definition import (
     SUBWORKFLOW_PUBLISH_FAILED,
     SUBWORKFLOW_REGISTERED,
 )
-from synthorg.persistence._shared import collect_all
 
 logger = get_logger(__name__)
 

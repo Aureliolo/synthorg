@@ -9,6 +9,7 @@ from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_REQUEST_ERROR
 from synthorg.observability.events.ontology import ONTOLOGY_ADMIN_SYNC_COMPLETED
@@ -62,6 +63,10 @@ class OntologyAdminController(Controller):
 
         Returns:
             ``ApiResponse[dict[str, int | str]]`` instance.
+
+        Raises:
+            ServiceUnavailableError: When the ontology sync service is
+                not wired (503 rather than a 200 success-shaped body).
         """
         app_state: AppState = state.app_state
         sync_service = app_state.slice(OntologyStateSlice).sync_service
@@ -69,10 +74,10 @@ class OntologyAdminController(Controller):
             logger.warning(
                 API_REQUEST_ERROR,
                 reason="sync_service_unavailable",
+                error_type=ServiceUnavailableError.__name__,
             )
-            return ApiResponse(
-                data={"status": "sync_service_not_configured"},
-            )
+            msg = "Ontology sync service is not configured"
+            raise ServiceUnavailableError(msg)
 
         count = await sync_service.sync_all()
         logger.info(

@@ -80,6 +80,7 @@ from synthorg.observability.events.a2a import (
     A2A_MESSAGE_SEND_IDEMPOTENCY_REJECTED,
     A2A_TASK_CANCELLED,
     A2A_TASK_CREATED,
+    A2A_TASK_METHOD_REJECTED,
 )
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
@@ -989,6 +990,13 @@ async def _handle_tasks_get(
     task_engine = _require_task_engine(app_state)
     task = await task_engine.get_task(params.id)
     if task is None:
+        logger.warning(
+            A2A_TASK_METHOD_REJECTED,
+            method="tasks/get",
+            task_id=str(params.id),
+            reason="task_not_found",
+            error_type=_A2AMethodError.__name__,
+        )
         raise _A2AMethodError(
             A2A_TASK_NOT_FOUND,
             "Task not found",
@@ -1026,6 +1034,13 @@ async def _handle_tasks_cancel(
     task_engine = _require_task_engine(app_state)
     task = await task_engine.get_task(params.id)
     if task is None:
+        logger.warning(
+            A2A_TASK_METHOD_REJECTED,
+            method="tasks/cancel",
+            task_id=str(params.id),
+            reason="task_not_found",
+            error_type=_A2AMethodError.__name__,
+        )
         raise _A2AMethodError(
             A2A_TASK_NOT_FOUND,
             "Task not found",
@@ -1042,6 +1057,14 @@ async def _handle_tasks_cancel(
         TaskStatus.REJECTED,
     }
     if task.status in terminal:
+        logger.warning(
+            A2A_TASK_METHOD_REJECTED,
+            method="tasks/cancel",
+            task_id=str(params.id),
+            reason="terminal_state",
+            status=task.status.value,
+            error_type=_A2AMethodError.__name__,
+        )
         raise _A2AMethodError(
             A2A_TASK_NOT_CANCELABLE,
             "Task is in terminal state",

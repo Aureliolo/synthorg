@@ -38,7 +38,7 @@ from synthorg.organization.models import (
 from synthorg.persistence.version_protocol import VersionRepository
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.resolver import ConfigResolver
-from synthorg.settings.service import SettingsService
+from synthorg.settings.service_protocol import SettingsServiceProtocol
 from synthorg.versioning import VersioningService
 
 logger = get_logger(__name__)
@@ -73,7 +73,7 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
 
     def __init__(
         self,
-        settings_service: SettingsService,
+        settings_service: SettingsServiceProtocol,
         config_resolver: ConfigResolver,
         *,
         budget_config_versions: VersionRepository[BudgetConfig] | None = None,

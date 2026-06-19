@@ -25,6 +25,8 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.reporting import (
     REPORT_GENERATED,
     REPORT_LISTED,
+    REPORTING_RENDER_INVARIANT_VIOLATED,
+    REPORTING_REQUEST_INVALID,
 )
 
 logger = get_logger(__name__)
@@ -88,9 +90,21 @@ class ReportsService:
         """
         if offset < 0:
             msg = f"offset must be >= 0, got {offset}"
+            logger.warning(
+                REPORTING_REQUEST_INVALID,
+                reason="negative_offset",
+                offset=offset,
+                error_type=ValueError.__name__,
+            )
             raise ValueError(msg)
         if limit < 1:
             msg = f"limit must be >= 1, got {limit}"
+            logger.warning(
+                REPORTING_REQUEST_INVALID,
+                reason="non_positive_limit",
+                limit=limit,
+                error_type=ValueError.__name__,
+            )
             raise ValueError(msg)
         async with self._lock:
             # Sort by (generated_at, insertion_idx) so equal timestamps
@@ -147,6 +161,12 @@ class ReportsService:
             msg = (
                 f"Unknown report template {template!r}; supported: "
                 f"{sorted(_SUPPORTED_TEMPLATES)}"
+            )
+            logger.warning(
+                REPORTING_REQUEST_INVALID,
+                reason="unknown_template",
+                template=template,
+                error_type=ValueError.__name__,
             )
             raise ValueError(msg)
         now = datetime.now(UTC)
@@ -206,6 +226,11 @@ class ReportsService:
             trends = await self._analytics.get_trends(since=since, until=until)
             return ("Trend summary", trends.model_dump(mode="json"))
         msg = f"_render has no branch for allowed template {template!r}"
+        logger.error(
+            REPORTING_RENDER_INVARIANT_VIOLATED,
+            template=template,
+            error_type=RuntimeError.__name__,
+        )
         raise RuntimeError(msg)
 
     # ── Test helper ──────────────────────────────────────────────────

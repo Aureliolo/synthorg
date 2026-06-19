@@ -18,6 +18,7 @@ from synthorg.api.pagination import (
 from synthorg.api.path_params import PathName
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_REQUEST_ERROR
 from synthorg.observability.events.ontology import (
@@ -74,17 +75,21 @@ class OntologyDriftController(Controller):
 
         Returns:
             ``PaginatedResponse[DriftReportResponse]`` instance.
+
+        Raises:
+            ServiceUnavailableError: When the drift report store is
+                unwired (503 rather than a 200 empty page).
         """
         app_state: AppState = state.app_state
         store = app_state.slice(OntologyStateSlice).drift_report_store
         if store is None:
-            _, meta = paginate_cursor(
-                (),
-                limit=limit,
-                cursor=cursor,
-                secret=cursor_secret_of(app_state),
+            logger.warning(
+                API_REQUEST_ERROR,
+                reason="drift_report_store_unavailable",
+                error_type=ServiceUnavailableError.__name__,
             )
-            return PaginatedResponse(data=(), pagination=meta)
+            msg = "Ontology drift report store is not configured"
+            raise ServiceUnavailableError(msg)
 
         # Decode the cursor offset at the controller so the fetch
         # window covers every row ``paginate_cursor`` will slice:
@@ -118,11 +123,21 @@ class OntologyDriftController(Controller):
 
         Returns:
             Result matching the declared return annotation.
+
+        Raises:
+            ServiceUnavailableError: When the drift report store is
+                unwired (503 rather than a 200 empty body).
         """
         app_state: AppState = state.app_state
         store = app_state.slice(OntologyStateSlice).drift_report_store
         if store is None:
-            return ApiResponse(data=())
+            logger.warning(
+                API_REQUEST_ERROR,
+                reason="drift_report_store_unavailable",
+                error_type=ServiceUnavailableError.__name__,
+            )
+            msg = "Ontology drift report store is not configured"
+            raise ServiceUnavailableError(msg)
 
         reports = await store.get_latest(entity_name)
         responses = tuple(_drift_report_to_response(r) for r in reports)
@@ -143,6 +158,10 @@ class OntologyDriftController(Controller):
 
         Returns:
             ``ApiResponse[dict[str, str]]`` instance.
+
+        Raises:
+            ServiceUnavailableError: When the drift detection service is
+                unwired (503 rather than a 200 success-shaped body).
         """
         app_state: AppState = state.app_state
         drift_service = app_state.slice(OntologyStateSlice).drift_detection_service
@@ -150,10 +169,10 @@ class OntologyDriftController(Controller):
             logger.warning(
                 API_REQUEST_ERROR,
                 reason="drift_service_unavailable",
+                error_type=ServiceUnavailableError.__name__,
             )
-            return ApiResponse(
-                data={"status": "drift_service_not_configured"},
-            )
+            msg = "Ontology drift detection service is not configured"
+            raise ServiceUnavailableError(msg)
 
         # Agent discovery is handled by the engine -- trigger uses
         # empty tuple to signal "check all entities, no agent sample".

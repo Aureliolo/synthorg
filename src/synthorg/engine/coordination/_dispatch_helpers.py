@@ -39,8 +39,10 @@ from synthorg.observability.events.coordination import (
     COORDINATION_WAVE_COMPLETED,
     COORDINATION_WAVE_STARTED,
 )
+from synthorg.observability.tracing.instrumentation import get_tracer
 
 logger = get_logger(__name__)
+_tracer = get_tracer(__name__)
 
 
 def build_workspace_requests(
@@ -318,7 +320,16 @@ async def execute_waves(
         )
 
         try:
-            exec_result = await parallel_executor.execute_group(group)
+            with _tracer.start_as_current_span(
+                "coordination.wave",
+                attributes={
+                    "coordination.wave_index": wave_idx,
+                    "coordination.subtask_count": len(subtask_ids),
+                },
+                record_exception=False,
+                set_status_on_exception=False,
+            ):
+                exec_result = await parallel_executor.execute_group(group)
             elapsed = clock.monotonic() - start
 
             wave = CoordinationWave(

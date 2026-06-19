@@ -38,7 +38,7 @@ from synthorg.core.actor_context import require_actor
 from synthorg.core.domain_errors import (
     ConflictError,
     NotFoundError,
-    ValidationError,
+    ServiceUnavailableError,
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -158,7 +158,7 @@ class EscalationsController(Controller):
             ``PaginatedResponse[EscalationResponse]`` instance.
 
         Raises:
-            NotFoundError: Raised on the corresponding failure path.
+            ServiceUnavailableError: When the escalation store is unwired.
         """
         app_state: AppState = state.app_state
         store = app_state.slice(CommunicationStateSlice).escalation_store
@@ -168,7 +168,7 @@ class EscalationsController(Controller):
                 CONFLICT_ESCALATION_RESOLVED,
                 note="escalation_store_not_configured",
             )
-            raise NotFoundError(msg)
+            raise ServiceUnavailableError(msg)
         secret = cursor_secret_of(app_state)
         offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
         page, total = await store.list_items(
@@ -206,7 +206,8 @@ class EscalationsController(Controller):
             ``ApiResponse[EscalationResponse]`` instance.
 
         Raises:
-            NotFoundError: Raised on the corresponding failure path.
+            ServiceUnavailableError: When the escalation store is unwired.
+            NotFoundError: When ``escalation_id`` does not exist.
         """
         app_state: AppState = state.app_state
         store = app_state.slice(CommunicationStateSlice).escalation_store
@@ -216,7 +217,7 @@ class EscalationsController(Controller):
                 CONFLICT_ESCALATION_RESOLVED,
                 note="escalation_store_not_configured",
             )
-            raise NotFoundError(msg)
+            raise ServiceUnavailableError(msg)
         row = await store.get(escalation_id)
         if row is None:
             msg = f"Escalation {escalation_id!r} not found"
@@ -249,11 +250,13 @@ class EscalationsController(Controller):
         coroutine wakes with the decision.
 
         Raises:
+            ServiceUnavailableError: When the escalation subsystem is
+                unwired (store / registry / processor absent).
             NotFoundError: ``escalation_id`` does not exist.
             ConflictError: the escalation is already decided, expired,
                 or cancelled.
-            ValidationError: the decision shape is not accepted by
-                the server's configured decision strategy.
+            EscalationDecisionError: the decision shape is not accepted
+                by the server's configured decision strategy (422).
 
         Returns:
             ``ApiResponse[EscalationResponse]`` instance.
@@ -271,7 +274,7 @@ class EscalationsController(Controller):
                 missing_registry=registry is None,
                 missing_processor=processor is None,
             )
-            raise NotFoundError(msg)
+            raise ServiceUnavailableError(msg)
 
         operator = _operator_id()
         row = await store.get(escalation_id)
@@ -312,7 +315,12 @@ class EscalationsController(Controller):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ValidationError(str(exc)) from exc
+            # EscalationDecisionError now carries its own 422 mapping
+            # (registered in EXCEPTION_HANDLERS); re-raise the original
+            # so the specific error code reaches the client rather than
+            # collapsing every decision failure into a generic
+            # ValidationError with an interpolated message.
+            raise
 
         try:
             updated = await store.apply_decision(
@@ -381,6 +389,8 @@ class EscalationsController(Controller):
             ``ApiResponse[EscalationResponse]`` instance.
 
         Raises:
+            ServiceUnavailableError: When the escalation subsystem is
+                unwired (store / registry absent).
             NotFoundError: Raised on the corresponding failure path.
             ConflictError: Raised on the corresponding failure path.
         """
@@ -395,7 +405,7 @@ class EscalationsController(Controller):
                 missing_store=store is None,
                 missing_registry=registry is None,
             )
-            raise NotFoundError(msg)
+            raise ServiceUnavailableError(msg)
         operator = _operator_id()
         try:
             updated = await store.cancel(escalation_id, cancelled_by=operator)

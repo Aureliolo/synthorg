@@ -15,11 +15,11 @@ from synthorg.api.state import AppState
 from synthorg.core.auth.models import User
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import normalize_ascii_lowercase_or_default
+from synthorg.core.pagination import paginate
 from synthorg.hr.state import HrStateSlice, agent_registry_of
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.observability.events.setup import SETUP_AGENT_BOOTSTRAP_FAILED
-from synthorg.persistence._shared import paginate
 from synthorg.persistence.state import PersistenceStateSlice, persistence_of
 from synthorg.settings.state import (
     SettingsStateSlice,

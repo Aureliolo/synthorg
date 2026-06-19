@@ -10,7 +10,10 @@ from types import MappingProxyType
 from typing import Protocol, runtime_checkable
 
 from synthorg.observability import get_logger
-from synthorg.observability.events.routing import ROUTING_CANDIDATE_SELECTED
+from synthorg.observability.events.routing import (
+    ROUTING_CANDIDATE_SELECTED,
+    ROUTING_SELECTION_FAILED,
+)
 
 from .errors import ModelResolutionError
 from .models import ResolvedModel
@@ -98,6 +101,12 @@ class QuotaAwareSelector:
         """
         if not candidates:
             msg = "Cannot select from empty candidate list"
+            logger.warning(
+                ROUTING_SELECTION_FAILED,
+                selector="quota_aware",
+                reason="empty_candidates",
+                error_type=ModelResolutionError.__name__,
+            )
             raise ModelResolutionError(msg, context={"selector": "quota_aware"})
         with_quota = [c for c in candidates if self._has_quota(c.provider_name)]
         if not with_quota and len(candidates) > 1 and self._quota:
@@ -152,6 +161,12 @@ class CheapestSelector:
         """
         if not candidates:
             msg = "Cannot select from empty candidate list"
+            logger.warning(
+                ROUTING_SELECTION_FAILED,
+                selector="cheapest",
+                reason="empty_candidates",
+                error_type=ModelResolutionError.__name__,
+            )
             raise ModelResolutionError(msg, context={"selector": "cheapest"})
         chosen = min(candidates, key=_cost_key)
         if len(candidates) > 1:

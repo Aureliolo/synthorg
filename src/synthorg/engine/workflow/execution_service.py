@@ -13,6 +13,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from synthorg.core.pagination import DEFAULT_LIST_LIMIT
 from synthorg.core.registry import (
     StrategyFactoryNotFoundError,
 )
@@ -71,12 +72,13 @@ from synthorg.observability.events.workflow_execution import (
     WORKFLOW_EXEC_NODE_COMPLETED,
     WORKFLOW_EXEC_NODE_SKIPPED,
     WORKFLOW_EXEC_NOT_FOUND,
+    WORKFLOW_EXEC_STATUS_TRANSITIONED,
+    WORKFLOW_EXEC_SUBWORKFLOW_CONFIG_INVALID,
     WORKFLOW_EXEC_SUBWORKFLOW_DEPTH_EXCEEDED,
     WORKFLOW_EXEC_SUBWORKFLOW_FRAME_POPPED,
     WORKFLOW_EXEC_SUBWORKFLOW_FRAME_PUSHED,
     WORKFLOW_EXEC_SUBWORKFLOW_NODE_COMPLETED,
 )
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 if TYPE_CHECKING:
     from synthorg.persistence.workflow_definition_protocol import (
@@ -203,6 +205,13 @@ class WorkflowExecutionService:
             execution_id=str(execution_id),
             definition_id=str(definition.id),
             task_count=len(state.node_task_ids),
+        )
+        logger.info(
+            WORKFLOW_EXEC_STATUS_TRANSITIONED,
+            execution_id=str(execution_id),
+            definition_id=str(definition.id),
+            from_status=None,
+            to_status=status.value,
         )
 
         return execution
@@ -494,6 +503,12 @@ class WorkflowExecutionService:
                 "but no SubworkflowRegistry is configured on "
                 "WorkflowExecutionService"
             )
+            logger.warning(
+                WORKFLOW_EXEC_SUBWORKFLOW_CONFIG_INVALID,
+                node_id=nid,
+                reason="registry_not_configured",
+                error_type=WorkflowExecutionError.__name__,
+            )
             raise WorkflowExecutionError(msg)
 
         config = dict(node.config)
@@ -503,20 +518,44 @@ class WorkflowExecutionService:
         output_bindings = config.get("output_bindings")
         if not isinstance(subworkflow_id, str) or not subworkflow_id.strip():
             msg = f"SUBWORKFLOW node {nid!r} is missing subworkflow_id in config"
+            logger.warning(
+                WORKFLOW_EXEC_SUBWORKFLOW_CONFIG_INVALID,
+                node_id=nid,
+                reason="missing_subworkflow_id",
+                error_type=WorkflowExecutionError.__name__,
+            )
             raise WorkflowExecutionError(msg)
         if not isinstance(version, str) or not version.strip():
             msg = f"SUBWORKFLOW node {nid!r} is missing version pin in config"
+            logger.warning(
+                WORKFLOW_EXEC_SUBWORKFLOW_CONFIG_INVALID,
+                node_id=nid,
+                reason="missing_version",
+                error_type=WorkflowExecutionError.__name__,
+            )
             raise WorkflowExecutionError(msg)
         if not isinstance(input_bindings, dict):
             msg = (
                 f"SUBWORKFLOW node {nid!r} input_bindings must be"
                 f" a dict, got {type(input_bindings).__name__}"
             )
+            logger.warning(
+                WORKFLOW_EXEC_SUBWORKFLOW_CONFIG_INVALID,
+                node_id=nid,
+                reason="input_bindings_not_dict",
+                error_type=WorkflowExecutionError.__name__,
+            )
             raise WorkflowExecutionError(msg)
         if not isinstance(output_bindings, dict):
             msg = (
                 f"SUBWORKFLOW node {nid!r} output_bindings must be"
                 f" a dict, got {type(output_bindings).__name__}"
+            )
+            logger.warning(
+                WORKFLOW_EXEC_SUBWORKFLOW_CONFIG_INVALID,
+                node_id=nid,
+                reason="output_bindings_not_dict",
+                error_type=WorkflowExecutionError.__name__,
             )
             raise WorkflowExecutionError(msg)
 

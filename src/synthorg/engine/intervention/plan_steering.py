@@ -28,8 +28,9 @@ from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
-    # A module-level loop_protocol import cycles here; the runtime use is a
-    # deferred function-local import (see ``ExecutionResult`` below).
+    # A module-level loop_protocol import cycles here. ``ExecutionResult``
+    # is needed only for annotations; the runtime path discriminates on the
+    # tuple shape (see ``steering_replan``), so no runtime import is required.
     from synthorg.engine.loop_protocol import ExecutionResult
 
 logger = get_logger(__name__)
@@ -86,8 +87,6 @@ async def steering_replan(  # noqa: PLR0913
         ``(ctx, new_plan, replans_used)`` on a successful replan with the
         pending-replan flag cleared, or a terminal :class:`ExecutionResult`.
     """
-    from synthorg.engine.loop_protocol import ExecutionResult  # noqa: PLC0415
-
     logger.info(
         EXECUTION_PLAN_REPLAN_START,
         execution_id=ctx.execution_id,
@@ -127,7 +126,11 @@ async def steering_replan(  # noqa: PLR0913
         replan_msg,
         revision_number=plan.revision_number + 1,
     )
-    if isinstance(result, ExecutionResult):
+    # ``call_planner`` returns either the ``(ctx, plan)`` continuation
+    # tuple or a terminal ``ExecutionResult``. Discriminate on the tuple
+    # shape so this module needs no runtime import of ``ExecutionResult``
+    # (a module-level ``loop_protocol`` import would cycle here).
+    if not isinstance(result, tuple):
         return finalize(result, all_plans, replans_used)
     ctx, new_plan = result
     ctx = ctx.cleared_pending_replan()

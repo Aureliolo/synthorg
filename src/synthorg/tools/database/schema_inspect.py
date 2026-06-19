@@ -8,14 +8,18 @@ import asyncio
 import re
 from typing import ClassVar, Final, cast, override
 
-import aiosqlite
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.database import (
     DB_SCHEMA_INSPECT_FAILED,
     DB_SCHEMA_INSPECT_START,
     DB_SCHEMA_INSPECT_SUCCESS,
+)
+from synthorg.persistence.external_sql import (
+    describe_external_table,
+    list_external_tables,
 )
 from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.base import ToolExecutionResult
@@ -122,7 +126,7 @@ class SchemaInspectTool(BaseDatabaseTool):
                 ),
                 is_error=True,
             )
-        except aiosqlite.Error as exc:
+        except QueryError as exc:
             logger.warning(
                 DB_SCHEMA_INSPECT_FAILED,
                 action=action,
@@ -140,33 +144,27 @@ class SchemaInspectTool(BaseDatabaseTool):
         Returns:
             Result of type ``ToolExecutionResult``.
         """
-        import urllib.parse  # noqa: PLC0415
+        tables = list(
+            await list_external_tables(database_path=self._config.database_path)
+        )
 
-        encoded = urllib.parse.quote(str(self._config.database_path))
-        db_uri = f"file:{encoded}?mode=ro"
-        async with aiosqlite.connect(db_uri, uri=True) as db:
-            cursor = await db.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-            )
-            rows = await cursor.fetchall()
-
-        if not rows:
+        if not tables:
             logger.info(DB_SCHEMA_INSPECT_SUCCESS, action="list_tables", count=0)
             return ToolExecutionResult(
                 content="No tables found.",
                 metadata={"action": "list_tables", "count": 0},
             )
 
-        tables = [row[0] for row in rows]
         content = "Tables:\n" + "\n".join(f"  - {t}" for t in tables)
         logger.info(
             DB_SCHEMA_INSPECT_SUCCESS,
             action="list_tables",
             count=len(tables),
         )
+        tables_meta = cast("list[JsonValue]", tables)
         return ToolExecutionResult(
             content=content,
-            metadata={"action": "list_tables", "tables": tables},
+            metadata={"action": "list_tables", "tables": tables_meta},
         )
 
     async def _describe_table(self, table_name: str) -> ToolExecutionResult:
@@ -186,15 +184,12 @@ class SchemaInspectTool(BaseDatabaseTool):
                 "Must be alphanumeric/underscore.",
                 is_error=True,
             )
-        import urllib.parse  # noqa: PLC0415
+        table_columns = await describe_external_table(
+            database_path=self._config.database_path,
+            table_name=table_name,
+        )
 
-        encoded = urllib.parse.quote(str(self._config.database_path))
-        db_uri = f"file:{encoded}?mode=ro"
-        async with aiosqlite.connect(db_uri, uri=True) as db:
-            cursor = await db.execute(f"PRAGMA table_info({table_name})")
-            rows = await cursor.fetchall()
-
-        if not rows:
+        if not table_columns:
             return ToolExecutionResult(
                 content=f"Table {table_name!r} not found or has no columns.",
                 is_error=True,
@@ -204,15 +199,12 @@ class SchemaInspectTool(BaseDatabaseTool):
         lines.append("name | type | notnull | default | pk")
         lines.append("-" * 50)
         columns = []
-        for row in rows:
-            # PRAGMA table_info returns: cid, name, type, notnull, dflt_value, pk
-            name = row[1]
-            col_type = row[2]
-            notnull = bool(row[3])
-            default = row[4]
-            pk = bool(row[5])
-            lines.append(f"{name} | {col_type} | {notnull} | {default} | {pk}")
-            columns.append(name)
+        for col in table_columns:
+            lines.append(
+                f"{col.name} | {col.type} | {col.notnull} | "
+                f"{col.default} | {col.primary_key}"
+            )
+            columns.append(col.name)
 
         logger.info(
             DB_SCHEMA_INSPECT_SUCCESS,
@@ -220,11 +212,12 @@ class SchemaInspectTool(BaseDatabaseTool):
             table=table_name,
             column_count=len(columns),
         )
+        columns_meta = cast("list[JsonValue]", columns)
         return ToolExecutionResult(
             content="\n".join(lines),
             metadata={
                 "action": "describe_table",
                 "table": table_name,
-                "columns": columns,
+                "columns": columns_meta,
             },
         )

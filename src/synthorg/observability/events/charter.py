@@ -22,6 +22,11 @@ CHARTER_INTERVIEW_FAILED: Final[str] = "charter.interview.failed"
 CHARTER_EDITED: Final[str] = "charter.edited"
 CHARTER_STATUS_TRANSITIONED: Final[str] = "charter.status_transitioned"
 CHARTER_OWNERSHIP_DENIED: Final[str] = "charter.ownership_denied"
+CHARTER_NOT_FOUND: Final[str] = "charter.not_found"
+CHARTER_NOT_EDITABLE: Final[str] = "charter.not_editable"
+CHARTER_ALREADY_DECIDED: Final[str] = "charter.already_decided"
+CHARTER_CONVERSATION_NOT_FOUND: Final[str] = "charter.conversation.not_found"
+CHARTER_CONVERSATION_CLOSED: Final[str] = "charter.conversation.closed"
 
 # -- Approval to spine dispatch ----------------------------------------
 
@@ -40,8 +45,11 @@ CHARTER_STATE_INCONSISTENT: Final[str] = "charter.state_inconsistent"
 CHARTER_SUBSTRATE_UNAVAILABLE: Final[str] = "charter.substrate.unavailable"
 
 __all__ = [
+    "CHARTER_ALREADY_DECIDED",
     "CHARTER_APPROVED",
     "CHARTER_CANCELLED",
+    "CHARTER_CONVERSATION_CLOSED",
+    "CHARTER_CONVERSATION_NOT_FOUND",
     "CHARTER_DISPATCHED",
     "CHARTER_DISPATCH_FAILED",
     "CHARTER_EDITED",
@@ -51,6 +59,8 @@ __all__ = [
     "CHARTER_INTERVIEW_QUESTION",
     "CHARTER_INTERVIEW_RESPONSE_INVALID",
     "CHARTER_INTERVIEW_TURN",
+    "CHARTER_NOT_EDITABLE",
+    "CHARTER_NOT_FOUND",
     "CHARTER_OWNERSHIP_DENIED",
     "CHARTER_PROJECT_ALREADY_EXISTS",
     "CHARTER_STATE_INCONSISTENT",

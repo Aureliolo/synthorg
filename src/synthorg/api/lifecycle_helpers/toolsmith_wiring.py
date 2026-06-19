@@ -155,6 +155,11 @@ def _locate_evals_root() -> Path:
         if (candidate / "baselines" / "reference.yaml").is_file():
             return candidate
     msg = "golden_scorecard_provider='eval' requires the evals/ harness on disk"
+    logger.warning(
+        API_APP_STARTUP,
+        action="golden_scorecard_evals_missing",
+        error_type=GoldenScorecardUnavailableError.__name__,
+    )
     raise GoldenScorecardUnavailableError(msg)
 
 
@@ -187,6 +192,12 @@ def _build_golden_scorecard_provider(
         return None
     if strategy != "eval":
         msg = f"unknown golden_scorecard_provider {strategy!r}; expected none|eval"
+        logger.warning(
+            API_APP_STARTUP,
+            action="unknown_golden_scorecard_provider",
+            strategy=strategy,
+            error_type=UnknownGoldenScorecardProviderError.__name__,
+        )
         raise UnknownGoldenScorecardProviderError(msg)
 
     from synthorg.meta.toolsmith.golden_scorecard import (  # noqa: PLC0415

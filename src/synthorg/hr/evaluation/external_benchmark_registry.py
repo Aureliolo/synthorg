@@ -20,7 +20,9 @@ from synthorg.hr.evaluation.external_benchmark_protocol import (
 )
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.eval_loop import (
+    EVAL_LOOP_BENCHMARK_ALREADY_REGISTERED,
     EVAL_LOOP_BENCHMARK_EXECUTED,
+    EVAL_LOOP_BENCHMARK_NOT_FOUND,
 )
 
 logger = get_logger(__name__)
@@ -55,7 +57,11 @@ class ExternalBenchmarkRegistry:
                 f"Benchmark {benchmark.name!r} already registered "
                 f"with a different instance"
             )
-            logger.warning(msg)
+            logger.warning(
+                EVAL_LOOP_BENCHMARK_ALREADY_REGISTERED,
+                benchmark_name=benchmark.name,
+                error_type=ValueError.__name__,
+            )
             raise ValueError(msg)
         updated = copy.deepcopy(dict(self._benchmarks))
         updated[benchmark.name] = benchmark
@@ -75,7 +81,11 @@ class ExternalBenchmarkRegistry:
         """
         if name not in self._benchmarks:
             msg = f"Benchmark {name!r} not registered"
-            logger.warning(msg)
+            logger.warning(
+                EVAL_LOOP_BENCHMARK_NOT_FOUND,
+                benchmark_name=name,
+                error_type=KeyError.__name__,
+            )
             raise KeyError(msg)
         return self._benchmarks[name]
 

@@ -24,6 +24,11 @@ from typing import Final
 
 from packaging.version import InvalidVersion, Version
 
+from synthorg.core.pagination import (
+    DEFAULT_LIST_LIMIT,
+    MAX_LIST_LIMIT,
+    collect_all,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
     SubworkflowIOError,
@@ -47,11 +52,6 @@ from synthorg.observability.events.workflow_definition import (
     SUBWORKFLOW_DELETED,
     SUBWORKFLOW_REGISTERED,
     SUBWORKFLOW_RESOLVED,
-)
-from synthorg.persistence._shared import (
-    DEFAULT_LIST_LIMIT,
-    MAX_LIST_LIMIT,
-    collect_all,
 )
 from synthorg.persistence.subworkflow_protocol import (
     SubworkflowRepository,

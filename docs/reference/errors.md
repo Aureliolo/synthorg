@@ -96,6 +96,12 @@ The NotFound hierarchy is rooted at `NotFoundError`. Each resource has a dedicat
 | 3023 | `DELIVERABLE_RECEIPT_NOT_FOUND` | Deliverable receipt |
 | 3024 | `API_KEY_NOT_FOUND` | API key |
 | 3025 | `UPGRADE_RECOMMENDATION_NOT_FOUND` | Upgrade recommendation |
+| 3026 | `GROUP_PARTICIPANT_UNKNOWN` | Group-chat participant not a known member |
+| 3027 | `CHECKPOINT_NOT_FOUND` | Fine-tune checkpoint |
+| 3028 | `FINE_TUNE_RUN_NOT_FOUND` | Fine-tune run record |
+| 3029 | `AGENT_NOT_FOUND` | Registered agent |
+| 3030 | `PERSONALITY_NOT_FOUND` | Agent personality |
+| 3031 | `TRAINING_SESSION_NOT_FOUND` | Training session record |
 
 All share the same `type` URI; the numeric code is the discriminator.
 
@@ -217,6 +223,11 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 8036 | `SINK_CONSTRUCTION_ERROR` | Observability sink construction failed |
 | 8037 | `SUBWORKFLOW_CYCLE_ERROR` | Subworkflow reference graph contains a cycle |
 | 8038 | `SUBWORKFLOW_DEPTH_EXCEEDED_ERROR` | Runtime subworkflow nesting exceeded the configured limit |
+| 8039 | `TASK_ENGINE_NOT_RUNNING` | Task engine is not running; submission rejected (503) |
+| 8040 | `TASK_ENGINE_QUEUE_FULL` | Task engine admission queue is full (503) |
+| 8041 | `CONVERSATIONAL_PROPOSE_UNAVAILABLE` | Chief-of-Staff propose mode not wired (503) |
+| 8042 | `GROUP_CHAT_UNAVAILABLE` | Group-chat mode not wired (503) |
+| 8043 | `CHARTER_INTERVIEW_UNAVAILABLE` | Charter interview mode not wired (503) |
 
 ## Content negotiation
 

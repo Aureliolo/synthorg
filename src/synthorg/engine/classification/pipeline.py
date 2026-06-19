@@ -76,7 +76,7 @@ from synthorg.observability.events.classification import (
     DETECTOR_TIMEOUT,
 )
 from synthorg.persistence.task_protocol import TaskRepository
-from synthorg.providers.base import BaseCompletionProvider
+from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 
@@ -149,7 +149,7 @@ _SIMPLE_FACTORIES: MappingProxyType[
 def _build_detectors(
     config: ErrorTaxonomyConfig,
     *,
-    provider: BaseCompletionProvider | None = None,
+    provider: CompletionProvider | None = None,
     budget_tracker: ClassificationBudgetTracker | None = None,
 ) -> tuple[Detector, ...]:
     """Instantiate detectors from config.
@@ -189,7 +189,7 @@ def _build_variants(
     cat_config: DetectorCategoryConfig,
     *,
     config: ErrorTaxonomyConfig,
-    provider: BaseCompletionProvider | None,
+    provider: CompletionProvider | None,
     budget_tracker: ClassificationBudgetTracker | None,
 ) -> list[Detector]:
     """Build detector instances for a single category.
@@ -222,7 +222,7 @@ def _maybe_add_semantic(
     variants: list[Detector],
     category: ErrorCategory,
     *,
-    provider: BaseCompletionProvider | None,
+    provider: CompletionProvider | None,
     model_id: str,
     budget_tracker: ClassificationBudgetTracker | None,
 ) -> None:
@@ -284,7 +284,7 @@ async def classify_execution_errors(  # noqa: PLR0913
     *,
     config: ErrorTaxonomyConfig,
     task_repo: TaskRepository | None = None,
-    provider: BaseCompletionProvider | None = None,
+    provider: CompletionProvider | None = None,
     sinks: tuple[ClassificationSink, ...] = (),
 ) -> ClassificationResult | None:
     """Classify coordination errors from an execution result.
@@ -356,7 +356,7 @@ async def _classify_safely(  # noqa: PLR0913
     execution_id: str,
     config: ErrorTaxonomyConfig,
     task_repo: TaskRepository | None,
-    provider: BaseCompletionProvider | None,
+    provider: CompletionProvider | None,
 ) -> ClassificationResult | None:
     """Run the pipeline and catch all non-fatal errors.
 
@@ -440,7 +440,7 @@ async def _run_pipeline(  # noqa: PLR0913
     execution_id: str,
     config: ErrorTaxonomyConfig,
     task_repo: TaskRepository | None,
-    provider: BaseCompletionProvider | None,
+    provider: CompletionProvider | None,
 ) -> ClassificationResult:
     """Build detectors, load contexts, run, and collect findings.
 

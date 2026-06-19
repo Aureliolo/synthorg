@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from synthorg import __version__
+from synthorg.backup._archive_io import compress_dir, compute_checksum
 from synthorg.backup.config import BackupConfig
 from synthorg.backup.errors import (
     BackupInProgressError,
@@ -37,6 +38,7 @@ from synthorg.observability.events.backup import (
     BACKUP_COMPLETED,
     BACKUP_FAILED,
     BACKUP_IN_PROGRESS,
+    BACKUP_MANIFEST_INVALID,
     BACKUP_MANIFEST_WRITTEN,
     BACKUP_RESTORE_COMPLETED,
     BACKUP_RESTORE_FAILED,
@@ -265,7 +267,7 @@ class BackupService(BackupServiceArchiveMixin):
             backed_up_components.append(comp)
 
         checksum = await asyncio.to_thread(
-            self._compute_checksum,
+            compute_checksum,
             backup_dir,
         )
 
@@ -315,7 +317,7 @@ class BackupService(BackupServiceArchiveMixin):
         if use_compression:
             archive_path = self._backup_path / f"{dir_name}.tar.gz"
             await asyncio.to_thread(
-                self._compress_dir,
+                compress_dir,
                 backup_dir,
                 archive_path,
             )
@@ -440,13 +442,19 @@ class BackupService(BackupServiceArchiveMixin):
             ManifestError: When the recomputed checksum does not match the
                 manifest's recorded checksum.
         """
-        computed = await asyncio.to_thread(self._compute_checksum, backup_dir)
+        computed = await asyncio.to_thread(compute_checksum, backup_dir)
         expected = manifest.checksum
         actual = f"sha256:{computed}"
         if actual != expected:
             msg = (
                 f"Checksum mismatch for backup {manifest.backup_id}: "
                 f"expected {expected}, got {actual}"
+            )
+            logger.warning(
+                BACKUP_MANIFEST_INVALID,
+                backup_id=manifest.backup_id,
+                reason="checksum_mismatch",
+                error_type=ManifestError.__name__,
             )
             raise ManifestError(msg)
 

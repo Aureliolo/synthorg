@@ -44,6 +44,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.communication import (
     COMM_BUS_ALREADY_RUNNING,
     COMM_BUS_HEALTH_CHECK_FAILED,
+    COMM_BUS_START_REJECTED,
     COMM_BUS_STARTED,
     COMM_BUS_STREAM_SCAN_FAILED,
 )
@@ -174,6 +175,11 @@ class JetStreamMessageBus:
                 msg = (
                     "JetStreamMessageBus is unrestartable: prior stop() "
                     "exceeded the drain timeout; construct a fresh instance"
+                )
+                logger.warning(
+                    COMM_BUS_START_REJECTED,
+                    reason="unrestartable",
+                    error_type=BusUnrestartableError.__name__,
                 )
                 raise BusUnrestartableError(msg)
             if state.running:

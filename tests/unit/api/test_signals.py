@@ -1,14 +1,18 @@
-"""Unit tests for the POSIX shutdown signal handler."""
+"""Unit tests for the POSIX + win32 shutdown signal handlers."""
 
 import asyncio
 import signal
 import sys
+import threading
+from collections.abc import Iterator
 from unittest.mock import patch
 
 import pytest
 
 from synthorg.api.signals import (
+    _install_win32_handlers,
     _make_handler,
+    _make_win32_handler,
     _on_signal,
     install_shutdown_handlers,
 )
@@ -17,6 +21,27 @@ from synthorg.engine.shutdown import ShutdownManager
 from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _restore_signal_handlers() -> Iterator[None]:
+    """Save / restore SIGTERM + SIGINT so a real install cannot leak.
+
+    The platform-agnostic tests call ``install_shutdown_handlers`` on the
+    host platform; on win32 (main thread) that now registers real
+    ``signal.signal`` handlers. Snapshot and restore them around every
+    test so a worker's signal disposition is unchanged afterwards.
+    """
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    saved = {sig: signal.getsignal(sig) for sig in (signal.SIGTERM, signal.SIGINT)}
+    try:
+        yield
+    finally:
+        for sig, handler in saved.items():
+            if handler is not None:
+                signal.signal(sig, handler)
 
 
 def _fake_app_state() -> AppState:
@@ -106,6 +131,50 @@ class TestInstallShutdownHandlers:
             side_effect=RuntimeError("loop is closed"),
         ):
             install_shutdown_handlers(app_state)
+
+
+class TestWin32Handlers:
+    """The win32 ``signal.signal`` fallback path."""
+
+    async def test_registers_signal_signal_on_win32_main_thread(self) -> None:
+        """On win32 main-thread the fallback registers both signals."""
+        app_state = _fake_app_state()
+        loop = asyncio.get_running_loop()
+        with (
+            patch("synthorg.api.signals.signal.signal") as mock_signal,
+            patch(
+                "synthorg.api.signals.threading.current_thread",
+                return_value=threading.main_thread(),
+            ),
+        ):
+            _install_win32_handlers(loop, app_state)
+        registered = {call.args[0] for call in mock_signal.call_args_list}
+        assert registered == {signal.SIGTERM, signal.SIGINT}
+
+    async def test_skips_on_non_main_thread(self) -> None:
+        """A worker-thread lifespan installs nothing (uvicorn owns it)."""
+        app_state = _fake_app_state()
+        loop = asyncio.get_running_loop()
+        sentinel_thread = threading.Thread(target=lambda: None)
+        with (
+            patch("synthorg.api.signals.signal.signal") as mock_signal,
+            patch(
+                "synthorg.api.signals.threading.current_thread",
+                return_value=sentinel_thread,
+            ),
+        ):
+            _install_win32_handlers(loop, app_state)
+        mock_signal.assert_not_called()
+
+    async def test_win32_handler_flags_shutdown_via_loop(self) -> None:
+        """The 2-arg C handler re-enters the loop and flags shutdown."""
+        app_state = _fake_app_state()
+        loop = asyncio.get_running_loop()
+        handler = _make_win32_handler(signal.SIGTERM, app_state, loop)
+        handler(int(signal.SIGTERM), None)
+        # call_soon_threadsafe defers to the loop; let it run.
+        await asyncio.sleep(0)
+        assert app_state.shutdown_requested.is_set()
 
 
 class TestOnSignal:

@@ -38,6 +38,7 @@ from synthorg.meta.mcp.handler_protocol import (
 from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import err, ok, require_admin_guardrails
 from synthorg.meta.mcp.handlers.common_logging import (
+    log_handler_admin_op_executed,
     log_handler_argument_invalid,
     log_handler_guardrail_violated,
     log_handler_invoke_failed,
@@ -79,7 +80,7 @@ async def _docs_write(
 ) -> str:
     """Return docs write."""
     try:
-        require_admin_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         svc = _require_docs_service(app_state)
         args = typed_args(arguments, DocsWriteArgs)
         body = _materialise_body(args.body)
@@ -94,6 +95,12 @@ async def _docs_write(
             slug=args.slug,
         )
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_DOCS_WRITE)
+        log_handler_admin_op_executed(
+            _TOOL_DOCS_WRITE,
+            reason=reason,
+            actor=resolved_actor,
+            target_id=metadata.slug,
+        )
         return ok(metadata.model_dump(mode="json"))
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(_TOOL_DOCS_WRITE, exc)

@@ -13,6 +13,7 @@ from synthorg.backup.config import RetentionConfig
 from synthorg.backup.errors import RetentionError
 from synthorg.backup.models import BackupManifest, BackupTrigger
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.iso_datetime import parse_iso_utc
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -23,7 +24,6 @@ from synthorg.observability.events.backup import (
     BACKUP_RETENTION_FAILED,
     BACKUP_RETENTION_PRUNED,
 )
-from synthorg.persistence._shared import parse_iso_utc
 
 logger = get_logger(__name__)
 

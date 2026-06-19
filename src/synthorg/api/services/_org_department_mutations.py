@@ -31,7 +31,7 @@ from synthorg.organization.models import (
     ReorderDepartmentsRequest,
     UpdateDepartmentRequest,
 )
-from synthorg.settings.service import SettingsService
+from synthorg.settings.service_protocol import SettingsServiceProtocol
 
 logger = get_logger(__name__)
 
@@ -48,7 +48,7 @@ class _DeptReassignPayload(TypedDict):
 class OrgDepartmentMutationsMixin:
     """Department CRUD + reorder for ``OrgMutationService``."""
 
-    _settings: SettingsService
+    _settings: SettingsServiceProtocol
 
     async def _read_setting_versioned(  # pragma: no cover - see concrete
         self, namespace: str, key: str

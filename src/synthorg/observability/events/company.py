@@ -15,3 +15,7 @@ DEPARTMENT_DELETED_VIA_MCP: Final[str] = "organization.department.deleted_via_mc
 TEAM_CREATED_VIA_MCP: Final[str] = "organization.team.created_via_mcp"
 TEAM_UPDATED_VIA_MCP: Final[str] = "organization.team.updated_via_mcp"
 TEAM_DELETED_VIA_MCP: Final[str] = "organization.team.deleted_via_mcp"
+
+# -- Capability guards ---------------------------------------------------
+
+ORG_CAPABILITY_UNSUPPORTED: Final[str] = "organization.capability.unsupported"

@@ -23,6 +23,7 @@ from synthorg.meta.chief_of_staff.propose import (
 )
 from synthorg.meta.chief_of_staff.routing import RoleRouter
 from synthorg.meta.reports.service import ReportsService
+from synthorg.meta.rules.service import CustomRulesService
 from synthorg.meta.service import SelfImprovementService
 from synthorg.meta.signals.service import SignalsService
 from synthorg.persistence.conversation_invite_protocol import (
@@ -55,6 +56,7 @@ class MetaStateSlice(BaseFeatureStateSlice):
     role_router: RoleRouter | None = None
     group_chat_service: GroupChatService | None = None
     conversational_actor: ConversationalActor | None = None
+    custom_rules_service: CustomRulesService | None = None
 
 
 def signals_service_of(app_state: AppStateSliceMixin) -> SignalsService:
@@ -65,6 +67,17 @@ def signals_service_of(app_state: AppStateSliceMixin) -> SignalsService:
     """
     return require_service(
         app_state.slice(MetaStateSlice).signals_service, "Signals Service"
+    )
+
+
+def custom_rules_service_of(app_state: AppStateSliceMixin) -> CustomRulesService:
+    """Resolve the custom-rules service from its slice, or raise 503.
+
+    Returns:
+        The wired custom-rules service.
+    """
+    return require_service(
+        app_state.slice(MetaStateSlice).custom_rules_service, "Custom Rules Service"
     )
 
 

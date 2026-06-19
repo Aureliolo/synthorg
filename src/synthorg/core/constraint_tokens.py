@@ -1,9 +1,11 @@
 """Stable constraint tokens for user-table DB invariants.
 
-These tokens are returned by ``ConstraintViolationError.constraint``
-and are shared across all persistence backends (SQLite, Postgres)
-and the API controller layer.  Keeping them in one module prevents
-token drift between backends and call sites.
+These tokens are returned by ``ConstraintViolationError.constraint`` and
+are a cross-layer contract: the persistence backends (SQLite, Postgres)
+emit them, and the API translates them into typed domain conflicts. They
+are pure dependency-free string identifiers, so they live in ``core`` as
+the single source of truth that both layers may import without crossing
+the persistence boundary.
 """
 
 from typing import Final

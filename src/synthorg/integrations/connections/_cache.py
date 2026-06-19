@@ -14,9 +14,9 @@ from contextlib import AbstractAsyncContextManager
 from typing import TYPE_CHECKING
 
 from synthorg.core.concurrency import RefcountedLockMap
+from synthorg.core.pagination import paginate
 from synthorg.integrations.connections.models import Connection
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import paginate
 
 if TYPE_CHECKING:
     from synthorg.persistence.connection_protocol import ConnectionRepository

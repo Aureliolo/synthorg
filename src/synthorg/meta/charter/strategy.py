@@ -166,6 +166,11 @@ class LLMCharterInterviewer:
             ),
         )
         if parsed is None:
+            logger.warning(
+                CHARTER_INTERVIEW_RESPONSE_INVALID,
+                reason="llm_response_not_parseable",
+                error_type=CharterInterviewResponseInvalidError.__name__,
+            )
             raise CharterInterviewResponseInvalidError
         try:
             return InterviewDecision.model_validate(parsed)

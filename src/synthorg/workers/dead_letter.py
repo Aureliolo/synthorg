@@ -34,6 +34,7 @@ from synthorg.observability import (
 )
 from synthorg.observability.events.workers import (
     WORKERS_DEAD_LETTER_ALREADY_TERMINAL,
+    WORKERS_DEAD_LETTER_CONSUMER_START_REJECTED,
     WORKERS_DEAD_LETTER_CONSUMER_STARTED,
     WORKERS_DEAD_LETTER_CONSUMER_STOPPED,
     WORKERS_DEAD_LETTER_DUPLICATE_SUPPRESSED,
@@ -186,6 +187,11 @@ class DeadLetterConsumer:
         async with self._lifecycle_lock:
             if self._running:
                 msg = "DeadLetterConsumer is already running"
+                logger.warning(
+                    WORKERS_DEAD_LETTER_CONSUMER_START_REJECTED,
+                    reason="already_running",
+                    error_type=RuntimeError.__name__,
+                )
                 raise RuntimeError(msg)
             self._running = True
             self._stop_event.clear()

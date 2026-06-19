@@ -13,9 +13,11 @@ from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import Connection, ConnectionType
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
-    COMMUNICATION_CONNECTION_CREATED,
-    COMMUNICATION_CONNECTION_DELETED,
     COMMUNICATION_CONNECTION_HEALTH_CHECKED,
+)
+from synthorg.observability.events.security import (
+    SECURITY_CONNECTION_CREATED,
+    SECURITY_CONNECTION_DELETED,
 )
 
 logger = get_logger(__name__)
@@ -86,10 +88,11 @@ class ConnectionService:
             metadata=metadata,
         )
         logger.info(
-            COMMUNICATION_CONNECTION_CREATED,
+            SECURITY_CONNECTION_CREATED,
             connection_name=name,
             connection_type=str(connection_type),
             actor_id=actor_id,
+            principal=actor_id,
         )
         return connection
 
@@ -110,10 +113,11 @@ class ConnectionService:
         """
         await self._catalog.delete(name)
         logger.info(
-            COMMUNICATION_CONNECTION_DELETED,
+            SECURITY_CONNECTION_DELETED,
             connection_name=name,
             actor_id=actor_id,
             reason=reason,
+            principal=actor_id,
         )
 
     async def check_health(

@@ -54,7 +54,7 @@ from synthorg.observability.events.meeting import (
     MEETING_TASKS_CAPPED,
 )
 from synthorg.settings.kill_switch import resolve_bool_with_fallback
-from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
 
@@ -122,7 +122,7 @@ class MeetingOrchestrator:
         task_creator: TaskCreator | None = None,
         strategy_config: _LensStrategyConfig | None = None,
         lens_assigner: _LensAssigner | None = None,
-        config_resolver: ConfigResolver | None = None,
+        config_resolver: ConfigResolverProtocol | None = None,
     ) -> None:
         self._protocol_registry: MappingProxyType[
             MeetingProtocolType, MeetingProtocol

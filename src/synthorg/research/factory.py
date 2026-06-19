@@ -10,6 +10,8 @@ means that source family does not fan out.
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.clock import Clock
 from synthorg.knowledge.service import KnowledgeService
+from synthorg.observability import get_logger
+from synthorg.observability.events.research import RESEARCH_UNAVAILABLE
 from synthorg.persistence.research_protocol import ResearchRunRepository
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.research.config import ResearchConfig
@@ -38,6 +40,8 @@ from synthorg.research.triage.hybrid import HybridCredibilityTriage
 from synthorg.research.triage.llm import LlmCredibilityTriage
 from synthorg.research.triage.protocol import CredibilityTriage
 from synthorg.tools.web.web_search import WebSearchProvider
+
+logger = get_logger(__name__)
 
 
 def _build_triage(
@@ -90,6 +94,11 @@ def _build_deduplicator(
     if config.deduplicator == "embedding":
         if embedder is None:
             msg = "embedding deduplicator requires an embedder to be injected"
+            logger.warning(
+                RESEARCH_UNAVAILABLE,
+                reason="embedding_deduplicator_missing_embedder",
+                error_type=ResearchUnavailableError.__name__,
+            )
             raise ResearchUnavailableError(msg)
         return EmbeddingDeduplicator(
             embedder=embedder, threshold=config.dedup_similarity_threshold
@@ -154,6 +163,11 @@ def build_research_service(  # noqa: PLR0913 -- injected boot collaborators
     """
     if not config.enabled:
         msg = "research mode is disabled in config"
+        logger.warning(
+            RESEARCH_UNAVAILABLE,
+            reason="research_mode_disabled",
+            error_type=ResearchUnavailableError.__name__,
+        )
         raise ResearchUnavailableError(msg)
     return ResearchService(
         planner=LlmQueryPlanner(

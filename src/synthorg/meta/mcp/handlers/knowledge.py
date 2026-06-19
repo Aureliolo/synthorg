@@ -37,6 +37,7 @@ from synthorg.meta.mcp.handler_protocol import (
 from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
 from synthorg.meta.mcp.handlers.common import err, ok, require_admin_guardrails
 from synthorg.meta.mcp.handlers.common_logging import (
+    log_handler_admin_op_executed,
     log_handler_argument_invalid,
     log_handler_guardrail_violated,
     log_handler_invoke_failed,
@@ -117,7 +118,7 @@ async def _knowledge_ingest(
 ) -> str:
     """Return knowledge ingest."""
     try:
-        require_admin_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         svc = _require_service(app_state)
         args = typed_args(arguments, KnowledgeIngestArgs)
         source = await svc.ingest(
@@ -127,6 +128,12 @@ async def _knowledge_ingest(
             project_id=args.project_id,
         )
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_INGEST)
+        log_handler_admin_op_executed(
+            _TOOL_INGEST,
+            reason=reason,
+            actor=resolved_actor,
+            target_id=source.source_id,
+        )
         return ok(source.model_dump(mode="json"))
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(_TOOL_INGEST, exc)
@@ -148,11 +155,17 @@ async def _knowledge_reindex(
 ) -> str:
     """Return knowledge reindex."""
     try:
-        require_admin_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         svc = _require_service(app_state)
         source_id = typed_args(arguments, KnowledgeReindexArgs).source_id
         source = await svc.reindex(source_id)
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_REINDEX)
+        log_handler_admin_op_executed(
+            _TOOL_REINDEX,
+            reason=reason,
+            actor=resolved_actor,
+            target_id=source.source_id,
+        )
         return ok(source.model_dump(mode="json"))
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(_TOOL_REINDEX, exc)
@@ -230,11 +243,17 @@ async def _knowledge_delete(
 ) -> str:
     """Return knowledge delete."""
     try:
-        require_admin_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         svc = _require_service(app_state)
         source_id = typed_args(arguments, KnowledgeDeleteArgs).source_id
         deleted = await svc.delete_source(source_id)
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_DELETE)
+        log_handler_admin_op_executed(
+            _TOOL_DELETE,
+            reason=reason,
+            actor=resolved_actor,
+            target_id=source_id,
+        )
         return ok({"source_id": source_id, "deleted": deleted})
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(_TOOL_DELETE, exc)

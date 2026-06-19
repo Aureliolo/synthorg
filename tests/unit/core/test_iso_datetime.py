@@ -9,9 +9,39 @@ from datetime import UTC, datetime, timedelta, timezone
 import pytest
 
 from synthorg.core.iso_datetime import (
+    format_iso_utc,
     parse_git_log_timestamp,
     parse_iso_assume_utc,
+    parse_iso_utc,
 )
+
+
+@pytest.mark.unit
+class TestStrictUtcPair:
+    """``parse_iso_utc`` / ``format_iso_utc`` reject naive and normalise to UTC."""
+
+    def test_parse_normalises_offset_to_utc(self) -> None:
+        result = parse_iso_utc("2026-06-15T12:00:00+05:00")
+        assert result == datetime(2026, 6, 15, 7, 0, tzinfo=UTC)
+        assert result.utcoffset() == timedelta(0)
+
+    def test_parse_rejects_naive(self) -> None:
+        with pytest.raises(ValueError, match="must be timezone-aware"):
+            parse_iso_utc("2026-06-15T12:00:00")
+
+    def test_format_emits_utc_offset(self) -> None:
+        value = datetime(2026, 6, 15, 12, 0, tzinfo=timezone(timedelta(hours=2)))
+        assert format_iso_utc(value) == "2026-06-15T10:00:00+00:00"
+
+    def test_format_rejects_naive(self) -> None:
+        with pytest.raises(ValueError, match="must be timezone-aware"):
+            format_iso_utc(datetime(2026, 6, 15, 12, 0))  # noqa: DTZ001
+
+    def test_persistence_marshaller_reexports_same_objects(self) -> None:
+        from synthorg.persistence._shared import datetime_marshaller
+
+        assert datetime_marshaller.parse_iso_utc is parse_iso_utc
+        assert datetime_marshaller.format_iso_utc is format_iso_utc
 
 
 @pytest.mark.unit

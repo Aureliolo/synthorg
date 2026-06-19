@@ -28,6 +28,7 @@ from synthorg.communication.loop_prevention.guard import (
     DelegationGuard,
 )
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.concurrency.refcounted_lock_map import RefcountedLockMap
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
@@ -36,6 +37,7 @@ from synthorg.observability.events.delegation import (
     DELEGATION_CREATED,
     DELEGATION_LOOP_ESCALATED,
     DELEGATION_RECORD_STORE_FAILED,
+    DELEGATION_REQUEST_INVALID,
     DELEGATION_REQUESTED,
     DELEGATION_RESULT_SENT,
     DELEGATION_SUB_TASK_FAILED,
@@ -61,6 +63,7 @@ class DelegationService:
     __slots__ = (
         "_audit_trail",
         "_authority_validator",
+        "_delegate_locks",
         "_entity_guard",
         "_guard",
         "_hierarchy",
@@ -82,6 +85,17 @@ class DelegationService:
         self._record_store = record_store
         self._entity_guard = entity_guard
         self._audit_trail: list[DelegationRecord] = []
+        # Serialises the loop-prevention check -> async entity guard ->
+        # record window so two concurrent ``delegate`` calls for the same
+        # pair cannot both pass the rate-limit / dedup ``check`` (sync,
+        # in-memory) before either ``record``s, blowing past the limit.
+        # A per-pair keyed lock (not a single global lock) keeps unrelated
+        # delegation pairs concurrent across the entity-guard await. The
+        # key is direction-agnostic (sorted) so A->B and B->A serialise
+        # together, matching the circuit breaker's direction-agnostic
+        # bounce counter -- a direction-sensitive key would let opposite
+        # directions race on that shared counter.
+        self._delegate_locks: RefcountedLockMap[str] = RefcountedLockMap()
 
     async def delegate(
         self,
@@ -121,40 +135,48 @@ class DelegationService:
                 blocked_by="authority",
             )
 
-        # 2. Loop prevention checks
-        guard_outcome = self._guard.check(
-            delegation_chain=request.task.delegation_chain,
-            delegator_id=request.delegator_id,
-            delegatee_id=request.delegatee_id,
-            task_id=str(request.task.id),
-        )
-        if not guard_outcome.passed:
-            self._escalate_loop_detection(request, guard_outcome.mechanism)
-            return DelegationResult(
-                success=False,
-                rejection_reason=guard_outcome.message,
-                blocked_by=guard_outcome.mechanism,
+        # Steps 2-4 form one check-and-record critical section over the
+        # in-process guard + audit-trail state. Serialise it per pair so
+        # concurrent delegations for the same pair cannot interleave
+        # between the sync ``check`` and the ``record`` (the await on the
+        # entity guard in step 3 is the interleaving window the lock
+        # closes), while unrelated pairs proceed concurrently.
+        pair_key = ":".join(sorted((request.delegator_id, request.delegatee_id)))
+        async with self._delegate_locks.acquire(pair_key):
+            # 2. Loop prevention checks
+            guard_outcome = self._guard.check(
+                delegation_chain=request.task.delegation_chain,
+                delegator_id=request.delegator_id,
+                delegatee_id=request.delegatee_id,
+                task_id=str(request.task.id),
             )
-
-        # 3. Entity alignment guard (async)
-        entity_versions: Mapping[str, int] | None = None
-        if self._entity_guard is not None:
-            guard_result = await self._entity_guard.check(request)
-            entity_versions = guard_result.entity_versions
-            if not guard_result.passed:
+            if not guard_outcome.passed:
+                self._escalate_loop_detection(request, guard_outcome.mechanism)
                 return DelegationResult(
                     success=False,
-                    rejection_reason=guard_result.message,
-                    blocked_by=guard_result.mechanism,
+                    rejection_reason=guard_outcome.message,
+                    blocked_by=guard_outcome.mechanism,
                 )
 
-        # 4. Create sub-task and record
-        sub_task = self._create_sub_task(request)
-        self._record_delegation(
-            request,
-            sub_task,
-            entity_versions=entity_versions,
-        )
+            # 3. Entity alignment guard (async)
+            entity_versions: Mapping[str, int] | None = None
+            if self._entity_guard is not None:
+                guard_result = await self._entity_guard.check(request)
+                entity_versions = guard_result.entity_versions
+                if not guard_result.passed:
+                    return DelegationResult(
+                        success=False,
+                        rejection_reason=guard_result.message,
+                        blocked_by=guard_result.mechanism,
+                    )
+
+            # 4. Create sub-task and record
+            sub_task = self._create_sub_task(request)
+            self._record_delegation(
+                request,
+                sub_task,
+                entity_versions=entity_versions,
+            )
 
         return DelegationResult(success=True, delegated_task=sub_task)
 
@@ -197,11 +219,21 @@ class DelegationService:
                 f"request.delegator_id {request.delegator_id!r} does not "
                 f"match delegator.name {delegator.name!r}"
             )
+            logger.warning(
+                DELEGATION_REQUEST_INVALID,
+                reason="delegator_id_mismatch",
+                error_type=ValueError.__name__,
+            )
             raise ValueError(msg)
         if request.delegatee_id != delegatee.name:
             msg = (
                 f"request.delegatee_id {request.delegatee_id!r} does not "
                 f"match delegatee.name {delegatee.name!r}"
+            )
+            logger.warning(
+                DELEGATION_REQUEST_INVALID,
+                reason="delegatee_id_mismatch",
+                error_type=ValueError.__name__,
             )
             raise ValueError(msg)
 

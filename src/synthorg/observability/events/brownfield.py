@@ -18,6 +18,9 @@ BROWNFIELD_WORKSPACE_SEEDED: Final[str] = "brownfield.workspace.seeded"
 BROWNFIELD_STRUCTURE_SCANNED: Final[str] = "brownfield.structure.scanned"
 """Deterministic scan produced a codebase structure map."""
 
+BROWNFIELD_MANIFEST_PARSE_FAILED: Final[str] = "brownfield.manifest.parse_failed"
+"""A per-ecosystem scanner could not parse a build manifest; degraded to empty."""
+
 BROWNFIELD_STRUCTURE_QUERY_FAILED: Final[str] = "brownfield.structure.query_failed"
 """Agent structure-map query failed against the repository."""
 

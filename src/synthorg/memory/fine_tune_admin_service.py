@@ -34,12 +34,13 @@ from synthorg.memory.fine_tune_plan import (
     MemoryBackendUnsupportedError,
 )
 from synthorg.memory.ports import FineTuneOrchestratorPort
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
     MEMORY_FINE_TUNE_INVALID_REQUEST,
     MEMORY_FINE_TUNE_PREFLIGHT_COMPLETED,
     MEMORY_FINE_TUNE_REQUESTED,
+    MEMORY_FINE_TUNE_RESUME_REJECTED,
     MEMORY_FINE_TUNE_STARTED,
 )
 from synthorg.persistence.fine_tune_protocol import (
@@ -214,7 +215,21 @@ class FineTuneAdminService:
         except ValueError as exc:
             message = str(exc).lower()
             if "not resumable" in message or "cannot resume" in message:
+                logger.warning(
+                    MEMORY_FINE_TUNE_RESUME_REJECTED,
+                    run_id=str(run_id),
+                    reason="not_resumable",
+                    error_type=FineTuneRunNotResumableError.__name__,
+                    error=safe_error_description(exc),
+                )
                 raise FineTuneRunNotResumableError(str(exc)) from exc
+            logger.warning(
+                MEMORY_FINE_TUNE_RESUME_REJECTED,
+                run_id=str(run_id),
+                reason="not_found",
+                error_type=FineTuneRunNotFoundError.__name__,
+                error=safe_error_description(exc),
+            )
             raise FineTuneRunNotFoundError(str(exc)) from exc
 
     async def get_fine_tune_status(

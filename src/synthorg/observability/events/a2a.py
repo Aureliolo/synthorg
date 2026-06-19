@@ -33,6 +33,7 @@ A2A_OUTBOUND_SSRF_BLOCKED: Final[str] = "a2a.outbound.ssrf_blocked"
 
 A2A_AGENT_CARD_SERVED: Final[str] = "a2a.agent_card.served"
 A2A_AGENT_CARD_BUILT: Final[str] = "a2a.agent_card.built"
+A2A_AGENT_CARD_NOT_FOUND: Final[str] = "a2a.agent_card.not_found"
 A2A_AGENT_CARD_CACHE_HIT: Final[str] = "a2a.agent_card.cache_hit"
 A2A_AGENT_CARD_CACHE_MISS: Final[str] = "a2a.agent_card.cache_miss"
 
@@ -42,6 +43,7 @@ A2A_TASK_CREATED: Final[str] = "a2a.task.created"
 A2A_TASK_STATE_CHANGED: Final[str] = "a2a.task.state_changed"
 A2A_TASK_CANCELLED: Final[str] = "a2a.task.cancelled"
 A2A_TASK_NOT_FOUND: Final[str] = "a2a.task.not_found"
+A2A_TASK_METHOD_REJECTED: Final[str] = "a2a.task.method_rejected"
 
 # -- SSE streaming ---------------------------------------------------------
 

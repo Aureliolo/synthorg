@@ -3,7 +3,7 @@
 
 from datetime import UTC, datetime
 
-from litestar import Controller, delete, post
+from litestar import Controller, Request, delete, post
 from litestar.datastructures import State
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import BaseModel, ConfigDict
@@ -18,10 +18,15 @@ from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo
 from synthorg.api.path_params import PathId, PathName
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
-from synthorg.core.auth.models import OrgRole
+from synthorg.core.auth.models import AuthenticatedUser, OrgRole
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.collections import dedupe_preserving_order
-from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
+from synthorg.core.domain_errors import (
+    ConflictError,
+    NotFoundError,
+    UnauthorizedError,
+    ValidationError,
+)
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
@@ -37,6 +42,23 @@ from synthorg.observability.events.security import (
 )
 
 logger = get_logger(__name__)
+
+
+def _require_actor(request: Request[object, object, State]) -> AuthenticatedUser:
+    """Return the authenticated actor or reject the request.
+
+    The org-role grant/revoke audit events are signed by the audit
+    chain, so the acting principal must be stamped on them. The CEO
+    guard already authenticated the caller; this re-reads that actor.
+
+    Raises:
+        UnauthorizedError: If no authenticated actor is on the request.
+    """
+    actor = request.scope.get("user")
+    if not isinstance(actor, AuthenticatedUser):
+        msg = "No authenticated actor on request"
+        raise UnauthorizedError(msg)
+    return actor
 
 
 class GrantOrgRoleRequest(BaseModel):
@@ -68,6 +90,7 @@ class UserOrgRolesController(Controller):
     async def grant_org_role(
         self,
         state: State,
+        request: Request[object, object, State],
         user_id: PathId,
         data: GrantOrgRoleRequest,
     ) -> ApiResponse[UserResponse]:
@@ -75,6 +98,7 @@ class UserOrgRolesController(Controller):
 
         Args:
             state: Application state.
+            request: Incoming request, carrying the authenticated actor.
             user_id: Target user identifier.
             data: Role grant payload.
 
@@ -88,6 +112,7 @@ class UserOrgRolesController(Controller):
             QueryError: Raised on the corresponding failure path.
         """
         service = _service(state)
+        actor = _require_actor(request)
         user = await _get_user_or_404(service, user_id, operation="grant_org_role")
 
         if user.role == HumanRole.SYSTEM:
@@ -146,6 +171,7 @@ class UserOrgRolesController(Controller):
             raise
         logger.info(
             SECURITY_PERMISSION_GRANTED,
+            principal=str(actor.user_id),
             user_id=user.id,
             role=data.role.value,
             scoped_departments=tuple(data.scoped_departments),
@@ -162,6 +188,7 @@ class UserOrgRolesController(Controller):
     async def revoke_org_role(
         self,
         state: State,
+        request: Request[object, object, State],
         user_id: PathId,
         role: PathName,
     ) -> None:
@@ -169,6 +196,7 @@ class UserOrgRolesController(Controller):
 
         Args:
             state: Application state.
+            request: Incoming request, carrying the authenticated actor.
             user_id: Target user identifier.
             role: OrgRole value to revoke.
 
@@ -178,6 +206,7 @@ class UserOrgRolesController(Controller):
             QueryError: Raised on the corresponding failure path.
         """
         service = _service(state)
+        actor = _require_actor(request)
         try:
             org_role = OrgRole(role)
         except ValueError:
@@ -219,6 +248,7 @@ class UserOrgRolesController(Controller):
             raise
         logger.info(
             SECURITY_PERMISSION_REVOKED,
+            principal=str(actor.user_id),
             user_id=user.id,
             role=role,
         )

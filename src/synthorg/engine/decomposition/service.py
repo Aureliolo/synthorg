@@ -60,6 +60,12 @@ def _subtask_uuid(subtask_id: str) -> UUID:
             f"Subtask id {subtask_id!r} is not a valid UUID string; "
             "decomposition strategies must supply UUID-string subtask ids"
         )
+        logger.warning(
+            DECOMPOSITION_FAILED,
+            reason="subtask_id_not_uuid",
+            error_type=DecompositionError.__name__,
+            error=safe_error_description(exc),
+        )
         raise DecompositionError(msg) from exc
     # The plan keeps the original string while the child Task canonicalises
     # via UUID; a non-canonical input (uppercase, no hyphens) would yield two
@@ -69,6 +75,11 @@ def _subtask_uuid(subtask_id: str) -> UUID:
         msg = (
             f"Subtask id {subtask_id!r} is not in canonical UUID form; "
             f"use {canonical!r}"
+        )
+        logger.warning(
+            DECOMPOSITION_FAILED,
+            reason="subtask_id_not_canonical",
+            error_type=DecompositionError.__name__,
         )
         raise DecompositionError(msg)
     return parsed

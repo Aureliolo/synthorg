@@ -2,20 +2,17 @@
 
 On-demand reference. The top rule in `CLAUDE.md` is: `src/synthorg/persistence/` is the **only** place that may import `aiosqlite`, `sqlite3`, `psycopg`, or `psycopg_pool`, or emit raw SQL DDL/DML keywords in string literals. Every durable feature must define a repository Protocol under `persistence/<domain>_protocol.py`, concrete impls under `persistence/{sqlite,postgres}/`, and expose them on `PersistenceBackend`.
 
-## Three sanctioned exception categories
+## Two sanctioned exception categories
 
-Sanctioned exceptions cover three categories. The authoritative list lives in `_ALLOWLIST` inside `scripts/check_persistence_boundary.py`; any new exception must be added there with a justifying comment.
+Sanctioned exceptions cover two categories. The authoritative list lives in `_ALLOWLIST` inside `scripts/check_persistence_boundary.py`; any new exception must be added there with a justifying comment.
 
-### 1. Agent-facing DB tools
+The agent-facing DB tools (`tools/database/sql_query.py`, `schema_inspect.py`) are **not** exceptions: they run agent SQL against an operator-configured external SQLite database through `persistence/external_sql.py`, which owns the `aiosqlite` driver, the read-only URI handling, and the explicit write-transaction discipline. The tools hold only policy (statement classification, read-only enforcement, security action-type gating) and presentation.
 
-- `src/synthorg/tools/database/schema_inspect.py`
-- `src/synthorg/tools/database/sql_query.py`
-
-### 2. Security / scanning utilities that inspect user-supplied SQL
+### 1. Security / scanning utilities that inspect user-supplied SQL
 
 - e.g. `src/synthorg/security/rules/destructive_op_detector.py`, whose detection payload *is* DDL keyword strings.
 
-### 3. Test fixtures / conformance harnesses
+### 2. Test fixtures / conformance harnesses
 
 - Hold driver primitives for cross-subsystem setup.
 

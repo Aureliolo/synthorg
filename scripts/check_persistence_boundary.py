@@ -130,15 +130,6 @@ _MUTATION_LOG_ALLOWED_CONSTANTS: Final[frozenset[str]] = frozenset(
 # comment explaining *why* the exception is justified.
 _ALLOWLIST: Final[frozenset[str]] = frozenset(
     {
-        # Agent-facing DB introspection tool.  Returns table/column
-        # metadata from whatever DB the operator configured -- the
-        # repository abstraction does not expose this shape by design.
-        "src/synthorg/tools/database/schema_inspect.py",
-        # Agent-facing arbitrary-SQL tool.  Operator-gated; runs
-        # user-supplied SELECTs against the configured DB.  Cannot
-        # ride the repository pattern because SQL strings are the
-        # payload.
-        "src/synthorg/tools/database/sql_query.py",
         # Destructive-operation detector scans user-supplied SQL for
         # DDL keywords -- the DDL literals are the *payload* of the
         # security check, not SQL emitted by the app.

@@ -10,7 +10,7 @@ import asyncio
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.registry_protocol import AgentRegistryProtocol
 from synthorg.observability import get_logger
 from synthorg.observability.events.evolution import (
     EVOLUTION_ROLLBACK_TRIGGERED,
@@ -36,7 +36,7 @@ class CopyOnWriteIdentityStore:
     def __init__(
         self,
         *,
-        registry: AgentRegistryService,
+        registry: AgentRegistryProtocol,
         versioning: VersioningService[AgentIdentity],
     ) -> None:
         self._registry = registry

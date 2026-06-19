@@ -5,7 +5,10 @@ from typing import Final
 from synthorg.client.models import ClientFeedback, ReviewContext
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
-from synthorg.observability.events.client import CLIENT_REVIEW_COMPLETED
+from synthorg.observability.events.client import (
+    CLIENT_ADVERSARIAL_THRESHOLD_INVALID,
+    CLIENT_REVIEW_COMPLETED,
+)
 
 logger = get_logger(__name__)
 _DEFAULT_MIN_LENGTH: Final[int] = 200
@@ -46,11 +49,23 @@ class AdversarialFeedback:
         """
         if min_length <= 0:
             msg = f"min_length must be > 0, got {min_length}"
-            logger.warning(msg, client_id=client_id)
+            logger.warning(
+                CLIENT_ADVERSARIAL_THRESHOLD_INVALID,
+                client_id=client_id,
+                field="min_length",
+                value=min_length,
+                error_type=ValueError.__name__,
+            )
             raise ValueError(msg)
         if min_words <= 0:
             msg = f"min_words must be > 0, got {min_words}"
-            logger.warning(msg, client_id=client_id)
+            logger.warning(
+                CLIENT_ADVERSARIAL_THRESHOLD_INVALID,
+                client_id=client_id,
+                field="min_words",
+                value=min_words,
+                error_type=ValueError.__name__,
+            )
             raise ValueError(msg)
         self._client_id = client_id
         self._min_length = min_length

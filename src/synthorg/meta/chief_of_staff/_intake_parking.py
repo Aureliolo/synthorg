@@ -46,7 +46,10 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_CONVERSATIONAL_FAILED,
     APPROVAL_GATE_CONVERSATIONAL_REJECTED,
 )
-from synthorg.observability.events.chief_of_staff import COS_PROPOSE_FAILED
+from synthorg.observability.events.chief_of_staff import (
+    COS_CONVERSATION_STATUS_TRANSITIONED,
+    COS_PROPOSE_FAILED,
+)
 
 logger = get_logger(__name__)
 
@@ -282,6 +285,12 @@ async def reject_conversational_proposal(
         ConversationalProposalStatus.REJECTED,
     )
     if transitioned:
+        logger.info(
+            COS_CONVERSATION_STATUS_TRANSITIONED,
+            proposal_id=proposal_id,
+            from_status=ConversationalProposalStatus.PENDING.value,
+            to_status=ConversationalProposalStatus.REJECTED.value,
+        )
         logger.info(
             APPROVAL_GATE_CONVERSATIONAL_REJECTED,
             approval_id=approval_id,

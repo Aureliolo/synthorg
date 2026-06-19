@@ -10,6 +10,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.integrations.errors import CatalogEntryNotFoundError
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
+    INTEGRATIONS_CAPABILITY_UNSUPPORTED,
     MCP_CATALOG_INSTALLED_VIA_MCP,
     MCP_CATALOG_UNINSTALLED_VIA_MCP,
 )
@@ -50,6 +51,11 @@ class MCPCatalogFacadeService:
         """
         fn = getattr(self._catalog, "browse", None)
         if not callable(fn):
+            logger.warning(
+                INTEGRATIONS_CAPABILITY_UNSUPPORTED,
+                capability="mcp_catalog_list",
+                error_type=CapabilityNotSupportedError.__name__,
+            )
             raise CapabilityNotSupportedError(
                 "mcp_catalog_list",
                 "CatalogService does not expose browse",
@@ -71,6 +77,11 @@ class MCPCatalogFacadeService:
         """
         fn = getattr(self._catalog, "search", None)
         if not callable(fn):
+            logger.warning(
+                INTEGRATIONS_CAPABILITY_UNSUPPORTED,
+                capability="mcp_catalog_search",
+                error_type=CapabilityNotSupportedError.__name__,
+            )
             raise CapabilityNotSupportedError(
                 "mcp_catalog_search",
                 "CatalogService does not expose search",
@@ -93,6 +104,11 @@ class MCPCatalogFacadeService:
         """
         fn = getattr(self._catalog, "get_entry", None)
         if not callable(fn):
+            logger.warning(
+                INTEGRATIONS_CAPABILITY_UNSUPPORTED,
+                capability="mcp_catalog_get",
+                error_type=CapabilityNotSupportedError.__name__,
+            )
             raise CapabilityNotSupportedError(
                 "mcp_catalog_get",
                 "CatalogService does not expose get_entry",
@@ -121,6 +137,11 @@ class MCPCatalogFacadeService:
         """
         fn = getattr(self._installations, "install", None)
         if not callable(fn):
+            logger.warning(
+                INTEGRATIONS_CAPABILITY_UNSUPPORTED,
+                capability="mcp_catalog_install",
+                error_type=CapabilityNotSupportedError.__name__,
+            )
             raise CapabilityNotSupportedError(
                 "mcp_catalog_install",
                 "McpInstallationRepository does not expose install",
@@ -152,6 +173,11 @@ class MCPCatalogFacadeService:
         """
         fn = getattr(self._installations, "uninstall", None)
         if not callable(fn):
+            logger.warning(
+                INTEGRATIONS_CAPABILITY_UNSUPPORTED,
+                capability="mcp_catalog_uninstall",
+                error_type=CapabilityNotSupportedError.__name__,
+            )
             raise CapabilityNotSupportedError(
                 "mcp_catalog_uninstall",
                 "McpInstallationRepository does not expose uninstall",

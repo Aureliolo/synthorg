@@ -48,7 +48,7 @@ class TestChiefOfStaffErrors:
         exc = ConversationalProposeUnavailableError()
         assert exc.status_code == 503
         assert exc.error_category is ErrorCategory.INTERNAL
-        assert exc.error_code is ErrorCode.SERVICE_UNAVAILABLE
+        assert exc.error_code is ErrorCode.CONVERSATIONAL_PROPOSE_UNAVAILABLE
 
     def test_propose_response_invalid(self) -> None:
         exc = ConversationalProposeResponseInvalidError()

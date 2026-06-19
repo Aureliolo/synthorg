@@ -47,3 +47,4 @@ PERF_JUDGE_COST_RECORDING_FAILED: Final[str] = "perf.judge_cost.recording_failed
 
 # ── Composite quality scoring ────────────────────────────────
 PERF_COMPOSITE_SCORED: Final[str] = "perf.composite_quality.scored"
+PERF_COMPOSITE_RETRY_EXHAUSTED: Final[str] = "perf.composite_quality.retry_exhausted"

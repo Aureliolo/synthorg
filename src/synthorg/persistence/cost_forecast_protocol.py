@@ -13,6 +13,7 @@ Concrete implementations live in the backend packages
 All protocols are ``@runtime_checkable``; all methods are ``async``.
 """
 
+from datetime import datetime
 from typing import Protocol, override, runtime_checkable
 from uuid import UUID
 
@@ -51,7 +52,10 @@ class CostForecastRepository(
     """CRUD + state-transition + filtered query for cost forecasts.
 
     Composes :class:`StatefulRepository` + :class:`FilteredQueryRepository`
-    (ADR-0001). No bespoke methods beyond the generic surface.
+    (ADR-0001). The one bespoke method, :meth:`raise_ceiling_if_halted`,
+    is sanctioned under ADR-0001 D7 (a domain invariant callers must not
+    bypass): resuming a halted run is a read-modify-write that must clear
+    the halt exactly once, which the generic ``save`` cannot express.
 
     Implementations enforce the same-currency invariant on
     :meth:`save`: the incoming :attr:`Forecast.currency` MUST equal
@@ -135,6 +139,30 @@ class CostForecastRepository(
 
         Raises:
             QueryError: On database errors or an invalid update key.
+        """
+        ...
+
+    async def raise_ceiling_if_halted(
+        self,
+        entity_id: UUID,
+        *,
+        new_ceiling: float,
+        updated_at: datetime,
+    ) -> bool:
+        """Raise the ceiling and clear the halt, only if still halted.
+
+        Optimistic-concurrency conditional write (ADR-0001 D7): the
+        update applies only while the row is halted, so a concurrent
+        ceiling-raise that already resumed the run leaves the row
+        unmatched and the loser is told it lost rather than silently
+        succeeding on a no-op.
+
+        Returns:
+            ``True`` when the halted row was updated; ``False`` when the
+            row was not halted (already resumed) or is missing.
+
+        Raises:
+            QueryError: On database errors.
         """
         ...
 

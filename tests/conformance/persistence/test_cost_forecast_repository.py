@@ -167,6 +167,61 @@ class TestCostForecastRepository:
         assert refetched is not None
         assert refetched.halt_context is None
 
+    async def test_raise_ceiling_if_halted_clears_halt(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """A halted row resumes (halt cleared, ceiling raised) and returns True."""
+        repo = _repo(backend)
+        halted = _make_forecast(
+            forecast_id="rc1",
+            brief_hash="r" * 64,
+            decision=ForecastDecision.APPROVED,
+            decided_by="op-1",
+            decided_at=_NOW,
+            ceiling_amount=1.50,
+            halt_context=HaltContext(
+                accumulated_cost=1.80,
+                ceiling_amount=1.50,
+                currency=_CURRENCY,
+                halted_at=_NOW,
+            ),
+        )
+        await repo.save(halted)
+
+        resumed = await repo.raise_ceiling_if_halted(
+            halted.forecast_id, new_ceiling=5.0, updated_at=_NOW.replace(second=9)
+        )
+        assert resumed is True
+
+        fetched = await repo.get(halted.forecast_id)
+        assert fetched is not None
+        assert fetched.halt_context is None
+        assert fetched.ceiling_amount == pytest.approx(5.0)
+
+    async def test_raise_ceiling_if_halted_false_when_not_halted(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """A non-halted row is left untouched and the call returns False."""
+        repo = _repo(backend)
+        forecast = _make_forecast(
+            forecast_id="rc2",
+            brief_hash="s" * 64,
+            decision=ForecastDecision.APPROVED,
+            decided_by="op-1",
+            decided_at=_NOW,
+            ceiling_amount=1.50,
+        )
+        await repo.save(forecast)
+
+        resumed = await repo.raise_ceiling_if_halted(
+            forecast.forecast_id, new_ceiling=5.0, updated_at=_NOW.replace(second=9)
+        )
+        assert resumed is False
+
+        fetched = await repo.get(forecast.forecast_id)
+        assert fetched is not None
+        assert fetched.ceiling_amount == pytest.approx(1.50)
+
     async def test_save_rejects_currency_mismatch(
         self, backend: PersistenceBackend
     ) -> None:

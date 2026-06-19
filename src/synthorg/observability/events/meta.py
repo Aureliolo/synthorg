@@ -54,6 +54,7 @@ META_ROLLOUT_FAILED: Final[str] = "meta.rollout.failed"
 
 META_REGRESSION_THRESHOLD_BREACH: Final[str] = "meta.regression.threshold_breach"
 META_REGRESSION_STATISTICAL: Final[str] = "meta.regression.statistical"
+META_REGRESSION_INPUT_INVALID: Final[str] = "meta.regression.input_invalid"
 
 # -- A/B test events ----------------------------------------------------
 

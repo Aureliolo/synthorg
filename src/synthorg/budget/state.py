@@ -25,6 +25,7 @@ from synthorg.budget.pareto import ParetoAnalyzer
 from synthorg.budget.quota_tracker import QuotaTracker
 from synthorg.budget.risk_tracker import RiskTracker
 from synthorg.budget.tracker import CostTracker
+from synthorg.budget.version_service import BudgetConfigVersionsService
 from synthorg.persistence.benchmark_score_protocol import (
     BenchmarkScoreRepository,
 )
@@ -51,6 +52,7 @@ class BudgetStateSlice(BaseFeatureStateSlice):
     benchmark_provider: BenchmarkScoreProvider | None = None
     budget_config: BudgetConfig | None = None
     report_service: AutomatedReportService | None = None
+    budget_versions_service: BudgetConfigVersionsService | None = None
 
 
 def cost_tracker_of(app_state: AppStateSliceMixin) -> CostTracker:
@@ -61,4 +63,18 @@ def cost_tracker_of(app_state: AppStateSliceMixin) -> CostTracker:
     """
     return require_service(
         app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
+    )
+
+
+def budget_versions_service_of(
+    app_state: AppStateSliceMixin,
+) -> BudgetConfigVersionsService:
+    """Resolve the budget-versions service from its slice, or raise 503.
+
+    Returns:
+        The wired budget-config versions service.
+    """
+    return require_service(
+        app_state.slice(BudgetStateSlice).budget_versions_service,
+        "Budget Versions Service",
     )

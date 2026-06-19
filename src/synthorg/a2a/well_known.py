@@ -34,6 +34,7 @@ from synthorg.observability import (
 from synthorg.observability.events.a2a import (
     A2A_AGENT_CARD_CACHE_HIT,
     A2A_AGENT_CARD_CACHE_MISS,
+    A2A_AGENT_CARD_NOT_FOUND,
     A2A_AGENT_CARD_SERVED,
 )
 from synthorg.settings.errors import SettingNotFoundError
@@ -386,6 +387,11 @@ class WellKnownAgentCardController(Controller):
 
         if identity is None:
             msg = f"Agent '{agent_id}' not found"
+            logger.warning(
+                A2A_AGENT_CARD_NOT_FOUND,
+                agent_id=agent_id,
+                error_type=NotFoundError.__name__,
+            )
             raise NotFoundError(msg)
 
         # Resolve identity before the cache read so the current

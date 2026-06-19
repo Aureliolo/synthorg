@@ -18,6 +18,7 @@ from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
+    COMMUNICATION_MEETING_CAPABILITY_UNSUPPORTED,
     COMMUNICATION_MEETING_DELETED,
 )
 
@@ -107,6 +108,11 @@ class MeetingService:
             CapabilityNotSupportedError: Always; meeting creation is not
                 supported by this service.
         """
+        logger.warning(
+            COMMUNICATION_MEETING_CAPABILITY_UNSUPPORTED,
+            capability=_CREATE_CAP,
+            error_type=CapabilityNotSupportedError.__name__,
+        )
         raise CapabilityNotSupportedError(_CREATE_CAP, _CREATE_DETAIL)
 
     async def update_meeting(self) -> None:
@@ -116,6 +122,11 @@ class MeetingService:
             CapabilityNotSupportedError: Always; meeting update is not
                 supported by this service.
         """
+        logger.warning(
+            COMMUNICATION_MEETING_CAPABILITY_UNSUPPORTED,
+            capability=_UPDATE_CAP,
+            error_type=CapabilityNotSupportedError.__name__,
+        )
         raise CapabilityNotSupportedError(_UPDATE_CAP, _UPDATE_DETAIL)
 
     async def delete_meeting(

@@ -5,6 +5,7 @@ interactions and has an LLM evaluate them independently.  Results are stored
 as calibration records for drift analysis against the behavioral strategy.
 """
 
+import asyncio
 import json
 import random
 from datetime import datetime, timedelta
@@ -108,6 +109,10 @@ class LlmCalibrationSampler:
         self._cost_tracker = cost_tracker
         self._clock = clock or SystemClock()
         self._records: dict[str, list[LlmCalibrationRecord]] = {}
+        # Serialises the prune + append read-modify-writes of ``_records``
+        # so concurrent ``sample`` coroutines (which await an LLM call
+        # mid-cycle) cannot interleave their mutations (Slot 39).
+        self._records_lock = asyncio.Lock()
 
     def should_sample(self) -> bool:
         """Determine whether to sample the current event.
@@ -138,7 +143,8 @@ class LlmCalibrationSampler:
         if record.interaction_summary is None:
             return None
 
-        self._prune_expired()
+        async with self._records_lock:
+            self._prune_expired()
 
         logger.debug(
             PERF_LLM_SAMPLE_STARTED,
@@ -170,9 +176,10 @@ class LlmCalibrationSampler:
         )
 
         agent_key = str(record.agent_id)
-        if agent_key not in self._records:
-            self._records[agent_key] = []
-        self._records[agent_key].append(calibration_record)
+        async with self._records_lock:
+            if agent_key not in self._records:
+                self._records[agent_key] = []
+            self._records[agent_key].append(calibration_record)
 
         logger.info(
             PERF_LLM_SAMPLE_COMPLETED,
