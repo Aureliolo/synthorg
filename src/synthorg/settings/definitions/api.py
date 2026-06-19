@@ -21,8 +21,10 @@ next addition):
   controller construction site (currently the WebSocket budget knobs).
 """
 
+import json
 from typing import Final
 
+from synthorg.settings.csp_origins import CSP_DOCS_EXTERNAL_ORIGINS
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
 from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import get_registry
@@ -231,10 +233,7 @@ _r.register(
         namespace=SettingNamespace.API,
         key="csp_docs_external_origins",
         type=SettingType.JSON,
-        default=(
-            '["https://cdn.jsdelivr.net","https://fonts.scalar.com",'
-            '"https://proxy.scalar.com"]'
-        ),
+        default=json.dumps(list(CSP_DOCS_EXTERNAL_ORIGINS), separators=(",", ":")),
         description=(
             "External origins trusted by the relaxed Content-Security-"
             "Policy on /docs/ paths. Defaults to the Scalar UI public"
@@ -319,7 +318,7 @@ _r.register(
         namespace=SettingNamespace.API,
         key="rate_limit_auth_max_requests",
         type=SettingType.INTEGER,
-        default="6000",
+        default="600",
         description="Maximum authenticated requests per time window (by user ID)",
         group="Rate Limiting",
         level=SettingLevel.ADVANCED,
@@ -554,7 +553,7 @@ _r.register(
         namespace=SettingNamespace.API,
         key="request_max_body_size_bytes",
         type=SettingType.INTEGER,
-        default="52428800",
+        default="10485760",
         description="Maximum accepted HTTP request body size in bytes",
         group="Server",
         level=SettingLevel.ADVANCED,

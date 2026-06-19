@@ -1,5 +1,5 @@
 import { renderHook } from '@testing-library/react'
-import type { AgentRuntimeStatus } from '@/lib/utils'
+import type { AgentRuntimeStatus } from '@/utils/agent-status'
 import { useStatusTransition } from '@/hooks/useStatusTransition'
 
 describe('useStatusTransition', () => {

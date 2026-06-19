@@ -1,6 +1,6 @@
 import { PRIORITY_VALUES, type Priority, type TaskStatus, type TaskType } from '@/api/types/enums'
 import type { Task } from '@/api/types/tasks'
-import type { SemanticColor } from '@/lib/utils'
+import type { SemanticColor } from '@/utils/agent-status'
 
 /** Narrow a raw string to ``Priority`` by membership, else ``null``. */
 export function parsePriority(value: string): Priority | null {

@@ -8,6 +8,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from pydantic import BaseModel, ConfigDict
+from structlog.testing import capture_logs
 from typeguard import suppress_type_checks
 
 from synthorg.api.config import RateLimitTimeUnit
@@ -510,6 +511,35 @@ class TestGetCoordinationConfig:
         # Non-overridden settings stay
         assert result.enable_workspace_isolation is True
         assert result.base_branch == "main"
+
+    async def test_override_differing_from_resolved_emits_log(
+        self, resolver: ConfigResolver, mock_settings: AsyncMock
+    ) -> None:
+        """A per-request override that differs from the DB value logs."""
+        mock_settings.get = _coordination_get_side_effect()
+        with capture_logs() as logs:
+            await resolver.get_coordination_config(
+                max_concurrency_per_wave=10,
+                fail_fast=True,
+            )
+        applied = [e for e in logs if e.get("event") == "coordination.override.applied"]
+        fields = {e.get("field") for e in applied}
+        assert fields == {"max_concurrency_per_wave", "fail_fast"}
+
+    async def test_override_matching_resolved_is_silent(
+        self, resolver: ConfigResolver, mock_settings: AsyncMock
+    ) -> None:
+        """A no-op override (equal to the resolved value) logs nothing."""
+        mock_settings.get = _coordination_get_side_effect()
+        with capture_logs() as logs:
+            # Resolved defaults are 5 / False; passing the same values is
+            # a no-op override and must not emit the applied event.
+            await resolver.get_coordination_config(
+                max_concurrency_per_wave=5,
+                fail_fast=False,
+            )
+        applied = [e for e in logs if e.get("event") == "coordination.override.applied"]
+        assert applied == []
 
     async def test_db_overrides_via_settings(
         self, resolver: ConfigResolver, mock_settings: AsyncMock

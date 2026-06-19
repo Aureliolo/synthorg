@@ -5,7 +5,7 @@ import type {
   ProviderHealthStatus,
   ProviderHealthSummary,
 } from '@/api/types/providers'
-import type { SemanticColor } from '@/lib/utils'
+import type { SemanticColor } from '@/utils/agent-status'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatCurrency, formatTokenCount as formatTokenCountBase } from '@/utils/format'
 

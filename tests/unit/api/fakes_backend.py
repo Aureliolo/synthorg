@@ -660,12 +660,11 @@ def _clear_attr(value: object) -> None:
     """Reset one attribute of ``FakePersistenceBackend`` in-place.
 
     Strategy: skip primitives that have no clear-able state, clear
-    mutable containers directly, and call any nested ``clear()``
-    method exposed by fake-repo objects.  Falls back to walking
-    ``__dict__`` for repos that do not yet implement their own
-    ``clear()``.  Extracted to a module-level helper so the
-    iteration body in ``FakePersistenceBackend.clear`` stays under
-    the project's complexity ceiling.
+    mutable containers directly, call any nested ``clear()`` method a
+    fake-repo object exposes, and otherwise walk ``__dict__`` to reset a
+    repo's own attributes.  Extracted to a module-level helper so the
+    iteration body in ``FakePersistenceBackend.clear`` stays under the
+    project's complexity ceiling.
     """
     # Skip primitives that have no internal state to reset.
     if value is None or isinstance(value, (bool, str, int, float)):
@@ -678,7 +677,7 @@ def _clear_attr(value: object) -> None:
     # reset every piece of internal state -- including scalar
     # counters (e.g. ``_next_id``) that the generic walk below
     # cannot recognise.  Prefer that hook when available; the
-    # generic walk is the fallback when no ``clear()`` method exists.
+    # generic ``__dict__`` walk handles repos without one.
     #
     # ``unittest.mock.Mock`` objects expose every attribute lookup
     # as a callable Mock (so ``getattr(stub, "clear")`` is a Mock,

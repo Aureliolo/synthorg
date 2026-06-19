@@ -607,7 +607,7 @@ describe('runtime statuses (org chart)', () => {
       event_type: 'agent.status_changed',
       channel: 'agents',
       timestamp: '2026-03-27T10:00:00Z',
-      payload: { agent_id: 'agent-1', status: 'active' },
+      payload: { agent_id: 'agent-1', to_status: 'active' },
     })
     expect(useAgentsStore.getState().runtimeStatuses['agent-1']).toBe('active')
   })
@@ -617,7 +617,7 @@ describe('runtime statuses (org chart)', () => {
       event_type: 'agent.status_changed',
       channel: 'agents',
       timestamp: '2026-03-27T10:00:00Z',
-      payload: { status: 'active' },
+      payload: { to_status: 'active' },
     })
     expect(Object.keys(useAgentsStore.getState().runtimeStatuses)).toHaveLength(0)
   })
@@ -640,7 +640,7 @@ describe('runtime statuses (org chart)', () => {
       event_type: 'agent.status_changed',
       channel: 'agents',
       timestamp: '2026-03-27T10:00:00Z',
-      payload: { agent_id: 'agent-1', status: 'invalid_status' },
+      payload: { agent_id: 'agent-1', to_status: 'invalid_status' },
     })
     expect(useAgentsStore.getState().runtimeStatuses['agent-1']).toBe('offline')
   })
@@ -662,7 +662,7 @@ describe('runtime statuses (org chart)', () => {
       channel: 'agents',
       timestamp: '2026-03-27T10:00:00Z',
       // Bidi-override-only id collapses to '' after sanitization.
-      payload: { agent_id: RLO + LRO, status: 'idle' },
+      payload: { agent_id: RLO + LRO, to_status: 'idle' },
     })
     expect(Object.keys(useAgentsStore.getState().runtimeStatuses)).toHaveLength(0)
     warnSpy.mockRestore()
@@ -677,7 +677,7 @@ describe('runtime statuses (org chart)', () => {
       event_type: 'agent.status_changed',
       channel: 'agents',
       timestamp: '2026-03-27T10:00:00Z',
-      payload: { agent_id: `agent-1${RLO}`, status: 'idle' },
+      payload: { agent_id: `agent-1${RLO}`, to_status: 'idle' },
     })
     expect(Object.keys(useAgentsStore.getState().runtimeStatuses)).toHaveLength(0)
     warnSpy.mockRestore()

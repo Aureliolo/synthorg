@@ -387,7 +387,7 @@ def test_module_scope_unused_skipped(write_test_file: WriteTestFile) -> None:
 
 
 # ---------------------------------------------------------------------
-# Specced mocks are accepted
+# Core spec-detection cases
 # ---------------------------------------------------------------------
 
 

@@ -1,7 +1,7 @@
 """Tests for the Simple composite (HighestRelevanceSelector + ConcatenationOp).
 
-"simple" consolidation is ``Composite(HighestRelevanceSelector,
-ConcatenationOp)``; ``test_axis_split_golden`` pins the composite output.
+"simple" is ``Composite(HighestRelevanceSelector, ConcatenationOp)``; its
+output is pinned byte-for-byte by ``test_axis_split_golden``.
 """
 
 from datetime import UTC, datetime, timedelta

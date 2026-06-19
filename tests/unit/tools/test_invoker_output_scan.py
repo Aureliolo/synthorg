@@ -2,8 +2,6 @@
 
 Covers the WITHHELD, LOG_ONLY, and defensive fallback branches of
 ``handle_sensitive_scan`` (exercised via the ``ToolInvoker`` flow).
-Split from ``test_invoker_security.py`` to keep file sizes under
-800 lines.
 """
 
 from datetime import UTC, datetime

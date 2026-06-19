@@ -33,14 +33,7 @@ export interface ConfirmDialogProps {
   cancelLabel?: string | undefined
   /** Visual variant (default: "default"). "destructive" uses a red confirm button. */
   variant?: 'default' | 'destructive' | undefined
-  /**
-   * Confirm handler. Resolving to ``false`` keeps the dialog open so
-   * the caller can retry from the same surface (used by sentinel-
-   * returning store mutations: when the underlying API call fails the
-   * store toasts the error and returns ``null`` / ``false``, and the
-   * caller propagates that as ``false`` here). Any other resolution
-   * (``void`` / ``undefined`` / ``true``) closes the dialog.
-   */
+  /** Confirm handler; see :type:`ConfirmHandler` for the resolution contract. */
   onConfirm: ConfirmHandler
   /**
    * Optional handler invoked when the user explicitly clicks the

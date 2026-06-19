@@ -53,6 +53,14 @@ _ENFORCED_ROOTS: Final[tuple[str, ...]] = ("synthorg", "tests")
 # (explicit-any included) remains a forbidden lift.
 _ALLOWED_DISABLED_CODES: Final[frozenset[str]] = frozenset({"prop-decorator"})
 
+# The prop-decorator allowlist is sanctioned ONLY for the exact ``synthorg.*``
+# override (pydantic's ``@computed_field`` over ``@property``). Every other
+# enforced pattern -- ``tests.*``, a narrower ``synthorg`` subtree, or a
+# leading-wildcard glob -- gets no allowlist: any ``disable_error_code`` there
+# is a lift. Scoping the allowlist per pattern stops a block from weakening
+# ``tests.*`` (or a wildcard) under cover of the ``synthorg.*`` exemption.
+_ALLOWLISTED_PATTERN: Final[str] = "synthorg.*"
+
 
 def _targets_enforced(pattern: str) -> bool:
     """Return True if a mypy override ``module`` pattern covers enforced code.
@@ -111,23 +119,30 @@ def _disabled_codes(block: Mapping[str, object]) -> list[str]:
     return []
 
 
-def _lifts_strictness(block: Mapping[str, object]) -> bool:
-    """Return True if an override block relaxes strictness for its modules.
+def _lifts_strictness_for_pattern(block: Mapping[str, object], pattern: str) -> bool:
+    """Return True if *block* relaxes strictness for one of its *pattern* targets.
 
     Three forms each relax the enforced surface: the boolean
     ``disallow_any_explicit = false``; ``ignore_errors = true``, which silences
     *every* error for the matched modules; and a ``disable_error_code`` entry
-    (string or list) naming any code outside :data:`_ALLOWED_DISABLED_CODES`.
-    The single allowlisted ``prop-decorator`` disable is permitted; any other
-    code -- ``explicit-any`` included -- keeps mypy green while weakening the
-    contract, so all such forms count as a lift.
+    (string or list). The single ``prop-decorator`` disable is allowlisted ONLY
+    when *pattern* is the exact sanctioned ``synthorg.*`` override; on any other
+    enforced pattern (``tests.*``, a narrower ``synthorg`` subtree, or a
+    leading-wildcard glob) *every* ``disable_error_code`` entry -- ``prop-
+    decorator`` included -- counts as a lift, so the exemption cannot leak past
+    the one module surface it was granted for.
     """
     if (
         block.get("disallow_any_explicit") is False
         or block.get("ignore_errors") is True
     ):
         return True
-    return any(code not in _ALLOWED_DISABLED_CODES for code in _disabled_codes(block))
+    disabled_codes = _disabled_codes(block)
+    if not disabled_codes:
+        return False
+    if pattern == _ALLOWLISTED_PATTERN:
+        return any(code not in _ALLOWED_DISABLED_CODES for code in disabled_codes)
+    return True
 
 
 def find_violations(data: Mapping[str, object]) -> list[str]:
@@ -157,11 +172,11 @@ def find_violations(data: Mapping[str, object]) -> list[str]:
     for block in overrides:
         if not isinstance(block, Mapping):
             continue
-        if not _lifts_strictness(block):
-            continue
-        violations.extend(
-            pattern for pattern in _module_patterns(block) if _targets_enforced(pattern)
-        )
+        for pattern in _module_patterns(block):
+            if not _targets_enforced(pattern):
+                continue
+            if _lifts_strictness_for_pattern(block, pattern):
+                violations.append(pattern)
     return violations
 
 

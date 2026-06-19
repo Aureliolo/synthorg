@@ -1,6 +1,6 @@
 import type { ApprovalResponse } from '@/api/types/approvals'
 import type { ApprovalRiskLevel, ApprovalStatus, UrgencyLevel } from '@/api/types/enums'
-import type { SemanticColor } from '@/lib/utils'
+import type { SemanticColor } from '@/utils/agent-status'
 import { AlertTriangle, Shield, ShieldAlert, ShieldCheck, type LucideIcon } from 'lucide-react'
 
 // ── Risk level color mapping ────────────────────────────────

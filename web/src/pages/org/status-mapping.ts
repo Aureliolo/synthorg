@@ -1,5 +1,5 @@
 import type { AgentStatus } from '@/api/types/enums'
-import type { AgentRuntimeStatus } from '@/lib/utils'
+import type { AgentRuntimeStatus } from '@/utils/agent-status'
 
 /**
  * Map HR (administrative) agent status to an initial runtime status.

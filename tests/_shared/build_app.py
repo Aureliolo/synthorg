@@ -1,9 +1,9 @@
 """Test helper that builds a Litestar app from individual injection kwargs.
 
-``create_app`` takes its dependency-injection doubles as a single
-:class:`~synthorg.api.app_overrides.AppOverrides` bundle. Tests inject doubles
-by passing the individual kwargs to this shim, which bundles them into
-``AppOverrides`` and forwards ``config`` / ``_skip_lifecycle_shutdown``
+``create_app`` takes a single
+:class:`~synthorg.api.app_overrides.AppOverrides` bundle. Tests that inject
+doubles pass the individual kwargs through this helper, which bundles them
+into ``AppOverrides`` and forwards ``config`` / ``_skip_lifecycle_shutdown``
 unchanged.
 """
 

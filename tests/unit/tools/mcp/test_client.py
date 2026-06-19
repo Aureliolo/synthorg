@@ -387,9 +387,8 @@ class TestMCPClientHTTPTransport:
         mock_factory.assert_called_once_with(
             headers={"Authorization": "Bearer test-token"},
         )
-        # Migrated code copies via ``dict(self._config.headers)``; the
-        # dict passed to the factory must be a fresh object, not aliased
-        # to the frozen-config field.
+        # The dict passed to the factory must be a fresh copy, not
+        # aliased to the frozen-config field.
         passed_headers = mock_factory.call_args.kwargs["headers"]
         assert passed_headers is not config.headers
         mock_http.assert_called_once_with(
@@ -401,9 +400,8 @@ class TestMCPClientHTTPTransport:
         assert client.is_connected
 
     async def test_connect_http_with_empty_headers_passes_none(self) -> None:
-        # The migrated code path is ``dict(...) if self._config.headers
-        # else None``; empty headers (the default factory value) must
-        # become ``None`` at the factory call site, not ``{}``.
+        # Empty headers (the default factory value) must become ``None``
+        # at the factory call site, not ``{}``.
         config = MCPServerConfig(
             name="test-http-empty",
             transport="streamable_http",

@@ -1,7 +1,8 @@
 """Parity guard: feature manifests claim exactly the expected controller set.
 
-Route registration is driven by discovery over feature manifests. Every
-controller in the expected set must be claimed by exactly one manifest, and no
+Route registration discovers controllers over feature manifests. Every
+controller the app expects to mount (the ``ALL_CONTROLLERS`` union plus the
+a2a and demo controllers) must be claimed by exactly one manifest, and no
 manifest may claim a controller outside it. A controller that slips out of a
 manifest (404 regression) or a typo'd extra entry fails here.
 """
@@ -40,19 +41,19 @@ def _discovered_websocket_handlers() -> set[WebsocketRouteHandler]:
 
 
 def _expected_controllers() -> set[type[Controller]]:
-    """The complete expected controller set: base + integration + optional + a2a.
+    """The full controller universe: base + integration + optional + a2a.
 
     ``ALL_CONTROLLERS`` already unions ``BASE_CONTROLLERS``,
     ``INTEGRATION_CONTROLLERS``, and the ``OPTIONAL_CONTROLLERS`` classes.
     The two a2a controllers are registered via ``src/synthorg/a2a/feature.py``
     (``ControllerRegistration``) and are absent from ``ALL_CONTROLLERS``, so
-    they are added explicitly here. ``DemoController`` is the synthetic
-    ``_demo`` feature's discovery guard, so it joins the expected set rather
-    than tripping the extra-controller assertion.
+    they are added explicitly here. ``DemoController`` (the synthetic
+    ``_demo`` feature's discovery guard) joins the expected set rather than
+    tripping the extra-controller assertion.
 
     Returns:
-        The full set of controller classes the boot path mounts, plus the demo
-        discovery guard.
+        The full set of controller classes the app expects to mount, plus
+        the demo discovery guard.
     """
     return {
         *ALL_CONTROLLERS,

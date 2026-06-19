@@ -149,10 +149,9 @@ def resolve_decided_by(explicit: str | None = None) -> str:
     Precedence: an explicit system-override argument wins (used by
     automated paths such as the approval-timeout scheduler);
     otherwise the bound actor's human-readable identity
-    (``label`` if set, else ``actor_id``) is used so the value matches
-    what callers historically threaded (the username), keeping
-    self-review (``decided_by == task.assigned_to``) byte-for-byte
-    unchanged.
+    (``label`` if set, else ``actor_id``) is used so self-review
+    (``decided_by == task.assigned_to``) compares against the username
+    the assignment field carries.
 
     Args:
         explicit: Optional caller-supplied override for non-HTTP /
@@ -176,8 +175,8 @@ def resolve_actor_label(default: str) -> str:
     The non-raising counterpart of :func:`resolve_decided_by`: a leaf
     that attributes provenance but tolerates a human-less background
     path (e.g. an automated apply loop) gets *default* instead of an
-    exception. The bound actor's ``label`` (else ``actor_id``) is used
-    so the value matches what callers historically threaded.
+    exception. The bound actor's ``label`` (else ``actor_id``) supplies
+    the human-readable display identity.
 
     Args:
         default: Attribution to use when no actor is bound.

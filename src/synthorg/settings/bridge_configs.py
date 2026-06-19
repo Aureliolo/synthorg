@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from synthorg.core.types import NotBlankStr
+from synthorg.settings.csp_origins import CSP_DOCS_EXTERNAL_ORIGINS
 
 # Canonical origin pattern: scheme + host (+ optional port) only -- no
 # path, query, fragment, or userinfo. The CSP spec treats anything past
@@ -248,7 +249,7 @@ class ApiBridgeConfig(BaseModel):
     max_rpm_default: int = Field(default=60, ge=1, le=100_000)
     compression_minimum_size_bytes: int = Field(default=1000, ge=100, le=10_000)
     request_max_body_size_bytes: int = Field(
-        default=52_428_800, ge=1_000_000, le=536_870_912
+        default=10_485_760, ge=1_000_000, le=536_870_912
     )
     max_lifecycle_events_per_query: int = Field(default=1_000, ge=100, le=1_000_000)
     max_audit_records_per_query: int = Field(default=1_000, ge=100, le=1_000_000)
@@ -286,11 +287,7 @@ class ApiBridgeConfig(BaseModel):
         default=14_400.0, ge=300.0, le=604_800.0
     )
     csp_docs_external_origins: tuple[NotBlankStr, ...] = Field(
-        default=(
-            NotBlankStr("https://cdn.jsdelivr.net"),
-            NotBlankStr("https://fonts.scalar.com"),
-            NotBlankStr("https://proxy.scalar.com"),
-        ),
+        default=tuple(NotBlankStr(origin) for origin in CSP_DOCS_EXTERNAL_ORIGINS),
     )
     error_docs_base_url: NotBlankStr = Field(
         default=NotBlankStr("https://synthorg.io/docs/errors"),

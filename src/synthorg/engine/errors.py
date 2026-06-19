@@ -453,6 +453,10 @@ class CoordinationError(EngineError):
     """Base exception for multi-agent coordination failures."""
 
 
+class CoordinationConfigError(CoordinationError):
+    """Coordinator configuration is invalid at startup."""
+
+
 class CoordinationPhaseError(CoordinationError):
     """Raised when a coordination pipeline phase fails.
 

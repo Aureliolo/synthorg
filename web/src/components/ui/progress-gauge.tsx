@@ -1,4 +1,5 @@
-import { cn, getHealthColor, type SemanticColor } from '@/lib/utils'
+import { cn } from '@/lib/utils'
+import { getHealthColor, type SemanticColor } from '@/utils/agent-status'
 
 const STROKE_COLOR_CLASSES: Record<SemanticColor, string> = {
   success: 'stroke-success',

@@ -22,6 +22,7 @@ from synthorg.meta.chief_of_staff.propose import (
     ChiefOfStaffProposer,
 )
 from synthorg.meta.chief_of_staff.routing import RoleRouter
+from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.reports.service import ReportsService
 from synthorg.meta.rules.service import CustomRulesService
 from synthorg.meta.service import SelfImprovementService
@@ -57,6 +58,7 @@ class MetaStateSlice(BaseFeatureStateSlice):
     group_chat_service: GroupChatService | None = None
     conversational_actor: ConversationalActor | None = None
     custom_rules_service: CustomRulesService | None = None
+    self_improvement_config: SelfImprovementConfig | None = None
 
 
 def signals_service_of(app_state: AppStateSliceMixin) -> SignalsService:
@@ -244,3 +246,34 @@ def conversation_participant_repo_of(
         app_state.slice(MetaStateSlice).conversation_participant_repo,
         "Conversation Participant Repository",
     )
+
+
+async def self_improvement_config_of(
+    app_state: AppState,
+) -> SelfImprovementConfig:
+    """Return the cached :class:`SelfImprovementConfig`, loading it once.
+
+    The parsed config is cached on the meta slice so the read endpoints
+    and the conversational-resume path do not re-parse the
+    ``meta.self_improvement`` JSON on every request. Concurrent first
+    readers converge on one instance via ``wire_if_field_absent``. The
+    ``MetaSelfImprovementSettingsSubscriber`` invalidates the cache (wires
+    the field back to ``None``) on an operator edit, so the next read
+    reloads the fresh value and hot-reload is preserved.
+
+    Returns:
+        The cached or freshly-loaded ``SelfImprovementConfig``.
+    """
+    cached = app_state.slice(MetaStateSlice).self_improvement_config
+    if cached is not None:
+        return cached
+    from synthorg.meta.config import (  # noqa: PLC0415
+        load_self_improvement_config,
+    )
+    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
+
+    settings_service = app_state.slice(SettingsStateSlice).settings_service
+    config = await load_self_improvement_config(settings_service)
+    app_state.wire_if_field_absent(MetaStateSlice, "self_improvement_config", config)
+    resolved = app_state.slice(MetaStateSlice).self_improvement_config
+    return resolved if resolved is not None else config

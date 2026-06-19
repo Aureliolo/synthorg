@@ -13,6 +13,11 @@ import { linter, type Diagnostic } from '@codemirror/lint'
 import YAML from 'js-yaml'
 import type { SettingEntry, SettingType } from '@/api/types/settings'
 
+/* eslint-disable security/detect-non-literal-regexp --
+   Every RegExp in this file is built from operator-supplied namespace /
+   key names that first pass through escapeRegex(), so no unescaped user
+   input ever reaches the RegExp constructor. */
+
 // ── Schema info ───────────────────────────────────────────────
 
 /** @internal Exported for direct unit testing. */

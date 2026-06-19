@@ -123,7 +123,18 @@ function hydrateAgentsInBatches(
     for (let i = 0; i < agents.length; i += HYDRATE_BATCH_SIZE) {
       if (token.cancelled()) return
       const batch = agents.slice(i, i + HYDRATE_BATCH_SIZE)
-      await Promise.all(batch.map((agent) => hydrateForAgent(agent.id)))
+      // Best-effort: a single agent's hydration rejection must not abort the
+      // rest of the batch, so settle every promise and log the failures.
+      const results = await Promise.allSettled(
+        batch.map((agent) => hydrateForAgent(agent.id)),
+      )
+      for (const result of results) {
+        if (result.status === 'rejected') {
+          log.error('Failed to hydrate training agent', {
+            error: sanitizeForLog(getErrorMessage(result.reason)),
+          })
+        }
+      }
     }
   })()
   return () => {

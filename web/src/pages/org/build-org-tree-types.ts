@@ -3,7 +3,7 @@ import type { DashboardAgentConfig } from '@/api/types/agents'
 import type { DepartmentHealth } from '@/api/types/analytics'
 import type { SeniorityLevel } from '@/api/types/enums'
 import type { CompanyConfig, DashboardDepartment } from '@/api/types/org'
-import type { AgentRuntimeStatus } from '@/lib/utils'
+import type { AgentRuntimeStatus } from '@/utils/agent-status'
 
 /**
  * Render a department's identifier in human-readable form.

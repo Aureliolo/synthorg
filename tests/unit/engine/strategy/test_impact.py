@@ -134,6 +134,26 @@ class TestHybridImpactScorer:
         assert result.dimensions[ImpactDimension.BUDGET_IMPACT.value] == 1.0
         assert 0.0 <= result.composite <= 1.0
 
+    @pytest.mark.unit
+    def test_explicit_dimensions_copied_defensively(
+        self,
+        strategic_context: StrategicContext,
+        risk_card: RiskCard,
+        progressive_config: ProgressiveConfig,
+    ) -> None:
+        """Mutating the caller's dict after construction must not leak in."""
+        explicit = {ImpactDimension.BUDGET_IMPACT.value: 1.0}
+        scorer = HybridImpactScorer(explicit_dimensions=explicit)
+        explicit[ImpactDimension.BUDGET_IMPACT.value] = 0.0
+
+        result = scorer.score(
+            context=strategic_context,
+            risk_card=risk_card,
+            config=progressive_config,
+        )
+
+        assert result.dimensions[ImpactDimension.BUDGET_IMPACT.value] == 1.0
+
 
 class TestTierResolution:
     """Tests for tier resolution within impact scoring."""

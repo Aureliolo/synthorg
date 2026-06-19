@@ -94,6 +94,39 @@ _FIND_VIOLATIONS_CASES = [
         ["synthorg.*"],
         id="prop_decorator_plus_other_flagged",
     ),
+    # The prop-decorator allowlist is scoped to the EXACT ``synthorg.*``
+    # override. On ``tests.*`` it confers nothing: a tests-surface
+    # prop-decorator disable still weakens strictness and must flag.
+    pytest.param(
+        '[[tool.mypy.overrides]]\nmodule = "tests.*"\n'
+        'disable_error_code = ["prop-decorator"]\n',
+        ["tests.*"],
+        id="prop_decorator_on_tests_flagged",
+    ),
+    # ...and a leading-``*`` glob cannot borrow the synthorg-only exemption.
+    pytest.param(
+        '[[tool.mypy.overrides]]\nmodule = "*"\n'
+        'disable_error_code = ["prop-decorator"]\n',
+        ["*"],
+        id="prop_decorator_on_wildcard_flagged",
+    ),
+    # ...nor can a narrower synthorg subtree: only the exact ``synthorg.*``
+    # pattern is sanctioned, so ``synthorg.api.*`` + prop-decorator flags.
+    pytest.param(
+        '[[tool.mypy.overrides]]\nmodule = "synthorg.api.*"\n'
+        'disable_error_code = ["prop-decorator"]\n',
+        ["synthorg.api.*"],
+        id="prop_decorator_on_synthorg_subtree_flagged",
+    ),
+    # A single block listing both surfaces: the exemption applies to
+    # ``synthorg.*`` but NOT the ``tests.*`` pattern sharing the block --
+    # the exact leak this per-pattern scoping closes.
+    pytest.param(
+        '[[tool.mypy.overrides]]\nmodule = ["synthorg.*", "tests.*"]\n'
+        'disable_error_code = ["prop-decorator"]\n',
+        ["tests.*"],
+        id="prop_decorator_mixed_block_only_tests_flagged",
+    ),
     pytest.param(
         '[[tool.mypy.overrides]]\nmodule = "litellm.*"\n'
         "ignore_missing_imports = true\n",

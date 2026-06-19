@@ -408,18 +408,33 @@ export function unwrapPaginated<T>(
   // malformed backend envelope could omit it. Read through an untrusted-wire
   // view so the guard is type-honest about what the network can actually send.
   const raw: { pagination?: unknown; data?: unknown } = body
-  if (!raw.pagination || !Array.isArray(raw.data)) {
+  const pagination =
+    raw.pagination && typeof raw.pagination === 'object'
+      ? (raw.pagination as Record<string, unknown>)
+      : undefined
+  const limit = pagination?.limit
+  const nextCursor = pagination?.next_cursor
+  const hasMore = pagination?.has_more
+  // Validate the pagination field types, not just presence: a malformed
+  // envelope must fail loudly here rather than leak ``undefined`` into the
+  // typed ``PaginatedResult``.
+  if (
+    !Array.isArray(raw.data) ||
+    typeof limit !== 'number' ||
+    (typeof nextCursor !== 'string' && nextCursor !== null) ||
+    typeof hasMore !== 'boolean'
+  ) {
     throw new ApiRequestError('Unexpected API response format')
   }
   return {
-    data: body.data,
-    limit: body.pagination.limit,
-    nextCursor: body.pagination.next_cursor,
-    hasMore: body.pagination.has_more,
+    data: raw.data as T[],
+    limit,
+    nextCursor,
+    hasMore,
     pagination: {
-      limit: body.pagination.limit,
-      next_cursor: body.pagination.next_cursor,
-      has_more: body.pagination.has_more,
+      limit,
+      next_cursor: nextCursor,
+      has_more: hasMore,
     },
   }
 }

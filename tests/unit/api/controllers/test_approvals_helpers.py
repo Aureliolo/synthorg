@@ -419,11 +419,10 @@ class TestSignalResumeIntent:
         """Unknown errors from the review gate propagate, not swallowed.
 
         Exception handling is narrowed to the specific typed errors the
-        API layer maps (SelfReviewError -> 403, TaskNotFoundError -> 404,
-        TaskVersionConflictError -> 409). Everything else propagates to
-        the caller as an unhandled error rather than being caught, logged
-        as a warning, and masked behind a 200 OK (which would hide real
-        workflow failures: task mutation errors, persistence failures).
+        API layer knows how to map (SelfReviewError -> 403,
+        TaskNotFoundError -> 404, TaskVersionConflictError -> 409);
+        every other error propagates to the caller as an unhandled
+        error rather than being masked behind a 200 OK.
         """
         mock_review = mock_of[ReviewGateService](
             dispatch_completion=AsyncMock(

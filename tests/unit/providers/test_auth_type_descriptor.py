@@ -52,7 +52,7 @@ _EXPECTED_DISCOVERY: dict[AuthType, DiscoveryAuthStyle] = {
 
 @pytest.mark.unit
 class TestAuthTypeDescriptorParity:
-    """The descriptor produces the expected per-auth-type tables."""
+    """The descriptor table carries the correct entry for every auth type."""
 
     @pytest.mark.parametrize("auth_type", list(AuthType))
     def test_owned_fields_match(self, auth_type: AuthType) -> None:

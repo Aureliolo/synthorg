@@ -17,7 +17,8 @@ from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
 from synthorg.core.auth.roles import HumanRole
 from tests._shared import LoopAsyncClient
 
-# Short local aliases so the (many) test bodies below read naturally.
+# Short aliases for the ``ws_protocol`` helpers so the (many) test
+# bodies below read naturally.
 _channel_allowed = channel_allowed
 _handle_message = handle_message
 
@@ -70,8 +71,8 @@ class TestWsHandleMessage:
     def test_unknown_action(self) -> None:
         # The typed control-plane discriminator rejects unknown action
         # values at parse time, so the response is the boundary helper's
-        # generic "invalid" envelope, not an "Unknown action" string:
-        # malformed first-message content never reaches dispatch.
+        # generic "invalid" envelope; malformed first-message content
+        # never reaches dispatch.
         subscribed: set[str] = set()
         filters: dict[str, dict[str, str]] = {}
         result = _handle_message(
@@ -90,10 +91,10 @@ class TestWsHandleMessage:
         # pre-handshake first-frame shape), so it parses cleanly. On
         # an already-authenticated socket the dispatcher walks past
         # the subscribe / unsubscribe / ping isinstance checks and
-        # hits the post-auth fallback which returns the
-        # "Unknown action" envelope. Without dedicated coverage the
-        # only branch behind ``API_WS_UNKNOWN_ACTION`` could regress
-        # silently the next time the dispatch code is touched.
+        # hits the post-auth fallback which returns the "Unknown action"
+        # envelope. Without dedicated coverage the only branch behind
+        # ``API_WS_UNKNOWN_ACTION`` could regress silently the next time
+        # the dispatch code is touched.
         subscribed: set[str] = set()
         filters: dict[str, dict[str, str]] = {}
         result = _handle_message(

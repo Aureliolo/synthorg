@@ -60,6 +60,26 @@ _EMPTY_TELEMETRY = OrgTelemetrySummary()
 _EMPTY_BENCHMARK = OrgBenchmarkSummary()
 
 
+async def _aggregate[T](coro: Awaitable[T], fallback: T, *, domain: str) -> T:
+    """Await one aggregator, returning its safe default on failure.
+
+    Keeps a single aggregator's failure from cancelling the others: a
+    raised non-critical error is redaction-logged and the typed
+    ``fallback`` is returned. Critical errors re-raise.
+
+    Returns:
+        The aggregator result, or ``fallback`` when it failed.
+    """
+    try:
+        return await coro
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        log_exception_redacted(
+            logger, META_SIGNAL_AGGREGATION_FAILED, exc, domain=domain
+        )
+        return fallback
+
+
 class SnapshotBuilder:
     """Builds an OrgSignalSnapshot from all signal aggregators.
 
@@ -132,84 +152,66 @@ class SnapshotBuilder:
             until=until.isoformat(),
         )
 
-        async def _safe[T](domain: str, coro: Awaitable[T], default: T) -> T:
-            """Await *coro*, returning *default* if the aggregator fails.
-
-            Interpreter-critical exceptions (``MemoryError`` / ``RecursionError``)
-            are re-raised rather than caught, so they still cancel the group.
-
-            Returns:
-                The aggregator result on success, else *default*.
-            """
-            try:
-                return await coro
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                log_exception_redacted(
-                    logger, META_SIGNAL_AGGREGATION_FAILED, exc, domain=domain
-                )
-                return default
-
         async with asyncio.TaskGroup() as tg:
             perf_task = tg.create_task(
-                _safe(
-                    "perf",
+                _aggregate(
                     self._performance.aggregate(since=since, until=until),
                     _EMPTY_PERFORMANCE,
+                    domain="perf",
                 )
             )
             budget_task = tg.create_task(
-                _safe(
-                    "budget",
+                _aggregate(
                     self._budget.aggregate(since=since, until=until),
                     _EMPTY_BUDGET,
+                    domain="budget",
                 )
             )
             coord_task = tg.create_task(
-                _safe(
-                    "coord",
+                _aggregate(
                     self._coordination.aggregate(since=since, until=until),
                     _EMPTY_COORDINATION,
+                    domain="coord",
                 )
             )
             scale_task = (
                 tg.create_task(
-                    _safe(
-                        "scale",
+                    _aggregate(
                         self._scaling.aggregate(since=since, until=until),
                         _EMPTY_SCALING,
+                        domain="scale",
                     )
                 )
                 if self._scaling is not None
                 else None
             )
             err_task = tg.create_task(
-                _safe(
-                    "err",
+                _aggregate(
                     self._errors.aggregate(since=since, until=until),
                     _EMPTY_ERRORS,
+                    domain="err",
                 )
             )
             evo_task = tg.create_task(
-                _safe(
-                    "evo",
+                _aggregate(
                     self._evolution.aggregate(since=since, until=until),
                     _EMPTY_EVOLUTION,
+                    domain="evo",
                 )
             )
             telem_task = tg.create_task(
-                _safe(
-                    "telem",
+                _aggregate(
                     self._telemetry.aggregate(since=since, until=until),
                     _EMPTY_TELEMETRY,
+                    domain="telem",
                 )
             )
             bench_task = (
                 tg.create_task(
-                    _safe(
-                        "bench",
+                    _aggregate(
                         self._benchmark.aggregate(since=since, until=until),
                         _EMPTY_BENCHMARK,
+                        domain="bench",
                     )
                 )
                 if self._benchmark is not None
@@ -220,7 +222,7 @@ class SnapshotBuilder:
             performance=perf_task.result(),
             budget=budget_task.result(),
             coordination=coord_task.result(),
-            scaling=scale_task.result() if scale_task is not None else _EMPTY_SCALING,
+            scaling=(scale_task.result() if scale_task is not None else _EMPTY_SCALING),
             errors=err_task.result(),
             evolution=evo_task.result(),
             telemetry=telem_task.result(),

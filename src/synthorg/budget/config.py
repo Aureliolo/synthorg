@@ -425,11 +425,12 @@ class BudgetConfig(BaseModel):
         ),
     )
     run_hard_ceiling: float = Field(
-        default=0.0,
+        default=25.0,
         ge=0.0,
         description=(
             "Absolute hard real-money ceiling applied when Task.hard_ceiling"
-            " is unset (zero disables the global fallback)"
+            " is unset. The shipped default 25.0 is a safety net; 0.0 is the"
+            " explicit opt-out that disables the global fallback"
         ),
     )
     forecast_static_prior_per_turn_large: float = Field(

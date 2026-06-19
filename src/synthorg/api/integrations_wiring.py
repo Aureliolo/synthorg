@@ -6,8 +6,8 @@ so ``create_app`` stays under the file-size budget.
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from synthorg.api.config import ApiConfig
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.config.schema import RootConfig
 from synthorg.core.critical_errors import reraise_critical
@@ -26,6 +26,13 @@ from synthorg.observability.events.api import (
     API_SERVICE_AUTO_WIRED,
 )
 from synthorg.persistence.protocol import PersistenceBackend
+
+if TYPE_CHECKING:
+    # AppState is a heavy composition-root hub; importing it at module
+    # level would close a cold-import cycle into this wiring leaf. The
+    # annotation resolves lazily (PEP 649) and the runtime body only
+    # does attribute access, so a type-only import is sufficient.
+    from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
 
@@ -181,13 +188,20 @@ def _resolve_secret_db_path(
     return boot_db_path or None
 
 
-def _wire_rate_limit_coordinator_factory(
+def wire_rate_limit_coordinator_factory(
     *,
     message_bus: MessageBus,
     connection_catalog: ConnectionCatalog,
-    api_config: ApiConfig,
+    app_state: AppState,
 ) -> None:
-    """Wire the shared rate-limit coordinator factory."""
+    """Wire the shared rate-limit coordinator factory.
+
+    The per-connection fallback RPM is read from the live
+    :class:`ApiBridgeConfig` snapshot at coordinator-build time (not
+    captured at wiring time), so the resolved ``api.max_rpm_default`` is
+    the single source and an operator restart-applied change is honoured
+    without a duplicate config surface.
+    """
     from synthorg.integrations.rate_limiting.shared_state import (  # noqa: PLC0415
         SharedRateLimitCoordinator,
         register_coordinator_factory,
@@ -195,11 +209,10 @@ def _wire_rate_limit_coordinator_factory(
 
     _bus = message_bus
     _catalog = connection_catalog
-    _default_rpm = api_config.rate_limit.max_rpm_default
 
     def _make_coordinator(name: str) -> SharedRateLimitCoordinator:
         """Return make coordinator."""
-        max_rpm = _default_rpm
+        max_rpm = app_state.bridge_config.api.max_rpm_default
         try:
             conn = _catalog.get_cached(name)
             if (
@@ -236,7 +249,6 @@ def auto_wire_integrations(  # noqa: PLR0913
     effective_config: RootConfig,
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
-    api_config: ApiConfig,
     ceremony_scheduler: CeremonyScheduler | None,
     db_url: str,
     resolved_db_path: Path | None,
@@ -376,13 +388,6 @@ def auto_wire_integrations(  # noqa: PLR0913
             logger.info(
                 API_SERVICE_AUTO_WIRED,
                 service="webhook_event_bridge",
-            )
-
-        if message_bus is not None:
-            _wire_rate_limit_coordinator_factory(
-                message_bus=message_bus,
-                connection_catalog=bundle.connection_catalog,
-                api_config=api_config,
             )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)

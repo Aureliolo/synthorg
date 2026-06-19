@@ -30,6 +30,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
@@ -104,7 +105,7 @@ candidate prefixes natively; any future prefix (e.g. ``MODAL_``,
 """
 
 
-_SECONDS_PER_HOUR: float = 3600.0
+_SECONDS_PER_HOUR: Final[float] = 3600.0
 """Seconds in an hour, for the heartbeat-interval and uptime conversions."""
 
 

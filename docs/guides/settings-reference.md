@@ -109,7 +109,7 @@ curl http://localhost:3001/api/v1/settings/api/rate_limit.auth_max_requests/sche
 curl -X PUT http://localhost:3001/api/v1/settings/api/rate_limit.auth_max_requests \
   -H "Content-Type: application/json" \
   -H "Cookie: session=${TOKEN}" \
-  -d '{"value": 12000}'
+  -d '{"value": 1200}'
 
 # Reset a setting to its default
 curl -X DELETE http://localhost:3001/api/v1/settings/api/rate_limit.auth_max_requests \

@@ -1,13 +1,12 @@
 """Pure helpers for the provider capability mutations.
 
-Extracted from ``service.py`` to keep the module under the project's
-800-line ceiling.  Nothing here is bound to ``ProviderManagementService``
-state; the credential helpers are stateless transforms over a
-discriminated-union DTO and the system-actor constant is a sentinel.
+Nothing here is bound to ``ProviderManagementService`` state; the
+credential helpers are stateless transforms over a discriminated-union
+DTO and the system-actor constant is a sentinel.
 """
 
 from datetime import UTC, datetime
-from typing import Final
+from typing import Final, assert_never
 
 from synthorg.core.actor_context import current_actor
 from synthorg.core.iso_datetime import format_iso_utc
@@ -38,8 +37,7 @@ def provider_actor_from_context() -> ProviderAuditActor:
 
     Reads the :class:`~synthorg.core.actor_context.ActorIdentity` bound
     by ``AuthContextMiddleware`` (or an explicit ``actor_scope``) and
-    maps it to a :class:`ProviderAuditActor`. The mapping preserves the
-    identity the controller historically threaded: ``id`` is the actor's
+    maps it to a :class:`ProviderAuditActor`: ``id`` is the actor's
     stable id and ``label`` its human-readable name. Background paths
     that bind no actor fall back to :data:`SYSTEM_ACTOR`.
 
@@ -137,16 +135,5 @@ def credentials_update_fields(
                 },
                 mask_secret(secret),
             )
-        case _ as unreachable:
-            # ``request`` is a pydantic discriminated union validated upstream,
-            # so this arm is unreachable. The defensive log + typed raise give
-            # operators a 422 with context (rather than a bare 500) if a future
-            # union variant ever reaches here before this dispatch is updated.
-            msg = f"Unsupported auth_type for rotation: {unreachable!r}"  # type: ignore[unreachable]
-            exc = ProviderValidationError(msg)
-            logger.warning(
-                PROVIDER_VALIDATION_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise exc
+        case _ as unreachable:  # pragma: no cover - exhaustive over the union
+            assert_never(unreachable)

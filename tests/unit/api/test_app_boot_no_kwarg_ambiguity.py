@@ -35,7 +35,8 @@ class TestAppBootHasNoKwargAmbiguity:
     ) -> None:
         """Building the app must not trip Litestar 2.22's PATH-vs-query check.
 
-        The failure this guards against is:
+        The check rejects a handler whose dependency, path parameter,
+        and aliased parameter share a key:
 
             ImproperlyConfiguredException:
                 Kwarg resolution ambiguity detected for the following
@@ -44,8 +45,8 @@ class TestAppBootHasNoKwargAmbiguity:
                 parameters.
 
         If this test fails, the failure message names the offending
-        param. Migrate that handler's ``Parameter(...)`` to
-        ``PathParameter(...)`` (PEP 593 marker class from
+        param. Declare that handler's parameter as ``PathParameter(...)``
+        instead of ``Parameter(...)`` (PEP 593 marker class from
         ``litestar.params``).
         """
         try:
