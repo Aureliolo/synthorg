@@ -177,6 +177,18 @@ class LiteLLMDriver(BaseCompletionProvider):
         )
         self._routing_key = config.litellm_provider or provider_name
 
+    @override
+    def bind_credential_catalog(self, catalog: ConnectionCatalog | None) -> None:
+        """Store the credential catalog for ``connection_name`` resolution.
+
+        Lets ``ProviderRegistry.from_config`` inject the always-on catalog
+        after construction. Clears any cached resolution so the next call
+        re-resolves against the freshly-bound catalog.
+        """
+        self._connection_catalog = catalog
+        self._resolved_credentials = None
+        self._credentials_cached_at = None
+
     async def _ensure_credentials_resolved(self) -> None:
         """Resolve credentials from ConnectionCatalog if needed.
 

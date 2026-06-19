@@ -42,6 +42,7 @@ from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.state import task_engine_of
 from synthorg.engine.workspace.state import WorkspaceStateSlice
 from synthorg.hr.state import agent_registry_of
+from synthorg.integrations.state import provider_credential_catalog_of
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.providers.registry import ProviderRegistry
@@ -181,6 +182,11 @@ def _select_active_provider(
         return None
 
     registry = provider_registry_of(app_state)
+    # Bind the always-on credential catalog so ``connection_name`` provider
+    # credentials resolve at call time. Boot can build the registry before the
+    # catalog is wired (the catalog needs a connected persistence backend), so
+    # we (re)bind here in the runtime path where both are guaranteed present.
+    registry.bind_credential_catalog(provider_credential_catalog_of(app_state))
     names = registry.list_providers()
     if not names:
         logger.info(

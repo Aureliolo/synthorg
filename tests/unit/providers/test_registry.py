@@ -23,11 +23,13 @@ if TYPE_CHECKING:
         StreamChunk,
         ToolDefinition,
     )
+from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.providers.errors import (
     DriverFactoryNotFoundError,
     DriverNotRegisteredError,
 )
 from synthorg.providers.registry import ProviderRegistry
+from tests._shared import mock_of
 
 # ── Helpers ──────────────────────────────────────────────────────
 
@@ -314,3 +316,56 @@ class TestRegistryLogging:
         events = [e for e in cap if e.get("event") == PROVIDER_DRIVER_NOT_REGISTERED]
         assert len(events) == 1
         assert events[0]["name"] == "nonexistent"
+
+
+class _CatalogRecordingDriver(_StubDriver):
+    """Stub driver that records every credential-catalog bind."""
+
+    def __init__(self, provider_name: str, config: ProviderConfig) -> None:
+        super().__init__(provider_name, config)
+        self.bound_catalog: ConnectionCatalog | None = None
+        self.bind_calls = 0
+
+    @override
+    def bind_credential_catalog(self, catalog: ConnectionCatalog | None) -> None:
+        self.bound_catalog = catalog
+        self.bind_calls += 1
+
+
+@pytest.mark.unit
+class TestRegistryCredentialCatalog:
+    def test_from_config_binds_catalog_to_each_driver(self) -> None:
+        catalog = mock_of[ConnectionCatalog]()
+        registry = ProviderRegistry.from_config(
+            {"prov": _make_config(driver="stub")},
+            factory_overrides={"stub": _CatalogRecordingDriver},
+            connection_catalog=catalog,
+        )
+        driver = registry.get("prov")
+        assert isinstance(driver, _CatalogRecordingDriver)
+        assert driver.bound_catalog is catalog
+        assert driver.bind_calls == 1
+
+    def test_from_config_without_catalog_binds_none(self) -> None:
+        registry = ProviderRegistry.from_config(
+            {"prov": _make_config(driver="stub")},
+            factory_overrides={"stub": _CatalogRecordingDriver},
+        )
+        driver = registry.get("prov")
+        assert isinstance(driver, _CatalogRecordingDriver)
+        assert driver.bound_catalog is None
+        assert driver.bind_calls == 1
+
+    def test_registry_bind_rebinds_all_drivers(self) -> None:
+        first = mock_of[ConnectionCatalog]()
+        registry = ProviderRegistry.from_config(
+            {"prov": _make_config(driver="stub")},
+            factory_overrides={"stub": _CatalogRecordingDriver},
+            connection_catalog=first,
+        )
+        second = mock_of[ConnectionCatalog]()
+        registry.bind_credential_catalog(second)
+        driver = registry.get("prov")
+        assert isinstance(driver, _CatalogRecordingDriver)
+        assert driver.bound_catalog is second
+        assert driver.bind_calls == 2

@@ -11,6 +11,7 @@ from typing import Self
 
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -82,6 +83,19 @@ class ProviderRegistry:
         """The active cassette session, or ``None`` when inert."""
         return self._cassette_session
 
+    def bind_credential_catalog(self, catalog: ConnectionCatalog | None) -> None:
+        """(Re)bind the credential catalog onto every registered driver.
+
+        Boot order can build the provider registry before the always-on
+        credential catalog is wired (the catalog needs a connected
+        persistence backend). Callers that hold the catalog later (the
+        runtime engine assembly) invoke this so every driver resolves
+        ``connection_name`` credentials at call time. Idempotent. Drivers
+        that do not use catalog-backed credentials inherit a no-op.
+        """
+        for driver in self._drivers.values():
+            driver.bind_credential_catalog(catalog)
+
     def get(self, name: str) -> BaseCompletionProvider:
         """Look up a driver by provider name.
 
@@ -143,12 +157,18 @@ class ProviderRegistry:
         *,
         factory_overrides: dict[str, object] | None = None,
         cassette: CassetteConfig | None = None,
+        connection_catalog: ConnectionCatalog | None = None,
     ) -> Self:
         """Build a registry from a provider config dict.
 
         For each provider, reads the ``driver`` field to select a
         factory.  The factory is called with
-        ``(provider_name, config)`` to produce a driver instance.
+        ``(provider_name, config)`` to produce a driver instance, then the
+        ``connection_catalog`` (when supplied) is bound onto the driver via
+        :meth:`BaseCompletionProvider.bind_credential_catalog` so credentials
+        referenced by ``connection_name`` resolve at call time. The catalog
+        is the always-on credential catalog (present whenever persistence is
+        connected), independent of the integrations feature flag.
 
         When ``cassette`` is active every driver is wrapped in a
         :class:`CassetteCompletionProvider` sharing one session -- the
@@ -165,6 +185,9 @@ class ProviderRegistry:
             cassette: Cassette configuration; ``None`` or ``off``
                 leaves the registry holding the concrete drivers
                 unchanged.
+            connection_catalog: Always-on credential catalog bound onto
+                each built driver for ``connection_name`` resolution;
+                ``None`` leaves drivers without catalog-backed credentials.
 
         Returns:
             A new ``ProviderRegistry`` with all providers registered.
@@ -190,6 +213,7 @@ class ProviderRegistry:
                     {},
                     overrides,
                     cassette,
+                    connection_catalog,
                 )
 
         from .drivers.litellm_driver import (  # noqa: PLC0415
@@ -208,11 +232,14 @@ class ProviderRegistry:
                 defaults,
                 overrides,
                 cassette,
+                connection_catalog,
             )
 
         drivers: dict[str, BaseCompletionProvider] = {}
         for name, config in providers.items():
-            drivers[name] = _build_driver(name, config, defaults, overrides)
+            drivers[name] = _build_driver(
+                name, config, defaults, overrides, connection_catalog
+            )
 
         logger.info(
             PROVIDER_REGISTRY_BUILT,
@@ -228,6 +255,7 @@ class ProviderRegistry:
         defaults: dict[str, type[BaseCompletionProvider]],
         overrides: dict[str, object],
         cassette: CassetteConfig,
+        connection_catalog: ConnectionCatalog | None = None,
     ) -> Self:
         """Wrap every driver in one shared cassette session.
 
@@ -262,7 +290,11 @@ class ProviderRegistry:
         drivers: dict[str, BaseCompletionProvider] = {}
         for name, config in providers.items():
             inner = (
-                None if is_replay else _build_driver(name, config, defaults, overrides)
+                None
+                if is_replay
+                else _build_driver(
+                    name, config, defaults, overrides, connection_catalog
+                )
             )
             drivers[name] = CassetteCompletionProvider(
                 inner=inner,
@@ -288,6 +320,7 @@ def _build_driver(
     config: ProviderConfig,
     defaults: dict[str, type[BaseCompletionProvider]],
     overrides: dict[str, object],
+    connection_catalog: ConnectionCatalog | None = None,
 ) -> BaseCompletionProvider:
     """Instantiate a single driver from config and factories.
 
@@ -337,6 +370,7 @@ def _build_driver(
             msg,
             context={"provider": name, "driver": driver_type},
         )
+    driver.bind_credential_catalog(connection_catalog)
     logger.debug(
         PROVIDER_DRIVER_INSTANTIATED,
         provider=name,
