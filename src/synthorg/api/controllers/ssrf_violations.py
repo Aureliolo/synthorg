@@ -16,6 +16,7 @@ from litestar import Controller, get, post
 from litestar.datastructures import State
 from litestar.params import QueryParameter
 
+from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_ssrf import ResolveSsrfViolationRequest, SsrfViolationDTO
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
@@ -23,7 +24,7 @@ from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
     cursor_secret_of,
-    paginate_cursor,
+    encode_countless_seek_meta,
 )
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
@@ -31,10 +32,9 @@ from synthorg.api.services.ssrf_violation_service import SsrfViolationService
 from synthorg.api.state import AppState
 from synthorg.core.actor_context import resolve_decided_by
 from synthorg.core.domain_errors import ResourceNotFoundError
-from synthorg.core.pagination import collect_all
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.state import persistence_of
-from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
+from synthorg.security.ssrf_violation import SsrfViolationStatus
 
 _DEFAULT_LIMIT: Final[int] = 50
 
@@ -76,23 +76,21 @@ class SsrfViolationController(Controller):
             Paginated violations, newest-first.
         """
         service = _service(state)
-
-        async def _fetch(
-            page_limit: int, page_offset: int
-        ) -> tuple[SsrfViolation, ...]:
-            return await service.list_violations(
-                status=status, limit=page_limit, offset=page_offset
-            )
-
-        rows = await collect_all(_fetch)
-        entries = tuple(SsrfViolationDTO.from_entity(r) for r in rows)
-        page, meta = paginate_cursor(
-            entries,
-            limit=limit,
-            cursor=cursor,
-            secret=cursor_secret_of(state.app_state),
+        secret = cursor_secret_of(state.app_state)
+        offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
+        # Fetch ``limit + 1`` so the next-page flag comes from a bounded
+        # window instead of materialising every violation row first.
+        rows = await service.list_violations(
+            status=status, limit=limit + 1, offset=offset
         )
-        return PaginatedResponse(data=page, pagination=meta)
+        meta = encode_countless_seek_meta(
+            offset=offset,
+            fetched_rows=len(rows),
+            limit=limit,
+            secret=secret,
+        )
+        entries = tuple(SsrfViolationDTO.from_entity(r) for r in rows[:limit])
+        return PaginatedResponse(data=entries, pagination=meta)
 
     @post(
         "/{violation_id:str}/resolve",

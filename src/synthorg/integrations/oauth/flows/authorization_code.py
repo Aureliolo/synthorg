@@ -298,10 +298,18 @@ class AuthorizationCodeFlow:
                 payload=payload,
                 field="token_url",
             )
-        except (httpx.HTTPError, json.JSONDecodeError, ValueError) as exc:
+        except (
+            httpx.HTTPError,
+            json.JSONDecodeError,
+            ValueError,
+            TokenExchangeFailedError,
+        ) as exc:
             # See ``exchange_code`` above: ``warning`` + scrubbed description
             # keeps the refresh_token and client_secret out of logs.
             # ``ValueError`` covers an SSRF rejection of ``token_url``.
+            # ``TokenExchangeFailedError`` is raised by
+            # ``_post_token_request`` on a non-object JSON body; catch it
+            # here so refresh callers always see the refresh error domain.
             logger.warning(
                 OAUTH_TOKEN_REFRESH_FAILED,
                 error_type=type(exc).__name__,

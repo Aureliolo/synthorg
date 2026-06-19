@@ -149,14 +149,17 @@ async def test_restart_double_bills_without_durable_guard() -> None:
     """Control: without the dedup repo, the restart hole re-bills (the bug)."""
     record = make_cost_record(project_id="proj-1", cost=1.0)
 
-    store1 = _FakeDurableStore()
-    await CostTracker(project_cost_repo=_FakeAggregateRepo(store1)).record(record)
-    assert store1.increment_calls == 1
+    # One durable store shared across the "restart": a fresh CostTracker
+    # (empty in-memory LRU) processing the same record against the already
+    # -incremented durable timeline is what actually exercises the
+    # double-billing hole.
+    store = _FakeDurableStore()
+    await CostTracker(project_cost_repo=_FakeAggregateRepo(store)).record(record)
+    assert store.increment_calls == 1
 
-    store2 = _FakeDurableStore()
-    await CostTracker(project_cost_repo=_FakeAggregateRepo(store2)).record(record)
-    # No durable guard, fresh LRU -> the duplicate re-increments.
-    assert store2.increment_calls == 1
+    await CostTracker(project_cost_repo=_FakeAggregateRepo(store)).record(record)
+    # No durable guard across the restart -> the same claim is billed again.
+    assert store.increment_calls == 2
 
 
 async def test_atomic_failure_is_fail_open() -> None:

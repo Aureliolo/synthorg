@@ -40,7 +40,6 @@ class BudgetCfoController(Controller):
     @get(
         "/anomalies",
         guards=[
-            require_read_access,
             per_op_rate_limit_from_policy("budget.cfo_anomalies"),
         ],
     )
@@ -83,7 +82,6 @@ class BudgetCfoController(Controller):
     @get(
         "/efficiency",
         guards=[
-            require_read_access,
             per_op_rate_limit_from_policy("budget.cfo_efficiency"),
         ],
     )

@@ -84,6 +84,12 @@ def truncate(msg: str, limit: int = _MAX_ERROR_MESSAGE_LENGTH) -> str:
         *msg* unchanged when within *limit*, otherwise truncated to
         *limit* characters.
     """
+    ellipsis = "..."
     if len(msg) <= limit:
         return msg
-    return msg[: limit - 3] + "..."
+    if limit < len(ellipsis):
+        # The ``...`` suffix cannot fit within a sub-3 limit without
+        # exceeding the cap, so hard-truncate to exactly *limit* to
+        # preserve the length contract.
+        return msg[:limit]
+    return msg[: limit - len(ellipsis)] + ellipsis

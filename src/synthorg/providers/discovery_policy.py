@@ -253,12 +253,18 @@ async def resolve_discovery_target(
     normalized = host.lower()
     is_https = parsed.scheme == "https"
     try:
-        # Fall back to 443 for any scheme not in the default-port map so a
-        # ``DnsValidationOk`` never carries ``port=None`` into the pinned
-        # transport (which would otherwise fail or connect to port 0).
-        port = parsed.port or _DEFAULT_PORTS.get(parsed.scheme, 443)
+        raw_port = parsed.port
     except ValueError:
         return f"Invalid port in discovery URL: {url!r}"
+    # An explicit ``:0`` must not be silently rewritten to a default
+    # (``parsed.port or ...`` treats 0 as falsy): that could pin the
+    # transport to a different endpoint than ``is_url_allowed`` evaluated.
+    # Port 0 is not a connectable target, so reject it cleanly; only a
+    # genuinely-absent port falls back to the scheme default so a
+    # ``DnsValidationOk`` never carries ``port=None``.
+    if raw_port == 0:
+        return f"Invalid port in discovery URL: {url!r}"
+    port = raw_port if raw_port is not None else _DEFAULT_PORTS.get(parsed.scheme, 443)
     # Literal IP: nothing to pin (no DNS step), connect straight to it.
     try:
         ipaddress.ip_address(normalized)

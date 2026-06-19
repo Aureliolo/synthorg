@@ -156,13 +156,11 @@ class _AuditMixin(_DecisionRepoBase):
             QueryError: If the operation fails.
         """
         if threshold.tzinfo is None:
+            # Caller-input precondition: raise directly without a warning
+            # so this naive-datetime guard does not pollute persistence
+            # failure telemetry.
             msg = (
                 f"threshold must be timezone-aware, got a naive datetime {threshold!r}"
-            )
-            logger.warning(
-                PERSISTENCE_DECISION_RECORD_QUERY_FAILED,
-                error_type="NaiveDatetimeRejected",
-                error=msg,
             )
             raise ValueError(msg)
         try:

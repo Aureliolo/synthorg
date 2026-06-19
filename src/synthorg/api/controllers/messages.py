@@ -7,12 +7,14 @@ from litestar.datastructures import State
 from litestar.params import QueryParameter
 
 from synthorg._core.features import require_service
+from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
     cursor_secret_of,
+    encode_countless_seek_meta,
     paginate_cursor,
 )
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
@@ -23,7 +25,6 @@ from synthorg.communication.message import Message
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.domain_errors import ResourceNotFoundError
-from synthorg.core.pagination import collect_all
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
@@ -72,25 +73,27 @@ class MessageController(Controller):
             Paginated message list.
         """
         app_state: AppState = state.app_state
+        secret = cursor_secret_of(app_state)
+        offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
         if channel is not None:
             repo = persistence_of(app_state).messages
             channel_id = NotBlankStr(channel)
-            messages = await collect_all(
-                lambda fetch_limit, fetch_offset: repo.get_history(
-                    channel_id,
-                    limit=fetch_limit,
-                    offset=fetch_offset,
-                ),
+            # Fetch ``limit + 1`` so a following page is detected without
+            # scanning the whole channel history into memory first.
+            messages = await repo.get_history(
+                channel_id,
+                limit=limit + 1,
+                offset=offset,
             )
         else:
             messages = ()
-        page, meta = paginate_cursor(
-            messages,
+        meta = encode_countless_seek_meta(
+            offset=offset,
+            fetched_rows=len(messages),
             limit=limit,
-            cursor=cursor,
-            secret=cursor_secret_of(app_state),
+            secret=secret,
         )
-        return PaginatedResponse(data=page, pagination=meta)
+        return PaginatedResponse(data=tuple(messages[:limit]), pagination=meta)
 
     @delete(
         "/{message_id:str}",

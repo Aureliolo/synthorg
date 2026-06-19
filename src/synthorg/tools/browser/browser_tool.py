@@ -367,6 +367,9 @@ class BrowserTool(BaseTool):
             BrowserDomainError: If the related operation fails.
         """
         url = self._resolve_url(args)
+        # Redact query tokens from every logged URL on this path; the raw
+        # ``url`` is still handed to the executor for the actual request.
+        safe_url = redact_url(url)
         if args.screenshot_name is None or args.spec_name is None:
             logger.warning(
                 BROWSER_ARGS_VALIDATION_FAILED,
@@ -379,7 +382,7 @@ class BrowserTool(BaseTool):
             )
         logger.debug(
             BROWSER_SCREENSHOT_START,
-            url=url,
+            url=safe_url,
             spec=args.spec_name,
             screenshot=args.screenshot_name,
         )
@@ -409,14 +412,14 @@ class BrowserTool(BaseTool):
             except BrowserDomainError as exc:
                 logger.warning(
                     BROWSER_SCREENSHOT_FAILED,
-                    url=url,
+                    url=safe_url,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
                 raise
         logger.debug(
             BROWSER_SCREENSHOT_SUCCESS,
-            url=url,
+            url=safe_url,
             saved_path=metadata.saved_path,
         )
         return ok_result(metadata)
@@ -435,6 +438,7 @@ class BrowserTool(BaseTool):
             BrowserAccessibilityError: If the related operation fails.
         """
         url = self._resolve_url(args)
+        safe_url = redact_url(url)
         try:
             payload = await self._run_executor(
                 operation="accessibility_scan",
@@ -449,7 +453,7 @@ class BrowserTool(BaseTool):
             logger.warning(
                 BROWSER_EXECUTOR_FAILED,
                 operation="accessibility_scan",
-                url=url,
+                url=safe_url,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

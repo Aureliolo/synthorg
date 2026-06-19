@@ -102,6 +102,13 @@ class ProviderLocalModelsController(Controller):
         user = getattr(request, "user", None)
         if not isinstance(user, AuthenticatedUser):
             msg = "pull_model requires an authenticated user"
+            logger.warning(
+                API_VALIDATION_FAILED,
+                resource="provider",
+                operation="pull_model",
+                provider=name,
+                error=msg,
+            )
             raise ValidationError(msg)
 
         async def _event_stream() -> AsyncIterator[dict[str, str]]:

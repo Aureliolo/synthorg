@@ -250,14 +250,14 @@ class PostgresSsrfViolationRepository:
                 if status is not None:
                     await cur.execute(
                         f"SELECT {_COLS} FROM ssrf_violations "  # noqa: S608
-                        "WHERE status = %s ORDER BY timestamp DESC "
+                        "WHERE status = %s ORDER BY timestamp DESC, id DESC "
                         "LIMIT %s OFFSET %s",
                         (status.value, capped, offset),
                     )
                 else:
                     await cur.execute(
                         f"SELECT {_COLS} FROM ssrf_violations "  # noqa: S608
-                        "ORDER BY timestamp DESC LIMIT %s OFFSET %s",
+                        "ORDER BY timestamp DESC, id DESC LIMIT %s OFFSET %s",
                         (capped, offset),
                     )
                 rows = await cur.fetchall()

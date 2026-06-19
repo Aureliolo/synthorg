@@ -6,6 +6,7 @@ weakening the guard: recording is a no-op when nothing is installed, and
 a recording failure is swallowed so the block still fires.
 """
 
+from collections.abc import Iterator
 from typing import Final
 from unittest.mock import patch
 
@@ -25,9 +26,13 @@ _VALIDATE: Final[str] = "synthorg.tools.ssrf.validate_url_host"
 
 
 @pytest.fixture(autouse=True)
-def _clear_recorder() -> None:
+def _clear_recorder() -> Iterator[None]:
     """Ensure each test starts and ends with no recorder installed."""
     install_ssrf_violation_recorder(None)
+    try:
+        yield
+    finally:
+        install_ssrf_violation_recorder(None)
 
 
 async def test_record_is_noop_without_recorder() -> None:

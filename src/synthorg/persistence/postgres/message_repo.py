@@ -161,7 +161,7 @@ class PostgresMessageRepository:
                 error=msg,
             )
             raise QueryError(msg)
-        if offset < 0:
+        if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
             msg = f"offset must be non-negative, got {offset!r}"
             logger.warning(
                 PERSISTENCE_MESSAGE_HISTORY_FAILED,

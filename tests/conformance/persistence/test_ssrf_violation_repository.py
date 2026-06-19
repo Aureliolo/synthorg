@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
@@ -124,7 +125,7 @@ class TestSsrfViolationRepository:
     async def test_list_violations_rejects_non_positive_limit(
         self, backend: PersistenceBackend
     ) -> None:
-        with pytest.raises(ValueError, match=r"(?i)limit"):
+        with pytest.raises(QueryError, match=r"(?i)limit"):
             await backend.ssrf_violations.list_violations(limit=0)
 
     async def test_update_status_pending_to_denied(

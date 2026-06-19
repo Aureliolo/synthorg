@@ -146,7 +146,14 @@ class GitLabTokenVerifier:
                 reason="empty token",
             )
             return False
-        valid = hmac.compare_digest(received, secret)
+        # ``hmac.compare_digest`` with ``str`` args requires ASCII-only
+        # input; a non-ASCII token would raise ``TypeError`` and surface
+        # as a 500 instead of a clean invalid-signature ``False``. Compare
+        # as bytes so any token value is handled.
+        valid = hmac.compare_digest(
+            received.encode("utf-8"),
+            secret.encode("utf-8"),
+        )
         if valid:
             logger.debug(WEBHOOK_SIGNATURE_VERIFIED, provider="gitlab")
         else:

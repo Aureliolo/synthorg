@@ -576,16 +576,19 @@ class PruningService:
         return item.metadata.get(_PROCESSED_META_KEY) == _PROCESSED_META_VALUE
 
     async def _mark_processed(self, item: ApprovalItem) -> None:
-        """Mark a decided approval processed in memory and durably.
+        """Mark a decided approval processed durably, then in memory.
 
-        Writes the dedup marker into the approval item's metadata via the
-        store (best-effort: a write failure logs but keeps the in-memory
-        mark so the same process still dedups; the next restart simply
-        re-derives from the store). Idempotent: a no-op when the marker
-        is already present.
+        Persists the dedup marker into the approval item's metadata via
+        the store FIRST, and only records the in-memory mark once the
+        durable write succeeds. This keeps in-memory dedup backed by
+        durability: a write failure leaves the item unmarked in both
+        places so the next poll retries (rather than the in-memory mark
+        hiding a durability hole that re-processes the same approval
+        after restart). Idempotent: a no-op when the marker is already
+        present.
         """
-        self._processed_approval_ids.add(str(item.id))
         if self._already_processed_durably(item):
+            self._processed_approval_ids.add(str(item.id))
             return
         try:
             await self._approval_store.save(
@@ -607,6 +610,8 @@ class PruningService:
                 error=safe_error_description(exc),
                 note="durable_processed_mark_failed",
             )
+            return
+        self._processed_approval_ids.add(str(item.id))
 
     async def _process_decided_approvals(self) -> None:
         """Poll for decided approvals and process them."""

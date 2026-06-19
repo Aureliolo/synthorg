@@ -330,7 +330,11 @@ class AuthConfig(BaseModel):
             New ``AuthConfig`` with the secret populated.
 
         Raises:
-            ValueError: If the secret is too short.
+            ValueError: If the secret is too short for the configured
+                JWT algorithm.
         """
-        _require_valid_secret(secret)
+        min_length = _MIN_SECRET_LENGTH_BY_ALG.get(
+            self.jwt_algorithm, MIN_SECRET_LENGTH
+        )
+        _require_valid_secret(secret, min_length)
         return self.model_copy(update={"jwt_secret": secret})

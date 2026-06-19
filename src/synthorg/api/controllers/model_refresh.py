@@ -18,6 +18,7 @@ from litestar.datastructures import State
 from litestar.params import QueryParameter
 
 from synthorg.api.api_core_state import org_mutation_service_of
+from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_model_refresh import (
     RefreshCycleReportDTO,
@@ -29,7 +30,7 @@ from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
     cursor_secret_of,
-    paginate_cursor,
+    encode_countless_seek_meta,
 )
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
@@ -39,7 +40,6 @@ from synthorg.api.services.upgrade_recommendation_service import (
 from synthorg.api.state import AppState
 from synthorg.core.actor_context import resolve_decided_by
 from synthorg.core.domain_errors import ServiceUnavailableError
-from synthorg.core.pagination import collect_all
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import PROVIDER_MODEL_REFRESH_CYCLE_FAILED
 from synthorg.providers.enums import RecommendationStatus
@@ -48,7 +48,6 @@ from synthorg.providers.management.refresh_config import (
     load_model_refresh_config,
 )
 from synthorg.providers.management.refresh_state import ModelRefreshStateSlice
-from synthorg.providers.management.upgrade_models import StoredUpgradeRecommendation
 from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
@@ -103,23 +102,21 @@ class ModelRefreshController(Controller):
             Paginated recommendations, newest-first.
         """
         service = _recommendation_service(state)
-
-        async def _fetch(
-            page_limit: int, page_offset: int
-        ) -> tuple[StoredUpgradeRecommendation, ...]:
-            return await service.list_recommendations(
-                status=status, limit=page_limit, offset=page_offset
-            )
-
-        rows = await collect_all(_fetch)
-        entries = tuple(UpgradeRecommendationDTO.from_entity(r) for r in rows)
-        page, meta = paginate_cursor(
-            entries,
-            limit=limit,
-            cursor=cursor,
-            secret=cursor_secret_of(state.app_state),
+        secret = cursor_secret_of(state.app_state)
+        offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
+        # Fetch ``limit + 1`` so the next-page flag is derived from a
+        # bounded read instead of exhausting the whole recommendation set.
+        rows = await service.list_recommendations(
+            status=status, limit=limit + 1, offset=offset
         )
-        return PaginatedResponse(data=page, pagination=meta)
+        meta = encode_countless_seek_meta(
+            offset=offset,
+            fetched_rows=len(rows),
+            limit=limit,
+            secret=secret,
+        )
+        entries = tuple(UpgradeRecommendationDTO.from_entity(r) for r in rows[:limit])
+        return PaginatedResponse(data=entries, pagination=meta)
 
     @post(
         "/recommendations/{rec_id:str}/approve",

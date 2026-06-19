@@ -84,6 +84,7 @@ async def _cycle_one(
         logger.warning(
             PROMOTION_EVALUATE_FAILED,
             agent_id=agent_id,
+            error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
         return None

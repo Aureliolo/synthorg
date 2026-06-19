@@ -61,6 +61,9 @@ class _FakeSsrfViolationRepo:
         if limit < 1:
             msg = "limit must be positive"
             raise ValueError(msg)
+        if offset < 0:
+            msg = "offset must be non-negative"
+            raise ValueError(msg)
         rows: Iterable[SsrfViolation] = sorted(
             self._rows.values(), key=lambda v: v.timestamp, reverse=True
         )

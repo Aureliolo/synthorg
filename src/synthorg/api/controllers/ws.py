@@ -118,7 +118,27 @@ _WS_CLOSE_POLICY_VIOLATION: int = 1008
 # resolves (success or failure), so it bounds in-flight handshakes, not
 # established authenticated connections.
 _preauth_ip_counts: dict[str, int] = {}
-_preauth_ip_lock: asyncio.Lock = asyncio.Lock()
+_preauth_ip_lock: asyncio.Lock | None = None
+_preauth_ip_lock_loop: asyncio.AbstractEventLoop | None = None
+
+
+def _get_preauth_lock() -> asyncio.Lock:
+    """Return the pre-auth lock, rebinding it to the running loop.
+
+    Instantiating ``asyncio.Lock`` at import time binds it to whatever
+    loop is active then; under per-test event loops (pytest-asyncio)
+    that cross-loop binding raises ``RuntimeError``. Build the lock
+    lazily and rebind whenever the running loop changes.
+
+    Returns:
+        The ``asyncio.Lock`` bound to the current running loop.
+    """
+    global _preauth_ip_lock, _preauth_ip_lock_loop  # noqa: PLW0603
+    current_loop = asyncio.get_running_loop()
+    if _preauth_ip_lock is None or _preauth_ip_lock_loop is not current_loop:
+        _preauth_ip_lock = asyncio.Lock()
+        _preauth_ip_lock_loop = current_loop
+    return _preauth_ip_lock
 
 
 async def _acquire_preauth_slot(client_ip: str) -> bool:
@@ -128,7 +148,7 @@ async def _acquire_preauth_slot(client_ip: str) -> bool:
         ``True`` when a slot was reserved, ``False`` when the IP is at the
         concurrent pre-auth cap.
     """
-    async with _preauth_ip_lock:
+    async with _get_preauth_lock():
         count = _preauth_ip_counts.get(client_ip, 0)
         if count >= _MAX_PREAUTH_CONNECTIONS_PER_IP:
             return False
@@ -138,7 +158,7 @@ async def _acquire_preauth_slot(client_ip: str) -> bool:
 
 async def _release_preauth_slot(client_ip: str) -> None:
     """Release a previously reserved pre-auth slot for *client_ip*."""
-    async with _preauth_ip_lock:
+    async with _get_preauth_lock():
         count = _preauth_ip_counts.get(client_ip, 0)
         if count <= 1:
             _preauth_ip_counts.pop(client_ip, None)

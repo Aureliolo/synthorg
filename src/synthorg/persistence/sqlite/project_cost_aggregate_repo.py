@@ -464,10 +464,7 @@ class SQLiteProjectCostAggregateRepository:
         async with project_lock:
             pinned = self._pinned_currencies.get(project_id)
             pin_was_set = False
-            if pinned is None:
-                self._pinned_currencies[project_id] = currency
-                pin_was_set = True
-            elif pinned != currency:
+            if pinned is not None and pinned != currency:
                 msg = (
                     f"Project {project_id!r} aggregate is in {pinned!r}; "
                     f"refusing increment in {currency!r}"
@@ -495,9 +492,18 @@ class SQLiteProjectCostAggregateRepository:
                             # Duplicate claim: skip the increment. The
                             # ON CONFLICT DO NOTHING left the durable row
                             # untouched, so committing is a clean no-op.
+                            # Crucially the pin is NOT set here -- a deduped
+                            # claim must not leave a phantom currency pin
+                            # that would reject a later valid first
+                            # increment for this project.
                             await self._db.commit()
                             committed = True
                             return None, False
+                        # Claim is genuinely new: only now is it safe to pin
+                        # the project's currency.
+                        if pinned is None:
+                            self._pinned_currencies[project_id] = currency
+                            pin_was_set = True
                         async with self._db.execute(
                             _UPSERT_SQL,
                             (project_id, cost, input_tokens, output_tokens, upsert_now),
@@ -515,6 +521,12 @@ class SQLiteProjectCostAggregateRepository:
                                 f"Failed to deserialize project cost aggregate"
                                 f" for {project_id!r} after increment:"
                                 f" {safe_error_description(exc)}"
+                            )
+                            logger.warning(
+                                PERSISTENCE_PROJECT_COST_AGG_INCREMENT_FAILED,
+                                project_id=project_id,
+                                error_type=type(exc).__name__,
+                                error=safe_error_description(exc),
                             )
                             raise QueryError(msg) from exc
                         await self._db.commit()

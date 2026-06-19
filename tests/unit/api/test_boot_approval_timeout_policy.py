@@ -46,3 +46,5 @@ class TestBootApprovalTimeoutPolicy:
         )
         policy = scheduler._checker._policy
         assert isinstance(policy, DenyOnTimeoutPolicy)
+        # 30 minutes propagates through the builder as seconds.
+        assert policy._timeout_seconds == 30.0 * 60

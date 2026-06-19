@@ -33,10 +33,16 @@ def collect_model_refs(config: RootConfig) -> set[str]:
             for ref in (model.id, model.alias):
                 if ref is None:
                     continue
-                if ref in ref_to_provider:
+                existing_provider = ref_to_provider.get(ref)
+                if existing_provider is not None:
+                    # Same provider (e.g. ``alias == id`` on one model) is
+                    # not a cross-provider collision; only a different
+                    # provider claiming the same ref is ambiguous.
+                    if existing_provider == prov_name:
+                        continue
                     msg = (
                         f"Ambiguous model reference {ref!r}: "
-                        f"defined in both {ref_to_provider[ref]!r} "
+                        f"defined in both {existing_provider!r} "
                         f"and {prov_name!r}"
                     )
                     logger.warning(

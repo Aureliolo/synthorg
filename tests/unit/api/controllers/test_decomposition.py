@@ -29,8 +29,9 @@ class _FakeTaskEngine:
         self._task = task
 
     async def get_task(self, task_id: str) -> Task | None:
-        del task_id
-        return self._task
+        if self._task is None:
+            return None
+        return self._task if task_id == str(self._task.id) else None
 
 
 def _controller() -> DecompositionController:
@@ -84,7 +85,7 @@ async def test_decompose_happy_path_builds_subtasks() -> None:
     response = await DecompositionController.decompose_manual.fn(
         _controller(),
         state=_state(task=_task()),
-        task_id="parent",
+        task_id=str(as_uuid("parent")),
         data=_request(),
     )
     result = response.data
@@ -109,7 +110,7 @@ async def test_decompose_rejects_unknown_dependency_label() -> None:
         await DecompositionController.decompose_manual.fn(
             _controller(),
             state=_state(task=_task()),
-            task_id="parent",
+            task_id=str(as_uuid("parent")),
             data=bad,
         )
 
@@ -133,6 +134,6 @@ async def test_decompose_rejects_self_dependency_as_validation_error() -> None:
         await DecompositionController.decompose_manual.fn(
             _controller(),
             state=_state(task=_task()),
-            task_id="parent",
+            task_id=str(as_uuid("parent")),
             data=bad,
         )

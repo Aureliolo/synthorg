@@ -277,13 +277,13 @@ class SQLiteSsrfViolationRepository:
         if status is not None:
             query = (
                 f"SELECT {_COLS} FROM ssrf_violations "  # noqa: S608
-                "WHERE status = ? ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+                "WHERE status = ? ORDER BY timestamp DESC, id DESC LIMIT ? OFFSET ?"
             )
             params: tuple[object, ...] = (status.value, capped, offset)
         else:
             query = (
                 f"SELECT {_COLS} FROM ssrf_violations "  # noqa: S608
-                "ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+                "ORDER BY timestamp DESC, id DESC LIMIT ? OFFSET ?"
             )
             params = (capped, offset)
 

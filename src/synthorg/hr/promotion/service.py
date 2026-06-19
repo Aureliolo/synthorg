@@ -375,7 +375,16 @@ class PromotionService:
                 approval_store=self._approval_store,
             )
             return ApprovalStatus.PENDING, approval_id
-        return ApprovalStatus.PENDING, None
+        # Neither auto-approved nor human-gated: a PENDING with no
+        # approval_id can never progress through any approval path, so
+        # resolve it terminally as REJECTED rather than leaking a stuck
+        # request.
+        logger.info(
+            PROMOTION_REJECTED,
+            agent_id=agent_id,
+            reason="approval_strategy_declined_without_human_gate",
+        )
+        return ApprovalStatus.REJECTED, None
 
     async def apply_promotion(
         self,

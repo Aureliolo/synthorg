@@ -35,7 +35,7 @@ from synthorg.budget.spending_summary import (
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.pagination import DEFAULT_LIST_LIMIT
+from synthorg.core.pagination import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.budget import (
@@ -678,9 +678,20 @@ class CostTracker(CostTrackerSummaryMixin):
 
         Raises:
             ValueError: If both *start* and *end* are given and
-                ``start >= end``.
+                ``start >= end``, or if ``limit`` is below 1 or ``offset``
+                is negative.
         """
         _validate_time_range(start, end)
+        if limit < 1:
+            msg = f"limit must be >= 1, got {limit}"
+            raise ValueError(msg)
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        # Clamp oversized page requests to the bound the persistence
+        # repositories enforce, so an in-memory walk cannot return a
+        # wider page than a durable one would.
+        limit = min(limit, MAX_LIST_LIMIT)
         logger.debug(
             BUDGET_RECORDS_QUERIED,
             agent_id=agent_id,

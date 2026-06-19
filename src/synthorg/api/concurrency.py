@@ -71,6 +71,13 @@ def check_if_match(
         return
 
     if len(request_etag) > _MAX_IF_MATCH_LENGTH:
+        logger.warning(
+            API_CONCURRENCY_CONFLICT,
+            resource=resource_name,
+            reason="if_match_too_long",
+            request_etag_length=len(request_etag),
+            max_if_match_length=_MAX_IF_MATCH_LENGTH,
+        )
         msg = (
             f"If-Match header too long for {resource_name}: "
             f"{len(request_etag)} > {_MAX_IF_MATCH_LENGTH} characters"

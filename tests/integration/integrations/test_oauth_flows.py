@@ -10,6 +10,7 @@ raw tokens are returned (not placeholder ``pending-*`` refs).
 """
 
 from collections.abc import Mapping, Sequence
+from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -46,6 +47,7 @@ from synthorg.integrations.oauth.pkce import (
     generate_code_verifier,
 )
 from synthorg.integrations.oauth.state_service import OAuthStateService
+from synthorg.tools.network_validator import DnsValidationOk
 from tests._shared import JsonDict
 from tests._shared.fake_clock import FakeClock
 
@@ -802,7 +804,34 @@ class TestOAuthLogRedaction:
 
         raised_message: str | None = None
 
-        with patch(mock_path) as client_cls:
+        # The authorization-code flow SSRF-validates ``token_url`` (real
+        # DNS resolution + pinned transport) before the HTTP POST. With
+        # the network mocked, ``idp.example.com`` does not resolve, so the
+        # flow would fail at the SSRF seam and never reach the mocked
+        # leaky HTTP error this test guards. Stub the seam with a real
+        # validated result (empty ``resolved_ips`` -> the real
+        # ``build_pinned_transport`` returns ``None`` without touching the
+        # network) so the request flows into the mocked client.
+        async def _ssrf_ok(*_args: object, **_kwargs: object) -> DnsValidationOk:
+            return DnsValidationOk(
+                hostname=NotBlankStr("idp.example.com"),
+                port=443,
+                is_https=True,
+            )
+
+        ssrf_stubs: list[object] = []
+        if scenario.startswith("authorization_code"):
+            ssrf_stubs = [
+                patch(
+                    "synthorg.integrations.oauth.flows."
+                    "authorization_code.resolve_outbound_target",
+                    new=_ssrf_ok,
+                ),
+            ]
+
+        with patch(mock_path) as client_cls, ExitStack() as ssrf_stack:
+            for stub in ssrf_stubs:
+                ssrf_stack.enter_context(stub)  # type: ignore[arg-type]
             client_cls.return_value.__aenter__ = _enter
             client_cls.return_value.__aexit__ = _exit
             if scenario == "authorization_code_exchange":

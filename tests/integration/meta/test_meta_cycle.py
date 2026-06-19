@@ -63,6 +63,30 @@ def _snap(
     )
 
 
+class _SettingValue:
+    def __init__(self, value: str) -> None:
+        self.value = value
+
+
+class _InMemorySettingsWriter:
+    """In-memory settings double satisfying ``SettingsWritePort``.
+
+    ``ConfigApplier.apply`` fails closed when no writer is wired, so the
+    rollout test injects this to exercise the full apply path against an
+    in-memory store rather than the real settings service.
+    """
+
+    def __init__(self) -> None:
+        self.store: dict[tuple[str, str], str] = {}
+
+    async def get(self, namespace: str, key: str) -> object:
+        return _SettingValue(self.store.get((namespace, key), ""))
+
+    async def set(self, namespace: str, key: str, value: str) -> object:
+        self.store[(namespace, key)] = value
+        return _SettingValue(value)
+
+
 class TestMetaCycleIntegration:
     """End-to-end cycle: signals -> rules -> proposals -> guards."""
 
@@ -137,6 +161,7 @@ class TestMetaCycleIntegration:
             clock=clock,
             snapshot_builder=snapshot_builder,
             approval_store=approval_store,
+            settings_writer=_InMemorySettingsWriter(),
         )
         proposals = await svc.run_cycle(_snap(quality=4.0))
         assert len(proposals) >= 1

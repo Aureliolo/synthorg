@@ -1,5 +1,6 @@
 """Unit tests for CostTracker project-level queries."""
 
+import inspect
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -246,10 +247,49 @@ class TestPerProjectCurrencyGuardWithoutBudgetConfig:
     """
 
     def test_pinning_repo_conforms_to_protocol(self) -> None:
-        # The inline stub must structurally match the real repository
-        # protocol so a signature drift (e.g. a new keyword-only arg)
-        # fails here instead of silently diverging from production.
-        assert isinstance(_PinningRepo(), ProjectCostAggregateRepository)
+        # ``isinstance`` against a runtime_checkable Protocol only verifies
+        # member existence, not signatures, so it cannot catch a drifted
+        # keyword-only arg on its own. Pair it with an explicit
+        # signature comparison so the inline stub stays a faithful mirror
+        # of the real repository protocol.
+        repo = _PinningRepo()
+        assert isinstance(repo, ProjectCostAggregateRepository)
+        method_names = [
+            name
+            for name in dir(ProjectCostAggregateRepository)
+            if not name.startswith("_")
+            and callable(getattr(ProjectCostAggregateRepository, name, None))
+        ]
+        assert method_names, "protocol exposes no methods to compare"
+
+        def _norm_kind(kind: inspect._ParameterKind) -> str:
+            # The protocol declares leading args positional-only (``/``)
+            # while the stub leaves them positional-or-keyword; treat both
+            # as "positional" so that convention difference is not a false
+            # drift, while keyword-only / var-args drift is still caught.
+            if kind in (
+                inspect.Parameter.POSITIONAL_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            ):
+                return "positional"
+            return kind.name
+
+        for name in method_names:
+            proto_sig = inspect.signature(getattr(ProjectCostAggregateRepository, name))
+            impl_sig = inspect.signature(getattr(repo, name))
+            # Drop ``self`` from the unbound protocol method for parity
+            # with the bound stub method.
+            proto_params = [
+                (p.name, _norm_kind(p.kind))
+                for p in proto_sig.parameters.values()
+                if p.name != "self"
+            ]
+            impl_params = [
+                (p.name, _norm_kind(p.kind)) for p in impl_sig.parameters.values()
+            ]
+            assert proto_params == impl_params, (
+                f"{name} signature drift: protocol {proto_sig} vs stub {impl_sig}"
+            )
 
     async def test_first_record_pins_project_currency(self) -> None:
         """A subsequent USD write after an initial USD record is accepted."""

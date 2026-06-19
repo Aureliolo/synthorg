@@ -190,7 +190,7 @@ class ConfigApplier:
                 applied.append((namespace, key, str(old_value)))
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            await self._rollback(applied, proposal=proposal)
+            rollback_failures = await self._rollback(applied, proposal=proposal)
             log_exception_redacted(
                 logger,
                 META_APPLY_FAILED,
@@ -200,7 +200,12 @@ class ConfigApplier:
             )
             return ApplyResult(
                 success=False,
-                error_message="Config apply failed and was rolled back.",
+                error_message=(
+                    "Config apply failed; rollback was incomplete and the "
+                    "settings store may be partially applied."
+                    if rollback_failures > 0
+                    else "Config apply failed and was rolled back."
+                ),
                 changes_applied=0,
             )
 
@@ -217,20 +222,26 @@ class ConfigApplier:
         applied: list[tuple[str, str, str]],
         *,
         proposal: ImprovementProposal,
-    ) -> None:
+    ) -> int:
         """Restore previously-captured values after a failed apply.
 
         A rollback write that itself fails is logged and skipped so one
         bad key cannot abort the rest of the restoration.
+
+        Returns:
+            The number of rollback writes that failed; ``0`` means the
+            store was fully restored.
         """
         if self._settings_writer is None:
-            return
+            return 0
         writer = self._settings_writer
+        failures = 0
         for namespace, key, old_value in reversed(applied):
             try:
                 await writer.set(namespace, key, old_value)
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
+                failures += 1
                 logger.warning(
                     META_APPLY_FAILED,
                     altitude="config_tuning",
@@ -241,6 +252,7 @@ class ConfigApplier:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
+        return failures
 
     async def dry_run(
         self,

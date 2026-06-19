@@ -121,6 +121,7 @@ class ManualDecomposeRequest(BaseModel):
 
     subtasks: tuple[ManualSubtaskSpec, ...] = Field(
         min_length=1,
+        max_length=_MAX_SUBTASKS_CAP,
         description="Hand-authored subtask specifications",
     )
     max_subtasks: int = Field(

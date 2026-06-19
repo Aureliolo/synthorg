@@ -12,6 +12,7 @@ from synthorg.api.dto_promotion import (
     PromotionRecordDTO,
     PromotionRequestDTO,
 )
+from tests._shared import sid
 
 pytestmark = pytest.mark.unit
 
@@ -25,8 +26,8 @@ def _record(
     new_model_id: str | None = None,
 ) -> PromotionRecordDTO:
     return PromotionRecordDTO(
-        id="rec-1",
-        agent_id="agent-1",
+        id=sid("rec-1"),
+        agent_id=sid("agent-1"),
         agent_name="Agent One",
         old_level="junior",
         new_level="senior",
@@ -44,8 +45,8 @@ def _request(
     status: Literal["pending", "approved", "rejected", "expired"] = "approved",
 ) -> PromotionRequestDTO:
     return PromotionRequestDTO(
-        id="req-1",
-        agent_id="agent-1",
+        id=sid("req-1"),
+        agent_id=sid("agent-1"),
         agent_name="Agent One",
         current_level="junior",
         target_level="senior",
@@ -80,17 +81,17 @@ class TestCriterionResultDTO:
 class TestPromotionRecordDTO:
     def test_model_changed_requires_both_ids(self) -> None:
         with pytest.raises(ValidationError, match="model_changed=True"):
-            _record(model_changed=True, old_model_id="m-old")
+            _record(model_changed=True, old_model_id=sid("m-old"))
 
     def test_model_unchanged_forbids_ids(self) -> None:
         with pytest.raises(ValidationError, match="model_changed=False"):
-            _record(model_changed=False, new_model_id="m-new")
+            _record(model_changed=False, new_model_id=sid("m-new"))
 
     def test_consistent_model_change_accepted(self) -> None:
         dto = _record(
             model_changed=True,
-            old_model_id="m-old",
-            new_model_id="m-new",
+            old_model_id=sid("m-old"),
+            new_model_id=sid("m-new"),
         )
         assert dto.model_changed
 
@@ -100,8 +101,8 @@ class TestPromotionRecordDTO:
     def test_invalid_direction_rejected(self) -> None:
         with pytest.raises(ValidationError):
             PromotionRecordDTO(
-                id="rec-1",
-                agent_id="agent-1",
+                id=sid("rec-1"),
+                agent_id=sid("agent-1"),
                 agent_name="Agent One",
                 old_level="junior",
                 new_level="senior",

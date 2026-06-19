@@ -279,11 +279,18 @@ class InMemoryMessageBus:
         enforcer = self._quadratic_enforcer
         if enforcer is None:
             return
+        # Admissions are staged: ``_known_agents`` is not mutated here, so
+        # checking every candidate against the same static count would let
+        # N new agents all pass when only one slot remains. Track a
+        # projected count (and dedupe repeated ids within the batch) so the
+        # hard_block ceiling holds across the whole join.
+        projected_count = len(self._known_agents)
+        staged_new: set[str] = set()
         for agent_id in agent_ids:
-            if agent_id in self._known_agents:
+            if agent_id in self._known_agents or agent_id in staged_new:
                 continue
             if not enforcer.admit_agent(
-                current_agent_count=len(self._known_agents),
+                current_agent_count=projected_count,
             ):
                 msg = (
                     f"Agent {agent_id!r} rejected: quadratic hard_block "
@@ -293,6 +300,8 @@ class InMemoryMessageBus:
                     msg,
                     context={"agent_id": agent_id},
                 )
+            staged_new.add(agent_id)
+            projected_count += 1
 
     def _ensure_queue(
         self,
