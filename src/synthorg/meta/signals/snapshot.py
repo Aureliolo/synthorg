@@ -5,6 +5,7 @@ aggregators in parallel via asyncio.TaskGroup.
 """
 
 import asyncio
+from collections.abc import Awaitable
 from datetime import UTC, datetime
 
 from synthorg.core.critical_errors import reraise_critical
@@ -125,88 +126,98 @@ class SnapshotBuilder:
             until=until.isoformat(),
         )
 
-        results: dict[str, object] = {}
+        async def _safe[T](domain: str, coro: Awaitable[T], default: T) -> T:
+            """Await *coro*, returning *default* if the aggregator fails.
 
-        async def _run(name: str, coro: object) -> None:
-            """Run aggregator, store result on success."""
+            Returns:
+                The aggregator result on success, else *default*.
+            """
             try:
-                results[name] = await coro  # type: ignore[misc]
+                return await coro
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 log_exception_redacted(
-                    logger, META_SIGNAL_AGGREGATION_FAILED, exc, domain=name
+                    logger, META_SIGNAL_AGGREGATION_FAILED, exc, domain=domain
                 )
+                return default
 
         async with asyncio.TaskGroup() as tg:
-            _ = tg.create_task(
-                _run(
+            perf_task = tg.create_task(
+                _safe(
                     "perf",
                     self._performance.aggregate(since=since, until=until),
+                    _EMPTY_PERFORMANCE,
                 )
             )
-            _ = tg.create_task(
-                _run(
+            budget_task = tg.create_task(
+                _safe(
                     "budget",
                     self._budget.aggregate(since=since, until=until),
+                    _EMPTY_BUDGET,
                 )
             )
-            _ = tg.create_task(
-                _run(
+            coord_task = tg.create_task(
+                _safe(
                     "coord",
                     self._coordination.aggregate(since=since, until=until),
+                    _EMPTY_COORDINATION,
                 )
             )
-            if self._scaling is not None:
-                _ = tg.create_task(
-                    _run(
+            scale_task = (
+                tg.create_task(
+                    _safe(
                         "scale",
                         self._scaling.aggregate(since=since, until=until),
+                        _EMPTY_SCALING,
                     )
                 )
-            _ = tg.create_task(
-                _run(
+                if self._scaling is not None
+                else None
+            )
+            err_task = tg.create_task(
+                _safe(
                     "err",
                     self._errors.aggregate(since=since, until=until),
+                    _EMPTY_ERRORS,
                 )
             )
-            _ = tg.create_task(
-                _run(
+            evo_task = tg.create_task(
+                _safe(
                     "evo",
                     self._evolution.aggregate(since=since, until=until),
+                    _EMPTY_EVOLUTION,
                 )
             )
-            _ = tg.create_task(
-                _run(
+            telem_task = tg.create_task(
+                _safe(
                     "telem",
                     self._telemetry.aggregate(since=since, until=until),
+                    _EMPTY_TELEMETRY,
                 )
             )
-            if self._benchmark is not None:
-                _ = tg.create_task(
-                    _run(
+            bench_task = (
+                tg.create_task(
+                    _safe(
                         "bench",
                         self._benchmark.aggregate(since=since, until=until),
+                        _EMPTY_BENCHMARK,
                     )
                 )
-
-        perf = results.get("perf", _EMPTY_PERFORMANCE)
-        budget = results.get("budget", _EMPTY_BUDGET)
-        coord = results.get("coord", _EMPTY_COORDINATION)
-        scale = results.get("scale", _EMPTY_SCALING)
-        err = results.get("err", _EMPTY_ERRORS)
-        evo = results.get("evo", _EMPTY_EVOLUTION)
-        telem = results.get("telem", _EMPTY_TELEMETRY)
-        bench = results.get("bench", _EMPTY_BENCHMARK)
+                if self._benchmark is not None
+                else None
+            )
 
         snapshot = OrgSignalSnapshot(
-            performance=perf,  # type: ignore[arg-type]
-            budget=budget,  # type: ignore[arg-type]
-            coordination=coord,  # type: ignore[arg-type]
-            scaling=scale,  # type: ignore[arg-type]
-            errors=err,  # type: ignore[arg-type]
-            evolution=evo,  # type: ignore[arg-type]
-            telemetry=telem,  # type: ignore[arg-type]
-            benchmark=bench,  # type: ignore[arg-type]
+            performance=perf_task.result(),
+            budget=budget_task.result(),
+            coordination=coord_task.result(),
+            scaling=scale_task.result() if scale_task is not None else _EMPTY_SCALING,
+            errors=err_task.result(),
+            evolution=evo_task.result(),
+            telemetry=telem_task.result(),
+            benchmark=(
+                bench_task.result() if bench_task is not None else _EMPTY_BENCHMARK
+            ),
         )
 
         logger.info(
