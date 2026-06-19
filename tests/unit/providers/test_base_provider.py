@@ -429,7 +429,7 @@ class TestBaseProviderStreamCostRecording:
         # A stream that errors before the USAGE chunk records nothing.
         assert len(await tracker.get_records()) == 0
 
-    async def test_close_after_usage_still_records(self) -> None:
+    async def test_close_after_usage_records_nothing(self) -> None:
         provider = _PostUsageStreamProvider()
         tracker = CostTracker(budget_config=BudgetConfig(currency=DEFAULT_CURRENCY))
         async with cost_recording_scope(
@@ -442,11 +442,11 @@ class TestBaseProviderStreamCostRecording:
             async for chunk in iterator:
                 if chunk.event_type is StreamEventType.USAGE:
                     break
-            # Close early, after the USAGE chunk but before the trailing
-            # delta: the cost was already billed, so it must still record.
+            # Close early, after the USAGE chunk but before the stream is
+            # fully drained. Cost is recorded only on a complete drain: the
+            # early ``aclose()`` raises GeneratorExit out of the wrapper's
+            # ``finally`` (which still releases the inner rate-limiter slot)
+            # and skips the synthetic cost record.
             await iterator.aclose()  # type: ignore[attr-defined]
         await tracker.drain_pending_records()
-        records = await tracker.get_records()
-        assert len(records) == 1
-        assert records[0].input_tokens == 3
-        assert records[0].output_tokens == 4
+        assert len(await tracker.get_records()) == 0
