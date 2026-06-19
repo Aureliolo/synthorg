@@ -160,6 +160,7 @@ def _make_service(  # noqa: PLR0913
     offboarding: FakeOffboardingService | None = None,
     config: PruningServiceConfig | None = None,
     on_notification: object = None,
+    request_repo: object = None,
 ) -> PruningService:
     """Build a PruningService with test defaults."""
     return PruningService(
@@ -170,6 +171,7 @@ def _make_service(  # noqa: PLR0913
         offboarding_service=offboarding or FakeOffboardingService(),
         config=config,
         on_notification=on_notification,  # type: ignore[arg-type]
+        request_repo=request_repo,  # type: ignore[arg-type]
     )
 
 
@@ -903,3 +905,160 @@ class TestSchedulerLifecycle:
 
         items = await store.list_items(action_type="hr:prune")
         assert len(items) >= 1
+
+
+# ── Durable pending-request persistence ──────────────────────────
+
+
+class _FakeRequestRepo:
+    """In-memory ``PruningRequestRepository`` keyed by agent_id."""
+
+    def __init__(self) -> None:
+        self.rows: dict[str, object] = {}
+        self.deleted: list[str] = []
+
+    async def save(self, entity: object, /) -> None:
+        self.rows[str(entity.agent_id)] = entity  # type: ignore[attr-defined]
+
+    async def get(self, entity_id: str, /) -> object | None:
+        return self.rows.get(str(entity_id))
+
+    async def delete(self, entity_id: str, /) -> bool:
+        self.deleted.append(str(entity_id))
+        return self.rows.pop(str(entity_id), None) is not None
+
+    async def list_items(
+        self, *, limit: int = 100, offset: int = 0
+    ) -> tuple[object, ...]:
+        _ = limit, offset
+        return tuple(self.rows.values())
+
+
+@pytest.mark.unit
+class TestPruningRequestPersistence:
+    """The service round-trips pending requests through ``request_repo``."""
+
+    async def test_submit_persists_pending_request(
+        self,
+        registry: AgentRegistryService,
+        approval_store: ApprovalStore,
+    ) -> None:
+        agent = make_agent_identity(name="poor-performer")
+        await registry.register(agent)
+        repo = _FakeRequestRepo()
+        service = _make_service(
+            policies=(AlwaysEligiblePolicy(),),
+            registry=registry,
+            approval_store=approval_store,
+            request_repo=repo,
+        )
+
+        await service.run_pruning_cycle(now=NOW)
+
+        assert str(agent.id) in repo.rows
+
+    async def test_completion_removes_durable_request(
+        self,
+        registry: AgentRegistryService,
+        approval_store: ApprovalStore,
+        offboarding: FakeOffboardingService,
+    ) -> None:
+        agent = make_agent_identity(name="poor-performer")
+        await registry.register(agent)
+        repo = _FakeRequestRepo()
+        service = _make_service(
+            policies=(AlwaysEligiblePolicy(),),
+            registry=registry,
+            approval_store=approval_store,
+            offboarding=offboarding,
+            request_repo=repo,
+        )
+
+        await service.run_pruning_cycle(now=NOW)
+        items = await approval_store.list_items(action_type="hr:prune")
+        await approval_store.save(
+            items[0].model_copy(
+                update={
+                    "status": ApprovalStatus.APPROVED,
+                    "decided_at": NOW + timedelta(hours=1),
+                    "decided_by": NotBlankStr("admin"),
+                },
+            )
+        )
+        await service.run_pruning_cycle(now=NOW + timedelta(hours=2))
+
+        # Completion drops the durable request for the offboarded agent
+        # (the still-active agent is then re-evaluated, which is correct).
+        assert str(agent.id) in repo.deleted
+
+    async def test_rejection_removes_durable_request(
+        self,
+        registry: AgentRegistryService,
+        approval_store: ApprovalStore,
+        offboarding: FakeOffboardingService,
+    ) -> None:
+        agent = make_agent_identity(name="poor-performer")
+        await registry.register(agent)
+        repo = _FakeRequestRepo()
+        service = _make_service(
+            policies=(AlwaysEligiblePolicy(),),
+            registry=registry,
+            approval_store=approval_store,
+            offboarding=offboarding,
+            request_repo=repo,
+        )
+
+        await service.run_pruning_cycle(now=NOW)
+        items = await approval_store.list_items(action_type="hr:prune")
+        await approval_store.save(
+            items[0].model_copy(
+                update={
+                    "status": ApprovalStatus.REJECTED,
+                    "decided_at": NOW + timedelta(hours=1),
+                    "decided_by": NotBlankStr("admin"),
+                    "decision_reason": NotBlankStr("improving"),
+                },
+            )
+        )
+        await service.run_pruning_cycle(now=NOW + timedelta(hours=2))
+
+        # Rejection drops the durable request for the rejected agent.
+        assert str(agent.id) in repo.deleted
+
+    async def test_rehydrate_restores_pending_from_store(
+        self,
+        registry: AgentRegistryService,
+        approval_store: ApprovalStore,
+    ) -> None:
+        from synthorg.hr.pruning.models import PruningRequest
+
+        repo = _FakeRequestRepo()
+        evaluation = PruningEvaluation(
+            agent_id=NotBlankStr("agent-x"),
+            eligible=True,
+            reasons=(NotBlankStr("quality below threshold"),),
+            scores={"quality": 1.0},
+            policy_name=NotBlankStr("quality_threshold"),
+            snapshot=make_performance_snapshot(agent_id="agent-x"),
+            evaluated_at=NOW,
+        )
+        request = PruningRequest(
+            agent_id=NotBlankStr("agent-x"),
+            agent_name=NotBlankStr("Agent X"),
+            evaluation=evaluation,
+            approval_id=NotBlankStr("approval-x"),
+            status=ApprovalStatus.PENDING,
+            created_at=NOW,
+        )
+        await repo.save(request)
+
+        service = _make_service(
+            registry=registry,
+            approval_store=approval_store,
+            request_repo=repo,
+        )
+        await service.rehydrate_pending()
+
+        restored = service._pending_requests.get("agent-x")
+        assert restored is not None
+        assert restored.evaluation.scores == {"quality": 1.0}

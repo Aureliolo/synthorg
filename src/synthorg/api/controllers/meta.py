@@ -29,13 +29,43 @@ from synthorg.engine.state import EngineStateSlice
 from synthorg.meta.chief_of_staff.models import ChatQuery, ProposeArgs, ProposeResult
 from synthorg.meta.mcp.server import get_server_config
 from synthorg.meta.mcp.tools import get_tool_definitions
-from synthorg.meta.state import MetaStateSlice, self_improvement_config_of
+from synthorg.meta.rollout.ab_models import AbTestRecord
+from synthorg.meta.state import (
+    MetaStateSlice,
+    ab_test_repo_of,
+    self_improvement_config_of,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_CHAT_DEPENDENCY_UNAVAILABLE,
     META_CUSTOM_RULE_LIST_FAILED,
 )
 from synthorg.persistence.state import persistence_of
+
+
+def _ab_test_to_dict(record: AbTestRecord) -> dict[str, object]:
+    """Serialise a durable A/B-test record for the read endpoints.
+
+    Returns:
+        A JSON-serialisable summary dict.
+    """
+    return {
+        "id": str(record.id),
+        "name": str(record.name),
+        "status": record.status.value,
+        "verdict": record.verdict.value if record.verdict is not None else None,
+        "observation_hours_elapsed": record.observation_hours_elapsed,
+        "arms": [
+            {
+                "name": str(arm.name),
+                "agent_count": arm.agent_count,
+                "fraction": arm.fraction,
+            }
+            for arm in record.arms
+        ],
+        "created_at": record.created_at.isoformat(),
+        "updated_at": record.updated_at.isoformat(),
+    }
 
 
 class ChatRequest(BaseModel):
@@ -225,16 +255,18 @@ class MetaController(Controller):
             limit: Page size.
 
         Returns:
-            Paginated A/B test summaries.
+            Paginated A/B test summaries, newest-first.
         """
-        # A/B test registry (protocol + in-memory + SQLite + Postgres
-        # conformance parity) is a dedicated follow-up: ABTestRollout
-        # runs as a one-shot coroutine today, so there is nothing
-        # durable to query.  The empty page is safe while the backlog
-        # lands; see HYG-3 PR description for the concrete scope.
-        empty: tuple[dict[str, object], ...] = ()
+        # Records are written by ``ABTestRollout`` through the durable
+        # ``AbTestRepository``; when persistence is absent the repo is
+        # unwired and the page degrades to empty rather than 503-ing.
+        repo = ab_test_repo_of(state.app_state)
+        records: tuple[AbTestRecord, ...] = (
+            await repo.list_items() if repo is not None else ()
+        )
+        summaries = tuple(_ab_test_to_dict(record) for record in records)
         page, meta = paginate_cursor(
-            empty,
+            summaries,
             limit=limit,
             cursor=cursor,
             secret=cursor_secret_of(state.app_state),
@@ -245,24 +277,28 @@ class MetaController(Controller):
     async def get_ab_test_detail(
         self,
         proposal_id: PathId,
+        state: State,
     ) -> ApiResponse[dict[str, object]]:
         """Get detailed A/B test status for a specific proposal.
 
-        Always raises until the A/B test registry lands; the typed
-        404 envelope is what callers receive.
-
         Args:
-            proposal_id: UUID of the proposal under A/B test.
+            proposal_id: Id of the proposal under A/B test.
+            state: Application state (source of the durable repository).
+
+        Returns:
+            The durable A/B-test record for ``proposal_id``.
 
         Raises:
-            AbTestNotFoundError: Every proposal id currently lacks a
-                durable A/B record; the endpoint surfaces a typed 404.
+            AbTestNotFoundError: When no durable record exists for the
+                proposal (or persistence is unavailable); surfaced as a
+                typed 404.
         """
-        # A/B test registry not yet implemented -- every proposal id
-        # currently lacks a durable A/B record.  See get /ab-tests
-        # above for the scoped follow-up note.
-        msg = f"ab_test {proposal_id!r} not found"
-        raise AbTestNotFoundError(msg)
+        repo = ab_test_repo_of(state.app_state)
+        record = await repo.get(NotBlankStr(proposal_id)) if repo is not None else None
+        if record is None:
+            msg = f"ab_test {proposal_id!r} not found"
+            raise AbTestNotFoundError(msg)
+        return ApiResponse[dict[str, object]](data=_ab_test_to_dict(record))
 
     @get("/proposals")
     async def list_proposals(

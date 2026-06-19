@@ -59,12 +59,15 @@ from synthorg.observability.events.hr import (
     HR_PRUNING_CYCLE_COMPLETE,
     HR_PRUNING_CYCLE_STARTED,
     HR_PRUNING_OFFBOARDED,
+    HR_PRUNING_PERSISTENCE_FAILED,
     HR_PRUNING_POLICY_ERROR,
     HR_PRUNING_REJECTED,
+    HR_PRUNING_REQUESTS_REHYDRATED,
     HR_PRUNING_SCHEDULER_STARTED,
     HR_PRUNING_SCHEDULER_STOPPED,
     PRUNING_REQUEST_STATUS_TRANSITIONED,
 )
+from synthorg.persistence.pruning_request_protocol import PruningRequestRepository
 
 logger = get_logger(__name__)
 
@@ -90,6 +93,12 @@ class PruningService:
         offboarding_service: Service to delegate offboarding to.
         config: Pruning service configuration.
         on_notification: Optional callback for completion notifications.
+        request_repo: Optional durable store for pending pruning
+            requests. When wired, each submitted request is persisted
+            and removed on completion / rejection, and
+            :meth:`rehydrate_pending` restores ``_pending_requests``
+            (with the full evaluation) on restart. ``None`` keeps the
+            in-memory-only behaviour.
     """
 
     def __init__(  # noqa: PLR0913
@@ -102,6 +111,7 @@ class PruningService:
         offboarding_service: OffboardingService,
         config: PruningServiceConfig | None = None,
         on_notification: (Callable[[PruningRecord], Awaitable[None]] | None) = None,
+        request_repo: PruningRequestRepository | None = None,
     ) -> None:
         self._policies = policies
         self._registry = registry
@@ -110,6 +120,7 @@ class PruningService:
         self._offboarding_service = offboarding_service
         self._config = config or PruningServiceConfig()
         self._on_notification = on_notification
+        self._request_repo = request_repo
         self._task: asyncio.Task[None] | None = None
         # Eager init: wake / stop events are signalled by callers that
         # may run before the background loop, so half-published event
@@ -263,6 +274,71 @@ class PruningService:
     def wake(self) -> None:
         """Trigger an early pruning cycle."""
         self._wake_event.set()
+
+    async def rehydrate_pending(self) -> None:
+        """Restore ``_pending_requests`` from the durable store.
+
+        No-op without a wired ``request_repo``. Called once at startup
+        (after persistence connects) so a restart recovers each pending
+        request's full :class:`PruningEvaluation`, not the lossy
+        approval-metadata summary. Best-effort: a read failure logs and
+        leaves the cache empty (the durable approval-metadata anchor
+        still prevents re-offboarding).
+        """
+        if self._request_repo is None:
+            return
+        try:
+            requests = await self._request_repo.list_items()
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                HR_PRUNING_PERSISTENCE_FAILED,
+                operation="rehydrate",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return
+        for request in requests:
+            self._pending_requests[str(request.agent_id)] = request
+        logger.info(HR_PRUNING_REQUESTS_REHYDRATED, count=len(requests))
+
+    async def _persist_pending(self, request: PruningRequest) -> None:
+        """Durably save a newly-submitted pending request.
+
+        No-op without a wired ``request_repo``. Propagates write
+        failures so the caller's per-agent error handler records them.
+
+        Raises:
+            QueryError: If the durable write fails.
+        """
+        if self._request_repo is None:
+            return
+        await self._request_repo.save(request)
+
+    async def _drop_pending(self, agent_id: str) -> PruningRequest | None:
+        """Pop a pending request from memory and the durable store.
+
+        The durable delete is best-effort: a failure logs but does not
+        block the in-memory pop, since the durable approval-metadata
+        marker is the authoritative re-processing guard.
+
+        Returns:
+            The popped in-memory request, or ``None`` if absent.
+        """
+        request = self._pending_requests.pop(agent_id, None)
+        if self._request_repo is not None:
+            try:
+                await self._request_repo.delete(NotBlankStr(agent_id))
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                logger.warning(
+                    HR_PRUNING_PERSISTENCE_FAILED,
+                    agent_id=agent_id,
+                    operation="delete",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+        return request
 
     async def run_pruning_cycle(
         self,
@@ -500,6 +576,7 @@ class PruningService:
             created_at=now,
         )
         self._pending_requests[agent_id] = request
+        await self._persist_pending(request)
         pending_agent_ids.add(agent_id)
 
         # State-transition log fires AFTER the request is built and
@@ -695,7 +772,7 @@ class PruningService:
                 approval_id=str(item.id),
                 error="Agent not found in registry after approval",
             )
-            self._pending_requests.pop(agent_id, None)
+            await self._drop_pending(agent_id)
             await self._mark_processed(item)
             return
 
@@ -786,7 +863,7 @@ class PruningService:
     ) -> None:
         """Create PruningRecord and notify after successful offboard."""
         agent_id = str(agent.id)
-        pending_request = self._pending_requests.pop(agent_id, None)
+        pending_request = await self._drop_pending(agent_id)
         await self._mark_processed(item)
 
         if pending_request is not None:
@@ -852,7 +929,7 @@ class PruningService:
             await self._mark_processed(item)
             return
 
-        request = self._pending_requests.pop(agent_id, None)
+        request = await self._drop_pending(agent_id)
         await self._mark_processed(item)
         logger.info(
             PRUNING_REQUEST_STATUS_TRANSITIONED,

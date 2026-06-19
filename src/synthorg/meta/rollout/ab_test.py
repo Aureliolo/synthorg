@@ -10,10 +10,11 @@ exceeds the configured threshold.
 import asyncio
 import hashlib
 from datetime import datetime, timedelta
-from typing import Final
+from typing import Final, Protocol, runtime_checkable
 from uuid import UUID
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     ImprovementProposal,
@@ -26,8 +27,11 @@ from synthorg.meta.protocol import ProposalApplier, RegressionDetector
 from synthorg.meta.rollout._observation import validate_window_and_interval
 from synthorg.meta.rollout.ab_comparator import ABTestComparator
 from synthorg.meta.rollout.ab_models import (
+    AbTestArm,
     ABTestComparison,
     ABTestGroup,
+    AbTestRecord,
+    AbTestStatus,
     ABTestVerdict,
     GroupAssignment,
     GroupMetrics,
@@ -37,10 +41,11 @@ from synthorg.meta.rollout.group_aggregator import (
     GroupSignalAggregator,
 )
 from synthorg.meta.rollout.roster import NoOpOrgRoster, OrgRoster
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_ABTEST_GROUPS_ASSIGNED,
     META_ABTEST_OBSERVATION_STARTED,
+    META_ABTEST_RECORD_WRITE_FAILED,
     META_ROLLOUT_COMPLETED,
     META_ROLLOUT_FAILED,
     META_ROLLOUT_OBSERVATION_COMPLETED,
@@ -49,6 +54,28 @@ from synthorg.observability.events.meta import (
 )
 
 logger = get_logger(__name__)
+
+
+@runtime_checkable
+class AbTestRecordSink(Protocol):
+    """Narrow write seam for persisting durable A/B-test records.
+
+    The durable ``AbTestRepository`` satisfies this structurally via its
+    ``save`` upsert; the rollout depends only on this minimal surface so
+    it stays decoupled from the persistence layer.
+    """
+
+    async def save(self, entity: AbTestRecord, /) -> None:
+        """Upsert an A/B-test record keyed by proposal id."""
+        ...
+
+
+_TERMINAL_STATUS: Final[dict[RolloutOutcome, AbTestStatus]] = {
+    RolloutOutcome.SUCCESS: AbTestStatus.COMPLETED,
+    RolloutOutcome.REGRESSED: AbTestStatus.REGRESSED,
+    RolloutOutcome.INCONCLUSIVE: AbTestStatus.INCONCLUSIVE,
+    RolloutOutcome.FAILED: AbTestStatus.FAILED,
+}
 
 _DEFAULT_CONTROL_FRACTION: Final[float] = 0.5
 _DEFAULT_MIN_AGENTS_PER_GROUP: Final[int] = 5
@@ -110,6 +137,7 @@ class ABTestRollout:
         group_aggregator: GroupSignalAggregator | None = None,
         check_interval_hours: float = _DEFAULT_CHECK_INTERVAL_HOURS,
         thresholds: RegressionThresholds | None = None,
+        record_sink: AbTestRecordSink | None = None,
     ) -> None:
         if control_fraction <= 0.0 or control_fraction >= 1.0:
             msg = "control_fraction must be in the range (0, 1) exclusive."
@@ -134,6 +162,59 @@ class ABTestRollout:
         )
         self._check_interval_hours = check_interval_hours
         self._thresholds = thresholds or RegressionThresholds()
+        self._record_sink = record_sink
+
+    async def _persist_record(
+        self,
+        *,
+        proposal: ImprovementProposal,
+        assignment: GroupAssignment,
+        status: AbTestStatus,
+        verdict: ABTestVerdict | None,
+        observation_hours_elapsed: float,
+    ) -> None:
+        """Best-effort durable write of the rollout's A/B-test record.
+
+        No-op when no sink is wired. The ``save`` upsert preserves the
+        first ``created_at`` so a running record is replaced in place by
+        its terminal verdict. A write failure is logged and swallowed so
+        persistence never sinks the rollout itself.
+        """
+        if self._record_sink is None:
+            return
+        now = self._clock.now()
+        record = AbTestRecord(
+            id=NotBlankStr(str(proposal.id)),
+            name=proposal.title,
+            status=status,
+            arms=(
+                AbTestArm(
+                    name=NotBlankStr("control"),
+                    agent_count=len(assignment.control_agent_ids),
+                    fraction=assignment.control_fraction,
+                ),
+                AbTestArm(
+                    name=NotBlankStr("treatment"),
+                    agent_count=len(assignment.treatment_agent_ids),
+                    fraction=1.0 - assignment.control_fraction,
+                ),
+            ),
+            verdict=verdict,
+            observation_hours_elapsed=observation_hours_elapsed,
+            created_at=now,
+            updated_at=now,
+        )
+        try:
+            await self._record_sink.save(record)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised below
+            reraise_critical(exc)
+            logger.warning(
+                META_ABTEST_RECORD_WRITE_FAILED,
+                proposal_id=str(proposal.id),
+                status=status.value,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     @property
     def name(self) -> NotBlankStr:
@@ -182,6 +263,13 @@ class ABTestRollout:
             len(assignment.control_agent_ids) < self._min_agents_per_group
             or len(assignment.treatment_agent_ids) < self._min_agents_per_group
         ):
+            await self._persist_record(
+                proposal=proposal,
+                assignment=assignment,
+                status=AbTestStatus.INCONCLUSIVE,
+                verdict=None,
+                observation_hours_elapsed=0.0,
+            )
             return RolloutResult(
                 proposal_id=proposal.id,
                 outcome=RolloutOutcome.INCONCLUSIVE,
@@ -197,6 +285,13 @@ class ABTestRollout:
                 proposal_id=str(proposal.id),
                 error=apply_result.error_message,
             )
+            await self._persist_record(
+                proposal=proposal,
+                assignment=assignment,
+                status=AbTestStatus.FAILED,
+                verdict=None,
+                observation_hours_elapsed=0.0,
+            )
             return RolloutResult(
                 proposal_id=proposal.id,
                 outcome=RolloutOutcome.FAILED,
@@ -204,6 +299,13 @@ class ABTestRollout:
                 details=apply_result.error_message,
             )
 
+        await self._persist_record(
+            proposal=proposal,
+            assignment=assignment,
+            status=AbTestStatus.RUNNING,
+            verdict=None,
+            observation_hours_elapsed=0.0,
+        )
         return await self._observe_and_compare(
             proposal=proposal,
             assignment=assignment,
@@ -256,9 +358,10 @@ class ABTestRollout:
             thresholds=self._thresholds,
         )
 
-    def _early_exit_regressed(
+    async def _early_exit_regressed(
         self,
         proposal: ImprovementProposal,
+        assignment: GroupAssignment,
         elapsed: float,
         comparison: ABTestComparison,
     ) -> RolloutResult:
@@ -275,6 +378,13 @@ class ABTestRollout:
             reason="treatment_regressed_mid_window",
             elapsed_hours=elapsed,
         )
+        await self._persist_record(
+            proposal=proposal,
+            assignment=assignment,
+            status=_TERMINAL_STATUS[outcome],
+            verdict=comparison.verdict,
+            observation_hours_elapsed=elapsed,
+        )
         return RolloutResult(
             proposal_id=proposal.id,
             outcome=outcome,
@@ -282,9 +392,10 @@ class ABTestRollout:
             observation_hours_elapsed=elapsed,
         )
 
-    def _finalize_observation(
+    async def _finalize_observation(
         self,
         proposal: ImprovementProposal,
+        assignment: GroupAssignment,
         elapsed: float,
         last_comparison: ABTestComparison | None,
     ) -> RolloutResult:
@@ -300,6 +411,13 @@ class ABTestRollout:
             observation_hours_elapsed=elapsed,
         )
         if last_comparison is None:
+            await self._persist_record(
+                proposal=proposal,
+                assignment=assignment,
+                status=AbTestStatus.INCONCLUSIVE,
+                verdict=None,
+                observation_hours_elapsed=elapsed,
+            )
             return RolloutResult(
                 proposal_id=proposal.id,
                 outcome=RolloutOutcome.INCONCLUSIVE,
@@ -313,6 +431,13 @@ class ABTestRollout:
             proposal_id=str(proposal.id),
             outcome=outcome.value,
             ab_verdict=last_comparison.verdict.value,
+        )
+        await self._persist_record(
+            proposal=proposal,
+            assignment=assignment,
+            status=_TERMINAL_STATUS[outcome],
+            verdict=last_comparison.verdict,
+            observation_hours_elapsed=elapsed,
         )
         return RolloutResult(
             proposal_id=proposal.id,
@@ -369,13 +494,16 @@ class ABTestRollout:
                 verdict=comparison.verdict.value,
             )
             if comparison.verdict == ABTestVerdict.TREATMENT_REGRESSED:
-                return self._early_exit_regressed(
+                return await self._early_exit_regressed(
                     proposal,
+                    assignment,
                     elapsed,
                     comparison,
                 )
 
-        return self._finalize_observation(proposal, elapsed, last_comparison)
+        return await self._finalize_observation(
+            proposal, assignment, elapsed, last_comparison
+        )
 
     @staticmethod
     def assign_groups(

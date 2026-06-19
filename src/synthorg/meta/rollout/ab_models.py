@@ -301,3 +301,61 @@ class ABTestComparison(BaseModel):
             msg = "effect_size must be non-negative"
             raise ValueError(msg)
         return self
+
+
+class AbTestStatus(StrEnum):
+    """Lifecycle status of a durable A/B-test rollout record."""
+
+    RUNNING = "running"
+    COMPLETED = "completed"
+    REGRESSED = "regressed"
+    INCONCLUSIVE = "inconclusive"
+    FAILED = "failed"
+
+
+class AbTestArm(BaseModel):
+    """One arm (control or treatment) of a durable A/B-test record.
+
+    Attributes:
+        name: Arm label (``control`` / ``treatment``).
+        agent_count: Number of agents assigned to this arm.
+        fraction: Fraction of the roster this arm received.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    name: NotBlankStr
+    agent_count: int = Field(ge=0)
+    fraction: float = Field(ge=0.0, le=1.0)
+
+
+class AbTestRecord(BaseModel):
+    """Durable record of an A/B-test rollout, keyed by proposal id.
+
+    Persisted by :class:`~synthorg.meta.rollout.ab_test.ABTestRollout`
+    so the ``/meta/ab-tests`` read endpoints surface real rollouts. The
+    arm breakdown, terminal verdict, and elapsed observation hours are
+    stored together in the ``variants`` JSON column; the id (proposal
+    id), name, status, and timestamps map to their own columns.
+
+    Attributes:
+        id: Proposal id (canonical string); the repository key.
+        name: Human-readable rollout label.
+        status: Lifecycle status (running / terminal).
+        arms: Control + treatment arm breakdown.
+        verdict: Terminal comparison verdict, ``None`` while running.
+        observation_hours_elapsed: Hours observed so far.
+        created_at: When the rollout record was first written.
+        updated_at: When the record was last updated.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    id: NotBlankStr
+    name: NotBlankStr
+    status: AbTestStatus
+    arms: tuple[AbTestArm, ...] = ()
+    verdict: ABTestVerdict | None = None
+    observation_hours_elapsed: float = Field(ge=0.0, default=0.0)
+    created_at: AwareDatetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: AwareDatetime = Field(default_factory=lambda: datetime.now(UTC))

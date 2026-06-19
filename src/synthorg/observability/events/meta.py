@@ -63,6 +63,8 @@ META_ABTEST_OBSERVATION_STARTED: Final[str] = "meta.abtest.observation_started"
 META_ABTEST_WINNER_DECLARED: Final[str] = "meta.abtest.winner_declared"
 META_ABTEST_INCONCLUSIVE: Final[str] = "meta.abtest.inconclusive"
 META_ABTEST_TREATMENT_REGRESSED: Final[str] = "meta.abtest.treatment_regressed"
+META_ABTEST_PERSISTENCE_FAILED: Final[str] = "meta.abtest.persistence_failed"
+META_ABTEST_RECORD_WRITE_FAILED: Final[str] = "meta.abtest.record_write_failed"
 
 # -- Rollback events ----------------------------------------------------
 

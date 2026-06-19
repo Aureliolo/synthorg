@@ -102,6 +102,8 @@ HR_PRUNING_CYCLE_COMPLETE: Final[str] = "hr.pruning.cycle_complete"
 HR_PRUNING_POLICY_ERROR: Final[str] = "hr.pruning.policy_error"
 HR_PRUNING_SCHEDULER_STARTED: Final[str] = "hr.pruning.scheduler_started"
 HR_PRUNING_SCHEDULER_STOPPED: Final[str] = "hr.pruning.scheduler_stopped"
+HR_PRUNING_PERSISTENCE_FAILED: Final[str] = "hr.pruning.persistence_failed"
+HR_PRUNING_REQUESTS_REHYDRATED: Final[str] = "hr.pruning.requests_rehydrated"
 
 # Status-machine event for PruningRequest. Mirrors ApprovalStatus hops on
 # the underlying ApprovalItem; emitted at construction (from_status=None)

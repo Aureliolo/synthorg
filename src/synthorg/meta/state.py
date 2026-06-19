@@ -28,6 +28,7 @@ from synthorg.meta.reports.service import ReportsService
 from synthorg.meta.rules.service import CustomRulesService
 from synthorg.meta.service import SelfImprovementService
 from synthorg.meta.signals.service import SignalsService
+from synthorg.persistence.ab_test_protocol import AbTestRepository
 from synthorg.persistence.conversation_invite_protocol import (
     ConversationInviteRepository,
 )
@@ -46,6 +47,7 @@ class MetaStateSlice(BaseFeatureStateSlice):
 
     signals_service: SignalsService | None = None
     experiment_service: ExperimentService | None = None
+    ab_test_repo: AbTestRepository | None = None
     self_improvement_service: SelfImprovementService | None = None
     reports_service: ReportsService | None = None
     analytics_service: AnalyticsService | None = None
@@ -113,6 +115,19 @@ def experiment_service_of(app_state: AppState) -> ExperimentService:
     )
     app_state.wire_if_field_absent(MetaStateSlice, "experiment_service", candidate)
     return app_state.slice(MetaStateSlice).experiment_service or candidate
+
+
+def ab_test_repo_of(app_state: AppStateSliceMixin) -> AbTestRepository | None:
+    """Return the durable A/B-test repository, or ``None`` when absent.
+
+    Soft accessor: the ``/meta/ab-tests`` endpoints degrade to an empty
+    page / 404 when persistence is unavailable rather than 503-ing, so
+    this returns the slice field directly instead of raising.
+
+    Returns:
+        The wired A/B-test repository, or ``None``.
+    """
+    return app_state.slice(MetaStateSlice).ab_test_repo
 
 
 def self_improvement_service_of(
