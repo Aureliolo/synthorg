@@ -171,7 +171,7 @@ class ActiveSteeringDirective(BaseModel):
             raise ValueError(msg)
         return self
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Whether adopting this directive forces a replan",
     )
     @property

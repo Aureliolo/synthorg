@@ -214,7 +214,7 @@ class WorkPipelineResult(BaseModel):
         description="Total wall-clock duration in seconds",
     )
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Whether every recorded phase succeeded",
     )
     @property

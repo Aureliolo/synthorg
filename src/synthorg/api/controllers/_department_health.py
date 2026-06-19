@@ -82,7 +82,7 @@ class DepartmentHealth(BaseModel):
         description="Mean collaboration score (0-10)",
     )
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def utilization_percent(self) -> float:
         """Percentage of agents that are active.

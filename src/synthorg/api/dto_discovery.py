@@ -31,7 +31,7 @@ class DiscoveryPolicyResponse(BaseModel):
     host_port_allowlist: tuple[NotBlankStr, ...] = ()
     block_private_ips: bool = True
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def entry_count(self) -> int:
         """Number of entries in the allowlist.

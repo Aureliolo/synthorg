@@ -137,7 +137,7 @@ class PeriodSummary(BaseModel):
     )
     record_count: int = Field(ge=0, description="Number of records")
 
-    @computed_field(description="Average cost per record")  # type: ignore[prop-decorator]
+    @computed_field(description="Average cost per record")
     @property
     def avg_cost(self) -> float:
         """Average cost per record (0.0 if no records).
@@ -200,7 +200,7 @@ class CostRecordListResponse(BaseModel):
             raise ValueError(msg)
         return self
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def success(self) -> bool:
         """Whether the request succeeded (derived from ``error``).

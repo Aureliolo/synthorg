@@ -130,7 +130,7 @@ class EvidencePackage(StructuredArtifact):
         description="Collected approver signatures",
     )
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def is_fully_signed(self) -> bool:
         """Whether the required signature threshold has been met.

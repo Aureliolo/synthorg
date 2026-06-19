@@ -115,13 +115,13 @@ class ClassificationResult(BaseModel):
             raise ValueError(msg)
         return self
 
-    @computed_field(description="Number of findings")  # type: ignore[prop-decorator]
+    @computed_field(description="Number of findings")
     @property
     def finding_count(self) -> int:
         """Total number of detected findings."""
         return len(self.findings)
 
-    @computed_field(description="Whether any findings exist")  # type: ignore[prop-decorator]
+    @computed_field(description="Whether any findings exist")
     @property
     def has_findings(self) -> bool:
         """Whether any error findings were detected."""

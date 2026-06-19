@@ -327,7 +327,7 @@ class RecoveryResult(BaseModel):
             raise ValueError(msg)
         return self
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Whether the task can be reassigned for retry",
     )
     @property
@@ -339,7 +339,7 @@ class RecoveryResult(BaseModel):
         """
         return self.task_execution.retry_count < self.task_execution.task.max_retries
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Whether execution can resume from a checkpoint",
     )
     @property

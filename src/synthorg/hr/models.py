@@ -272,7 +272,7 @@ class OnboardingChecklist(BaseModel):
         description="When all steps were completed",
     )
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def is_complete(self) -> bool:
         """Whether all onboarding steps are completed."""

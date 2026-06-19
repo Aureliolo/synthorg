@@ -108,7 +108,7 @@ class OutcomeStats(BaseModel):
             raise ValueError(msg)
         return self
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def approval_rate(self) -> float:
         """Fraction of proposals that were approved.
@@ -151,7 +151,7 @@ class OrgInflection(BaseModel):
     description: NotBlankStr
     detected_at: AwareDatetime
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def change_ratio(self) -> float:
         """Absolute fractional change from old to new value.

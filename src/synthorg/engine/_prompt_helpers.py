@@ -79,7 +79,7 @@ class PersonalityTrimInfo(BaseModel):
             raise ValueError(msg)
         return self
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def budget_met(self) -> bool:
         """Whether trimming brought the section within budget."""

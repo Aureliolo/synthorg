@@ -124,7 +124,7 @@ class CategoryBreakdown(BaseModel):
         description="Uncategorized call count",
     )
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def total_cost(self) -> float:
         """Sum of all category costs."""
@@ -136,7 +136,7 @@ class CategoryBreakdown(BaseModel):
             + self.uncategorized_cost
         )
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def total_tokens(self) -> int:
         """Sum of all category tokens."""
@@ -148,7 +148,7 @@ class CategoryBreakdown(BaseModel):
             + self.uncategorized_tokens
         )
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def total_count(self) -> int:
         """Sum of all category call counts."""

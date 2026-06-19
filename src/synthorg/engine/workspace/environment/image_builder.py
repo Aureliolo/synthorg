@@ -43,7 +43,7 @@ class BuildOutcome(BaseModel):
     log: str = ""
     timed_out: bool = False
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def success(self) -> bool:
         """Whether the build exited cleanly."""

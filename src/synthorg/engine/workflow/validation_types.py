@@ -83,7 +83,7 @@ class WorkflowValidationResult(BaseModel):
         description="Validation errors",
     )
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def valid(self) -> bool:
         """Whether validation passed (no errors)."""

@@ -288,7 +288,7 @@ class VerificationResult(BaseModel):
     rubric_name: NotBlankStr = Field(description="Rubric used")
     timestamp: datetime = Field(description="Evaluation timestamp")
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def passed(self) -> bool:
         """Whether the verification passed."""

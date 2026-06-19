@@ -237,7 +237,7 @@ class SetupCompanyResponse(BaseModel):
     department_count: int = Field(ge=0)
     agents: tuple[SetupAgentSummary, ...] = ()
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def agent_count(self) -> int:
         """Number of agents auto-created from template.

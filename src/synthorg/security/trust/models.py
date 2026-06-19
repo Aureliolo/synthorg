@@ -145,7 +145,7 @@ class TrustEvaluationResult(BaseModel):
         description="Strategy that produced this result",
     )
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def should_change(self) -> bool:
         """Whether the trust level should change."""

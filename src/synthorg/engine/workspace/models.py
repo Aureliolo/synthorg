@@ -212,7 +212,7 @@ class WorkspaceGroupResult(BaseModel):
         description="Total merge duration in seconds",
     )
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Whether all workspaces merged successfully",
     )
     @property
@@ -222,7 +222,7 @@ class WorkspaceGroupResult(BaseModel):
             return False
         return all(r.success for r in self.merge_results)
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Total number of conflicts across all merges",
     )
     @property
@@ -230,7 +230,7 @@ class WorkspaceGroupResult(BaseModel):
         """Sum of conflicts from all merge results."""
         return sum(len(r.conflicts) for r in self.merge_results)
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Total semantic conflicts across all merges",
     )
     @property

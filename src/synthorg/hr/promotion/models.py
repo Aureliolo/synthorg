@@ -106,7 +106,7 @@ class PromotionEvaluation(BaseModel):
             raise ValueError(msg)
         return self
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def criteria_met_count(self) -> int:
         """Number of criteria that were met."""
@@ -126,7 +126,7 @@ class PromotionApprovalDecision(BaseModel):
     auto_approve: bool = Field(description="Whether auto-approved")
     reason: NotBlankStr = Field(description="Explanation for the decision")
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def requires_human(self) -> bool:
         """Whether human approval is required (inverse of auto_approve)."""

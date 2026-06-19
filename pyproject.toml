@@ -502,9 +502,12 @@ warn_unused_configs = true
 warn_unreachable = true
 show_error_codes = true
 # Strict++ knobs. ``disallow_any_explicit`` now holds globally across both
-# ``src/`` and ``tests/``: the only [[tool.mypy.overrides]] blocks below are
+# ``src/`` and ``tests/``. The [[tool.mypy.overrides]] blocks below are
 # third-party ``ignore_missing_imports`` shims (no package relaxes a strict++
-# flag). Irreducible explicit-``Any`` sites carry a reasoned per-line
+# flag), plus one ``synthorg.*`` base-code disable for ``prop-decorator``:
+# pydantic stacks ``@computed_field`` on ``@property`` by design, which mypy
+# cannot model, so the error is a false positive at every site. Irreducible
+# explicit-``Any`` sites carry a reasoned per-line
 # ``# type: ignore[explicit-any]``; the pyproject and inline-comment vectors
 # are locked by scripts/check_no_synthorg_any_override.py and
 # scripts/check_no_explicit_any_inline_disable.py.
@@ -593,6 +596,12 @@ ignore_missing_imports = true
 # root d2_fence.py docs-build hook.
 module = "d2.*"
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# pydantic's ``@computed_field`` stacks on ``@property`` by design; mypy
+# cannot model the pass-through and flags ``prop-decorator`` at every site.
+module = "synthorg.*"
+disable_error_code = ["prop-decorator"]
 
 [tool.pydantic-mypy]
 init_forbid_extra = true

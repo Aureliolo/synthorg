@@ -49,7 +49,7 @@ class ContextBudgetIndicator(BaseModel):
         description="Archived compaction blocks",
     )
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Context fill percentage",
     )
     @property

@@ -533,7 +533,7 @@ class SimulationMetrics(BaseModel):
         description="Per-round metric snapshots",
     )
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Proportion of accepted tasks (0.0-1.0)",
     )
     @property
@@ -543,7 +543,7 @@ class SimulationMetrics(BaseModel):
             return 0.0
         return self.tasks_accepted / self.total_tasks_created
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Proportion of reworked tasks (0.0-1.0)",
     )
     @property

@@ -186,7 +186,7 @@ class ApiResponse[T](BaseModel):
             raise ValueError(msg)
         return self
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def success(self) -> bool:
         """Whether the request succeeded (derived from ``error``).
@@ -288,7 +288,7 @@ class PaginatedResponse[T](BaseModel):
             raise ValueError(msg)
         return self
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def success(self) -> bool:
         """Whether the request succeeded (derived from ``error``).
@@ -885,7 +885,7 @@ class CoordinationResultResponse(BaseModel):
         description="Number of execution waves in the coordination run.",
     )
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Whether all phases succeeded",
     )
     @property

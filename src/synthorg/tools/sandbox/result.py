@@ -35,7 +35,7 @@ class SandboxResult(BaseModel):
     agent_id: NotBlankStr | None = None
     execution_time_ms: int | None = Field(default=None, ge=0)
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def success(self) -> bool:
         """Whether the execution succeeded."""

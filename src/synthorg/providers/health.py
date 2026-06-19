@@ -164,7 +164,7 @@ class ProviderHealthSummary(BaseModel):
             raise ValueError(msg)
         return self
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def health_status(self) -> ProviderHealthStatus:
         """Derive health status from call count and error rate."""

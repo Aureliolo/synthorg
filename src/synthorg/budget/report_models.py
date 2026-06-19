@@ -174,7 +174,7 @@ class PeriodComparison(BaseModel):
         description="Previous period cost",
     )
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def cost_change(self) -> float:
         """Absolute cost change (current - previous)."""
@@ -183,7 +183,7 @@ class PeriodComparison(BaseModel):
             BUDGET_ROUNDING_PRECISION,
         )
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def cost_change_percent(self) -> float | None:
         """Percentage cost change. None when previous period cost is zero."""

@@ -212,7 +212,7 @@ class MeetingMinutes(BaseModel):
     started_at: AwareDatetime = Field(description="Meeting start time")
     ended_at: AwareDatetime = Field(description="Meeting end time")
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def total_tokens(self) -> int:
         """Total tokens consumed (input + output)."""

@@ -59,7 +59,7 @@ class DispatchResult(BaseModel):
     handlers_failed: int = Field(ge=0)
     errors: tuple[str, ...] = Field(default=())
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def handlers_matched(self) -> int:
         """Total handlers that matched (succeeded + failed)."""

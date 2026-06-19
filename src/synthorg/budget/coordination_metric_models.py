@@ -47,7 +47,7 @@ class CoordinationEfficiency(BaseModel):
     turns_mas: float = Field(gt=0, description="Avg turns (multi-agent)")
     turns_sas: float = Field(gt=0, description="Avg turns (single-agent)")
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Coordination efficiency",
     )
     @property
@@ -72,7 +72,7 @@ class CoordinationOverhead(BaseModel):
     turns_mas: float = Field(gt=0, description="Avg turns (multi-agent)")
     turns_sas: float = Field(gt=0, description="Avg turns (single-agent)")
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Overhead percentage",
     )
     @property
@@ -100,7 +100,7 @@ class ErrorAmplification(BaseModel):
     )
     error_rate_sas: float = Field(gt=0, description="Single-agent error rate")
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Error amplification factor",
     )
     @property
@@ -131,7 +131,7 @@ class MessageDensity(BaseModel):
         description="Reasoning turn count",
     )
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Messages per reasoning turn",
     )
     @property
@@ -184,7 +184,7 @@ class AmdahlCeiling(BaseModel):
         description="Parallelizable workload fraction (0.0--<1.0)",
     )
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Maximum theoretical speedup",
     )
     @property
@@ -192,7 +192,7 @@ class AmdahlCeiling(BaseModel):
         """Amdahl ceiling: ``1 / (1 - p)``."""
         return 1.0 / (1.0 - self.parallelizable_fraction)
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Team size at 90% of max speedup",
     )
     @property
@@ -261,7 +261,7 @@ class StragglerGap(BaseModel):
             raise ValueError(msg)
         return self
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Absolute gap (slowest - mean)",
     )
     @property
@@ -269,7 +269,7 @@ class StragglerGap(BaseModel):
         """Absolute gap: slowest - mean."""
         return self.slowest_duration_seconds - self.mean_duration_seconds
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Relative gap (gap / mean)",
     )
     @property
@@ -316,7 +316,7 @@ class TokenSpeedupRatio(BaseModel):
         description="Latency speedup (SAS / MAS)",
     )
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Token/speedup ratio",
     )
     @property
@@ -324,7 +324,7 @@ class TokenSpeedupRatio(BaseModel):
         """Token multiplier divided by latency speedup."""
         return self.token_multiplier / self.latency_speedup
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Alert when ratio exceeds the alert threshold",
     )
     @property
@@ -363,7 +363,7 @@ class MessageOverhead(BaseModel):
         description="Fraction of n^2 that triggers alert",
     )
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Whether message growth is quadratic",
     )
     @property

@@ -55,7 +55,7 @@ class ChatActionResult(BaseModel):
         description="Approval id of the parked decision (PARKED only)",
     )
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Whether the action parked for human approval",
     )
     @property

@@ -178,7 +178,7 @@ class AgentEfficiency(BaseModel):
         description="Efficiency classification",
     )
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def cost_per_1k_tokens(self) -> float:
         """Cost per 1000 tokens, derived from total_cost and total_tokens."""
@@ -215,7 +215,7 @@ class EfficiencyAnalysis(BaseModel):
     analysis_period_start: datetime = Field(description="Analysis period start")
     analysis_period_end: datetime = Field(description="Analysis period end")
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def inefficient_agent_count(self) -> int:
         """Number of agents rated INEFFICIENT."""
@@ -329,7 +329,7 @@ class DowngradeAnalysis(BaseModel):
         description="Current budget utilization percentage",
     )
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def total_estimated_savings_per_1k(self) -> float:
         """Aggregate estimated savings per 1000 tokens."""
@@ -484,7 +484,7 @@ class RoutingSuggestion(BaseModel):
     )
     reason: NotBlankStr = Field(description="Human-readable explanation")
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def estimated_savings_per_1k(self) -> float:
         """Estimated savings per 1k tokens."""
@@ -553,7 +553,7 @@ class RoutingOptimizationAnalysis(BaseModel):
     analysis_period_end: datetime = Field(description="Analysis period end")
     agents_analyzed: int = Field(ge=0, description="Number of agents analyzed")
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def total_estimated_savings_per_1k(self) -> float:
         """Aggregate estimated savings per 1k tokens."""

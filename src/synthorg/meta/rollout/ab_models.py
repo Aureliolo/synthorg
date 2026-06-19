@@ -108,7 +108,7 @@ class GroupMetrics(BaseModel):
         default_factory=lambda: datetime.now(UTC),
     )
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def observation_count(self) -> int:
         """Number of metric samples collected (tuples are aligned).
@@ -118,7 +118,7 @@ class GroupMetrics(BaseModel):
         """
         return len(self.quality_samples)
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def avg_quality_score(self) -> float:
         """Mean of ``quality_samples``; ``0.0`` when empty.
@@ -130,7 +130,7 @@ class GroupMetrics(BaseModel):
             return 0.0
         return math.fsum(self.quality_samples) / len(self.quality_samples)
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def avg_success_rate(self) -> float:
         """Mean of ``success_samples``; ``0.0`` when empty.
@@ -142,7 +142,7 @@ class GroupMetrics(BaseModel):
             return 0.0
         return math.fsum(self.success_samples) / len(self.success_samples)
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def total_spend(self) -> float:
         """Sum of ``spend_samples``; ``0.0`` when empty.

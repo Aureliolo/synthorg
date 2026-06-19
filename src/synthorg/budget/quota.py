@@ -274,7 +274,7 @@ class QuotaSnapshot(BaseModel):
     )
     captured_at: datetime = Field(description="When snapshot was captured")
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def requests_remaining(self) -> int | None:
         """Remaining requests in this window.
@@ -286,7 +286,7 @@ class QuotaSnapshot(BaseModel):
             return None
         return max(0, self.requests_limit - self.requests_used)
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def tokens_remaining(self) -> int | None:
         """Remaining tokens in this window.
@@ -298,7 +298,7 @@ class QuotaSnapshot(BaseModel):
             return None
         return max(0, self.tokens_limit - self.tokens_used)
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def is_exhausted(self) -> bool:
         """Whether any enforced limit in this window is exhausted."""

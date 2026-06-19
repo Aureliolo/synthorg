@@ -117,7 +117,7 @@ class RiskScore(BaseModel):
         description="Scoring weights (excluded from serialization)",
     )
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def risk_units(self) -> float:
         """Weighted sum of all dimensions."""

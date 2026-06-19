@@ -100,7 +100,7 @@ class Conflict(BaseModel):
     )
     detected_at: AwareDatetime = Field(description="Detection timestamp")
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def is_cross_department(self) -> bool:
         """Whether the conflict spans multiple departments."""

@@ -69,7 +69,7 @@ class ExecutionResult(BaseModel):
         description="Forward-compatible metadata for future loop types",
     )
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Total tool calls across all turns",
     )
     @property

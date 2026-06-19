@@ -299,7 +299,7 @@ class OrgBenchmarkSummary(BaseModel):
     is_regression: bool = False
     has_regression: bool = False
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def score_fraction(self) -> float:
         """Latest run's score as a fraction of the maximum (0.0 with no runs)."""

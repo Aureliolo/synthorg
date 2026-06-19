@@ -168,7 +168,7 @@ class ImprovementProposal(BaseModel):
             raise ValueError(msg)
         return self
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def change_count(self) -> int:
         """Total number of changes across all altitudes.

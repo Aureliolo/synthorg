@@ -82,7 +82,7 @@ class UpgradeAnalysis(BaseModel):
 
     recommendations: tuple[UpgradeRecommendation, ...] = Field(default=())
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def recommendation_count(self) -> int:
         """Number of recommendations in this analysis."""
