@@ -24,6 +24,7 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.communication import (
+    COMM_QUADRATIC_ALERT_SINK_FAILED,
     COMM_QUADRATIC_CONNECTION_BLOCKED,
     COMM_QUADRATIC_DETECTED,
     COMM_QUADRATIC_THROTTLED,
@@ -201,9 +202,13 @@ class QuadraticEnforcer:
             await sink.alert(title=title, body=body)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
+            # Distinct event from the detection itself so a log consumer
+            # filtering on COMM_QUADRATIC_DETECTED never mistakes a broken
+            # notification channel for a genuine quadratic burst.
             logger.warning(
-                COMM_QUADRATIC_DETECTED,
-                note="alert sink failed",
+                COMM_QUADRATIC_ALERT_SINK_FAILED,
+                team_size=team_size,
+                window_count=count,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

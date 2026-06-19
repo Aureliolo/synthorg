@@ -112,3 +112,27 @@ async def test_decompose_rejects_unknown_dependency_label() -> None:
             task_id="parent",
             data=bad,
         )
+
+
+async def test_decompose_rejects_self_dependency_as_validation_error() -> None:
+    # A label depending on itself survives the unknown-label check (the
+    # label exists) but fails SubtaskDefinition's no-self-dependency
+    # validator; it must surface as a structured ValidationError (422),
+    # not an unguarded raw Pydantic error (500).
+    bad = ManualDecomposeRequest(
+        subtasks=(
+            ManualSubtaskSpec(
+                label="build",
+                title="Build",
+                description="Build it.",
+                dependencies=("build",),
+            ),
+        ),
+    )
+    with pytest.raises(ValidationError):
+        await DecompositionController.decompose_manual.fn(
+            _controller(),
+            state=_state(task=_task()),
+            task_id="parent",
+            data=bad,
+        )

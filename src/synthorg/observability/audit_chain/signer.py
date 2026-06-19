@@ -23,6 +23,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
 )
 
+from synthorg.config.errors import ConfigError
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -30,6 +31,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.audit_chain.protocol import SignedPayload
 from synthorg.observability.events.audit_chain import (
     AUDIT_CHAIN_SIGNER_KEY_GENERATED,
+    AUDIT_CHAIN_SIGNER_KEY_LOAD_FAILED,
     AUDIT_CHAIN_SIGNER_KEY_LOADED,
 )
 
@@ -122,41 +124,68 @@ class Ed25519AuditChainSigner:
         return True
 
 
-def _load_signing_key(signing_key_path: Path) -> object | None:
-    """Read + parse a PEM private key, distinguishing the failure modes.
+def _load_ed25519_key(signing_key_path: Path) -> Ed25519PrivateKey:
+    """Read + parse a configured PEM Ed25519 private key, fail-closed.
 
-    Splits the file read from the PEM parse so the WARNING ``reason``
-    tells an operator whether the key file could not be read (permission
-    / I/O) or was unparseable (corrupt / password-protected), instead of
-    collapsing both into one opaque ``key_load_failed``.
+    Splits the file read from the PEM parse and the key-type check so the
+    raised :class:`ConfigError` ``reason`` tells an operator whether the
+    key file could not be read (permission / I/O), was unparseable
+    (corrupt / password-protected), or was the wrong key type. A
+    configured key path is a hard requirement: any failure raises rather
+    than silently degrading to an unverifiable ephemeral key.
 
     Returns:
-        The loaded private-key object, or ``None`` when the key could
-        not be read or parsed (the caller then falls back to an
-        ephemeral key).
+        The loaded Ed25519 private key.
+
+    Raises:
+        ConfigError: When the key cannot be read, parsed, or is not an
+            Ed25519 private key.
     """
     try:
         raw = signing_key_path.read_bytes()
     except OSError as exc:
-        logger.warning(
-            AUDIT_CHAIN_SIGNER_KEY_GENERATED,
-            reason="key_read_failed",
+        reason = "key_read_failed"
+        logger.error(
+            AUDIT_CHAIN_SIGNER_KEY_LOAD_FAILED,
+            reason=reason,
             path=str(signing_key_path),
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return None
+        msg = (
+            f"audit_chain.signing_key_path {str(signing_key_path)!r} could "
+            f"not be read ({reason})"
+        )
+        raise ConfigError(msg) from exc
     try:
-        return serialization.load_pem_private_key(raw, password=None)
-    except Exception as exc:  # noqa: BLE001 -- fall back to ephemeral
+        loaded = serialization.load_pem_private_key(raw, password=None)
+    except Exception as exc:
         reraise_critical(exc)
-        logger.warning(
-            AUDIT_CHAIN_SIGNER_KEY_GENERATED,
-            reason="key_parse_failed",
+        reason = "key_parse_failed"
+        logger.error(
+            AUDIT_CHAIN_SIGNER_KEY_LOAD_FAILED,
+            reason=reason,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return None
+        msg = (
+            f"audit_chain.signing_key_path {str(signing_key_path)!r} could "
+            f"not be parsed as a PEM private key ({reason})"
+        )
+        raise ConfigError(msg) from exc
+    if not isinstance(loaded, Ed25519PrivateKey):
+        reason = "key_not_ed25519"
+        logger.error(
+            AUDIT_CHAIN_SIGNER_KEY_LOAD_FAILED,
+            reason=reason,
+            key_type=type(loaded).__name__,
+        )
+        msg = (
+            f"audit_chain.signing_key_path {str(signing_key_path)!r} is a "
+            f"{type(loaded).__name__}, not an Ed25519 private key ({reason})"
+        )
+        raise ConfigError(msg)
+    return loaded
 
 
 def build_ed25519_signer(
@@ -166,8 +195,12 @@ def build_ed25519_signer(
 ) -> Ed25519AuditChainSigner:
     """Build an Ed25519 signer, loading or generating the keypair.
 
-    Loads a PEM private key from *signing_key_path* when set and
-    readable; otherwise generates an ephemeral key and logs a WARNING
+    When *signing_key_path* is set it is treated as a hard requirement:
+    the key is loaded from that PEM file and any failure (missing,
+    unreadable, unparseable, or wrong key type) raises a
+    :class:`ConfigError` so boot stops loudly rather than silently
+    degrading to an unverifiable ephemeral key. When no path is
+    configured an ephemeral key is generated and a WARNING is logged
     (signatures from an ephemeral key cannot be verified after a
     restart).
 
@@ -177,22 +210,28 @@ def build_ed25519_signer(
 
     Returns:
         A constructed :class:`Ed25519AuditChainSigner`.
+
+    Raises:
+        ConfigError: When *signing_key_path* is set but does not yield a
+            usable Ed25519 private key.
     """
     resolved_clock = clock or SystemClock()
-    if signing_key_path is not None and signing_key_path.is_file():
-        loaded = _load_signing_key(signing_key_path)
-        if loaded is not None:
-            if isinstance(loaded, Ed25519PrivateKey):
-                logger.info(
-                    AUDIT_CHAIN_SIGNER_KEY_LOADED,
-                    path=str(signing_key_path),
-                )
-                return Ed25519AuditChainSigner(loaded, clock=resolved_clock)
-            logger.warning(
-                AUDIT_CHAIN_SIGNER_KEY_GENERATED,
-                reason="key_not_ed25519",
-                key_type=type(loaded).__name__,
+    if signing_key_path is not None:
+        if not signing_key_path.is_file():
+            reason = "key_path_missing"
+            logger.error(
+                AUDIT_CHAIN_SIGNER_KEY_LOAD_FAILED,
+                reason=reason,
+                path=str(signing_key_path),
             )
+            msg = (
+                f"audit_chain.signing_key_path {str(signing_key_path)!r} does "
+                f"not exist or is not a file ({reason})"
+            )
+            raise ConfigError(msg)
+        loaded = _load_ed25519_key(signing_key_path)
+        logger.info(AUDIT_CHAIN_SIGNER_KEY_LOADED, path=str(signing_key_path))
+        return Ed25519AuditChainSigner(loaded, clock=resolved_clock)
 
     logger.warning(
         AUDIT_CHAIN_SIGNER_KEY_GENERATED,

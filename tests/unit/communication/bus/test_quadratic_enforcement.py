@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 import pytest
+import structlog
 
 from synthorg.communication.bus.memory import InMemoryMessageBus
 from synthorg.communication.bus.quadratic_enforcement import QuadraticEnforcer
@@ -104,7 +105,13 @@ class TestQuadraticEnforcerDetection:
         )
         enforcer.set_alert_sink(_RaisingSink())
         # Drive past the quadratic ceiling; on_publish must not raise.
-        await _drive_publishes(enforcer, team_size=3, count=6)
+        with structlog.testing.capture_logs() as logs:
+            await _drive_publishes(enforcer, team_size=3, count=6)
+        # The sink failure logs a DISTINCT event from the detection so a
+        # log consumer never mistakes a broken channel for a real burst.
+        events = [log.get("event") for log in logs]
+        assert "communication.quadratic.alert_sink_failed" in events
+        assert "communication.quadratic.detected" in events
 
     @pytest.mark.unit
     async def test_below_min_team_size_never_detects(self) -> None:

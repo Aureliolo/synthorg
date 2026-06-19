@@ -166,24 +166,29 @@ def _build_plan(
 
     label_to_id = {label: str(uuid4()) for label in labels}
     subtasks: list[SubtaskDefinition] = []
-    for spec in request.subtasks:
-        missing = [d for d in spec.dependencies if d not in label_to_id]
-        if missing:
-            msg = f"Subtask {spec.label!r} references unknown labels: {missing}"
-            raise ValidationError(msg)
-        subtasks.append(
-            SubtaskDefinition(
-                id=label_to_id[spec.label],
-                title=spec.title,
-                description=spec.description,
-                dependencies=tuple(label_to_id[d] for d in spec.dependencies),
-                estimated_complexity=spec.estimated_complexity,
-                stakes=spec.stakes,
-                required_skills=spec.required_skills,
-                required_role=spec.required_role,
-            )
-        )
+    # The SubtaskDefinition constructor runs field validators (e.g. the
+    # no-self-dependency check, which a label referencing its own label
+    # survives the existence check above but fails here), so it is inside
+    # the try: a constructor PydanticError must surface as a structured
+    # 422, not an unguarded 500.
     try:
+        for spec in request.subtasks:
+            missing = [d for d in spec.dependencies if d not in label_to_id]
+            if missing:
+                msg = f"Subtask {spec.label!r} references unknown labels: {missing}"
+                raise ValidationError(msg)
+            subtasks.append(
+                SubtaskDefinition(
+                    id=label_to_id[spec.label],
+                    title=spec.title,
+                    description=spec.description,
+                    dependencies=tuple(label_to_id[d] for d in spec.dependencies),
+                    estimated_complexity=spec.estimated_complexity,
+                    stakes=spec.stakes,
+                    required_skills=spec.required_skills,
+                    required_role=spec.required_role,
+                )
+            )
         return DecompositionPlan(
             parent_task_id=parent_task_id,
             subtasks=tuple(subtasks),
