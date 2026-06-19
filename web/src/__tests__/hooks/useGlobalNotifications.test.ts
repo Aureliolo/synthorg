@@ -64,7 +64,7 @@ describe('useGlobalNotifications', () => {
       event_type: 'agent.status_changed',
       channel: 'agents',
       timestamp: '2026-04-05T10:00:00Z',
-      payload: { agent_id: 'agent-1', status: 'active' },
+      payload: { agent_id: 'agent-1', to_status: 'active' },
     })
 
     expect(useAgentsStore.getState().runtimeStatuses['agent-1']).toBe('active')
