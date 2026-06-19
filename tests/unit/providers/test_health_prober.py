@@ -34,6 +34,7 @@ def _make_local_config(
     litellm_provider: str | None = "ollama",
     auth_type: str = "none",
     api_key: str | None = None,
+    connection_name: str | None = None,
 ) -> MagicMock:
     """Build a mock ProviderConfig for a local provider."""
     mock = MagicMock(spec=ProviderConfig)
@@ -41,6 +42,9 @@ def _make_local_config(
     mock.litellm_provider = litellm_provider
     mock.auth_type = auth_type
     mock.api_key = api_key
+    # The prober resolves credentials from the catalog via connection_name;
+    # None makes the probe skip auth-header resolution (no catalog wired here).
+    mock.connection_name = connection_name
     return mock
 
 

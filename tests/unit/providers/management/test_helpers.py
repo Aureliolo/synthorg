@@ -53,7 +53,8 @@ class TestBuildDiscoveryHeaders:
             subscription_token="test-subscription-token",
             tos_accepted_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
-        headers = build_discovery_headers(config)
+        # Subscription auth uses subscription_token, not the api_key arg.
+        headers = build_discovery_headers(config, None)
         assert headers == {"Authorization": "Bearer test-subscription-token"}
 
     def test_subscription_no_token_returns_none(self) -> None:
@@ -65,7 +66,7 @@ class TestBuildDiscoveryHeaders:
         )
         # Bypass frozen model to simulate a cleared token
         object.__setattr__(config, "subscription_token", None)
-        headers = build_discovery_headers(config)
+        headers = build_discovery_headers(config, None)
         assert headers is None
 
 

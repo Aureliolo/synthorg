@@ -243,6 +243,7 @@ PORT_TO_PRESET: Final[MappingProxyType[int, str]] = MappingProxyType(
 
 def build_discovery_headers(
     config: ProviderConfig,
+    api_key: str | None,
 ) -> dict[str, str] | None:
     """Build auth headers for model discovery from provider config.
 
@@ -253,13 +254,16 @@ def build_discovery_headers(
 
     Args:
         config: Provider configuration.
+        api_key: The catalog-resolved API key for the provider's
+            ``connection_name`` (the credential is no longer embedded on
+            the config); ``None`` when unresolved.
 
     Returns:
         Auth headers dict, or ``None``.
     """
     style = AUTH_TYPE_DESCRIPTORS[config.auth_type].discovery_style
-    if style is DiscoveryAuthStyle.BEARER_API_KEY and config.api_key:
-        return {"Authorization": f"Bearer {config.api_key}"}
+    if style is DiscoveryAuthStyle.BEARER_API_KEY and api_key:
+        return {"Authorization": f"Bearer {api_key}"}
     if (
         style is DiscoveryAuthStyle.CUSTOM_HEADER
         and config.custom_header_name

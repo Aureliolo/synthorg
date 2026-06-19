@@ -382,6 +382,22 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         with contextlib.suppress(ConnectionNotFoundError):
             await catalog.delete(self._credential_connection_name(provider_name))
 
+    async def _resolve_provider_api_key(self, config: ProviderConfig) -> str | None:
+        """Resolve a provider's api_key from its catalog connection.
+
+        Returns ``None`` when the config carries no ``connection_name`` or no
+        credential catalog is wired (the caller then proceeds without an
+        Authorization header).
+
+        Returns:
+            The resolved api_key, or ``None``.
+        """
+        catalog = provider_credential_catalog_of(self._app_state)
+        if config.connection_name is None or catalog is None:
+            return None
+        creds = await catalog.get_credentials(config.connection_name)
+        return creds.get("api_key")
+
     async def create_provider(
         self,
         request: CreateProviderRequest,
@@ -832,7 +848,8 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             return ()
 
         resolved_hint = preset_hint or infer_preset_hint(config.base_url)
-        headers = build_discovery_headers(config)
+        api_key = await self._resolve_provider_api_key(config)
+        headers = build_discovery_headers(config, api_key)
         policy = await self._allowlist.load()
         trust = is_url_allowed(config.base_url, policy)
         return await discover_models(
