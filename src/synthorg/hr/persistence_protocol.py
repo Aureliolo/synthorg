@@ -7,6 +7,7 @@ and collaboration metrics.
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
+from synthorg.core.pagination import DEFAULT_LIST_LIMIT
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
@@ -14,7 +15,6 @@ from synthorg.hr.performance.models import (
     CollaborationMetricRecord,
     TaskMetricRecord,
 )
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
 
 @runtime_checkable

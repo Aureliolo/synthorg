@@ -34,6 +34,7 @@ from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     ConflictError,
+    ServiceUnavailableError,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
@@ -64,13 +65,18 @@ def _require_channels_plugin(
         The registered ChannelsPlugin instance.
 
     Raises:
-        RuntimeError: If no ChannelsPlugin is registered on the app.
+        ServiceUnavailableError: If no ChannelsPlugin is registered on
+            the app (the realtime notification surface is unwired).
     """
     plugin = get_channels_plugin(request)
     if plugin is None:
         msg = "ChannelsPlugin not registered"
-        logger.error(API_APPROVAL_PUBLISH_FAILED, error=msg)
-        raise RuntimeError(msg)
+        logger.error(
+            API_APPROVAL_PUBLISH_FAILED,
+            error=msg,
+            error_type=ServiceUnavailableError.__name__,
+        )
+        raise ServiceUnavailableError(msg)
     return plugin
 
 

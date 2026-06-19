@@ -154,6 +154,71 @@ def append_async_task_section(
     )
 
 
+def _directive_block(tags: tuple[str, ...]) -> str:
+    """Return the appended ``## Untrusted Content`` block for *tags*.
+
+    Returns:
+        The block text (leading separator included), or ``""`` when
+        *tags* is empty.
+    """
+    if not tags:
+        return ""
+    from synthorg.engine.prompt_safety import (  # noqa: PLC0415
+        untrusted_content_directive,
+    )
+
+    directive = untrusted_content_directive(tags)
+    return f"\n\n## Untrusted Content\n\n{directive}\n"
+
+
+def untrusted_content_directive_token_cost(
+    tags: tuple[str, ...],
+    estimator: PromptTokenEstimator,
+) -> int:
+    """Estimate the token cost of appending the directive for *tags*.
+
+    Callers reserve this from the trim budget before rendering so the
+    final prompt (content + directive, appended after trimming) still
+    respects ``max_tokens``.
+
+    Returns:
+        The estimated token count of the appended block, or ``0`` when
+        *tags* is empty.
+    """
+    block = _directive_block(tags)
+    return estimator.estimate_tokens(block) if block else 0
+
+
+def append_untrusted_content_directive(
+    prompt: SystemPrompt,
+    tags: tuple[str, ...],
+    estimator: PromptTokenEstimator,
+) -> SystemPrompt:
+    """Append the untrusted-content directive for *tags*.
+
+    Appended after trimming (like the async-task section) so the
+    directive that tells the model to treat fenced ``<tag>`` blocks as
+    inert data is never trimmed away while the fenced content it governs
+    survives. A no-op when *tags* is empty (no fenced blocks were
+    rendered). Recomputes ``estimated_tokens`` to cover the addition.
+
+    Returns:
+        A copy of ``prompt`` with the directive appended (or ``prompt``
+        unchanged when *tags* is empty).
+    """
+    block = _directive_block(tags)
+    if not block:
+        return prompt
+    new_content = f"{prompt.content}{block}"
+    return prompt.model_copy(
+        update={
+            "content": new_content,
+            "estimated_tokens": estimator.estimate_tokens(new_content),
+            "sections": (*prompt.sections, "untrusted_content_directive"),
+        },
+    )
+
+
 def log_and_return(
     agent: AgentIdentity,
     result: SystemPrompt,

@@ -77,6 +77,7 @@ from synthorg.meta.errors import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.chief_of_staff import (
+    COS_GROUP_CHAT_REJECTED,
     COS_GROUP_CONTRIBUTION,
     COS_GROUP_CONTRIBUTION_FAILED,
     COS_GROUP_ROUND_COMPLETED,
@@ -195,10 +196,28 @@ class GroupChatService:
         # Ownership + kind mismatch both map to NotFound so a caller
         # cannot probe foreign or non-group conversations by id.
         if existing is None or existing.created_by != args.created_by:
+            logger.warning(
+                COS_GROUP_CHAT_REJECTED,
+                conversation_id=args.conversation_id,
+                reason="not_found_or_not_owner",
+                error_type=ConversationNotFoundError.__name__,
+            )
             raise ConversationNotFoundError(conversation_id=args.conversation_id)
         if existing.kind is not ConversationKind.GROUP:
+            logger.warning(
+                COS_GROUP_CHAT_REJECTED,
+                conversation_id=args.conversation_id,
+                reason="not_a_group_conversation",
+                error_type=ConversationNotFoundError.__name__,
+            )
             raise ConversationNotFoundError(conversation_id=args.conversation_id)
         if existing.status is ConversationStatus.CLOSED:
+            logger.warning(
+                COS_GROUP_CHAT_REJECTED,
+                conversation_id=str(existing.id),
+                reason="conversation_closed",
+                error_type=ConversationClosedError.__name__,
+            )
             raise ConversationClosedError(conversation_id=str(existing.id))
         return existing
 
@@ -221,8 +240,20 @@ class GroupChatService:
         """
         agent_ids = dedupe_participants(args.participants)
         if not agent_ids:
+            logger.warning(
+                COS_GROUP_CHAT_REJECTED,
+                reason="no_participants",
+                error_type=GroupConversationEmptyError.__name__,
+            )
             raise GroupConversationEmptyError
         if len(agent_ids) > self._config.group_chat_max_participants:
+            logger.warning(
+                COS_GROUP_CHAT_REJECTED,
+                reason="participant_limit_exceeded",
+                requested=len(agent_ids),
+                limit=self._config.group_chat_max_participants,
+                error_type=GroupParticipantLimitError.__name__,
+            )
             raise GroupParticipantLimitError(
                 requested=len(agent_ids),
                 limit=self._config.group_chat_max_participants,
@@ -261,6 +292,12 @@ class GroupChatService:
         """
         current = await self._conversation_repo.get(str(conversation.id))
         if current is None or current.status is not ConversationStatus.ACTIVE:
+            logger.warning(
+                COS_GROUP_CHAT_REJECTED,
+                conversation_id=str(conversation.id),
+                reason="conversation_no_longer_active",
+                error_type=ConversationClosedError.__name__,
+            )
             raise ConversationClosedError(conversation_id=str(conversation.id))
         conversation = current
         participants = await active_participants(

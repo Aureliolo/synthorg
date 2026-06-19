@@ -124,7 +124,7 @@ class ConversationalProposeUnavailableError(ChiefOfStaffError):
 
     default_message: ClassVar[str] = "Conversational propose interface is unavailable"
     error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
-    error_code: ClassVar[ErrorCode] = ErrorCode.SERVICE_UNAVAILABLE
+    error_code: ClassVar[ErrorCode] = ErrorCode.CONVERSATIONAL_PROPOSE_UNAVAILABLE
     status_code: ClassVar[int] = 503
 
 
@@ -155,7 +155,7 @@ class GroupChatUnavailableError(ChiefOfStaffError):
 
     default_message: ClassVar[str] = "Group chat interface is unavailable"
     error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
-    error_code: ClassVar[ErrorCode] = ErrorCode.SERVICE_UNAVAILABLE
+    error_code: ClassVar[ErrorCode] = ErrorCode.GROUP_CHAT_UNAVAILABLE
     status_code: ClassVar[int] = 503
 
 
@@ -170,9 +170,9 @@ class GroupParticipantUnknownError(ChiefOfStaffError):
     """
 
     default_message: ClassVar[str] = "Group chat participant not found"
-    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
-    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
-    status_code: ClassVar[int] = 422
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    error_code: ClassVar[ErrorCode] = ErrorCode.GROUP_PARTICIPANT_UNKNOWN
+    status_code: ClassVar[int] = 404
 
     def __init__(self, *, agent_id: str) -> None:
         super().__init__("Group chat participant not found")
@@ -296,7 +296,7 @@ class CharterInterviewUnavailableError(CharterError):
 
     default_message: ClassVar[str] = "Charter interview interface is unavailable"
     error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
-    error_code: ClassVar[ErrorCode] = ErrorCode.SERVICE_UNAVAILABLE
+    error_code: ClassVar[ErrorCode] = ErrorCode.CHARTER_INTERVIEW_UNAVAILABLE
     status_code: ClassVar[int] = 503
 
 

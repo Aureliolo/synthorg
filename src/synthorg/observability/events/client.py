@@ -14,6 +14,10 @@ CLIENT_REVIEW_STARTED: Final[str] = "client.review.started"
 CLIENT_REVIEW_COMPLETED: Final[str] = "client.review.completed"
 CLIENT_FEEDBACK_RECORDED: Final[str] = "client.feedback.recorded"
 CLIENT_REQUIREMENT_GENERATED: Final[str] = "client.requirement.generated"
+CLIENT_ADVERSARIAL_THRESHOLD_INVALID: Final[str] = (
+    "client.adversarial.threshold_invalid"
+)
+CLIENT_DATASET_NOT_FOUND: Final[str] = "client.dataset.not_found"
 SIMULATION_RUN_STARTED: Final[str] = "simulation.run.started"
 SIMULATION_RUN_COMPLETED: Final[str] = "simulation.run.completed"
 SIMULATION_RUN_FAILED: Final[str] = "simulation.run.failed"

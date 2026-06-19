@@ -27,7 +27,7 @@ from synthorg.observability.sink_config_builder import (
 from synthorg.settings.definitions.api import SINK_IDENTIFIER_FINGERPRINT_LENGTH
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.errors import SettingNotFoundError
-from synthorg.settings.service import SettingsService
+from synthorg.settings.service_protocol import SettingsServiceProtocol
 
 logger = get_logger(__name__)
 
@@ -207,7 +207,7 @@ def _sink_to_response(
 
 
 async def _get_setting_or_default(
-    svc: SettingsService,
+    svc: SettingsServiceProtocol,
     key: str,
     fallback: str,
 ) -> str:

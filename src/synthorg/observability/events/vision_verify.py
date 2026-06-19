@@ -14,6 +14,7 @@ VISION_REWORK_ROUTED: Final[str] = "vision_verify.rework.routed"
 
 VISION_VERIFIER_INVOKED: Final[str] = "vision_verify.verifier.invoked"
 VISION_VERIFIER_FAILED: Final[str] = "vision_verify.verifier.failed"
+VISION_SCREENSHOT_REJECTED: Final[str] = "vision_verify.screenshot.rejected"
 
 VISION_HEURISTIC_CHECK_COMPLETED: Final[str] = "vision_verify.heuristic.completed"
 

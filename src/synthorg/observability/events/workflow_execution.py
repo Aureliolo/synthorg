@@ -105,6 +105,11 @@ WORKFLOW_EXEC_SUBWORKFLOW_NODE_COMPLETED: Final[str] = (
 )
 """A SUBWORKFLOW node finished walking its child graph."""
 
+WORKFLOW_EXEC_SUBWORKFLOW_CONFIG_INVALID: Final[str] = (
+    "workflow.execution.subworkflow.config_invalid"
+)
+"""A SUBWORKFLOW node's config is missing/malformed or the registry is absent."""
+
 WORKFLOW_EXECUTION_USERNAME_FALLBACK: Final[str] = (
     "workflow.execution.username_fallback"
 )

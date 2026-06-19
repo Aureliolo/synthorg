@@ -17,7 +17,6 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import Literal
 
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
@@ -44,6 +43,7 @@ from synthorg.persistence.postgres.backend_migration import PostgresMigrationMix
 from synthorg.persistence.postgres.lockout_repo import (
     PostgresLockoutRepository,
 )
+from synthorg.persistence.protocol import PersistenceBackendKind
 from synthorg.persistence.settings_protocol import SettingRow
 from synthorg.versioning.service import VersioningService
 
@@ -120,13 +120,13 @@ class PostgresPersistenceBackend(
         return NotBlankStr("postgres")
 
     @property
-    def kind(self) -> Literal["sqlite", "postgres"]:
-        """Return the backend discriminator (``"postgres"``).
+    def kind(self) -> PersistenceBackendKind:
+        """Return the backend discriminator (``POSTGRES``).
 
         Returns:
-            Result of type ``Literal['sqlite', 'postgres']``.
+            Result of type ``PersistenceBackendKind``.
         """
-        return "postgres"
+        return PersistenceBackendKind.POSTGRES
 
     @property
     def supports_conversational_approvals(self) -> bool:

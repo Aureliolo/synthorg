@@ -18,6 +18,7 @@ from typing import Final, Literal, NamedTuple
 from synthorg.api.state import AppState
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.pagination import paginate
 from synthorg.integrations.connections.models import Connection
 from synthorg.observability import (
     get_logger,
@@ -29,7 +30,6 @@ from synthorg.observability.events.persistence.webhook_receipt import (
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_PAUSED,
 )
-from synthorg.persistence._shared import paginate
 from synthorg.persistence.state import PersistenceStateSlice, persistence_of
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.registry import registered_default_float, registered_default_int

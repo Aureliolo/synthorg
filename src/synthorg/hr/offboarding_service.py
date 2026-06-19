@@ -11,6 +11,7 @@ from synthorg.communication.enums import MessageType
 from synthorg.communication.errors import CommunicationError
 from synthorg.communication.message import Message, TextPart
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.pagination import paginate
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
@@ -40,7 +41,6 @@ from synthorg.observability.events.hr import (
     HR_FIRING_TEAM_NOTIFIED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import paginate
 from synthorg.persistence.task_protocol import TaskFilterSpec, TaskRepository
 
 logger = get_logger(__name__)

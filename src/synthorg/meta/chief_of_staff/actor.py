@@ -27,6 +27,7 @@ from synthorg.observability.events.chief_of_staff import (
     COS_ACT_FAILED,
     COS_ACT_PARKED,
     COS_ACT_REQUESTED,
+    COS_ACTOR_AGENT_NOT_FOUND,
 )
 from synthorg.security.autonomy.resolver import AutonomyResolver
 
@@ -150,6 +151,10 @@ class ConversationalActor:
             identity = await self._agent_registry.get_by_name(agent)
         if identity is None:
             msg = "The requested agent is not registered"
+            logger.warning(
+                COS_ACTOR_AGENT_NOT_FOUND,
+                error_type=NotFoundError.__name__,
+            )
             raise NotFoundError(msg)
         return identity
 

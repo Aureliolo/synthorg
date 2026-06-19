@@ -16,9 +16,9 @@ from synthorg.api.state import AppState
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.meta.mcp.handlers.organization import ORGANIZATION_HANDLERS
 from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
+from synthorg.organization._team_service import TeamService
 from synthorg.organization.services import (
     DepartmentService,
-    TeamService,
 )
 from synthorg.organization.state import OrganizationStateSlice
 from tests._shared import make_app_state

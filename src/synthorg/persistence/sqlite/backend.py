@@ -5,7 +5,7 @@ import sqlite3
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import Literal, override
+from typing import override
 
 import aiosqlite
 
@@ -31,6 +31,7 @@ from synthorg.persistence.auth_protocol import LockoutRepository
 from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.escalation_protocol import EscalationQueueRepository
 from synthorg.persistence.migrations import migrate_apply, to_sqlite_url
+from synthorg.persistence.protocol import PersistenceBackendKind
 from synthorg.persistence.sqlite._repository_wiring import (
     _SQLiteRepositoryWiring,
 )
@@ -62,13 +63,13 @@ class SQLitePersistenceBackend(_SQLiteRepositoryWiring):
         self._clear_state()
 
     @property
-    def kind(self) -> Literal["sqlite", "postgres"]:
-        """Return the backend discriminator (``"sqlite"``).
+    def kind(self) -> PersistenceBackendKind:
+        """Return the backend discriminator (``SQLITE``).
 
         Returns:
-            Result of type ``Literal['sqlite', 'postgres']``.
+            Result of type ``PersistenceBackendKind``.
         """
-        return "sqlite"
+        return PersistenceBackendKind.SQLITE
 
     @property
     def supports_conversational_approvals(self) -> bool:

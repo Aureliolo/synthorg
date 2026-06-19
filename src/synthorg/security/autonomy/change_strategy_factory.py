@@ -11,6 +11,10 @@ absent (fail fast at construction).
 """
 
 from synthorg.core.registry import StrategyRegistry
+from synthorg.observability import get_logger
+from synthorg.observability.events.security import (
+    SECURITY_AUTONOMY_STRATEGY_CONFIG_INVALID,
+)
 from synthorg.security.autonomy.budget_aware import (
     BudgetAwarePromotionStrategy,
 )
@@ -30,6 +34,8 @@ from synthorg.security.autonomy.performance_gated import (
     PerformanceGatedPromotionStrategy,
 )
 from synthorg.security.autonomy.protocol import AutonomyChangeStrategy
+
+logger = get_logger(__name__)
 
 
 def _base(deps: AutonomyStrategyDeps) -> HumanOnlyPromotionStrategy:
@@ -75,6 +81,12 @@ def _build_performance_gated(
             "PERFORMANCE_GATED autonomy strategy requires a "
             "'performance_signal' dependency but none was provided"
         )
+        logger.warning(
+            SECURITY_AUTONOMY_STRATEGY_CONFIG_INVALID,
+            strategy="performance_gated",
+            missing_dependency="performance_signal",
+            error_type=AutonomyStrategyConfigError.__name__,
+        )
         raise AutonomyStrategyConfigError(msg)
     return PerformanceGatedPromotionStrategy(
         base=_base(deps),
@@ -100,6 +112,12 @@ def _build_budget_aware(
         msg = (
             "BUDGET_AWARE autonomy strategy requires a "
             "'risk_budget_signal' dependency but none was provided"
+        )
+        logger.warning(
+            SECURITY_AUTONOMY_STRATEGY_CONFIG_INVALID,
+            strategy="budget_aware",
+            missing_dependency="risk_budget_signal",
+            error_type=AutonomyStrategyConfigError.__name__,
         )
         raise AutonomyStrategyConfigError(msg)
     return BudgetAwarePromotionStrategy(

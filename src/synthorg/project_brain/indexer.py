@@ -150,6 +150,13 @@ class BrainIndexer:
             f"delete-prior for {project_id!r}/{entry_id!r} did not converge after "
             f"{_MAX_DELETE_ITERATIONS} pages (backend not removing entries?)"
         )
+        logger.warning(
+            BRAIN_ENTRY_INDEX_FAILED,
+            project_id=project_id,
+            entry_id=entry_id,
+            reason="delete_prior_did_not_converge",
+            error_type=BrainIndexError.__name__,
+        )
         raise BrainIndexError(msg)
 
 

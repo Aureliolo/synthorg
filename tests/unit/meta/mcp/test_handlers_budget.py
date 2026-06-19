@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.api.state import AppState
+from synthorg.budget.version_service import BudgetConfigVersionsService
 from synthorg.meta.mcp.handlers.budget import BUDGET_HANDLERS
 from synthorg.persistence.protocol import PersistenceBackend
 from tests._shared import JsonDict, make_app_state, mock_of
@@ -37,11 +38,13 @@ def fake_app_state(config: SimpleNamespace) -> AppState:
     versions_repo.get_version.return_value = None
 
     persistence = mock_of[PersistenceBackend](budget_config_versions=versions_repo)
+    budget_versions_service = BudgetConfigVersionsService(version_repo=versions_repo)
 
     return make_app_state(
         cost_tracker=tracker,
         config_resolver=config_resolver,
         persistence=persistence,
+        budget_versions_service=budget_versions_service,
     )
 
 

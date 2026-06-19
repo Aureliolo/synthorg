@@ -11,11 +11,11 @@ from typing import TYPE_CHECKING
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
+from synthorg.organization._team_service import TeamService
 from synthorg.organization.services import (
     CompanyReadService,
     DepartmentService,
     RoleVersionService,
-    TeamService,
 )
 
 if TYPE_CHECKING:

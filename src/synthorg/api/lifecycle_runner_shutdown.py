@@ -24,6 +24,7 @@ from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.state import HrStateSlice
 from synthorg.integrations.state import IntegrationsStateSlice
@@ -74,6 +75,21 @@ _REVIEW_GATE_DRAIN_OUTER_SECONDS: Final[float] = 5.0 + _DRAIN_OUTER_GRACE_SECOND
 # block the shutdown window. No-op (returns immediately) when no parallel
 # agent tasks are registered, which is the common case.
 _COOPERATIVE_SHUTDOWN_OUTER_SECONDS: Final[float] = 18.0
+
+# Per-service stop budgets for the remaining background services. Passive
+# wake-poll-sleep loops (event-stream hub, escalation sweeper/subscriber,
+# org-inflection / toolsmith / model-refresh schedulers, settings + cost
+# dispatchers, notification dispatcher) cancel-and-await quickly, so they
+# share the 2.0s janitor budget. Services that internally drain in-flight
+# work through the lifecycle-lock pattern (health probers, OAuth token
+# manager, webhook event bridge) can legitimately take up to
+# ``DEFAULT_DRAIN_TIMEOUT_SECONDS``, so their outer backstop exceeds the
+# inner drain by the shared grace. Every stop is bounded so a hung callee
+# cannot block the shutdown window past the orchestrator SIGKILL deadline.
+_SERVICE_STOP_SHUTDOWN_SECONDS: Final[float] = 2.0
+_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS: Final[float] = (
+    DEFAULT_DRAIN_TIMEOUT_SECONDS + _DRAIN_OUTER_GRACE_SECONDS
+)
 
 
 async def _run_shutdown(  # noqa: PLR0913
@@ -186,6 +202,8 @@ async def _run_shutdown(  # noqa: PLR0913
                 cast("Awaitable[None]", disconnect()),
                 API_APP_SHUTDOWN,
                 "Failed to disconnect training memory backend",
+                timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
+                service="training_memory_backend",
             )
         tasks.training_memory_backend = None
     if tasks.ticket_cleanup_task is not None:
@@ -216,12 +234,16 @@ async def _run_shutdown(  # noqa: PLR0913
             communication.event_stream_hub.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop event stream hub",
+            timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
+            service="event_stream_hub",
         )
     if tasks.health_prober is not None:
         await _try_stop(
             tasks.health_prober.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop health prober",
+            timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
+            service="health_prober",
         )
         tasks.health_prober = None
     # Stop integration background services (reverse start order).
@@ -230,12 +252,16 @@ async def _run_shutdown(  # noqa: PLR0913
             communication.escalation_notify_subscriber.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop escalation notify subscriber",
+            timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
+            service="escalation_notify_subscriber",
         )
     if communication.escalation_sweeper is not None:
         await _try_stop(
             communication.escalation_sweeper.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop escalation sweeper",
+            timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
+            service="escalation_sweeper",
         )
     # Cancel any unresolved pending futures so coroutines awaiting operator
     # decisions get a clean CancelledError (instead of hanging past shutdown)
@@ -245,36 +271,48 @@ async def _run_shutdown(  # noqa: PLR0913
             communication.escalation_registry.close(),
             API_APP_SHUTDOWN,
             "Failed to close escalation pending-futures registry",
+            timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
+            service="escalation_registry",
         )
     if integrations.oauth_token_manager is not None:
         await _try_stop(
             integrations.oauth_token_manager.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop OAuth token manager",
+            timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
+            service="oauth_token_manager",
         )
     if integrations.health_prober_service is not None:
         await _try_stop(
             integrations.health_prober_service.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop integration health prober",
+            timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
+            service="integration_health_prober",
         )
     if integrations.webhook_event_bridge is not None:
         await _try_stop(
             integrations.webhook_event_bridge.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop webhook event bridge",
+            timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
+            service="webhook_event_bridge",
         )
     if integrations.tunnel_provider is not None:
         await _try_stop(
             integrations.tunnel_provider.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop tunnel provider",
+            timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
+            service="tunnel_provider",
         )
     if integrations.mcp_bridge_factory is not None:
         await _try_stop(
             integrations.mcp_bridge_factory.shutdown(),
             API_APP_SHUTDOWN,
             "Failed to stop external MCP bridge factory",
+            timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
+            service="mcp_bridge_factory",
         )
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
 
@@ -284,6 +322,8 @@ async def _run_shutdown(  # noqa: PLR0913
             meta_slice.org_inflection_monitor.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop org inflection monitor",
+            timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
+            service="org_inflection_monitor",
         )
         app_state.wire(MetaStateSlice, org_inflection_monitor=None)
 
@@ -295,6 +335,8 @@ async def _run_shutdown(  # noqa: PLR0913
             toolsmith.cycle_scheduler.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop toolsmith cycle scheduler",
+            timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
+            service="toolsmith_cycle_scheduler",
         )
         # Clear the service too, not just the scheduler: wire_toolsmith
         # short-circuits when service is already set, so leaving it populated
@@ -318,6 +360,8 @@ async def _run_shutdown(  # noqa: PLR0913
                 model_refresh.scheduler.stop(),
                 API_APP_SHUTDOWN,
                 "Failed to stop model-refresh scheduler",
+                timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
+                service="model_refresh_scheduler",
             )
         # Clear service + scheduler so wire_model_refresh re-wires on the
         # next lifespan entry (its idempotency guard checks ``service``).
@@ -349,6 +393,8 @@ async def _run_shutdown(  # noqa: PLR0913
             tasks.auto_wired_dispatcher.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop auto-wired settings dispatcher",
+            timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
+            service="auto_wired_settings_dispatcher",
         )
         tasks.auto_wired_dispatcher = None
     await _safe_shutdown(
@@ -374,6 +420,8 @@ async def _run_shutdown(  # noqa: PLR0913
             notification_dispatcher.aclose(),
             API_APP_SHUTDOWN,
             "Failed to stop notification dispatcher",
+            timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
+            service="notification_dispatcher",
         )
     # Close A2A outbound HTTP client if wired.
     try:

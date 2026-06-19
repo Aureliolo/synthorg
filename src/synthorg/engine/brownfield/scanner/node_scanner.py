@@ -25,6 +25,12 @@ from synthorg.engine.brownfield.scanner._common import (
     top_level_dirs,
 )
 from synthorg.engine.brownfield.scanner.protocol import EcosystemScan
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.brownfield import (
+    BROWNFIELD_MANIFEST_PARSE_FAILED,
+)
+
+logger = get_logger(__name__)
 
 _SOURCE_DIRS: Final[tuple[str, ...]] = ("src", "lib", "app")
 _TEST_DIRS: Final[tuple[str, ...]] = ("test", "tests", "__tests__")
@@ -83,7 +89,14 @@ class NodeScanner:
             return {}
         try:
             loaded = json.loads(text)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            logger.warning(
+                BROWNFIELD_MANIFEST_PARSE_FAILED,
+                ecosystem="node",
+                manifest="package.json",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             return {}
         return loaded if isinstance(loaded, dict) else {}
 

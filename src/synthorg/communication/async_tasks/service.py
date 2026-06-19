@@ -25,6 +25,7 @@ from synthorg.observability.events.async_task import (
     ASYNC_TASK_CANCELLED,
     ASYNC_TASK_CHECKED,
     ASYNC_TASK_LISTED,
+    ASYNC_TASK_NOT_FOUND,
     ASYNC_TASK_START_FAILED,
     ASYNC_TASK_STARTED,
     ASYNC_TASK_STATUS_TRANSITIONED,
@@ -272,6 +273,11 @@ class AsyncTaskService:
         task = await self._engine.get_task(task_id)
         if task is None:
             msg = f"Async task {task_id} not found"
+            logger.warning(
+                ASYNC_TASK_NOT_FOUND,
+                task_id=str(task_id),
+                error_type=LookupError.__name__,
+            )
             raise LookupError(msg)
 
         status = self._map_status(task.status)
@@ -304,6 +310,11 @@ class AsyncTaskService:
         task = await self._engine.get_task(task_id)
         if task is None:
             msg = f"Async task {task_id} not found"
+            logger.warning(
+                ASYNC_TASK_NOT_FOUND,
+                task_id=str(task_id),
+                error_type=LookupError.__name__,
+            )
             raise LookupError(msg)
 
         if task.status in _TERMINAL_STATUSES:

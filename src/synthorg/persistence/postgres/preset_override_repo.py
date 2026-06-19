@@ -1,5 +1,6 @@
 """Postgres repository for operator-authored preset overrides."""
 
+from datetime import datetime
 from typing import cast
 
 import psycopg
@@ -82,24 +83,32 @@ class PostgresPresetOverrideRepo:
             )
             raise QueryError(msg) from exc
 
-    async def save(self, override: PresetOverride) -> None:
-        """Insert or replace the override for ``override.preset_name``.
+    @staticmethod
+    def _value_columns(override: PresetOverride) -> tuple[object, ...]:
+        """Encode the six non-key columns for an INSERT/UPDATE.
+
+        Returns:
+            ``(default_models, supported_auth_types, candidate_urls,
+            base_url, updated_at, updated_by)`` ready to bind, with the
+            JSON columns wrapped in :class:`Jsonb`.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: When ``updated_at`` / ``updated_by`` are unset
+                (the schema requires both on every write).
         """
-        if override.updated_at is None or override.updated_by is None:
+        updated_at = override.updated_at
+        updated_by = override.updated_by
+        if updated_at is None or updated_by is None:
             msg = "PresetOverride.updated_at and updated_by must be set on save"
             logger.warning(
                 PERSISTENCE_PRESET_OVERRIDE_SAVE_FAILED,
                 preset_name=override.preset_name,
-                updated_at=override.updated_at,
-                updated_by=override.updated_by,
+                updated_at=updated_at,
+                updated_by=updated_by,
                 error=msg,
             )
             raise QueryError(msg)
-        params: tuple[object, ...] = (
-            override.preset_name,
+        return (
             Jsonb([m.model_dump(mode="json") for m in override.default_models])
             if override.default_models is not None
             else None,
@@ -110,8 +119,19 @@ class PostgresPresetOverrideRepo:
             if override.candidate_urls is not None
             else None,
             override.base_url,
-            normalize_utc(override.updated_at),
-            override.updated_by,
+            normalize_utc(updated_at),
+            updated_by,
+        )
+
+    async def save(self, override: PresetOverride) -> None:
+        """Insert or replace the override for ``override.preset_name``.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        params: tuple[object, ...] = (
+            override.preset_name,
+            *self._value_columns(override),
         )
         sql = (
             "INSERT INTO preset_overrides "
@@ -139,6 +159,72 @@ class PostgresPresetOverrideRepo:
                 preset_name=override.preset_name,
             )
             raise QueryError(msg) from exc
+
+    async def save_if_unchanged(
+        self,
+        override: PresetOverride,
+        *,
+        expected_updated_at: datetime | None,
+    ) -> bool:
+        """Persist ``override`` iff the stored row is still unchanged.
+
+        Optimistic-concurrency guard for the read-merge-write upsert in
+        :class:`PresetOverrideService`. ``PresetOverride`` carries no
+        version column, so the prior ``updated_at`` the service observed
+        is the compare-and-swap token: when ``expected_updated_at`` is
+        ``None`` the caller saw no row and the write only lands if none
+        appeared (``ON CONFLICT DO NOTHING``); otherwise the write only
+        lands while the stored ``updated_at`` still equals the observed
+        value. A concurrent writer that won the race shifts ``updated_at``
+        and this returns ``False`` without clobbering their write.
+        Bespoke conditional method permitted under ADR-0001 D7
+        (lost-update invariant; callers must not bypass it via ``save``).
+
+        Returns:
+            ``True`` when the row was written, ``False`` when a
+            concurrent write changed the row first.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        cols = self._value_columns(override)
+        if expected_updated_at is None:
+            sql = (
+                "INSERT INTO preset_overrides "
+                "(preset_name, default_models, supported_auth_types, "
+                "candidate_urls, base_url, updated_at, updated_by) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s) "
+                "ON CONFLICT (preset_name) DO NOTHING"
+            )
+            params: tuple[object, ...] = (override.preset_name, *cols)
+        else:
+            sql = (
+                "UPDATE preset_overrides SET "
+                "default_models = %s, supported_auth_types = %s, "
+                "candidate_urls = %s, base_url = %s, "
+                "updated_at = %s, updated_by = %s "
+                "WHERE preset_name = %s AND updated_at = %s"
+            )
+            params = (
+                *cols,
+                override.preset_name,
+                normalize_utc(expected_updated_at),
+            )
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(sql, params)
+                rowcount = cur.rowcount
+                await conn.commit()
+        except psycopg.Error as exc:
+            msg = "Failed to conditionally save preset override"
+            logger.warning(
+                PERSISTENCE_PRESET_OVERRIDE_SAVE_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                preset_name=override.preset_name,
+            )
+            raise QueryError(msg) from exc
+        return rowcount > 0
 
     async def list_items(
         self,

@@ -101,7 +101,7 @@ class AgentNotFoundError(AgentRegistryError):
 
     default_message: ClassVar[str] = "Agent not found"
     error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
-    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_NOT_FOUND
+    error_code: ClassVar[ErrorCode] = ErrorCode.AGENT_NOT_FOUND
     status_code: ClassVar[int] = 404
 
 
@@ -186,7 +186,7 @@ class PersonalityNotFoundError(PersonalityError):
 
     default_message: ClassVar[str] = "Personality preset not found"
     error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
-    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_NOT_FOUND
+    error_code: ClassVar[ErrorCode] = ErrorCode.PERSONALITY_NOT_FOUND
     status_code: ClassVar[int] = 404
 
 
@@ -202,5 +202,5 @@ class TrainingSessionNotFoundError(TrainingError):
 
     default_message: ClassVar[str] = "Training session not found"
     error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
-    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_NOT_FOUND
+    error_code: ClassVar[ErrorCode] = ErrorCode.TRAINING_SESSION_NOT_FOUND
     status_code: ClassVar[int] = 404

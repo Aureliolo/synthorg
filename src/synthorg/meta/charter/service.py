@@ -36,6 +36,8 @@ from synthorg.meta.errors import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.charter import (
+    CHARTER_CONVERSATION_CLOSED,
+    CHARTER_CONVERSATION_NOT_FOUND,
     CHARTER_INTERVIEW_CAP_REACHED,
     CHARTER_INTERVIEW_DRAFTED,
     CHARTER_INTERVIEW_FAILED,
@@ -231,8 +233,18 @@ class CharterInterviewService(CharterCrudMixin):
         if existing is None or existing.created_by != args.created_by:
             # Map ownership mismatch to NotFound so the response cannot
             # be used to probe a foreign conversation's existence.
+            logger.warning(
+                CHARTER_CONVERSATION_NOT_FOUND,
+                conversation_id=args.conversation_id,
+                error_type=ConversationNotFoundError.__name__,
+            )
             raise ConversationNotFoundError(conversation_id=args.conversation_id)
         if existing.status is ConversationStatus.CLOSED:
+            logger.warning(
+                CHARTER_CONVERSATION_CLOSED,
+                conversation_id=str(existing.id),
+                error_type=ConversationClosedError.__name__,
+            )
             raise ConversationClosedError(conversation_id=str(existing.id))
         return existing
 

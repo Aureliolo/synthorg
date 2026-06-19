@@ -9,6 +9,7 @@ from synthorg.communication.config import CircuitBreakerConfig
 from synthorg.communication.loop_prevention._pair_key import pair_key
 from synthorg.communication.loop_prevention.models import GuardCheckOutcome
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.pagination import collect_all
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.delegation import (
     DELEGATION_LOOP_CIRCUIT_BACKOFF,
@@ -16,7 +17,6 @@ from synthorg.observability.events.delegation import (
     DELEGATION_LOOP_CIRCUIT_PERSIST_FAILED,
     DELEGATION_LOOP_CIRCUIT_RESET,
 )
-from synthorg.persistence._shared import collect_all
 from synthorg.persistence.circuit_breaker_protocol import (
     CircuitBreakerStateRecord,
     CircuitBreakerStateRepository,

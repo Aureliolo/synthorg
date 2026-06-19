@@ -4,6 +4,7 @@ from typing import Final
 
 CONFIG_DISCOVERY_STARTED: Final[str] = "config.discovery.started"
 CONFIG_DISCOVERY_FOUND: Final[str] = "config.discovery.found"
+CONFIG_DISCOVERY_NOT_FOUND: Final[str] = "config.discovery.not_found"
 CONFIG_LOADED: Final[str] = "config.load.success"
 CONFIG_OVERRIDE_APPLIED: Final[str] = "config.override.applied"
 CONFIG_ENV_VAR_RESOLVED: Final[str] = "config.env_var.resolved"

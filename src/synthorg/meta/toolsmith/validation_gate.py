@@ -232,6 +232,11 @@ class BenchmarkToolValidationGate:
         if validation_cfg.require_golden_delta and brief_passed:
             if self._scorecard_provider is None:
                 msg = "require_golden_delta is set but no scorecard provider is wired"
+                logger.warning(
+                    TOOLSMITH_VALIDATION_FAILED,
+                    reason="scorecard_provider_not_wired",
+                    error_type=ToolValidationConfigError.__name__,
+                )
                 raise ToolValidationConfigError(msg)
             baseline, candidate = await self._scorecard_provider.score(blueprint)
         margin = candidate - baseline

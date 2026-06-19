@@ -82,6 +82,18 @@ def _resolve_binary(name: str) -> str:
     return resolved
 
 
+#: Environment keys passed through to a local-only pg tool (no DB
+#: connection). Restricted to PATH + locale so a subprocess that never
+#: talks to a database does not inherit the parent's full environment
+#: (which may carry unrelated secrets).
+_LOCAL_PASSTHROUGH_ENV_KEYS: Final[tuple[str, ...]] = (
+    "PATH",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+)
+
+
 def _child_env(config: PostgresConfig) -> dict[str, str]:
     """Return a child-process env with ``PGPASSWORD`` injected.
 
@@ -95,6 +107,23 @@ def _child_env(config: PostgresConfig) -> dict[str, str]:
     env = os.environ.copy()
     env["PGPASSWORD"] = config.password.get_secret_value()
     return env
+
+
+def _minimal_local_env() -> dict[str, str]:
+    """Return a minimal env for a local-only pg tool (no DB connection).
+
+    Passes through only PATH + locale (:data:`_LOCAL_PASSTHROUGH_ENV_KEYS`)
+    rather than the parent's full environment, so a subprocess that does
+    not connect to a database cannot inherit unrelated secrets.
+
+    Returns:
+        Mapping of the present passthrough keys to their values.
+    """
+    return {
+        key: value
+        for key, value in os.environ.items()
+        if key in _LOCAL_PASSTHROUGH_ENV_KEYS
+    }
 
 
 async def _terminate_proc(proc: asyncio.subprocess.Process) -> None:
@@ -415,7 +444,7 @@ async def pg_restore_list(
     stdout, _stderr = await _run_pg_tool(
         binary,
         ["--list", str(source_path)],
-        env=os.environ.copy(),
+        env=_minimal_local_env(),
         timeout_seconds=timeout_seconds,
     )
     # ``pg_restore --list`` emits one TOC entry per line; comments start

@@ -13,7 +13,10 @@ from synthorg.client.models import (
 )
 from synthorg.core.task_enums import Complexity, Priority, TaskType
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.client import CLIENT_REQUIREMENT_GENERATED
+from synthorg.observability.events.client import (
+    CLIENT_DATASET_NOT_FOUND,
+    CLIENT_REQUIREMENT_GENERATED,
+)
 
 logger = get_logger(__name__)
 
@@ -48,7 +51,11 @@ class DatasetGenerator:
         path = Path(dataset_path)
         if not path.exists():
             msg = f"Dataset file not found: {path}"
-            logger.warning(msg, path=str(path))
+            logger.warning(
+                CLIENT_DATASET_NOT_FOUND,
+                path=str(path),
+                error_type=FileNotFoundError.__name__,
+            )
             raise FileNotFoundError(msg)
         suffix = path.suffix.lower()
         if suffix == ".csv":

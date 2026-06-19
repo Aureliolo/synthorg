@@ -42,6 +42,7 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_CONTAINER_TRACK_FAILED,
     SANDBOX_CONTAINER_UNTRACK_FAILED,
     SANDBOX_ENV_FILTERED,
+    SANDBOX_MEMORY_LIMIT_INVALID,
     SANDBOX_RUNTIME_RESOLVER_ATTACHED,
 )
 from synthorg.persistence.tracked_container_protocol import (
@@ -676,14 +677,34 @@ class DockerSandbox(
         limit_lower = normalize_ascii_lowercase(limit)
         if not limit_lower:
             msg = "Memory limit must not be empty"
+            logger.warning(
+                SANDBOX_MEMORY_LIMIT_INVALID,
+                reason="empty",
+                error_type=ValueError.__name__,
+            )
             raise ValueError(msg)
         multipliers = {"k": 1024, "m": 1024**2, "g": 1024**3}
-        if limit_lower[-1] in multipliers:
-            result = int(limit_lower[:-1]) * multipliers[limit_lower[-1]]
-        else:
-            result = int(limit_lower)
+        try:
+            if limit_lower[-1] in multipliers:
+                result = int(limit_lower[:-1]) * multipliers[limit_lower[-1]]
+            else:
+                result = int(limit_lower)
+        except ValueError as exc:
+            logger.warning(
+                SANDBOX_MEMORY_LIMIT_INVALID,
+                reason="invalid_format",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = f"Memory limit format is invalid: {limit!r}"
+            raise ValueError(msg) from exc
         if result <= 0:
             msg = f"Memory limit must be positive, got: {limit!r}"
+            logger.warning(
+                SANDBOX_MEMORY_LIMIT_INVALID,
+                reason="non_positive",
+                error_type=ValueError.__name__,
+            )
             raise ValueError(msg)
         return result
 

@@ -22,6 +22,12 @@ from synthorg.core.codebase_structure_map import (
 )
 from synthorg.engine.brownfield.scanner._common import read_text_if_present
 from synthorg.engine.brownfield.scanner.protocol import EcosystemScan
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.brownfield import (
+    BROWNFIELD_MANIFEST_PARSE_FAILED,
+)
+
+logger = get_logger(__name__)
 
 _DEP_TABLES: Final[tuple[tuple[str, DependencyScope], ...]] = (
     ("dependencies", DependencyScope.RUNTIME),
@@ -77,7 +83,14 @@ class RustScanner:
             return {}
         try:
             return tomllib.loads(text)
-        except tomllib.TOMLDecodeError:
+        except tomllib.TOMLDecodeError as exc:
+            logger.warning(
+                BROWNFIELD_MANIFEST_PARSE_FAILED,
+                ecosystem="rust",
+                manifest="Cargo.toml",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             return {}
 
     def _modules(

@@ -11,9 +11,6 @@ from synthorg.ontology.drift.passive import PassiveMonitorStrategy
 from synthorg.ontology.drift.protocol import DriftDetectionStrategy
 from synthorg.ontology.drift.service import DriftDetectionService
 from synthorg.persistence.ontology_protocol import OntologyDriftReportRepository
-from synthorg.persistence.sqlite.ontology_drift_repo import (
-    SQLiteOntologyDriftReportRepository,
-)
 
 __all__ = [
     "ActiveValidatorStrategy",
@@ -23,5 +20,4 @@ __all__ = [
     "NoDriftDetection",
     "OntologyDriftReportRepository",
     "PassiveMonitorStrategy",
-    "SQLiteOntologyDriftReportRepository",
 ]

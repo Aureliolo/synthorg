@@ -50,19 +50,21 @@ async def listening_port() -> AsyncIterator[int]:
 
 @pytest.fixture
 def refused_port() -> Iterator[int]:
-    """An ephemeral loopback port bound but never listening.
+    """An ephemeral loopback port that deterministically refuses connects.
 
-    Holding the socket bound (without ``listen``) for the test's whole
-    duration keeps the port claimed so no concurrent xdist worker can
-    rebind and start listening on it, while connects are refused
-    immediately (no accept queue exists). Closing the port instead would
-    free it for reuse and flake the probe to HEALTHY.
+    Binds a socket to port 0 (OS-assigned free port) but never calls
+    ``listen``: a connect to a bound-without-listen socket is refused
+    (no accept queue). The socket is held open for the test's lifetime
+    so a concurrent ephemeral-port allocation on another xdist worker
+    cannot recycle the number and turn the probe HEALTHY -- the
+    free-then-connect race a closed-server fixture would leave open.
+    Avoids the environment-dependent assumption that a hardcoded port
+    (e.g. 1) is always closed.
     """
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.bind(("127.0.0.1", 0))
-    port = int(sock.getsockname()[1])
     try:
-        yield port
+        sock.bind(("127.0.0.1", 0))
+        yield sock.getsockname()[1]
     finally:
         sock.close()
 

@@ -370,9 +370,11 @@ class TaskEngineNotRunningError(TaskEngineError):
     """Raised when a mutation is submitted to a stopped task engine."""
 
     status_code: ClassVar[int] = 503
-    error_code: ClassVar[ErrorCode] = ErrorCode.SERVICE_UNAVAILABLE
+    error_code: ClassVar[ErrorCode] = ErrorCode.TASK_ENGINE_NOT_RUNNING
     error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
     retryable: ClassVar[bool] = True
+    # Sanitized default: a 503 must not leak internal engine state to the
+    # client; the machine-branchable distinction is carried by error_code.
     default_message: ClassVar[str] = "Service temporarily unavailable"
 
 
@@ -380,9 +382,11 @@ class TaskEngineQueueFullError(TaskEngineError):
     """Raised when the task engine queue is at capacity."""
 
     status_code: ClassVar[int] = 503
-    error_code: ClassVar[ErrorCode] = ErrorCode.SERVICE_UNAVAILABLE
+    error_code: ClassVar[ErrorCode] = ErrorCode.TASK_ENGINE_QUEUE_FULL
     error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
     retryable: ClassVar[bool] = True
+    # Sanitized default: a 503 must not leak internal queue state to the
+    # client; the machine-branchable distinction is carried by error_code.
     default_message: ClassVar[str] = "Service temporarily unavailable"
 
 

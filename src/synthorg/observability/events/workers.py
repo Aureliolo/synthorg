@@ -98,6 +98,24 @@ WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED: Final[str] = (
 WORKERS_TASK_QUEUE_CLAIM_PARSE_FAILED: Final[str] = (
     "workers.task_queue.claim_parse_failed"
 )
+WORKERS_TASK_QUEUE_STREAM_SETUP_FAILED: Final[str] = (
+    "workers.task_queue.stream_setup_failed"
+)
+WORKERS_TASK_QUEUE_CONSUMER_SETUP_FAILED: Final[str] = (
+    "workers.task_queue.consumer_setup_failed"
+)
+WORKERS_TASK_QUEUE_DEAD_CONSUMER_SETUP_FAILED: Final[str] = (
+    "workers.task_queue.dead_consumer_setup_failed"
+)
+
+# Lifecycle start-rejected guards (start() called while already running)
+WORKERS_WORKER_START_REJECTED: Final[str] = "workers.worker.start_rejected"
+WORKERS_SEEN_CLAIMS_PRUNER_START_REJECTED: Final[str] = (
+    "workers.seen_claims_pruner.start_rejected"
+)
+WORKERS_DEAD_LETTER_CONSUMER_START_REJECTED: Final[str] = (
+    "workers.dead_letter_consumer.start_rejected"
+)
 
 # Main entry point
 WORKERS_MAIN_INVALID_WORKER_COUNT: Final[str] = "workers.main.invalid_worker_count"

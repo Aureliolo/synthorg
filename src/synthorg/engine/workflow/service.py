@@ -16,6 +16,7 @@ from synthorg.core.domain_errors import (
     VersionConflictError,
 )
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+from synthorg.core.pagination import DEFAULT_LIST_LIMIT
 from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import WorkflowDefinition
@@ -35,7 +36,6 @@ from synthorg.observability.events.workflow_definition import (
 from synthorg.observability.events.workflow_version import (
     WORKFLOW_VERSION_SNAPSHOT_FAILED,
 )
-from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 from synthorg.persistence.version_protocol import VersionRepository
 from synthorg.versioning.service import VersioningService
 

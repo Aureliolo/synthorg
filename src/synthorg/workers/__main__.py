@@ -40,10 +40,11 @@ from synthorg.observability.events.workers import (
 from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace, SettingSource
 from synthorg.settings.mirrors import parse_float, parse_int
+from synthorg.workers._pool import run_worker_pool
 from synthorg.workers.claim import JetStreamTaskQueue, TaskClaim, TaskClaimStatus
 from synthorg.workers.config import QueueConfig
 from synthorg.workers.executor import TaskExecutionExecutor
-from synthorg.workers.worker import TaskExecutor, run_worker_pool
+from synthorg.workers.worker import TaskExecutor
 
 logger = get_logger(__name__)
 

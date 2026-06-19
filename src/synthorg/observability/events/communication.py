@@ -6,6 +6,7 @@ from typing import Final
 COMM_BUS_STARTED: Final[str] = "communication.bus.started"
 COMM_BUS_STOPPED: Final[str] = "communication.bus.stopped"
 COMM_BUS_ALREADY_RUNNING: Final[str] = "communication.bus.already_running"
+COMM_BUS_START_REJECTED: Final[str] = "communication.bus.start_rejected"
 COMM_BUS_NOT_RUNNING: Final[str] = "communication.bus.not_running"
 COMM_BUS_HEALTH_CHECK_FAILED: Final[str] = "communication.bus.health_check_failed"
 
@@ -133,14 +134,16 @@ COMMUNICATION_MEETING_CREATED: Final[str] = "communication.meeting.created"
 COMMUNICATION_MEETING_UPDATED: Final[str] = "communication.meeting.updated"
 COMMUNICATION_MEETING_DELETED: Final[str] = "communication.meeting.deleted"
 COMMUNICATION_MEETING_DELETE_FAILED: Final[str] = "communication.meeting.delete_failed"
-COMMUNICATION_CONNECTION_CREATED: Final[str] = "communication.connection.created"
-COMMUNICATION_CONNECTION_DELETED: Final[str] = "communication.connection.deleted"
+COMMUNICATION_MEETING_CAPABILITY_UNSUPPORTED: Final[str] = (
+    "communication.meeting.capability_unsupported"
+)
 COMMUNICATION_CONNECTION_HEALTH_CHECKED: Final[str] = (
     "communication.connection.health_checked"
 )
 COMMUNICATION_WEBHOOK_CREATED: Final[str] = "communication.webhook.created"
 COMMUNICATION_WEBHOOK_UPDATED: Final[str] = "communication.webhook.updated"
 COMMUNICATION_WEBHOOK_DELETED: Final[str] = "communication.webhook.deleted"
+COMMUNICATION_WEBHOOK_LIST_INVALID: Final[str] = "communication.webhook.list_invalid"
 COMMUNICATION_TUNNEL_CONNECTED: Final[str] = "communication.tunnel.connected"
 COMMUNICATION_TUNNEL_STATUS_CHECKED: Final[str] = "communication.tunnel.status_checked"
 COMMUNICATION_TUNNEL_PROVIDER_ERROR: Final[str] = "communication.tunnel.provider_error"

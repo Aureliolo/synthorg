@@ -1,20 +1,19 @@
 """Budget domain MCP handlers.
 
 Shims the 5 budget tools onto ``cost_tracker_of(app_state)`` and
-``config_resolver_of(app_state)``.  Version-history reads route through a
+``config_resolver_of(app_state)``.  Version-history reads route through the
+bootstrap-wired
 :class:`~synthorg.budget.version_service.BudgetConfigVersionsService`
-facade obtained via :func:`_versions_service` (which prefers
-``app_state.budget_versions_service`` when bootstrap has wired one and
-falls back to per-call construction for compatibility with legacy
-app_states).  All budget tools are reads; none are destructive.
+resolved by ``budget_versions_service_of`` (which 503s when the service is
+absent, so the handler layer never reaches into ``persistence.*``
+directly).  All budget tools are reads; none are destructive.
 """
 
 from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
-from synthorg.budget.state import cost_tracker_of
-from synthorg.budget.version_service import BudgetConfigVersionsService
+from synthorg.budget.state import budget_versions_service_of, cost_tracker_of
 from synthorg.core.agent import (
     AgentIdentity,
 )
@@ -43,37 +42,12 @@ from synthorg.meta.mcp.handlers.common_logging import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
-from synthorg.persistence.state import persistence_of
 from synthorg.settings.state import config_resolver_of
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
-
-
-def _versions_service(app_state: AppState) -> BudgetConfigVersionsService:
-    """Return the budget-versions service facade.
-
-    Prefers ``app_state.budget_versions_service`` when bootstrap has
-    wired one (keeps the handler off ``persistence.*``).  Falls back to
-    per-call construction from the persistence primitive for app_states
-    that have not adopted the cached-service pattern yet, mirroring the
-    :func:`synthorg.meta.mcp.handlers.memory._service` pattern.
-
-    Returns:
-        ``BudgetConfigVersionsService`` instance.
-    """
-    cached: BudgetConfigVersionsService | None = getattr(
-        app_state,
-        "budget_versions_service",
-        None,
-    )
-    if cached is not None:
-        return cached
-    return BudgetConfigVersionsService(
-        version_repo=persistence_of(app_state).budget_config_versions,
-    )
 
 
 class _NotFoundError(
@@ -197,7 +171,7 @@ async def _budget_versions_list(
         return err(exc)
 
     try:
-        versions, total = await _versions_service(app_state).list_versions(
+        versions, total = await budget_versions_service_of(app_state).list_versions(
             limit=limit,
             offset=offset,
         )
@@ -234,7 +208,7 @@ async def _budget_versions_get(
         return err(exc)
 
     try:
-        snapshot = await _versions_service(app_state).get_version(version_num)
+        snapshot = await budget_versions_service_of(app_state).get_version(version_num)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)

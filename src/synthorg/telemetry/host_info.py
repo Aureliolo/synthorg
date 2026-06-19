@@ -296,20 +296,18 @@ async def _probe_daemon_info(aiodocker_mod: object) -> object | None:
     a wedged-but-reachable daemon would otherwise stall startup for
     up to five minutes.
     """
+    # Construct the client INSIDE the timeout + ``async with client`` so
+    # its aiohttp session lifecycle is strictly bounded by the context
+    # manager: a timeout, daemon error, or construction failure all exit
+    # through ``Docker.__aexit__`` (close), so no socket can leak on any
+    # path. The construction stays inside the guarded block (rather than
+    # in a separate pre-``async with`` statement) so a failure there is
+    # caught here too.
     try:
-        client = aiodocker_mod.Docker()  # type: ignore[attr-defined]
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        logger.warning(
-            TELEMETRY_REPORT_FAILED,
-            detail="docker_info_client_construction",
-            error_type=type(exc).__name__,
-        )
-        return None
-
-    try:
-        async with asyncio.timeout(_DOCKER_INFO_TIMEOUT_SECONDS), client:
-            info = await client.system.info()
+        async with asyncio.timeout(_DOCKER_INFO_TIMEOUT_SECONDS):
+            client = aiodocker_mod.Docker()  # type: ignore[attr-defined]
+            async with client:
+                info = await client.system.info()
     except TimeoutError as exc:
         logger.warning(
             TELEMETRY_REPORT_FAILED,

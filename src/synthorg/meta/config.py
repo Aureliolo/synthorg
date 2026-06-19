@@ -18,7 +18,7 @@ from synthorg.meta.telemetry.config import CrossDeploymentAnalyticsConfig
 from synthorg.meta.toolsmith.config import ToolsmithConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import META_SELF_IMPROVEMENT_LOAD_FAILED
-from synthorg.settings.service import SettingsService
+from synthorg.settings.service_protocol import SettingsServiceProtocol
 
 logger = get_logger(__name__)
 
@@ -376,7 +376,7 @@ class SelfImprovementConfig(BaseModel):
 
 
 async def load_self_improvement_config(
-    settings_service: SettingsService | None,
+    settings_service: SettingsServiceProtocol | None,
 ) -> SelfImprovementConfig:
     """Load ``SelfImprovementConfig`` from settings with safe-default fallback.
 

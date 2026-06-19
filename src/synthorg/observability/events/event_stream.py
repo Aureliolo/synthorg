@@ -15,6 +15,7 @@ EVENT_STREAM_INVALID_RESUME_PAYLOAD: Final[str] = (
     "event_stream.interrupt.invalid_resume_payload"
 )
 EVENT_STREAM_HUB_STARTED: Final[str] = "event_stream.hub.started"
+EVENT_STREAM_HUB_START_REJECTED: Final[str] = "event_stream.hub.start_rejected"
 EVENT_STREAM_HUB_STOPPED: Final[str] = "event_stream.hub.stopped"
 EVENT_STREAM_HUB_STOP_TIMEOUT: Final[str] = "event_stream.hub.stop_timeout"
 EVENT_STREAM_HUB_PUBLISH_FAILED: Final[str] = "event_stream.hub.publish_failed"

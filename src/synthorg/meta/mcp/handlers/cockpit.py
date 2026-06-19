@@ -45,6 +45,7 @@ from synthorg.meta.mcp.handlers.common_args import (
     require_actor_id,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
+    log_handler_admin_op_executed,
     log_handler_argument_invalid,
     log_handler_guardrail_violated,
     log_handler_invoke_failed,
@@ -166,17 +167,23 @@ async def _intervene_pause(
 ) -> str:
     """Return intervene pause."""
     try:
-        reason, _actor = require_admin_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         pause_args = typed_args(arguments, InterveneArgs)
         task, _from = await task_engine_of(app_state).transition_task(
             pause_args.task_id,
             TaskStatus.INTERRUPTED,
-            requested_by=require_actor_id(actor),
+            requested_by=require_actor_id(resolved_actor),
             reason=reason,
         )
         logger.info(
             MCP_HANDLER_INVOKE_SUCCESS,
             tool_name="synthorg_cockpit_intervene_pause",
+        )
+        log_handler_admin_op_executed(
+            "synthorg_cockpit_intervene_pause",
+            reason=reason,
+            actor=resolved_actor,
+            target_id=str(pause_args.task_id),
         )
         return ok(task.model_dump(mode="json"))
     except GuardrailViolationError as exc:
@@ -199,16 +206,22 @@ async def _intervene_kill(
 ) -> str:
     """Return intervene kill."""
     try:
-        reason, _actor = require_admin_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         kill_args = typed_args(arguments, InterveneArgs)
         task, _prior = await task_engine_of(app_state).cancel_task(
             kill_args.task_id,
-            requested_by=require_actor_id(actor),
+            requested_by=require_actor_id(resolved_actor),
             reason=reason,
         )
         logger.info(
             MCP_HANDLER_INVOKE_SUCCESS,
             tool_name="synthorg_cockpit_intervene_kill",
+        )
+        log_handler_admin_op_executed(
+            "synthorg_cockpit_intervene_kill",
+            reason=reason,
+            actor=resolved_actor,
+            target_id=str(kill_args.task_id),
         )
         return ok(task.model_dump(mode="json"))
     except GuardrailViolationError as exc:
@@ -236,7 +249,7 @@ async def _steer(
     """  # noqa: DOC501 -- ArgumentValidationError raised + caught in-handler
     tool_name = "synthorg_cockpit_steer"
     try:
-        require_admin_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         steer_args = typed_args(arguments, SteerArgs)
         # The args model validates ``kind`` to the full ``InterventionKind``
         # enum; the steering surface only accepts the steerable subset, so
@@ -250,13 +263,19 @@ async def _steer(
             project_id=steer_args.project_id,
             kind=steer_args.kind,
             text=steer_args.text,
-            author=NotBlankStr(require_actor_id(actor)),
+            author=NotBlankStr(require_actor_id(resolved_actor)),
             narrow_task_ids=steer_args.narrow_task_ids,
             narrow_agent_ids=steer_args.narrow_agent_ids,
             supersede_task_ids=steer_args.supersede_task_ids,
             supersede_mode=steer_args.supersede_mode,
         )
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool_name)
+        log_handler_admin_op_executed(
+            tool_name,
+            reason=reason,
+            actor=resolved_actor,
+            target_id=str(result.directive_id),
+        )
         return ok(result.model_dump(mode="json"))
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool_name, exc)
@@ -283,7 +302,7 @@ async def _steer_supersede(
     """  # noqa: DOC501 -- ArgumentValidationError raised + caught in-handler
     tool_name = "synthorg_cockpit_steer_supersede"
     try:
-        require_admin_guardrails(arguments, actor)
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         supersede_args = typed_args(arguments, SteerSupersedeArgs)
         if not supersede_args.task_ids:
             # task_ids is required: an empty set would silently
@@ -296,9 +315,15 @@ async def _steer_supersede(
             project_id=supersede_args.project_id,
             directive_id=supersede_args.directive_id,
             task_ids=supersede_args.task_ids,
-            author=NotBlankStr(require_actor_id(actor)),
+            author=NotBlankStr(require_actor_id(resolved_actor)),
         )
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool_name)
+        log_handler_admin_op_executed(
+            tool_name,
+            reason=reason,
+            actor=resolved_actor,
+            target_id=str(supersede_args.directive_id),
+        )
         return ok(
             {
                 "directive_id": supersede_args.directive_id,

@@ -256,6 +256,71 @@ def build_charter_where(
     return where, params
 
 
+def _cas_update_sql(placeholder: LiteralString) -> LiteralString:
+    """Assemble the conditional-edit UPDATE for one placeholder token.
+
+    Built from the ``CHARTER_COLUMNS`` LiteralString (minus ``id``) so the
+    SET list cannot drift from the upsert column set; the f-string stays
+    ``LiteralString`` because every interpolated part is itself a
+    compile-time constant.
+
+    Returns:
+        The full ``UPDATE ... SET ... WHERE`` statement.
+    """
+    assignments: LiteralString = (
+        f"conversation_id = {placeholder}, created_by = {placeholder}, "
+        f"version = {placeholder}, status = {placeholder}, "
+        f"title = {placeholder}, brief = {placeholder}, "
+        f"goals = {placeholder}, constraints = {placeholder}, "
+        f"success_criteria = {placeholder}, in_scope = {placeholder}, "
+        f"out_of_scope = {placeholder}, envelope_amount = {placeholder}, "
+        f"envelope_currency = {placeholder}, envelope_deadline = {placeholder}, "
+        f"envelope_time_horizon = {placeholder}, project_id = {placeholder}, "
+        f"proposed_project_name = {placeholder}, "
+        f"proposed_project_description = {placeholder}, "
+        f"created_at = {placeholder}, updated_at = {placeholder}, "
+        f"approved_at = {placeholder}, approved_by = {placeholder}, "
+        f"forecast_id = {placeholder}, correlation_id = {placeholder}, "
+        f"task_id = {placeholder}"
+    )
+    return (
+        f"UPDATE project_charters SET {assignments} "  # noqa: S608 -- constants only
+        f"WHERE id = {placeholder} AND version = {placeholder} "
+        f"AND status = {placeholder}"
+    )
+
+
+CHARTER_CAS_UPDATE_SQL_QMARK: LiteralString = _cas_update_sql("?")
+"""Version+DRAFTED-guarded conditional-edit UPDATE (SQLite ``?`` token)."""
+
+CHARTER_CAS_UPDATE_SQL_PCT: LiteralString = _cas_update_sql("%s")
+"""Version+DRAFTED-guarded conditional-edit UPDATE (Postgres ``%s`` token).
+
+A concurrent edit (version moved) or a concurrent approve / cancel
+(status moved) leaves the row unmatched, so the UPDATE affects zero rows
+and the caller surfaces a conflict instead of silently clobbering the
+other writer (lost-update invariant; bespoke under ADR-0001 D7).
+"""
+
+
+def charter_cas_params(
+    entity: ProjectCharter, *, expected_version: int
+) -> tuple[object, ...]:
+    """Positional params for :func:`charter_cas_update_sql`.
+
+    Returns:
+        The SET params (all non-``id`` columns, from ``charter_save_params``)
+        followed by the WHERE params ``(id, expected_version, DRAFTED)``.
+    """
+    set_params = charter_save_params(entity)[1:]
+    return (
+        *set_params,
+        entity.id,
+        int(expected_version),
+        CharterStatus.DRAFTED.value,
+    )
+
+
 def validate_charter_update_keys(updates: dict[str, object]) -> None:
     """Reject unknown ``transition_if`` update keys.
 
@@ -270,9 +335,12 @@ def validate_charter_update_keys(updates: dict[str, object]) -> None:
 
 
 __all__ = [
+    "CHARTER_CAS_UPDATE_SQL_PCT",
+    "CHARTER_CAS_UPDATE_SQL_QMARK",
     "CHARTER_COLUMNS",
     "as_iso",
     "build_charter_where",
+    "charter_cas_params",
     "charter_save_params",
     "row_to_charter",
     "validate_charter_update_keys",

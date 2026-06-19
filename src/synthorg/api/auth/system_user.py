@@ -14,6 +14,7 @@ from synthorg.core.auth.models import User
 from synthorg.core.auth.roles import HumanRole
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_AUTH_SYSTEM_USER_ENSURED
+from synthorg.observability.events.security import SECURITY_USER_CREATED
 
 # Both stay guarded as cold-import cycle-breakers: ``service`` imports this
 # module at runtime (USER_AUDIENCE / USER_ISSUER), and the persistence user
@@ -115,4 +116,12 @@ async def ensure_system_user(
         API_AUTH_SYSTEM_USER_ENSURED,
         action="created",
         user_id=SYSTEM_USER_ID,
+    )
+    # Signed audit-chain record of the boot-time system-user creation
+    # (security.* prefix); the system is its own principal at boot.
+    logger.info(
+        SECURITY_USER_CREATED,
+        user_id=SYSTEM_USER_ID,
+        role=HumanRole.SYSTEM.value,
+        principal=SYSTEM_USER_ID,
     )

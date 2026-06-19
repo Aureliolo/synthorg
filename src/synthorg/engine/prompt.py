@@ -38,8 +38,11 @@ from synthorg.engine.prompt_render import render_with_trimming
 from synthorg.engine.prompt_result import (
     SystemPrompt,
     append_async_task_section,
+    append_untrusted_content_directive,
     log_and_return,
+    untrusted_content_directive_token_cost,
 )
+from synthorg.engine.prompt_safety import TAG_CONFIG_VALUE, TAG_TASK_DATA
 from synthorg.engine.prompt_validation import (
     resolve_template,
     validate_max_tokens,
@@ -193,9 +196,29 @@ def build_system_prompt(  # noqa: PLR0913
         model_tier=model_tier,
     )
 
+    # The untrusted-content directive is appended after trimming (so it
+    # survives) but still counts toward the real token budget, so
+    # reserve its upper-bound cost before trimming. The maximal tag set
+    # is derived from the inputs; trimming only removes sections, so the
+    # directive actually appended (derived from surviving sections) is a
+    # subset whose cost never exceeds the reservation.
+    has_async_tasks = async_task_state is not None and bool(async_task_state.records)
+    max_directive_tags: tuple[str, ...] = (
+        *((TAG_TASK_DATA,) if task is not None or has_async_tasks else ()),
+        *((TAG_CONFIG_VALUE,) if org_policies else ()),
+    )
+
     try:
         estimator = token_estimator or DefaultTokenEstimator()
         template_str = resolve_template(custom_template)
+
+        directive_reserve = untrusted_content_directive_token_cost(
+            max_directive_tags,
+            estimator,
+        )
+        trim_budget = (
+            max(max_tokens - directive_reserve, 1) if max_tokens is not None else None
+        )
 
         result = render_with_trimming(
             template_str=template_str,
@@ -206,7 +229,7 @@ def build_system_prompt(  # noqa: PLR0913
             l1_summaries=l1_summaries,
             company=company,
             org_policies=org_policies,
-            max_tokens=max_tokens,
+            max_tokens=trim_budget,
             estimator=estimator,
             effective_autonomy=effective_autonomy,
             context_budget_indicator=context_budget_indicator,
@@ -251,6 +274,22 @@ def build_system_prompt(  # noqa: PLR0913
         detail = sanitize_message(str(exc))
         msg = f"Error injecting async task state for agent '{agent.name}': {detail}"
         raise PromptBuildError(msg) from exc
+
+    # Append the untrusted-content directive naming every fence
+    # tag still present in the final content, after trimming so it is
+    # never trimmed away from the content it governs. Tags are derived
+    # from the surviving sections (a section the trimmer dropped no
+    # longer has fences to govern); the async-task section also fences
+    # task-data. Its cost was reserved from the trim budget above.
+    directive_tags: tuple[str, ...] = (
+        *(
+            (TAG_TASK_DATA,)
+            if "task" in result.sections or "async_tasks" in result.sections
+            else ()
+        ),
+        *((TAG_CONFIG_VALUE,) if "org_policies" in result.sections else ()),
+    )
+    result = append_untrusted_content_directive(result, directive_tags, estimator)
 
     return log_and_return(agent, result)
 

@@ -16,6 +16,7 @@ from typing import Final, Protocol, Self, runtime_checkable
 from pydantic import BaseModel, ConfigDict, computed_field, model_validator
 
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.errors import EnvironmentConfigError
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import ENVIRONMENT_IMAGE_BUILD_FAILED
 
@@ -86,6 +87,30 @@ class SubprocessImageBuilder:
     """Builds images by spawning ``docker build`` on the host daemon."""
 
     @staticmethod
+    def _assert_contained(dockerfile: Path, context_dir: Path) -> None:
+        """Reject a Dockerfile that escapes the build context.
+
+        ``docker build`` requires the Dockerfile to live inside the
+        build context, and a caller-supplied path that resolves (through
+        symlinks) outside ``context_dir`` would let an attacker spawn a
+        build reading arbitrary host files. Both paths are fully
+        resolved before the containment check so a symlink cannot slip
+        the Dockerfile out of the context after validation.
+
+        Raises:
+            EnvironmentConfigError: When ``dockerfile`` does not resolve
+                to a path inside ``context_dir`` (422).
+        """
+        resolved_context = context_dir.resolve()
+        resolved_dockerfile = dockerfile.resolve()
+        if not resolved_dockerfile.is_relative_to(resolved_context):
+            msg = (
+                f"Dockerfile {resolved_dockerfile} is outside the build "
+                f"context {resolved_context}"
+            )
+            raise EnvironmentConfigError(msg)
+
+    @staticmethod
     async def _kill_and_reap(proc: asyncio.subprocess.Process) -> None:
         """Kill *proc* and reap it, shielding the wait from cancellation.
 
@@ -114,10 +139,13 @@ class SubprocessImageBuilder:
             combined log, and ``timed_out`` flag.
 
         Raises:
+            EnvironmentConfigError: When ``dockerfile`` resolves outside
+                ``context_dir`` (path-containment guard, before spawn).
             CancelledError: Propagated after the subprocess is
                 killed and reaped (the kill-and-reap pair runs under
                 ``asyncio.shield`` to avoid leaking a zombie).
         """
+        self._assert_contained(dockerfile, context_dir)
         proc = await asyncio.create_subprocess_exec(
             _DOCKER,
             "build",

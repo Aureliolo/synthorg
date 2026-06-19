@@ -34,7 +34,9 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_AUTH_FAILED,
     SECURITY_AUTH_SETUP_COMPLETE,
+    SECURITY_AUTH_TOKEN_ISSUED,
     SECURITY_SESSION_LIMIT_ENFORCED,
+    SECURITY_USER_CREATED,
 )
 from synthorg.persistence.state import persistence_of
 
@@ -137,6 +139,15 @@ class AuthBootstrapController(Controller):
                 msg = "Setup already completed"
                 raise ConflictError(msg) from conflict
 
+        # Signed audit-chain record of first-CEO creation (the new CEO is
+        # their own principal at bootstrap), emitted after the write wins.
+        logger.info(
+            SECURITY_USER_CREATED,
+            user_id=user.id,
+            role=user.role.value,
+            principal=user.id,
+        )
+
         token, expires_in, session_id = auth_service.create_token(user)
 
         await create_session_record(
@@ -161,6 +172,25 @@ class AuthBootstrapController(Controller):
                     max_sessions=auth_config.max_concurrent_sessions,
                 )
 
+        session_cookies = await make_session_cookies(
+            token,
+            expires_in,
+            auth_config,
+            app_state=app_state,
+            session_id=session_id,
+            user_id=user.id,
+        )
+
+        # Signed audit-chain record of the credential exchange that
+        # completes bootstrap (the issued session token). Emitted only
+        # after the session record and cookies are successfully created
+        # so a failed bootstrap never records a token issuance.
+        logger.info(
+            SECURITY_AUTH_TOKEN_ISSUED,
+            user_id=user.id,
+            session_id=session_id,
+            principal=user.id,
+        )
         logger.info(
             SECURITY_AUTH_SETUP_COMPLETE,
             user_id=user.id,
@@ -175,12 +205,5 @@ class AuthBootstrapController(Controller):
                 ),
             ),
             status_code=201,
-            cookies=await make_session_cookies(
-                token,
-                expires_in,
-                auth_config,
-                app_state=app_state,
-                session_id=session_id,
-                user_id=user.id,
-            ),
+            cookies=session_cookies,
         )

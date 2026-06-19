@@ -43,6 +43,13 @@ class MetricsController(Controller):
         app_state: AppState = state.app_state
 
         collector = app_state.slice(ObservabilityStateSlice).prometheus_collector
+        # Intentional RFC 9457 bypass: the /metrics endpoint speaks the
+        # Prometheus text exposition format, not the JSON problem-detail
+        # envelope every other controller raises DomainError into. A
+        # scraper expects a text/plain body (commented "# ..." lines) and
+        # a bare status code, so the unwired-collector (503) and
+        # scrape-failure (500) paths return a plain-text Response here
+        # rather than raising ServiceUnavailableError/InternalError.
         if collector is None:
             logger.warning(METRICS_SCRAPE_FAILED, reason="collector not configured")
             return Response(

@@ -37,6 +37,7 @@ from synthorg.observability.events.external_api import (
     EXTERNAL_API_APPROVAL_REQUIRED,
     EXTERNAL_API_CALL_STARTED,
     EXTERNAL_API_CALL_SUCCEEDED,
+    EXTERNAL_API_CONNECTION_NOT_FOUND,
     EXTERNAL_API_EGRESS_BLOCKED,
     EXTERNAL_API_RATE_LIMITED,
     EXTERNAL_API_RISK_CLASSIFY_FAILED,
@@ -161,6 +162,11 @@ class ExternalApiTool(BaseTool):
         conn = await self._catalog.get(args.connection)
         if conn is None:
             msg = f"Connection {args.connection!r} not found"
+            logger.warning(
+                EXTERNAL_API_CONNECTION_NOT_FOUND,
+                connection=args.connection,
+                error_type=ExternalApiConnectionNotFoundError.__name__,
+            )
             raise ExternalApiConnectionNotFoundError(msg)
 
         resolved_url = self._resolve_url(conn, args)

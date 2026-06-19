@@ -22,11 +22,14 @@ from datetime import UTC, datetime
 
 from pydantic import JsonValue
 
+from synthorg.core.domain_errors import ConflictError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
     PROVIDER_PRESET_OVERRIDE_DELETED,
+    PROVIDER_PRESET_OVERRIDE_UPDATE_CONFLICT,
     PROVIDER_PRESET_OVERRIDE_UPDATED,
+    PROVIDER_VALIDATION_FAILED,
 )
 from synthorg.persistence.preset_override_protocol import PresetOverrideRepo
 from synthorg.providers.errors import ProviderValidationError
@@ -100,10 +103,18 @@ class PresetOverrideService:
             ProviderValidationError: When the preset name is unknown
                 or the override shape conflicts with the preset's
                 kind (cloud vs local).
+            ConflictError: When a concurrent operator patched the same
+                preset between this call's read and write.
         """
         preset = get_preset(preset_name)
         if preset is None:
             msg = f"Unknown preset {preset_name!r}; cannot author override"
+            logger.warning(
+                PROVIDER_VALIDATION_FAILED,
+                preset_name=preset_name,
+                reason="unknown_preset",
+                error_type=ProviderValidationError.__name__,
+            )
             raise ProviderValidationError(msg)
 
         existing = await self._repo.get(preset_name)
@@ -112,7 +123,28 @@ class PresetOverrideService:
         merged = self._build_merged(preset_name, existing, updates, actor)
         self._validate_against_preset(preset, merged)
 
-        await self._repo.save(merged)
+        # Optimistic-concurrency conditional write: the read above and
+        # the write are separated by awaits, so two concurrent operators
+        # patching the same preset could otherwise lose one update. The
+        # repo guards on the row still carrying the ``updated_at`` we
+        # read (or no row, when we read none); a lost race surfaces a
+        # typed conflict the caller can retry rather than silently
+        # clobbering the winner (Slot 39 CAS).
+        written = await self._repo.save_if_unchanged(
+            merged,
+            expected_updated_at=existing.updated_at if existing is not None else None,
+        )
+        if not written:
+            msg = (
+                f"Preset override {preset_name!r} was modified concurrently;"
+                f" re-read and retry the patch"
+            )
+            logger.warning(
+                PROVIDER_PRESET_OVERRIDE_UPDATE_CONFLICT,
+                preset_name=preset_name,
+                error_type=ConflictError.__name__,
+            )
+            raise ConflictError(msg)
         logger.info(
             PROVIDER_PRESET_OVERRIDE_UPDATED,
             preset_name=preset_name,
@@ -212,10 +244,22 @@ class PresetOverrideService:
                 f"Preset {override.preset_name!r} is a cloud preset; "
                 "candidate_urls overrides are illegal"
             )
+            logger.warning(
+                PROVIDER_VALIDATION_FAILED,
+                preset_name=override.preset_name,
+                reason="candidate_urls_on_cloud_preset",
+                error_type=ProviderValidationError.__name__,
+            )
             raise ProviderValidationError(msg)
         if not is_cloud and override.base_url is not None:
             msg = (
                 f"Preset {override.preset_name!r} is a local preset; "
                 "base_url overrides are illegal"
+            )
+            logger.warning(
+                PROVIDER_VALIDATION_FAILED,
+                preset_name=override.preset_name,
+                reason="base_url_on_local_preset",
+                error_type=ProviderValidationError.__name__,
             )
             raise ProviderValidationError(msg)

@@ -215,8 +215,8 @@ class TestSetup:
         ``raise_for_user_constraint`` rather than surfacing the typed
         ``LastCeoConstraintError`` default message.
         """
+        from synthorg.core.constraint_tokens import LAST_CEO_TRIGGER
         from synthorg.core.persistence_errors import ConstraintViolationError
-        from synthorg.persistence.constraint_tokens import LAST_CEO_TRIGGER
 
         app_state = bare_client.app.state["app_state"]
         backend = cast(FakePersistenceBackend, persistence_of(app_state))

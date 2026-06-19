@@ -9,6 +9,7 @@ is the source of truth in production.
 import asyncio
 from typing import Final
 
+from synthorg.core.pagination import validate_pagination_args
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.mcp_catalog.installations import (
     McpInstallation,
@@ -21,7 +22,6 @@ from synthorg.observability.events.integrations import (
 from synthorg.observability.events.persistence.mcp_installation import (
     PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
 )
-from synthorg.persistence._shared.pagination import validate_pagination_args
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 100

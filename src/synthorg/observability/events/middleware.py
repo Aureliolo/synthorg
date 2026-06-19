@@ -27,6 +27,9 @@ MIDDLEWARE_WRAP_MODEL_CALL: str = "middleware.agent.wrap_model_call"
 MIDDLEWARE_WRAP_TOOL_CALL: str = "middleware.agent.wrap_tool_call"
 """Agent middleware ``wrap_tool_call`` hook invoked."""
 
+MIDDLEWARE_TOOL_CALL_INVALID: str = "middleware.tool_call.invalid"
+"""A ToolCallRecord failed its success/error consistency invariant."""
+
 MIDDLEWARE_HOOK_ERROR: str = "middleware.agent.hook_error"
 """An agent middleware hook raised an exception."""
 

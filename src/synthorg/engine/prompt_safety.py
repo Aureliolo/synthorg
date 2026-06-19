@@ -119,6 +119,30 @@ structured project state surfaced as a dedicated retrieval leg, not consolidated
 agent-memory snippets.
 """
 
+
+def _collect_fence_tags() -> frozenset[str]:
+    """Collect every ``TAG_*`` fence-name constant defined in this module.
+
+    Introspects the module namespace so the registry is the single
+    source of truth: a new ``TAG_*`` constant is picked up automatically
+    with no second list to maintain. Downstream consumers (e.g. the
+    injection-detection fence list in ``loop_tool_execution``) assert
+    against this set at import time, so a fence tag can never silently
+    fall out of breakout-detection coverage.
+
+    Returns:
+        The frozenset of all fence-tag string values.
+    """
+    return frozenset(
+        value
+        for name, value in globals().items()
+        if name.startswith("TAG_") and isinstance(value, str)
+    )
+
+
+ALL_FENCE_TAGS: Final[frozenset[str]] = _collect_fence_tags()
+"""Registry of every fence tag declared in this module (auto-derived)."""
+
 _TAG_NAME_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 """Valid tag names: lower-case ASCII, starts with letter, ``[a-z0-9-]``, max 32 chars.
 

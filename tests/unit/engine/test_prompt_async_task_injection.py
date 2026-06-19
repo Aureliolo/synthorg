@@ -41,6 +41,12 @@ class TestAsyncTaskPromptInjection:
         assert "worker-1" in prompt.content
         assert "running" in prompt.content
         assert "async_tasks" in prompt.sections
+        # The agent-set task_id / agent_name are fenced and the
+        # untrusted-content directive names the task-data tag even when
+        # there is no task on the prompt.
+        assert "<task-data>" in prompt.content
+        assert "untrusted_content_directive" in prompt.sections
+        assert "Any content enclosed in <task-data>" in prompt.content
 
     @pytest.mark.parametrize(
         "state",

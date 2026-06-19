@@ -23,7 +23,7 @@ from synthorg.backup.handlers.sqlite_persistence import (
     SQLitePersistenceComponentHandler,
 )
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
-from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.protocol import PersistenceBackend, PersistenceBackendKind
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 
 pytestmark = pytest.mark.integration
@@ -38,12 +38,12 @@ def _build_handler(
     so the conformance test does not depend on either the backend's
     concrete class or its private ``_config`` attribute.
     """
-    if backend.kind == "sqlite":
+    if backend.kind == PersistenceBackendKind.SQLITE:
         sqlite_backend = cast(SQLitePersistenceBackend, backend)
         return SQLitePersistenceComponentHandler(
             db_path=Path(sqlite_backend.config.path),
         )
-    if backend.kind == "postgres":
+    if backend.kind == PersistenceBackendKind.POSTGRES:
         if shutil.which("pg_dump") is None or shutil.which("pg_restore") is None:
             pytest.skip("pg_dump / pg_restore binaries are not available on PATH")
         postgres_backend = cast(PostgresPersistenceBackend, backend)

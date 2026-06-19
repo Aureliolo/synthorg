@@ -7,6 +7,7 @@ raise-ceiling flow against an in-memory repo double.
 """
 
 from datetime import UTC, datetime
+from typing import override
 from uuid import UUID
 
 import pytest
@@ -70,6 +71,27 @@ class _FakeForecastRepo:
         self.rows[str(entity_id)] = existing.model_copy(
             update={"decision": to_state, **updates},
         )
+        return True
+
+    async def raise_ceiling_if_halted(
+        self,
+        entity_id: UUID,
+        *,
+        new_ceiling: float,
+        updated_at: datetime,
+    ) -> bool:
+        existing = self.rows.get(str(entity_id))
+        if existing is None or existing.halt_context is None:
+            return False
+        cleared = existing.model_copy(
+            update={
+                "ceiling_amount": new_ceiling,
+                "halt_context": None,
+                "updated_at": updated_at,
+            },
+        )
+        self.rows[str(entity_id)] = cleared
+        self.saved.append(cleared)
         return True
 
     async def query(
@@ -224,6 +246,40 @@ async def test_raise_ceiling_not_halted_raises_conflict() -> None:
             new_ceiling=3.0,
             accumulated_cost=1.5,
         )
+
+
+class _LostRaceForecastRepo(_FakeForecastRepo):
+    """Halted at read time, but the conditional clear-halt write loses.
+
+    Models the TOCTOU window the CAS guards: the ``get`` in the service
+    sees a still-halted row (so the pre-check passes), but a concurrent
+    resume clears the halt before ``raise_ceiling_if_halted`` runs, so the
+    conditional write affects no rows and returns ``False``.
+    """
+
+    @override
+    async def raise_ceiling_if_halted(
+        self,
+        entity_id: UUID,
+        *,
+        new_ceiling: float,
+        updated_at: datetime,
+    ) -> bool:
+        return False
+
+
+async def test_raise_ceiling_lost_race_raises_conflict() -> None:
+    forecast = _halted_forecast()
+    repo = _LostRaceForecastRepo(forecast)
+    service = _service(repo)
+    with pytest.raises(ConflictError):
+        await service.raise_ceiling(
+            forecast.forecast_id,
+            new_ceiling=3.0,
+            accumulated_cost=1.5,
+        )
+    # The conditional write lost, so nothing was persisted.
+    assert repo.saved == []
 
 
 def test_repo_double_satisfies_protocol() -> None:

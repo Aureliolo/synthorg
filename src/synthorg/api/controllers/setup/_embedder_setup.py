@@ -31,7 +31,7 @@ from synthorg.observability.events.setup import (
 )
 from synthorg.persistence.state import persistence_of
 from synthorg.providers.state import provider_management_of
-from synthorg.settings.service import SettingsService
+from synthorg.settings.service_protocol import SettingsServiceProtocol
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 from synthorg.templates.schema import CompanyTemplate
 
@@ -85,7 +85,7 @@ def _validate_tier_coverage(providers: Mapping[str, object]) -> None:
 async def auto_create_template_agents(
     template: CompanyTemplate,
     app_state: AppState,
-    settings_svc: SettingsService,
+    settings_svc: SettingsServiceProtocol,
 ) -> tuple[SetupAgentSummary, ...]:
     """Expand template agents, match models, persist, and return summaries.
 
@@ -190,7 +190,7 @@ async def collect_model_ids(app_state: AppState) -> tuple[str, ...]:
 
 async def auto_select_embedder(
     *,
-    settings_svc: SettingsService,
+    settings_svc: SettingsServiceProtocol,
     available_model_ids: tuple[str, ...],
     provider_preset_name: str | None = None,
     has_gpu: bool | None = None,

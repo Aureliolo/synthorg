@@ -11,6 +11,11 @@ logger = get_logger(__name__)
 
 _VALID_DIALECTS = frozenset({"postgres", "mysql", "sqlite", "mariadb"})
 
+# Dialects whose connections are file-based and therefore need no
+# network ``host``. Used as the discriminator for the host-required
+# check instead of an inline ``dialect != "sqlite"`` string compare.
+_HOSTLESS_DIALECTS = frozenset({"sqlite"})
+
 
 class DatabaseAuthenticator:
     """Validates database connection credentials.
@@ -63,7 +68,7 @@ class DatabaseAuthenticator:
             raise InvalidConnectionAuthError(msg)
         raw_host = credentials.get("host")
         host = raw_host.strip() if isinstance(raw_host, str) else ""
-        if dialect != "sqlite" and not host:
+        if dialect not in _HOSTLESS_DIALECTS and not host:
             logger.warning(
                 CONNECTION_VALIDATION_FAILED,
                 connection_type=ConnectionType.DATABASE.value,

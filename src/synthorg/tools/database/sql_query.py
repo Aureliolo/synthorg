@@ -15,12 +15,12 @@ prevent filesystem escape regardless of read_only setting.
 
 import asyncio
 import re
-import urllib.parse
+from collections.abc import Sequence
 from typing import ClassVar, Final, cast, override
 
-import aiosqlite
 from pydantic import BaseModel, JsonValue
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.database import (
     DB_QUERY_FAILED,
@@ -28,6 +28,10 @@ from synthorg.observability.events.database import (
     DB_QUERY_SUCCESS,
     DB_QUERY_TIMEOUT,
     DB_WRITE_BLOCKED,
+)
+from synthorg.persistence.external_sql import (
+    ExternalDatabase,
+    execute_external_query,
 )
 from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.base import ToolExecutionResult
@@ -239,7 +243,7 @@ class SqlQueryTool(BaseDatabaseTool):
                 content=(f"Query timed out after {self._config.query_timeout}s"),
                 is_error=True,
             )
-        except aiosqlite.Error as exc:
+        except QueryError as exc:
             logger.warning(
                 DB_QUERY_FAILED,
                 database=self._config.database_path,
@@ -258,85 +262,75 @@ class SqlQueryTool(BaseDatabaseTool):
         keyword: str,
         is_write: bool,  # noqa: FBT001  -- private method
     ) -> ToolExecutionResult:
-        """Execute the query against SQLite (inner coroutine for timeout wrapping).
+        """Execute the query via the external-SQLite adapter.
 
         Returns:
             Result of type ``ToolExecutionResult``.
         """
-        if self._config.read_only:
-            encoded = urllib.parse.quote(str(self._config.database_path))
-            db_uri = f"file:{encoded}?mode=ro"
-            db_conn = aiosqlite.connect(db_uri, uri=True)
-        else:
-            db_conn = aiosqlite.connect(self._config.database_path)
-        async with db_conn as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute(query, parameters)
+        limit = self._config.max_rows
+        result = await execute_external_query(
+            ExternalDatabase(
+                database_path=self._config.database_path,
+                read_only=self._config.read_only,
+            ),
+            query=query,
+            parameters=parameters,
+            is_write=is_write,
+            max_rows=limit,
+        )
 
-            # For write DML that doesn't return rows, commit and
-            # report rowcount.  For row-returning statements (SELECT,
-            # INSERT RETURNING, PRAGMA, WITH SELECT), fetch below.
-            if is_write and not cursor.description:
-                await db.commit()
-                content = f"{keyword} affected {cursor.rowcount} row(s)"
-                logger.info(
-                    DB_QUERY_SUCCESS,
-                    keyword=keyword,
-                    rowcount=cursor.rowcount,
-                )
-                return ToolExecutionResult(
-                    content=content,
-                    metadata={
-                        "keyword": keyword,
-                        "rowcount": cursor.rowcount,
-                    },
-                )
-
-            # Row-returning statement -- fetch bounded rows, then
-            # close the cursor before committing.
-            desc = cursor.description
-            limit = self._config.max_rows
-            rows = list(await cursor.fetchmany(limit + 1))
-            await cursor.close()
-            if is_write:
-                await db.commit()
-            row_truncated = len(rows) > limit
-            if row_truncated:
-                rows = rows[:limit]
-
-            if not rows:
-                logger.info(DB_QUERY_SUCCESS, keyword=keyword, row_count=0)
-                return ToolExecutionResult(
-                    content="Query returned no results.",
-                    metadata={"keyword": keyword, "row_count": 0},
-                )
-
-            columns = [d[0] for d in (desc or [])]
-            columns_meta = cast("list[JsonValue]", columns)
-            content = self._format_results(columns, rows)
-            if row_truncated:
-                content += f"\n\n[Truncated: result exceeded {limit:,} rows]"
+        # For write DML that doesn't return rows, report rowcount.  For
+        # row-returning statements (SELECT, INSERT RETURNING, PRAGMA,
+        # WITH SELECT), format the bounded page below.
+        if not result.returned_rows:
+            content = f"{keyword} affected {result.rowcount} row(s)"
             logger.info(
                 DB_QUERY_SUCCESS,
                 keyword=keyword,
-                row_count=len(rows),
-                column_count=len(columns),
-                truncated=row_truncated,
+                rowcount=result.rowcount,
             )
             return ToolExecutionResult(
                 content=content,
                 metadata={
                     "keyword": keyword,
-                    "row_count": len(rows),
-                    "columns": columns_meta,
-                    "truncated": row_truncated,
+                    "rowcount": result.rowcount,
                 },
             )
+
+        rows = result.rows
+        if not rows:
+            logger.info(DB_QUERY_SUCCESS, keyword=keyword, row_count=0)
+            return ToolExecutionResult(
+                content="Query returned no results.",
+                metadata={"keyword": keyword, "row_count": 0},
+            )
+
+        columns = list(result.columns)
+        columns_meta = cast("list[JsonValue]", columns)
+        content = self._format_results(columns, rows)
+        if result.truncated:
+            content += f"\n\n[Truncated: result exceeded {limit:,} rows]"
+        logger.info(
+            DB_QUERY_SUCCESS,
+            keyword=keyword,
+            row_count=len(rows),
+            column_count=len(columns),
+            truncated=result.truncated,
+        )
+        return ToolExecutionResult(
+            content=content,
+            metadata={
+                "keyword": keyword,
+                "row_count": len(rows),
+                "columns": columns_meta,
+                "truncated": result.truncated,
+            },
+        )
 
     @staticmethod
     def _format_results(
         columns: list[str],
-        rows: list[aiosqlite.Row],
+        rows: Sequence[Sequence[object]],
     ) -> str:
         """Format query results as a table.
 

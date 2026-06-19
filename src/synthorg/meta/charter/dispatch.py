@@ -45,9 +45,11 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.charter import (
+    CHARTER_ALREADY_DECIDED,
     CHARTER_APPROVED,
     CHARTER_DISPATCH_FAILED,
     CHARTER_DISPATCHED,
+    CHARTER_NOT_FOUND,
     CHARTER_PROJECT_ALREADY_EXISTS,
     CHARTER_STATE_INCONSISTENT,
 )
@@ -191,6 +193,11 @@ class CharterDispatcher:
         """
         charter = await self._charter_repo.get(charter_id)
         if charter is None:
+            logger.warning(
+                CHARTER_NOT_FOUND,
+                charter_id=charter_id,
+                error_type=CharterNotFoundError.__name__,
+            )
             raise CharterNotFoundError(charter_id=charter_id)
         # Approve is intentionally NOT ownership-fenced: the REST surface
         # is gated to CEO / Manager / Board Member via require_approval_roles
@@ -199,6 +206,12 @@ class CharterDispatcher:
         # charter (charter authorship is preserved separately on
         # ``created_by`` for audit).
         if charter.status is not CharterStatus.DRAFTED:
+            logger.warning(
+                CHARTER_ALREADY_DECIDED,
+                charter_id=charter_id,
+                status=charter.status.value,
+                error_type=CharterAlreadyDecidedError.__name__,
+            )
             raise CharterAlreadyDecidedError(charter_id=charter_id)
         currency = self._budget_currency()
         self._require_matching_currency(charter, currency)
@@ -260,6 +273,12 @@ class CharterDispatcher:
         """
         if charter.envelope.currency != currency:
             msg = "Charter envelope currency does not match live budget.currency"
+            logger.warning(
+                CHARTER_STATE_INCONSISTENT,
+                charter_id=charter.id,
+                reason="envelope_currency_mismatch",
+                error_type=MixedCurrencyAggregationError.__name__,
+            )
             raise MixedCurrencyAggregationError(
                 msg,
                 currencies=frozenset({charter.envelope.currency, currency}),
@@ -281,6 +300,13 @@ class CharterDispatcher:
         if charter.project_id is not None:
             existing = await self._project_repo.get(charter.project_id)
             if existing is None:
+                logger.warning(
+                    CHARTER_STATE_INCONSISTENT,
+                    charter_id=charter.id,
+                    project_id=charter.project_id,
+                    reason="referenced_project_missing",
+                    error_type=ProjectNotFoundError.__name__,
+                )
                 raise ProjectNotFoundError(project_id=charter.project_id)
             return charter.project_id
         project_uuid = uuid.uuid5(PROJECT_NAMESPACE, f"charter-{charter.id}")
@@ -401,6 +427,12 @@ class CharterDispatcher:
             # A concurrent decider already moved the charter. The run we
             # just drove still happened; surface the no-op rather than
             # claim an approval we did not commit.
+            logger.warning(
+                CHARTER_ALREADY_DECIDED,
+                charter_id=charter.id,
+                reason="cas_decision_lost",
+                error_type=CharterAlreadyDecidedError.__name__,
+            )
             raise CharterAlreadyDecidedError(charter_id=charter.id)
         logger.info(
             CHARTER_APPROVED,

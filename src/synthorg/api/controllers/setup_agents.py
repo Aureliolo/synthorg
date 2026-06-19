@@ -26,7 +26,7 @@ from synthorg.observability.events.setup import (
 )
 from synthorg.settings.enums import SettingSource
 from synthorg.settings.errors import SettingNotFoundError
-from synthorg.settings.service import SettingsService
+from synthorg.settings.service_protocol import SettingsServiceProtocol
 from synthorg.templates.model_matcher_config import ModelMatcherConfig
 from synthorg.templates.schema import CompanyTemplate, TemplateDepartmentConfig
 
@@ -254,7 +254,7 @@ def build_agent_config(
 
 
 async def get_existing_agents(
-    settings_svc: SettingsService,
+    settings_svc: SettingsServiceProtocol,
 ) -> list[dict[str, object]]:
     """Read the current agents list from settings.
 

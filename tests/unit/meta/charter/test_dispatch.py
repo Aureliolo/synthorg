@@ -68,6 +68,22 @@ class _FakeCharterRepo:
     async def save(self, entity: ProjectCharter) -> None:
         self.items[entity.id] = entity
 
+    async def save_edit_if_version(
+        self,
+        entity: ProjectCharter,
+        *,
+        expected_version: int,
+    ) -> bool:
+        current = self.items.get(entity.id)
+        if (
+            current is None
+            or current.version != expected_version
+            or current.status is not CharterStatus.DRAFTED
+        ):
+            return False
+        self.items[entity.id] = entity
+        return True
+
     async def transition_if(
         self,
         entity_id: str,
@@ -139,6 +155,25 @@ class _FakeForecastRepo:
         **updates: object,
     ) -> bool:
         raise NotImplementedError
+
+    async def raise_ceiling_if_halted(
+        self,
+        entity_id: object,
+        *,
+        new_ceiling: float,
+        updated_at: datetime,
+    ) -> bool:
+        existing = self.items.get(str(entity_id))
+        if existing is None or existing.halt_context is None:
+            return False
+        self.items[str(entity_id)] = existing.model_copy(
+            update={
+                "ceiling_amount": new_ceiling,
+                "halt_context": None,
+                "updated_at": updated_at,
+            },
+        )
+        return True
 
     async def query(
         self, filter_spec: object, *, limit: int = 0, offset: int = 0

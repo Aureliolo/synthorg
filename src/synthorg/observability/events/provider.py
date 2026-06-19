@@ -16,6 +16,7 @@ PROVIDER_STREAM_START: Final[str] = "provider.stream.start"
 PROVIDER_STREAM_USAGE_EXPECTED: Final[str] = "provider.stream.usage_expected"
 PROVIDER_STREAM_DONE: Final[str] = "provider.stream.done"
 PROVIDER_STREAM_CHUNK_NO_DELTA: Final[str] = "provider.stream.chunk_no_delta"
+PROVIDER_STREAM_CLOSE_FAILED: Final[str] = "provider.stream.close_failed"
 PROVIDER_MODEL_NOT_FOUND: Final[str] = "provider.model.not_found"
 PROVIDER_RATE_LIMITED: Final[str] = "provider.rate.limited"
 PROVIDER_AUTH_ERROR: Final[str] = "provider.auth.error"
@@ -69,6 +70,9 @@ PROVIDER_PRESET_OVERRIDE_UPDATED: Final[str] = (
 )
 PROVIDER_PRESET_OVERRIDE_DELETED: Final[str] = (
     "provider.management.preset_override_deleted"
+)
+PROVIDER_PRESET_OVERRIDE_UPDATE_CONFLICT: Final[str] = (
+    "provider.management.preset_override_update_conflict"
 )
 
 # ── Provider model discovery ───────────────────────────────

@@ -16,7 +16,10 @@ from typing import Final
 from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.guards import _READ_ROLES
 from synthorg.api.state import AppState
-from synthorg.communication.event_stream.stream import EventStreamHub
+from synthorg.communication.event_stream.stream import (
+    EventStreamHub,
+    EventStreamSubscription,
+)
 from synthorg.communication.event_stream.types import StreamEvent
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.auth.config import AUTH_REVALIDATE_INTERVAL_SECONDS
@@ -408,7 +411,7 @@ async def _sse_event_stream(
     # ``transport_error`` for unexpected exceptions, and
     # ``client_initiated`` for clean drops (the default).
     disconnect_reason = "client_initiated"
-    queue: asyncio.Queue[StreamEvent] | None = None
+    subscription: EventStreamSubscription | None = None
     try:
         # Subscribe inside the try block so a CancelledError /
         # MemoryError raised during pre-loop setup
@@ -417,7 +420,7 @@ async def _sse_event_stream(
         # subscriber attached to the hub: ``finally`` always runs
         # ``hub.unsubscribe`` and tolerates ``queue is None`` when the
         # subscribe itself raised.
-        queue = await hub.subscribe(session_id)
+        subscription = await hub.subscribe(session_id)
         logger.info(
             EVENT_STREAM_CLIENT_CONNECTED,
             session_id=session_id,
@@ -449,7 +452,7 @@ async def _sse_event_stream(
                 timeout = max(0.0, min(next_keepalive_ts, next_revalidate_ts) - now)
             try:
                 event: StreamEvent = await asyncio.wait_for(
-                    queue.get(),
+                    subscription.get(),
                     timeout=timeout,
                 )
                 frame = await _serialise_stream_event(event, session_id)
@@ -510,8 +513,8 @@ async def _sse_event_stream(
         try:
             # Tolerate the case where ``hub.subscribe`` itself raised:
             # there is nothing to unsubscribe in that branch.
-            if queue is not None:
-                await hub.unsubscribe(session_id, queue)
+            if subscription is not None:
+                await hub.unsubscribe(subscription)
         finally:
             logger.info(
                 EVENT_STREAM_CLIENT_DISCONNECTED,

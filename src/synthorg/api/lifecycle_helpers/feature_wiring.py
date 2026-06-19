@@ -235,6 +235,58 @@ async def _wire_knowledge_engine(app_state: AppState) -> None:
     logger.info(API_APP_STARTUP, service="knowledge_engine", note="wired")
 
 
+async def _wire_custom_rules_service(app_state: AppState) -> None:
+    """Wire the custom-rules service once persistence is connected.
+
+    Best-effort + idempotent. The service is a thin facade over the
+    ``custom_rules`` repository; wiring it up front keeps the meta MCP
+    ``list_rules`` handler off ``persistence.*`` (it resolves the wired
+    service and 503s when absent rather than constructing per call).
+    """
+    from synthorg.meta.rules.service import CustomRulesService  # noqa: PLC0415
+    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
+    from synthorg.persistence.state import (  # noqa: PLC0415
+        PersistenceStateSlice,
+        persistence_of,
+    )
+
+    if app_state.slice(MetaStateSlice).custom_rules_service is not None:
+        return
+    if app_state.slice(PersistenceStateSlice).backend is None:
+        return
+    service = CustomRulesService(repo=persistence_of(app_state).custom_rules)
+    app_state.wire(MetaStateSlice, custom_rules_service=service)
+    logger.info(API_APP_STARTUP, service="custom_rules", note="wired")
+
+
+async def _wire_budget_versions_service(app_state: AppState) -> None:
+    """Wire the budget-config versions service once persistence is connected.
+
+    Best-effort + idempotent. The service reads the append-only
+    budget-config version history; wiring it up front keeps the budget
+    MCP version handlers off ``persistence.*`` (they resolve the wired
+    service and 503 when absent rather than constructing per call).
+    """
+    from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
+    from synthorg.budget.version_service import (  # noqa: PLC0415
+        BudgetConfigVersionsService,
+    )
+    from synthorg.persistence.state import (  # noqa: PLC0415
+        PersistenceStateSlice,
+        persistence_of,
+    )
+
+    if app_state.slice(BudgetStateSlice).budget_versions_service is not None:
+        return
+    if app_state.slice(PersistenceStateSlice).backend is None:
+        return
+    service = BudgetConfigVersionsService(
+        version_repo=persistence_of(app_state).budget_config_versions,
+    )
+    app_state.wire(BudgetStateSlice, budget_versions_service=service)
+    logger.info(API_APP_STARTUP, service="budget_versions", note="wired")
+
+
 async def _wire_research_engine(
     app_state: AppState,
     *,
@@ -480,6 +532,8 @@ async def wire_features_on_startup(
     await _wire_project_brain(app_state)
     await _wire_steering_service(app_state, provider_registry=provider_registry)
     await _wire_knowledge_engine(app_state)
+    await _wire_custom_rules_service(app_state)
+    await _wire_budget_versions_service(app_state)
     await _wire_deliverable_receipts(app_state)
     await _wire_fine_tune_orchestrator(app_state)
     await _wire_research_engine(app_state, provider_registry=provider_registry)

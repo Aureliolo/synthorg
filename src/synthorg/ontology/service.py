@@ -4,11 +4,13 @@ from datetime import UTC, datetime
 from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.pagination import collect_all_mapping
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
     ONTOLOGY_BOOTSTRAP_COMPLETED,
     ONTOLOGY_BOOTSTRAP_ENTITY_SKIPPED,
     ONTOLOGY_CONFIG_LOADED,
+    ONTOLOGY_ENTITY_NOT_FOUND,
     ONTOLOGY_VERSION_SNAPSHOT,
 )
 from synthorg.ontology.config import EntitiesConfig, OntologyConfig
@@ -20,7 +22,6 @@ from synthorg.ontology.models import (
     EntitySource,
     EntityTier,
 )
-from synthorg.persistence._shared import collect_all_mapping
 from synthorg.persistence.ontology_protocol import OntologyEntityRepository
 from synthorg.versioning.models import VersionSnapshot
 from synthorg.versioning.service import VersioningService
@@ -205,6 +206,11 @@ class OntologyService:
         entity = await self._backend.get(name)
         if entity is None:
             msg = f"Entity '{name}' not found"
+            logger.warning(
+                ONTOLOGY_ENTITY_NOT_FOUND,
+                entity_name=name,
+                error_type=OntologyNotFoundError.__name__,
+            )
             raise OntologyNotFoundError(msg)
         return entity
 

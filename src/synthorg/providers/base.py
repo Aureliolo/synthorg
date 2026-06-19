@@ -7,11 +7,13 @@ automatic retry, rate limiting, and provides a cost-computation helper.
 
 import asyncio
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator, Callable, Coroutine, Mapping
-from typing import Final, ParamSpec, TypeVar
+from collections.abc import AsyncGenerator, AsyncIterator, Mapping
+from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -37,9 +39,11 @@ from ._call_instrumentation import (
     record_call_success,
     record_cost_if_in_scope,
 )
+from ._resilience import aclose_quietly, rate_limited_call, resilient_execute
 from ._validation import validate_messages, validate_model
 from .capabilities import ModelCapabilities
-from .errors import RateLimitError, classify_provider_error
+from .enums import StreamEventType
+from .errors import classify_provider_error
 from .models import (
     ChatMessage,
     CompletionConfig,
@@ -54,8 +58,6 @@ from .resilience.retry import RetryHandler
 logger = get_logger(__name__)
 _tracer = get_tracer(__name__)
 
-_T = TypeVar("_T")
-_P = ParamSpec("_P")
 
 _MILLISECONDS_PER_SECOND: Final[float] = 1000.0
 
@@ -153,8 +155,10 @@ class BaseCompletionProvider(ABC):
             Returns:
                 The driver's ``CompletionResponse`` for this attempt.
             """
-            return await self._rate_limited_call(
+            return await rate_limited_call(
+                self._rate_limiter,
                 self._do_complete,
+                model,
                 messages,
                 model,
                 tools=tools,
@@ -242,16 +246,14 @@ class BaseCompletionProvider(ABC):
 
         .. note::
 
-            Unlike :meth:`complete`, ``stream`` does **not** fire the
-            cost-recording chokepoint.  Streaming responses surface
-            usage as a terminal ``StreamEventType.USAGE`` chunk, so the
-            recording logic would have to consume the iterator to
-            extract token counts -- conflating cost recording with the
-            stream-consumption contract.  Until streaming becomes a
-            mainstream LLM call path in this codebase, callers using
-            ``stream()`` are responsible for emitting their own
-            ``CostRecord`` from the final usage chunk.  No call site in
-            the current diff uses ``stream()`` for paid LLM work.
+            Streaming usage surfaces only on the terminal
+            ``StreamEventType.USAGE`` chunk, so the returned iterator is
+            wrapped in a pass-through generator that captures that chunk
+            and fires the same ``record_cost_if_in_scope`` chokepoint as
+            :meth:`complete` once the consumer drains the stream.  The
+            wrapper yields lazily (it does not pre-consume the iterator),
+            so the cost record lands in the consumer's
+            ``cost_recording_scope`` rather than at connection-setup time.
 
         Args:
             messages: Conversation history.
@@ -280,8 +282,10 @@ class BaseCompletionProvider(ABC):
             Returns:
                 The driver's ``StreamChunk`` async iterator for this attempt.
             """
-            return await self._rate_limited_call(
+            return await rate_limited_call(
+                self._rate_limiter,
                 self._do_stream,
+                model,
                 messages,
                 model,
                 tools=tools,
@@ -307,7 +311,9 @@ class BaseCompletionProvider(ABC):
         ) as span:
             t_start = self._clock.monotonic()
             try:
-                iterator = await self._resilient_execute(_attempt)
+                iterator = await resilient_execute(
+                    _attempt, retry_handler=self._retry_handler
+                )
             except Exception as exc:
                 reraise_critical(exc)
                 latency_ms = (
@@ -334,7 +340,67 @@ class BaseCompletionProvider(ABC):
         # DEBUG marker so log-based monitoring can flag a driver that
         # never yields one (the cost path then silently records nothing).
         logger.debug(PROVIDER_STREAM_USAGE_EXPECTED, model=model)
-        return iterator
+        return self._cost_recording_stream(
+            iterator, model=model, provider_label=provider_label
+        )
+
+    async def _cost_recording_stream(
+        self,
+        iterator: AsyncIterator[StreamChunk],
+        *,
+        model: str,
+        provider_label: str,
+    ) -> AsyncGenerator[StreamChunk]:
+        """Pass through ``iterator`` and fire cost recording on drain.
+
+        Yields each chunk unchanged so the consumer's iteration timing
+        is preserved, captures the terminal ``USAGE`` chunk's token
+        counts, and -- once the stream is fully consumed -- emits a
+        ``CostRecord`` through the same ``record_cost_if_in_scope``
+        chokepoint :meth:`complete` uses.  A stream that yields no usage
+        chunk records nothing (matching the no-scope no-op contract).
+
+        Args:
+            iterator: The driver's raw ``StreamChunk`` iterator.
+            model: Model identifier for the call.
+            provider_label: Resolved provider name for the cost record.
+
+        Yields:
+            Each ``StreamChunk`` from ``iterator`` unchanged.
+        """
+        usage = None
+        # Close the inner iterator in ``finally`` so an early consumer
+        # ``aclose()`` (break / cancel) propagates into the inner
+        # rate-limit-holding generator and releases its slot, rather
+        # than stranding it until GC. A raw driver iterator without
+        # ``aclose`` is left untouched. Cost is only recorded on a
+        # fully-drained stream; an early close raises ``GeneratorExit``
+        # out of the ``finally`` and skips the synthetic record below.
+        try:
+            async for chunk in iterator:
+                if (
+                    chunk.event_type is StreamEventType.USAGE
+                    and chunk.usage is not None
+                ):
+                    usage = chunk.usage
+                yield chunk
+        finally:
+            await aclose_quietly(iterator, model=model)
+        if usage is not None:
+            await record_cost_if_in_scope(
+                # Usage-only synthetic: the streamed content is not
+                # re-accumulated here, so an empty ``content`` satisfies
+                # the "STOP must carry output" invariant while carrying
+                # the terminal token usage to the cost chokepoint.
+                CompletionResponse(
+                    content="",
+                    finish_reason=FinishReason.STOP,
+                    usage=usage,
+                    model=NotBlankStr(model),
+                ),
+                model=model,
+                provider=provider_label,
+            )
 
     async def get_model_capabilities(self, model: str) -> ModelCapabilities:
         """Validate model identifier, delegate to ``_do_get_model_capabilities``.
@@ -365,13 +431,15 @@ class BaseCompletionProvider(ABC):
             Returns:
                 The driver's ``ModelCapabilities`` for this attempt.
             """
-            return await self._rate_limited_call(
+            return await rate_limited_call(
+                self._rate_limiter,
                 self._do_get_model_capabilities,
+                model,
                 model,
             )
 
         try:
-            return await self._resilient_execute(_attempt)
+            return await resilient_execute(_attempt, retry_handler=self._retry_handler)
         except Exception as exc:
             reraise_critical(exc)
             # ``logger.exception`` would attach a traceback whose
@@ -530,75 +598,3 @@ class BaseCompletionProvider(ABC):
             ProviderError: All errors must use the provider error hierarchy.
         """
         ...
-
-    # -- Resilience helpers -------------------------------------------
-
-    async def _resilient_execute(
-        self,
-        attempt_fn: Callable[[], Coroutine[object, object, _T]],
-    ) -> _T:
-        """Execute *attempt_fn* with retry if configured.
-
-        Args:
-            attempt_fn: Zero-argument async callable for a single attempt.
-
-        Returns:
-            The return value of *attempt_fn*.
-        """
-        if self._retry_handler is not None:
-            retry_result = await self._retry_handler.execute(attempt_fn)
-            return retry_result.value
-        return await attempt_fn()
-
-    async def _rate_limited_call(
-        self,
-        func: Callable[_P, Coroutine[object, object, _T]],
-        *args: _P.args,
-        **kwargs: _P.kwargs,
-    ) -> _T:
-        """Wrap a call with rate limiter acquire/release.
-
-        Holds the slot for the full stream lifetime. Pauses the limiter
-        on ``RateLimitError`` with ``retry_after`` before re-raising.
-
-        Returns:
-            The return value of ``func``, or an async-iterator wrapper
-            that holds the limiter slot until the stream is exhausted.
-
-        Raises:
-            RateLimitError: Re-raised after pausing the limiter with the
-                provider's ``retry_after``.
-        """
-        acquired = False
-        if self._rate_limiter is not None:
-            await self._rate_limiter.acquire()
-            acquired = True
-        streaming_owns_release = False
-        try:
-            result = await func(*args, **kwargs)
-            if acquired and isinstance(result, AsyncIterator):
-                # Transfer slot ownership to a wrapper generator so the
-                # concurrency slot is held until the stream is exhausted.
-                rate_limiter = self._rate_limiter
-                streaming_owns_release, acquired = True, False
-
-                async def _hold_slot_for_stream(
-                    inner: AsyncIterator[object],
-                ) -> AsyncIterator[object]:
-                    """Re-yield the inner stream, releasing the slot when exhausted."""
-                    try:
-                        async for chunk in inner:
-                            yield chunk
-                    finally:
-                        rate_limiter.release()  # type: ignore[union-attr]
-
-                return _hold_slot_for_stream(result)  # type: ignore[return-value]
-        except RateLimitError as exc:
-            if self._rate_limiter is not None and exc.retry_after is not None:
-                self._rate_limiter.pause(exc.retry_after)
-            raise
-        else:
-            return result
-        finally:
-            if acquired and not streaming_owns_release:
-                self._rate_limiter.release()  # type: ignore[union-attr]

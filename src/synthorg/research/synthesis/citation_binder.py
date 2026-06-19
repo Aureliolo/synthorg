@@ -8,8 +8,12 @@ raises rather than emit an unverifiable report.
 
 from collections.abc import Mapping
 
+from synthorg.observability import get_logger
+from synthorg.observability.events.research import RESEARCH_SYNTHESIS_FAILED
 from synthorg.research.errors import ResearchSynthesisError
 from synthorg.research.models import ResearchCitation, RetrievedItem
+
+logger = get_logger(__name__)
 
 
 class CitationBinder:
@@ -37,6 +41,11 @@ class CitationBinder:
         """
         if not ref_ids:
             msg = "claim cited no sources"
+            logger.warning(
+                RESEARCH_SYNTHESIS_FAILED,
+                reason="claim_cited_no_sources",
+                error_type=ResearchSynthesisError.__name__,
+            )
             raise ResearchSynthesisError(msg)
         citations: list[ResearchCitation] = []
         seen: set[str] = set()
@@ -46,6 +55,12 @@ class CitationBinder:
             item = items_by_ref.get(ref_id)
             if item is None:
                 msg = f"claim cited unknown source ref_id {ref_id!r}"
+                logger.warning(
+                    RESEARCH_SYNTHESIS_FAILED,
+                    reason="unknown_source_ref_id",
+                    ref_id=ref_id,
+                    error_type=ResearchSynthesisError.__name__,
+                )
                 raise ResearchSynthesisError(msg)
             seen.add(ref_id)
             citations.append(item.citation)

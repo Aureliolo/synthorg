@@ -15,15 +15,18 @@ from synthorg.meta.mcp.errors import (
     GuardrailViolationError,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
+    log_handler_admin_op_executed,
     log_handler_argument_invalid,
     log_handler_guardrail_violated,
     log_handler_invoke_failed,
 )
 from synthorg.observability.events.mcp import (
+    MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_ARGUMENT_INVALID,
     MCP_HANDLER_GUARDRAIL_VIOLATED,
     MCP_HANDLER_INVOKE_FAILED,
 )
+from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
 
@@ -185,6 +188,41 @@ class TestLogHandlerInvokeFailed:
         assert record["task_id"] == "task-7"
         assert record["decision_id"] == "decision-3"
         assert record["request_id"] == "req-42"
+
+
+class TestLogHandlerAdminOpExecuted:
+    """Pin the wire shape of ``log_handler_admin_op_executed``."""
+
+    def test_emits_info_with_actor_reason_and_target(self) -> None:
+        actor = make_test_actor(name="admin")
+        with structlog.testing.capture_logs() as logs:
+            log_handler_admin_op_executed(
+                "synthorg_brain_append",
+                reason="record decision",
+                actor=actor,
+                target_id="entry-7",
+            )
+        assert len(logs) == 1
+        record = logs[0]
+        assert record["event"] == MCP_ADMIN_OP_EXECUTED
+        assert record["log_level"] == "info"
+        assert record["tool_name"] == "synthorg_brain_append"
+        assert record["reason"] == "record decision"
+        assert record["target_id"] == "entry-7"
+        # The actor is resolved to a concrete, non-blank attribution id.
+        assert isinstance(record["actor_agent_id"], str)
+        assert record["actor_agent_id"].strip()
+
+    def test_target_id_omitted_when_none(self) -> None:
+        actor = make_test_actor(name="admin")
+        with structlog.testing.capture_logs() as logs:
+            log_handler_admin_op_executed(
+                "synthorg_meta_trigger_cycle",
+                reason="periodic",
+                actor=actor,
+            )
+        record = logs[0]
+        assert "target_id" not in record
 
 
 class TestLogHandlerGuardrailViolated:

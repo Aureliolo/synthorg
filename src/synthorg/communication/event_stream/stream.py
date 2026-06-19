@@ -17,26 +17,29 @@ the legacy synchronous behaviour.
 """
 
 import asyncio
+import contextlib
 from collections import OrderedDict
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import ClassVar, Final
 from uuid import uuid4
 
+from synthorg.communication.event_stream._janitor import (
+    _Subscriber,
+    janitor_loop,
+    prune_idle_subscribers,
+)
 from synthorg.communication.event_stream.types import (
     AgUiEventType,
     StreamEvent,
 )
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.events.event_stream import (
-    EVENT_STREAM_HUB_JANITOR_FAILED,
-    EVENT_STREAM_HUB_JANITOR_PRUNED,
     EVENT_STREAM_HUB_PUBLISH_DEDUPED,
     EVENT_STREAM_HUB_PUBLISH_FAILED,
+    EVENT_STREAM_HUB_START_REJECTED,
     EVENT_STREAM_HUB_STARTED,
     EVENT_STREAM_HUB_STOP_TIMEOUT,
     EVENT_STREAM_HUB_STOPPED,
@@ -69,24 +72,59 @@ class EventStreamHubUnrestartableError(ConflictError):
     status_code: ClassVar[int] = 409
 
 
-# Intentionally NOT frozen: ``last_active`` is mutated in-place under
-# ``EventStreamHub._lock`` per the docstring below. CLAUDE.md "Frozen
-# by default" deviation is justified because allocating a fresh
-# ``_Subscriber`` on every successful publish would churn the hot
-# fan-out path.
-@dataclass(slots=True)
-class _Subscriber:
-    """Per-subscriber bookkeeping owned by ``EventStreamHub``.
+class EventStreamSubscription:
+    """Opaque handle to a session's event stream.
 
-    ``last_active`` carries the monotonic timestamp of the most recent
-    activity (subscribe call or successful publish to this subscriber).
-    The janitor reads ``last_active`` to evict idle subscribers; the
-    field is mutated in-place under ``EventStreamHub._lock`` so all
-    reads / writes happen-before each other through the lock.
+    Returned by :meth:`EventStreamHub.subscribe`. Callers consume events
+    via :meth:`get` and release the subscription through
+    :meth:`EventStreamHub.unsubscribe`, so the hub's internal
+    ``asyncio.Queue`` never crosses the boundary.
     """
 
-    queue: asyncio.Queue[StreamEvent] = field()
-    last_active: float = field()
+    __slots__ = ("_queue", "session_id")
+
+    def __init__(
+        self,
+        session_id: str,
+        queue: asyncio.Queue[StreamEvent],
+    ) -> None:
+        self.session_id = session_id
+        self._queue = queue
+
+    async def get(self) -> StreamEvent:
+        """Await the next event delivered to this subscription.
+
+        Returns:
+            The next :class:`StreamEvent` for the subscription's session.
+        """
+        return await self._queue.get()
+
+    def get_nowait(self) -> StreamEvent:
+        """Return the next buffered event without blocking.
+
+        Returns:
+            The next :class:`StreamEvent`.
+
+        Raises:
+            asyncio.QueueEmpty: When no event is currently buffered.
+        """
+        return self._queue.get_nowait()
+
+    def empty(self) -> bool:
+        """Return whether the subscription has no buffered events.
+
+        Returns:
+            ``True`` when no event is currently buffered.
+        """
+        return self._queue.empty()
+
+    def qsize(self) -> int:
+        """Return the number of currently buffered events.
+
+        Returns:
+            The buffered-event count.
+        """
+        return self._queue.qsize()
 
 
 class EventStreamHub:
@@ -186,6 +224,21 @@ class EventStreamHub:
         self._running = False
         self._stop_failed = False
 
+    def __del__(self) -> None:
+        """Cancel an orphaned janitor task if the hub is GC'd un-stopped.
+
+        The supported teardown path is ``stop()``; this is a defensive
+        safety net so a hub dropped without it (a caller that forgot, or
+        a failed wiring path) does not leave the janitor running forever
+        holding a reference to the hub. Best-effort and exception-safe:
+        ``cancel()`` is a no-op on a done task and may raise if the loop
+        is already closed, so the failure is suppressed.
+        """
+        task = getattr(self, "_janitor_task", None)
+        if task is not None and not task.done():
+            with contextlib.suppress(RuntimeError):
+                task.cancel()
+
     def _lock_for_current_loop(self) -> asyncio.Lock:
         """Operational lock bound to the running loop, rebinding if needed.
 
@@ -278,14 +331,26 @@ class EventStreamHub:
                     "EventStreamHub cannot restart after a timed-out"
                     " stop(); construct a fresh instance"
                 )
+                logger.warning(
+                    EVENT_STREAM_HUB_START_REJECTED,
+                    reason="unrestartable",
+                    error_type=EventStreamHubUnrestartableError.__name__,
+                )
                 raise EventStreamHubUnrestartableError(msg)
             if self._running:
                 return
             self._running = True
             self._janitor_task = asyncio.create_task(
-                self._janitor_loop(
-                    idle_ttl_seconds=idle_ttl_seconds,
+                janitor_loop(
+                    clock=self._clock,
                     janitor_interval_seconds=janitor_interval_seconds,
+                    prune=lambda: prune_idle_subscribers(
+                        clock=self._clock,
+                        idle_ttl_seconds=idle_ttl_seconds,
+                        subscribers=self._subscribers,
+                        seen_event_ids=self._seen_event_ids,
+                        lock=self._lock_for_current_loop(),
+                    ),
                 ),
                 name="event-stream-hub-janitor",
             )
@@ -338,83 +403,21 @@ class EventStreamHub:
                 return
             logger.info(EVENT_STREAM_HUB_STOPPED)
 
-    async def _janitor_loop(
-        self,
-        *,
-        idle_ttl_seconds: float,
-        janitor_interval_seconds: float,
-    ) -> None:
-        """Periodically prune subscribers idle past ``idle_ttl_seconds``.
-
-        A prune failure (lock acquisition error, clock failure, dict-
-        mutation race) must not kill the loop -- otherwise the hub
-        silently stops reclaiming memory and the original leak the
-        janitor was added to fix returns. Re-raise only the system-
-        level errors (``CancelledError``, ``MemoryError``,
-        ``RecursionError``); log every other exception and continue.
-
-        Raises:
-            asyncio.CancelledError: Propagated on shutdown so the janitor
-                task stops cleanly.
-        """
-        # lint-allow: long-running-loop-kill-switch -- stop()/cancel drives shutdown.
-        while True:
-            await self._clock.sleep(janitor_interval_seconds)
-            try:
-                await self._prune_idle_subscribers(idle_ttl_seconds)
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                logger.warning(
-                    EVENT_STREAM_HUB_JANITOR_FAILED,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-
-    async def _prune_idle_subscribers(self, idle_ttl_seconds: float) -> None:
-        """Drop subscribers whose ``last_active`` is older than the TTL.
-
-        Public-ish: also exercised directly from tests so the prune
-        invariant can be asserted without driving the janitor task.
-        """
-        now = self._clock.monotonic()
-        cutoff = now - idle_ttl_seconds
-        pruned = 0
-        async with self._lock_for_current_loop():
-            for session_id in list(self._subscribers):
-                kept = [
-                    sub
-                    for sub in self._subscribers[session_id]
-                    if sub.last_active >= cutoff
-                ]
-                pruned += len(self._subscribers[session_id]) - len(kept)
-                if kept:
-                    self._subscribers[session_id] = kept
-                else:
-                    del self._subscribers[session_id]
-                    self._seen_event_ids.pop(session_id, None)
-        if pruned > 0:
-            logger.info(
-                EVENT_STREAM_HUB_JANITOR_PRUNED,
-                pruned_subscribers=pruned,
-                remaining_sessions=len(self._subscribers),
-                idle_ttl_seconds=idle_ttl_seconds,
-            )
-
     # ── Subscribe / unsubscribe / publish ────────────────────────
 
     async def subscribe(
         self,
         session_id: str,
-    ) -> asyncio.Queue[StreamEvent]:
+    ) -> EventStreamSubscription:
         """Subscribe to events for a session.
 
         Args:
             session_id: Session to subscribe to.
 
         Returns:
-            An asyncio queue that will receive events for this session.
+            An :class:`EventStreamSubscription` handle that delivers
+            events for this session. The backing queue stays internal to
+            the hub.
         """
         queue: asyncio.Queue[StreamEvent] = asyncio.Queue(
             maxsize=self._max_queue_size,
@@ -422,19 +425,19 @@ class EventStreamHub:
         subscriber = _Subscriber(queue=queue, last_active=self._clock.monotonic())
         async with self._lock_for_current_loop():
             self._subscribers.setdefault(session_id, []).append(subscriber)
-        return queue
+        return EventStreamSubscription(session_id, queue)
 
     async def unsubscribe(
         self,
-        session_id: str,
-        queue: asyncio.Queue[StreamEvent],
+        subscription: EventStreamSubscription,
     ) -> None:
-        """Remove a subscriber queue.
+        """Remove a subscription.
 
         Args:
-            session_id: Session the queue belongs to.
-            queue: The queue to remove.
+            subscription: The handle returned by :meth:`subscribe`.
         """
+        session_id = subscription.session_id
+        queue = subscription._queue  # noqa: SLF001 -- same-module internal access
         async with self._lock_for_current_loop():
             subs = self._subscribers.get(session_id)
             if subs is None:

@@ -193,8 +193,38 @@ def validate_cost_forecast_update_keys(
         raise QueryError(msg)
 
 
+def _clear_halt_sql(placeholder: LiteralString) -> LiteralString:
+    """Assemble the halt-guarded ceiling-raise UPDATE for one placeholder.
+
+    Clears the four ``halt_*`` columns and raises the ceiling only while
+    the row is still halted (``halted_at IS NOT NULL``). A concurrent
+    ceiling-raise that already cleared the halt leaves the row unmatched,
+    so the second writer affects zero rows and the caller surfaces a
+    conflict rather than a no-op masquerading as success (Slot 39 CAS).
+
+    Returns:
+        The full conditional ``UPDATE`` statement.
+    """
+    return (
+        f"UPDATE cost_forecasts SET ceiling_amount = {placeholder}, "  # noqa: S608 -- constants only
+        "halt_accumulated_cost = NULL, halt_ceiling_amount = NULL, "
+        "halt_currency = NULL, halted_at = NULL, "
+        f"updated_at = {placeholder} "
+        f"WHERE forecast_id = {placeholder} AND halted_at IS NOT NULL"
+    )
+
+
+FORECAST_CLEAR_HALT_SQL_QMARK: LiteralString = _clear_halt_sql("?")
+"""Halt-guarded ceiling-raise UPDATE (SQLite ``?`` token)."""
+
+FORECAST_CLEAR_HALT_SQL_PCT: LiteralString = _clear_halt_sql("%s")
+"""Halt-guarded ceiling-raise UPDATE (Postgres ``%s`` token)."""
+
+
 __all__ = [
     "COST_FORECAST_COLUMNS",
+    "FORECAST_CLEAR_HALT_SQL_PCT",
+    "FORECAST_CLEAR_HALT_SQL_QMARK",
     "build_cost_forecast_where",
     "forecast_save_params",
     "row_to_forecast",

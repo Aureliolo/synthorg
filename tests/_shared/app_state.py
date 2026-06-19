@@ -96,6 +96,7 @@ def make_app_state(  # type: ignore[explicit-any]  # heterogeneous service/confi
         "benchmark_provider": (BudgetStateSlice, "benchmark_provider"),
         "budget_config": (BudgetStateSlice, "budget_config"),
         "report_service": (BudgetStateSlice, "report_service"),
+        "budget_versions_service": (BudgetStateSlice, "budget_versions_service"),
         "approval_store": (ApprovalStateSlice, "store"),
         "auth_service": (ApiCoreStateSlice, "auth_service"),
         "session_store": (ApiCoreStateSlice, "session_store"),
@@ -127,6 +128,7 @@ def make_app_state(  # type: ignore[explicit-any]  # heterogeneous service/confi
         "workflow_execution_service": (EngineStateSlice, "workflow_execution_service"),
         "subworkflow_service": (EngineStateSlice, "subworkflow_service"),
         "self_improvement_service": (MetaStateSlice, "self_improvement_service"),
+        "custom_rules_service": (MetaStateSlice, "custom_rules_service"),
         "conversational_proposal_repo": (
             MetaStateSlice,
             "conversational_proposal_repo",

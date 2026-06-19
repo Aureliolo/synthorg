@@ -62,7 +62,7 @@ from synthorg.providers.state import (
     ProvidersStateSlice,
     provider_management_of,
 )
-from synthorg.settings.service import SettingsService
+from synthorg.settings.service_protocol import SettingsServiceProtocol
 from synthorg.settings.state import settings_service_of
 
 logger = get_logger(__name__)
@@ -70,7 +70,7 @@ logger = get_logger(__name__)
 
 async def _validate_completion_prereqs(
     app_state: AppState,
-    settings_svc: SettingsService,
+    settings_svc: SettingsServiceProtocol,
 ) -> bool:
     """Verify company / providers / agent provider+model pairs.
 
@@ -127,7 +127,7 @@ async def _validate_completion_prereqs(
 
 async def _run_embedder_auto_select(
     app_state: AppState,
-    settings_svc: SettingsService,
+    settings_svc: SettingsServiceProtocol,
 ) -> str | None:
     """Best-effort embedder auto-selection. Returns failure reason or None.
 
@@ -165,7 +165,7 @@ async def _run_embedder_auto_select(
         return "Embedder auto-selection raised an unexpected error."
 
 
-async def _read_has_gpu_setting(settings_svc: SettingsService) -> bool | None:
+async def _read_has_gpu_setting(settings_svc: SettingsServiceProtocol) -> bool | None:
     """Return the operator-owned ``api/setup_has_gpu`` boolean.
 
     Returns ``None`` on non-critical read failure (logged at WARNING with

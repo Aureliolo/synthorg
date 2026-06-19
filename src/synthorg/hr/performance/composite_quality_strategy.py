@@ -18,8 +18,9 @@ from synthorg.hr.performance.quality_override_store import (
     QualityOverrideStore,
 )
 from synthorg.hr.performance.quality_protocol import QualityScoringStrategy
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.performance import (
+    PERF_COMPOSITE_RETRY_EXHAUSTED,
     PERF_COMPOSITE_SCORED,
     PERF_LLM_JUDGE_FAILED,
     PERF_QUALITY_OVERRIDE_APPLIED,
@@ -168,7 +169,15 @@ class CompositeQualityStrategy:
             except* RetryExhaustedError as eg:
                 # Unwrap from ExceptionGroup so engine fallback
                 # chain receives a bare RetryExhaustedError.
-                raise eg.exceptions[0] from eg
+                exc = eg.exceptions[0]
+                logger.warning(
+                    PERF_COMPOSITE_RETRY_EXHAUSTED,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise exc from eg
             ci_result = ci_task.result()
             llm_result = llm_task.result()
         elif self._ci_weight > 0.0:

@@ -26,9 +26,11 @@ from synthorg.observability.events.persistence.charter import (
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import validate_pagination_args
 from synthorg.persistence._shared.charter_marshalling import (
+    CHARTER_CAS_UPDATE_SQL_PCT,
     CHARTER_COLUMNS,
     as_iso,
     build_charter_where,
+    charter_cas_params,
     charter_save_params,
     row_to_charter,
     validate_charter_update_keys,
@@ -340,6 +342,58 @@ class PostgresCharterRepository:
                 PERSISTENCE_CHARTER_FAILED,
                 operation="transition_if",
                 charter_id=entity_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return rowcount > 0
+
+    async def save_edit_if_version(
+        self,
+        entity: ProjectCharter,
+        *,
+        expected_version: int,
+    ) -> bool:
+        """Conditionally persist an edited charter (optimistic concurrency).
+
+        Applies the full ``entity`` only when the stored row is still at
+        ``expected_version`` AND ``DRAFTED``, so a concurrent edit or
+        approve / cancel cannot be silently clobbered (ADR-0001 D7
+        lost-update invariant).
+
+        Returns:
+            ``True`` when one row was updated; ``False`` on a version /
+            status mismatch (or missing row).
+
+        Raises:
+            ConstraintViolationError: If a database constraint is violated.
+            QueryError: If the database query fails.
+        """
+        params = charter_cas_params(entity, expected_version=expected_version)
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(CHARTER_CAS_UPDATE_SQL_PCT, params)
+                rowcount = cur.rowcount
+                await conn.commit()
+        except psycopg.errors.IntegrityError as exc:
+            msg = (
+                f"Constraint violation editing charter {entity.id!r}: "
+                f"{safe_error_description(exc)}"
+            )
+            logger.warning(
+                PERSISTENCE_CHARTER_FAILED,
+                operation="save_edit_if_version",
+                charter_id=entity.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise ConstraintViolationError(msg, constraint=str(exc)) from exc
+        except psycopg.Error as exc:
+            msg = f"Failed to edit charter {entity.id!r}"
+            logger.warning(
+                PERSISTENCE_CHARTER_FAILED,
+                operation="save_edit_if_version",
+                charter_id=entity.id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

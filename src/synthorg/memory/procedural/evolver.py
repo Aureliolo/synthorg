@@ -33,7 +33,7 @@ from synthorg.memory.procedural.trajectory_aggregator import (
     TrajectoryPattern,
 )
 from synthorg.memory.protocol import MemoryBackend
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.skill_evolver import (
     SKILL_EVOLVER_CONFLICT_DETECTED,
     SKILL_EVOLVER_CYCLE_COMPLETE,
@@ -150,6 +150,8 @@ class AutonomousSkillEvolver:
             logger.error(
                 SKILL_EVOLVER_CYCLE_FAILED,
                 cycle_id=cycle_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 

@@ -20,7 +20,7 @@ from synthorg.observability.events.setup import (
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.settings.enums import SettingSource
 from synthorg.settings.errors import SettingNotFoundError
-from synthorg.settings.service import SettingsService
+from synthorg.settings.service_protocol import SettingsServiceProtocol
 
 logger = get_logger(__name__)
 
@@ -74,7 +74,7 @@ async def check_needs_admin(
 
 
 async def check_needs_setup(
-    settings_svc: SettingsService,
+    settings_svc: SettingsServiceProtocol,
 ) -> bool:
     """Return True if setup is still needed (fail-open on error).
 
@@ -104,7 +104,7 @@ async def check_needs_setup(
 
 
 async def check_has_agents(
-    settings_svc: SettingsService,
+    settings_svc: SettingsServiceProtocol,
     *,
     strict: bool = False,
 ) -> bool:

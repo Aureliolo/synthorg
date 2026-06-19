@@ -236,10 +236,10 @@ class TestDriftEndpoints:
         async_test_client: LoopAsyncClient,
     ) -> None:
         _inject_ontology_service(async_test_client)
-        # drift_report_store is None by default
+        # drift_report_store is None by default: an unwired drift
+        # subsystem 503s rather than masquerading as an empty frontier.
         resp = await async_test_client.get("/api/v1/ontology/drift")
-        assert resp.status_code == 200
-        assert resp.json()["data"] == []
+        assert resp.status_code == 503
 
     async def test_get_drift_no_store(
         self,
@@ -247,9 +247,7 @@ class TestDriftEndpoints:
     ) -> None:
         _inject_ontology_service(async_test_client)
         resp = await async_test_client.get("/api/v1/ontology/drift/Task")
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["data"] == [] or body["data"] == ()
+        assert resp.status_code == 503
 
     # NOTE: POST drift/admin endpoints crash the xdist worker due
     # to Litestar test client + Python 3.14 async interaction.

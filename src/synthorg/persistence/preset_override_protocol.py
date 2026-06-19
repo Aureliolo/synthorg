@@ -14,6 +14,7 @@ does not apply here -- overrides are operator state and survive until
 explicitly cleared with ``delete``.
 """
 
+from datetime import datetime
 from typing import Protocol, override, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
@@ -58,6 +59,39 @@ class PresetOverrideRepo(
 
         Args:
             entity: Full override row to persist.
+
+        Raises:
+            QueryError: If the underlying write fails.
+        """
+        ...
+
+    async def save_if_unchanged(
+        self,
+        entity: PresetOverride,
+        /,
+        *,
+        expected_updated_at: datetime | None,
+    ) -> bool:
+        """Persist ``entity`` iff the stored row is still unchanged.
+
+        Optimistic-concurrency guard for the service-layer
+        read-merge-write upsert. ``PresetOverride`` has no version
+        column, so the prior ``updated_at`` the caller observed is the
+        compare-and-swap token: when ``expected_updated_at`` is ``None``
+        the write only lands if no row exists; otherwise it only lands
+        while the stored ``updated_at`` still equals the observed value.
+        Bespoke conditional method permitted under ADR-0001 D7
+        (lost-update invariant; ``save`` must not be used to bypass it).
+
+        Args:
+            entity: Full override row to persist (``updated_at`` /
+                ``updated_by`` must be set).
+            expected_updated_at: The ``updated_at`` the caller read, or
+                ``None`` when the caller observed no existing row.
+
+        Returns:
+            ``True`` when the row was written, ``False`` when a
+            concurrent write changed the row first.
 
         Raises:
             QueryError: If the underlying write fails.
