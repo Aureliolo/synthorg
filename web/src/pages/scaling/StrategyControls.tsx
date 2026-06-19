@@ -6,7 +6,7 @@ import { StatusBadge } from '@/components/ui/status-badge'
 import { ToggleField } from '@/components/ui/toggle-field'
 import { useScalingStore } from '@/stores/scaling'
 import type { ScalingStrategyResponse } from '@/api/endpoints/scaling'
-import type { AgentRuntimeStatus } from '@/lib/utils'
+import type { AgentRuntimeStatus } from '@/utils/agent-status'
 
 function statusFromEnabled(enabled: boolean): AgentRuntimeStatus {
   return enabled ? 'active' : 'offline'

@@ -1,11 +1,10 @@
-"""Test helper that builds a Litestar app from the legacy keyword arguments.
+"""Test helper that builds a Litestar app from individual injection kwargs.
 
-``create_app`` collapsed its ~27 dependency-injection keyword arguments into a
-single :class:`~synthorg.api.app_overrides.AppOverrides` bundle. Tests that
-inject doubles keep passing the individual kwargs through this shim, which
-bundles them into ``AppOverrides`` and forwards ``config`` /
-``_skip_lifecycle_shutdown`` unchanged. Call sites are a mechanical
-``create_app(`` -> ``build_test_app(`` rename with identical kwargs.
+``create_app`` takes a single
+:class:`~synthorg.api.app_overrides.AppOverrides` bundle. Tests that inject
+doubles pass the individual kwargs through this helper, which bundles them
+into ``AppOverrides`` and forwards ``config`` / ``_skip_lifecycle_shutdown``
+unchanged.
 """
 
 from typing import Any

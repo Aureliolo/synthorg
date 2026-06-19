@@ -640,9 +640,8 @@ class TestWorkflowControllerErrorEnvelope:
     ) -> None:
         """ValueError from the YAML exporter surfaces a 422 envelope.
 
-        The pre-refactor controller mapped a raw ValueError to 422; the
-        new ``WorkflowYamlExportError`` ClassVar must keep that status
-        so existing clients of /workflows/{id}/export are not broken.
+        ``WorkflowYamlExportError`` carries a 422 ``status_code`` ClassVar
+        so a failed /workflows/{id}/export returns 422 to clients.
         """
         from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 

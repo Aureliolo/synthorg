@@ -22,6 +22,7 @@ from synthorg.settings.subscribers import (
     BackupSettingsSubscriber,
     MemoryBridgeSettingsSubscriber,
     MemorySettingsSubscriber,
+    MetaSelfImprovementSettingsSubscriber,
     ObservabilitySettingsSubscriber,
     PerOpRateLimitSettingsSubscriber,
     ProviderSettingsSubscriber,
@@ -74,6 +75,10 @@ def _build_settings_dispatcher(  # noqa: PLR0913 -- one optional arg per subscri
         app_state=app_state,
         settings_service=settings_service,
     )
+    meta_self_improvement_sub = MetaSelfImprovementSettingsSubscriber(
+        app_state=app_state,
+        settings_service=settings_service,
+    )
     subs: list[SettingsSubscriber] = [
         provider_sub,
         memory_sub,
@@ -82,6 +87,7 @@ def _build_settings_dispatcher(  # noqa: PLR0913 -- one optional arg per subscri
         api_bridge_sub,
         workers_bridge_sub,
         memory_bridge_sub,
+        meta_self_improvement_sub,
     ]
     if backup_service is not None:
         subs.append(

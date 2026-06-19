@@ -40,7 +40,7 @@ yoyo's ``with backend.lock():`` finally clause.
 import asyncio
 from pathlib import Path
 
-from yoyo import get_backend  # type: ignore[import-untyped]
+from yoyo import get_backend
 
 from synthorg.core.persistence_errors import MigrationError
 from synthorg.observability import get_logger, safe_error_description

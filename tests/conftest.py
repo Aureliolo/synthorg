@@ -132,6 +132,16 @@ os.environ.setdefault(
     "test-suite-stable-cursor-secret-not-a-real-secret",
 )
 
+# A provider-present app builds the coordinator eagerly and validates
+# ``coordination.decomposition_model`` at boot. Tests that register a
+# scripted provider rely on a non-blank value; the shipped default is
+# blank (operators must set it), so supply a vendor-agnostic one here.
+# setdefault so tests that explicitly drive the env var still control it.
+os.environ.setdefault(
+    "SYNTHORG_COORDINATION_DECOMPOSITION_MODEL",
+    "example-medium-001",
+)
+
 import aiosqlite  # noqa: E402
 import pytest  # noqa: E402
 import structlog  # noqa: E402

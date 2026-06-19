@@ -17,13 +17,13 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Final, Literal
 
 import psycopg
-from yoyo import read_migrations  # type: ignore[import-untyped]
-from yoyo.exceptions import (  # type: ignore[import-untyped]
+from yoyo import read_migrations
+from yoyo.exceptions import (
     BadMigration,
     LockTimeout,
     MigrationConflict,
 )
-from yoyo.migrations import MigrationList  # type: ignore[import-untyped]
+from yoyo.migrations import MigrationList
 
 from synthorg.core.persistence_errors import MigrationError
 from synthorg.observability import get_logger, safe_error_description

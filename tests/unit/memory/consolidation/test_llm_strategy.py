@@ -66,12 +66,12 @@ def _make_strategy(
 ) -> CompositeConsolidationStrategy:
     """Build the LLM composite (selector + LLMSynthesisOp) with mocks.
 
-    Post ADR-0005: "llm" is
+    "llm" is
     ``Composite(HighestRelevanceSelector, LLMSynthesisOp, parallel=True)``.
     The selector's ``group_threshold`` is sourced from the
     ``LLMConsolidationConfig`` (``ge=3``), so an out-of-range override
-    still raises ``ValidationError`` at config construction -- before
-    the composite is built -- exactly as the pre-split monolith did.
+    raises ``ValidationError`` at config construction, before the
+    composite is built.
 
     Pass ``config`` for a full override, or individual
     ``config_overrides`` kwargs (e.g. ``group_threshold=5``) forwarded

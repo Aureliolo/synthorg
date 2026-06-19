@@ -34,7 +34,7 @@ class TestApiConfig:
         rl = RateLimitConfig()
         assert rl.floor_max_requests == 10000
         assert rl.unauth_max_requests == 20
-        assert rl.auth_max_requests == 6000
+        assert rl.auth_max_requests == 600
         assert rl.time_unit == RateLimitTimeUnit.MINUTE
         assert rl.time_unit.value == "minute"
         assert "/api/v1/healthz" in rl.exclude_paths
@@ -100,11 +100,10 @@ class TestApiConfig:
 class TestRateLimitConfigMirrors:
     """Direct coverage for the settings mirror integration on RateLimitConfig.
 
-    The five mirrored fields (unauth_max_requests, auth_max_requests,
-    time_unit, exclude_paths, max_rpm_default) each have their own
-    env-var override path; these tests exercise the three branches that
-    matter (env-set, env-unset, env-invalid) and the caller-wins
-    invariant.
+    The four mirrored fields (unauth_max_requests, auth_max_requests,
+    time_unit, exclude_paths) each have their own env-var override path;
+    these tests exercise the three branches that matter (env-set,
+    env-unset, env-invalid) and the caller-wins invariant.
     """
 
     def test_env_override_beats_registered_default(
@@ -113,11 +112,9 @@ class TestRateLimitConfigMirrors:
     ) -> None:
         monkeypatch.setenv("SYNTHORG_API_RATE_LIMIT_UNAUTH_MAX_REQUESTS", "7")
         monkeypatch.setenv("SYNTHORG_API_RATE_LIMIT_AUTH_MAX_REQUESTS", "1234")
-        monkeypatch.setenv("SYNTHORG_API_MAX_RPM_DEFAULT", "300")
         rl = RateLimitConfig()
         assert rl.unauth_max_requests == 7
         assert rl.auth_max_requests == 1234
-        assert rl.max_rpm_default == 300
 
     def test_env_override_for_exclude_paths(
         self,

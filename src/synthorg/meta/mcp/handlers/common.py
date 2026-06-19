@@ -37,7 +37,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.mcp.errors import ArgumentValidationError, GuardrailViolationError
+from synthorg.meta.mcp.errors import GuardrailViolationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,
 )
@@ -48,10 +48,7 @@ from synthorg.meta.mcp.handlers.common_args import (
     PAGINATION_ARG_OFFSET as _ARG_OFFSET,
 )
 from synthorg.meta.mcp.handlers.common_args import (
-    PAGINATION_TY_NON_NEG_INT as _TY_NON_NEG_INT,
-)
-from synthorg.meta.mcp.handlers.common_args import (
-    PAGINATION_TY_POS_INT as _TY_POS_INT,
+    coerce_pagination,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
@@ -263,12 +260,9 @@ def paginate_sequence[T](
 
     Raises:
         ArgumentValidationError: If ``offset`` is negative or ``limit``
-            is non-positive.
+            is non-positive (validated via :func:`coerce_pagination`).
     """
-    if offset < 0:
-        raise ArgumentValidationError(_ARG_OFFSET, _TY_NON_NEG_INT)
-    if limit <= 0:
-        raise ArgumentValidationError(_ARG_LIMIT, _TY_POS_INT)
+    offset, limit = coerce_pagination({_ARG_OFFSET: offset, _ARG_LIMIT: limit})
     resolved_total = total if total is not None else len(seq)
     page = list(seq[offset : offset + limit])
     return page, PaginationMeta(total=resolved_total, offset=offset, limit=limit)

@@ -526,6 +526,7 @@ enable_error_code = [
 ]
 local_partial_types = true
 strict_bytes = true
+mypy_path = "stubs"
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]

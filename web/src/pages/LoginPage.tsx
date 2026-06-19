@@ -29,7 +29,6 @@ function validateSetupInputs(
   if (password.length < minPasswordLength) {
     return `Password must be at least ${minPasswordLength} characters`
   }
-  // eslint-disable-next-line security/detect-possible-timing-attacks -- client-side UI validation of user's own input
   if (password !== confirmPassword) return 'Passwords do not match'
   return null
 }

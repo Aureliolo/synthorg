@@ -11,6 +11,11 @@ import { linter, type Diagnostic } from '@codemirror/lint'
 import YAML from 'js-yaml'
 import type { SettingEntry, SettingType } from '@/api/types/settings'
 
+/* eslint-disable security/detect-non-literal-regexp --
+   Every RegExp in this file is built from operator-supplied namespace /
+   key names that first pass through escapeRegex(), so no unescaped user
+   input ever reaches the RegExp constructor. */
+
 // ── Schema info ───────────────────────────────────────────────
 
 /** @internal Exported for direct unit testing. */
@@ -56,8 +61,7 @@ function findJsonKeyPosition(
 ): { from: number; to: number } | null {
   if (!key) {
     // Searching for a namespace -- first occurrence is fine
-    // eslint-disable-next-line security/detect-non-literal-regexp -- input is escaped via escapeRegex
-    const pattern = new RegExp(`"${escapeRegex(namespace)}"\\s*:`)
+      const pattern = new RegExp(`"${escapeRegex(namespace)}"\\s*:`)
     const match = pattern.exec(text)
     if (match) {
       return { from: match.index, to: match.index + namespace.length + 2 }
@@ -67,11 +71,9 @@ function findJsonKeyPosition(
   // Searching for a key within a namespace -- find the namespace first,
   // then search for the key within its scope to avoid false matches
   // in other namespaces with the same key name.
-  // eslint-disable-next-line security/detect-non-literal-regexp -- input is escaped via escapeRegex
   const nsPattern = new RegExp(`"${escapeRegex(namespace)}"\\s*:\\s*\\{`)
   const nsMatch = nsPattern.exec(text)
   const searchFrom = nsMatch ? nsMatch.index + nsMatch[0].length : 0
-  // eslint-disable-next-line security/detect-non-literal-regexp -- input is escaped via escapeRegex
   const keyPattern = new RegExp(`"${escapeRegex(key)}"\\s*:`)
   keyPattern.lastIndex = 0
   const sub = text.slice(searchFrom)
@@ -94,8 +96,7 @@ function findYamlKeyPosition(
 ): { from: number; to: number } | null {
   if (!key) {
     // Searching for a namespace (top-level, no indentation)
-    // eslint-disable-next-line security/detect-non-literal-regexp -- input is escaped via escapeRegex
-    const pattern = new RegExp(`^${escapeRegex(namespace)}\\s*:`, 'm')
+      const pattern = new RegExp(`^${escapeRegex(namespace)}\\s*:`, 'm')
     const match = pattern.exec(text)
     if (match) {
       return { from: match.index, to: match.index + namespace.length }
@@ -104,12 +105,10 @@ function findYamlKeyPosition(
   }
   // Searching for a key within a namespace -- find the namespace line first,
   // then search for the indented key after it.
-  // eslint-disable-next-line security/detect-non-literal-regexp -- input is escaped via escapeRegex
   const nsPattern = new RegExp(`^${escapeRegex(namespace)}\\s*:`, 'm')
   const nsMatch = nsPattern.exec(text)
   const searchFrom = nsMatch ? nsMatch.index + nsMatch[0].length : 0
   const sub = text.slice(searchFrom)
-  // eslint-disable-next-line security/detect-non-literal-regexp -- input is escaped via escapeRegex
   const keyPattern = new RegExp(`^(\\s+)["']?${escapeRegex(key)}["']?\\s*:`, 'm')
   const keyMatch = keyPattern.exec(sub)
   if (keyMatch) {

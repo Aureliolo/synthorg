@@ -25,6 +25,7 @@ from litestar.types import (
     Send,
 )
 
+from synthorg.api._asgi_scope import is_http_scope
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import normalize_path
@@ -88,7 +89,7 @@ class CsrfMiddleware:
             receive: ASGI receive callable.
             send: ASGI send callable.
         """
-        if scope.get("type") != "http":  # type: ignore[comparison-overlap]
+        if not is_http_scope(scope):
             await self.app(scope, receive, send)
             return
 

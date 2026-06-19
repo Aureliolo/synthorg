@@ -3,7 +3,7 @@ import { sanitizeForLog } from '@/utils/logging'
 import { isObject } from '@/utils/type-guards'
 import { sanitizeWsEnum, sanitizeWsString } from '@/utils/ws-sanitize'
 import type { WsEvent } from '@/api/types'
-import type { AgentRuntimeStatus } from '@/lib/utils'
+import type { AgentRuntimeStatus } from '@/utils/agent-status'
 import type { AgentsSet } from './types'
 
 const log = createLogger('agents')

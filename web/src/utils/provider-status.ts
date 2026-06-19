@@ -1,4 +1,4 @@
-import type { AgentRuntimeStatus } from '@/lib/utils'
+import type { AgentRuntimeStatus } from '@/utils/agent-status'
 import type { AuthType, ProviderConfig } from '@/api/types/providers'
 
 /**

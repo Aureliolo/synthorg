@@ -8,6 +8,17 @@ import { Button } from './button'
 
 const log = createLogger('ConfirmDialog')
 
+/**
+ * Confirm-handler contract. Resolving to ``false`` keeps the dialog open
+ * so the caller can retry from the same surface (used by sentinel-
+ * returning store mutations). Any other resolution (``void`` / sync or
+ * async / ``true``) closes the dialog. The ``void`` arm is intentional so
+ * a plain void-returning handler body is accepted; that is exactly what
+ * ``no-invalid-void-type`` flags, hence the single suppression here.
+ */
+// eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- intentional confirm-handler contract: false keeps the dialog open, void (sync or async) closes it
+export type ConfirmHandler = () => boolean | void | Promise<boolean | void>
+
 export interface ConfirmDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -19,16 +30,8 @@ export interface ConfirmDialogProps {
   cancelLabel?: string | undefined
   /** Visual variant (default: "default"). "destructive" uses a red confirm button. */
   variant?: 'default' | 'destructive' | undefined
-  /**
-   * Confirm handler. Resolving to ``false`` keeps the dialog open so
-   * the caller can retry from the same surface (used by sentinel-
-   * returning store mutations: when the underlying API call fails the
-   * store toasts the error and returns ``null`` / ``false``, and the
-   * caller propagates that as ``false`` here). Any other resolution
-   * (``void`` / ``undefined`` / ``true``) closes the dialog.
-   */
-  // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- intentional confirm-handler contract: false keeps the dialog open, void (sync or async) closes it
-  onConfirm: () => boolean | void | Promise<boolean | void>
+  /** Confirm handler; see :type:`ConfirmHandler` for the resolution contract. */
+  onConfirm: ConfirmHandler
   /**
    * Optional handler invoked when the user explicitly clicks the
    * Cancel button. Dismissals via Escape or backdrop click do NOT

@@ -1,8 +1,7 @@
 import { useMemo } from 'react'
 import type { Transition } from 'motion/react'
 import { statusColorTransition } from '@/lib/motion'
-import type { AgentRuntimeStatus } from '@/lib/utils'
-import { getStatusColor } from '@/lib/utils'
+import { getStatusColor, type AgentRuntimeStatus } from '@/utils/agent-status'
 
 type StatusToken = ReturnType<typeof getStatusColor>
 

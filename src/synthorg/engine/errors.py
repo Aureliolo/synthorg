@@ -453,6 +453,17 @@ class CoordinationError(EngineError):
     """Base exception for multi-agent coordination failures."""
 
 
+class CoordinationConfigError(CoordinationError):
+    """Coordinator configuration is invalid at startup.
+
+    Typical cause: a provider is configured (so the coordinator builds
+    eagerly at boot) but ``coordination.decomposition_model`` resolves
+    blank, leaving the LLM decomposition strategy with no model to
+    invoke. Raised at the wiring chokepoint so the operator sees a
+    clear remediation message instead of a deep strategy-level failure.
+    """
+
+
 class CoordinationPhaseError(CoordinationError):
     """Raised when a coordination pipeline phase fails.
 

@@ -17,9 +17,8 @@ from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
 from synthorg.core.auth.roles import HumanRole
 from tests._shared import LoopAsyncClient
 
-# Preserve the pre-split names so the (many) test bodies below read
-# naturally -- matches the legacy identifiers used before the protocol
-# helpers moved into ``ws_protocol``.
+# Short aliases for the ``ws_protocol`` helpers so the (many) test
+# bodies below read naturally.
 _channel_allowed = channel_allowed
 _handle_message = handle_message
 

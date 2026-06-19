@@ -152,13 +152,6 @@ class RateLimitConfig(BaseModel):
             key="rate_limit_exclude_paths",
             parse=parse_str_tuple_json,
         ),
-        MirrorField(
-            field="max_rpm_default",
-            namespace=SettingNamespace.API,
-            key="max_rpm_default",
-            parse=parse_int,
-            only_if_env_set=True,
-        ),
     )
 
     floor_max_requests: int = Field(
@@ -185,7 +178,7 @@ class RateLimitConfig(BaseModel):
         description="Maximum unauthenticated requests per time window (by IP)",
     )
     auth_max_requests: int = Field(
-        default=6000,
+        default=600,
         ge=1,
         description="Maximum authenticated requests per time window (by user ID)",
     )
@@ -196,16 +189,6 @@ class RateLimitConfig(BaseModel):
     exclude_paths: tuple[str, ...] = Field(
         default=("/api/v1/healthz", "/api/v1/readyz"),
         description="Paths excluded from rate limiting",
-    )
-    max_rpm_default: int = Field(
-        default=60,
-        ge=1,
-        le=100_000,
-        description=(
-            "Fallback requests-per-minute applied to per-connection"
-            " coordinators when the catalog does not provide a limiter"
-            " (mirrors the api.max_rpm_default setting; restart required)"
-        ),
     )
 
     @model_validator(mode="after")

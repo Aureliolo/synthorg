@@ -540,11 +540,10 @@ async def _add_invited_participant(
     from synthorg.meta.chief_of_staff.group_models import (  # noqa: PLC0415
         ConversationParticipant,
     )
-    from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
+    from synthorg.meta.state import self_improvement_config_of  # noqa: PLC0415
     from synthorg.persistence.conversation_participant_protocol import (  # noqa: PLC0415
         ConversationParticipantFilterSpec,
     )
-    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
     identity = await agent_registry_of(app_state).get(invite.target_agent_id)
     if identity is None:
@@ -565,9 +564,7 @@ async def _add_invited_participant(
     )
     if any(p.agent_id == invite.target_agent_id for p in roster):
         return
-    meta_config = await load_self_improvement_config(
-        app_state.slice(SettingsStateSlice).settings_service
-    )
+    meta_config = await self_improvement_config_of(app_state)
     cap = meta_config.chief_of_staff.group_chat_max_participants
     if len(roster) >= cap:
         logger.warning(

@@ -1,4 +1,5 @@
-import { cn, type SemanticColor } from '@/lib/utils'
+import { cn } from '@/lib/utils'
+import type { SemanticColor } from '@/utils/agent-status'
 import { getTaskStatusColor, getTaskStatusLabel, getPriorityColor, getPriorityLabel } from '@/utils/tasks'
 import type { Priority, TaskStatus } from '@/api/types/enums'
 

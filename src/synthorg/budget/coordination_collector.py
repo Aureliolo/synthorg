@@ -10,7 +10,7 @@ Individual metric failures are logged and skipped without blocking
 remaining metric collection.
 """
 
-from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, NamedTuple, Protocol, runtime_checkable
 
 from synthorg.budget.baseline_store import BaselineStore
 from synthorg.budget.coordination_config import (
@@ -75,7 +75,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _MIN_TEAM_SIZE: int = 2
-_MS_PER_SECOND: float = 1000.0
+_MS_PER_SECOND: Final[float] = 1000.0
 
 
 class CollectionInputs(NamedTuple):

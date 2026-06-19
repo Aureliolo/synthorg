@@ -10,7 +10,7 @@ import type {
   TrainingPlanResponse,
   TrainingResultResponse,
 } from '@/api/endpoints/training'
-import type { AgentRuntimeStatus } from '@/lib/utils'
+import type { AgentRuntimeStatus } from '@/utils/agent-status'
 
 export interface TrainingPlanRow {
   agentId: string

@@ -3,7 +3,7 @@ import { Brain } from 'lucide-react'
 import type { ProposalSummary } from '@/api/endpoints/meta'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
-import type { AgentRuntimeStatus } from '@/lib/utils'
+import type { AgentRuntimeStatus } from '@/utils/agent-status'
 
 interface MetaProposalListProps {
   proposals: readonly ProposalSummary[]

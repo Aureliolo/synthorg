@@ -38,7 +38,10 @@ from synthorg.api.construction_wiring import ConstructionDeps, run_construction_
 from synthorg.api.cursor import CursorSecret
 from synthorg.api.cursor_config import CursorConfig
 from synthorg.api.feature_composition import compose_feature_slices
-from synthorg.api.integrations_wiring import auto_wire_integrations
+from synthorg.api.integrations_wiring import (
+    auto_wire_integrations,
+    wire_rate_limit_coordinator_factory,
+)
 from synthorg.api.lifecycle_helpers.boot_resolvers import (
     build_default_approval_timeout_scheduler,
     resolve_budget_int,
@@ -314,7 +317,6 @@ def build_construction_services(
         effective_config=effective_config,
         persistence=persistence,
         message_bus=message_bus,
-        api_config=api_config,
         ceremony_scheduler=meeting_wire.ceremony_scheduler,
         db_url=boot.db_url,
         resolved_db_path=boot.resolved_db_path,
@@ -411,6 +413,17 @@ def build_construction_services(
         client_simulation_state=overrides.client_simulation_state,
     )
     run_construction_wiring(app_state, construction_deps)
+
+    # The shared rate-limit coordinator factory reads the live
+    # ``ApiBridgeConfig`` snapshot per connection, so it is wired here,
+    # after ``app_state`` exists: the per-connection closure runs
+    # post-startup when the resolved + hot-swapped snapshot is in place.
+    if message_bus is not None and integrations.connection_catalog is not None:
+        wire_rate_limit_coordinator_factory(
+            message_bus=message_bus,
+            connection_catalog=integrations.connection_catalog,
+            app_state=app_state,
+        )
 
     # The cockpit-channel steering notifier closes over the channels plugin
     # (a construction-phase artifact) and is parked on the cockpit slice so

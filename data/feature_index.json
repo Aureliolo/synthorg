@@ -864,7 +864,8 @@
         "role_router",
         "group_chat_service",
         "conversational_actor",
-        "custom_rules_service"
+        "custom_rules_service",
+        "self_improvement_config"
       ]
     },
     {
@@ -1277,6 +1278,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-19T12:34:01.124038Z",
+  "generated_at": "2026-06-19T17:33:29.626710Z",
   "schema_version": 1
 }

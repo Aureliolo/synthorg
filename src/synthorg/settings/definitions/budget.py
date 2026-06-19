@@ -268,16 +268,17 @@ _r.register(
         namespace=SettingNamespace.BUDGET,
         key="run_hard_ceiling",
         type=SettingType.FLOAT,
-        default="0.0",
+        default="25.0",
         description=(
             "Absolute hard real-money ceiling (in budget.currency) applied"
             " to any run whose Task.hard_ceiling is unset. The in-loop"
             " BudgetChecker raises RunHardCeilingExceededError when the"
             " accumulated cost meets or exceeds this value; the engine"
             " parks the context so the operator can raise the ceiling and"
-            " resume. The default 0.0 is the opt-out sentinel: no global"
-            " ceiling is enforced (per-task ceilings still apply). Set a"
-            " positive value to cap every otherwise-unbounded run."
+            " resume. The shipped default 25.0 is a safety net that caps"
+            " otherwise-unbounded runs; 0.0 is the explicit opt-out"
+            " sentinel that enforces no global ceiling (per-task ceilings"
+            " still apply). Lower or raise it to suit the deployment."
         ),
         group="Forecast",
         min_value=0.0,

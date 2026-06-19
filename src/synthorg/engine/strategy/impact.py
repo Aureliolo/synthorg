@@ -207,7 +207,7 @@ class HybridImpactScorer:
         explicit_dimensions: dict[str, float] | None = None,
     ) -> None:
         """Initialize with optional explicit scores and composite fallback."""
-        self._explicit = explicit_dimensions or {}
+        self._explicit = dict(explicit_dimensions) if explicit_dimensions else {}
         self._composite = CompositeImpactScorer()
 
     def score(

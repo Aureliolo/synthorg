@@ -246,15 +246,15 @@ class PerformanceTracker:
             declining_threshold=cfg.declining_threshold,
         )
 
-    def clear(self) -> None:
+    def reset_for_test_sync(self) -> None:
         """Synchronously reset all recorded metrics for test isolation.
 
         Cancels pending background tasks via ``Task.cancel()`` but does
-        **not** await them. This is the test-only sync companion to
-        :meth:`aclear`, mirroring the uniform ``clear()`` sync-reset
-        surface the other trackers expose to the sync test-reset fixture
-        (where no running event loop is available). Production code uses
-        the async :meth:`aclear` / :meth:`aclose` instead.
+        **not** await them. This is the test-only sync entry point the
+        sync test-reset fixture calls when no running event loop is
+        available (mirroring ``ApprovalStore.reset_for_test_sync`` and
+        ``reset_registry_for_test_sync``). Production code uses the async
+        :meth:`aclear` / :meth:`aclose`, which is the sole public reset.
         """
         tasks_cancelled = len(self._background_tasks)
         task_metrics_cleared = len(self._task_metrics)
