@@ -122,6 +122,7 @@ class TestReportGeneratorTool:
                     "period": "7d",
                 }
             )
+        assert mock_provider.calls == []
 
     async def test_execute_invalid_format(
         self,
@@ -136,6 +137,7 @@ class TestReportGeneratorTool:
                     "format": "csv",
                 }
             )
+        assert mock_provider.calls == []
 
     async def test_execute_provider_error(
         self,

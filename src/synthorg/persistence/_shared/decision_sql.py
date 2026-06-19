@@ -91,7 +91,7 @@ def unfreeze_for_json(value: object) -> object:
     Returns:
         The value with all frozen views replaced by plain dicts/lists.
     """
-    if isinstance(value, MappingProxyType | dict):
+    if isinstance(value, Mapping):
         return {k: unfreeze_for_json(v) for k, v in value.items()}
     if isinstance(value, tuple | list):
         return [unfreeze_for_json(item) for item in value]

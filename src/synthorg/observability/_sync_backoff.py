@@ -13,6 +13,11 @@ from typing import Final
 _RETRY_BACKOFF_BASE_SECONDS: Final[float] = 0.5
 _RETRY_BACKOFF_FACTOR: Final[int] = 2
 _RETRY_BACKOFF_CAP_SECONDS: Final[float] = 8.0
+_RETRY_BACKOFF_CAP_ATTEMPT: Final[int] = 4
+"""First attempt at which the exponential already meets the cap
+(``0.5 * 2**4 == 8.0``). At or beyond it the delay is always the cap, so
+short-circuit before ``float(2**attempt)`` to avoid an ``OverflowError``
+should a caller ever pass an unbounded attempt count."""
 
 
 def backoff_delay(attempt: int) -> float:
@@ -25,5 +30,7 @@ def backoff_delay(attempt: int) -> float:
         Seconds to wait before the next attempt, capped at
         ``_RETRY_BACKOFF_CAP_SECONDS``.
     """
+    if attempt >= _RETRY_BACKOFF_CAP_ATTEMPT:
+        return _RETRY_BACKOFF_CAP_SECONDS
     delay = _RETRY_BACKOFF_BASE_SECONDS * float(_RETRY_BACKOFF_FACTOR**attempt)
     return min(delay, _RETRY_BACKOFF_CAP_SECONDS)

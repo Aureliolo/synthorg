@@ -105,6 +105,11 @@ class CodeRunnerTool(BaseTool):
                 stdout/stderr kept on a test record. Resolved from the
                 ``tools.code_runner_output_tail_limit`` setting at the
                 wiring boundary, defaulting to ``_OUTPUT_TAIL_LIMIT``.
+
+        Raises:
+            ValueError: When ``output_tail_limit`` is not a positive
+                integer (a non-positive cap would defeat the tail slice
+                and persist oversized output records).
         """
         super().__init__(
             name="code_runner",
@@ -118,6 +123,11 @@ class CodeRunnerTool(BaseTool):
         self._sandbox = sandbox
         self._code_execution_records = code_execution_records
         self._clock = clock or SystemClock()
+        if output_tail_limit <= 0:
+            msg = (
+                f"output_tail_limit must be a positive integer, got {output_tail_limit}"
+            )
+            raise ValueError(msg)
         self._output_tail_limit = output_tail_limit
 
     @override

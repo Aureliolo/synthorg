@@ -732,7 +732,22 @@ class BrowserTool(BaseTool):
             )
             return adopted_path
 
-        adopted = await asyncio.to_thread(_adopt_and_write_sidecar)
+        # The worker thread writes the adopted baseline + sidecar while
+        # the caller still holds the per-(spec, screenshot) lock. Shield
+        # the offload so a cancellation drains the thread to completion
+        # (under the held lock) before unwinding -- otherwise the lock
+        # releases mid-write and a concurrent task can race the files.
+        adoption_task = asyncio.create_task(
+            asyncio.to_thread(_adopt_and_write_sidecar),
+        )
+        try:
+            adopted = await asyncio.shield(adoption_task)
+        except asyncio.CancelledError:
+            try:
+                await asyncio.shield(adoption_task)
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+            raise
         logger.info(
             BROWSER_DIFF_SUCCESS,
             spec=args.spec_name,

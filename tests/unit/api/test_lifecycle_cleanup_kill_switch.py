@@ -191,17 +191,9 @@ class TestLifecycleCleanupKillSwitch:
 
         await _run_loop_ticks(app_state, ticks=3, monkeypatch=monkeypatch)
 
-        assert (
-            cast(AsyncMock, ticket_store_of(app_state).cleanup_expired).await_count == 0
-        )
-        assert (
-            cast(AsyncMock, session_store_of(app_state).cleanup_expired).await_count
-            == 0
-        )
-        assert (
-            cast(AsyncMock, lockout_store_of(app_state).cleanup_expired).await_count
-            == 0
-        )
+        cast(AsyncMock, ticket_store_of(app_state).cleanup_expired).assert_not_called()
+        cast(AsyncMock, session_store_of(app_state).cleanup_expired).assert_not_called()
+        cast(AsyncMock, lockout_store_of(app_state).cleanup_expired).assert_not_called()
         assert cast(AsyncMock, config_resolver_of(app_state).get_bool).await_count == 3
 
 

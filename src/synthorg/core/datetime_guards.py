@@ -51,7 +51,12 @@ def validate_time_window(since: datetime, until: datetime) -> None:
         ValueError: When either bound is naive or when
             ``since >= until``.
     """
-    if since.tzinfo is None or until.tzinfo is None:
+    if (
+        since.tzinfo is None
+        or since.utcoffset() is None
+        or until.tzinfo is None
+        or until.utcoffset() is None
+    ):
         msg = "since/until must be timezone-aware"
         raise ValueError(msg)
     if since >= until:
