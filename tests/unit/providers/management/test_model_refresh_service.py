@@ -38,7 +38,9 @@ def _model(model_id: str, *, generation: float) -> ProviderModelConfig:
 
 _OLD = _model("old", generation=1.0)
 _NEW = _model("new", generation=2.0)
-_PROVIDER = ProviderConfig(base_url="http://localhost:11434", models=(_OLD, _NEW))
+_PROVIDER = ProviderConfig(
+    connection_name="conn-test", base_url="http://localhost:11434", models=(_OLD, _NEW)
+)
 
 
 def _build_service(

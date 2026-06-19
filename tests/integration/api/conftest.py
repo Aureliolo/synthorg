@@ -79,7 +79,11 @@ def build_runtime_app(
     )
     provider_registry = (
         ProviderRegistry.from_config(
-            {"test-provider": ProviderConfig(driver="scripted")},
+            {
+                "test-provider": ProviderConfig(
+                    driver="scripted", connection_name="conn-scripted"
+                )
+            },
         )
         if with_provider
         else None

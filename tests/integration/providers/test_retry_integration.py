@@ -34,7 +34,7 @@ def _make_config(
 ) -> ProviderConfig:
     return ProviderConfig(
         driver="litellm",
-        api_key="sk-test-key",
+        connection_name="provider-retry-test",
         models=(
             ProviderModelConfig(
                 id="test-model-001",

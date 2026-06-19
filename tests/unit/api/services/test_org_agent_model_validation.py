@@ -20,6 +20,7 @@ pytestmark = pytest.mark.unit
 
 _PROVIDERS: Mapping[str, ProviderConfig] = {
     "example-provider": ProviderConfig(
+        connection_name="conn-test",
         models=(ProviderModelConfig(id="example-large-002", metadata=ModelMetadata()),),
     ),
 }

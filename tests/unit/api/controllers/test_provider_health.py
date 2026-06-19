@@ -57,6 +57,7 @@ def _build_provider_client(
         company_name="test",
         providers={
             "test-provider": ProviderConfig(
+                connection_name="conn-test",
                 driver="litellm",
                 models=(
                     ProviderModelConfig(

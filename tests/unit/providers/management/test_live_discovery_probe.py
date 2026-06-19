@@ -25,6 +25,7 @@ def _model(model_id: str, *, source: str = "litellm") -> ProviderModelConfig:
 
 def _local_provider(*model_ids: str) -> ProviderConfig:
     return ProviderConfig(
+        connection_name="conn-test",
         base_url="http://localhost:11434",
         models=tuple(_model(m) for m in model_ids),
     )
@@ -32,6 +33,7 @@ def _local_provider(*model_ids: str) -> ProviderConfig:
 
 def _cloud_provider(*model_ids: str) -> ProviderConfig:
     return ProviderConfig(
+        connection_name="conn-test",
         litellm_provider="example-provider",
         models=tuple(_model(m) for m in model_ids),
     )

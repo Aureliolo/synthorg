@@ -20,11 +20,14 @@ from synthorg.core.task_enums import TaskStatus
 from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.integrations.connections.models import AuthMethod, ConnectionType
 from synthorg.providers.drivers.litellm_driver import LiteLLMDriver
-from synthorg.providers.enums import MessageRole
+from synthorg.providers.enums import AuthType, MessageRole
 from synthorg.providers.models import ToolCall
 from synthorg.tools.file_system.write_file import WriteFileTool
 from synthorg.tools.registry import ToolRegistry
+from tests._shared import make_in_memory_catalog
 
 from .conftest import (
     ScriptedProvider,
@@ -418,13 +421,34 @@ class TestRealLLMIntegration:
                 "(local provider) to run this test"
             )
 
+        # Catalog-only credentials: when an API key is supplied, mint it
+        # into an in-memory connection catalog and reference it via
+        # connection_name; the driver resolves it at call time. A
+        # base-URL-only local provider needs no credential (NONE auth).
+        catalog: ConnectionCatalog | None = None
+        connection_name: str | None = None
+        if api_key is not None:
+            catalog = make_in_memory_catalog()
+            connection_name = "e2e-provider-credential"
+            await catalog.create(
+                name=connection_name,
+                connection_type=ConnectionType.LLM_PROVIDER,
+                auth_method=AuthMethod.API_KEY.value,
+                credentials={"api_key": api_key},
+            )
+
         provider_config = ProviderConfig(
             litellm_provider=provider_name,
-            api_key=api_key,
+            auth_type=AuthType.API_KEY if api_key is not None else AuthType.NONE,
+            connection_name=connection_name,
             base_url=base_url,
             models=(ProviderModelConfig(id=provider_model),),
         )
-        provider = LiteLLMDriver(provider_name, provider_config)
+        provider = LiteLLMDriver(
+            provider_name,
+            provider_config,
+            connection_catalog=catalog,
+        )
 
         cost_tracker = CostTracker()
         identity = make_e2e_identity().model_copy(

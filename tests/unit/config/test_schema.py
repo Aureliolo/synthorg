@@ -19,6 +19,7 @@ from synthorg.config.schema import (
 from synthorg.core.types import stable_agent_id
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.organization.enums import CompanyType
+from synthorg.providers.enums import AuthType
 
 from .conftest import (
     AgentConfigFactory,
@@ -106,13 +107,14 @@ class TestProviderModelConfig:
 @pytest.mark.unit
 class TestProviderConfig:
     def test_defaults(self) -> None:
-        p = ProviderConfig()
-        assert p.api_key is None
+        p = ProviderConfig(auth_type=AuthType.NONE)
+        assert p.connection_name is None
         assert p.base_url is None
         assert p.models == ()
 
     def test_with_models(self) -> None:
         p = ProviderConfig(
+            auth_type=AuthType.NONE,
             models=(
                 ProviderModelConfig(id="m1", alias="fast"),
                 ProviderModelConfig(id="m2", alias="smart"),
@@ -123,6 +125,7 @@ class TestProviderConfig:
     def test_duplicate_model_ids_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Duplicate model IDs"):
             ProviderConfig(
+                auth_type=AuthType.NONE,
                 models=(
                     ProviderModelConfig(id="m1"),
                     ProviderModelConfig(id="m1"),
@@ -132,22 +135,27 @@ class TestProviderConfig:
     def test_duplicate_aliases_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Duplicate model aliases"):
             ProviderConfig(
+                auth_type=AuthType.NONE,
                 models=(
                     ProviderModelConfig(id="m1", alias="fast"),
                     ProviderModelConfig(id="m2", alias="fast"),
                 ),
             )
 
-    def test_whitespace_api_key_rejected(self) -> None:
+    def test_whitespace_connection_name_rejected(self) -> None:
         with pytest.raises(ValidationError, match="whitespace-only"):
-            ProviderConfig(api_key="   ")
+            ProviderConfig(connection_name="   ")
 
     def test_whitespace_base_url_rejected(self) -> None:
         with pytest.raises(ValidationError, match="whitespace-only"):
-            ProviderConfig(base_url="   ")
+            ProviderConfig(auth_type=AuthType.NONE, base_url="   ")
 
-    def test_api_key_hidden_from_repr(self) -> None:
-        p = ProviderConfig(api_key="sk-secret-key-123")
+    def test_custom_header_value_hidden_from_repr(self) -> None:
+        p = ProviderConfig(
+            auth_type=AuthType.CUSTOM_HEADER,
+            custom_header_name="X-Api-Token",
+            custom_header_value="sk-secret-key-123",
+        )
         assert "sk-secret-key-123" not in repr(p)
 
     def test_factory(self) -> None:
@@ -422,7 +430,9 @@ class TestRootConfig:
                 ),
             ),
             providers={
-                "example-provider": ProviderConfig(models=(model,)),
+                "example-provider": ProviderConfig(
+                    connection_name="conn-test", models=(model,)
+                ),
             },
             routing=RoutingConfig(
                 fallback_chain=("fast",),
@@ -543,7 +553,9 @@ class TestRootConfig:
         with pytest.raises(ValidationError, match="unknown fallback"):
             RootConfig(
                 company_name="X",
-                providers={"p": ProviderConfig(models=(model,))},
+                providers={
+                    "p": ProviderConfig(connection_name="conn-test", models=(model,))
+                },
                 routing=RoutingConfig(
                     rules=(
                         RoutingRuleConfig(
@@ -563,7 +575,9 @@ class TestRootConfig:
         ):
             RootConfig(
                 company_name="X",
-                providers={"p": ProviderConfig(models=(model,))},
+                providers={
+                    "p": ProviderConfig(connection_name="conn-test", models=(model,))
+                },
                 routing=RoutingConfig(fallback_chain=("nonexistent",)),
             )
 
@@ -574,8 +588,12 @@ class TestRootConfig:
             RootConfig(
                 company_name="X",
                 providers={
-                    "provider_a": ProviderConfig(models=(model_a,)),
-                    "provider_b": ProviderConfig(models=(model_b,)),
+                    "provider_a": ProviderConfig(
+                        connection_name="conn-test", models=(model_a,)
+                    ),
+                    "provider_b": ProviderConfig(
+                        connection_name="conn-test", models=(model_b,)
+                    ),
                 },
                 routing=RoutingConfig(
                     fallback_chain=("shared-model",),
@@ -589,8 +607,12 @@ class TestRootConfig:
             RootConfig(
                 company_name="X",
                 providers={
-                    "provider_a": ProviderConfig(models=(model_a,)),
-                    "provider_b": ProviderConfig(models=(model_b,)),
+                    "provider_a": ProviderConfig(
+                        connection_name="conn-test", models=(model_a,)
+                    ),
+                    "provider_b": ProviderConfig(
+                        connection_name="conn-test", models=(model_b,)
+                    ),
                 },
                 routing=RoutingConfig(
                     rules=(
@@ -606,7 +628,9 @@ class TestRootConfig:
         model = ProviderModelConfig(id="m1", alias="fast")
         cfg = RootConfig(
             company_name="X",
-            providers={"p": ProviderConfig(models=(model,))},
+            providers={
+                "p": ProviderConfig(connection_name="conn-test", models=(model,))
+            },
             routing=RoutingConfig(
                 rules=(
                     RoutingRuleConfig(

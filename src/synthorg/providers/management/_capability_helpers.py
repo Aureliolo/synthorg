@@ -74,21 +74,25 @@ def mask_secret(secret: str) -> str:
 
 def credentials_update_fields(
     request: CredentialsRotateRequest,
-) -> tuple[dict[str, object], str]:
+) -> tuple[dict[str, object], str, str | None]:
     """Build the ``ProviderConfig.model_copy(update=...)`` field map.
 
-    Returns ``(field_updates, masked_secret_for_audit)``. The masked
-    secret is suitable for direct inclusion in audit-row payloads.
+    Returns ``(field_updates, masked_secret_for_audit, raw_api_key)``.
+    The masked secret is suitable for direct inclusion in audit-row
+    payloads. ``raw_api_key`` is the plaintext API key for the
+    ``AuthType.API_KEY`` variant (the caller mints it into the connection
+    catalog and stamps ``connection_name``); it is ``None`` for every
+    other auth type, whose secrets stay embedded on the config.
 
     Returns:
-        A ``(field_updates, masked_secret)`` tuple: the update map for
-        ``ProviderConfig.model_copy(update=...)`` and an audit-safe
-        masked secret.
+        A ``(field_updates, masked_secret, raw_api_key)`` tuple.
     """
     match request:
         case _ApiKeyRotation():
             secret = request.api_key.get_secret_value()
-            return ({"api_key": secret}, mask_secret(secret))
+            # Catalog-backed: no field update on the config; the caller mints
+            # the secret and stamps connection_name out-of-band.
+            return ({}, mask_secret(secret), secret)
         case _SubscriptionRotation():
             # ToS re-acceptance is mandatory on subscription rotation;
             # silently rotating with ``tos_accepted=False`` would let
@@ -114,6 +118,7 @@ def credentials_update_fields(
                     "tos_accepted_at": format_iso_utc(datetime.now(UTC)),
                 },
                 mask_secret(secret),
+                None,
             )
         case _CustomHeaderRotation():
             secret = request.custom_header_value.get_secret_value()
@@ -123,6 +128,7 @@ def credentials_update_fields(
                     "custom_header_value": secret,
                 },
                 mask_secret(secret),
+                None,
             )
         case _OAuthRotation():
             secret = request.oauth_client_secret.get_secret_value()
@@ -134,6 +140,7 @@ def credentials_update_fields(
                     "oauth_scope": request.oauth_scope,
                 },
                 mask_secret(secret),
+                None,
             )
         case _ as unreachable:  # pragma: no cover - exhaustive over the union
             assert_never(unreachable)

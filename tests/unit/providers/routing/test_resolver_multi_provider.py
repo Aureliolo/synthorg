@@ -27,7 +27,7 @@ def _mixed_provider_config() -> dict[str, ProviderConfig]:
     return {
         "test-provider-a": ProviderConfig(
             driver="litellm",
-            api_key="sk-test-a",
+            connection_name="conn-test-a",
             models=(
                 ProviderModelConfig(
                     id="test-shared-001",
@@ -45,7 +45,7 @@ def _mixed_provider_config() -> dict[str, ProviderConfig]:
         ),
         "test-provider-b": ProviderConfig(
             driver="litellm",
-            api_key="sk-test-b",
+            connection_name="conn-test-b",
             models=(
                 ProviderModelConfig(
                     id="test-shared-001",
@@ -123,7 +123,7 @@ class TestMultiProviderIndex:
         providers = {
             "test-provider-a": ProviderConfig(
                 driver="litellm",
-                api_key="sk-a",
+                connection_name="conn-a",
                 models=(
                     ProviderModelConfig(
                         id="test-shared-001",
@@ -135,7 +135,7 @@ class TestMultiProviderIndex:
             ),
             "test-provider-b": ProviderConfig(
                 driver="litellm",
-                api_key="sk-b",
+                connection_name="conn-b",
                 models=(
                     ProviderModelConfig(
                         id="test-shared-001",
@@ -147,7 +147,7 @@ class TestMultiProviderIndex:
             ),
             "test-provider-c": ProviderConfig(
                 driver="litellm",
-                api_key="sk-c",
+                connection_name="conn-c",
                 models=(
                     ProviderModelConfig(
                         id="test-shared-001",
@@ -176,7 +176,7 @@ class TestMultiProviderIndex:
         providers = {
             "test-provider": ProviderConfig(
                 driver="litellm",
-                api_key="sk-test",
+                connection_name="conn-test",
                 models=(
                     ProviderModelConfig(
                         id="test-model-001",

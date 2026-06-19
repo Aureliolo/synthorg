@@ -297,7 +297,11 @@ class TestCoordinationWiring:
             agent_registry=registry,
             settings_service=settings_service,
             provider_registry=ProviderRegistry.from_config(
-                {"test-provider": ProviderConfig(driver="scripted")},
+                {
+                    "test-provider": ProviderConfig(
+                        driver="scripted", connection_name="conn-scripted"
+                    )
+                },
             ),
         )
 

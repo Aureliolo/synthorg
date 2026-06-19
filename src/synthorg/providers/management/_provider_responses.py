@@ -159,7 +159,9 @@ class ProviderResponse(BaseModel):
         auth_type: Authentication mechanism.
         base_url: Provider API base URL.
         models: Configured model definitions.
-        has_api_key: Whether an API key is set.
+        has_api_key: Whether an API-key credential connection is configured
+            (the secret lives in the connection catalog, referenced by
+            ``connection_name``; never the key itself).
         has_oauth_credentials: Whether OAuth credentials are configured.
         has_custom_header: Whether a custom auth header is configured.
         has_subscription_token: Whether a subscription token is set.

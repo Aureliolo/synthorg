@@ -61,7 +61,7 @@ def to_provider_response(
         auth_type=config.auth_type,
         base_url=config.base_url,
         models=config.models,
-        has_api_key=config.api_key is not None,
+        has_api_key=config.connection_name is not None,
         has_oauth_credentials=(
             config.oauth_client_id is not None
             and config.oauth_client_secret is not None

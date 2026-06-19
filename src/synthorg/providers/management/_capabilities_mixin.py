@@ -136,6 +136,10 @@ class _ServiceProtocol(Protocol):
         """Validate + persist + hot-reload providers (provided by host)."""
         ...
 
+    async def _store_provider_api_key(self, provider_name: str, api_key: str) -> str:
+        """Mint the catalog connection backing a provider key (host)."""
+        ...
+
 
 class ProviderCapabilitiesMixin:
     """Mutations for audit / rate-limits / credentials rotate / model add+sync.
@@ -542,7 +546,15 @@ class ProviderCapabilitiesMixin:
                 )
                 raise ProviderValidationError(msg)
 
-            update_fields, masked_secret = credentials_update_fields(request)
+            update_fields, masked_secret, raw_api_key = credentials_update_fields(
+                request,
+            )
+            if raw_api_key is not None:
+                # API-key credentials are catalog-only: mint the rotated
+                # secret into the connection catalog and re-point
+                # connection_name instead of embedding it on the config.
+                conn_name = await self._store_provider_api_key(name, raw_api_key)
+                update_fields = {**update_fields, "connection_name": conn_name}
             updated = existing.model_copy(update=update_fields)
             new_providers = {**providers, name: updated}
             await self._validate_and_persist(new_providers)

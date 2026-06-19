@@ -195,6 +195,7 @@ def _provider_catalogue() -> dict[str, ProviderConfig]:
     """A single provider exposing the three tier aliases the router uses."""
     return {
         _PROVIDER: ProviderConfig(
+            connection_name="conn-test",
             driver="scripted",
             models=tuple(
                 ProviderModelConfig(

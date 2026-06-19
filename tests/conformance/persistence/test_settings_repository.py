@@ -58,6 +58,7 @@ class TestSettingsGetSet:
         # Provider configs persist as a JSON blob in the settings table;
         # the nested model metadata must survive the round trip.
         config = ProviderConfig(
+            connection_name="conn-test",
             litellm_provider="test-provider",
             models=(
                 ProviderModelConfig(

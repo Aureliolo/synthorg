@@ -181,7 +181,7 @@ def _stub_go_licenses(
 
     monkeypatch.setattr(_MODULE.shutil, "which", _fake_which)
 
-    def _fake_run(*_args: Any, **_kwargs: Any) -> SimpleNamespace:
+    def _fake_run(*_args: object, **_kwargs: object) -> SimpleNamespace:
         return SimpleNamespace(stdout=stdout, stderr=stderr, returncode=returncode)
 
     monkeypatch.setattr(_MODULE.subprocess, "run", _fake_run)

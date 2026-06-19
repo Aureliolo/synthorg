@@ -62,6 +62,7 @@ from synthorg.observability.events.security import (
     SECURITY_PROVIDER_DELETED,
     SECURITY_PROVIDER_UPDATED,
 )
+from synthorg.providers._auth_type_descriptor import AUTH_TYPE_DESCRIPTORS
 from synthorg.providers.discovery import discover_models
 from synthorg.providers.discovery_policy import (
     ProviderDiscoveryPolicy,
@@ -129,7 +130,6 @@ logger = get_logger(__name__)
 # is not whitelisted here.
 _SENSITIVE_PROVIDER_FIELDS: frozenset[str] = frozenset(
     {
-        "api_key",
         "subscription_token",
         "oauth_client_secret",
         "custom_header_value",
@@ -398,6 +398,46 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         creds = await catalog.get_credentials(config.connection_name)
         return creds.get("api_key")
 
+    async def _apply_update_with_credential(
+        self,
+        name: str,
+        existing: ProviderConfig,
+        request: UpdateProviderRequest,
+    ) -> ProviderConfig:
+        """Merge an update, minting/clearing the backing credential connection.
+
+        API-key credentials are catalog-only: a secret supplied at the
+        boundary is minted into the connection catalog and referenced by
+        ``connection_name``; a clear request (or a switch to an auth type
+        that has no api-key credential) deletes the backing connection.
+        The resolved reference is threaded into ``apply_update`` so the
+        merged config validates with a complete credential.
+
+        Returns:
+            The merged ``ProviderConfig`` with ``connection_name`` reflecting
+            the catalog mutation.
+        """
+        final_auth_type = (
+            request.auth_type if request.auth_type is not None else existing.auth_type
+        )
+        descriptor = AUTH_TYPE_DESCRIPTORS[final_auth_type]
+        if descriptor.supports_api_key:
+            if request.api_key is not None:
+                conn_name = await self._store_provider_api_key(
+                    name,
+                    request.api_key.get_secret_value(),
+                )
+                return apply_update(existing, request, connection_name=conn_name)
+            if request.clear_api_key:
+                await self._delete_provider_credential(name)
+                return apply_update(existing, request, connection_name=None)
+            return apply_update(existing, request)
+        # The new auth type does not use an api-key connection; drop any
+        # backing credential the provider previously referenced.
+        if existing.connection_name is not None:
+            await self._delete_provider_credential(name)
+        return apply_update(existing, request, connection_name=None)
+
     async def create_provider(
         self,
         request: CreateProviderRequest,
@@ -422,18 +462,19 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 )
                 raise ProviderAlreadyExistsError(msg)
 
-            new_config = build_provider_config(request)
             # Catalog-only credentials: an api_key supplied at the boundary is
-            # minted into a ConnectionCatalog connection and referenced by
-            # connection_name; it is never persisted on the ProviderConfig.
-            if request.api_key is not None and new_config.connection_name is None:
+            # minted into a ConnectionCatalog connection FIRST, then threaded
+            # into the config as connection_name -- API_KEY auth mandates it,
+            # so the config could not validate with the secret embedded or
+            # absent. The secret is never persisted on the ProviderConfig.
+            mints_api_key = AUTH_TYPE_DESCRIPTORS[request.auth_type].supports_api_key
+            conn_name: str | None = None
+            if mints_api_key and request.api_key is not None:
                 conn_name = await self._store_provider_api_key(
                     request.name,
                     request.api_key.get_secret_value(),
                 )
-                new_config = new_config.model_copy(
-                    update={"connection_name": conn_name},
-                )
+            new_config = build_provider_config(request, connection_name=conn_name)
             new_providers = {**providers, request.name: new_config}
             await self._validate_and_persist(new_providers)
             await self._allowlist.update_for_create(new_config)
@@ -478,7 +519,7 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 logger.warning(PROVIDER_NOT_FOUND, provider=name, error=msg)
                 raise ProviderNotFoundError(msg)
 
-            updated = apply_update(existing, request)
+            updated = await self._apply_update_with_credential(name, existing, request)
             new_providers = {**providers, name: updated}
             await self._validate_and_persist(new_providers)
             await self._allowlist.update_for_update(

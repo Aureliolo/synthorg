@@ -333,7 +333,10 @@ class TestClearApiKey:
         )
         update = UpdateProviderRequest(clear_api_key=True)
         result = await service.update_provider("test-provider", update)
-        assert result.api_key is None
+        # Clearing deletes the backing catalog connection and drops the
+        # connection_name reference.
+        assert result.connection_name is None
+        assert await service._resolve_provider_api_key(result) is None
 
     async def test_api_key_takes_precedence_over_clear(
         self,
@@ -419,7 +422,9 @@ class TestAuthTypeTransitions:
         )
         result = await service.update_provider("test-provider", update)
         assert result.auth_type == AuthType.NONE
-        assert result.api_key is None
+        # NONE auth has no api-key connection; the backing connection is
+        # deleted and connection_name cleared.
+        assert result.connection_name is None
 
     async def test_switch_to_custom_header_clears_oauth_fields(
         self,
@@ -468,7 +473,9 @@ class TestAuthTypeTransitions:
         )
         result = await service.update_provider("test-provider", update)
         assert result.auth_type == AuthType.API_KEY
-        assert result.api_key == "sk-new-explicit-key"
+        # The explicit key is minted into the catalog and resolved via
+        # connection_name.
+        assert await service._resolve_provider_api_key(result) == "sk-new-explicit-key"
         # OAuth fields should still be cleared
         assert result.oauth_token_url is None
         assert result.oauth_client_id is None
@@ -492,7 +499,7 @@ class TestAuthTypeTransitions:
         )
         result = await service.update_provider("test-provider", update)
         assert result.auth_type == AuthType.API_KEY
-        assert result.api_key == "sk-new-key"
+        assert await service._resolve_provider_api_key(result) == "sk-new-key"
         assert result.subscription_token is None
         assert result.tos_accepted_at is None
 
@@ -515,7 +522,8 @@ class TestAuthTypeTransitions:
         result = await service.update_provider("test-provider", update)
         assert result.auth_type == AuthType.SUBSCRIPTION
         assert result.subscription_token == "test-subscription-token"
-        assert result.api_key is None
+        # The api-key connection is deleted on switch away from API_KEY.
+        assert result.connection_name is None
         assert result.tos_accepted_at is not None
 
     async def test_subscription_tos_accepted_stamps_timestamp(

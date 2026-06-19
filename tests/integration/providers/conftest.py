@@ -20,7 +20,7 @@ from litellm.types.utils import (  # type: ignore[attr-defined]
 
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.resilience_config import RetryConfig
-from synthorg.providers.enums import MessageRole
+from synthorg.providers.enums import AuthType, MessageRole
 from synthorg.providers.models import (
     ChatMessage,
     ToolDefinition,
@@ -38,7 +38,7 @@ def make_provider_config() -> dict[str, ProviderConfig]:
     return {
         "example-provider": ProviderConfig(
             driver="litellm",
-            api_key="sk-test-key",
+            connection_name="provider-example",
             models=(
                 ProviderModelConfig(
                     id="test-model-001",
@@ -65,7 +65,7 @@ def make_openrouter_config() -> dict[str, ProviderConfig]:
     return {
         "openrouter": ProviderConfig(
             driver="litellm",
-            api_key="sk-or-test-key",
+            connection_name="provider-openrouter",
             base_url="https://openrouter.ai/api/v1",
             models=(
                 ProviderModelConfig(
@@ -93,7 +93,7 @@ def make_ollama_config() -> dict[str, ProviderConfig]:
     return {
         "ollama": ProviderConfig(
             driver="litellm",
-            api_key=None,
+            auth_type=AuthType.NONE,
             base_url="http://localhost:11434",
             models=(
                 ProviderModelConfig(

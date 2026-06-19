@@ -25,7 +25,7 @@ class TestAuthTypeEnum:
 @pytest.mark.unit
 class TestProviderConfigAuth:
     def test_backward_compat_defaults_to_api_key(self) -> None:
-        config = ProviderConfig(driver="litellm")
+        config = ProviderConfig(driver="litellm", connection_name="provider-test")
         assert config.auth_type == AuthType.API_KEY
 
     def test_oauth_valid(self) -> None:
@@ -99,13 +99,23 @@ class TestProviderConfigAuth:
         )
         assert config.auth_type == AuthType.NONE
 
-    def test_api_key_auth_no_extra_requirements(self) -> None:
+    def test_api_key_auth_requires_connection_name(self) -> None:
+        """API-key auth has no embedded credential, so it mandates
+        a ``connection_name`` referencing the catalog entry."""
+        with pytest.raises(ValidationError, match="connection_name"):
+            ProviderConfig(
+                driver="litellm",
+                auth_type=AuthType.API_KEY,
+            )
+
+    def test_api_key_auth_with_connection_name_valid(self) -> None:
         config = ProviderConfig(
             driver="litellm",
             auth_type=AuthType.API_KEY,
+            connection_name="provider-test",
         )
         assert config.auth_type == AuthType.API_KEY
-        assert config.api_key is None
+        assert config.connection_name == "provider-test"
 
     def test_oauth_with_optional_scope(self) -> None:
         config = ProviderConfig(
@@ -155,20 +165,21 @@ class TestProviderConfigAuth:
     def test_litellm_provider_field(self) -> None:
         config = ProviderConfig(
             driver="litellm",
+            connection_name="provider-test",
             litellm_provider="test-provider",
         )
         assert config.litellm_provider == "test-provider"
 
     def test_litellm_provider_defaults_to_none(self) -> None:
-        config = ProviderConfig(driver="litellm")
+        config = ProviderConfig(driver="litellm", connection_name="provider-test")
         assert config.litellm_provider is None
 
-    def test_api_key_auth_stores_key(self) -> None:
-        """API key auth stores the provided key on the config."""
+    def test_api_key_auth_references_connection(self) -> None:
+        """API-key auth references a catalog connection, not an embedded key."""
         config = ProviderConfig(
             driver="litellm",
             auth_type=AuthType.API_KEY,
-            api_key="sk-test-key-001",
+            connection_name="provider-test-key-001",
         )
         assert config.auth_type == AuthType.API_KEY
-        assert config.api_key == "sk-test-key-001"
+        assert config.connection_name == "provider-test-key-001"

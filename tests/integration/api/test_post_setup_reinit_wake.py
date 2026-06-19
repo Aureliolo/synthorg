@@ -61,7 +61,11 @@ async def test_reinit_wakes_worker_and_coordinator_on_provider_config(
         # the coordinator as well as the worker seam.
         app_state.swap_provider_registry(
             ProviderRegistry.from_config(
-                {"test-provider": ProviderConfig(driver="scripted")},
+                {
+                    "test-provider": ProviderConfig(
+                        driver="scripted", connection_name="conn-scripted"
+                    )
+                },
             ),
         )
 
@@ -99,7 +103,11 @@ async def test_reinit_raises_when_coordinator_swap_fails(
         app_state = client.app.state["app_state"]
         app_state.swap_provider_registry(
             ProviderRegistry.from_config(
-                {"test-provider": ProviderConfig(driver="scripted")},
+                {
+                    "test-provider": ProviderConfig(
+                        driver="scripted", connection_name="conn-scripted"
+                    )
+                },
             ),
         )
 

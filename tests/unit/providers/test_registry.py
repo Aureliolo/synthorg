@@ -37,11 +37,11 @@ from tests._shared import mock_of
 def _make_config(
     *,
     driver: str = "litellm",
-    api_key: str | None = "sk-test",
+    connection_name: str | None = "conn-test",
 ) -> ProviderConfig:
     return ProviderConfig(
         driver=driver,
-        api_key=api_key,
+        connection_name=connection_name,
         models=(
             ProviderModelConfig(
                 id="test-model",

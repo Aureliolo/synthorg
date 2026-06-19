@@ -12,6 +12,10 @@ are not scanned for the bare-mock convention they implement.
 from tests._shared.app_state import make_app_state
 from tests._shared.build_app import build_test_app
 from tests._shared.capturing_logger import CapturingErrorLogger
+from tests._shared.connection_catalog import (
+    InMemorySecretBackend,
+    make_in_memory_catalog,
+)
 from tests._shared.fake_clock import FakeClock
 from tests._shared.ids import as_pk, as_uuid, coerce_id, sid
 from tests._shared.json_types import AsgiDict, JsonDict
@@ -23,6 +27,7 @@ __all__ = [
     "AsgiDict",
     "CapturingErrorLogger",
     "FakeClock",
+    "InMemorySecretBackend",
     "JsonDict",
     "LoopAsyncClient",
     "NoOpTrustStrategy",
@@ -31,6 +36,7 @@ __all__ = [
     "build_test_app",
     "coerce_id",
     "make_app_state",
+    "make_in_memory_catalog",
     "mock_of",
     "sid",
 ]

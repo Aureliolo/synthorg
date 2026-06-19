@@ -370,7 +370,11 @@ def provider_registry() -> ProviderRegistry:
     tests/integration/api/test_task_create_empty_company.py).
     """
     return ProviderRegistry.from_config(
-        {"test-provider": ProviderConfig(driver="scripted")},
+        {
+            "test-provider": ProviderConfig(
+                driver="scripted", connection_name="conn-scripted"
+            )
+        },
     )
 
 

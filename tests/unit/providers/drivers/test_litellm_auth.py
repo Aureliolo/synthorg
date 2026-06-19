@@ -21,7 +21,6 @@ from tests._shared.fake_clock import FakeClock
 def _make_config(
     *,
     auth_type: AuthType = AuthType.API_KEY,
-    api_key: str | None = None,
     base_url: str | None = None,
     custom_header_name: str | None = None,
     custom_header_value: str | None = None,
@@ -31,7 +30,6 @@ def _make_config(
     return ProviderConfig(
         driver="litellm",
         auth_type=auth_type,
-        api_key=api_key,
         base_url=base_url,
         custom_header_name=custom_header_name,
         custom_header_value=custom_header_value,
@@ -82,8 +80,9 @@ class TestLiteLLMDriverAuth:
     def test_build_kwargs_api_key_none_omitted(self) -> None:
         config = _make_config(
             auth_type=AuthType.API_KEY,
-            api_key=None,
+            connection_name="provider-test",
         )
+        # No resolved credentials (catalog absent / empty): api_key omitted.
         kwargs = _build_kwargs(config)
         assert "api_key" not in kwargs
 
@@ -132,7 +131,6 @@ class TestLiteLLMDriverAuth:
         """OAuth auth without a pre-fetched token omits api_key from kwargs."""
         config = _make_config(
             auth_type=AuthType.OAUTH,
-            api_key=None,
             oauth_token_url="https://auth.example.com/token",
             oauth_client_id="client-id",
             oauth_client_secret="client-secret",
@@ -181,7 +179,6 @@ class TestLiteLLMDriverCredentialCacheClock:
     async def test_cache_hit_within_ttl(self) -> None:
         config = _make_config(
             auth_type=AuthType.API_KEY,
-            api_key="sk-cached",
             connection_name="conn-1",
         )
         catalog = AsyncMock(spec=ConnectionCatalog)
@@ -202,7 +199,6 @@ class TestLiteLLMDriverCredentialCacheClock:
     async def test_cache_miss_after_ttl(self) -> None:
         config = _make_config(
             auth_type=AuthType.API_KEY,
-            api_key="sk-cached",
             connection_name="conn-1",
         )
         catalog = AsyncMock(spec=ConnectionCatalog)
@@ -230,7 +226,6 @@ class TestLiteLLMDriverCredentialCacheClock:
         """
         config = _make_config(
             auth_type=AuthType.API_KEY,
-            api_key="sk-cached",
             connection_name="conn-1",
         )
         catalog = AsyncMock(spec=ConnectionCatalog)

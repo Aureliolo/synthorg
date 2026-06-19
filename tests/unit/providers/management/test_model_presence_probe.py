@@ -15,6 +15,7 @@ from synthorg.providers.management.model_presence_probe import (
 
 def _provider(*ids: str) -> ProviderConfig:
     return ProviderConfig(
+        connection_name="conn-test",
         litellm_provider="test-provider",
         models=tuple(ProviderModelConfig(id=i) for i in ids),
     )

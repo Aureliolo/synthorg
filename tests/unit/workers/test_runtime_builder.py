@@ -187,7 +187,11 @@ class TestProviderPresentSwitch:
         tmp_path: Path,
     ) -> None:
         registry = ProviderRegistry.from_config(
-            {"test-provider": ProviderConfig(driver="scripted")}
+            {
+                "test-provider": ProviderConfig(
+                    driver="scripted", connection_name="conn-scripted"
+                )
+            }
         )
         app_state = _provider_app_state(registry, tmp_path)
 
@@ -238,7 +242,11 @@ class TestProviderPresentSwitch:
         tmp_path: Path,
     ) -> None:
         registry = ProviderRegistry.from_config(
-            {"test-provider": ProviderConfig(driver="scripted")}
+            {
+                "test-provider": ProviderConfig(
+                    driver="scripted", connection_name="conn-scripted"
+                )
+            }
         )
         app_state = _provider_app_state(registry, tmp_path)
 
@@ -269,7 +277,11 @@ class TestProviderPresentSwitch:
         ``task_assignment_config.min_score``.
         """
         registry = ProviderRegistry.from_config(
-            {"test-provider": ProviderConfig(driver="scripted")}
+            {
+                "test-provider": ProviderConfig(
+                    driver="scripted", connection_name="conn-scripted"
+                )
+            }
         )
         app_state = _provider_app_state(
             registry,
@@ -294,8 +306,12 @@ class TestProviderPresentSwitch:
     ) -> None:
         registry = ProviderRegistry.from_config(
             {
-                "test-provider": ProviderConfig(driver="scripted"),
-                "test-provider-2": ProviderConfig(driver="scripted"),
+                "test-provider": ProviderConfig(
+                    driver="scripted", connection_name="conn-scripted"
+                ),
+                "test-provider-2": ProviderConfig(
+                    driver="scripted", connection_name="conn-scripted"
+                ),
             }
         )
         app_state = _provider_app_state(registry, tmp_path)
@@ -316,7 +332,11 @@ class TestProviderPresentSwitch:
         tmp_path: Path,
     ) -> None:
         registry = ProviderRegistry.from_config(
-            {"test-provider": ProviderConfig(driver="scripted")}
+            {
+                "test-provider": ProviderConfig(
+                    driver="scripted", connection_name="conn-scripted"
+                )
+            }
         )
         deep = tmp_path / "missing" / "agent" / "workspace"
         app_state = _provider_app_state(registry, deep)
@@ -397,7 +417,11 @@ class TestBootLogSafetySpineState:
         drift between the two ``runtime_services`` events.
         """
         registry = ProviderRegistry.from_config(
-            {"test-provider": ProviderConfig(driver="scripted")}
+            {
+                "test-provider": ProviderConfig(
+                    driver="scripted", connection_name="conn-scripted"
+                )
+            }
         )
         app_state = _provider_app_state(registry, tmp_path)
         with capture_logs() as logs:
@@ -440,7 +464,11 @@ class TestRuntimeCoordinatorResolveFailure:
         succeeds, so stub doubles suffice on the failure path.
         """
         registry = ProviderRegistry.from_config(
-            {"test-provider": ProviderConfig(driver="scripted")}
+            {
+                "test-provider": ProviderConfig(
+                    driver="scripted", connection_name="conn-scripted"
+                )
+            }
         )
         app_state = _provider_app_state(
             registry,
@@ -503,7 +531,11 @@ class TestCoordinationMetricsWiring:
     @staticmethod
     def _registry() -> ProviderRegistry:
         return ProviderRegistry.from_config(
-            {"test-provider": ProviderConfig(driver="scripted")}
+            {
+                "test-provider": ProviderConfig(
+                    driver="scripted", connection_name="conn-scripted"
+                )
+            }
         )
 
     async def test_no_collector_without_cost_tracker(
@@ -573,7 +605,11 @@ class TestWorkPipelineWiring:
     @staticmethod
     def _registry() -> ProviderRegistry:
         return ProviderRegistry.from_config(
-            {"test-provider": ProviderConfig(driver="scripted")}
+            {
+                "test-provider": ProviderConfig(
+                    driver="scripted", connection_name="conn-scripted"
+                )
+            }
         )
 
     async def test_pipeline_built_when_intake_runtime_present(

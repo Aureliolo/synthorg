@@ -177,7 +177,11 @@ async def coordination_ctx(
         agent_registry=local_agent_registry,
         settings_service=settings_service,
         provider_registry=ProviderRegistry.from_config(
-            {"test-provider": ProviderConfig(driver="scripted")},
+            {
+                "test-provider": ProviderConfig(
+                    driver="scripted", connection_name="conn-scripted"
+                )
+            },
         ),
     )
     async with LoopAsyncClient(app) as client:

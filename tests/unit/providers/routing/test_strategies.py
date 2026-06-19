@@ -164,6 +164,7 @@ class TestRoleBasedStrategy:
     ) -> None:
         """LEAD has tier=large; if large not registered, use fallback chain."""
         provider = ProviderConfig(
+            connection_name="conn-test",
             models=(
                 three_model_provider["test-provider"].models[0],  # small only
             ),
@@ -203,6 +204,7 @@ class TestRoleBasedStrategy:
     ) -> None:
         """When preferred not found, rule's fallback is tried."""
         provider = ProviderConfig(
+            connection_name="conn-test",
             models=(
                 three_model_provider["test-provider"].models[0],  # small only
             ),
@@ -379,6 +381,7 @@ class TestFastestStrategy:
         """When no models have latency data, delegates to cheapest."""
         providers = {
             "test-provider": ProviderConfig(
+                connection_name="conn-test",
                 models=(
                     ProviderModelConfig(
                         id="test-expensive",
@@ -426,6 +429,7 @@ class TestFastestStrategy:
         """All models with latency exceed budget -> fastest with warning."""
         providers = {
             "test-provider": ProviderConfig(
+                connection_name="conn-test",
                 models=(
                     ProviderModelConfig(
                         id="test-fast-expensive",
@@ -467,6 +471,7 @@ class TestFastestStrategy:
         """Models with None latency are ignored when others have data."""
         providers = {
             "test-provider": ProviderConfig(
+                connection_name="conn-test",
                 models=(
                     ProviderModelConfig(
                         id="test-slow-cheap",
@@ -507,6 +512,7 @@ class TestFastestStrategy:
         """Fastest model exceeds budget, slower model is within budget."""
         providers = {
             "test-provider": ProviderConfig(
+                connection_name="conn-test",
                 models=(
                     ProviderModelConfig(
                         id="test-fast-expensive",
@@ -626,6 +632,7 @@ class TestSmartStrategy:
         """Empty resolver but fallback chain has a valid ref."""
         # Build resolver with only small
         provider = ProviderConfig(
+            connection_name="conn-test",
             models=(three_model_provider["test-provider"].models[0],),
         )
         resolver = ModelResolver.from_config({"test-provider": provider})
@@ -686,6 +693,7 @@ class TestSmartStrategy:
     ) -> None:
         """Primary miss -> rule fallback miss -> global chain hit."""
         provider = ProviderConfig(
+            connection_name="conn-test",
             models=(
                 three_model_provider["test-provider"].models[0],  # small only
             ),
@@ -718,6 +726,7 @@ class TestGlobalFallbackChain:
     ) -> None:
         """Global chain should skip unknown refs and resolve the first valid."""
         provider = ProviderConfig(
+            connection_name="conn-test",
             models=(three_model_provider["test-provider"].models[0],),  # small only
         )
         resolver = ModelResolver.from_config({"test-provider": provider})
@@ -737,6 +746,7 @@ class TestGlobalFallbackChain:
     ) -> None:
         """RoleBasedStrategy raises when all fallback_chain refs are invalid."""
         provider = ProviderConfig(
+            connection_name="conn-test",
             models=(three_model_provider["test-provider"].models[0],),  # small only
         )
         resolver = ModelResolver.from_config({"test-provider": provider})
@@ -757,6 +767,7 @@ class TestRuleFallbackDedup:
     ) -> None:
         """When rule fallback equals preferred, it should not retry."""
         provider = ProviderConfig(
+            connection_name="conn-test",
             models=(three_model_provider["test-provider"].models[0],),  # small only
         )
         resolver = ModelResolver.from_config({"test-provider": provider})

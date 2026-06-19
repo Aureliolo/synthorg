@@ -45,8 +45,9 @@ class AuthTypeDescriptor:
     Attributes:
         owned_fields: ``ProviderConfig`` fields this auth type owns;
             fields owned by other auth types are cleared on switch.
-        supports_api_key: Whether an ``api_key`` is meaningful for this
-            auth type (gates set/clear of the ``api_key`` field).
+        supports_api_key: Whether an ``api_key`` credential is meaningful
+            for this auth type (gates minting the secret into the
+            connection catalog and clearing the backing connection).
         requires_tos: Whether terms-of-service acceptance is mandatory
             (true only for subscription-style auth).
         discovery_style: How a model-discovery auth header is built.
@@ -62,14 +63,14 @@ AUTH_TYPE_DESCRIPTORS: MappingProxyType[AuthType, AuthTypeDescriptor] = (
     MappingProxyType(
         {
             AuthType.API_KEY: AuthTypeDescriptor(
-                owned_fields=("api_key",),
+                owned_fields=("connection_name",),
                 supports_api_key=True,
                 requires_tos=False,
                 discovery_style=DiscoveryAuthStyle.BEARER_API_KEY,
             ),
             AuthType.OAUTH: AuthTypeDescriptor(
                 owned_fields=(
-                    "api_key",
+                    "connection_name",
                     "oauth_client_secret",
                     "oauth_token_url",
                     "oauth_client_id",

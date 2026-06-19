@@ -15,10 +15,7 @@ from synthorg.config.model_staleness import ModelStaleness
 from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
-from synthorg.observability.events.config import (
-    CONFIG_DEPRECATION_NOTICE,
-    CONFIG_VALIDATION_FAILED,
-)
+from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 from synthorg.providers.defaults_config import ProviderModelDefaults
 from synthorg.providers.enums import AuthType
 
@@ -121,15 +118,10 @@ class ProviderConfig(BaseModel):
     connection_name: NotBlankStr | None = Field(
         default=None,
         description=(
-            "Reference to a ConnectionCatalog entry.  When set, "
-            "credentials are resolved from the catalog at runtime "
-            "instead of using embedded api_key / oauth fields."
+            "Reference to a ConnectionCatalog entry.  Credentials are "
+            "resolved from the catalog at runtime; required for API-key "
+            "auth, which has no embedded credential field."
         ),
-    )
-    api_key: NotBlankStr | None = Field(
-        default=None,
-        repr=False,
-        description="API key (prefer connection_name for new configs)",
     )
     subscription_token: NotBlankStr | None = Field(
         default=None,
@@ -218,6 +210,9 @@ class ProviderConfig(BaseModel):
             "tos_accepted_at",
         ),
     }
+    _CONNECTION_REQUIRED_AUTH_TYPES: ClassVar[frozenset[AuthType]] = frozenset(
+        {AuthType.API_KEY},
+    )
 
     @model_validator(mode="after")
     def _validate_auth_fields(self) -> Self:
@@ -227,11 +222,22 @@ class ProviderConfig(BaseModel):
             The validated model instance (``self``), unchanged.
 
         Raises:
-            ValueError: When a non-connection auth type is missing one of
-                its required credential fields.
+            ValueError: When ``connection_name`` is absent for an auth type
+                that resolves its only credential from the catalog, or when
+                a non-connection auth type is missing a required embedded
+                credential field.
         """
         if self.connection_name is not None:
             return self
+        if self.auth_type in self._CONNECTION_REQUIRED_AUTH_TYPES:
+            label = self.auth_type.value.replace("_", " ").title()
+            msg = f"{label} auth_type requires: connection_name"
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="ProviderConfig",
+                error=msg,
+            )
+            raise ValueError(msg)
         required = self._AUTH_REQUIRED_FIELDS.get(self.auth_type)
         if required is None:
             return self
@@ -245,25 +251,6 @@ class ProviderConfig(BaseModel):
                 error=msg,
             )
             raise ValueError(msg)
-        return self
-
-    @model_validator(mode="after")
-    def _warn_embedded_api_key(self) -> Self:
-        """Log deprecation when api_key is used without connection_name.
-
-        Returns:
-            The model instance (``self``), unchanged.
-        """
-        if self.api_key is not None and self.connection_name is None:
-            logger.debug(
-                CONFIG_DEPRECATION_NOTICE,
-                model="ProviderConfig",
-                field="api_key",
-                message=(
-                    "api_key without connection_name is deprecated; "
-                    "prefer connection_name for catalog-based resolution"
-                ),
-            )
         return self
 
     @model_validator(mode="after")

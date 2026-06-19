@@ -34,6 +34,7 @@ class TestResolverFromConfig:
     def test_multiple_providers(self) -> None:
         providers = {
             "test-provider": ProviderConfig(
+                connection_name="conn-test",
                 models=(
                     ProviderModelConfig(
                         id="test-medium-001",
@@ -44,6 +45,7 @@ class TestResolverFromConfig:
                 ),
             ),
             "test-provider-b": ProviderConfig(
+                connection_name="conn-test",
                 models=(
                     ProviderModelConfig(
                         id="test-fast-001",
@@ -118,6 +120,7 @@ class TestResolverSortByLatency:
     def test_none_sorted_last(self) -> None:
         providers = {
             "test-provider": ProviderConfig(
+                connection_name="conn-test",
                 models=(
                     ProviderModelConfig(
                         id="test-fast",
@@ -146,6 +149,7 @@ class TestResolverSortByLatency:
     def test_all_none_returns_all(self) -> None:
         providers = {
             "test-provider": ProviderConfig(
+                connection_name="conn-test",
                 models=(
                     ProviderModelConfig(id="test-a", alias="a"),
                     ProviderModelConfig(id="test-b", alias="b"),
@@ -173,6 +177,7 @@ class TestResolverCollisionDetection:
         """Two providers with same alias register both candidates."""
         providers = {
             "test-provider-a": ProviderConfig(
+                connection_name="conn-test",
                 models=(
                     ProviderModelConfig(
                         id="test-model-a",
@@ -183,6 +188,7 @@ class TestResolverCollisionDetection:
                 ),
             ),
             "test-provider-b": ProviderConfig(
+                connection_name="conn-test",
                 models=(
                     ProviderModelConfig(
                         id="test-model-b",

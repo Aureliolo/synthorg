@@ -191,6 +191,7 @@ class TestBuildSeedAllowlist:
     def test_adds_provider_base_url(self) -> None:
         providers = {
             "custom": ProviderConfig(
+                connection_name="conn-test",
                 driver="litellm",
                 base_url="http://my-server:9090/v1",
             ),
@@ -200,7 +201,9 @@ class TestBuildSeedAllowlist:
 
     def test_skips_provider_with_no_base_url(self) -> None:
         providers = {
-            "cloud": ProviderConfig(driver="litellm", base_url=None),
+            "cloud": ProviderConfig(
+                connection_name="conn-test", driver="litellm", base_url=None
+            ),
         }
         result = build_seed_allowlist(providers)
         # Should just be preset seeds
@@ -209,6 +212,7 @@ class TestBuildSeedAllowlist:
     def test_deduplicates_with_presets(self) -> None:
         providers = {
             "ollama": ProviderConfig(
+                connection_name="conn-test",
                 driver="litellm",
                 base_url="http://localhost:11434",
             ),
@@ -220,10 +224,12 @@ class TestBuildSeedAllowlist:
     def test_no_duplicates(self) -> None:
         providers = {
             "a": ProviderConfig(
+                connection_name="conn-test",
                 driver="litellm",
                 base_url="http://my-server:9090",
             ),
             "b": ProviderConfig(
+                connection_name="conn-test",
                 driver="litellm",
                 base_url="http://my-server:9090",
             ),

@@ -34,7 +34,9 @@ def _model(
 
 
 def _provider(*models: ProviderModelConfig) -> ProviderConfig:
-    return ProviderConfig(base_url="http://localhost:11434", models=models)
+    return ProviderConfig(
+        connection_name="conn-test", base_url="http://localhost:11434", models=models
+    )
 
 
 class TestBuildRefreshStrategy:

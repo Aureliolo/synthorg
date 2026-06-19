@@ -44,7 +44,9 @@ def _model(  # noqa: PLR0913 -- model dimensions are intrinsic to the fixture
 
 
 def _provider(*models: ProviderModelConfig) -> dict[str, ProviderConfig]:
-    return {"example-provider": ProviderConfig(models=models)}
+    return {
+        "example-provider": ProviderConfig(connection_name="conn-test", models=models)
+    }
 
 
 class TestUpgradeRecommender:
