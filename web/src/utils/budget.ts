@@ -205,9 +205,10 @@ export function computeCategoryBreakdown(
     const cat = r.call_category ?? 'uncategorized'
     // ``call_category`` is a backend enum; a value outside the known set
     // (schema drift) falls through to the uncategorized bucket per this
-    // function's documented contract.
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime boundary: backend call_category enum drift
-    const bucket = buckets[cat] ?? buckets.uncategorized
+    // function's documented contract. Index through a string-keyed view so a
+    // drifted value is honestly typed as a possible miss.
+    const byKey: Record<string, { cost: number; count: number }> = buckets
+    const bucket = byKey[cat] ?? buckets.uncategorized
     bucket.cost += r.cost
     bucket.count += 1
     totalCost += r.cost

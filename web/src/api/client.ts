@@ -405,9 +405,10 @@ export function unwrapPaginated<T>(
     throw new ApiRequestError(body.error ?? 'Unknown API error', detail)
   }
   // The success-branch type declares ``pagination`` always present, but a
-  // malformed backend envelope could omit it; validate before dereferencing.
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime boundary guard against malformed envelope
-  if (!body.pagination || !Array.isArray(body.data)) {
+  // malformed backend envelope could omit it. Read through an untrusted-wire
+  // view so the guard is type-honest about what the network can actually send.
+  const raw: { pagination?: unknown; data?: unknown } = body
+  if (!raw.pagination || !Array.isArray(raw.data)) {
     throw new ApiRequestError('Unexpected API response format')
   }
   return {

@@ -330,9 +330,11 @@ function CorrelationIdChip({ correlationId }: CorrelationIdChipProps) {
 
   const handleCopy = async () => {
     // ``navigator.clipboard`` is typed non-null by lib.dom but is undefined in
-    // insecure contexts / older browsers; this is a real feature-detection guard.
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime feature detection
-    if (typeof navigator === 'undefined' || !navigator.clipboard) {
+    // insecure contexts / older browsers, so widen it to reflect runtime
+    // reality before the feature-detection guard.
+    const clipboard: Clipboard | undefined =
+      typeof navigator === 'undefined' ? undefined : navigator.clipboard
+    if (!clipboard) {
       log.warn('Clipboard API not available; correlation ID copy skipped')
       toast({
         variant: 'error',
@@ -342,7 +344,7 @@ function CorrelationIdChip({ correlationId }: CorrelationIdChipProps) {
       return
     }
     try {
-      await navigator.clipboard.writeText(correlationId)
+      await clipboard.writeText(correlationId)
       toast({
         variant: 'success',
         title: 'Correlation ID copied',

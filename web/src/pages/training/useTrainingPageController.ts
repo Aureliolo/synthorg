@@ -6,6 +6,7 @@ import { createLogger } from '@/lib/logger'
 import { useTrainingStore } from '@/stores/training'
 import { getErrorMessage, isAxiosError } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
+import { createCancellationToken } from '@/utils/cancellation'
 
 import type { TrainingPlanRow } from './TrainingPlanTable'
 
@@ -117,17 +118,16 @@ function hydrateAgentsInBatches(
   // roster does not fan out 200 concurrent requests at once. Best-effort:
   // missing rows surface as "no plan" instead of errors (the store
   // swallows 404).
-  let cancelled = false
+  const token = createCancellationToken()
   void (async () => {
     for (let i = 0; i < agents.length; i += HYDRATE_BATCH_SIZE) {
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- flipped by effect cleanup between batches; CFA cannot see the closure mutation
-      if (cancelled) return
+      if (token.cancelled()) return
       const batch = agents.slice(i, i + HYDRATE_BATCH_SIZE)
       await Promise.all(batch.map((agent) => hydrateForAgent(agent.id)))
     }
   })()
   return () => {
-    cancelled = true
+    token.cancel()
   }
 }
 

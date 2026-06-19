@@ -5,6 +5,7 @@ import type { ProposalSummary, SignalsResponse } from '@/api/endpoints/meta'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import { getErrorMessage } from '@/utils/errors'
+import { createCancellationToken } from '@/utils/cancellation'
 
 const log = createLogger('MetaAnalyticsPage')
 
@@ -28,11 +29,11 @@ export function useMetaAnalyticsData(): MetaAnalyticsData {
   const [proposalsError, setProposalsError] = useState<string | null>(null)
 
   useEffect(() => {
-    const ctrl = { cancelled: false }
+    const token = createCancellationToken()
     // Defer setState writes to a microtask (per @eslint-react
     // set-state-in-effect) before kicking off the parallel fetches.
     void Promise.resolve().then(async () => {
-      if (ctrl.cancelled) return
+      if (token.cancelled()) return
       setLoading(true)
       setSignalsError(null)
       setProposalsError(null)
@@ -40,14 +41,13 @@ export function useMetaAnalyticsData(): MetaAnalyticsData {
         getSignals(),
         listProposals(),
       ])
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- flipped by effect cleanup during the await; CFA cannot see the closure mutation
-      if (ctrl.cancelled) return
+      if (token.cancelled()) return
       handleSignalsResult(signalsRes, setSignals, setSignalsError)
       handleProposalsResult(proposalsRes, setProposals, setProposalsError)
       setLoading(false)
     })
     return () => {
-      ctrl.cancelled = true
+      token.cancel()
     }
   }, [])
 
