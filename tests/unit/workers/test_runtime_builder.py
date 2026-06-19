@@ -225,7 +225,11 @@ class TestProviderPresentSwitch:
         value is rejected just like the empty string.
         """
         registry = ProviderRegistry.from_config(
-            {"test-provider": ProviderConfig(driver="scripted")}
+            {
+                "test-provider": ProviderConfig(
+                    driver="scripted", connection_name="conn-scripted"
+                )
+            }
         )
         app_state = _provider_app_state(
             registry,

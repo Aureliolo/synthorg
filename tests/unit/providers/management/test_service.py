@@ -321,7 +321,7 @@ class TestConcurrency:
 
 @pytest.mark.unit
 class TestClearApiKey:
-    async def test_clear_api_key_removes_key(
+    async def test_clear_api_key_on_api_key_auth_rejected(
         self,
         service: ProviderManagementService,
     ) -> None:
@@ -331,12 +331,12 @@ class TestClearApiKey:
                 api_key="sk-original",
             ),
         )
+        # Catalog-only credentials: API_KEY auth has no other credential
+        # source, so clearing it would leave the provider unable to
+        # authenticate. The operator must switch auth_type or delete.
         update = UpdateProviderRequest(clear_api_key=True)
-        result = await service.update_provider("test-provider", update)
-        # Clearing deletes the backing catalog connection and drops the
-        # connection_name reference.
-        assert result.connection_name is None
-        assert await service._resolve_provider_api_key(result) is None
+        with pytest.raises(ProviderValidationError, match="switch auth_type"):
+            await service.update_provider("test-provider", update)
 
     async def test_api_key_takes_precedence_over_clear(
         self,

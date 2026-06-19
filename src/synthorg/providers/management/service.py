@@ -416,6 +416,11 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         Returns:
             The merged ``ProviderConfig`` with ``connection_name`` reflecting
             the catalog mutation.
+
+        Raises:
+            ProviderValidationError: When clearing the API key of an
+                API_KEY provider (which would leave it unable to
+                authenticate); the operator must switch auth_type or delete.
         """
         final_auth_type = (
             request.auth_type if request.auth_type is not None else existing.auth_type
@@ -429,6 +434,20 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 )
                 return apply_update(existing, request, connection_name=conn_name)
             if request.clear_api_key:
+                if final_auth_type is AuthType.API_KEY:
+                    # API_KEY auth has no other credential source, so clearing
+                    # it would leave the provider unable to authenticate.
+                    # Force the operator to switch auth_type or delete instead.
+                    msg = (
+                        "Cannot clear the API key of an API_KEY provider; "
+                        "switch auth_type or delete the provider instead."
+                    )
+                    logger.warning(
+                        PROVIDER_VALIDATION_FAILED,
+                        provider=name,
+                        error=msg,
+                    )
+                    raise ProviderValidationError(msg)
                 await self._delete_provider_credential(name)
                 return apply_update(existing, request, connection_name=None)
             return apply_update(existing, request)
