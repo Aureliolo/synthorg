@@ -14,6 +14,7 @@ index:idx_ae_matched_rules_gin:postgres_only:GIN over JSONB matched_rules; SQLit
 index:idx_dr_metadata_gin:postgres_only:GIN over JSONB metadata; SQLite has no JSONB or GIN index
 index:idx_le_metadata_gin:postgres_only:GIN over JSONB metadata; SQLite has no JSONB or GIN index
 index:idx_messages_metadata_gin:postgres_only:GIN over JSONB metadata; SQLite has no JSONB or GIN index
+index:idx_we_node_executions:postgres_only:GIN over JSONB node_executions backs the workflow_execution_repo node_executions @> containment query; SQLite has no JSONB or GIN index (audit-2404 slot 94 missing-index fix)
 index_attr:idx_ftc_single_active:where:is_active = 1:is_active = TRUE:Partial-unique-index predicate uses the dialect-native boolean literal; semantically identical (sqlite stores BOOLEAN as INTEGER 0/1)
 nullable:cost_records:rowid:N:Y:SQLite uses INTEGER PRIMARY KEY AUTOINCREMENT (NOT NULL); Postgres uses BIGINT GENERATED ALWAYS AS IDENTITY which can be NULL until insert assigns the sequence value (composite PK with timestamp enforces non-null at write time)
 pk:audit_entries:id:id,timestamp:Postgres composite PK includes the timestamp partitioning column for TimescaleDB hypertable conversion; SQLite has no hypertable concept and uses the simpler PK on id alone (see schema header)
