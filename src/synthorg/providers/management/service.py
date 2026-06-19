@@ -35,6 +35,7 @@ from synthorg.config.schema import (
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.integrations.state import provider_credential_catalog_of
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -577,6 +578,10 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         )
 
         driver = LiteLLMDriver(name, config)
+        # Bind the always-on credential catalog so a connection_name-backed
+        # provider resolves its credentials during the probe, exactly as it
+        # will at runtime. Embedded fields still work when no catalog is wired.
+        driver.bind_credential_catalog(provider_credential_catalog_of(self._app_state))
         messages = [ChatMessage(role=MessageRole.USER, content="ping")]
         start = self._clock.monotonic()
         # Probes hit a real provider and are billed; route through the
