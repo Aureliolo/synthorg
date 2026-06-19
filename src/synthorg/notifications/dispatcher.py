@@ -4,6 +4,8 @@ import asyncio
 import contextlib
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
+from synthorg.notifications.errors import NotificationDispatcherUnrestartableError
 from synthorg.notifications.models import (
     Notification,
     NotificationSeverity,
@@ -79,6 +81,8 @@ class NotificationDispatcher:
         "_resolve_failed_logged",
         "_sinks",
         "_started",
+        "_stop_drain_timeout_seconds",
+        "_stop_failed",
         "_stopping",
     )
 
@@ -113,6 +117,11 @@ class NotificationDispatcher:
         # is mutated only between ``await`` points (single-threaded
         # asyncio), so no separate lock is needed.
         self._stopping = False
+        # Survives a timed-out close so a later start() cannot re-open
+        # the dispatcher on top of unfinished dispatches (canonical
+        # lifecycle pattern, see docs/reference/lifecycle-sync.md).
+        self._stop_failed = False
+        self._stop_drain_timeout_seconds: float = DEFAULT_DRAIN_TIMEOUT_SECONDS
         self._dispatch_inflight = 0
         # Eager init: ``dispatch`` increments the counter and clears
         # this event before any background task fires; the event must
@@ -186,8 +195,23 @@ class NotificationDispatcher:
         ``asyncio.TaskGroup``. A single sink failing its start is
         dropped from the active set so subsequent ``dispatch()``
         calls skip it; one bad sink does not abort the whole group.
+
+        Raises:
+            NotificationDispatcherUnrestartableError: If the dispatcher
+                was previously closed with a timeout and is unrestartable.
         """
         async with self._lifecycle_lock:
+            if self._stop_failed:
+                msg = (
+                    "NotificationDispatcher is unrestartable after a "
+                    "timed-out close; construct a fresh dispatcher instead"
+                )
+                logger.warning(
+                    NOTIFICATION_DISPATCHER_CLOSED,
+                    error=msg,
+                    note="unrestartable",
+                )
+                raise NotificationDispatcherUnrestartableError(msg)
             if self._started:
                 return
             sinks = list(self._sinks)
@@ -220,12 +244,38 @@ class NotificationDispatcher:
         down the sinks. This prevents the use-after-close window
         where ``dispatch`` could call ``sink.send`` while
         ``_safe_close`` is closing the same sink's underlying client.
+
+        The in-flight drain is bounded by ``_stop_drain_timeout_seconds``:
+        a dispatch whose ``sink.send`` hangs forever would otherwise hold
+        the lifecycle lock indefinitely. On timeout the dispatcher is
+        marked unrestartable so a later ``start()`` refuses rather than
+        re-opening on top of the stuck send.
+
+        Raises:
+            TimeoutError: If the in-flight dispatch drain exceeds
+                ``_stop_drain_timeout_seconds``; the dispatcher is then
+                marked unrestartable.
         """
         async with self._lifecycle_lock:
             if not self._started:
                 return
             self._stopping = True
-            await self._dispatch_idle.wait()
+            try:
+                await asyncio.wait_for(
+                    asyncio.shield(self._dispatch_idle.wait()),
+                    timeout=self._stop_drain_timeout_seconds,
+                )
+            except TimeoutError:
+                self._stop_failed = True
+                logger.error(
+                    NOTIFICATION_DISPATCHER_CLOSED,
+                    error=(
+                        "in-flight dispatch drain exceeded hard deadline; "
+                        "dispatcher marked unrestartable"
+                    ),
+                    timeout_seconds=self._stop_drain_timeout_seconds,
+                )
+                raise
             sinks = list(self._sinks)
             async with asyncio.TaskGroup() as tg:
                 for sink in sinks:

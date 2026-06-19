@@ -5,12 +5,12 @@ tokens before they expire.
 """
 
 import asyncio
-import contextlib
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.iso_datetime import parse_iso_assume_utc
+from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import (
     AuthMethod,
@@ -18,7 +18,10 @@ from synthorg.integrations.connections.models import (
     ConnectionStatus,
     OAuthToken,
 )
-from synthorg.integrations.errors import TokenRefreshFailedError
+from synthorg.integrations.errors import (
+    IntegrationLifecycleConflictError,
+    TokenRefreshFailedError,
+)
 from synthorg.integrations.oauth.flows.authorization_code import (
     AuthorizationCodeFlow,
 )
@@ -82,6 +85,11 @@ class OAuthTokenManager:
         self._flow = AuthorizationCodeFlow()
         # Eager init: stop() must be safe before any start() call.
         self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
+        # Survives a timed-out stop so a later start() cannot stack a
+        # second refresh loop on the orphaned one (canonical lifecycle
+        # pattern, see docs/reference/lifecycle-sync.md).
+        self._stop_failed = False
+        self._stop_drain_timeout_seconds: float = DEFAULT_DRAIN_TIMEOUT_SECONDS
 
     def set_config_resolver(self, resolver: ConfigResolver) -> None:
         """Inject the ConfigResolver after construction.
@@ -171,8 +179,24 @@ class OAuthTokenManager:
         self._threshold = timedelta(seconds=seconds)
 
     async def start(self) -> None:
-        """Start the background refresh loop."""
+        """Start the background refresh loop.
+
+        Raises:
+            IntegrationLifecycleConflictError: If the manager was
+                previously stopped with a timeout and is unrestartable.
+        """
         async with self._lifecycle_lock:
+            if self._stop_failed:
+                msg = (
+                    "OAuthTokenManager is unrestartable after a timed-out "
+                    "stop; construct a fresh manager instead"
+                )
+                logger.warning(
+                    OAUTH_TOKEN_REFRESH_FAILED,
+                    error=msg,
+                    note="unrestartable",
+                )
+                raise IntegrationLifecycleConflictError(msg)
             if self._task is not None:
                 return
             await self._resolve_flow_timeout()
@@ -185,13 +209,51 @@ class OAuthTokenManager:
             )
 
     async def stop(self) -> None:
-        """Stop the background refresh loop."""
+        """Stop the background refresh loop.
+
+        Raises:
+            TimeoutError: If the refresh-task drain exceeds
+                ``_stop_drain_timeout_seconds``; the manager is then
+                marked unrestartable.
+        """
         async with self._lifecycle_lock:
-            if self._task is None:
+            task = self._task
+            if task is None:
                 return
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
+            task.cancel()
+
+            async def _drain() -> None:
+                """Await the cancelled refresh task, swallowing its cancellation."""
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                    reraise_critical(exc)
+                    logger.warning(
+                        OAUTH_TOKEN_REFRESH_FAILED,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                        note="shutdown",
+                    )
+
+            drain_task: asyncio.Task[None] = asyncio.create_task(_drain())
+            try:
+                await asyncio.wait_for(
+                    asyncio.shield(drain_task),
+                    timeout=self._stop_drain_timeout_seconds,
+                )
+            except TimeoutError:
+                self._stop_failed = True
+                logger.error(
+                    OAUTH_TOKEN_REFRESH_FAILED,
+                    error=(
+                        "stop exceeded hard deadline; token manager "
+                        "marked unrestartable"
+                    ),
+                    timeout_seconds=self._stop_drain_timeout_seconds,
+                )
+                raise
             self._task = None
 
     async def _refresh_loop(self) -> None:

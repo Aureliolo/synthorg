@@ -10,7 +10,6 @@ no distributed benefit, minimal overhead.
 """
 
 import asyncio
-import contextlib
 import threading
 from collections import deque
 from collections.abc import Callable
@@ -24,7 +23,11 @@ from synthorg.communication.enums import ChannelType, MessageType
 from synthorg.communication.message import DataPart, Message
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.integrations.errors import ConnectionRateLimitError
+from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
+from synthorg.integrations.errors import (
+    ConnectionRateLimitError,
+    IntegrationLifecycleConflictError,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     RATE_LIMIT_ACQUIRE_PUBLISHED,
@@ -88,6 +91,11 @@ class SharedRateLimitCoordinator:
         self._subscribed = False
         # Eager init: stop() must be safe before any start() call.
         self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
+        # Survives a timed-out stop so a later start() cannot stack a
+        # second poll loop on the orphaned one (canonical lifecycle
+        # pattern, see docs/reference/lifecycle-sync.md).
+        self._stop_failed = False
+        self._stop_drain_timeout_seconds: float = DEFAULT_DRAIN_TIMEOUT_SECONDS
 
     async def start(self) -> None:
         """Subscribe and start the polling task."""
@@ -100,7 +108,23 @@ class SharedRateLimitCoordinator:
         Idempotent: returns immediately when already started, so both
         ``start()`` and the ``acquire()`` fast-path can drive it through
         the lock without double-subscribing.
+
+        Raises:
+            IntegrationLifecycleConflictError: If the coordinator was
+                previously stopped with a timeout and is unrestartable.
         """
+        if self._stop_failed:
+            msg = (
+                "SharedRateLimitCoordinator is unrestartable after a "
+                "timed-out stop; construct a fresh coordinator instead"
+            )
+            logger.warning(
+                RATE_LIMIT_COORDINATOR_STARTED,
+                connection_name=self._connection_name,
+                error=msg,
+                note="unrestartable",
+            )
+            raise IntegrationLifecycleConflictError(msg)
         if self._started:
             return
         try:
@@ -161,12 +185,51 @@ class SharedRateLimitCoordinator:
         failed unsubscribe would let a later ``start()`` reuse the same
         subscriber id against a live ghost subscription and corrupt the
         coordination window.
+
+        Raises:
+            TimeoutError: If the poll-task drain exceeds
+                ``_stop_drain_timeout_seconds``; the coordinator is then
+                marked unrestartable.
         """
         async with self._lifecycle_lock:
-            if self._task is not None:
-                self._task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await self._task
+            task = self._task
+            if task is not None:
+                task.cancel()
+
+                async def _drain() -> None:
+                    """Await the cancelled poll task, swallowing its cancellation."""
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+                    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                        reraise_critical(exc)
+                        logger.warning(
+                            RATE_LIMIT_COORDINATOR_STOPPED,
+                            connection_name=self._connection_name,
+                            error_type=type(exc).__name__,
+                            error=safe_error_description(exc),
+                            note="shutdown",
+                        )
+
+                drain_task: asyncio.Task[None] = asyncio.create_task(_drain())
+                try:
+                    await asyncio.wait_for(
+                        asyncio.shield(drain_task),
+                        timeout=self._stop_drain_timeout_seconds,
+                    )
+                except TimeoutError:
+                    self._stop_failed = True
+                    logger.error(
+                        RATE_LIMIT_COORDINATOR_STOPPED,
+                        connection_name=self._connection_name,
+                        error=(
+                            "stop exceeded hard deadline; coordinator "
+                            "marked unrestartable"
+                        ),
+                        timeout_seconds=self._stop_drain_timeout_seconds,
+                    )
+                    raise
                 self._task = None
             if self._subscribed:
                 try:

@@ -6,7 +6,6 @@ sprints.
 """
 
 import asyncio
-import contextlib
 from collections.abc import Mapping
 from typing import Final
 
@@ -16,8 +15,10 @@ from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.message import DataPart
 from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler
+from synthorg.engine.workflow.errors import WebhookBridgeUnrestartableError
 from synthorg.engine.workflow.strategies.external_trigger import (
     ExternalTriggerStrategy,
 )
@@ -91,6 +92,11 @@ class WebhookEventBridge:
         # so app-wire-time construction is safe and prevents a racing
         # ``stop()`` from observing a half-published lock attribute.
         self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
+        # Survives a timed-out stop so a later start() cannot stack a
+        # second poll loop on the orphaned one (canonical lifecycle
+        # pattern, see docs/reference/lifecycle-sync.md).
+        self._stop_failed = False
+        self._stop_drain_timeout_seconds: float = DEFAULT_DRAIN_TIMEOUT_SECONDS
         # Resolver-failure warnings are log-once per run of failures
         # to keep the polling loop from flooding logs during a
         # prolonged settings outage. Flags reset on the first
@@ -194,8 +200,24 @@ class WebhookEventBridge:
         return value
 
     async def start(self) -> None:
-        """Subscribe and start the polling task."""
+        """Subscribe and start the polling task.
+
+        Raises:
+            WebhookBridgeUnrestartableError: If the bridge was previously
+                stopped with a timeout and is unrestartable.
+        """
         async with self._lifecycle_lock:
+            if self._stop_failed:
+                msg = (
+                    "WebhookEventBridge is unrestartable after a timed-out "
+                    "stop; construct a fresh bridge instead"
+                )
+                logger.warning(
+                    WEBHOOK_BRIDGE_STOPPED,
+                    error=msg,
+                    note="unrestartable",
+                )
+                raise WebhookBridgeUnrestartableError(msg)
             if self._task is not None:
                 return
             await self._bus.subscribe(
@@ -232,13 +254,47 @@ class WebhookEventBridge:
         on a failed unsubscribe would let a later ``start()``
         register a duplicate subscriber id against a live ghost
         subscription.
+
+        Raises:
+            TimeoutError: If the poll-task drain exceeds
+                ``_stop_drain_timeout_seconds``; the bridge is then
+                marked unrestartable.
         """
         async with self._lifecycle_lock:
-            if self._task is None:
+            task = self._task
+            if task is None:
                 return
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
+            task.cancel()
+
+            async def _drain() -> None:
+                """Await the cancelled poll task, swallowing its cancellation."""
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                    reraise_critical(exc)
+                    logger.warning(
+                        WEBHOOK_BRIDGE_STOPPED,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                        note="shutdown",
+                    )
+
+            drain_task: asyncio.Task[None] = asyncio.create_task(_drain())
+            try:
+                await asyncio.wait_for(
+                    asyncio.shield(drain_task),
+                    timeout=self._stop_drain_timeout_seconds,
+                )
+            except TimeoutError:
+                self._stop_failed = True
+                logger.error(
+                    WEBHOOK_BRIDGE_STOPPED,
+                    error=("stop exceeded hard deadline; bridge marked unrestartable"),
+                    timeout_seconds=self._stop_drain_timeout_seconds,
+                )
+                raise
             try:
                 await self._bus.unsubscribe(
                     WEBHOOK_CHANNEL.name,
@@ -312,9 +368,8 @@ class WebhookEventBridge:
 
         Raises:
             asyncio.CancelledError: If the polling task is cancelled
-                by ``stop()``; propagation lets the surrounding
-                ``contextlib.suppress`` in ``stop()`` short-circuit
-                cleanly.
+                by ``stop()``; propagation lets the shielded drain in
+                ``stop()`` observe the cancellation and complete cleanly.
         """
         consecutive_errors = 0
         while True:

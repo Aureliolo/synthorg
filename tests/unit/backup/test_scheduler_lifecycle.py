@@ -121,6 +121,10 @@ class TestBackupSchedulerLifecycleLock:
                 with pytest.raises(TimeoutError):
                     await scheduler.stop()
                 assert scheduler._stop_failed is True
+                # The public probe must reflect the unrestartable flag so
+                # callers (e.g. BackupService.is_unrestartable) can read it
+                # without touching the private attribute.
+                assert scheduler.is_unrestartable is True
                 assert saved_task is not None
             finally:
                 # ``finally`` so a failed assertion above still

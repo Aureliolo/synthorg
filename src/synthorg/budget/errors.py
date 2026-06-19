@@ -10,7 +10,7 @@ from typing import ClassVar
 from uuid import UUID
 
 from synthorg.budget.quota import DegradationAction
-from synthorg.core.domain_errors import DomainError
+from synthorg.core.domain_errors import ConflictError, DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.types import NotBlankStr
 
@@ -386,3 +386,18 @@ class QuotaExhaustedError(BudgetExhaustedError):
         super().__init__(msg)
         self.provider_name = provider_name
         self.degradation_action = degradation_action
+
+
+class QuotaPollerUnrestartableError(ConflictError):
+    """Raised when ``QuotaPoller.start()`` is called after a timed-out stop.
+
+    A stuck drain leaves the poller's loop alive on the original
+    instance, so the canonical lifecycle pattern marks the poller
+    unrestartable rather than stacking a second loop on the orphan.
+    Mirrors :class:`~synthorg.providers.errors.ProviderLifecycleConflictError`;
+    inherits the shareable ``RESOURCE_CONFLICT`` code.
+    """
+
+    default_message: ClassVar[str] = (
+        "QuotaPoller is unrestartable after a timed-out stop"
+    )

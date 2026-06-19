@@ -12,7 +12,7 @@ should propagate.
 
 from typing import ClassVar
 
-from synthorg.core.domain_errors import DomainError, NotFoundError
+from synthorg.core.domain_errors import ConflictError, DomainError, NotFoundError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
 
@@ -230,6 +230,25 @@ class TunnelError(IntegrationError):
 
     is_retryable = True
     retryable: ClassVar[bool] = True
+
+
+# -- Lifecycle errors ----------------------------------------------------
+
+
+class IntegrationLifecycleConflictError(ConflictError):
+    """Raised when an integration service is restarted after a timed-out stop.
+
+    Shared by the rate-limit coordinator and the OAuth token manager:
+    a stuck drain leaves the original background loop alive on the
+    instance, so the canonical lifecycle pattern marks the service
+    unrestartable rather than stacking a second loop on the orphan.
+    Mirrors :class:`~synthorg.providers.errors.ProviderLifecycleConflictError`;
+    inherits the shareable ``RESOURCE_CONFLICT`` code.
+    """
+
+    default_message: ClassVar[str] = (
+        "Integration service is unrestartable after a timed-out stop"
+    )
 
 
 # -- MCP catalog errors --------------------------------------------------
