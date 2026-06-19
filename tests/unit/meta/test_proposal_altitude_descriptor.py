@@ -1,8 +1,8 @@
 """Parity + completeness tests for the proposal-altitude descriptor table.
 
-Pins the descriptor map against the pre-refactor per-altitude dispatch
-tables (payload field, risk tier, config gate) and asserts the
-import-time completeness guard covers every :class:`ProposalAltitude`.
+Pins the descriptor map's per-altitude entries (payload field, risk tier,
+config gate) and asserts the import-time completeness guard covers every
+:class:`ProposalAltitude`.
 """
 
 import pytest
@@ -16,8 +16,8 @@ from synthorg.meta._proposal_altitude_descriptor import (
 from synthorg.meta._proposal_models import ImprovementProposal
 from synthorg.meta.config import SelfImprovementConfig
 
-# The exact tables that lived in _proposal_models, signals/service, and
-# guards/scope_check before the descriptor collapse.
+# The expected payload field per altitude, mirroring the descriptor map
+# consumed by _proposal_models, signals/service, and guards/scope_check.
 _EXPECTED_PAYLOAD: dict[ProposalAltitude, str] = {
     ProposalAltitude.CONFIG_TUNING: "config_changes",
     ProposalAltitude.ARCHITECTURE: "architecture_changes",
@@ -43,7 +43,7 @@ _EXPECTED_ENABLE_ATTR: dict[ProposalAltitude, str] = {
 
 @pytest.mark.unit
 class TestDescriptorParity:
-    """The descriptor reproduces the pre-refactor tables exactly."""
+    """The descriptor table carries the correct entry for every altitude."""
 
     @pytest.mark.parametrize("altitude", list(ProposalAltitude))
     def test_payload_field_matches(self, altitude: ProposalAltitude) -> None:

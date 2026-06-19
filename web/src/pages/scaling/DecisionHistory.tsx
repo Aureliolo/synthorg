@@ -4,7 +4,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { SectionCard } from '@/components/ui/section-card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import type { ScalingDecisionResponse } from '@/api/endpoints/scaling'
-import type { AgentRuntimeStatus } from '@/lib/utils'
+import type { AgentRuntimeStatus } from '@/utils/agent-status'
 
 interface DecisionHistoryProps {
   decisions: readonly ScalingDecisionResponse[]

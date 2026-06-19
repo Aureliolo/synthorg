@@ -118,10 +118,8 @@ def _required_env_vars() -> Iterator[None]:
     """Set bootstrap env vars + Cat-2 mirrors for API tests.
 
     Session-scoped with manual env-var management (``monkeypatch`` is
-    function-scoped and cannot be used here). ``SYNTHORG_COMPANY_*``
-    overrides surface what the ``root_config`` fixture used to provide
-    in tests before the legacy YAML tier was removed; explicit env
-    vars are now the only way to set company identity for tests.
+    function-scoped and cannot be used here). Company identity for tests
+    comes only from explicit ``SYNTHORG_COMPANY_*`` env vars.
     """
     import os
 
@@ -585,7 +583,7 @@ def _reset_service_state(services: _ResetServices) -> None:
             from synthorg.hr.registry_testing import reset_registry_for_test_sync
 
             reset_registry_for_test_sync(svc)
-        elif isinstance(svc, ApprovalStore):
+        elif isinstance(svc, ApprovalStore | PerformanceTracker):
             svc.reset_for_test_sync()
         else:
             svc.clear()

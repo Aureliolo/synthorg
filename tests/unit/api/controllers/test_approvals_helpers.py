@@ -418,13 +418,11 @@ class TestSignalResumeIntent:
     async def test_flow2_unknown_exception_propagates(self) -> None:
         """Unknown errors from the review gate propagate -- not swallowed.
 
-        The old behavior of catching ``Exception`` and logging a warning
-        masked real workflow failures (task mutation errors, persistence
-        failures, etc.) while returning 200 OK to the caller.  The fix
-        narrows exception handling to specific typed errors the API
-        layer knows how to map (SelfReviewError -> 403, TaskNotFoundError
-        -> 404, TaskVersionConflictError -> 409).  Everything else
-        propagates to the caller as an unhandled error.
+        Exception handling is narrowed to the specific typed errors the
+        API layer knows how to map (SelfReviewError -> 403,
+        TaskNotFoundError -> 404, TaskVersionConflictError -> 409);
+        every other error propagates to the caller as an unhandled
+        error rather than being masked behind a 200 OK.
         """
         mock_review = mock_of[ReviewGateService](
             dispatch_completion=AsyncMock(

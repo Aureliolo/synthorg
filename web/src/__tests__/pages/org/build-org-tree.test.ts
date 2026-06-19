@@ -14,7 +14,7 @@ import type { AgentConfig } from '@/api/types/agents'
 import type { DepartmentHealth } from '@/api/types/analytics'
 import type { DepartmentName } from '@/api/types/enums'
 import type { CompanyConfig } from '@/api/types/org'
-import type { AgentRuntimeStatus } from '@/lib/utils'
+import type { AgentRuntimeStatus } from '@/utils/agent-status'
 
 // Positional adapter over the args-object `buildOrgTree` signature so
 // the table-driven test cases below stay terse.

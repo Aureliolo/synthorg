@@ -223,7 +223,7 @@ class TestIsBlockedIp:
 
 @pytest.mark.unit
 class TestIsAllowedCloneScheme:
-    """Scheme validation for clone URLs (moved from test_git_tools)."""
+    """Scheme validation for clone URLs."""
 
     @pytest.mark.parametrize(
         "url",

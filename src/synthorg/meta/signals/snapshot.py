@@ -5,6 +5,7 @@ aggregators in parallel via asyncio.TaskGroup.
 """
 
 import asyncio
+from collections.abc import Awaitable
 from datetime import UTC, datetime
 
 from synthorg.core.critical_errors import reraise_critical
@@ -56,6 +57,26 @@ _EMPTY_ERRORS = OrgErrorSummary()
 _EMPTY_EVOLUTION = OrgEvolutionSummary()
 _EMPTY_TELEMETRY = OrgTelemetrySummary()
 _EMPTY_BENCHMARK = OrgBenchmarkSummary()
+
+
+async def _aggregate[T](coro: Awaitable[T], fallback: T, *, domain: str) -> T:
+    """Await one aggregator, returning its safe default on failure.
+
+    Keeps a single aggregator's failure from cancelling the others: a
+    raised non-critical error is redaction-logged and the typed
+    ``fallback`` is returned. Critical errors re-raise.
+
+    Returns:
+        The aggregator result, or ``fallback`` when it failed.
+    """
+    try:
+        return await coro
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        log_exception_redacted(
+            logger, META_SIGNAL_AGGREGATION_FAILED, exc, domain=domain
+        )
+        return fallback
 
 
 class SnapshotBuilder:
@@ -125,88 +146,83 @@ class SnapshotBuilder:
             until=until.isoformat(),
         )
 
-        results: dict[str, object] = {}
-
-        async def _run(name: str, coro: object) -> None:
-            """Run aggregator, store result on success."""
-            try:
-                results[name] = await coro  # type: ignore[misc]
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                log_exception_redacted(
-                    logger, META_SIGNAL_AGGREGATION_FAILED, exc, domain=name
-                )
-
         async with asyncio.TaskGroup() as tg:
-            _ = tg.create_task(
-                _run(
-                    "perf",
+            perf_task = tg.create_task(
+                _aggregate(
                     self._performance.aggregate(since=since, until=until),
+                    _EMPTY_PERFORMANCE,
+                    domain="perf",
                 )
             )
-            _ = tg.create_task(
-                _run(
-                    "budget",
+            budget_task = tg.create_task(
+                _aggregate(
                     self._budget.aggregate(since=since, until=until),
+                    _EMPTY_BUDGET,
+                    domain="budget",
                 )
             )
-            _ = tg.create_task(
-                _run(
-                    "coord",
+            coord_task = tg.create_task(
+                _aggregate(
                     self._coordination.aggregate(since=since, until=until),
+                    _EMPTY_COORDINATION,
+                    domain="coord",
                 )
             )
-            if self._scaling is not None:
-                _ = tg.create_task(
-                    _run(
-                        "scale",
+            scale_task = (
+                tg.create_task(
+                    _aggregate(
                         self._scaling.aggregate(since=since, until=until),
+                        _EMPTY_SCALING,
+                        domain="scale",
                     )
                 )
-            _ = tg.create_task(
-                _run(
-                    "err",
+                if self._scaling is not None
+                else None
+            )
+            err_task = tg.create_task(
+                _aggregate(
                     self._errors.aggregate(since=since, until=until),
+                    _EMPTY_ERRORS,
+                    domain="err",
                 )
             )
-            _ = tg.create_task(
-                _run(
-                    "evo",
+            evo_task = tg.create_task(
+                _aggregate(
                     self._evolution.aggregate(since=since, until=until),
+                    _EMPTY_EVOLUTION,
+                    domain="evo",
                 )
             )
-            _ = tg.create_task(
-                _run(
-                    "telem",
+            telem_task = tg.create_task(
+                _aggregate(
                     self._telemetry.aggregate(since=since, until=until),
+                    _EMPTY_TELEMETRY,
+                    domain="telem",
                 )
             )
-            if self._benchmark is not None:
-                _ = tg.create_task(
-                    _run(
-                        "bench",
+            bench_task = (
+                tg.create_task(
+                    _aggregate(
                         self._benchmark.aggregate(since=since, until=until),
+                        _EMPTY_BENCHMARK,
+                        domain="bench",
                     )
                 )
-
-        perf = results.get("perf", _EMPTY_PERFORMANCE)
-        budget = results.get("budget", _EMPTY_BUDGET)
-        coord = results.get("coord", _EMPTY_COORDINATION)
-        scale = results.get("scale", _EMPTY_SCALING)
-        err = results.get("err", _EMPTY_ERRORS)
-        evo = results.get("evo", _EMPTY_EVOLUTION)
-        telem = results.get("telem", _EMPTY_TELEMETRY)
-        bench = results.get("bench", _EMPTY_BENCHMARK)
+                if self._benchmark is not None
+                else None
+            )
 
         snapshot = OrgSignalSnapshot(
-            performance=perf,  # type: ignore[arg-type]
-            budget=budget,  # type: ignore[arg-type]
-            coordination=coord,  # type: ignore[arg-type]
-            scaling=scale,  # type: ignore[arg-type]
-            errors=err,  # type: ignore[arg-type]
-            evolution=evo,  # type: ignore[arg-type]
-            telemetry=telem,  # type: ignore[arg-type]
-            benchmark=bench,  # type: ignore[arg-type]
+            performance=perf_task.result(),
+            budget=budget_task.result(),
+            coordination=coord_task.result(),
+            scaling=(scale_task.result() if scale_task is not None else _EMPTY_SCALING),
+            errors=err_task.result(),
+            evolution=evo_task.result(),
+            telemetry=telem_task.result(),
+            benchmark=(
+                bench_task.result() if bench_task is not None else _EMPTY_BENCHMARK
+            ),
         )
 
         logger.info(

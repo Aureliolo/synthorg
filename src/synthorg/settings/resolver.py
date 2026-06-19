@@ -29,6 +29,9 @@ from pydantic import BaseModel
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.observability import get_logger
+from synthorg.observability.events.coordination import (
+    COORDINATION_OVERRIDE_APPLIED,
+)
 from synthorg.observability.events.settings import (
     SETTINGS_FETCH_FAILED,
     SETTINGS_NOT_FOUND,
@@ -799,13 +802,33 @@ class ConfigResolver:
             )
             raise first_failure from eg
 
+        resolved_wave = t_wave.result()
+        resolved_fail_fast = t_ff.result()
+        if (
+            max_concurrency_per_wave is not None
+            and max_concurrency_per_wave != resolved_wave
+        ):
+            logger.info(
+                COORDINATION_OVERRIDE_APPLIED,
+                field="max_concurrency_per_wave",
+                resolved_value=resolved_wave,
+                override_value=max_concurrency_per_wave,
+            )
+        if fail_fast is not None and fail_fast != resolved_fail_fast:
+            logger.info(
+                COORDINATION_OVERRIDE_APPLIED,
+                field="fail_fast",
+                resolved_value=resolved_fail_fast,
+                override_value=fail_fast,
+            )
+
         return CoordinationConfig(
             max_concurrency_per_wave=(
                 max_concurrency_per_wave
                 if max_concurrency_per_wave is not None
-                else t_wave.result()
+                else resolved_wave
             ),
-            fail_fast=(fail_fast if fail_fast is not None else t_ff.result()),
+            fail_fast=(fail_fast if fail_fast is not None else resolved_fail_fast),
             enable_workspace_isolation=t_iso.result(),
             base_branch=t_branch.result(),
             max_stall_count=t_stall.result(),

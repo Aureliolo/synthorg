@@ -11,6 +11,7 @@ import { SegmentedControl } from '@/components/ui/segmented-control'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Pagination } from '@/components/ui/pagination'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
+import type { ConfirmHandler } from '@/components/ui/confirm-dialog'
 import { useListPagination } from '@/hooks/use-list-pagination'
 import { EntityCard } from './EntityCard'
 import type { EntityResponse } from '@/api/endpoints/ontology'
@@ -156,8 +157,7 @@ function EntityCatalogEmpty({ hasActiveFilters, onClearFilters }: EntityCatalogE
 interface EntityCatalogGridProps {
   entities: readonly EntityResponse[]
   onSelect: (entity: EntityResponse) => void
-  // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- intentional confirm-handler contract: false keeps the dialog open, void (sync or async) closes it
-  onDelete: (name: string) => boolean | void | Promise<boolean | void>
+  onDelete: (name: string) => ReturnType<ConfirmHandler>
 }
 
 function EntityCatalogGrid({ entities, onSelect, onDelete }: EntityCatalogGridProps) {

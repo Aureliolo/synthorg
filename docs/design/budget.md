@@ -242,7 +242,8 @@ Independent of the monthly soft-warning ladder, a per-run hard ceiling halts the
 cleanly mid-run. The in-loop `BudgetChecker` raises `RunHardCeilingExceededError` (a
 subclass of `BudgetExhaustedError`) the moment accumulated cost meets or exceeds the
 task's `hard_ceiling` (falling back to the global `run_hard_ceiling` setting when the
-per-task value is unset; `0.0` disables the global fallback). The engine routes the
+per-task value is unset). The shipped default `run_hard_ceiling` is `25.0`, a
+safety net; `0.0` is the explicit opt-out that disables the global fallback. The engine routes the
 crossing to `TerminationReason.PARKED` via `ApprovalGate.park_context` so execution
 state is preserved, and stamps a `HaltContext` (accumulated cost, ceiling, currency,
 timestamp) onto the forecast row. The operator raises the ceiling via
@@ -252,7 +253,7 @@ so the run can resume.
 
 ```yaml
 budget:
-  run_hard_ceiling: 0.00   # absolute amount in budget.currency; 0 disables the global fallback
+  run_hard_ceiling: 25.0   # absolute amount in budget.currency; 0 disables the global fallback
 ```
 
 ### Cost / quality Pareto view

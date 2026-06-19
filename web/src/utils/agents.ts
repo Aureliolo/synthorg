@@ -23,7 +23,7 @@ import type {
 } from '@/api/types/agents'
 import type { AgentStatus, SeniorityLevel } from '@/api/types/enums'
 import type { MetricCardProps } from '@/components/ui/metric-card'
-import type { AgentRuntimeStatus, SemanticColor } from '@/lib/utils'
+import type { AgentRuntimeStatus, SemanticColor } from '@/utils/agent-status'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatCurrency } from '@/utils/format'
 

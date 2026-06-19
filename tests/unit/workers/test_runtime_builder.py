@@ -18,6 +18,7 @@ from synthorg.config.provider_schema import ProviderConfig
 from synthorg.config.schema import RootConfig
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.coordination.service import MultiAgentCoordinator
+from synthorg.engine.errors import CoordinationConfigError
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
 from synthorg.engine.parallel import ParallelExecutor
@@ -73,6 +74,8 @@ def _provider_app_state(  # noqa: PLR0913 -- test builder with keyword-only knob
     *,
     bridge_config_error: Exception | None = None,
     decomposition_error: Exception | None = None,
+    blank_decomposition_model: bool = False,
+    blank_decomposition_value: str = "",
     cost_tracker: CostTracker | None = None,
     coordination_metrics_store: CoordinationMetricsStore | None = None,
     simulation_runtime: bool = False,
@@ -92,7 +95,15 @@ def _provider_app_state(  # noqa: PLR0913 -- test builder with keyword-only knob
         bridge_mock = AsyncMock(return_value=EngineBridgeConfig())
     else:
         bridge_mock = AsyncMock(side_effect=bridge_config_error)
-    if decomposition_error is None:
+    if blank_decomposition_model:
+
+        async def _get_str_blank(namespace: str, key: str) -> str:
+            if key == "decomposition_model":
+                return blank_decomposition_value
+            return await _get_str(namespace, key)
+
+        get_str_mock = AsyncMock(side_effect=_get_str_blank)
+    elif decomposition_error is None:
         get_str_mock = AsyncMock(side_effect=_get_str)
     else:
         # Narrow-raise on the decomposition key only so the upstream
@@ -193,6 +204,34 @@ class TestProviderPresentSwitch:
         # No intake runtime wired in the default helper, so the spine
         # is intentionally unconfigured (honest unavailability).
         assert result.work_pipeline is None
+
+    @pytest.mark.parametrize("model_value", ["", "   "])
+    async def test_blank_decomposition_model_raises_config_error(
+        self,
+        tmp_path: Path,
+        model_value: str,
+    ) -> None:
+        """A provider-present boot rejects a blank decomposition model.
+
+        The coordinator builds eagerly when a provider is configured, so
+        an empty or whitespace-only ``coordination.decomposition_model``
+        fails fast at the wiring chokepoint with a typed,
+        operator-readable config error rather than a deep strategy-level
+        failure. The guard strips before checking, so a whitespace-only
+        value is rejected just like the empty string.
+        """
+        registry = ProviderRegistry.from_config(
+            {"test-provider": ProviderConfig(driver="scripted")}
+        )
+        app_state = _provider_app_state(
+            registry,
+            tmp_path,
+            blank_decomposition_model=True,
+            blank_decomposition_value=model_value,
+        )
+
+        with pytest.raises(CoordinationConfigError):
+            await build_runtime_services(app_state, workspace_root=tmp_path)
 
     async def test_worker_and_coordinator_share_one_engine(
         self,

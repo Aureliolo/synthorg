@@ -5,8 +5,8 @@ The activities controller (and any future consumer) reads
 At startup the helper resolves the full ``ApiBridgeConfig`` from
 ``ConfigResolver`` and atomically swaps it onto ``AppState``. On
 failure the default snapshot is retained and a single structured
-warning is emitted -- the centralised replacement for the per-request
-log-once fallback the activities controller used to carry inline.
+warning is emitted -- one centralised resolution at startup rather
+than per-request inline fallback logic in the consumers.
 """
 
 from typing import cast

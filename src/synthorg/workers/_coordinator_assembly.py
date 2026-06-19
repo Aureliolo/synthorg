@@ -17,6 +17,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.middleware_config import CoordinationMiddlewareConfig
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.coordination.factory import build_coordinator
+from synthorg.engine.errors import CoordinationConfigError
 from synthorg.engine.middleware._defaults import register_coordination_defaults
 from synthorg.engine.middleware.factory import build_coordination_middleware_chain
 from synthorg.engine.middleware.replan_factory import create_replan_hook
@@ -240,12 +241,32 @@ async def _build_runtime_coordinator(
     Returns:
         A ``(coordinator, scorer, decomposition_model)`` triple sharing
         the boot engine and a single ``AgentTaskScorer``.
+
+    Raises:
+        CoordinationConfigError: If the resolved
+            ``coordination.decomposition_model`` is blank while a
+            provider is configured (the coordinator builds eagerly and
+            its decomposition strategy requires a non-blank model).
     """
     (
         decomposition_model,
         routing_scorer_config,
         (workspace_strategy, workspace_config),
     ) = await _resolve_coordinator_dependencies(app_state)
+    if not decomposition_model.strip():
+        msg = (
+            "coordination.decomposition_model must be set to a model id from"
+            " your provider catalogue when a provider is configured: the"
+            " coordinator builds eagerly at boot and its decomposition"
+            " strategy requires a non-blank model."
+        )
+        logger.error(
+            API_APP_STARTUP,
+            service="coordinator",
+            context="config_invalid",
+            error=msg,
+        )
+        raise CoordinationConfigError(msg)
     performance_tracker = app_state.slice(HrStateSlice).performance_tracker
     if routing_scorer_config is None:
         scorer = AgentTaskScorer(min_score=app_state.config.task_assignment.min_score)

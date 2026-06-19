@@ -5,10 +5,6 @@
  * ``web/CLAUDE.md`` Zustand store error handling: log + error toast +
  * sentinel return on failure, callers MUST NOT wrap in try/catch.
  */
-/* eslint-disable security/detect-possible-timing-attacks --
-   Comparisons against in-flight request tokens (plain monotonic
-   ints) are not timing-sensitive secrets; they are how this store
-   discards stale fetch responses. */
 import type { StoreApi } from 'zustand'
 import { create } from 'zustand'
 

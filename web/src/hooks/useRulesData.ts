@@ -49,14 +49,14 @@ export function useRulesData(): UseRulesDataReturn {
     setMergedError(null)
     try {
       const rules = await listAllRules()
-      if (token !== _mergedRequestToken) return // eslint-disable-line security/detect-possible-timing-attacks
+      if (token !== _mergedRequestToken) return
       setAllRules(rules)
     } catch (err) {
-      if (token !== _mergedRequestToken) return // eslint-disable-line security/detect-possible-timing-attacks
+      if (token !== _mergedRequestToken) return
       log.error('Failed to fetch merged rules', err)
       setMergedError(getErrorMessage(err))
     } finally {
-      if (token === _mergedRequestToken) { // eslint-disable-line security/detect-possible-timing-attacks
+      if (token === _mergedRequestToken) {
         setMergedLoading(false)
       }
     }

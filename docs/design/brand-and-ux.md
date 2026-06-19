@@ -249,8 +249,8 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | Function | File | Purpose |
 |----------|------|---------|
 | `cn()` | `lib/utils.ts` | Tailwind class merging (clsx + twMerge). Use in every component. |
-| `getStatusColor()` | `lib/utils.ts` | Maps `AgentRuntimeStatus` to `SemanticColor \| "text-secondary"` token name (`offline` maps to `"text-secondary"`). |
-| `getHealthColor()` | `lib/utils.ts` | Maps 0-100 percentage to `SemanticColor` (>=75 success, >=50 accent, >=25 warning, <25 danger). |
+| `getStatusColor()` | `utils/agent-status.ts` | Maps `AgentRuntimeStatus` to `SemanticColor \| "text-secondary"` token name (`offline` maps to `"text-secondary"`). |
+| `getHealthColor()` | `utils/agent-status.ts` | Maps 0-100 percentage to `SemanticColor` (>=75 success, >=50 accent, >=25 warning, <25 danger). |
 | `getTaskStatusColor()` | `utils/tasks.ts` | Maps `TaskStatus` to `SemanticColor`. |
 | `getTaskStatusLabel()` | `utils/tasks.ts` | Maps `TaskStatus` to display label. |
 | `getPriorityColor()` | `utils/tasks.ts` | Maps `Priority` to `SemanticColor`. |
@@ -292,8 +292,8 @@ The following shared components live in `web/src/components/ui/` and form the bu
 
 | Type | File | Values |
 |------|------|--------|
-| `AgentRuntimeStatus` | `lib/utils.ts` | `"active"`, `"idle"`, `"error"`, `"offline"` |
-| `SemanticColor` | `lib/utils.ts` | `"success"`, `"accent"`, `"warning"`, `"danger"` |
+| `AgentRuntimeStatus` | `utils/agent-status.ts` | `"active"`, `"idle"`, `"error"`, `"offline"` |
+| `SemanticColor` | `utils/agent-status.ts` | `"success"`, `"accent"`, `"warning"`, `"danger"` |
 | `TaskStatus` | `api/types` | `"created"`, `"assigned"`, `"in_progress"`, `"in_review"`, `"completed"`, `"blocked"`, `"failed"`, `"interrupted"`, `"cancelled"` |
 | `Priority` | `api/types` | `"critical"`, `"high"`, `"medium"`, `"low"` |
 | `ProviderHealthStatus` | `api/types` | `"up"`, `"degraded"`, `"down"`, `"unknown"` |

@@ -183,7 +183,6 @@ function useAccountForm(minPasswordLength: number): AccountForm {
       setError(`Password must be at least ${minPasswordLength} characters`)
       return
     }
-    // eslint-disable-next-line security/detect-possible-timing-attacks -- client-side UI validation of user's own input
     if (password !== confirmPassword) {
       setError('Passwords do not match')
       return

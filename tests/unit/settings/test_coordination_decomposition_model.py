@@ -2,7 +2,9 @@
 
 The coordinator's LLM decomposition strategy resolves its model id
 from this Cat-1 setting at boot (DB > env > code default). It is a
-plain mutable string entry: a runtime change applies on the next
+plain mutable string entry whose code default is blank: a
+provider-present boot validates the resolved value and raises a
+startup error when it is empty. A runtime change applies on the next
 coordinator rebuild (provider re-init).
 """
 
@@ -34,7 +36,7 @@ def service() -> SettingsService:
 def test_decomposition_model_registered_mutable() -> None:
     defn = get_registry().get("coordination", "decomposition_model")
     assert defn is not None
-    assert defn.default == "example-medium-001"
+    assert defn.default == ""
     assert defn.read_only_post_init is False
     assert defn.restart_required is False
 
@@ -48,7 +50,7 @@ async def test_decomposition_model_falls_back_to_default(
         raising=False,
     )
     value = await service.get("coordination", "decomposition_model")
-    assert value.value == "example-medium-001"
+    assert value.value == ""
 
 
 async def test_decomposition_model_resolves_through_env(

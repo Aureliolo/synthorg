@@ -102,10 +102,10 @@ def test_nats_url_default_matches_registry_not_localhost(
 ) -> None:
     """No-env nats-url default resolves to the registry value, not localhost.
 
-    Closes the worker/API split-brain: the worker used to hardcode
-    ``nats://localhost:4222`` while the registry default is
-    ``nats://nats:4222``. Routing the argparse default through the
-    bootstrap resolver keeps the two in lockstep.
+    The argparse default routes through the bootstrap resolver so the
+    worker observes the registry default ``nats://nats:4222`` and stays
+    in lockstep with the API rather than diverging to a hard-coded
+    ``nats://localhost:4222``.
     """
     monkeypatch.delenv("SYNTHORG_NATS_URL", raising=False)
     args = _build_parser().parse_args([])

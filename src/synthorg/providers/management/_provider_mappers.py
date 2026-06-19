@@ -1,8 +1,8 @@
 # module-kind: code
 """Domain-to-response mappers for the provider management surface.
 
-Extracted from ``dtos.py``. Convert ``ProviderConfig`` /
-``ProviderModelConfig`` into the secret-free response DTOs.
+Convert ``ProviderConfig`` / ``ProviderModelConfig`` into the
+secret-free response DTOs.
 """
 
 from synthorg.budget.currency import DEFAULT_CURRENCY

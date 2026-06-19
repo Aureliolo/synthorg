@@ -19,7 +19,6 @@ from synthorg.api.pagination import (
 )
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
-from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.actor_context import require_actor
 from synthorg.core.domain_errors import AbTestNotFoundError, ServiceUnavailableError
@@ -28,18 +27,15 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.engine.state import EngineStateSlice
 from synthorg.meta.chief_of_staff.models import ChatQuery, ProposeArgs, ProposeResult
-from synthorg.meta.config import load_self_improvement_config
 from synthorg.meta.mcp.server import get_server_config
 from synthorg.meta.mcp.tools import get_tool_definitions
-from synthorg.meta.state import MetaStateSlice
+from synthorg.meta.state import MetaStateSlice, self_improvement_config_of
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_CHAT_DEPENDENCY_UNAVAILABLE,
     META_CUSTOM_RULE_LIST_FAILED,
 )
 from synthorg.persistence.state import persistence_of
-from synthorg.settings.service_protocol import SettingsServiceProtocol
-from synthorg.settings.state import SettingsStateSlice
 
 
 class ChatRequest(BaseModel):
@@ -85,19 +81,6 @@ logger = get_logger(__name__)
 _DEFAULT_PAGE_SIZE: Final[int] = 50
 
 
-def _settings_service_from_state(state: State) -> SettingsServiceProtocol | None:
-    """Return the settings service from the app state, or ``None``.
-
-    Centralises the ``has_settings_service`` guard used by every
-    ``load_self_improvement_config`` call site in this controller.
-
-    Returns:
-        The wired ``SettingsService``, or ``None`` when unset.
-    """
-    app_state: AppStateSliceMixin = state.app_state
-    return app_state.slice(SettingsStateSlice).settings_service
-
-
 class MetaController(Controller):
     """Self-improvement meta-loop API endpoints.
 
@@ -125,9 +108,7 @@ class MetaController(Controller):
         Returns:
             Current SelfImprovementConfig as dict.
         """
-        config = await load_self_improvement_config(
-            _settings_service_from_state(state),
-        )
+        config = await self_improvement_config_of(state.app_state)
         return ApiResponse[dict[str, object]](
             data=config.model_dump(),
         )
@@ -152,9 +133,7 @@ class MetaController(Controller):
         from synthorg.meta.rules.builtin import default_rules  # noqa: PLC0415
 
         rules = default_rules()
-        config = await load_self_improvement_config(
-            _settings_service_from_state(state),
-        )
+        config = await self_improvement_config_of(state.app_state)
         disabled = set(config.rules.disabled_rules)
         rule_list: list[dict[str, object]] = [
             {
@@ -342,9 +321,7 @@ class MetaController(Controller):
         Returns:
             Signal domain summaries.
         """
-        config = await load_self_improvement_config(
-            _settings_service_from_state(state),
-        )
+        config = await self_improvement_config_of(state.app_state)
         domains = [
             "performance",
             "budget",

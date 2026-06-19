@@ -324,7 +324,6 @@ class TestTunnelUnconditionalWiring:
                 effective_config=config,
                 persistence=None,
                 message_bus=None,
-                api_config=config.api,
                 ceremony_scheduler=None,
                 db_url="sqlite:///:memory:",
                 resolved_db_path=tmp_path / "synthorg.db",

@@ -132,7 +132,7 @@ class TestApiSettingsIntegration:
         result = await resolver.get_api_config()
 
         assert result.rate_limit.unauth_max_requests == 20
-        assert result.rate_limit.auth_max_requests == 6000
+        assert result.rate_limit.auth_max_requests == 600
         assert result.rate_limit.time_unit.value == "minute"
         assert result.auth.jwt_expiry_minutes == 60
         assert result.auth.min_password_length == 12

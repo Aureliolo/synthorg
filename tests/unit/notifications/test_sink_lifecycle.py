@@ -308,7 +308,7 @@ class TestDispatcherLifecycle:
         assert a.close_calls == 0
 
     async def test_dispatcher_close_alias_routes_through_aclose(self) -> None:
-        """Legacy ``close()`` method has been removed; ``aclose`` is the API."""
+        """``aclose`` is the only close API; no ``close`` alias exists."""
         dispatcher = NotificationDispatcher(sinks=())
         # The canonical entry point is ``aclose``; ``close`` must not
         # exist as an alias (a permissive ``or callable`` check would

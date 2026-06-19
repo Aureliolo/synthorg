@@ -1,10 +1,9 @@
 # module-kind: code
 """Golden-benchmark regression rule for the meta-loop.
 
-Split from :mod:`synthorg.meta.rules.builtin` to keep that module under
-its size budget. The golden-company benchmark is the org's ground-truth
-quality signal, so its regression rule lives in its own module alongside
-the rest of the benchmark-feedback wiring.
+The golden-company benchmark is the org's ground-truth quality signal,
+so its regression rule lives in its own module alongside the rest of
+the benchmark-feedback wiring.
 """
 
 from typing import Final

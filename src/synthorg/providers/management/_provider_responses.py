@@ -1,8 +1,8 @@
 # module-kind: declarative
 """Provider-management response DTOs.
 
-Extracted from ``dtos.py``. Outbound response shapes for the provider
-management surface; secrets are never carried here.
+Outbound response shapes for the provider management surface; secrets
+are never carried here.
 """
 
 from collections.abc import Mapping

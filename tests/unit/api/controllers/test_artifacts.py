@@ -118,8 +118,7 @@ class TestArtifactController:
     ) -> None:
         resp = await async_test_client.get("/api/v1/artifacts?type=bogus")
         # Domain ``ValidationError`` maps to 422 via the central
-        # exception handler, not the legacy 400 the manual
-        # ``Response(...)`` site emitted.
+        # exception handler.
         assert resp.status_code == 422
         body = resp.json()
         assert body["success"] is False

@@ -5,9 +5,9 @@ module fills the gap by parametrizing over every handler in
 :func:`synthorg.meta.mcp.handlers.build_handler_map` and verifying
 that each one returns a well-formed error envelope when its service
 layer fails. Hits the centralized ``log_handler_*`` helpers across
-the entire 200+-tool surface in one parametrized sweep so the
-``except`` branches the centralization refactor introduced are
-covered without per-handler boilerplate.
+the entire 200+-tool surface in one parametrized sweep so every
+handler's ``except`` branch is covered without per-handler
+boilerplate.
 """
 
 import json
@@ -251,13 +251,12 @@ class TestEveryHandlerHandlesFailureCleanly:
 class TestEveryHandlerEmitsCentralizedLogEvent:
     """Every handler emits one of the three handler-layer log events.
 
-    Pins the contract that the centralization refactor delivered:
-    each ``except`` branch in every domain handler routes through one
-    of ``log_handler_argument_invalid``, ``log_handler_invoke_failed``,
-    or ``log_handler_guardrail_violated``. A handler that returns an
-    error envelope without emitting one of these events would be a
-    regression -- the centralization buys consistent observability
-    only if every error path goes through these helpers.
+    Pins the contract that each ``except`` branch in every domain
+    handler routes through one of ``log_handler_argument_invalid``,
+    ``log_handler_invoke_failed``, or ``log_handler_guardrail_violated``.
+    A handler that returns an error envelope without emitting one of
+    these events would be a regression -- consistent observability
+    holds only if every error path goes through these helpers.
 
     Limited to a representative sample (one per domain) so the test
     finishes quickly while still pinning the cross-domain contract.

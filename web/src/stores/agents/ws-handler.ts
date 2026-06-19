@@ -3,7 +3,7 @@ import { sanitizeForLog } from '@/utils/logging'
 import { isObject } from '@/utils/type-guards'
 import { sanitizeWsEnum, sanitizeWsString } from '@/utils/ws-sanitize'
 import type { WsEvent } from '@/api/types'
-import type { AgentRuntimeStatus } from '@/lib/utils'
+import type { AgentRuntimeStatus } from '@/utils/agent-status'
 import type { AgentsSet } from './types'
 
 const log = createLogger('agents')
@@ -44,10 +44,10 @@ function extractAgentStatusFields(
     return null
   }
   const status = sanitizeWsEnum<AgentRuntimeStatus>(
-    payload['status'],
+    payload['to_status'],
     AGENT_RUNTIME_STATUS_VALUES,
     'offline',
-    { field: 'agent.status_changed.status' },
+    { field: 'agent.status_changed.to_status' },
   )
   return { sanitizedAgentId, status }
 }

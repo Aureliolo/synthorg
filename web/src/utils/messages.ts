@@ -5,7 +5,7 @@ import type {
   MessagePriority,
   MessageType,
 } from '@/api/types/messages'
-import type { SemanticColor } from '@/lib/utils'
+import type { SemanticColor } from '@/utils/agent-status'
 import { formatDateOnly } from '@/utils/format'
 
 // ── Wire-parts -> UI adapters ──────────────────────────────

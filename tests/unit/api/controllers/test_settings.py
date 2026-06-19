@@ -348,8 +348,7 @@ class TestSecurityConfigExportImport:
             headers=auth_headers,
         )
         # Domain ``ValidationError`` maps to 422 via the central
-        # exception handler, not the legacy 400 the manual
-        # ``ClientException`` site emitted.
+        # exception handler.
         assert resp.status_code == 422
 
     async def test_import_requires_ceo_or_manager(

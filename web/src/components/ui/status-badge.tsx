@@ -1,5 +1,6 @@
 import { motion } from 'motion/react'
-import { cn, type AgentRuntimeStatus, type SemanticColor, getStatusColor } from '@/lib/utils'
+import { cn } from '@/lib/utils'
+import { getStatusColor, type AgentRuntimeStatus, type SemanticColor } from '@/utils/agent-status'
 import { useStatusTransition } from '@/hooks/useStatusTransition'
 
 const STATUS_LABELS: Record<AgentRuntimeStatus, string> = {

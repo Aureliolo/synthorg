@@ -8629,8 +8629,8 @@ export type components = {
             readonly reset_day: number;
             readonly risk_budget: components["schemas"]["RiskBudgetConfig"];
             /**
-             * @description Absolute hard real-money ceiling applied when Task.hard_ceiling is unset (zero disables the global fallback)
-             * @default 0
+             * @description Absolute hard real-money ceiling applied when Task.hard_ceiling is unset. The shipped default 25.0 is a safety net; 0.0 is the explicit opt-out that disables the global fallback
+             * @default 25
              */
             readonly run_hard_ceiling: number;
             /** @description Per-provider subscription / quota configuration consumed by the quota tracker. Providers without an entry are quota-unbounded. */

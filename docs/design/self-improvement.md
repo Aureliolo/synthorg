@@ -300,7 +300,7 @@ Example override (enable the master switch + tighten the cadence):
 {"enabled": true, "schedule": {"cycle_interval_hours": 72}}
 ```
 
-Every meta-loop entry point (`GET /meta/config`, `GET /meta/rules`, `GET /meta/signals`) calls the loader at request time, so setting changes are picked up without a server restart.
+Every meta-loop entry point (`GET /meta/config`, `GET /meta/rules`, `GET /meta/signals`) reads the config via `self_improvement_config_of(app_state)`, which caches the parsed `SelfImprovementConfig` on `MetaStateSlice` so the JSON is parsed once rather than per request. The `MetaSelfImprovementSettingsSubscriber` invalidates that cache (wires the field back to `None`) on an operator edit, so setting changes are still picked up without a server restart.
 
 ### Interactive endpoints
 

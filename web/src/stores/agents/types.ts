@@ -18,7 +18,7 @@ import type {
   Task,
   WsEvent,
 } from '@/api/types'
-import type { AgentRuntimeStatus } from '@/lib/utils'
+import type { AgentRuntimeStatus } from '@/utils/agent-status'
 import type { AgentSortKey } from '@/utils/agents'
 
 export interface AgentsState {

@@ -407,8 +407,7 @@ class TestSemanticDetectorBehavior:
         assert sent_model == "test-small-001"
         assert len(sent_messages) == 2
         assert sent_messages[0].role == MessageRole.SYSTEM
-        # Conversation is wrapped in the ``<task-data>`` fence
-        # (replaces the legacy ``===BEGIN CONVERSATION===`` marker).
+        # Conversation is wrapped in the ``<task-data>`` fence.
         assert "<task-data>" in sent_messages[0].content
         assert "</task-data>" in sent_messages[0].content
 

@@ -1,5 +1,6 @@
 import * as fc from 'fast-check'
-import { cn, getStatusColor, getHealthColor } from '@/lib/utils'
+import { cn } from '@/lib/utils'
+import { getStatusColor, getHealthColor } from '@/utils/agent-status'
 
 describe('cn', () => {
   it('merges class names', () => {

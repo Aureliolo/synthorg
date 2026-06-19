@@ -1,9 +1,8 @@
 # module-kind: declarative
 """Provider-management request DTOs.
 
-Extracted from ``dtos.py``. Inbound payloads for the provider
-management surface; field validators delegate to
-``_provider_validators``.
+Inbound payloads for the provider management surface; field validators
+delegate to ``_provider_validators``.
 """
 
 from typing import Self

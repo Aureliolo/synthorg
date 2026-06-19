@@ -47,6 +47,11 @@ import asyncio
 
 from litestar.types import ASGIApp, Receive, Scope, Send
 
+from synthorg.api._asgi_scope import (
+    is_http_scope,
+    is_lifespan_scope,
+    is_lifespan_shutdown_message,
+)
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -116,15 +121,10 @@ class RequestDrainMiddleware:
         (which kick off the per-service teardown). WebSocket scopes
         pass through untouched.
         """
-        # Litestar's ``Scope`` union is ``HTTPScope | WebSocketScope``;
-        # at runtime ASGI also delivers ``lifespan`` scopes which
-        # the static type does not include. The ``type: ignore``s
-        # below cover the lifespan branch.
-        scope_type = scope["type"]
-        if scope_type == "lifespan":  # type: ignore[comparison-overlap]
+        if is_lifespan_scope(scope):
             await self._app(scope, self._wrap_lifespan_receive(receive), send)
             return
-        if scope_type != "http":  # type: ignore[comparison-overlap]
+        if not is_http_scope(scope):
             await self._app(scope, receive, send)
             return
         if self._drain_started.is_set():
@@ -164,9 +164,7 @@ class RequestDrainMiddleware:
             # ``lifespan.shutdown`` so mypy flags the comparison
             # overlap, but at runtime the message is exactly that
             # ASGI event.
-            if (
-                isinstance(message, dict) and message.get("type") == "lifespan.shutdown"  # type: ignore[comparison-overlap]
-            ):
+            if is_lifespan_shutdown_message(message):
                 await self.begin_drain()
             return message
 

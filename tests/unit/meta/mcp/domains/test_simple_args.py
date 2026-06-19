@@ -68,8 +68,8 @@ class TestAnalyticsArgs:
             metric_names=("throughput",),
         )
         assert args.metric_names == ("throughput",)
-        # ``until`` is required for trends, and the legacy ``period`` field
-        # is no longer part of the contract.
+        # ``until`` is required for trends; ``period`` is not part of the
+        # contract, so a payload without ``until`` is rejected.
         with pytest.raises(ValidationError):
             AnalyticsGetTrendsArgs.model_validate({"since": _SINCE})
         with pytest.raises(ValidationError):

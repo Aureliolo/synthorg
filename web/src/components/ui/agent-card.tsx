@@ -1,5 +1,6 @@
 import { useId } from 'react'
-import { cn, type AgentRuntimeStatus } from '@/lib/utils'
+import { cn } from '@/lib/utils'
+import type { AgentRuntimeStatus } from '@/utils/agent-status'
 import { formatDateTime } from '@/utils/format'
 import { Avatar } from './avatar'
 import { StatusBadge } from './status-badge'

@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils'
 import type { ProviderHealthStatus } from '@/api/types/providers'
 import { getProviderHealthColor } from '@/utils/providers'
-import type { SemanticColor } from '@/lib/utils'
+import type { SemanticColor } from '@/utils/agent-status'
 
 const STATUS_LABELS: Record<ProviderHealthStatus, string> = {
   up: 'Up',

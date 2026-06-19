@@ -1,5 +1,5 @@
 import type { MeetingPhase, MeetingProtocolType, MeetingResponse, MeetingStatus } from '@/api/types/meetings'
-import type { SemanticColor } from '@/lib/utils'
+import type { SemanticColor } from '@/utils/agent-status'
 import { formatUptime } from '@/utils/format'
 
 // -- Meeting status color mapping -------------------------------------------

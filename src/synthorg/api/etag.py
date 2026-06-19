@@ -47,6 +47,7 @@ from dataclasses import dataclass, field
 
 from litestar.types import ASGIApp, Receive, Scope, Send
 
+from synthorg.api._asgi_scope import is_http_scope
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_ETAG_CACHE_HIT
 
@@ -267,8 +268,7 @@ class ETagMiddleware:
         send: Send,
     ) -> None:
         """Wrap the response if the request is in scope for ETag handling."""
-        scope_type = scope["type"]
-        if scope_type != "http":  # type: ignore[comparison-overlap]
+        if not is_http_scope(scope):
             await self._app(scope, receive, send)
             return
         method = scope.get("method", "")
