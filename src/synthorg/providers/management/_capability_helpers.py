@@ -7,7 +7,7 @@ discriminated-union DTO and the system-actor constant is a sentinel.
 """
 
 from datetime import UTC, datetime
-from typing import Final, assert_never
+from typing import Final
 
 from synthorg.core.actor_context import current_actor
 from synthorg.core.iso_datetime import format_iso_utc
@@ -138,4 +138,15 @@ def credentials_update_fields(
                 mask_secret(secret),
             )
         case _ as unreachable:
-            assert_never(unreachable)
+            # ``request`` is a pydantic discriminated union validated upstream,
+            # so this arm is unreachable. The defensive log + typed raise give
+            # operators a 422 with context (rather than a bare 500) if a future
+            # union variant ever reaches here before this dispatch is updated.
+            msg = f"Unsupported auth_type for rotation: {unreachable!r}"  # type: ignore[unreachable]
+            exc = ProviderValidationError(msg)
+            logger.warning(
+                PROVIDER_VALIDATION_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise exc

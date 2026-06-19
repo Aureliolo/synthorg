@@ -38,13 +38,15 @@ def test_default_when_neither_flag_nor_env(monkeypatch: pytest.MonkeyPatch) -> N
     assert _resolve_worker_count(explicit=None) == _DEFAULT_WORKER_COUNT
 
 
-def test_legacy_worker_count_env_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The legacy ``SYNTHORG_WORKER_COUNT`` name must NOT be consulted.
+def test_unregistered_worker_count_env_is_ignored(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The ``SYNTHORG_WORKER_COUNT`` name must NOT be consulted.
 
     The registered env-var override for ``workers.count`` is
-    ``SYNTHORG_WORKERS``. The legacy name predates the consolidation
-    of every Cat-2 env var onto the auto-derived ``SYNTHORG_<NS>_<KEY>``
-    shape and is intentionally not honoured.
+    ``SYNTHORG_WORKERS``. ``SYNTHORG_WORKER_COUNT`` does not match the
+    auto-derived ``SYNTHORG_<NS>_<KEY>`` shape every Cat-2 env var uses,
+    so it is not honoured.
     """
     monkeypatch.delenv("SYNTHORG_WORKERS", raising=False)
     monkeypatch.setenv("SYNTHORG_WORKER_COUNT", "16")

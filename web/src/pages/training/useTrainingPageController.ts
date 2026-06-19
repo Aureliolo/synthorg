@@ -70,7 +70,7 @@ function loadAgentRoster(
   setLoading: (loading: boolean) => void,
   setError: (error: string | null) => void,
 ): () => void {
-  let cancelled = false
+  const token = createCancellationToken()
   // Kick off the fetch in a microtask so the initial render completes first
   // (avoids the synchronous set-state-in-effect lint rule). Ask for the full
   // roster up-front so the table does not silently truncate to the default
@@ -78,20 +78,20 @@ function loadAgentRoster(
   void Promise.resolve()
     .then(() => listAgents({ limit: 200 }))
     .then((paginated) => {
-      if (!cancelled) {
+      if (!token.cancelled()) {
         setAgents(paginated.data)
         setLoading(false)
       }
     })
     .catch((err: unknown) => {
       logRosterError(err)
-      if (!cancelled) {
+      if (!token.cancelled()) {
         setError(getErrorMessage(err))
         setLoading(false)
       }
     })
   return () => {
-    cancelled = true
+    token.cancel()
   }
 }
 

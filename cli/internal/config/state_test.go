@@ -727,8 +727,8 @@ func TestFineTuneVariantFromIndex(t *testing.T) {
 }
 
 // TestFineTuneVariantOrDefault covers the persisted-string -> resolved-variant
-// mapping. Empty / unknown values resolve to "gpu" for forward compat with
-// pre-split configs.
+// mapping. Empty / unknown values resolve to "gpu" so a config that omits or
+// misspells the field still loads.
 func TestFineTuneVariantOrDefault(t *testing.T) {
 	t.Parallel()
 
@@ -756,8 +756,8 @@ func TestFineTuneVariantOrDefault(t *testing.T) {
 // TestValidate_FineTuningVariant covers State.Validate's variant validation:
 // invalid variants are rejected unconditionally (typos in a persisted config
 // must not survive silently until someone flips fine_tuning on), while the
-// empty string passes as a forward-compat shim for pre-split configs and the
-// two canonical values ("gpu", "cpu") are always accepted.
+// empty string passes (a config may omit the field, resolving to "gpu") and
+// the two canonical values ("gpu", "cpu") are always accepted.
 //
 // Split into arch-independent and amd64-only groups because cross-field
 // rules like `fine_tuning=true requires amd64` would trip every enabled

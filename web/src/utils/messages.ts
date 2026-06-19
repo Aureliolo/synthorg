@@ -38,7 +38,7 @@ function dataPartRef(data: Readonly<Record<string, unknown>>): string {
  *
  * ``TextPart`` is the message body, not an attachment, so it is
  * dropped. ``DataPart`` -> ``artifact``, ``FilePart`` -> ``file``,
- * ``UriPart`` -> ``link`` (mirrors the pre-migration taxonomy).
+ * ``UriPart`` -> ``link``.
  */
 export function partsToAttachments(
   parts: readonly MessagePart[],

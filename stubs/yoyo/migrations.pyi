@@ -4,10 +4,11 @@ class Migration:
     id: str
 
 class MigrationList:
-    post_apply: MigrationList
+    post_apply: list[Migration]
     def __init__(
         self,
         items: Iterable[Migration] = ...,
         post_apply: Iterable[Migration] = ...,
     ) -> None: ...
     def __iter__(self) -> Iterator[Migration]: ...
+    def __len__(self) -> int: ...
