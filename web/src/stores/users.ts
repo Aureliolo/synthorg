@@ -4,10 +4,6 @@
  * Wires the ``/users`` listing + org-role grant/revoke endpoints into
  * a Zustand store with the canonical sentinel-error contract.
  */
-/* eslint-disable security/detect-possible-timing-attacks --
-   Comparisons against in-flight request tokens (plain monotonic
-   ints) are not timing-sensitive secrets; they are how this store
-   discards stale fetch responses. */
 import type { StoreApi } from 'zustand'
 import { create } from 'zustand'
 

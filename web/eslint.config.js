@@ -151,6 +151,10 @@ export default tseslint.config(
       // Rule flags every obj[var] with no data-flow analysis -- too many false
       // positives. Prototype pollution is guarded explicitly at system boundaries.
       'security/detect-object-injection': 'off',
+      // Request-token stale-response guards compare plain monotonic ints, and
+      // client-side password-equality checks are not secret comparisons;
+      // neither is timing-sensitive, so this rule is off across src/.
+      'security/detect-possible-timing-attacks': 'off',
       // -- eslint-react rules not in recommended-type-checked --
       // Prevent dollar signs from leaking into rendered JSX output
       '@eslint-react/jsx-no-leaked-dollar': 'error',
