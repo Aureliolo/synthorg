@@ -75,6 +75,7 @@ def _provider_app_state(  # noqa: PLR0913 -- test builder with keyword-only knob
     bridge_config_error: Exception | None = None,
     decomposition_error: Exception | None = None,
     blank_decomposition_model: bool = False,
+    blank_decomposition_value: str = "",
     cost_tracker: CostTracker | None = None,
     coordination_metrics_store: CoordinationMetricsStore | None = None,
     simulation_runtime: bool = False,
@@ -98,7 +99,7 @@ def _provider_app_state(  # noqa: PLR0913 -- test builder with keyword-only knob
 
         async def _get_str_blank(namespace: str, key: str) -> str:
             if key == "decomposition_model":
-                return ""
+                return blank_decomposition_value
             return await _get_str(namespace, key)
 
         get_str_mock = AsyncMock(side_effect=_get_str_blank)
@@ -204,16 +205,20 @@ class TestProviderPresentSwitch:
         # is intentionally unconfigured (honest unavailability).
         assert result.work_pipeline is None
 
+    @pytest.mark.parametrize("model_value", ["", "   "])
     async def test_blank_decomposition_model_raises_config_error(
         self,
         tmp_path: Path,
+        model_value: str,
     ) -> None:
         """A provider-present boot rejects a blank decomposition model.
 
         The coordinator builds eagerly when a provider is configured, so
-        a blank ``coordination.decomposition_model`` fails fast at the
-        wiring chokepoint with a typed, operator-readable config error
-        rather than a deep strategy-level failure.
+        an empty or whitespace-only ``coordination.decomposition_model``
+        fails fast at the wiring chokepoint with a typed,
+        operator-readable config error rather than a deep strategy-level
+        failure. The guard strips before checking, so a whitespace-only
+        value is rejected just like the empty string.
         """
         registry = ProviderRegistry.from_config(
             {"test-provider": ProviderConfig(driver="scripted")}
@@ -222,6 +227,7 @@ class TestProviderPresentSwitch:
             registry,
             tmp_path,
             blank_decomposition_model=True,
+            blank_decomposition_value=model_value,
         )
 
         with pytest.raises(CoordinationConfigError):

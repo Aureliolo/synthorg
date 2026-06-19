@@ -50,8 +50,7 @@ class TestBackgroundAuditActor:
     def test_sentinel_uses_api_label(self) -> None:
         # Constant is the explicit opt-in for background paths that
         # legitimately have no authenticated user (scheduled jobs,
-        # startup probes). Mirrors the previous "api" sentinel that
-        # used to leak from request_audit_actor for unauthenticated
-        # requests, but now requires an explicit reference.
+        # startup probes). Requiring an explicit reference prevents
+        # unintentional attribution to the API boundary.
         assert BACKGROUND_AUDIT_ACTOR.id == "api"
         assert BACKGROUND_AUDIT_ACTOR.label == "api"

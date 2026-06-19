@@ -131,9 +131,8 @@ def test_postgres_session_store_implements_protocol() -> None:
 def test_concrete_stores_expose_protocol_shape() -> None:
     """Sanity: both concrete stores structurally satisfy ``SessionStore``.
 
-    After A1 consolidation the dispatcher that used to branch on
-    handle type is gone; backend-type selection now happens inside
-    each persistence backend's ``connect()``.  Cross-backend
+    Backend-type selection happens inside each persistence backend's
+    ``connect()``; no dispatcher branches on handle type. Cross-backend
     behaviour is covered by ``tests/conformance/persistence``; this
     test just guards against the two classes drifting away from the
     shared protocol (e.g. a renamed or dropped method).

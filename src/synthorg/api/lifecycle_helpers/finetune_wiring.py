@@ -1,10 +1,8 @@
 # module-kind: orchestrator
 """On-startup wiring for the embedding fine-tune orchestrator.
 
-Split from :mod:`synthorg.api.lifecycle_helpers.feature_wiring` to keep
-that module under its size budget. The construction stays under ``api/``
-so the anti-ghost-wiring gate sees the ``FineTuneOrchestrator`` reachable
-from the boot path.
+The construction stays under ``api/`` so the anti-ghost-wiring gate
+sees the ``FineTuneOrchestrator`` reachable from the boot path.
 """
 
 from synthorg.api.state import AppState

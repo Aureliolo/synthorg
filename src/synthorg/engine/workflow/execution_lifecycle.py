@@ -1,7 +1,6 @@
 # module-kind: adapter
 """Workflow execution lifecycle transitions and task-event handling.
 
-Extracted from ``execution_service.py`` to keep file sizes manageable.
 All functions operate on ``WorkflowExecution`` models and delegate
 persistence to the injected repository.
 """

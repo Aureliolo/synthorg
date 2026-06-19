@@ -31,7 +31,7 @@ from synthorg.meta.signals.performance import (
     PerformanceSignalAggregator,
 )
 from synthorg.meta.signals.scaling import ScalingSignalAggregator
-from synthorg.meta.signals.snapshot import SnapshotBuilder
+from synthorg.meta.signals.snapshot import _EMPTY_PERFORMANCE, SnapshotBuilder
 from synthorg.meta.signals.telemetry import TelemetrySignalAggregator
 from tests._shared import mock_of
 
@@ -430,3 +430,50 @@ class TestSnapshotBuilder:
         snapshot = await builder.build(since=_week_ago())
         # Performance aggregator should have been called.
         assert snapshot.performance.agent_count == 1
+
+    def _make_builder_with_failing_performance(
+        self, exc: BaseException
+    ) -> SnapshotBuilder:
+        """Builder whose performance aggregator raises ``exc``."""
+        scaling_service = mock_of[ScalingService](
+            get_recent_decisions=MagicMock(return_value=()),
+            get_recent_actions=MagicMock(return_value=()),
+        )
+        return SnapshotBuilder(
+            performance=mock_of[PerformanceSignalAggregator](
+                aggregate=AsyncMock(side_effect=exc),
+            ),
+            budget=BudgetSignalAggregator(cost_record_provider=_empty_provider),
+            coordination=CoordinationSignalAggregator(),
+            scaling=ScalingSignalAggregator(service=scaling_service),
+            errors=ErrorSignalAggregator(),
+            evolution=EvolutionSignalAggregator(),
+            telemetry=TelemetrySignalAggregator(),
+        )
+
+    async def test_failing_aggregator_falls_back_to_empty(self) -> None:
+        """A non-critical aggregator failure yields the domain's empty default.
+
+        ``_aggregate`` swallows the failure (redaction-logged) and returns
+        the typed fallback so one domain failing never cancels the others
+        or aborts the whole snapshot.
+        """
+        builder = self._make_builder_with_failing_performance(
+            RuntimeError("aggregator boom")
+        )
+        snapshot = await builder.build(since=_week_ago())
+
+        assert snapshot.performance == _EMPTY_PERFORMANCE
+        # The other domains still aggregate normally.
+        assert isinstance(snapshot.budget, OrgBudgetSummary)
+        assert isinstance(snapshot.coordination, OrgCoordinationSummary)
+
+    async def test_critical_error_propagates(self) -> None:
+        """A critical error re-raises rather than degrading to the fallback."""
+        builder = self._make_builder_with_failing_performance(MemoryError())
+
+        with pytest.raises(BaseExceptionGroup) as exc_info:
+            await builder.build(since=_week_ago())
+
+        flattened = exc_info.value.split(MemoryError)[0]
+        assert flattened is not None

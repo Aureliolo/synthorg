@@ -1,9 +1,8 @@
 # module-kind: code
 """Immutability + UTC helpers for the provider-capability audit DTOs.
 
-Extracted from ``capability_dtos.py``: the recursive freeze/thaw pair
-that keeps audit payloads deterministic on disk, plus the UTC-offset
-guard used by the ``UTCDatetime`` annotated type.
+The recursive freeze/thaw pair keeps audit payloads deterministic on
+disk; the UTC-offset guard backs the ``UTCDatetime`` annotated type.
 """
 
 from collections.abc import Mapping

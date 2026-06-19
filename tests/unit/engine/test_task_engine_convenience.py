@@ -1,7 +1,4 @@
-"""Convenience method, typed error dispatch, and lifecycle edge-case tests.
-
-Split from ``test_task_engine_extended.py`` to keep files under 800 lines.
-"""
+"""Convenience method, typed error dispatch, and lifecycle edge-case tests."""
 
 import pytest
 

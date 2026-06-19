@@ -1,10 +1,9 @@
 """URL construction + discovery helpers for the yoyo migration runner.
 
-Split from :mod:`synthorg.persistence.migrations` so the runner module
-(the five public coroutines) stays under its tier cap. This module holds
-the pure / synchronous pieces: the result dataclasses, the
-``sqlite:///`` / ``postgresql+psycopg://`` URL builders, revisions-dir
-resolution, and the yoyo migration-list discovery wrapper.
+Holds the pure / synchronous pieces the runner coroutines rely on: the
+result dataclasses, the ``sqlite:///`` / ``postgresql+psycopg://`` URL
+builders, revisions-dir resolution, and the yoyo migration-list
+discovery wrapper.
 """
 
 import importlib.resources

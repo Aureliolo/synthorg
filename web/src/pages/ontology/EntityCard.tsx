@@ -5,7 +5,7 @@ import { Menu } from '@base-ui/react/menu'
 import { MoreHorizontal, Trash2 } from 'lucide-react'
 import { memo, useState } from 'react'
 import { cn } from '@/lib/utils'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { ConfirmDialog, type ConfirmHandler } from '@/components/ui/confirm-dialog'
 import type { EntityResponse } from '@/api/endpoints/ontology'
 
 const TIER_STYLES = {
@@ -33,8 +33,7 @@ export interface EntityCardProps {
    * Returning ``false`` (the store's failure sentinel) keeps the
    * confirmation dialog open so the user can retry.
    */
-  // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- intentional confirm-handler contract: false keeps the dialog open, void (sync or async) closes it
-  onDelete?: (name: string) => boolean | void | Promise<boolean | void>
+  onDelete?: (name: string) => ReturnType<ConfirmHandler>
 }
 
 function EntityCardInner({ entity, onClick, onDelete }: EntityCardProps) {

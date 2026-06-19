@@ -4,15 +4,14 @@ import { MoreHorizontal, Pencil, Copy, Download, Trash2 } from 'lucide-react'
 import { memo, useState } from 'react'
 import { ROUTES } from '@/router/routes'
 import { StatPill } from '@/components/ui/stat-pill'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { ConfirmDialog, type ConfirmHandler } from '@/components/ui/confirm-dialog'
 import { formatRelativeTime, formatLabel, formatDateTime } from '@/utils/format'
 import type { WorkflowDefinition } from '@/api/types/workflows'
 
 interface WorkflowCardProps {
   workflow: WorkflowDefinition
   /** Returning ``false`` keeps the confirm dialog open so the user can retry. */
-  // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- intentional confirm-handler contract: false keeps the dialog open, void (sync or async) closes it
-  onDelete: (id: string) => boolean | void | Promise<boolean | void>
+  onDelete: (id: string) => ReturnType<ConfirmHandler>
   onDuplicate: (id: string) => void
   /** Export the persisted definition as YAML. */
   onExport: (id: string) => void | Promise<void>

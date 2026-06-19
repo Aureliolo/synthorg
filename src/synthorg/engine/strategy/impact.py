@@ -164,7 +164,7 @@ class ExplicitImpactScorer:
         explicit_dimensions: dict[str, float],
     ) -> None:
         """Initialize with explicit per-dimension scores."""
-        self._dimensions = dict(explicit_dimensions)
+        self._dimensions = MappingProxyType(dict(explicit_dimensions))
 
     def score(
         self,
@@ -207,7 +207,9 @@ class HybridImpactScorer:
         explicit_dimensions: dict[str, float] | None = None,
     ) -> None:
         """Initialize with optional explicit scores and composite fallback."""
-        self._explicit = dict(explicit_dimensions) if explicit_dimensions else {}
+        self._explicit = MappingProxyType(
+            dict(explicit_dimensions) if explicit_dimensions else {}
+        )
         self._composite = CompositeImpactScorer()
 
     def score(

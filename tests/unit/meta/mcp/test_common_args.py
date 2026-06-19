@@ -1,19 +1,15 @@
 """Unit tests for the centralized MCP handler argument helpers.
 
 Covers every public helper in
-:mod:`synthorg.meta.mcp.handlers.common_args`. Tests are grouped per
-helper:
+:mod:`synthorg.meta.mcp.handlers.common_args`, grouped per helper:
+``require_actor_id``, ``actor_label``, ``get_optional_str``,
+``require_dict``, ``parse_time_window``, ``parse_str_sequence``,
+``require_arg``, ``require_non_blank``, ``actor_id``, and
+``coerce_pagination``.
 
-* New in the centralization refactor: ``require_actor_id``,
-  ``actor_label``, ``get_optional_str``, ``require_dict``,
-  ``parse_time_window``, ``parse_str_sequence``.
-* Moved verbatim from the original ``common.py`` and now re-tested
-  here so the new module owns its own coverage net: ``require_arg``,
-  ``require_non_blank``, ``actor_id``, ``coerce_pagination``.
-
-``test_common_envelope.py`` continues to cover the envelope helpers
-that stayed in ``common.py`` (``ok``, ``err``, ``paginate_sequence``,
-``require_admin_guardrails``, etc.).
+The envelope helpers (``ok``, ``err``, ``paginate_sequence``,
+``require_admin_guardrails``) are covered by
+``test_common_envelope.py``.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -390,10 +386,8 @@ class TestParseStrSequence:
 class TestCoercePagination:
     """``coerce_pagination`` parses offset/limit args with strict bounds.
 
-    Moved from ``common.py`` to ``common_args.py`` during the
-    centralization refactor; previously covered only via ``paginate_sequence``
-    integration tests in ``test_common_envelope.py``. These tests pin
-    the helper's contract directly.
+    Pins the helper's contract directly; ``test_common_envelope.py``
+    also exercises it indirectly via ``paginate_sequence``.
     """
 
     def test_returns_defaults_when_missing(self) -> None:
@@ -461,10 +455,8 @@ class TestCoercePagination:
 class TestRequireArg:
     """``require_arg`` extracts a typed required argument or raises.
 
-    Moved from ``common.py`` to ``common_args.py`` during the
-    centralization refactor. Tests live here so the module owns its
-    own coverage; ``test_common_envelope.py`` still exercises the
-    helper indirectly via envelope tests.
+    ``test_common_envelope.py`` also exercises the helper indirectly
+    via envelope tests.
     """
 
     def test_returns_value_when_type_matches(self) -> None:
@@ -495,11 +487,7 @@ class TestRequireArg:
 
 
 class TestRequireNonBlank:
-    """``require_non_blank`` extracts a non-blank stripped string.
-
-    Moved from ``common.py`` to ``common_args.py`` during the
-    centralization refactor.
-    """
+    """``require_non_blank`` extracts a non-blank stripped string."""
 
     def test_returns_stripped_value(self) -> None:
         assert require_non_blank({"k": "  value  "}, "k") == "value"
@@ -532,9 +520,8 @@ class TestRequireNonBlank:
 class TestActorId:
     """``actor_id`` returns a stable audit identifier or ``None``.
 
-    Moved from ``common.py`` to ``common_args.py`` during the
-    centralization refactor. ``require_actor_id`` is the raising
-    counterpart and has its own test class above.
+    ``require_actor_id`` is the raising counterpart and has its own
+    test class above.
     """
 
     def test_returns_id_when_present(self) -> None:

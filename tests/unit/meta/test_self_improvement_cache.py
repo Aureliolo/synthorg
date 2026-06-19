@@ -40,7 +40,7 @@ async def test_config_loaded_once_and_cached() -> None:
 
     assert isinstance(first, SelfImprovementConfig)
     assert first is second
-    get_mock.assert_awaited_once()
+    get_mock.assert_awaited_once_with("meta", "self_improvement")
 
 
 async def test_invalidation_reloads_config() -> None:

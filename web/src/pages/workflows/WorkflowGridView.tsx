@@ -2,12 +2,12 @@ import { Workflow } from 'lucide-react'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { WorkflowCard } from './WorkflowCard'
+import type { ConfirmHandler } from '@/components/ui/confirm-dialog'
 import type { WorkflowDefinition } from '@/api/types/workflows'
 
 interface WorkflowGridViewProps {
   workflows: readonly WorkflowDefinition[]
-  // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- intentional confirm-handler contract: false keeps the dialog open, void (sync or async) closes it
-  onDelete: (id: string) => boolean | void | Promise<boolean | void>
+  onDelete: (id: string) => ReturnType<ConfirmHandler>
   onDuplicate: (id: string) => void
   onExport: (id: string) => void | Promise<void>
   /** When defined, renders selection checkboxes on each card. */

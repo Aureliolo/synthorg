@@ -1,8 +1,8 @@
 # module-kind: code
 """Shared field validators for the provider request DTOs.
 
-Extracted from ``dtos.py`` so the request models, response models, and
-mappers each live in their own sibling module under the size cap.
+The request models, response models, and mappers each live in their
+own sibling module; these validators are shared across the request DTOs.
 """
 
 import re

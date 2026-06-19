@@ -416,8 +416,8 @@
     },
     "src/synthorg/engine/errors.py": {
       "cap": 500,
-      "loc": 503,
-      "ratio": 1.006,
+      "loc": 497,
+      "ratio": 0.994,
       "tier": "code"
     },
     "src/synthorg/engine/evolution/factory.py": {
@@ -530,8 +530,8 @@
     },
     "src/synthorg/engine/workflow/execution_lifecycle.py": {
       "cap": 700,
-      "loc": 700,
-      "ratio": 1.0,
+      "loc": 699,
+      "ratio": 0.999,
       "tier": "adapter"
     },
     "src/synthorg/engine/workflow/execution_service.py": {
