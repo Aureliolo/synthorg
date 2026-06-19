@@ -400,6 +400,10 @@ max-complexity = 8
     "INP001",  # scripts/ is intentionally a flat directory, not a package
     "SIM108",  # ternary-vs-if-else: explicit form is sometimes clearer
 ]
+"stubs/**/*.pyi" = [
+    "N818",    # stub classes mirror third-party exception names (yoyo) verbatim
+    "D",       # type stubs carry no docstrings
+]
 "evals/**/*.py" = [
     # evals/ is the out-of-package golden-company benchmark harness,
     # analogous to tests/ and scripts/: its Pydantic model validators
@@ -530,6 +534,9 @@ enable_error_code = [
 local_partial_types = true
 strict_bytes = true
 plugins = ["pydantic.mypy"]
+# Local stub packages for third-party deps that ship no py.typed marker
+# but whose used surface is small enough to type precisely (yoyo).
+mypy_path = ["stubs"]
 
 [[tool.mypy.overrides]]
 module = "litellm.*"
