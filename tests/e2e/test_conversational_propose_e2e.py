@@ -327,8 +327,8 @@ async def _build_pipeline(
         config=root_config,
     )
     intake = IntakeEngine(strategy=_TaskCreatingIntakeStrategy(task_engine))
-    # The legacy ``has_*`` flags are derived from slice contents now; we
-    # only wire the actual service references. A ``ClientSimulationState``
+    # The ``has_*`` flags are derived from slice contents, so we only
+    # wire the actual service references. A ``ClientSimulationState``
     # autospec carries both ``intake_engine`` and ``review_pipeline`` as
     # MagicMock attributes, so ``has_simulation_runtime`` reads truthy
     # without us spelling out a stub review pipeline.

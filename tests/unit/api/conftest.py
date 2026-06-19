@@ -119,9 +119,8 @@ def _required_env_vars() -> Iterator[None]:
 
     Session-scoped with manual env-var management (``monkeypatch`` is
     function-scoped and cannot be used here). ``SYNTHORG_COMPANY_*``
-    overrides surface what the ``root_config`` fixture used to provide
-    in tests before the legacy YAML tier was removed; explicit env
-    vars are now the only way to set company identity for tests.
+    overrides set the company identity for tests; explicit env vars are
+    the only mechanism (there is no YAML company-config tier).
     """
     import os
 

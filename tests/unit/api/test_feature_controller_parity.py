@@ -1,11 +1,9 @@
-"""Parity guard: feature manifests claim exactly the legacy controller set.
+"""Parity guard: feature manifests claim exactly the expected controller set.
 
-Before the composition root switches route registration from the
-hand-maintained ``ALL_CONTROLLERS`` / ``ws_handler`` lists to discovery over
-feature manifests, every controller in the legacy set must be claimed by
-exactly one manifest, and no manifest may claim a controller outside it.
-This test is the safety net for that switch: a controller that slips out of
-a manifest (404 regression) or a typo'd extra entry fails here.
+Route registration is driven by discovery over feature manifests. Every
+controller in the expected set must be claimed by exactly one manifest, and no
+manifest may claim a controller outside it. A controller that slips out of a
+manifest (404 regression) or a typo'd extra entry fails here.
 """
 
 import pytest
@@ -41,21 +39,20 @@ def _discovered_websocket_handlers() -> set[WebsocketRouteHandler]:
     return handlers
 
 
-def _legacy_controllers() -> set[type[Controller]]:
-    """The pre-refactor controller universe: base + integration + optional + a2a.
+def _expected_controllers() -> set[type[Controller]]:
+    """The complete expected controller set: base + integration + optional + a2a.
 
     ``ALL_CONTROLLERS`` already unions ``BASE_CONTROLLERS``,
     ``INTEGRATION_CONTROLLERS``, and the ``OPTIONAL_CONTROLLERS`` classes.
     The two a2a controllers are registered via ``src/synthorg/a2a/feature.py``
-    (``ControllerRegistration``) and predate the feature-manifest migration's
-    parity baseline, so they are absent from ``ALL_CONTROLLERS`` and added
-    explicitly here. ``DemoController`` is the one deliberate post-migration
-    addition (the synthetic ``_demo`` feature's discovery guard), so it joins
-    the expected set rather than tripping the extra-controller assertion.
+    (``ControllerRegistration``) and are absent from ``ALL_CONTROLLERS``, so
+    they are added explicitly here. ``DemoController`` is the synthetic
+    ``_demo`` feature's discovery guard, so it joins the expected set rather
+    than tripping the extra-controller assertion.
 
     Returns:
-        The full set of controller classes the legacy boot path could mount,
-        plus the demo discovery guard.
+        The full set of controller classes the boot path mounts, plus the demo
+        discovery guard.
     """
     return {
         *ALL_CONTROLLERS,
@@ -65,13 +62,13 @@ def _legacy_controllers() -> set[type[Controller]]:
     }
 
 
-def test_manifests_claim_exactly_the_legacy_controllers() -> None:
+def test_manifests_claim_exactly_the_expected_controllers() -> None:
     discovered = _discovered_controllers()
-    legacy = _legacy_controllers()
-    unclaimed = legacy - discovered
-    extra = discovered - legacy
+    expected = _expected_controllers()
+    unclaimed = expected - discovered
+    extra = discovered - expected
     assert not unclaimed, f"controllers missing from feature manifests: {unclaimed}"
-    assert not extra, f"controllers claimed but absent from legacy set: {extra}"
+    assert not extra, f"controllers claimed but absent from expected set: {extra}"
 
 
 def test_websocket_handler_is_claimed() -> None:

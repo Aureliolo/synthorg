@@ -5,12 +5,12 @@ attacker-controlled input processes ``<!DOCTYPE>`` declarations
 and can be coerced into external-entity resolution, exposing the
 host to XXE / SSRF / information-disclosure.
 
-This module asserts that the new ``_parse_html_safely`` guard:
+This module asserts that the ``_parse_html_safely`` guard:
 * rejects DOCTYPE declarations that carry SYSTEM or PUBLIC identifiers,
 * rejects any ``<!ENTITY>`` declaration,
 * short-circuits billion-laughs payloads without expansion attempts,
 * ignores DOCTYPE-looking text inside HTML comments,
-* continues to parse benign HTML identically to the old code path.
+* continues to parse benign HTML correctly.
 """
 
 import pytest

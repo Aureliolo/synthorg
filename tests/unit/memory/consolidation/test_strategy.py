@@ -1,9 +1,7 @@
 """Tests for the Simple composite (HighestRelevanceSelector + ConcatenationOp).
 
-Post ADR-0005 axis split: ``SimpleConsolidationStrategy`` is gone;
-"simple" is ``Composite(HighestRelevanceSelector, ConcatenationOp)``.
-These assertions are unchanged from the pre-split monolith suite --
-the composite is byte-identical (see ``test_axis_split_golden``).
+"simple" consolidation is ``Composite(HighestRelevanceSelector,
+ConcatenationOp)``; ``test_axis_split_golden`` pins the composite output.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -57,7 +55,7 @@ def _make_simple(
 
 @pytest.mark.unit
 class TestSimpleComposite:
-    """Simple composite behaviour (byte-identical with the old monolith)."""
+    """Simple composite behaviour."""
 
     async def test_empty_input(self) -> None:
         backend = mock_of[MemoryBackend]()

@@ -6,9 +6,8 @@ feed, etc.).  The unit suite here covers:
 
 - Every handler is callable with an empty/minimal arg dict and returns
   a syntactically valid envelope (``status`` is ``"ok"`` or
-  ``"error"``; the legacy ``"not_implemented"`` status is explicitly
-  rejected by the ``_parse`` helper below).  This is the regression
-  guard.
+  ``"error"``; a ``"not_implemented"`` status is explicitly rejected
+  by the ``_parse`` helper below).  This is the regression guard.
 - For tools that DO have a clean service shim, a happy-path test
   exercises the service call.
 - ``synthorg_agents_delete`` gets the full destructive-op workout
@@ -103,7 +102,7 @@ def actor() -> AgentIdentity:
 def _parse(result: str) -> JsonDict:
     body: JsonDict = json.loads(result)
     assert body["status"] in {"ok", "error"}, (
-        f"legacy envelope leaked: status={body['status']!r}"
+        f"unexpected envelope status={body['status']!r}"
     )
     return body
 
