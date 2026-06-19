@@ -306,6 +306,15 @@ export function withSignal(
   return signal === undefined ? { ...base } : { ...base, signal }
 }
 
+/** Throw the typed error for a failed envelope (``success === false``). */
+function throwEnvelopeError(body: {
+  readonly error?: string | null
+  readonly error_detail?: ErrorDetail | null
+}): never {
+  const detail = 'error_detail' in body ? body.error_detail : null
+  throw new ApiRequestError(body.error ?? 'Unknown API error', detail)
+}
+
 /**
  * Extract data from an ApiResponse envelope.
  * Throws if the response indicates an error.
@@ -319,8 +328,7 @@ export function unwrap<T>(response: AxiosResponse<ApiResponse<T>>): T {
     throw new ApiRequestError('Unknown API error')
   }
   if (!body.success || body.data === null || body.data === undefined) {
-    const detail = 'error_detail' in body ? (body.error_detail) : null
-    throw new ApiRequestError(body.error ?? 'Unknown API error', detail)
+    throwEnvelopeError(body)
   }
   return body.data
 }
@@ -401,14 +409,19 @@ export function unwrapPaginated<T>(
     throw new ApiRequestError('Unknown API error')
   }
   if (!body.success) {
-    const detail = 'error_detail' in body ? (body.error_detail) : null
-    throw new ApiRequestError(body.error ?? 'Unknown API error', detail)
+    throwEnvelopeError(body)
   }
   // The success-branch type declares ``pagination`` always present, but a
-  // malformed backend envelope could omit it. Read through an untrusted-wire
-  // view so the guard is type-honest about what the network can actually send.
+  // malformed backend envelope could omit it or send a non-object in its
+  // place. Read through an untrusted-wire view so the guard is type-honest
+  // about what the network can actually send; require an object so a truthy
+  // scalar cannot dereference to ``undefined`` fields.
   const raw: { pagination?: unknown; data?: unknown } = body
-  if (!raw.pagination || !Array.isArray(raw.data)) {
+  if (
+    !raw.pagination ||
+    typeof raw.pagination !== 'object' ||
+    !Array.isArray(raw.data)
+  ) {
     throw new ApiRequestError('Unexpected API response format')
   }
   return {
