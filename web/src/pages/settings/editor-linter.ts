@@ -5,8 +5,6 @@
  * and schema validation against known setting namespaces and keys.
  */
 
-/* eslint-disable security/detect-non-literal-regexp -- every `new RegExp` input is escaped via escapeRegex */
-
 import { type Extension } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { linter, type Diagnostic } from '@codemirror/lint'
