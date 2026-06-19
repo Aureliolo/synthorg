@@ -148,7 +148,11 @@ class QuadraticEnforcer:
         cutoff = now - self._config.window_seconds
         window = self._window
         window.append(now)
-        while window and window[0] <= cutoff:
+        # Keep events at exactly the window boundary (timestamp == cutoff,
+        # i.e. window_seconds old): the window is the closed interval
+        # [cutoff, now] so a burst landing on the boundary is not
+        # undercounted by one.
+        while window and window[0] < cutoff:
             window.popleft()
         return len(window)
 

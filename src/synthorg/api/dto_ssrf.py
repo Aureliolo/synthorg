@@ -1,8 +1,8 @@
 """Wire DTOs for the SSRF-violation review surface."""
 
-from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
@@ -14,7 +14,9 @@ class SsrfViolationDTO(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     id: NotBlankStr = Field(description="Unique violation identifier.")
-    timestamp: datetime = Field(description="When the outbound request was blocked.")
+    timestamp: AwareDatetime = Field(
+        description="When the outbound request was blocked.",
+    )
     url: NotBlankStr = Field(description="The blocked URL (credentials redacted).")
     hostname: NotBlankStr = Field(description="Hostname extracted from the URL.")
     port: int = Field(ge=1, le=65535, description="Destination port.")
@@ -37,7 +39,7 @@ class SsrfViolationDTO(BaseModel):
         default=None,
         description="Operator who resolved the violation, when resolved.",
     )
-    resolved_at: datetime | None = Field(
+    resolved_at: AwareDatetime | None = Field(
         default=None,
         description="When the violation was resolved, when resolved.",
     )
@@ -69,6 +71,6 @@ class ResolveSsrfViolationRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-    status: SsrfViolationStatus = Field(
+    status: Literal[SsrfViolationStatus.ALLOWED, SsrfViolationStatus.DENIED] = Field(
         description="Resolution decision; must be 'allowed' or 'denied'.",
     )

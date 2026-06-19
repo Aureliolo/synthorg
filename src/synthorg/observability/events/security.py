@@ -126,6 +126,9 @@ SECURITY_SSRF_VIOLATION_DENIED: Final[str] = "security.ssrf_violation.denied"
 SECURITY_SSRF_VIOLATION_RESOLUTION_FAILED: Final[str] = (
     "security.ssrf_violation.resolution_failed"
 )
+SECURITY_SSRF_VIOLATION_RECORD_FAILED: Final[str] = (
+    "security.ssrf_violation.record_failed"
+)
 SECURITY_ALLOWLIST_UPDATED: Final[str] = "security.allowlist.updated"
 SECURITY_ALLOWLIST_UPDATE_FAILED: Final[str] = "security.allowlist.update_failed"
 

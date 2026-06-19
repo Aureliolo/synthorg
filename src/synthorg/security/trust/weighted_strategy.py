@@ -126,8 +126,8 @@ class WeightedTrustStrategy:
         - error: 1 - (tasks_failed / data_point_count), distinct from
           success_rate because data_point_count includes non-task events
         - task_volume: task volume ratio (tasks / saturation, capped at
-          1.0); weighted by the ``human_feedback`` weight slot, which a
-          real human-feedback signal would later replace this factor in
+          1.0); weighted by the ``human_feedback`` weight slot until a
+          real human-feedback signal replaces this factor
 
         Returns:
             The weighted trust score in ``[0.0, 1.0]``.

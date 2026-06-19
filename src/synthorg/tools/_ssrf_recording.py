@@ -8,11 +8,12 @@ without coupling the guard to the persistence layer, boot installs a
 recorder via :func:`install_ssrf_violation_recorder`; the guard then
 calls :func:`record_ssrf_violation` on every rejection.
 
-Recording is strictly best-effort and FAIL-SAFE: any error while
-recording is swallowed so a recording failure can never turn an SSRF
-block into a crash or let a blocked request through. When no recorder is
-installed (recording subsystem off, or unit-test scope) the call is a
-no-op.
+Recording is strictly best-effort and FAIL-SAFE: any non-critical error
+while recording is swallowed (``MemoryError`` / ``RecursionError`` are
+re-raised via :func:`reraise_critical`) so a recording failure can never
+turn an SSRF block into a crash or let a blocked request through. When no
+recorder is installed (recording subsystem off, or unit-test scope) the
+call is a no-op.
 """
 
 from collections.abc import Awaitable, Callable
@@ -20,7 +21,9 @@ from contextvars import ContextVar
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.security import SECURITY_OUTBOUND_SSRF_BLOCKED
+from synthorg.observability.events.security import (
+    SECURITY_SSRF_VIOLATION_RECORD_FAILED,
+)
 
 logger = get_logger(__name__)
 
@@ -66,11 +69,12 @@ async def record_ssrf_violation(
         await recorder(url, hostname, port, resolved_ip, blocked_range)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
+        # Distinct event from the block itself so a SIEM reader never
+        # confuses a recording failure with an actual outbound block.
         logger.warning(
-            SECURITY_OUTBOUND_SSRF_BLOCKED,
+            SECURITY_SSRF_VIOLATION_RECORD_FAILED,
             hostname=hostname,
             port=port,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
-            note="ssrf_violation_record_failed",
         )

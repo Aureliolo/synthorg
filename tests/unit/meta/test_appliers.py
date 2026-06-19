@@ -114,9 +114,18 @@ class _FakeSettingValue:
 class _FakeSettingsWriter:
     """In-memory settings double recording set() calls."""
 
-    def __init__(self, *, fail_on: tuple[str, str] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        fail_on: tuple[str, str] | None = None,
+        fail_on_restore: tuple[str, str, str] | None = None,
+    ) -> None:
         self.store: dict[tuple[str, str], str] = {}
         self._fail_on = fail_on
+        # Fail only when set() is called with this exact (ns, key, value).
+        # A rollback restores a key to its prior value, so this lets a test
+        # fail the rollback write without failing the forward apply.
+        self._fail_on_restore = fail_on_restore
         self.sets: list[tuple[str, str, str]] = []
 
     async def get(self, namespace: str, key: str) -> object:
@@ -125,6 +134,9 @@ class _FakeSettingsWriter:
     async def set(self, namespace: str, key: str, value: str) -> object:
         if self._fail_on == (namespace, key):
             msg = f"boom on {namespace}/{key}"
+            raise ValueError(msg)
+        if self._fail_on_restore == (namespace, key, value):
+            msg = f"boom restoring {namespace}/{key}"
             raise ValueError(msg)
         self.store[(namespace, key)] = value
         self.sets.append((namespace, key, value))
@@ -169,6 +181,26 @@ class TestConfigApplier:
         assert not result.success
         # The first change was applied then rolled back to its prior value.
         assert writer.store[("a", "b")] == "1"
+
+    async def test_apply_rollback_write_failure_is_swallowed(self) -> None:
+        # Forward apply of a.b succeeds (1 -> 2); apply of c.d fails,
+        # triggering rollback; the rollback restore of a.b (2 -> 1) then
+        # also fails. The failure must be swallowed (logged), the apply
+        # reported unsuccessful, and a.b left at its un-restored value.
+        writer = _FakeSettingsWriter(
+            fail_on=("c", "d"),
+            fail_on_restore=("a", "b", "1"),
+        )
+        writer.store[("a", "b")] = "1"
+        applier = ConfigApplier(settings_writer=writer)
+        proposal = _proposal_config(
+            ConfigChange(path="a.b", old_value=1, new_value=2, description="d"),
+            ConfigChange(path="c.d", old_value=3, new_value=4, description="d"),
+        )
+        result = await applier.apply(proposal)
+        assert not result.success
+        # The rollback write failed, so a.b is left at the applied value.
+        assert writer.store[("a", "b")] == "2"
 
     async def test_apply_rejects_non_namespaced_path(self) -> None:
         applier = ConfigApplier(settings_writer=_FakeSettingsWriter())

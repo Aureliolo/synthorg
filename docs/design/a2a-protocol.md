@@ -94,11 +94,11 @@ See [Communication Coordination -> Loop Prevention](communication-coordination.m
 
 `MessageOverhead.is_quadratic` flags configurations where pairwise agent-to-agent messaging approaches `O(n^2)`. External agent federation can amplify this (every external connection potentially talks to every internal agent).
 
-Four enforcement strategies are defined behind `QuadraticEnforcementStrategy` and wired into the in-memory bus (`message_bus.quadratic_enforcement`). Detection compares a sliding-window inter-agent publish count against `team_size^2 * quadratic_threshold`; the strategy decides the response. Every mode emits a structured `communication.quadratic.detected` event (rate-limited to once per window) and, when the dispatcher is wired, a `NotificationDispatcher` warning.
+Four enforcement strategies are defined behind `QuadraticEnforcementStrategy` and wired into the in-memory bus (`message_bus.quadratic_enforcement`). Detection compares a sliding-window inter-agent publish count against `team_size^2 * quadratic_threshold`; the strategy decides the response. Every mode emits a structured `communication.quadratic.detected` event (rate-limited to once per window) and forwards to a late-bound `QuadraticAlertSink` (the enforcer is decoupled from the notification subsystem via this protocol; boot wiring binds it to the `NotificationDispatcher` adapter) when one is wired.
 
 | Strategy | Status | Behaviour |
 |----------|--------|-----------|
-| `alert_only` (default) | Shipped | Detect and emit warning event + `NotificationDispatcher` notification |
+| `alert_only` (default) | Shipped | Detect and emit warning event + `QuadraticAlertSink` notification |
 | `soft_throttle` | Shipped | Alert, then apply publish backpressure (per-publish delay) to the over-communicating bus |
 | `hard_block` | Shipped | Alert, then reject new agent connections once the live participant count reaches `max_agent_connections` |
 | `disabled` | Shipped | No detection or enforcement (zero hot-path cost) |

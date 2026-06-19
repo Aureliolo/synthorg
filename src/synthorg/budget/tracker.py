@@ -35,6 +35,7 @@ from synthorg.budget.spending_summary import (
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.pagination import DEFAULT_LIST_LIMIT
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.budget import (
@@ -56,7 +57,6 @@ from synthorg.observability.events.budget import (
     BUDGET_TRACKER_CREATED,
 )
 from synthorg.observability.metrics_hub import record_budget_query
-from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence.project_cost_aggregate_protocol import (
     ProjectCostAggregateRepository,
 )
@@ -653,7 +653,7 @@ class CostTracker(CostTrackerSummaryMixin):
         provider: NotBlankStr | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
-        limit: int = DEFAULT_PAGE_SIZE,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[CostRecord, ...]:
         """Return a bounded page of filtered cost records.
@@ -662,7 +662,7 @@ class CostTracker(CostTrackerSummaryMixin):
         filters in insertion order (oldest-first), so a cursor walk is
         repeatable. Callers needing every matching record drain
         successive pages via
-        :func:`synthorg.persistence._shared.collect_all`.
+        :func:`synthorg.budget.tracker_protocol.collect_all_records`.
 
         Args:
             agent_id: Filter by agent.

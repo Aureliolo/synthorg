@@ -259,6 +259,7 @@ class SQLiteSsrfViolationRepository:
         *,
         status: SsrfViolationStatus | None = None,
         limit: int = DEFAULT_LIST_LIMIT,
+        offset: int = 0,
     ) -> tuple[SsrfViolation, ...]:
         """List violations, optionally filtered by status.
 
@@ -269,22 +270,22 @@ class SQLiteSsrfViolationRepository:
             ValueError: If an argument fails validation.
             PersistenceError: If the persistence layer rejects the operation.
         """
-        if limit <= 0:
-            msg = "limit must be positive"
-            raise ValueError(msg)
+        capped = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED
+        )
 
         if status is not None:
             query = (
                 f"SELECT {_COLS} FROM ssrf_violations "  # noqa: S608
-                "WHERE status = ? ORDER BY timestamp DESC LIMIT ?"
+                "WHERE status = ? ORDER BY timestamp DESC LIMIT ? OFFSET ?"
             )
-            params: tuple[object, ...] = (status.value, limit)
+            params: tuple[object, ...] = (status.value, capped, offset)
         else:
             query = (
                 f"SELECT {_COLS} FROM ssrf_violations "  # noqa: S608
-                "ORDER BY timestamp DESC LIMIT ?"
+                "ORDER BY timestamp DESC LIMIT ? OFFSET ?"
             )
-            params = (limit,)
+            params = (capped, offset)
 
         try:
             async with self._db.execute(query, params) as cursor:

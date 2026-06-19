@@ -89,6 +89,24 @@ class TestQuadraticEnforcerDetection:
         assert "Quadratic" in sink.alerts[0][0]
 
     @pytest.mark.unit
+    async def test_failing_sink_does_not_escape_on_publish(self) -> None:
+        # A sink whose alert() raises must not break message delivery:
+        # on_publish swallows the sink failure (best-effort alerting).
+        class _RaisingSink:
+            async def alert(self, *, title: str, body: str) -> None:
+                del title, body
+                msg = "sink down"
+                raise RuntimeError(msg)
+
+        enforcer = QuadraticEnforcer(
+            config=_config(strategy=QuadraticEnforcementStrategy.ALERT_ONLY),
+            clock=FakeClock(),
+        )
+        enforcer.set_alert_sink(_RaisingSink())
+        # Drive past the quadratic ceiling; on_publish must not raise.
+        await _drive_publishes(enforcer, team_size=3, count=6)
+
+    @pytest.mark.unit
     async def test_below_min_team_size_never_detects(self) -> None:
         sink = _RecordingSink()
         enforcer = QuadraticEnforcer(

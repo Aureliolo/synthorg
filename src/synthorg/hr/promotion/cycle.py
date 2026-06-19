@@ -12,6 +12,7 @@ its size budget.
 """
 
 from synthorg.approval.enums import ApprovalStatus
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.errors import PromotionCooldownError, PromotionError
 from synthorg.hr.promotion.models import PromotionEvaluation, PromotionRecord
@@ -41,7 +42,18 @@ async def run_promotion_cycle(
     identities = await service.registry.list_active()
     applied: list[PromotionRecord] = []
     for identity in identities:
-        record = await _cycle_one(service, NotBlankStr(str(identity.id)))
+        agent_id = NotBlankStr(str(identity.id))
+        try:
+            record = await _cycle_one(service, agent_id)
+        except Exception as exc:  # noqa: BLE001 -- one agent must not abort the sweep
+            reraise_critical(exc)
+            logger.warning(
+                PROMOTION_EVALUATE_FAILED,
+                agent_id=agent_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            continue
         if record is not None:
             applied.append(record)
     logger.info(
@@ -77,7 +89,18 @@ async def _cycle_one(
         return None
     if request.status != ApprovalStatus.APPROVED:
         return None
-    return await service.apply_promotion(request)
+    try:
+        return await service.apply_promotion(request)
+    except (PromotionCooldownError, PromotionError) as exc:
+        # A cooldown / approval race between request_promotion and
+        # apply_promotion is a per-agent skip, not a sweep abort.
+        logger.warning(
+            PROMOTION_EVALUATE_FAILED,
+            agent_id=agent_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None
 
 
 async def _evaluate_best(

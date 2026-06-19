@@ -201,8 +201,9 @@ ID cross-reference, and a server-assigned monotonic version per task.
   statement, eliminating the TOCTOU race that a read-then-write pattern would
   create under concurrent reviewers. The `UNIQUE(task_id, version)` constraint
   rejects any residual collision as `DuplicateRecordError`.
-- **Best-effort append after transition**: a failed append is logged at ERROR
-  (via `logger.exception`) for audit forensics but does not roll back the review
+- **Best-effort append after transition**: a failed append is logged at WARNING
+  (structured `logger.warning` with `error_type` + `safe_error_description`, never
+  `logger.exception`) for audit forensics but does not roll back the review
   transition itself. Only known transient persistence errors (`QueryError`,
   `DuplicateRecordError`) are treated as non-fatal; programming errors
   (`ValidationError`, `TypeError`, etc.) propagate loudly so schema drift
@@ -433,30 +434,37 @@ existing flows. Operators graduate to `"enforce"` after observing decisions.
 
 **Module**: `src/synthorg/security/policy_engine/`
 
-## Quantum-Safe Audit Trail
+## Signed Audit Trail
 
-An observability sink that signs security events with ML-DSA-65 (FIPS 204)
-via the Asqav library and chains them in an append-only hash chain for
-tamper-evident audit. Wraps the existing `observability/sinks.py` logging
-handler protocol; no changes to event producers.
+An observability sink that signs security events with Ed25519 and chains
+them in an append-only hash chain for tamper-evident audit. Ed25519 is the
+baseline signing arm; the `backend="asqav"` config slot reserves a future
+quantum-safe ML-DSA-65 (FIPS 204) arm. Wraps the existing
+`observability/sinks.py` logging handler protocol; no changes to event
+producers.
 
 **Features**:
 
-- ML-DSA-65 post-quantum signatures per security event
+- Ed25519 signatures per security event (post-quantum ML-DSA-65 arm reserved
+  via `backend`)
 - SHA-256 hash chain linking each entry to its predecessor
-- RFC 3161 timestamping via public TSA with local-clock fallback
-  (emits `SECURITY_TIMESTAMP_FALLBACK` on fallback)
+- RFC 3161 timestamping via a configurable TSA preset with local-clock
+  fallback (emits `SECURITY_TIMESTAMP_FALLBACK` on fallback)
 - `AuditChainVerifier` for end-to-end chain integrity verification
-- m-of-n threshold signing for high-risk `EvidencePackage` approvals
 
 **Configuration** (`AuditChainConfig`, opt-in):
 
 | Field | Default | Description |
 |-------|---------|-------------|
 | `enabled` | `False` | Opt-in activation |
-| `backend` | `"asqav"` | Signing backend |
-| `tsa_url` | `None` | RFC 3161 TSA endpoint (None = local clock) |
-| `signing_key_path` | `None` | Path to signing key |
+| `backend` | `"asqav"` | Signing backend slot (signer is Ed25519) |
+| `tsa_preset` | `NONE` | Well-known TSA preset, or `CUSTOM` for `tsa_url` |
+| `tsa_url` | `None` | Custom RFC 3161 TSA endpoint (required for `CUSTOM`) |
+| `tsa_timeout_sec` | `5.0` | HTTP timeout for TSA calls |
+| `tsa_hash_algorithm` | `"sha256"` | TSA MessageImprint hash (`sha256`/`sha512`) |
+| `tsa_verify_signature` | `True` | Verify the TSA response against trusted roots |
+| `tsa_trusted_roots_path` | `None` | PEM root bundle (required when verifying a non-`NONE` preset) |
+| `signing_key_path` | `None` | Path to the Ed25519 signing key (ephemeral when unset) |
 | `chain_storage_path` | `None` | Path for chain persistence |
 
 **Module**: `src/synthorg/observability/audit_chain/`
@@ -575,11 +583,12 @@ A2A push notification webhook URLs submitted by external agents must be validate
 against SSRF attacks. The framework provides a consolidated `SsrfValidator` service
 that unifies URL validation across all outbound connection points:
 
-| Consumer | Current Implementation | After Consolidation |
+| Consumer | Current Implementation | Consolidation target |
 |----------|----------------------|-------------------|
-| Notification adapters (ntfy, Slack) | `_validate_outbound_url()` | `SsrfValidator` |
+| Notification adapters (ntfy, Slack) | `synthorg.tools.ssrf` (via `notifications/adapters/_ssrf.py`) | `SsrfValidator` protocol seam |
 | Git clone URLs | `git_url_validator` module | `SsrfValidator` |
-| Provider discovery | `ProviderDiscoveryPolicy` allowlist | `SsrfValidator` + allowlist |
+| Provider discovery | `ProviderDiscoveryPolicy` allowlist + `resolve_discovery_target` DNS pinning | `SsrfValidator` + allowlist |
+| OAuth token endpoints | `synthorg.tools.ssrf` (`resolve_outbound_target` + pinned transport) | `SsrfValidator` |
 | A2A push notification webhooks | (new) | `SsrfValidator` |
 
 For HTTP(S) consumers (webhooks, notifications, provider discovery), the `SsrfValidator`

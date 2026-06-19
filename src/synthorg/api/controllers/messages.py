@@ -74,9 +74,10 @@ class MessageController(Controller):
         app_state: AppState = state.app_state
         if channel is not None:
             repo = persistence_of(app_state).messages
+            channel_id = NotBlankStr(channel)
             messages = await collect_all(
                 lambda fetch_limit, fetch_offset: repo.get_history(
-                    NotBlankStr(channel),
+                    channel_id,
                     limit=fetch_limit,
                     offset=fetch_offset,
                 ),

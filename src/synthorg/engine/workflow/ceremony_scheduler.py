@@ -618,21 +618,23 @@ class CeremonyScheduler:
         fired_one_shot = await self._fire_ceremonies(one_shot, sprint)
 
         async with self._lock:
+            # Roll back the optimistic one-shot marks for ceremonies that
+            # did not fire BEFORE the identity check, so an un-fired
+            # one-shot stays eligible even if a concurrent
+            # deactivate/activate switched the active sprint under us; the
+            # successful ones keep their mark.
+            self._fired_once_triggers.difference_update(
+                set(one_shot) - set(fired_one_shot)
+            )
             # A concurrent deactivate/activate may have switched the active
-            # sprint during the unlocked fire above. Mutating counters or
-            # saving under a stale ``sprint.id`` would corrupt the now-active
-            # sprint's persisted state, so re-confirm identity first.
+            # sprint during the unlocked fire above. Resetting counters or
+            # saving under a stale ``sprint.id`` would corrupt the
+            # now-active sprint's persisted state, so re-confirm identity.
             if self._active_sprint is None or self._active_sprint.id != sprint.id:
                 return transitioned
             for name in fired_per_task:
                 if name in self._completion_counters:
                     self._completion_counters[name] = 0
-            # Roll back the optimistic one-shot marks for ceremonies that
-            # did not fire so they stay eligible on the next completion;
-            # the successful ones keep their mark.
-            self._fired_once_triggers.difference_update(
-                set(one_shot) - set(fired_one_shot)
-            )
             await self._save_state_unlocked(sprint.id)
         return transitioned
 
@@ -784,11 +786,16 @@ class CeremonyScheduler:
         fired_one_shot = await self._fire_ceremonies(one_shot, sprint)
 
         async with self._lock:
-            if self._active_sprint is None or self._active_sprint.id != sprint.id:
-                return transitioned
+            # Roll back optimistically-marked triggers that did NOT fire
+            # before the identity check, so an un-fired one-shot ceremony
+            # stays eligible even when the active sprint changed under us
+            # (otherwise it is wrongly marked fired forever). Only the
+            # state persist is gated on the sprint still being active.
             self._fired_once_triggers.difference_update(
                 set(one_shot) - set(fired_one_shot)
             )
+            if self._active_sprint is None or self._active_sprint.id != sprint.id:
+                return transitioned
             await self._save_state_unlocked(sprint.id)
         return transitioned
 

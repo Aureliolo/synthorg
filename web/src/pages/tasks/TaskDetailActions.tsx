@@ -22,7 +22,7 @@ export function TaskDetailActions(props: TaskDetailActionsProps) {
     <>
       {availableTransitions.length > 0 && (
         <div>
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+          <span className="text-compact font-semibold uppercase tracking-wider text-text-muted">
             Transitions
           </span>
           <div className="mt-1.5 flex flex-wrap gap-2">

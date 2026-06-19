@@ -20,9 +20,8 @@ from typing import Protocol, runtime_checkable
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.spending_summary import SpendingSummary
+from synthorg.core.pagination import DEFAULT_LIST_LIMIT, collect_all
 from synthorg.core.types import NotBlankStr
-from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared.pagination import collect_all
 
 
 @runtime_checkable
@@ -75,14 +74,15 @@ class CostTrackerProtocol(Protocol):
         provider: NotBlankStr | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
-        limit: int = DEFAULT_PAGE_SIZE,
+        limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[CostRecord, ...]:
         """Return a bounded page of records matching the filters.
 
-        Returns one ``limit``-sized page newest-first; callers needing
-        every matching record drain successive pages via
-        :func:`synthorg.persistence._shared.collect_all`. Unbounded
+        Returns one ``limit``-sized page in insertion order
+        (oldest-first), matching the concrete implementation, so a
+        cursor walk is repeatable. Callers needing every matching record
+        drain successive pages via :func:`collect_all_records`. Unbounded
         materialisation over a long-lived cost log is a memory hazard.
         """
         ...

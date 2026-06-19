@@ -13,7 +13,6 @@ from litestar.response import ServerSentEvent
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.controllers._provider_helpers import sse_error
-from synthorg.api.controllers._workflow_helpers import audit_actor_from_context
 from synthorg.api.controllers.events._sse import revalidated_sse_stream
 from synthorg.api.dto import ApiResponse
 from synthorg.api.dto_providers import (

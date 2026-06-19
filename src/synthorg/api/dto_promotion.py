@@ -7,7 +7,9 @@ generated TypeScript client sees plain enums rather than nested
 objects.
 """
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from typing import Literal, Self
+
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.promotion.models import (
@@ -29,6 +31,8 @@ class CriterionResultDTO(BaseModel):
     threshold: float = Field(description="Required threshold value")
     weight: float | None = Field(
         default=None,
+        ge=0.0,
+        le=1.0,
         description="Weight of this criterion, when weighted",
     )
 
@@ -56,7 +60,9 @@ class PromotionEvaluationDTO(BaseModel):
     agent_id: NotBlankStr = Field(description="Agent that was evaluated")
     current_level: NotBlankStr = Field(description="Current seniority level")
     target_level: NotBlankStr = Field(description="Target seniority level")
-    direction: NotBlankStr = Field(description="Either 'promotion' or 'demotion'")
+    direction: Literal["promotion", "demotion"] = Field(
+        description="Either 'promotion' or 'demotion'",
+    )
     eligible: bool = Field(description="Whether the agent qualifies for the change")
     required_criteria_met: bool = Field(
         description="Whether all required criteria were met",
@@ -85,7 +91,7 @@ class PromotionEvaluationDTO(BaseModel):
             agent_id=evaluation.agent_id,
             current_level=NotBlankStr(evaluation.current_level.value),
             target_level=NotBlankStr(evaluation.target_level.value),
-            direction=NotBlankStr(evaluation.direction.value),
+            direction=evaluation.direction.value,
             eligible=evaluation.eligible,
             required_criteria_met=evaluation.required_criteria_met,
             criteria_met_count=evaluation.criteria_met_count,
@@ -107,7 +113,9 @@ class PromotionRecordDTO(BaseModel):
     agent_name: NotBlankStr = Field(description="Agent display name")
     old_level: NotBlankStr = Field(description="Previous seniority level")
     new_level: NotBlankStr = Field(description="New seniority level")
-    direction: NotBlankStr = Field(description="Either 'promotion' or 'demotion'")
+    direction: Literal["promotion", "demotion"] = Field(
+        description="Either 'promotion' or 'demotion'",
+    )
     approved_by: NotBlankStr | None = Field(
         default=None,
         description="Who approved the change ('auto' or 'human')",
@@ -128,6 +136,28 @@ class PromotionRecordDTO(BaseModel):
         description="New model identifier, when changed",
     )
 
+    @model_validator(mode="after")
+    def _check_model_change_fields(self) -> Self:
+        """Mirror the domain co-presence rule for model-change fields.
+
+        Returns:
+            The validated record.
+
+        Raises:
+            ValueError: When ``model_changed`` disagrees with the
+                presence of ``old_model_id`` / ``new_model_id``.
+        """
+        has_ids = self.old_model_id is not None or self.new_model_id is not None
+        if self.model_changed and not (
+            self.old_model_id is not None and self.new_model_id is not None
+        ):
+            msg = "model_changed=True requires both old_model_id and new_model_id"
+            raise ValueError(msg)
+        if not self.model_changed and has_ids:
+            msg = "model_changed=False forbids old_model_id / new_model_id"
+            raise ValueError(msg)
+        return self
+
     @classmethod
     def from_domain(cls, record: PromotionRecord) -> PromotionRecordDTO:
         """Project a domain record onto the DTO.
@@ -141,7 +171,7 @@ class PromotionRecordDTO(BaseModel):
             agent_name=record.agent_name,
             old_level=NotBlankStr(record.old_level.value),
             new_level=NotBlankStr(record.new_level.value),
-            direction=NotBlankStr(record.direction.value),
+            direction=record.direction.value,
             approved_by=record.approved_by,
             approval_id=record.approval_id,
             effective_at=record.effective_at,
@@ -162,8 +192,12 @@ class PromotionRequestDTO(BaseModel):
     agent_name: NotBlankStr = Field(description="Agent display name")
     current_level: NotBlankStr = Field(description="Current seniority level")
     target_level: NotBlankStr = Field(description="Target seniority level")
-    direction: NotBlankStr = Field(description="Either 'promotion' or 'demotion'")
-    status: NotBlankStr = Field(description="Current approval status")
+    direction: Literal["promotion", "demotion"] = Field(
+        description="Either 'promotion' or 'demotion'",
+    )
+    status: Literal["pending", "approved", "rejected", "expired"] = Field(
+        description="Current approval status",
+    )
     created_at: AwareDatetime = Field(description="When the request was created")
     approval_id: NotBlankStr | None = Field(
         default=None,
@@ -183,8 +217,8 @@ class PromotionRequestDTO(BaseModel):
             agent_name=request.agent_name,
             current_level=NotBlankStr(request.current_level.value),
             target_level=NotBlankStr(request.target_level.value),
-            direction=NotBlankStr(request.direction.value),
-            status=NotBlankStr(request.status.value),
+            direction=request.direction.value,
+            status=request.status.value,
             created_at=request.created_at,
             approval_id=request.approval_id,
         )
@@ -205,3 +239,19 @@ class PromotionApplyResultDTO(BaseModel):
         default=None,
         description="The applied record when auto-approved, else null",
     )
+
+    @model_validator(mode="after")
+    def _check_applied_implies_approved(self) -> Self:
+        """A present ``applied`` record implies the request was approved.
+
+        Returns:
+            The validated result.
+
+        Raises:
+            ValueError: When ``applied`` is set but the request status is
+                not ``approved``.
+        """
+        if self.applied is not None and self.request.status != "approved":
+            msg = "applied record requires request.status == 'approved'"
+            raise ValueError(msg)
+        return self

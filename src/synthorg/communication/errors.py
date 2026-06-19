@@ -122,7 +122,14 @@ class DelegationAncestryError(DelegationLoopError):
 
 
 class DelegationRateLimitError(DelegationLoopError):
-    """Delegation rate limit exceeded for agent pair."""
+    """Delegation rate limit exceeded for agent pair.
+
+    Despite the "rate limit" name this is NOT retryable (it inherits
+    ``is_retryable = False`` from ``CommunicationError``): it is a
+    loop-prevention policy rejection for this agent pair, not a transient
+    network rate limit. The caller should surface it to the orchestrator
+    rather than backing off and retrying.
+    """
 
 
 class DelegationCircuitOpenError(DelegationLoopError):

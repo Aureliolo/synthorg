@@ -24,6 +24,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.audit_chain.protocol import SignedPayload
@@ -121,6 +122,43 @@ class Ed25519AuditChainSigner:
         return True
 
 
+def _load_signing_key(signing_key_path: Path) -> object | None:
+    """Read + parse a PEM private key, distinguishing the failure modes.
+
+    Splits the file read from the PEM parse so the WARNING ``reason``
+    tells an operator whether the key file could not be read (permission
+    / I/O) or was unparseable (corrupt / password-protected), instead of
+    collapsing both into one opaque ``key_load_failed``.
+
+    Returns:
+        The loaded private-key object, or ``None`` when the key could
+        not be read or parsed (the caller then falls back to an
+        ephemeral key).
+    """
+    try:
+        raw = signing_key_path.read_bytes()
+    except OSError as exc:
+        logger.warning(
+            AUDIT_CHAIN_SIGNER_KEY_GENERATED,
+            reason="key_read_failed",
+            path=str(signing_key_path),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None
+    try:
+        return serialization.load_pem_private_key(raw, password=None)
+    except Exception as exc:  # noqa: BLE001 -- fall back to ephemeral
+        reraise_critical(exc)
+        logger.warning(
+            AUDIT_CHAIN_SIGNER_KEY_GENERATED,
+            reason="key_parse_failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None
+
+
 def build_ed25519_signer(
     signing_key_path: Path | None,
     *,
@@ -142,19 +180,8 @@ def build_ed25519_signer(
     """
     resolved_clock = clock or SystemClock()
     if signing_key_path is not None and signing_key_path.is_file():
-        try:
-            loaded = serialization.load_pem_private_key(
-                signing_key_path.read_bytes(),
-                password=None,
-            )
-        except Exception as exc:  # noqa: BLE001 -- fall back to ephemeral
-            logger.warning(
-                AUDIT_CHAIN_SIGNER_KEY_GENERATED,
-                reason="key_load_failed",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-        else:
+        loaded = _load_signing_key(signing_key_path)
+        if loaded is not None:
             if isinstance(loaded, Ed25519PrivateKey):
                 logger.info(
                     AUDIT_CHAIN_SIGNER_KEY_LOADED,

@@ -14,6 +14,7 @@ from pydantic import AwareDatetime
 
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.concurrency.refcounted_lock_map import RefcountedLockMap
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -309,34 +310,12 @@ class PromotionService:
             )
             raise PromotionError(msg)
 
-        decision = await self._approval.decide(
+        status, approval_id = await self._resolve_request_status(
+            agent_id=agent_id,
             evaluation=evaluation,
-            agent_identity=identity,
+            identity=identity,
+            initiated_by=initiated_by,
         )
-
-        now = datetime.now(UTC)
-        approval_id: NotBlankStr | None = None
-        status = ApprovalStatus.PENDING
-
-        if decision.auto_approve:
-            status = ApprovalStatus.APPROVED
-        elif decision.requires_human:
-            if self._approval_store is None:
-                msg = (
-                    f"Promotion for agent {agent_id!r} requires human "
-                    f"approval but no approval store is configured"
-                )
-                logger.warning(
-                    PROMOTION_REQUESTED,
-                    agent_id=agent_id,
-                    error=msg,
-                )
-                raise PromotionError(msg)
-            approval_id = await self._create_approval(
-                agent_id=agent_id,
-                evaluation=evaluation,
-                initiated_by=initiated_by,
-            )
 
         request = PromotionRequest(
             agent_id=agent_id,
@@ -346,7 +325,7 @@ class PromotionService:
             direction=evaluation.direction,
             evaluation=evaluation,
             status=status,
-            created_at=now,
+            created_at=datetime.now(UTC),
             approval_id=approval_id,
         )
 
@@ -357,6 +336,46 @@ class PromotionService:
             status=status.value,
         )
         return request
+
+    async def _resolve_request_status(
+        self,
+        *,
+        agent_id: NotBlankStr,
+        evaluation: PromotionEvaluation,
+        identity: AgentIdentity,
+        initiated_by: NotBlankStr,
+    ) -> tuple[ApprovalStatus, NotBlankStr | None]:
+        """Decide a request's approval status, creating an approval item.
+
+        Returns:
+            The resolved ``(status, approval_id)`` pair; ``approval_id``
+            is set only when human approval was gated.
+
+        Raises:
+            PromotionError: Human approval is required but no approval
+                store is configured.
+        """
+        decision = await self._approval.decide(
+            evaluation=evaluation,
+            agent_identity=identity,
+        )
+        if decision.auto_approve:
+            return ApprovalStatus.APPROVED, None
+        if decision.requires_human:
+            if self._approval_store is None:
+                msg = (
+                    f"Promotion for agent {agent_id!r} requires human "
+                    f"approval but no approval store is configured"
+                )
+                logger.warning(PROMOTION_REQUESTED, agent_id=agent_id, error=msg)
+                raise PromotionError(msg)
+            approval_id = await self._create_approval(
+                agent_id=agent_id,
+                evaluation=evaluation,
+                initiated_by=initiated_by,
+            )
+            return ApprovalStatus.PENDING, approval_id
+        return ApprovalStatus.PENDING, None
 
     async def apply_promotion(
         self,
@@ -397,27 +416,30 @@ class PromotionService:
             raise PromotionApprovalRequiredError(msg)
 
         await self._verify_approval(request)
+        record = await self._apply_level_change(request, initiated_by=initiated_by)
+        await self._reevaluate_trust_best_effort(request.agent_id)
+        self._log_applied(record, request.direction)
+        await self._notify_promotion_best_effort(record, request.direction)
+        return record
 
+    async def _apply_level_change(
+        self,
+        request: PromotionRequest,
+        *,
+        initiated_by: NotBlankStr,
+    ) -> PromotionRecord:
+        """Mutate the agent's level + model under the per-agent lock.
+
+        Returns:
+            The recorded promotion/demotion.
+
+        Raises:
+            PromotionCooldownError: A concurrent apply put the agent into
+                cooldown before this one acquired the lock.
+            PromotionError: The agent was not found.
+        """
         async with self._apply_locks.acquire(str(request.agent_id)):
-            # Re-check cooldown under the per-agent lock: a concurrent
-            # apply for this agent may have just promoted it and set the
-            # cooldown between this request's approval and now. Applying
-            # again would double-promote, so a still-active cooldown is a
-            # lost race the caller must not silently win.
-            if self.is_in_cooldown(request.agent_id):
-                until = self._cooldown_until.get(str(request.agent_id))
-                msg = (
-                    f"Agent {request.agent_id!r} entered cooldown (until {until})"
-                    f" before this promotion could apply"
-                )
-                logger.info(
-                    PROMOTION_COOLDOWN_ACTIVE,
-                    agent_id=request.agent_id,
-                    until=str(until),
-                    error_type=PromotionCooldownError.__name__,
-                )
-                raise PromotionCooldownError(msg)
-
+            self._recheck_cooldown_locked(request.agent_id)
             identity = await self._registry.get(request.agent_id)
             if identity is None:
                 msg = f"Agent {request.agent_id!r} not found"
@@ -428,12 +450,10 @@ class PromotionService:
                 )
                 raise PromotionError(msg)
 
-            # Resolve model mapping
             new_model_id = self._model_mapping.resolve_model(
                 agent_identity=identity,
                 new_level=request.target_level,
             )
-
             updates: dict[str, object] = {"level": request.target_level}
             if new_model_id is not None:
                 updates["model"] = identity.model.model_copy(
@@ -445,11 +465,7 @@ class PromotionService:
                     old_model=str(identity.model.model_id),
                     new_model=new_model_id,
                 )
-
-            await self._registry.update_identity(
-                request.agent_id,
-                **updates,
-            )
+            await self._registry.update_identity(request.agent_id, **updates)
             logger.info(
                 HR_AGENT_STATUS_TRANSITIONED,
                 agent_id=request.agent_id,
@@ -458,92 +474,148 @@ class PromotionService:
             )
 
             now = datetime.now(UTC)
-            record = PromotionRecord(
-                agent_id=request.agent_id,
-                agent_name=request.agent_name,
-                old_level=request.current_level,
-                new_level=request.target_level,
-                direction=request.direction,
-                evaluation=request.evaluation,
-                approved_by=(
-                    NotBlankStr("auto")
-                    if request.approval_id is None
-                    else NotBlankStr("human")
-                ),
-                approval_id=request.approval_id,
-                effective_at=now,
+            record = self._build_promotion_record(
+                request,
+                identity=identity,
+                new_model_id=new_model_id,
                 initiated_by=initiated_by,
-                model_changed=new_model_id is not None,
-                old_model_id=(
-                    identity.model.model_id if new_model_id is not None else None
-                ),
-                new_model_id=(
-                    NotBlankStr(new_model_id) if new_model_id is not None else None
-                ),
+                now=now,
             )
-
-            self._promotion_history.setdefault(
-                str(request.agent_id),
-                [],
-            ).append(record)
-
+            self._promotion_history.setdefault(str(request.agent_id), []).append(record)
             if self._config.cooldown_hours > 0:
                 self._cooldown_until[str(request.agent_id)] = now + timedelta(
                     hours=self._config.cooldown_hours
                 )
+        return record
 
-        # Best-effort trust re-evaluation -- promotion is already applied,
-        # so failures here must not prevent the record from being returned.
-        if self._trust_service is not None:
-            try:
-                snapshot = await self._tracker.get_snapshot(request.agent_id)
-                await self._trust_service.evaluate_agent(
-                    request.agent_id,
-                    snapshot,
-                )
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                logger.warning(
-                    PROMOTION_APPLIED,
-                    agent_id=request.agent_id,
-                    note="trust re-evaluation failed; promotion still applied",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
+    def _recheck_cooldown_locked(self, agent_id: NotBlankStr) -> None:
+        """Reject an apply if the agent entered cooldown before the lock.
 
+        A concurrent apply may have promoted the agent and set the
+        cooldown between this request's approval and acquiring the lock;
+        applying again would double-promote.
+
+        Raises:
+            PromotionCooldownError: The agent is in an active cooldown.
+        """
+        if not self.is_in_cooldown(agent_id):
+            return
+        until = self._cooldown_until.get(str(agent_id))
+        msg = (
+            f"Agent {agent_id!r} entered cooldown (until {until})"
+            f" before this promotion could apply"
+        )
+        logger.info(
+            PROMOTION_COOLDOWN_ACTIVE,
+            agent_id=agent_id,
+            until=str(until),
+            error_type=PromotionCooldownError.__name__,
+        )
+        raise PromotionCooldownError(msg)
+
+    def _build_promotion_record(
+        self,
+        request: PromotionRequest,
+        *,
+        identity: AgentIdentity,
+        new_model_id: str | None,
+        initiated_by: NotBlankStr,
+        now: datetime,
+    ) -> PromotionRecord:
+        """Construct the immutable promotion record for an applied change.
+
+        Returns:
+            The promotion record.
+        """
+        return PromotionRecord(
+            agent_id=request.agent_id,
+            agent_name=request.agent_name,
+            old_level=request.current_level,
+            new_level=request.target_level,
+            direction=request.direction,
+            evaluation=request.evaluation,
+            approved_by=(
+                NotBlankStr("auto")
+                if request.approval_id is None
+                else NotBlankStr("human")
+            ),
+            approval_id=request.approval_id,
+            effective_at=now,
+            initiated_by=initiated_by,
+            model_changed=new_model_id is not None,
+            old_model_id=(
+                identity.model.model_id if new_model_id is not None else None
+            ),
+            new_model_id=(
+                NotBlankStr(new_model_id) if new_model_id is not None else None
+            ),
+        )
+
+    async def _reevaluate_trust_best_effort(self, agent_id: NotBlankStr) -> None:
+        """Re-evaluate trust after a promotion; never block the record.
+
+        The promotion is already applied, so a trust-evaluation failure
+        is logged and swallowed (criticals re-raised) rather than
+        propagating.
+        """
+        if self._trust_service is None:
+            return
+        try:
+            snapshot = await self._tracker.get_snapshot(agent_id)
+            await self._trust_service.evaluate_agent(agent_id, snapshot)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                PROMOTION_APPLIED,
+                agent_id=agent_id,
+                note="trust re-evaluation failed; promotion still applied",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+
+    def _log_applied(
+        self,
+        record: PromotionRecord,
+        direction: PromotionDirection,
+    ) -> None:
+        """Emit the applied promotion/demotion lifecycle event."""
         event = (
             PROMOTION_APPLIED
-            if request.direction == PromotionDirection.PROMOTION
+            if direction == PromotionDirection.PROMOTION
             else DEMOTION_APPLIED
         )
         logger.info(
             event,
-            agent_id=request.agent_id,
+            agent_id=record.agent_id,
             old_level=record.old_level.value,
             new_level=record.new_level.value,
             model_changed=record.model_changed,
         )
 
-        # Notify agent and team -- best-effort, must not block the record.
-        if self._on_notification is not None:
-            try:
-                await self._on_notification(record)
-                logger.debug(
-                    PROMOTION_NOTIFICATION_SENT,
-                    agent_id=request.agent_id,
-                    direction=request.direction.value,
-                )
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                logger.warning(
-                    PROMOTION_NOTIFICATION_SENT,
-                    agent_id=request.agent_id,
-                    note="notification callback failed; promotion still applied",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-
-        return record
+    async def _notify_promotion_best_effort(
+        self,
+        record: PromotionRecord,
+        direction: PromotionDirection,
+    ) -> None:
+        """Fire the promotion notification callback; never block the record."""
+        if self._on_notification is None:
+            return
+        try:
+            await self._on_notification(record)
+            logger.debug(
+                PROMOTION_NOTIFICATION_SENT,
+                agent_id=record.agent_id,
+                direction=direction.value,
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                PROMOTION_NOTIFICATION_SENT,
+                agent_id=record.agent_id,
+                note="notification callback failed; promotion still applied",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def run_cycle(self) -> tuple[PromotionRecord, ...]:
         """Scan active agents and apply auto-approved seniority changes.

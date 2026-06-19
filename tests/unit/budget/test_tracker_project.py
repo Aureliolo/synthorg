@@ -7,6 +7,9 @@ import pytest
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.project_cost_aggregate import ProjectCostAggregate
 from synthorg.budget.tracker import CostTracker
+from synthorg.persistence.project_cost_aggregate_protocol import (
+    ProjectCostAggregateRepository,
+)
 
 from .conftest import make_cost_record
 
@@ -241,6 +244,12 @@ class TestPerProjectCurrencyGuardWithoutBudgetConfig:
     aggregate.  Enforcement now lives in the repository (Postgres /
     SQLite); the tracker propagates the error.
     """
+
+    def test_pinning_repo_conforms_to_protocol(self) -> None:
+        # The inline stub must structurally match the real repository
+        # protocol so a signature drift (e.g. a new keyword-only arg)
+        # fails here instead of silently diverging from production.
+        assert isinstance(_PinningRepo(), ProjectCostAggregateRepository)
 
     async def test_first_record_pins_project_currency(self) -> None:
         """A subsequent USD write after an initial USD record is accepted."""

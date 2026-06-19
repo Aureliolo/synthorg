@@ -30,7 +30,7 @@ function SubtaskRow({ index, draft, canRemove, onChange, onRemove }: SubtaskRowP
           </Button>
         )}
       </div>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-grid-gap sm:grid-cols-2">
         <InputField
           label="Label"
           value={draft.label}

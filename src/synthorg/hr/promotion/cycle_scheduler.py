@@ -171,6 +171,10 @@ class PromotionCycleScheduler:
                     timeout=_STOP_DRAIN_TIMEOUT_SECONDS,
                 )
             except TimeoutError:
+                # The shield kept wait_for's cancellation off drain_task;
+                # cancel it explicitly so it cannot outlive stop() as an
+                # orphaned task that logs into a torn-down loop.
+                drain_task.cancel()
                 self._stop_failed = True
                 logger.error(
                     PROMOTION_CYCLE_SCHEDULER_FAILED,

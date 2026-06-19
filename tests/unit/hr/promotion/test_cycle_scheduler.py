@@ -85,3 +85,20 @@ async def test_stop_before_start_is_noop() -> None:
     await scheduler.stop()
 
     service.run_cycle.assert_not_awaited()
+
+
+async def test_unrestartable_after_timed_out_stop() -> None:
+    """A scheduler marked unrestartable (timed-out stop) rejects start().
+
+    Guards the invariant that ``stop()`` setting ``_stop_failed`` is
+    permanent: a future refactor clearing it on stop would silently let
+    a zombie scheduler restart on a stale loop.
+    """
+    service = AsyncMock(spec=PromotionService)
+    scheduler = PromotionCycleScheduler(service, interval_seconds=60.0)
+    scheduler._stop_failed = True
+
+    with pytest.raises(RuntimeError, match="unrestartable"):
+        await scheduler.start()
+
+    service.run_cycle.assert_not_awaited()

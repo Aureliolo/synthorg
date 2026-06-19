@@ -494,11 +494,12 @@ async def _wire_signals_service(
             budget_total_monthly = budget_cfg.total_monthly
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            logger.info(
+            logger.warning(
                 API_APP_STARTUP,
                 service="signals",
                 note="budget config unavailable; budget forecast uses 0 ceiling",
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
     # The evolution-outcome store is intentionally left unwired: its only
     # producer is the self-improvement cycle (SelfImprovementService), which

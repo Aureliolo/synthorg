@@ -40,7 +40,7 @@ export function TaskDecomposeResult({ result }: TaskDecomposeResultProps) {
           <StatPill label="Subtasks" value={created_tasks.length} />
           <StatPill label="Edges" value={dependency_edges.length} />
         </div>
-        <ul className="space-y-2">
+        <ul className="space-y-2" aria-label="Planned subtasks">
           {plan.subtasks.map((subtask) => (
             <SubtaskResultItem key={subtask.id} subtask={subtask} />
           ))}

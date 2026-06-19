@@ -42,6 +42,14 @@ def _make_entry(  # noqa: PLR0913
 
 @pytest.mark.unit
 class TestAuditController:
+    @pytest.fixture(autouse=True)
+    def _isolate_audit_log(self, audit_log: AuditLog) -> None:
+        # The audit_log fixture is session-scoped (the shared app holds it),
+        # so reset it before each test or recorded entries leak across tests
+        # and make order-dependent assertions (e.g. the empty-log case) pass
+        # only by collection luck.
+        audit_log.clear()
+
     async def test_empty_audit_log(
         self,
         async_test_client: LoopAsyncClient,
@@ -100,6 +108,9 @@ class TestAuditController:
         )
         assert resp.status_code == 200
         body = resp.json()
+        # Exactly one entry matches; a broken filter returning the other
+        # row (or accumulated rows) must not pass silently.
+        assert len(body["data"]) == 1
         assert body["data"][0][field] == match_val
 
     async def test_filter_by_since_until(

@@ -80,13 +80,9 @@ class SsrfViolationController(Controller):
         async def _fetch(
             page_limit: int, page_offset: int
         ) -> tuple[SsrfViolation, ...]:
-            # The service list is offset-free; page via a widening limit
-            # so the cursor walk still sees the full ordered set without
-            # an unbounded single read at the repository.
-            rows = await service.list_violations(
-                status=status, limit=page_limit + page_offset
+            return await service.list_violations(
+                status=status, limit=page_limit, offset=page_offset
             )
-            return rows[page_offset:]
 
         rows = await collect_all(_fetch)
         entries = tuple(SsrfViolationDTO.from_entity(r) for r in rows)
@@ -115,17 +111,17 @@ class SsrfViolationController(Controller):
 
         The deciding operator is taken from the authenticated session
         (never the request body), so the audit trail cannot be forged.
+        ``ResolveSsrfViolationRequest.status`` is constrained to
+        ``allowed`` / ``denied`` at the type boundary, so a ``pending``
+        decision is rejected with a structured 422 before this handler
+        runs.
 
         Returns:
             The resolved violation.
 
         Raises:
-            ValueError: When the requested status is ``pending``.
             ResourceNotFoundError: When no pending violation matches the id.
         """
-        if data.status is SsrfViolationStatus.PENDING:
-            msg = "resolution status must be 'allowed' or 'denied', not 'pending'"
-            raise ValueError(msg)
         service = _service(state)
         updated = await service.update_status(
             NotBlankStr(violation_id),

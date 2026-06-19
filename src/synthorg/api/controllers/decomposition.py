@@ -190,7 +190,11 @@ def _build_plan(
             coordination_topology=request.coordination_topology,
         )
     except PydanticError as exc:
-        raise ValidationError(str(exc)) from exc
+        # Do not echo str(exc): a Pydantic error embeds the rejected
+        # field values (caller-supplied subtask text) and full field
+        # paths. Surface only a structured count (SEC-1 safe-error).
+        msg = f"Decomposition plan validation failed: {len(exc.errors())} error(s)"
+        raise ValidationError(msg) from exc
 
 
 class DecompositionController(Controller):

@@ -3,7 +3,7 @@
 import pytest
 
 from synthorg.api.concurrency import check_if_match, compute_etag
-from synthorg.core.domain_errors import VersionConflictError
+from synthorg.core.domain_errors import ValidationError, VersionConflictError
 
 pytestmark = pytest.mark.unit
 
@@ -54,3 +54,10 @@ class TestCheckIfMatch:
     def test_empty_string_etag_skips_check(self) -> None:
         current = compute_etag("val", "ts")
         check_if_match("", current, "test-resource")
+
+    def test_oversized_if_match_rejected(self) -> None:
+        # A pathological If-Match header is rejected with a 400-class
+        # ValidationError (DoS guard) before any ETag parsing.
+        current = compute_etag("val", "ts")
+        with pytest.raises(ValidationError, match="too long"):
+            check_if_match("x" * 513, current, "test-resource")

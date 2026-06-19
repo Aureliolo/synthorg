@@ -22,12 +22,11 @@ export interface SubtaskDraft {
   dependencies: string
 }
 
-let _draftCounter = 0
-
 function emptyDraft(): SubtaskDraft {
-  _draftCounter += 1
   return {
-    key: `draft-${String(_draftCounter)}`,
+    // Per-instance unique key (not a module counter, which would leak
+    // across tests / Fast Refresh and could collide with surviving state).
+    key: `draft-${crypto.randomUUID()}`,
     label: '',
     title: '',
     description: '',
@@ -42,11 +41,7 @@ function parseDependencies(raw: string): readonly string[] {
     .filter((token) => token.length > 0)
 }
 
-function toRequest(
-  drafts: readonly SubtaskDraft[],
-  maxSubtasks: number,
-  maxDepth: number,
-): ManualDecomposeRequest {
+function toRequest(drafts: readonly SubtaskDraft[]): ManualDecomposeRequest {
   return {
     subtasks: drafts.map((draft) => ({
       label: draft.label.trim(),
@@ -58,8 +53,8 @@ function toRequest(
       required_skills: [],
       required_role: null,
     })),
-    max_subtasks: maxSubtasks,
-    max_depth: maxDepth,
+    max_subtasks: DEFAULT_MAX_SUBTASKS,
+    max_depth: DEFAULT_MAX_DEPTH,
     coordination_topology: 'auto',
   }
 }
@@ -67,8 +62,6 @@ function toRequest(
 /** Page-local controller for the manual task-decomposition form. */
 export function useTaskDecomposeController(taskId: string | undefined) {
   const [drafts, setDrafts] = useState<readonly SubtaskDraft[]>(() => [emptyDraft()])
-  const [maxSubtasks, setMaxSubtasks] = useState(DEFAULT_MAX_SUBTASKS)
-  const [maxDepth, setMaxDepth] = useState(DEFAULT_MAX_DEPTH)
   const [result, setResult] = useState<DecompositionResult | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -93,10 +86,7 @@ export function useTaskDecomposeController(taskId: string | undefined) {
     if (!taskId) return
     setSubmitting(true)
     try {
-      const next = await decomposeTaskManually(
-        taskId,
-        toRequest(drafts, maxSubtasks, maxDepth),
-      )
+      const next = await decomposeTaskManually(taskId, toRequest(drafts))
       setResult(next)
       useToastStore.getState().add({
         variant: 'success',
@@ -104,7 +94,7 @@ export function useTaskDecomposeController(taskId: string | undefined) {
         description: `${String(next.created_tasks.length)} subtasks planned.`,
       })
     } catch (err) {
-      log.error('decomposeTaskManually failed', { error: sanitizeForLog(String(err)) })
+      log.error('decomposeTaskManually failed', { error: sanitizeForLog(err) })
       useToastStore.getState().add({
         variant: 'error',
         title: getCrudErrorTitle(err, 'Decomposition failed').title,
@@ -113,16 +103,12 @@ export function useTaskDecomposeController(taskId: string | undefined) {
     } finally {
       setSubmitting(false)
     }
-  }, [taskId, drafts, maxSubtasks, maxDepth])
+  }, [taskId, drafts])
 
   return {
     drafts,
-    maxSubtasks,
-    maxDepth,
     result,
     submitting,
-    setMaxSubtasks,
-    setMaxDepth,
     addDraft,
     removeDraft,
     updateDraft,

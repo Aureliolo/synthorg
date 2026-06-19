@@ -14348,8 +14348,11 @@ export type components = {
             readonly criteria_results: readonly components["schemas"]["CriterionResultDTO"][];
             /** @description Current seniority level */
             readonly current_level: string;
-            /** @description Either 'promotion' or 'demotion' */
-            readonly direction: string;
+            /**
+             * @description Either 'promotion' or 'demotion'
+             * @enum {string}
+             */
+            readonly direction: "promotion" | "demotion";
             /** @description Whether the agent qualifies for the change */
             readonly eligible: boolean;
             /**
@@ -14374,8 +14377,11 @@ export type components = {
             readonly approval_id: string | null;
             /** @description Who approved the change ('auto' or 'human') */
             readonly approved_by: string | null;
-            /** @description Either 'promotion' or 'demotion' */
-            readonly direction: string;
+            /**
+             * @description Either 'promotion' or 'demotion'
+             * @enum {string}
+             */
+            readonly direction: "promotion" | "demotion";
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
@@ -14414,12 +14420,18 @@ export type components = {
             readonly created_at: string;
             /** @description Current seniority level */
             readonly current_level: string;
-            /** @description Either 'promotion' or 'demotion' */
-            readonly direction: string;
+            /**
+             * @description Either 'promotion' or 'demotion'
+             * @enum {string}
+             */
+            readonly direction: "promotion" | "demotion";
             /** @description Unique request identifier */
             readonly id: string;
-            /** @description Current approval status */
-            readonly status: string;
+            /**
+             * @description Current approval status
+             * @enum {string}
+             */
+            readonly status: "pending" | "approved" | "rejected" | "expired";
             /** @description Target seniority level */
             readonly target_level: string;
         };
@@ -15195,7 +15207,11 @@ export type components = {
         };
         /** ResolveSsrfViolationRequest */
         readonly ResolveSsrfViolationRequest: {
-            readonly status: components["schemas"]["SsrfViolationStatus"];
+            /**
+             * @description Resolution decision; must be 'allowed' or 'denied'.
+             * @enum {string}
+             */
+            readonly status: "allowed" | "denied";
         };
         /** RestoreRequest */
         readonly RestoreRequest: {
@@ -16056,7 +16072,7 @@ export type components = {
             readonly provider_name: string | null;
             /**
              * Format: date-time
-             * @description When the violation was resolved, when resolved.
+             * @description datetime with the constraint that the value must have timezone info
              */
             readonly resolved_at: string | null;
             /** @description Operator who resolved the violation, when resolved. */
@@ -16066,7 +16082,7 @@ export type components = {
             readonly status: components["schemas"]["SsrfViolationStatus"];
             /**
              * Format: date-time
-             * @description When the outbound request was blocked.
+             * @description datetime with the constraint that the value must have timezone info
              */
             readonly timestamp: string;
             /** @description The blocked URL (credentials redacted). */

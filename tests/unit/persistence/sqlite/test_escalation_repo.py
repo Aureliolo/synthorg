@@ -316,9 +316,11 @@ async def test_build_escalations_serializes_with_backend_write_context(
     The factory previously constructed ``SQLiteEscalationRepository``
     without a shared lock, so escalation writes could interleave with
     sibling repos' writes on the single ``aiosqlite.Connection``. This
-    regression test asserts that an escalation operation started while
-    another task already holds ``backend.write_context()`` blocks until
-    the holder releases, proving both sides contend on the same lock.
+    regression test drives a real public ``create`` while another task
+    already holds ``backend.write_context()``; the write must block until
+    the holder releases, proving both sides contend on the same lock. The
+    contention is asserted through the public surface only (no reach into
+    the repository's private write context).
     """
     escalation_repo = backend.build_escalations()
     assert isinstance(escalation_repo, SQLiteEscalationRepository)
@@ -335,25 +337,31 @@ async def test_build_escalations_serializes_with_backend_write_context(
             await release_backend.wait()
             events.append("backend-released")
 
-    async def try_escalation_lock() -> None:
+    async def write_escalation() -> None:
         await backend_holding.wait()
+        # Signal intent immediately before the public write so the test
+        # can confirm the write does not complete while the lock is held.
         escalation_contender_started.set()
-        async with escalation_repo._write_context():
-            events.append("escalation-acquired")
+        await escalation_repo.create(
+            _make_escalation(escalation_id="escalation-sql-lock"),
+        )
+        events.append("escalation-written")
 
     async with asyncio.TaskGroup() as tg:
         _ = tg.create_task(hold_backend_lock())
-        _ = tg.create_task(try_escalation_lock())
+        _ = tg.create_task(write_escalation())
         await escalation_contender_started.wait()
         for _ in range(5):
             await asyncio.sleep(0)
-        assert "escalation-acquired" not in events, (
-            f"escalation_repo acquired the lock while backend held it; events={events}"
+        assert "escalation-written" not in events, (
+            f"escalation write completed while backend held the lock; events={events}"
         )
         release_backend.set()
 
+    # The write completing only AFTER backend-released proves the public
+    # create() contended on the backend's shared write lock.
     assert events == [
         "backend-acquired",
         "backend-released",
-        "escalation-acquired",
+        "escalation-written",
     ], events

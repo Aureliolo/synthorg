@@ -183,15 +183,19 @@ class FakeSsrfViolationRepository:
         *,
         status: SsrfViolationStatus | None = None,
         limit: int = 100,
+        offset: int = 0,
     ) -> tuple[SsrfViolation, ...]:
         if limit <= 0:
             msg = "limit must be positive"
+            raise ValueError(msg)
+        if offset < 0:
+            msg = "offset must be non-negative"
             raise ValueError(msg)
         items = list(self._violations.values())
         if status is not None:
             items = [v for v in items if v.status == status]
         items.sort(key=lambda v: v.timestamp, reverse=True)
-        return tuple(items[:limit])
+        return tuple(items[offset : offset + limit])
 
     async def update_status(
         self,
