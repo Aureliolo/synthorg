@@ -114,7 +114,7 @@ class TrajectoryScore(BaseModel):
         description="Passed self-consistency filter",
     )
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Combined VC + Len (least-negative wins)",
     )
     @property

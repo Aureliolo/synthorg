@@ -69,7 +69,7 @@ class AgentRunResult(BaseModel):
     # combination correctly; the ignores are safe -- Pydantic enforces
     # the return type at runtime.
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Why the execution terminated",
     )
     @property
@@ -77,7 +77,7 @@ class AgentRunResult(BaseModel):
         """Why the execution loop terminated."""
         return self.execution_result.termination_reason
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Total LLM turns completed",
     )
     @property
@@ -85,7 +85,7 @@ class AgentRunResult(BaseModel):
         """Number of turns completed during execution."""
         return len(self.execution_result.turns)
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Total cost in the configured currency",
     )
     @property
@@ -93,7 +93,7 @@ class AgentRunResult(BaseModel):
         """Accumulated cost from the execution context."""
         return self.execution_result.context.accumulated_cost.cost
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Whether the run completed successfully",
     )
     @property
@@ -101,7 +101,7 @@ class AgentRunResult(BaseModel):
         """True when termination reason is COMPLETED."""
         return self.termination_reason == TerminationReason.COMPLETED
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Last assistant message content as work summary",
     )
     @property

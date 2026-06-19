@@ -157,7 +157,7 @@ function EntityCatalogEmpty({ hasActiveFilters, onClearFilters }: EntityCatalogE
 interface EntityCatalogGridProps {
   entities: readonly EntityResponse[]
   onSelect: (entity: EntityResponse) => void
-  onDelete: (name: string) => ReturnType<ConfirmHandler>
+  onDelete: ConfirmHandler<[string]>
 }
 
 function EntityCatalogGrid({ entities, onSelect, onDelete }: EntityCatalogGridProps) {

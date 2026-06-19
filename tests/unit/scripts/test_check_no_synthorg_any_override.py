@@ -1,11 +1,13 @@
 """Self-tests for the ``no-synthorg-any-override`` regression gate.
 
 Pins the gate contract: no ``[[tool.mypy.overrides]]`` block targeting a
-``synthorg`` or ``tests`` module may lift ``disallow_any_explicit`` -- whether
-via ``disallow_any_explicit = false``, ``explicit-any`` in ``disable_error_code``,
-or ``ignore_errors = true``, and whether the module is named exactly, via a
-dotted trailing wildcard, or via a leading-``*`` glob (``*.api``) that mypy
-compiles to a dot-spanning match. No override may lift the flag for either surface.
+``synthorg`` or ``tests`` module may relax strictness -- whether via
+``disallow_any_explicit = false``, a non-allowlisted code in
+``disable_error_code`` (``explicit-any`` included), or ``ignore_errors = true``,
+and whether the module is named exactly, via a dotted trailing wildcard, or via
+a leading-``*`` glob (``*.api``) that mypy compiles to a dot-spanning match. The
+single allowlisted ``disable_error_code = ["prop-decorator"]`` on ``synthorg.*``
+is permitted; no override may relax either surface further.
 """
 
 import importlib.util
@@ -63,17 +65,67 @@ _FIND_VIOLATIONS_CASES = [
         [],
         id="synthorg_enforced_true_ignored",
     ),
+    # A non-allowlisted code in the list form relaxes the enforced surface.
     pytest.param(
         '[[tool.mypy.overrides]]\nmodule = "synthorg.api.*"\n'
         'disable_error_code = ["unused-awaitable"]\n',
-        [],
-        id="other_disable_code_list_ignored",
+        ["synthorg.api.*"],
+        id="non_allowlisted_disable_code_list_flagged",
     ),
+    # ...as does the bare-string form.
     pytest.param(
         '[[tool.mypy.overrides]]\nmodule = "synthorg.api.*"\n'
         'disable_error_code = "unused-awaitable"\n',
+        ["synthorg.api.*"],
+        id="non_allowlisted_disable_code_str_flagged",
+    ),
+    # The sole allowlisted disable -- ``prop-decorator`` on the enforced
+    # surface -- is permitted (pydantic ``@computed_field`` over ``@property``).
+    pytest.param(
+        '[[tool.mypy.overrides]]\nmodule = "synthorg.*"\n'
+        'disable_error_code = ["prop-decorator"]\n',
         [],
-        id="other_disable_code_str_ignored",
+        id="prop_decorator_allowlisted",
+    ),
+    # ...but it is not a free pass: a second code alongside it still flags.
+    pytest.param(
+        '[[tool.mypy.overrides]]\nmodule = "synthorg.*"\n'
+        'disable_error_code = ["prop-decorator", "union-attr"]\n',
+        ["synthorg.*"],
+        id="prop_decorator_plus_other_flagged",
+    ),
+    # The prop-decorator allowlist is scoped to the EXACT ``synthorg.*``
+    # override. On ``tests.*`` it confers nothing: a tests-surface
+    # prop-decorator disable still weakens strictness and must flag.
+    pytest.param(
+        '[[tool.mypy.overrides]]\nmodule = "tests.*"\n'
+        'disable_error_code = ["prop-decorator"]\n',
+        ["tests.*"],
+        id="prop_decorator_on_tests_flagged",
+    ),
+    # ...and a leading-``*`` glob cannot borrow the synthorg-only exemption.
+    pytest.param(
+        '[[tool.mypy.overrides]]\nmodule = "*"\n'
+        'disable_error_code = ["prop-decorator"]\n',
+        ["*"],
+        id="prop_decorator_on_wildcard_flagged",
+    ),
+    # ...nor can a narrower synthorg subtree: only the exact ``synthorg.*``
+    # pattern is sanctioned, so ``synthorg.api.*`` + prop-decorator flags.
+    pytest.param(
+        '[[tool.mypy.overrides]]\nmodule = "synthorg.api.*"\n'
+        'disable_error_code = ["prop-decorator"]\n',
+        ["synthorg.api.*"],
+        id="prop_decorator_on_synthorg_subtree_flagged",
+    ),
+    # A single block listing both surfaces: the exemption applies to
+    # ``synthorg.*`` but NOT the ``tests.*`` pattern sharing the block --
+    # the exact leak this per-pattern scoping closes.
+    pytest.param(
+        '[[tool.mypy.overrides]]\nmodule = ["synthorg.*", "tests.*"]\n'
+        'disable_error_code = ["prop-decorator"]\n',
+        ["tests.*"],
+        id="prop_decorator_mixed_block_only_tests_flagged",
     ),
     pytest.param(
         '[[tool.mypy.overrides]]\nmodule = "litellm.*"\n'

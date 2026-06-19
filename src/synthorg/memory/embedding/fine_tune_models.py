@@ -287,7 +287,7 @@ class EvalMetrics(BaseModel):
     base_ndcg_at_10: float = Field(ge=0.0, le=1.0, description="NDCG@10 base")
     base_recall_at_10: float = Field(ge=0.0, le=1.0, description="Recall@10 base")
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def improvement_ndcg(self) -> float:
         """Relative improvement in NDCG@10."""
@@ -295,7 +295,7 @@ class EvalMetrics(BaseModel):
             return 0.0
         return (self.ndcg_at_10 - self.base_ndcg_at_10) / self.base_ndcg_at_10
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def improvement_recall(self) -> float:
         """Relative improvement in Recall@10."""
@@ -458,7 +458,7 @@ class FineTuneRun(BaseModel):
                 raise ValueError(msg)
         return self
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def duration_seconds(self) -> float | None:
         """Run duration in seconds (``None`` if not completed)."""
@@ -548,7 +548,7 @@ class PreflightResult(BaseModel):
         description="VRAM-based batch size recommendation",
     )
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def can_proceed(self) -> bool:
         """True if no checks have ``"fail"`` status."""

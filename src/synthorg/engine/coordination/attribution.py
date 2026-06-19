@@ -139,7 +139,7 @@ class CoordinationResultWithAttribution(BaseModel):
         description="Per-agent contributions",
     )
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Whether all phases succeeded",
     )
     @property
@@ -147,7 +147,7 @@ class CoordinationResultWithAttribution(BaseModel):
         """Delegate to the wrapped result."""
         return self.result.is_success
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Average contribution score across agents",
     )
     @property

@@ -64,7 +64,6 @@ class TestAppBootHasNoKwargAmbiguity:
             )
 
         assert isinstance(app, Litestar)
-        # Sanity floor: the app should have registered hundreds of
-        # routes after the migration -- a near-zero count would mean
-        # the controllers tree never registered.
+        # Sanity floor: the app should register hundreds of routes; a
+        # near-zero count would mean the controllers tree never registered.
         assert len(app.routes) > 100

@@ -328,7 +328,7 @@ class Message(BaseModel):
         description="Optional message metadata",
     )
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def text(self) -> str:
         """Extract the first ``TextPart`` text, or empty string.

@@ -7,7 +7,7 @@ import type { WorkflowDefinition } from '@/api/types/workflows'
 
 interface WorkflowGridViewProps {
   workflows: readonly WorkflowDefinition[]
-  onDelete: (id: string) => ReturnType<ConfirmHandler>
+  onDelete: ConfirmHandler<[string]>
   onDuplicate: (id: string) => void
   onExport: (id: string) => void | Promise<void>
   /** When defined, renders selection checkboxes on each card. */

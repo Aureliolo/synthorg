@@ -123,7 +123,7 @@ class TaskCompletionReport(BaseModel):
     by_department: tuple[DepartmentTaskSummary, ...] = ()
     generated_at: AwareDatetime = Field(description="Generation timestamp")
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def completion_rate(self) -> float:
         """Completion rate as a percentage (0--100)."""

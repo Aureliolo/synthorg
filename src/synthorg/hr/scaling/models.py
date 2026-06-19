@@ -103,7 +103,7 @@ class ScalingContext(BaseModel):
         description="When the context was built",
     )
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def active_agent_count(self) -> int:
         """Derived from agent_ids length."""

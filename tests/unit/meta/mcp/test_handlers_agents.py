@@ -102,7 +102,7 @@ def actor() -> AgentIdentity:
 def _parse(result: str) -> JsonDict:
     body: JsonDict = json.loads(result)
     assert body["status"] in {"ok", "error"}, (
-        f"legacy envelope leaked: status={body['status']!r}"
+        f"unexpected envelope status={body['status']!r}"
     )
     return body
 

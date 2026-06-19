@@ -269,7 +269,7 @@ class KnowledgeSource(BaseModel):
         description="Safe error description on the last failure",
     )
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def is_global(self) -> bool:
         """Whether the source is global (not scoped to a project)."""

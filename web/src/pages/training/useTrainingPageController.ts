@@ -6,6 +6,7 @@ import { createLogger } from '@/lib/logger'
 import { useTrainingStore } from '@/stores/training'
 import { getErrorMessage, isAxiosError } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
+import { createCancellationToken } from '@/utils/cancellation'
 
 import type { TrainingPlanRow } from './TrainingPlanTable'
 
@@ -69,7 +70,7 @@ function loadAgentRoster(
   setLoading: (loading: boolean) => void,
   setError: (error: string | null) => void,
 ): () => void {
-  let cancelled = false
+  const token = createCancellationToken()
   // Kick off the fetch in a microtask so the initial render completes first
   // (avoids the synchronous set-state-in-effect lint rule). Ask for the full
   // roster up-front so the table does not silently truncate to the default
@@ -77,20 +78,20 @@ function loadAgentRoster(
   void Promise.resolve()
     .then(() => listAgents({ limit: 200 }))
     .then((paginated) => {
-      if (!cancelled) {
+      if (!token.cancelled()) {
         setAgents(paginated.data)
         setLoading(false)
       }
     })
     .catch((err: unknown) => {
       logRosterError(err)
-      if (!cancelled) {
+      if (!token.cancelled()) {
         setError(getErrorMessage(err))
         setLoading(false)
       }
     })
   return () => {
-    cancelled = true
+    token.cancel()
   }
 }
 
@@ -117,17 +118,27 @@ function hydrateAgentsInBatches(
   // roster does not fan out 200 concurrent requests at once. Best-effort:
   // missing rows surface as "no plan" instead of errors (the store
   // swallows 404).
-  let cancelled = false
+  const token = createCancellationToken()
   void (async () => {
     for (let i = 0; i < agents.length; i += HYDRATE_BATCH_SIZE) {
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- flipped by effect cleanup between batches; CFA cannot see the closure mutation
-      if (cancelled) return
+      if (token.cancelled()) return
       const batch = agents.slice(i, i + HYDRATE_BATCH_SIZE)
-      await Promise.all(batch.map((agent) => hydrateForAgent(agent.id)))
+      // Best-effort: a single agent's hydration rejection must not abort the
+      // rest of the batch, so settle every promise and log the failures.
+      const results = await Promise.allSettled(
+        batch.map((agent) => hydrateForAgent(agent.id)),
+      )
+      for (const result of results) {
+        if (result.status === 'rejected') {
+          log.error('Failed to hydrate training agent', {
+            error: sanitizeForLog(getErrorMessage(result.reason)),
+          })
+        }
+      }
     }
   })()
   return () => {
-    cancelled = true
+    token.cancel()
   }
 }
 

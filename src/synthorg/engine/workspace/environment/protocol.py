@@ -43,7 +43,7 @@ class CommandOutcome(BaseModel):
     stdout: str = ""
     stderr: str = ""
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def success(self) -> bool:
         """Whether the command exited cleanly."""

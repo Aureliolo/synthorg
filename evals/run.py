@@ -9,7 +9,7 @@ JSON + Markdown.
 
 Determinism is provided by a config-selectable provider seam: a ``ScriptedDriver``
 (the in-repo default, free + reproducible) or a recorded cassette replayed via
-``CassetteCompletionProvider``. The learning curve (#1983) re-runs this entry
+``CassetteCompletionProvider``. The learning curve re-runs this entry
 point across rounds while a learning subsystem accumulates procedural memory:
 the score rises because the company produces better deliverables, and goes flat
 when learning is disabled. See ``tests/unit/evals/`` for the curve experiment.

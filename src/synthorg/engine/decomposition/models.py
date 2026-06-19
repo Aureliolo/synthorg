@@ -277,7 +277,7 @@ class SubtaskStatusRollup(BaseModel):
             raise ValueError(msg)
         return self
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Derived parent task status from subtask statuses",
     )
     @property

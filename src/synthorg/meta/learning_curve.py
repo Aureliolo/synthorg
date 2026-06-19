@@ -66,7 +66,7 @@ class LearningCurvePoint(BaseModel):
     delta: int = Field(description="total minus the previous run's total (0 first)")
     is_regression: bool
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Fraction of the maximum achievable score",
     )
     @property
@@ -82,7 +82,7 @@ class LearningCurve(BaseModel):
 
     points: tuple[LearningCurvePoint, ...] = Field(default=())
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Whether any run on the curve is a regression",
     )
     @property
@@ -90,7 +90,7 @@ class LearningCurve(BaseModel):
         """Return whether any recorded run regressed against its predecessor."""
         return any(point.is_regression for point in self.points)
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="The most recent run's total, or None when empty",
     )
     @property

@@ -416,7 +416,7 @@ class TestSignalResumeIntent:
         mock_review.dispatch_completion.assert_not_awaited()
 
     async def test_flow2_unknown_exception_propagates(self) -> None:
-        """Unknown errors from the review gate propagate -- not swallowed.
+        """Unknown errors from the review gate propagate, not swallowed.
 
         Exception handling is narrowed to the specific typed errors the
         API layer knows how to map (SelfReviewError -> 403,

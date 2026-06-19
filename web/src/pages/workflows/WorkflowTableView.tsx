@@ -10,7 +10,7 @@ import type { WorkflowDefinition } from '@/api/types/workflows'
 
 interface WorkflowTableViewProps {
   workflows: readonly WorkflowDefinition[]
-  onDelete: (id: string) => ReturnType<ConfirmHandler>
+  onDelete: ConfirmHandler<[string]>
   onDuplicate: (id: string) => void
   onExport: (id: string) => void | Promise<void>
   onToggleSelect?: (id: string) => void

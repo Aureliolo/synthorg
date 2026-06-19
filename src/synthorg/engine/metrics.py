@@ -91,7 +91,7 @@ class TaskCompletionMetrics(BaseModel):
             object.__setattr__(self, "prompt_tokens", self.tokens_per_task)
         return self
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def prompt_token_ratio(self) -> float:
         """Per-call ratio of prompt tokens to total tokens (overhead indicator).

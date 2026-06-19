@@ -96,7 +96,7 @@ class PreFlightResult(BaseModel):
         description="Degradation result (None if not triggered)",
     )
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def effective_provider(self) -> str | None:
         """Provider to use after degradation, or None."""

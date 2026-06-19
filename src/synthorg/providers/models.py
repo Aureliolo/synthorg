@@ -47,7 +47,7 @@ class TokenUsage(BaseModel):
     output_tokens: int = Field(ge=0, description="Output token count")
     cost: float = Field(ge=0.0, description="Estimated cost in the configured currency")
 
-    @computed_field(description="Total token count")  # type: ignore[prop-decorator]  # mypy doesn't support stacked decorators on @property
+    @computed_field(description="Total token count")
     @property
     def total_tokens(self) -> int:
         """Sum of input and output tokens."""
@@ -244,7 +244,7 @@ class ImagePart(BaseModel):
         description="Vision-detail hint passed to the provider",
     )
 
-    @computed_field(description="Chat-completion image_url data URI")  # type: ignore[prop-decorator]  # mypy doesn't support stacked decorators on @property
+    @computed_field(description="Chat-completion image_url data URI")
     @property
     def data_uri(self) -> str:
         """Render the ``data:<media_type>;base64,<data>`` URI."""

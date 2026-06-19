@@ -108,7 +108,7 @@ class CalibrationSummaryResponse(BaseModel):
         description="Calibration records",
     )
 
-    @computed_field(description="Number of calibration records")  # type: ignore[prop-decorator]
+    @computed_field(description="Number of calibration records")
     @property
     def record_count(self) -> int:
         """Number of calibration records.

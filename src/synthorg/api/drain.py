@@ -159,11 +159,6 @@ class RequestDrainMiddleware:
         async def _receive() -> object:
             """Return receive."""
             message = await receive()
-            # ASGI lifespan messages are dicts with a ``type`` field;
-            # the inner ``Receive`` type's union does not include
-            # ``lifespan.shutdown`` so mypy flags the comparison
-            # overlap, but at runtime the message is exactly that
-            # ASGI event.
             if is_lifespan_shutdown_message(message):
                 await self.begin_drain()
             return message

@@ -88,7 +88,7 @@ class AccuracyEffortRatio(BaseModel):
     incorrect_steps: int = Field(ge=0, description="Count of INCORRECT steps")
     total_steps: int = Field(gt=0, description="Total step count")
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Fraction of correct steps (0.0--1.0)",
     )
     @property
@@ -96,7 +96,7 @@ class AccuracyEffortRatio(BaseModel):
         """Fraction of correct steps."""
         return self.correct_steps / self.total_steps
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Accuracy / effort ratio (higher is better)",
     )
     @property

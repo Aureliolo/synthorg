@@ -11,13 +11,11 @@ import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { server } from '@/test-setup'
 
 /**
- * Characterisation tests for the settings store. Pinned to the
- * pre-split (single-file) `stores/settings.ts` behaviour so the
- * upcoming package-split commit can run them green without
- * touching the assertion surface. Every test exercises an
+ * Behaviour tests for the settings store. Every test exercises an
  * observable invariant (mutation-token ordering, generation drift,
- * savingKeys refcount, error rollback) rather than internal
- * helpers; the slice boundary is free to change underneath.
+ * savingKeys refcount, error rollback) rather than internal helpers,
+ * so the slice boundary is free to change underneath without
+ * touching the assertion surface.
  */
 
 const SETTINGS_LIST_LIMIT = 200

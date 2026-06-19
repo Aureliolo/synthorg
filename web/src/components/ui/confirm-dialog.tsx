@@ -8,16 +8,19 @@ import { Button } from './button'
 
 const log = createLogger('ConfirmDialog')
 
+// eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- contract: false keeps the dialog open, void (sync or async) closes it
+type ConfirmReturn = boolean | void | Promise<boolean | void>
+
 /**
- * Confirm-handler contract. Resolving to ``false`` keeps the dialog open
- * so the caller can retry from the same surface (used by sentinel-
- * returning store mutations). Any other resolution (``void`` / sync or
- * async / ``true``) closes the dialog. The ``void`` arm is intentional so
- * a plain void-returning handler body is accepted; that is exactly what
- * ``no-invalid-void-type`` flags, hence the single suppression here.
+ * Confirm / delete handler contract. Resolving to ``false`` keeps the
+ * dialog open so the caller can retry from the same surface; any other
+ * resolution (``void`` / ``undefined`` / ``true``, sync or async)
+ * closes it. ``Args`` types any leading arguments (e.g. the id of the
+ * row being deleted).
  */
-// eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- intentional confirm-handler contract: false keeps the dialog open, void (sync or async) closes it
-export type ConfirmHandler = () => boolean | void | Promise<boolean | void>
+export type ConfirmHandler<Args extends unknown[] = []> = (
+  ...args: Args
+) => ConfirmReturn
 
 export interface ConfirmDialogProps {
   open: boolean

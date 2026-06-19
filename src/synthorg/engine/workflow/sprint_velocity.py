@@ -70,7 +70,7 @@ class VelocityRecord(BaseModel):
         description="Cost consumed during the sprint",
     )
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def completion_ratio(self) -> float:
         """Ratio of completed to committed points.

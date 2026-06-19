@@ -1,5 +1,12 @@
-/** Budget page utility functions -- pure computations with no side effects. */
+/**
+ * Budget page utility functions -- pure computations. The sole side effect is
+ * a deduped diagnostic warning emitted by {@link computeCategoryBreakdown} when
+ * a cost record carries an unrecognised `call_category` (backend enum drift),
+ * so the silent fall-through to the uncategorised bucket is observable.
+ */
 
+import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 import { computeSpendTrend } from '@/utils/dashboard'
 import { formatCurrency, formatDateOnly } from '@/utils/format'
 import type { MetricCardProps } from '@/components/ui/metric-card'
@@ -62,6 +69,8 @@ export interface CategoryRatio {
 export type BudgetMetricCardData = Readonly<Omit<MetricCardProps, 'className'>>
 
 // ── Constants ──────────────────────────────────────────────
+
+const log = createLogger('budget-utils')
 
 /** Color palette for cost breakdown visualizations, using CSS custom properties. */
 const DONUT_COLORS: readonly string[] = [
@@ -200,14 +209,26 @@ export function computeCategoryBreakdown(
     uncategorized: { cost: 0, count: 0 },
   }
   let totalCost = 0
+  // Dedupe drift warnings within the call: a large record set sharing one
+  // drifted category must not flood the log with identical lines.
+  const warnedUnknown = new Set<string>()
 
   for (const r of records) {
     const cat = r.call_category ?? 'uncategorized'
     // ``call_category`` is a backend enum; a value outside the known set
     // (schema drift) falls through to the uncategorized bucket per this
-    // function's documented contract.
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime boundary: backend call_category enum drift
-    const bucket = buckets[cat] ?? buckets.uncategorized
+    // function's documented contract. Index through a string-keyed view so a
+    // drifted value is honestly typed as a possible miss.
+    const byKey: Record<string, { cost: number; count: number }> = buckets
+    const known = byKey[cat]
+    if (!known && !warnedUnknown.has(cat)) {
+      warnedUnknown.add(cat)
+      log.warn(
+        'Unrecognised cost call_category; bucketed as uncategorized',
+        { callCategory: sanitizeForLog(cat) },
+      )
+    }
+    const bucket = known ?? buckets.uncategorized
     bucket.cost += r.cost
     bucket.count += 1
     totalCost += r.cost

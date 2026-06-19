@@ -6,8 +6,9 @@ aggregators in parallel via asyncio.TaskGroup.
 
 import asyncio
 from collections.abc import Awaitable
-from datetime import UTC, datetime
+from datetime import datetime
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.signal_models import (
     OrgBenchmarkSummary,
@@ -99,6 +100,9 @@ class SnapshotBuilder:
         benchmark: Golden-benchmark signal aggregator. Optional because
             the benchmark is an opt-in / offline signal; when ``None``
             the snapshot carries an empty benchmark summary.
+        clock: Injectable time source for the observation-window default
+            (defaults to :class:`SystemClock`); tests inject a fake clock
+            to pin ``until``.
     """
 
     def __init__(  # noqa: PLR0913
@@ -112,6 +116,7 @@ class SnapshotBuilder:
         evolution: EvolutionSignalAggregator,
         telemetry: TelemetrySignalAggregator,
         benchmark: BenchmarkSignalAggregator | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._performance = performance
         self._budget = budget
@@ -121,6 +126,7 @@ class SnapshotBuilder:
         self._evolution = evolution
         self._telemetry = telemetry
         self._benchmark = benchmark
+        self._clock: Clock = clock or SystemClock()
 
     async def build(
         self,
@@ -138,7 +144,7 @@ class SnapshotBuilder:
             Complete org signal snapshot.
         """
         if until is None:
-            until = datetime.now(UTC)
+            until = self._clock.now()
 
         logger.info(
             META_SIGNAL_AGGREGATION_STARTED,

@@ -61,7 +61,7 @@ function findJsonKeyPosition(
 ): { from: number; to: number } | null {
   if (!key) {
     // Searching for a namespace -- first occurrence is fine
-      const pattern = new RegExp(`"${escapeRegex(namespace)}"\\s*:`)
+    const pattern = new RegExp(`"${escapeRegex(namespace)}"\\s*:`)
     const match = pattern.exec(text)
     if (match) {
       return { from: match.index, to: match.index + namespace.length + 2 }
@@ -96,7 +96,7 @@ function findYamlKeyPosition(
 ): { from: number; to: number } | null {
   if (!key) {
     // Searching for a namespace (top-level, no indentation)
-      const pattern = new RegExp(`^${escapeRegex(namespace)}\\s*:`, 'm')
+    const pattern = new RegExp(`^${escapeRegex(namespace)}\\s*:`, 'm')
     const match = pattern.exec(text)
     if (match) {
       return { from: match.index, to: match.index + namespace.length }

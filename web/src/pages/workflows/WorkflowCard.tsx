@@ -11,7 +11,7 @@ import type { WorkflowDefinition } from '@/api/types/workflows'
 interface WorkflowCardProps {
   workflow: WorkflowDefinition
   /** Returning ``false`` keeps the confirm dialog open so the user can retry. */
-  onDelete: (id: string) => ReturnType<ConfirmHandler>
+  onDelete: ConfirmHandler<[string]>
   onDuplicate: (id: string) => void
   /** Export the persisted definition as YAML. */
   onExport: (id: string) => void | Promise<void>

@@ -45,7 +45,7 @@ class ToolDisclosureMetrics(BaseModel):
         description="Full upfront load token cost",
     )
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Tokens saved vs eager loading",
     )
     @property

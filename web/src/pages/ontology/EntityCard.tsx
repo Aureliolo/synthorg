@@ -33,7 +33,7 @@ export interface EntityCardProps {
    * Returning ``false`` (the store's failure sentinel) keeps the
    * confirmation dialog open so the user can retry.
    */
-  onDelete?: (name: string) => ReturnType<ConfirmHandler>
+  onDelete?: ConfirmHandler<[string]>
 }
 
 function EntityCardInner({ entity, onClick, onDelete }: EntityCardProps) {

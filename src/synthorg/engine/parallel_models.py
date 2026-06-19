@@ -84,7 +84,7 @@ class AgentAssignment(BaseModel):
             raise ValueError(msg)
         return self
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Agent identifier string",
     )
     @property
@@ -92,7 +92,7 @@ class AgentAssignment(BaseModel):
         """Agent identifier (string form of UUID)."""
         return str(self.identity.id)
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Task identifier string",
     )
     @property
@@ -196,7 +196,7 @@ class AgentOutcome(BaseModel):
                 raise ValueError(msg)
         return self
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Whether the agent completed successfully",
     )
     @property
@@ -260,7 +260,7 @@ class ParallelExecutionResult(BaseModel):
         object.__setattr__(self, "_currency_cache", resolved)
         return resolved
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Total cost in the configured currency across all agents",
     )
     @property
@@ -276,7 +276,7 @@ class ParallelExecutionResult(BaseModel):
         # lint-allow: currency-aggregation -- guard ran in _resolved_currency()
         return sum(r.total_cost for r in self._completed_results())
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="ISO 4217 currency that denominates ``total_cost``",
     )
     @property
@@ -290,7 +290,7 @@ class ParallelExecutionResult(BaseModel):
         """
         return self._resolved_currency()
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Number of agents that succeeded",
     )
     @property
@@ -298,7 +298,7 @@ class ParallelExecutionResult(BaseModel):
         """Count of successful agent outcomes."""
         return sum(1 for o in self.outcomes if o.is_success)
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Number of agents that failed",
     )
     @property
@@ -306,7 +306,7 @@ class ParallelExecutionResult(BaseModel):
         """Count of non-successful outcomes (includes cancelled)."""
         return sum(1 for o in self.outcomes if not o.is_success)
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Whether all agents completed successfully",
     )
     @property
@@ -347,7 +347,7 @@ class ParallelProgress(BaseModel):
             raise ValueError(msg)
         return self
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Not yet started",
     )
     @property

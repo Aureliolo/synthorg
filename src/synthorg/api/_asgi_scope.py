@@ -16,19 +16,44 @@ from litestar.types import Scope
 
 
 def is_http_scope(scope: Scope) -> bool:
-    """Return True when the ASGI scope is an HTTP request scope."""
-    scope_type: str = scope["type"]
+    """Return True when the ASGI scope is an HTTP request scope.
+
+    Args:
+        scope: The ASGI scope to inspect.
+
+    Returns:
+        ``True`` when ``scope["type"]`` is ``"http"``.
+    """
+    scope_type: str = scope.get("type", "")
     return scope_type == "http"
 
 
 def is_lifespan_scope(scope: Scope) -> bool:
-    """Return True when the ASGI scope is a lifespan scope."""
-    scope_type: str = scope["type"]
+    """Return True when the ASGI scope is a lifespan scope.
+
+    Args:
+        scope: The ASGI scope to inspect.
+
+    Returns:
+        ``True`` when ``scope["type"]`` is ``"lifespan"``.
+    """
+    scope_type: str = scope.get("type", "")
     return scope_type == "lifespan"
 
 
 def is_lifespan_shutdown_message(message: object) -> bool:
-    """Return True when an ASGI receive message is ``lifespan.shutdown``."""
+    """Return True when an ASGI receive message is ``lifespan.shutdown``.
+
+    Args:
+        message: A message yielded by an ASGI receive callable.
+
+    Returns:
+        ``True`` when *message* is a mapping whose ``type`` is
+        ``"lifespan.shutdown"``.
+    """
     if not isinstance(message, Mapping):
         return False
-    return bool(message.get("type") == "lifespan.shutdown")
+    return message.get("type") == "lifespan.shutdown"
+
+
+__all__ = ["is_http_scope", "is_lifespan_scope", "is_lifespan_shutdown_message"]

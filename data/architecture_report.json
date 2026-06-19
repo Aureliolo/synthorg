@@ -896,8 +896,8 @@
     },
     "src/synthorg/persistence/migrations.py": {
       "cap": 500,
-      "loc": 413,
-      "ratio": 0.826,
+      "loc": 414,
+      "ratio": 0.828,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/audit_repository.py": {
@@ -1330,7 +1330,7 @@
     "synthorg.core.auth.roles": 29,
     "synthorg.core.autonomy_enums": 36,
     "synthorg.core.boundary": 37,
-    "synthorg.core.clock": 174,
+    "synthorg.core.clock": 175,
     "synthorg.core.critical_errors": 532,
     "synthorg.core.domain_errors": 212,
     "synthorg.core.effective_autonomy": 22,

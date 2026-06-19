@@ -1,19 +1,23 @@
-"""Regression gate: no ``synthorg.*`` / ``tests.*`` mypy override may lift ``disallow_any_explicit``.
+"""Regression gate: no ``synthorg.*`` / ``tests.*`` mypy override may relax strictness.
 
 The global ``[tool.mypy] disallow_any_explicit = true`` holds across all of
-``synthorg.*`` AND ``tests.*`` (neither surface carries an Any-disabling override);
-the irreducible explicit-``Any`` sites carry reasoned per-line
-``# type: ignore[explicit-any]`` suppressions.
+``synthorg.*`` AND ``tests.*``; the irreducible explicit-``Any`` sites carry
+reasoned per-line ``# type: ignore[explicit-any]`` suppressions. A single
+sanctioned base-code disable is permitted on the enforced surface --
+``disable_error_code = ["prop-decorator"]`` on ``synthorg.*`` -- because
+pydantic's ``@computed_field`` stacked on ``@property`` is correct usage mypy
+cannot model. That is the ONLY allowlisted disable; every other error code (and
+``explicit-any`` in particular) stays enforced.
 
-That global flag catches a bare explicit ``Any``, but a ``[[tool.mypy.overrides]]``
-block can re-open the flag for a covered module while keeping mypy green, in three
-ways: ``disallow_any_explicit = false``; ``explicit-any`` listed in
-``disable_error_code``; or ``ignore_errors = true`` (which silences every error,
-explicit-``Any`` included). This gate parses ``pyproject.toml`` (no project import,
-so it stays fast in pre-push) and fails when any of those forms targets
-``synthorg.*`` or ``tests.*`` -- including via a leading-wildcard ``module`` glob
-such as ``*.api`` that mypy compiles to a dot-spanning match. No override may lift
-the flag for either surface.
+A ``[[tool.mypy.overrides]]`` block can quietly relax strictness for a covered
+module while keeping mypy green in three ways: ``disallow_any_explicit = false``;
+a non-allowlisted code listed in ``disable_error_code``; or ``ignore_errors =
+true`` (which silences every error). This gate parses ``pyproject.toml`` (no
+project import, so it stays fast in pre-push) and fails when any of those forms
+targets ``synthorg.*`` or ``tests.*`` -- including via a leading-wildcard
+``module`` glob such as ``*.api`` that mypy compiles to a dot-spanning match. No
+override may relax the enforced surface beyond the single ``prop-decorator``
+allowlist entry.
 
 The sibling gate ``check_no_explicit_any_inline_disable.py`` guards the other
 vector: a module-level ``# mypy:`` comment inside a source file.
@@ -23,7 +27,8 @@ Usage:
     uv run python scripts/check_no_synthorg_any_override.py --repo-root .
 
 Exit codes:
-    0 -- no ``synthorg.*`` / ``tests.*`` override lifts ``disallow_any_explicit``.
+    0 -- no ``synthorg.*`` / ``tests.*`` override relaxes strictness beyond the
+         allowlisted ``prop-decorator`` disable.
     1 -- a forbidden override block was found.
     2 -- configuration error (missing or unparseable ``pyproject.toml``,
          or an invalid ``--repo-root``).
@@ -40,6 +45,21 @@ _PYPROJECT_REL: Final[str] = "pyproject.toml"
 
 
 _ENFORCED_ROOTS: Final[tuple[str, ...]] = ("synthorg", "tests")
+
+# The only error code an enforced-surface override may list in
+# ``disable_error_code``. pydantic's ``@computed_field`` stacked on
+# ``@property`` is correct usage mypy reports as ``prop-decorator``; disabling
+# it globally for ``synthorg.*`` replaced ~120 inline ignores. Any other code
+# (explicit-any included) remains a forbidden lift.
+_ALLOWED_DISABLED_CODES: Final[frozenset[str]] = frozenset({"prop-decorator"})
+
+# The prop-decorator allowlist is sanctioned ONLY for the exact ``synthorg.*``
+# override (pydantic's ``@computed_field`` over ``@property``). Every other
+# enforced pattern -- ``tests.*``, a narrower ``synthorg`` subtree, or a
+# leading-wildcard glob -- gets no allowlist: any ``disable_error_code`` there
+# is a lift. Scoping the allowlist per pattern stops a block from weakening
+# ``tests.*`` (or a wildcard) under cover of the ``synthorg.*`` exemption.
+_ALLOWLISTED_PATTERN: Final[str] = "synthorg.*"
 
 
 def _targets_enforced(pattern: str) -> bool:
@@ -89,40 +109,54 @@ def _module_patterns(block: Mapping[str, object]) -> list[str]:
     return []
 
 
-def _lifts_explicit_any(block: Mapping[str, object]) -> bool:
-    """Return True if an override block re-opens explicit ``Any`` for its modules.
+def _disabled_codes(block: Mapping[str, object]) -> list[str]:
+    """Return the ``disable_error_code`` entries of a block (str or list form)."""
+    disabled = block.get("disable_error_code")
+    if isinstance(disabled, str):
+        return [disabled]
+    if isinstance(disabled, list):
+        return [code for code in disabled if isinstance(code, str)]
+    return []
 
-    Three forms each suppress the ``explicit-any`` error: the boolean
-    ``disallow_any_explicit = false``; ``explicit-any`` appearing in
-    ``disable_error_code`` (a bare string or a list); and ``ignore_errors =
-    true``, which silences *every* error for the matched modules and so lifts
-    ``explicit-any`` along with the rest. Any of the three keeps mypy green while
-    allowing explicit ``Any`` again, so all count as lifting the flag.
+
+def _lifts_strictness_for_pattern(block: Mapping[str, object], pattern: str) -> bool:
+    """Return True if *block* relaxes strictness for one of its *pattern* targets.
+
+    Three forms each relax the enforced surface: the boolean
+    ``disallow_any_explicit = false``; ``ignore_errors = true``, which silences
+    *every* error for the matched modules; and a ``disable_error_code`` entry
+    (string or list). The single ``prop-decorator`` disable is allowlisted ONLY
+    when *pattern* is the exact sanctioned ``synthorg.*`` override; on any other
+    enforced pattern (``tests.*``, a narrower ``synthorg`` subtree, or a
+    leading-wildcard glob) *every* ``disable_error_code`` entry -- ``prop-
+    decorator`` included -- counts as a lift, so the exemption cannot leak past
+    the one module surface it was granted for.
     """
     if (
         block.get("disallow_any_explicit") is False
         or block.get("ignore_errors") is True
     ):
         return True
-    disabled = block.get("disable_error_code")
-    if isinstance(disabled, str):
-        return disabled == "explicit-any"
-    if isinstance(disabled, list):
-        return "explicit-any" in disabled
-    return False
+    disabled_codes = _disabled_codes(block)
+    if not disabled_codes:
+        return False
+    if pattern == _ALLOWLISTED_PATTERN:
+        return any(code not in _ALLOWED_DISABLED_CODES for code in disabled_codes)
+    return True
 
 
 def find_violations(data: Mapping[str, object]) -> list[str]:
-    """Return every enforced-surface module pattern that lifts ``disallow_any_explicit``.
+    """Return every enforced-surface module pattern that relaxes strictness.
 
     Args:
         data: Parsed ``pyproject.toml`` contents.
 
     Returns:
         The offending ``module`` patterns (``synthorg.*`` or ``tests.*``), in
-        source order. Empty when no enforced-surface override lifts the flag
-        (via ``disallow_any_explicit = false``, an ``explicit-any`` entry in
-        ``disable_error_code``, or ``ignore_errors = true``).
+        source order. Empty when no enforced-surface override relaxes strictness
+        (via ``disallow_any_explicit = false``, a non-allowlisted entry in
+        ``disable_error_code``, or ``ignore_errors = true``); the single
+        ``prop-decorator`` disable is allowlisted and never an offender.
     """
     tool = data.get("tool")
     if not isinstance(tool, Mapping):
@@ -138,11 +172,11 @@ def find_violations(data: Mapping[str, object]) -> list[str]:
     for block in overrides:
         if not isinstance(block, Mapping):
             continue
-        if not _lifts_explicit_any(block):
-            continue
-        violations.extend(
-            pattern for pattern in _module_patterns(block) if _targets_enforced(pattern)
-        )
+        for pattern in _module_patterns(block):
+            if not _targets_enforced(pattern):
+                continue
+            if _lifts_strictness_for_pattern(block, pattern):
+                violations.append(pattern)
     return violations
 
 
@@ -183,13 +217,13 @@ def main(argv: list[str] | None = None) -> int:
     for pattern in violations:
         print(
             f"forbidden: [[tool.mypy.overrides]] block for module {pattern!r} "
-            "lifts disallow_any_explicit (via disallow_any_explicit = false, "
-            "an explicit-any entry in disable_error_code, or ignore_errors = "
-            "true). The global "
-            "disallow_any_explicit = true must hold for all of synthorg.* and "
-            "tests.*. Remove the override, or suppress an irreducible site with "
-            "a reasoned # type: ignore[explicit-any]. No override may lift the "
-            "flag for either surface.",
+            "relaxes strictness (via disallow_any_explicit = false, a "
+            "non-allowlisted entry in disable_error_code, or ignore_errors = "
+            "true). The enforced surface synthorg.* / tests.* may only carry the "
+            "allowlisted disable_error_code = ['prop-decorator']. Remove the "
+            "override, or suppress an irreducible site with a reasoned per-line "
+            "# type: ignore[<code>]. No override may relax either surface "
+            "further.",
             file=sys.stderr,
         )
     return 1

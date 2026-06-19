@@ -782,7 +782,7 @@ class TestActivityFeedLifecycleCap:
 
 
 class TestActivitiesControllerSurface:
-    """The legacy fallback symbols are gone after the refactor."""
+    """The activities controller exposes no module-level lifecycle-event cap."""
 
     def test_max_lifecycle_events_constant_removed(self) -> None:
         from synthorg.api.controllers import activities as mod

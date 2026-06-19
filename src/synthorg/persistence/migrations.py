@@ -41,6 +41,7 @@ import asyncio
 from pathlib import Path
 
 from yoyo import get_backend
+from yoyo.migrations import MigrationList
 
 from synthorg.core.persistence_errors import MigrationError
 from synthorg.observability import get_logger, safe_error_description
@@ -390,7 +391,7 @@ async def migrate_rollback(
                     raise MigrationError(msg)
                 rolled_ids = tuple(m.id for m in to_revert)
                 if to_revert:
-                    bundle = migrations.__class__(to_revert, [])
+                    bundle = MigrationList(to_revert, [])
                     b.rollback_migrations(bundle)
         finally:
             _safe_close(b, context="close_after_rollback")

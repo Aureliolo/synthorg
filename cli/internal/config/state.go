@@ -104,9 +104,9 @@ type State struct {
 	// When FineTuning is true, FineTuningVariant selects which image to pull:
 	//   - "gpu" (default): bundled CUDA torch, ~4 GB, runs on NVIDIA hosts
 	//   - "cpu": CPU-only torch, ~1.7 GB, runs anywhere
-	// An empty value is treated as "gpu" at read time for backward
-	// compatibility with pre-split configs, but the init flow always writes
-	// an explicit variant. The backend reads
+	// An empty value resolves to "gpu" at read time so a config that omits
+	// the field (older on-disk state or a hand-edit) still loads, but the
+	// init flow always writes an explicit variant. The backend reads
 	// ``ghcr.io/aureliolo/synthorg-fine-tune-{variant}`` via
 	// SYNTHORG_FINE_TUNE_IMAGE.
 	FineTuning        bool   `json:"fine_tuning"`

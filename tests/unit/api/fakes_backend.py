@@ -771,8 +771,8 @@ class FakePersistenceBackend(PersistenceBackend):
         self._connection_secrets_stub = InMemoryConnectionSecretRepository()
         self._oauth_states_stub = InMemoryOAuthStateRepository()
         self._webhook_receipts_stub = InMemoryWebhookReceiptRepository()
-        # Legacy flat KV store for get_setting/set_setting (pre-namespaced).
-        # The `settings` property returns `_settings_repo` (namespaced repo).
+        # Flat KV store backing get_setting/set_setting. The `settings`
+        # property returns `_settings_repo` (the namespaced repo).
         self._settings: dict[str, str] = {}
         self._connected = False
         # Lazy-instantiated, cached protocol stand-ins for the A1-A6

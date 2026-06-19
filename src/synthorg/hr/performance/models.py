@@ -263,7 +263,7 @@ class LlmCalibrationRecord(BaseModel):
         description="Behavioral strategy score at time of sampling",
     )
 
-    @computed_field(description="Absolute difference between LLM and behavioral scores")  # type: ignore[prop-decorator]
+    @computed_field(description="Absolute difference between LLM and behavioral scores")
     @property
     def drift(self) -> float:
         """Absolute difference between LLM and behavioral scores."""

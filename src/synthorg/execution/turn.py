@@ -170,13 +170,13 @@ class TurnRecord(BaseModel):
             raise ValueError(msg)
         return self
 
-    @computed_field(description="Total token count")  # type: ignore[prop-decorator]
+    @computed_field(description="Total token count")
     @property
     def total_tokens(self) -> int:
         """Sum of input and output tokens."""
         return self.input_tokens + self.output_tokens
 
-    @computed_field(  # type: ignore[prop-decorator]
+    @computed_field(
         description="Whether this turn completed without error or content filter",
     )
     @property

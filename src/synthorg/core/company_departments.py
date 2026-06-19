@@ -76,7 +76,7 @@ class ReportingLine(BaseModel):
         description="Optional unique identifier for the supervisor",
     )
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def subordinate_key(self) -> str:
         """Hierarchy lookup key: ``subordinate_id`` when set, else ``subordinate``.
@@ -88,7 +88,7 @@ class ReportingLine(BaseModel):
             return self.subordinate_id
         return self.subordinate
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def supervisor_key(self) -> str:
         """Hierarchy lookup key: ``supervisor_id`` when set, else ``supervisor``.
