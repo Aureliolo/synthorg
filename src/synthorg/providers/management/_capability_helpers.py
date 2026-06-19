@@ -7,17 +7,20 @@ discriminated-union DTO and the system-actor constant is a sentinel.
 """
 
 from datetime import UTC, datetime
-from typing import Final
+from typing import Final, assert_never
 
 from synthorg.core.actor_context import current_actor
 from synthorg.core.iso_datetime import format_iso_utc
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import PROVIDER_VALIDATION_FAILED
-from synthorg.providers.enums import AuthType
 from synthorg.providers.errors import ProviderValidationError
 from synthorg.providers.management.capability_dtos import (
     CredentialsRotateRequest,
     ProviderAuditActor,
+    _ApiKeyRotation,
+    _CustomHeaderRotation,
+    _OAuthRotation,
+    _SubscriptionRotation,
 )
 
 logger = get_logger(__name__)
@@ -84,65 +87,55 @@ def credentials_update_fields(
         ``ProviderConfig.model_copy(update=...)`` and an audit-safe
         masked secret.
     """
-    auth_type = request.auth_type
-    if auth_type == AuthType.API_KEY:
-        secret = request.api_key.get_secret_value()  # type: ignore[union-attr]
-        return ({"api_key": secret}, mask_secret(secret))
-    if auth_type == AuthType.SUBSCRIPTION:
-        # ToS re-acceptance is mandatory on subscription rotation;
-        # silently rotating with ``tos_accepted=False`` would let
-        # callers strip the previously-recorded acceptance timestamp
-        # and bypass the contract.
-        if not request.tos_accepted:  # type: ignore[union-attr]
-            msg = (
-                "Subscription rotation requires tos_accepted=true; "
-                "the operator must re-accept the provider's terms"
+    match request:
+        case _ApiKeyRotation():
+            secret = request.api_key.get_secret_value()
+            return ({"api_key": secret}, mask_secret(secret))
+        case _SubscriptionRotation():
+            # ToS re-acceptance is mandatory on subscription rotation;
+            # silently rotating with ``tos_accepted=False`` would let
+            # callers strip the previously-recorded acceptance timestamp
+            # and bypass the contract.
+            if not request.tos_accepted:
+                msg = (
+                    "Subscription rotation requires tos_accepted=true; "
+                    "the operator must re-accept the provider's terms"
+                )
+                exc = ProviderValidationError(msg)
+                logger.warning(
+                    PROVIDER_VALIDATION_FAILED,
+                    auth_type=str(request.auth_type),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise exc
+            secret = request.subscription_token.get_secret_value()
+            return (
+                {
+                    "subscription_token": secret,
+                    "tos_accepted_at": format_iso_utc(datetime.now(UTC)),
+                },
+                mask_secret(secret),
             )
-            exc = ProviderValidationError(msg)
-            logger.warning(
-                PROVIDER_VALIDATION_FAILED,
-                auth_type=str(auth_type),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+        case _CustomHeaderRotation():
+            secret = request.custom_header_value.get_secret_value()
+            return (
+                {
+                    "custom_header_name": request.custom_header_name,
+                    "custom_header_value": secret,
+                },
+                mask_secret(secret),
             )
-            raise exc
-        secret = request.subscription_token.get_secret_value()  # type: ignore[union-attr]
-        return (
-            {
-                "subscription_token": secret,
-                "tos_accepted_at": format_iso_utc(datetime.now(UTC)),
-            },
-            mask_secret(secret),
-        )
-    if auth_type == AuthType.CUSTOM_HEADER:
-        secret = request.custom_header_value.get_secret_value()  # type: ignore[union-attr]
-        return (
-            {
-                "custom_header_name": request.custom_header_name,  # type: ignore[union-attr]
-                "custom_header_value": secret,
-            },
-            mask_secret(secret),
-        )
-    if auth_type == AuthType.OAUTH:
-        secret = request.oauth_client_secret.get_secret_value()  # type: ignore[union-attr]
-        return (
-            {
-                "oauth_token_url": request.oauth_token_url,  # type: ignore[union-attr]
-                "oauth_client_id": request.oauth_client_id,  # type: ignore[union-attr]
-                "oauth_client_secret": secret,
-                "oauth_scope": request.oauth_scope,  # type: ignore[union-attr]
-            },
-            mask_secret(secret),
-        )
-    # The discriminated-union covers every AuthType variant supported
-    # by the rotation contract, so this line is reachable only if the
-    # union is extended without updating this dispatch.
-    msg = f"Unsupported auth_type for rotation: {auth_type!r}"  # type: ignore[unreachable]
-    exc = ProviderValidationError(msg)
-    logger.warning(
-        PROVIDER_VALIDATION_FAILED,
-        auth_type=str(auth_type),
-        error_type=type(exc).__name__,
-        error=safe_error_description(exc),
-    )
-    raise exc
+        case _OAuthRotation():
+            secret = request.oauth_client_secret.get_secret_value()
+            return (
+                {
+                    "oauth_token_url": request.oauth_token_url,
+                    "oauth_client_id": request.oauth_client_id,
+                    "oauth_client_secret": secret,
+                    "oauth_scope": request.oauth_scope,
+                },
+                mask_secret(secret),
+            )
+        case _ as unreachable:
+            assert_never(unreachable)
