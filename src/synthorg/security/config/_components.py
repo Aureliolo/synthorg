@@ -179,6 +179,10 @@ class SafetyClassifierConfig(BaseModel):
             classifier entirely (permission tier: SAFE_TOOL).
             Matched against the ``action_type`` field of the
             security context.
+        temperature: Sampling temperature for the classifier call.
+            Pinned to ``0.0`` by default for a deterministic verdict.
+        top_p: Nucleus-sampling cap for the classifier call. Pinned to
+            ``1.0`` by default so determinism rests on ``temperature``.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -192,6 +196,8 @@ class SafetyClassifierConfig(BaseModel):
     max_consecutive_denials: int = Field(default=3, ge=1)
     max_total_denials: int = Field(default=20, ge=1)
     safe_tool_categories: tuple[str, ...] = ("code:read", "docs:write")
+    temperature: float = Field(default=0.0, ge=0.0, le=2.0)
+    top_p: float = Field(default=1.0, ge=0.0, le=1.0)
 
 
 class UncertaintyCheckConfig(BaseModel):

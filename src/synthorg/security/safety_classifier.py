@@ -407,7 +407,8 @@ class SafetyClassifier:
                     model,
                     tools=[_SAFETY_VERDICT_TOOL],
                     config=CompletionConfig(
-                        temperature=0.0,
+                        temperature=self._config.temperature,
+                        top_p=self._config.top_p,
                         max_tokens=self._config.max_output_tokens,
                     ),
                 ),

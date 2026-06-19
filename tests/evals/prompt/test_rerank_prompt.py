@@ -118,3 +118,89 @@ class TestRerankPromptContract:
             "_RERANK_COMPLETION_CONFIG so any refactor that constructs a "
             "fresh CompletionConfig fails this regression."
         )
+
+
+@pytest.mark.unit
+class TestRerankRankingParse:
+    """Labelled eval for the ranking-array parse contract.
+
+    The prompt asks the LLM for ``{"ranking": [idx, ...]}``; this grades
+    that a well-formed full permutation re-orders the candidates while
+    every malformed array (wrong length, missing key, duplicate or
+    out-of-range indices) fails closed to the original order rather than
+    raising or dropping candidates.
+    """
+
+    async def _rerank_order(self, content: str) -> tuple[str, ...]:
+        """Run ``_rerank_via_llm`` over two candidates ``a``/``b``.
+
+        Returns the resulting id order so a permutation vs fallback is
+        observable.
+        """
+        from types import SimpleNamespace
+        from typing import cast
+        from unittest.mock import AsyncMock
+
+        from typeguard import suppress_type_checks
+
+        from synthorg.memory.retrieval.models import (
+            RetrievalCandidate,
+            RetrievalQuery,
+        )
+        from synthorg.memory.retrieval.reranking.llm_reranker import (
+            LLMQuerySpecificReranker,
+        )
+        from synthorg.providers.protocol import CompletionProvider
+
+        provider = SimpleNamespace(
+            complete=AsyncMock(
+                spec=CompletionProvider.complete,
+                return_value=SimpleNamespace(content=content),
+            ),
+        )
+        query = cast(
+            RetrievalQuery,
+            SimpleNamespace(text="needle", agent_id="test-agent"),
+        )
+        candidates = tuple(
+            cast(
+                RetrievalCandidate,
+                SimpleNamespace(
+                    entry=SimpleNamespace(id=cid, content=cid),
+                    combined_score=0.5,
+                ),
+            )
+            for cid in ("a", "b")
+        )
+        with suppress_type_checks():
+            reranker = LLMQuerySpecificReranker(
+                provider=cast(CompletionProvider, provider),
+                model="test-small-001",
+                cache=None,
+            )
+            result = await reranker._rerank_via_llm(query, candidates)
+        return tuple(c.entry.id for c in result)
+
+    async def test_valid_permutation_reorders(self) -> None:
+        """A full valid permutation re-orders the candidates."""
+        import json
+
+        assert await self._rerank_order(json.dumps({"ranking": [1, 0]})) == ("b", "a")
+
+    @pytest.mark.parametrize(
+        "ranking",
+        [
+            [0],  # wrong length
+            [0, 0],  # duplicate indices
+            [0, 2],  # out-of-range index
+        ],
+    )
+    async def test_malformed_ranking_falls_back(self, ranking: list[int]) -> None:
+        """A malformed ranking array preserves the original order."""
+        import json
+
+        assert await self._rerank_order(json.dumps({"ranking": ranking})) == ("a", "b")
+
+    async def test_missing_ranking_key_falls_back(self) -> None:
+        """A payload without a ``ranking`` key preserves the original order."""
+        assert await self._rerank_order("{}") == ("a", "b")

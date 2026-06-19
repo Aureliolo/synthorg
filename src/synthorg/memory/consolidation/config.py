@@ -431,6 +431,8 @@ class LLMConsolidationConfig(BaseModel):
             ``_synthesize`` receives two -- the smallest input for a
             meaningful LLM merge.
         temperature: Sampling temperature for the synthesis LLM call.
+        top_p: Nucleus-sampling cap for the synthesis LLM call. Pinned to
+            ``1.0`` by default so determinism rests on ``temperature``.
         max_summary_tokens: Maximum tokens for the synthesis response.
         include_distillation_context: When True, fetches recent
             distillation entries as trajectory context for the
@@ -459,6 +461,12 @@ class LLMConsolidationConfig(BaseModel):
         ge=0.0,
         le=2.0,
         description="Sampling temperature for the synthesis LLM call",
+    )
+    top_p: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description="Nucleus-sampling cap for the synthesis LLM call",
     )
     max_summary_tokens: int = Field(
         default=500,
