@@ -295,17 +295,19 @@ async def _backup_restore(
             )
             msg = "Concurrent in-flight restore with this idempotency key"
             return err(ConflictError(msg), domain_code="conflict")
-        payload = outcome.result
         # Validate the (possibly cached) payload shape before reporting
         # success, mirroring the REST restore path: a stale or corrupt
         # idempotency-store row must force a rerun rather than emit a
-        # malformed success response.
+        # malformed success response. Return the validated model's dump so
+        # any Pydantic coercion / normalisation is preserved rather than
+        # echoing the raw cached dict.
         try:
-            RestoreConfirmation.model_validate(payload)
+            confirmation = RestoreConfirmation.model_validate(outcome.result)
         except (ValueError, TypeError, ValidationError) as exc:
             log_handler_invoke_failed(tool, exc)
             msg = "Cached restore response failed validation; rerun the restore"
             return err(RestoreError(msg))
+        payload = confirmation.model_dump()
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except GuardrailViolationError as exc:
