@@ -22,6 +22,7 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.actor_context import require_actor
 from synthorg.core.domain_errors import AbTestNotFoundError, ServiceUnavailableError
+from synthorg.core.pagination import collect_all
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
@@ -261,9 +262,12 @@ class MetaController(Controller):
         # ``AbTestRepository``; when persistence is absent the repo is
         # unwired and the page degrades to empty rather than 503-ing.
         repo = ab_test_repo_of(state.app_state)
-        records: tuple[AbTestRecord, ...] = (
-            await repo.list_items() if repo is not None else ()
-        )
+        records: tuple[AbTestRecord, ...] = ()
+        if repo is not None:
+            bound_repo = repo
+            records = await collect_all(
+                lambda limit, offset: bound_repo.list_items(limit=limit, offset=offset)
+            )
         summaries = tuple(_ab_test_to_dict(record) for record in records)
         page, meta = paginate_cursor(
             summaries,

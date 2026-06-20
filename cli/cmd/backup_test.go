@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // NOTE: Tests in this file share the global rootCmd and must NOT call
@@ -226,6 +228,44 @@ func TestBuildLocalJWT_TooShort(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "too short") {
 		t.Errorf("error %q does not mention too short", err.Error())
+	}
+}
+
+func TestBackupAPIRequest_OversizeResponse(t *testing.T) {
+	orig := maxBackupResponseBytes
+	maxBackupResponseBytes = 32
+	t.Cleanup(func() { maxBackupResponseBytes = orig })
+
+	oversized := strings.Repeat("a", int(maxBackupResponseBytes)+64)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(oversized))
+	}))
+	t.Cleanup(srv.Close)
+
+	u, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatalf("parsing test server URL: %v", err)
+	}
+	port, err := strconv.Atoi(u.Port())
+	if err != nil {
+		t.Fatalf("parsing test server port: %v", err)
+	}
+
+	_, _, err = backupAPIRequest(
+		context.Background(),
+		port,
+		http.MethodGet,
+		"",
+		nil,
+		5*time.Second,
+		"test-backup-secret-at-least-32-chars",
+	)
+	if err == nil {
+		t.Fatal("expected oversize error, got nil")
+	}
+	if !strings.Contains(err.Error(), "exceeds maximum size") {
+		t.Errorf("error %q does not mention exceeds maximum size", err.Error())
 	}
 }
 

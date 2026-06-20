@@ -35,6 +35,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
+from synthorg.core.pagination import collect_all
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import FiringReason
 from synthorg.hr.errors import PruningUnrestartableError
@@ -287,8 +288,11 @@ class PruningService:
         """
         if self._request_repo is None:
             return
+        repo = self._request_repo
         try:
-            requests = await self._request_repo.list_items()
+            requests = await collect_all(
+                lambda limit, offset: repo.list_items(limit=limit, offset=offset)
+            )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(

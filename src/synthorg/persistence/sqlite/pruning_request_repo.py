@@ -64,7 +64,7 @@ def _row_to_request(row: aiosqlite.Row) -> PruningRequest:
             else None,
             decided_by=NotBlankStr(str(decided_by)) if decided_by is not None else None,
         )
-    except (ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+    except (ValueError, TypeError, KeyError, IndexError, json.JSONDecodeError) as exc:
         logger.warning(
             HR_PRUNING_PERSISTENCE_FAILED,
             operation="deserialize",
@@ -111,6 +111,7 @@ class SQLitePruningRequestRepository:
                 evaluation = excluded.evaluation,
                 approval_id = excluded.approval_id,
                 status = excluded.status,
+                created_at = excluded.created_at,
                 decided_at = excluded.decided_at,
                 decided_by = excluded.decided_by
         """

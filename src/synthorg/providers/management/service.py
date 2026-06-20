@@ -362,15 +362,28 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                     request.name,
                     request.api_key.get_secret_value(),
                 )
-            new_config = build_provider_config(request, connection_name=conn_name)
-            new_providers = {**providers, request.name: new_config}
             try:
+                # Config construction stays inside the try: a validation
+                # failure here must also unwind the catalog mint above,
+                # else the secret is left orphaned with no owning provider.
+                new_config = build_provider_config(request, connection_name=conn_name)
+                new_providers = {**providers, request.name: new_config}
                 await self._validate_and_persist(new_providers)
+            except Exception:
+                # Pre-persist failure (build / validate / persist): nothing is
+                # durably stored, so drop the minted secret to avoid an
+                # orphaned connection with no owning provider.
+                if conn_name is not None:
+                    await delete_provider_credential(self._app_state, request.name)
+                raise
+            try:
                 await self._allowlist.update_for_create(new_config)
             except Exception:
-                # The catalog mint above already ran; if persistence/allowlist
-                # fails the config is never stored, so the minted secret would
-                # be an orphaned connection with no owning provider. Remove it.
+                # Post-persist failure: the config (referencing conn_name) is
+                # already stored, so roll it back to the pre-create snapshot
+                # BEFORE dropping the secret -- otherwise the persisted config
+                # would point at a deleted credential.
+                await self._restore_providers(providers)
                 if conn_name is not None:
                     await delete_provider_credential(self._app_state, request.name)
                 raise
@@ -419,12 +432,29 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 self._app_state, name, existing, request
             )
             new_providers = {**providers, name: updated}
-            await self._validate_and_persist(new_providers)
-            await self._allowlist.update_for_update(
-                existing,
-                updated,
-                new_providers,
-            )
+            # ``apply_update_with_credential`` may have minted a new catalog
+            # secret in place (overwriting the prior one, which is then
+            # unrecoverable). If the persist or allowlist step fails, drop that
+            # credential so a failed update fails closed rather than serving a
+            # half-applied secret under a config that was rolled back.
+            minted_credential = request.api_key is not None
+            try:
+                await self._validate_and_persist(new_providers)
+            except Exception:
+                if minted_credential:
+                    await delete_provider_credential(self._app_state, name)
+                raise
+            try:
+                await self._allowlist.update_for_update(
+                    existing,
+                    updated,
+                    new_providers,
+                )
+            except Exception:
+                await self._restore_providers(providers)
+                if minted_credential:
+                    await delete_provider_credential(self._app_state, name)
+                raise
 
             logger.info(
                 SECURITY_PROVIDER_UPDATED,
@@ -936,6 +966,32 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 auth_type=updated.auth_type,
             )
         return True
+
+    async def _restore_providers(
+        self,
+        snapshot: Mapping[str, ProviderConfig],
+    ) -> None:
+        """Best-effort rollback to a pre-mutation provider snapshot.
+
+        Re-persists ``snapshot`` so a post-persist step that fails (e.g. an
+        allowlist update) leaves no half-applied config behind. ``snapshot``
+        was a valid persisted state moments earlier, so this should succeed; a
+        rollback failure is logged, never raised, so it cannot mask the
+        original error that triggered the rollback.
+
+        Args:
+            snapshot: The provider mapping to restore.
+        """
+        try:
+            await self._validate_and_persist(dict(snapshot))
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised below
+            reraise_critical(exc)
+            logger.warning(
+                PROVIDER_VALIDATION_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                provider_count=len(snapshot),
+            )
 
     async def _validate_and_persist(
         self,

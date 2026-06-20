@@ -249,6 +249,9 @@ class TestLiteLLMDriverCredentialCacheClock:
         config = _make_config(
             auth_type=AuthType.OAUTH,
             connection_name="conn-oauth",
+            oauth_token_url="https://auth.example.com/token",
+            oauth_client_id="client-id",
+            oauth_client_secret="client-secret",
         )
         catalog = AsyncMock(spec=ConnectionCatalog)
         catalog.get_credentials.return_value = {"access_token": "live"}

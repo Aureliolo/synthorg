@@ -311,9 +311,15 @@ func backupAPIRequest(ctx context.Context, port int, method, path string, body [
 		return nil, 0, fmt.Errorf("backend unreachable: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxBackupResponseBytes))
+	// Read one byte past the cap so an over-size body is detected explicitly
+	// rather than silently truncated and failing later as a misleading parse
+	// error. Matches the pattern in selfupdate/updater.go and verify/*.
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxBackupResponseBytes+1))
 	if err != nil {
 		return nil, 0, fmt.Errorf("reading response: %w", err)
+	}
+	if int64(len(respBody)) > maxBackupResponseBytes {
+		return nil, 0, fmt.Errorf("response exceeds maximum size of %d bytes", maxBackupResponseBytes)
 	}
 	return respBody, resp.StatusCode, nil
 }
@@ -732,7 +738,7 @@ func handleRestartAfterRestore(ctx context.Context, cmd *cobra.Command, out, err
 	// already down (a restore onto a stopped install), `compose down` is a
 	// pointless churn with a misleading "Stopping containers..." step; skip
 	// straight to the start hint so the operator sees an honest next action.
-	psOut, psErr := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "-q")
+	psOut, psErr := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "-q", "--filter", "status=running")
 	switch {
 	case psErr != nil:
 		// ps query failed: container state is unknown. `compose down` is

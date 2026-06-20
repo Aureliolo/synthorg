@@ -14,6 +14,7 @@ from typing import Final
 from uuid import UUID
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     ImprovementProposal,
@@ -149,8 +150,8 @@ class ABTestRollout:
         proposal: ImprovementProposal,
         assignment: GroupAssignment,
         status: AbTestStatus,
-        verdict: ABTestVerdict | None,
-        observation_hours_elapsed: float,
+        verdict: ABTestVerdict | None = None,
+        observation_hours_elapsed: float = 0.0,
     ) -> None:
         """Best-effort durable write of the rollout's A/B-test record.
 
@@ -222,8 +223,6 @@ class ABTestRollout:
                 proposal=proposal,
                 assignment=assignment,
                 status=AbTestStatus.INCONCLUSIVE,
-                verdict=None,
-                observation_hours_elapsed=0.0,
             )
             return RolloutResult(
                 proposal_id=proposal.id,
@@ -244,8 +243,6 @@ class ABTestRollout:
                 proposal=proposal,
                 assignment=assignment,
                 status=AbTestStatus.FAILED,
-                verdict=None,
-                observation_hours_elapsed=0.0,
             )
             return RolloutResult(
                 proposal_id=proposal.id,
@@ -258,13 +255,26 @@ class ABTestRollout:
             proposal=proposal,
             assignment=assignment,
             status=AbTestStatus.RUNNING,
-            verdict=None,
-            observation_hours_elapsed=0.0,
         )
-        return await self._observe_and_compare(
-            proposal=proposal,
-            assignment=assignment,
-        )
+        try:
+            return await self._observe_and_compare(
+                proposal=proposal,
+                assignment=assignment,
+            )
+        except Exception as exc:
+            # An aggregation/comparator/runtime failure must not leave the
+            # durable RUNNING record stranded, or ``/meta/ab-tests`` shows the
+            # rollout as permanently running. Stamp a terminal FAILED record,
+            # then re-raise to preserve the existing failure semantics.
+            # ``CancelledError`` is a ``BaseException``, so cooperative
+            # cancellation bypasses this handler untouched.
+            reraise_critical(exc)
+            await self._persist_record(
+                proposal=proposal,
+                assignment=assignment,
+                status=AbTestStatus.FAILED,
+            )
+            raise
 
     async def _aggregate_tick(
         self,

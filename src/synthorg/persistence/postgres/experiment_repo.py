@@ -31,22 +31,42 @@ logger = get_logger(__name__)
 
 
 def _row_to_variant(row: DictRow) -> ExperimentVariant:
-    return ExperimentVariant(
-        experiment=NotBlankStr(str(row["experiment"])),
-        variant=NotBlankStr(str(row["variant"])),
-        weight=int(row["weight"]),
-        description=str(row["description"]),
-        created_at=coerce_row_timestamp(row["created_at"]),
-    )
+    try:
+        return ExperimentVariant(
+            experiment=NotBlankStr(str(row["experiment"])),
+            variant=NotBlankStr(str(row["variant"])),
+            weight=int(row["weight"]),
+            description=str(row["description"]),
+            created_at=coerce_row_timestamp(row["created_at"]),
+        )
+    except (ValueError, TypeError, KeyError) as exc:
+        logger.warning(
+            EXPERIMENT_PERSISTENCE_FAILED,
+            operation="deserialize",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        msg = f"Failed to parse experiment-variant row: {type(exc).__name__}"
+        raise QueryError(msg) from exc
 
 
 def _row_to_assignment(row: DictRow) -> ExperimentAssignment:
-    return ExperimentAssignment(
-        experiment=NotBlankStr(str(row["experiment"])),
-        subject_id=NotBlankStr(str(row["subject_id"])),
-        variant=NotBlankStr(str(row["variant"])),
-        assigned_at=coerce_row_timestamp(row["assigned_at"]),
-    )
+    try:
+        return ExperimentAssignment(
+            experiment=NotBlankStr(str(row["experiment"])),
+            subject_id=NotBlankStr(str(row["subject_id"])),
+            variant=NotBlankStr(str(row["variant"])),
+            assigned_at=coerce_row_timestamp(row["assigned_at"]),
+        )
+    except (ValueError, TypeError, KeyError) as exc:
+        logger.warning(
+            EXPERIMENT_PERSISTENCE_FAILED,
+            operation="deserialize",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        msg = f"Failed to parse experiment-assignment row: {type(exc).__name__}"
+        raise QueryError(msg) from exc
 
 
 class PostgresExperimentRepository:

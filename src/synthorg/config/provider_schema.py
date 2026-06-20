@@ -227,9 +227,14 @@ class ProviderConfig(BaseModel):
                 a non-connection auth type is missing a required embedded
                 credential field.
         """
-        if self.connection_name is not None:
-            return self
+        # The ``connection_name`` short-circuit is scoped to catalog-backed
+        # auth types only. A non-catalog auth type (OAUTH / CUSTOM_HEADER /
+        # SUBSCRIPTION) carrying a ``connection_name`` must still satisfy its
+        # embedded-field requirements -- otherwise the reference would let it
+        # bypass ``_AUTH_REQUIRED_FIELDS`` and persist an unauthable config.
         if self.auth_type in self._CONNECTION_REQUIRED_AUTH_TYPES:
+            if self.connection_name is not None:
+                return self
             label = self.auth_type.value.replace("_", " ").title()
             msg = f"{label} auth_type requires: connection_name"
             logger.warning(

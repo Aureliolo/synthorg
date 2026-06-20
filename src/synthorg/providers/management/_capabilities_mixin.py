@@ -43,7 +43,10 @@ from synthorg.providers.management._capability_helpers import (
     credentials_update_fields,
     provider_actor_from_context,
 )
-from synthorg.providers.management._credential_helpers import store_provider_api_key
+from synthorg.providers.management._credential_helpers import (
+    delete_provider_credential,
+    store_provider_api_key,
+)
 from synthorg.providers.management.audit_service import ProviderAuditService
 from synthorg.providers.management.capability_dtos import (
     AddModelRequest,
@@ -563,7 +566,17 @@ class ProviderCapabilitiesMixin:
                 {**existing.model_dump(mode="python"), **update_fields}
             )
             new_providers = {**providers, name: updated}
-            await self._validate_and_persist(new_providers)
+            try:
+                await self._validate_and_persist(new_providers)
+            except Exception:
+                # The mint above overwrote the prior secret in place (the old
+                # one is unrecoverable). If the validate/persist step fails,
+                # drop the rotated credential so the rotation fails closed --
+                # the operator retries rather than the provider silently
+                # serving a secret the failed operation reported as un-applied.
+                if raw_api_key is not None:
+                    await delete_provider_credential(self._app_state, name)
+                raise
 
         logger.info(
             PROVIDER_CREDENTIALS_ROTATED,
