@@ -82,7 +82,14 @@ class _FakeProposalRepo:
         return tuple(rows[offset : offset + limit])
 
     async def count(self, filter_spec: ConversationalProposalFilterSpec) -> int:
-        return len(await self.query(filter_spec))
+        # Count matching rows directly: delegating to ``query`` would cap
+        # the count at its default page limit and undercount past it.
+        return sum(
+            1
+            for p in self.items.values()
+            if filter_spec.approval_id is None
+            or p.approval_id == filter_spec.approval_id
+        )
 
     async def transition_if(
         self,

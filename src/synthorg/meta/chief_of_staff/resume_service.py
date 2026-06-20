@@ -27,6 +27,7 @@ from synthorg.communication.conversation.enums import ConversationalProposalStat
 from synthorg.meta.chief_of_staff.enums import (
     ConversationInviteStatus,
     ConversationParticipantStatus,
+    ParticipantAdmission,
 )
 from synthorg.meta.chief_of_staff.group_models import (
     ConversationInvite,
@@ -146,3 +147,23 @@ class ConversationalResumeService:
     async def add_participant(self, participant: ConversationParticipant) -> None:
         """Insert an active roster row (idempotent at the repo layer)."""
         await self._participant_repo.save(participant)
+
+    async def admit_participant_within_cap(
+        self,
+        participant: ConversationParticipant,
+        *,
+        cap: int,
+    ) -> ParticipantAdmission:
+        """Atomically admit *participant* iff the roster is under *cap*.
+
+        Routes through the repository's transactional admit so the
+        already-member check, the active-count read, and the insert are a
+        single atomic unit -- two concurrent consents cannot both pass the
+        cap and push the roster to ``cap + 1``.
+
+        Returns:
+            The admission outcome (admitted / already-active / cap-reached).
+        """
+        return await self._participant_repo.admit_active_within_cap(
+            participant, cap=cap
+        )

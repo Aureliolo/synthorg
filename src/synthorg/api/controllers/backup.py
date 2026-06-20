@@ -4,6 +4,7 @@ All endpoints require CEO or the internal SYSTEM role
 (used by the CLI for ``synthorg backup`` / ``synthorg wipe``).
 """
 
+import hashlib
 from collections.abc import Awaitable, Callable
 from typing import Annotated, Final
 
@@ -33,6 +34,7 @@ from synthorg.backup.errors import (
     RestoreError,
 )
 from synthorg.backup.models import (
+    BackupComponent,
     BackupInfo,
     BackupManifest,
     BackupTrigger,
@@ -61,6 +63,32 @@ from synthorg.observability.events.idempotency import IDEMPOTENCY_CLAIM_IN_FLIGH
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
+
+
+def _restore_idempotency_key(
+    backup_id: str,
+    components: tuple[BackupComponent, ...] | None,
+    raw_key: str,
+) -> str:
+    """Derive the durable dedup key for a restore from its full intent.
+
+    Binds the backup id, the canonical component set, AND the caller's
+    raw key into a single SHA-256 digest. Hashing serves two ends: a
+    reused token against a different backup OR a different component
+    selection can never collide on a cached result, and the fixed-length
+    output can never overflow the 255-char key column (the raw composite
+    ``backup_id:components:key`` could, given the 255-char header bound).
+
+    Returns:
+        The 64-char hex dedup key.
+    """
+    canonical_components = (
+        "*"
+        if components is None
+        else ",".join(sorted(component.value for component in components))
+    )
+    intent = f"{backup_id}\x00{canonical_components}\x00{raw_key}"
+    return hashlib.sha256(intent.encode("utf-8", errors="replace")).hexdigest()
 
 
 def _backup_service(app_state: AppState) -> BackupService:
@@ -412,10 +440,14 @@ class BackupController(Controller):
         try:
             outcome = await idempotency_service_of(app_state).run_idempotent(
                 scope="backup:restore",
-                # Bind the backup id into the key so a reused token on a
-                # different backup cannot return this restore's cached
-                # result (matches the MCP backup handler's pattern).
-                key=f"{data.backup_id}:{idempotency_key}",
+                # Bind the backup id AND the component selection into the
+                # key so a reused token on a different backup -- or the same
+                # backup with a different component set -- cannot return this
+                # restore's cached result. Hashed so the composite can never
+                # overflow the 255-char key column.
+                key=_restore_idempotency_key(
+                    data.backup_id, data.components, idempotency_key
+                ),
                 callback=lambda: _do_restore_as_dict(_do_restore),
             )
         except BackupNotFoundError:

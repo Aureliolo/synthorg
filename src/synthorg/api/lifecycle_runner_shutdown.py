@@ -18,7 +18,7 @@ from synthorg.api.lifecycle_runner_support import (
     _cancel_with_timeout,
     _LifecycleTasks,
 )
-from synthorg.api.state import AppState
+from synthorg.api.state import _ENTRY_TASK_DRAIN_GRACE_SECONDS, AppState
 from synthorg.backup.service import BackupService
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.meeting.scheduler import MeetingScheduler
@@ -70,11 +70,14 @@ _RESUME_DRAIN_OUTER_SECONDS: Final[float] = (
 _REVIEW_GATE_DRAIN_OUTER_SECONDS: Final[float] = 5.0 + _DRAIN_OUTER_GRACE_SECONDS
 
 # Outer backstop for the objective / brownfield entry-task drain. The drain
-# is internally bounded by ``_ENTRY_TASK_DRAIN_GRACE_SECONDS`` (3.0s in
+# is internally bounded by ``_ENTRY_TASK_DRAIN_GRACE_SECONDS`` (from
 # api/state.py) plus the cancel-and-await of stragglers; the outer budget
 # exceeds that grace by the shared backstop so a task that shields
-# ``CancelledError`` cannot block the shutdown window.
-_ENTRY_TASK_DRAIN_OUTER_SECONDS: Final[float] = 3.0 + _DRAIN_OUTER_GRACE_SECONDS
+# ``CancelledError`` cannot block the shutdown window. Reference the source
+# constant so the two values can never drift apart.
+_ENTRY_TASK_DRAIN_OUTER_SECONDS: Final[float] = (
+    _ENTRY_TASK_DRAIN_GRACE_SECONDS + _DRAIN_OUTER_GRACE_SECONDS
+)
 
 # Outer backstop for the cooperative multi-agent drain. ``initiate_shutdown``
 # is internally bounded (grace 8s + cancel-propagation 5s + cleanup 2s);

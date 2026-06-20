@@ -98,10 +98,21 @@ class QuotaPoller:
                 return
             if self._task is not None and self._task.done():
                 self._task = None
-            self._task = asyncio.get_running_loop().create_task(
+            task = asyncio.get_running_loop().create_task(
                 self._poll_loop(),
                 name="quota-poller",
             )
+            # Surface a crashed poll loop promptly rather than letting the
+            # exception sit buffered on the task handle until a later
+            # lifecycle call clears it.
+            task.add_done_callback(
+                log_task_exceptions(
+                    logger,
+                    QUOTA_POLL_FAILED,
+                    note="quota_poller_loop",
+                )
+            )
+            self._task = task
             logger.info(
                 QUOTA_POLLER_STARTED,
                 interval=self._config.poll_interval_seconds,

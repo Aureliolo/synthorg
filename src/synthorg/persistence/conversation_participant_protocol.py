@@ -18,7 +18,10 @@ from typing import Protocol, override, runtime_checkable
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.chief_of_staff.enums import ConversationParticipantStatus
+from synthorg.meta.chief_of_staff.enums import (
+    ConversationParticipantStatus,
+    ParticipantAdmission,
+)
 from synthorg.meta.chief_of_staff.group_models import ConversationParticipant
 from synthorg.persistence._generics import (
     DEFAULT_PAGE_SIZE,
@@ -52,12 +55,43 @@ class ConversationParticipantRepository(
     """CRUD + membership CAS + filtered roster query for participants.
 
     Composes :class:`StatefulRepository` + :class:`FilteredQueryRepository`
-    (ADR-0001). No bespoke methods beyond the generic surface.
+    (ADR-0001). One bespoke method, :meth:`admit_active_within_cap`, is
+    permitted under ADR-0001 D7 (a domain invariant callers must not
+    bypass): the ``group_chat_max_participants`` cap can only be enforced
+    race-free by an atomic count-and-insert inside one backend
+    transaction, which the generic CRUD surface cannot express.
 
     Non-recoverable errors propagate. Constraint violations raise
     :class:`ConstraintViolationError`; other DB errors raise
     :class:`QueryError`.
     """
+
+    async def admit_active_within_cap(
+        self,
+        participant: ConversationParticipant,
+        *,
+        cap: int,
+    ) -> ParticipantAdmission:
+        """Atomically admit *participant* as active iff under *cap*.
+
+        Enforces the per-conversation active-participant cap without a
+        read-modify-write race: the active count, the already-member
+        check, and the insert run inside a single backend transaction
+        (SQLite write serialisation / Postgres per-conversation advisory
+        lock), so two concurrent consents for different agents can never
+        both pass the cap check and push the roster to ``cap + 1``.
+
+        Returns:
+            :attr:`~ParticipantAdmission.ADMITTED` when the row was
+            inserted, :attr:`~ParticipantAdmission.ALREADY_ACTIVE` when
+            the agent was already active (idempotent no-op), or
+            :attr:`~ParticipantAdmission.CAP_REACHED` when the
+            conversation already held *cap* active members.
+
+        Raises:
+            QueryError: If the database operation fails.
+        """
+        ...
 
     @override
     async def save(self, entity: ConversationParticipant, /) -> None:

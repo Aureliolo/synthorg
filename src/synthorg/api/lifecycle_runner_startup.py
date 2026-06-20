@@ -100,6 +100,10 @@ async def _start_runtime_background_services(
     bounded best-effort cleanup before the exception re-raises -- otherwise
     they leak, because ``on_shutdown`` does not run once ``on_startup``
     fails.
+
+    Raises:
+        CancelledError: If the lifespan is cancelled mid-startup; the
+            already-started services are stopped before it re-raises.
     """
     started_provider_health_prober = False
     started_webhook_event_bridge = False
@@ -205,11 +209,14 @@ async def _start_runtime_background_services(
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-    except Exception:
+    except Exception, asyncio.CancelledError:
         # A propagating exception (a re-raised critical, or an unexpected
         # raise from the prober start / janitor-settings resolve) would leak
-        # whatever already started. Stop those services in reverse order with
-        # a bounded best-effort cleanup, then re-raise the original error.
+        # whatever already started. ``CancelledError`` is a ``BaseException``
+        # since 3.8, so an outer lifespan cancellation after startup begins
+        # would otherwise bypass this guard and strand the started services.
+        # Stop those services in reverse order with a bounded best-effort
+        # cleanup, then re-raise the original error / cancellation.
         await _cleanup_on_failure(
             persistence=None,
             started_persistence=False,
@@ -434,11 +441,15 @@ async def _run_startup(  # noqa: PLR0913
     # Mirror the auto_wire_settings failure path so a resolver or
     # register_observer() raise here still triggers _safe_shutdown instead of
     # leaving the app half-wired.
+    # Unconditional: the webhook replay protector's in-process nonce cache
+    # MUST be a single shared instance regardless of persistence, so it is
+    # wired on every startup. The helper internally skips only the
+    # persistence-dependent activity service when the backend is absent.
+    _wire_webhook_request_services(persistence, app_state)
     if persistence is not None:
         try:
             await _wire_workflow_observer(task_engine, persistence, app_state)
             _wire_workflow_execution_service(persistence, app_state)
-            _wire_webhook_request_services(persistence, app_state)
         except Exception as exc:
             reraise_critical(exc)
             log_exception_redacted(

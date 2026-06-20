@@ -8,8 +8,14 @@ services; this service owns the one remaining direct repository touch
 ``persistence.tasks`` directly and gain a single mockable seam.
 """
 
+from typing import Final
+
 from synthorg.core.task import Task
 from synthorg.persistence.task_protocol import TaskFilterSpec, TaskRepository
+
+# Batch size for the fetch-all pagination loop. Any positive size yields the
+# complete set; this only bounds how many rows are read per round-trip.
+_FETCH_PAGE_SIZE: Final[int] = 100
 
 
 class AnalyticsReadService:
@@ -27,15 +33,28 @@ class AnalyticsReadService:
     async def list_tasks(self) -> tuple[Task, ...]:
         """Return the task list the analytics aggregates are built from.
 
-        Runs an unfiltered ``query`` over the repository's default page
-        window: the analytics overview / trends endpoints fold the full
-        task set into their counts, so the empty filter spec is the
-        intended scope rather than a narrowing.
+        Pages through the repository in ``_FETCH_PAGE_SIZE`` windows until
+        exhausted: the analytics overview / trends endpoints fold the FULL
+        task set into their counts, so a single default-window ``query``
+        (capped at the repository's default page size) would silently
+        undercount once the org exceeds that many tasks.
 
         Returns:
-            Tasks matching the empty filter spec, ordered by id ascending.
+            Every task matching the empty filter spec, ordered by id
+            ascending.
         """
-        return await self._task_repo.query(TaskFilterSpec())
+        spec = TaskFilterSpec()
+        tasks: list[Task] = []
+        offset = 0
+        while True:
+            page = await self._task_repo.query(
+                spec, limit=_FETCH_PAGE_SIZE, offset=offset
+            )
+            tasks.extend(page)
+            if len(page) < _FETCH_PAGE_SIZE:
+                break
+            offset += _FETCH_PAGE_SIZE
+        return tuple(tasks)
 
 
 __all__ = ["AnalyticsReadService"]

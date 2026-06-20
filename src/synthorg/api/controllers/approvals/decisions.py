@@ -3,7 +3,7 @@
 
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Final
 from uuid import UUID, uuid4
 
 from litestar import Controller, Request, post
@@ -50,6 +50,13 @@ from synthorg.observability.events.idempotency import IDEMPOTENCY_CLAIM_IN_FLIGH
 
 logger = get_logger(__name__)
 
+# The durable idempotency-key column is bounded at 255 chars. Decision
+# endpoints store the composite key ``f"{approval_id}:{idempotency_key}"``
+# (a 36-char UUID + a ":" separator = 37 chars of prefix), so the caller's
+# raw key must stay within 255 - 37 = 218 chars or the composite would
+# overflow the column's CHECK constraint.
+_MAX_IDEMPOTENCY_KEY_LEN: Final[int] = 218
+
 _IdempotencyKeyHeader = Annotated[
     NotBlankStr,
     HeaderParameter(
@@ -62,7 +69,7 @@ _IdempotencyKeyHeader = Annotated[
         ),
         required=True,
         min_length=1,
-        max_length=255,
+        max_length=_MAX_IDEMPOTENCY_KEY_LEN,
     ),
 ]
 

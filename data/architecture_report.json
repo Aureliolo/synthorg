@@ -56,8 +56,8 @@
     },
     "src/synthorg/api/controllers/_conversational_resume.py": {
       "cap": 600,
-      "loc": 522,
-      "ratio": 0.87,
+      "loc": 525,
+      "ratio": 0.875,
       "tier": "orchestrator"
     },
     "src/synthorg/api/controllers/_department_health.py": {
@@ -74,8 +74,8 @@
     },
     "src/synthorg/api/controllers/approvals/decisions.py": {
       "cap": 400,
-      "loc": 323,
-      "ratio": 0.807,
+      "loc": 324,
+      "ratio": 0.81,
       "tier": "controller"
     },
     "src/synthorg/api/controllers/artifacts.py": {
@@ -194,8 +194,8 @@
     },
     "src/synthorg/api/lifecycle_runner_startup.py": {
       "cap": 600,
-      "loc": 537,
-      "ratio": 0.895,
+      "loc": 540,
+      "ratio": 0.9,
       "tier": "orchestrator"
     },
     "src/synthorg/api/services/_org_agent_mutations.py": {
@@ -590,8 +590,8 @@
     },
     "src/synthorg/engine/workflow/webhook_bridge.py": {
       "cap": 500,
-      "loc": 426,
-      "ratio": 0.852,
+      "loc": 451,
+      "ratio": 0.902,
       "tier": "code"
     },
     "src/synthorg/engine/workspace/environment/devcontainer.py": {
@@ -692,14 +692,14 @@
     },
     "src/synthorg/integrations/oauth/token_manager.py": {
       "cap": 500,
-      "loc": 427,
-      "ratio": 0.854,
+      "loc": 461,
+      "ratio": 0.922,
       "tier": "code"
     },
     "src/synthorg/integrations/rate_limiting/shared_state.py": {
       "cap": 500,
-      "loc": 400,
-      "ratio": 0.8,
+      "loc": 423,
+      "ratio": 0.846,
       "tier": "code"
     },
     "src/synthorg/memory/backends/composite/adapter.py": {
@@ -834,12 +834,6 @@
       "ratio": 0.89,
       "tier": "feature"
     },
-    "src/synthorg/meta/mcp/domains/infrastructure.py": {
-      "cap": 500,
-      "loc": 496,
-      "ratio": 0.992,
-      "tier": "code"
-    },
     "src/synthorg/meta/mcp/handlers/common_args.py": {
       "cap": 500,
       "loc": 472,
@@ -884,8 +878,8 @@
     },
     "src/synthorg/notifications/dispatcher.py": {
       "cap": 500,
-      "loc": 402,
-      "ratio": 0.804,
+      "loc": 420,
+      "ratio": 0.84,
       "tier": "code"
     },
     "src/synthorg/observability/audit_chain/sink.py": {
@@ -1037,6 +1031,12 @@
       "loc": 435,
       "ratio": 0.87,
       "tier": "repository"
+    },
+    "src/synthorg/persistence/sqlite/conversation_participant_repo.py": {
+      "cap": 500,
+      "loc": 414,
+      "ratio": 0.828,
+      "tier": "code"
     },
     "src/synthorg/persistence/sqlite/cost_forecast_repo.py": {
       "cap": 500,
@@ -1306,6 +1306,12 @@
       "cap": 500,
       "loc": 453,
       "ratio": 0.906,
+      "tier": "code"
+    },
+    "src/synthorg/workers/__main__.py": {
+      "cap": 500,
+      "loc": 400,
+      "ratio": 0.8,
       "tier": "code"
     },
     "src/synthorg/workers/_engine_assembly.py": {

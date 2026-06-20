@@ -13,7 +13,10 @@ import aiosqlite
 
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.chief_of_staff.enums import ConversationParticipantStatus
+from synthorg.meta.chief_of_staff.enums import (
+    ConversationParticipantStatus,
+    ParticipantAdmission,
+)
 from synthorg.meta.chief_of_staff.group_models import ConversationParticipant
 from synthorg.observability import (
     get_logger,
@@ -51,6 +54,22 @@ _PARTICIPANT_UPSERT_SQL = """
     ON CONFLICT(id) DO UPDATE SET
         conversation_id = excluded.conversation_id,
         agent_id = excluded.agent_id,
+        agent_name = excluded.agent_name,
+        participant_role = excluded.participant_role,
+        status = excluded.status,
+        added_by = excluded.added_by,
+        added_at = excluded.added_at
+"""
+
+# Upsert keyed on the natural ``(conversation_id, agent_id)`` pair (not the
+# surrogate id) so a re-admit of a previously-removed agent flips its row back
+# to active rather than colliding with ``uq_cpart_conversation_agent``.
+_PARTICIPANT_ADMIT_UPSERT_SQL = """
+    INSERT INTO conversation_participants (
+        id, conversation_id, agent_id, agent_name, participant_role,
+        status, added_by, added_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(conversation_id, agent_id) DO UPDATE SET
         agent_name = excluded.agent_name,
         participant_role = excluded.participant_role,
         status = excluded.status,
@@ -361,6 +380,81 @@ class SQLiteConversationParticipantRepository:
             )
             raise QueryError(msg) from exc
         return int(row[0]) if row is not None else 0
+
+    async def admit_active_within_cap(
+        self,
+        participant: ConversationParticipant,
+        *,
+        cap: int,
+    ) -> ParticipantAdmission:
+        """Atomically admit *participant* as active iff under *cap*.
+
+        The already-member check, active-count read, and the insert all
+        run inside one ``write_context`` block: that serialises every
+        write on the shared connection, so no concurrent admit can
+        interleave between this call's count and its insert and push the
+        roster past the cap.
+
+        Returns:
+            The admission outcome (admitted / already-active / cap-reached).
+
+        Raises:
+            QueryError: If the database operation fails.
+        """
+        active = ConversationParticipantStatus.ACTIVE.value
+        params = (
+            str(participant.id),
+            participant.conversation_id,
+            participant.agent_id,
+            participant.agent_name,
+            participant.participant_role,
+            participant.status.value,
+            participant.added_by,
+            format_iso_utc(participant.added_at),
+        )
+        async with self._write_context():
+            try:
+                async with self._db.execute(
+                    "SELECT status FROM conversation_participants "
+                    "WHERE conversation_id = ? AND agent_id = ?",
+                    (participant.conversation_id, participant.agent_id),
+                ) as cursor:
+                    existing = await cursor.fetchone()
+                if existing is not None and existing[0] == active:
+                    await self._db.rollback()
+                    return ParticipantAdmission.ALREADY_ACTIVE
+                async with self._db.execute(
+                    "SELECT COUNT(*) FROM conversation_participants "
+                    "WHERE conversation_id = ? AND status = ?",
+                    (participant.conversation_id, active),
+                ) as cursor:
+                    count_row = await cursor.fetchone()
+                active_count = int(count_row[0]) if count_row is not None else 0
+                if active_count >= cap:
+                    await self._db.rollback()
+                    return ParticipantAdmission.CAP_REACHED
+                await self._db.execute(_PARTICIPANT_ADMIT_UPSERT_SQL, params)
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await _safe_rollback(
+                    self._db,
+                    operation="admit_active_within_cap",
+                    conversation_id=participant.conversation_id,
+                )
+                msg = (
+                    "Failed to admit participant "
+                    f"{participant.id!r} (conversation "
+                    f"{participant.conversation_id!r})"
+                )
+                logger.warning(
+                    COS_GROUP_PARTICIPANT_FAILED,
+                    operation="admit_active_within_cap",
+                    conversation_id=participant.conversation_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+        return ParticipantAdmission.ADMITTED
 
 
 __all__ = ["SQLiteConversationParticipantRepository"]

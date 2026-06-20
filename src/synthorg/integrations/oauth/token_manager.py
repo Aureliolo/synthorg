@@ -198,11 +198,26 @@ class OAuthTokenManager:
                     note="unrestartable",
                 )
                 raise IntegrationLifecycleConflictError(msg)
+            if self._task is not None and self._task.done():
+                self._task = None
             if self._task is not None:
                 return
             await self._resolve_flow_timeout()
             await self._resolve_loop_tuning()
-            self._task = asyncio.create_task(self._refresh_loop())
+            task = asyncio.create_task(
+                self._refresh_loop(),
+                name="oauth-token-manager",
+            )
+            # A crashed refresh loop must surface promptly rather than
+            # sitting buffered on the handle until the next lifecycle call.
+            task.add_done_callback(
+                log_task_exceptions(
+                    logger,
+                    OAUTH_TOKEN_REFRESH_FAILED,
+                    note="oauth_token_manager_loop",
+                )
+            )
+            self._task = task
             logger.info(
                 OAUTH_TOKEN_REFRESHED,
                 has_refresh=False,
@@ -263,6 +278,31 @@ class OAuthTokenManager:
                         note="orphaned_drain_after_timeout",
                     )
                 )
+                raise
+            except BaseException as exc:
+                # If ``stop()`` itself is cancelled (hard process shutdown
+                # cancels us), the shielded ``drain_task`` would be left
+                # running on a closing loop. Cancel and reap it before
+                # propagating (mirrors ``backup/scheduler.py``).
+                logger.warning(
+                    OAUTH_TOKEN_REFRESH_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    note="shutdown_interrupted",
+                )
+                drain_task.cancel()
+                try:
+                    await drain_task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as drain_exc:  # noqa: BLE001 -- criticals re-raised
+                    reraise_critical(drain_exc)
+                    logger.warning(
+                        OAUTH_TOKEN_REFRESH_FAILED,
+                        error_type=type(drain_exc).__name__,
+                        error=safe_error_description(drain_exc),
+                        note="drain_task_error_on_interrupt",
+                    )
                 raise
             self._task = None
 

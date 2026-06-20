@@ -10,7 +10,7 @@ both import them without an import cycle.
 
 import asyncio
 from collections.abc import Awaitable
-from typing import Final, Protocol
+from typing import Final, NamedTuple, Protocol
 
 from synthorg.api.bus_bridge import MessageBusBridge
 from synthorg.backup.service import BackupService
@@ -58,6 +58,31 @@ class _AsyncStartStop(Protocol):
     async def stop(self) -> None:
         """Tear down the connection / release resources."""
         ...
+
+
+class _Stoppable(Protocol):
+    """Structural seam for any service the reverse cleanup stops via ``stop()``."""
+
+    async def stop(self) -> None:
+        """Drain in-flight work and release resources."""
+        ...
+
+
+class _StopStep(NamedTuple):
+    """One reverse-cleanup stop step in ``_cleanup_on_failure``.
+
+    ``started`` / ``service`` gate the step (both must be truthy);
+    ``timeout`` / ``service_name`` flow straight into :func:`_try_stop`;
+    ``log_phase`` emits the stopping/stopped lifecycle lines the
+    distributed task queue records around its stop.
+    """
+
+    started: bool
+    service: _Stoppable | None
+    error_msg: str
+    service_name: str | None = None
+    timeout: float | None = None
+    log_phase: bool = False
 
 
 async def _try_stop(
@@ -176,133 +201,117 @@ async def _cleanup_on_failure(  # noqa: PLR0913
     ``None`` / ``False`` so the core-only ``_safe_startup`` failure path
     (which never started them) passes nothing and the blocks no-op.
     """
-    if started_event_stream_hub and event_stream_hub is not None:
-        await _try_stop(
-            event_stream_hub.stop(),
-            API_APP_STARTUP,
+    runtime_budget = _CLEANUP_STOP_TIMEOUT_SECONDS
+    # Reverse of the ``_run_startup`` start order: runtime background services
+    # first (each on the bounded runtime budget), then the core services, then
+    # the message bus. Persistence (a ``disconnect()``, not a ``stop()``) is
+    # the final explicit step below.
+    steps = (
+        _StopStep(
+            started_event_stream_hub,
+            event_stream_hub,
             "Cleanup: failed to stop event stream hub",
-            timeout=_CLEANUP_STOP_TIMEOUT_SECONDS,
-            service="event_stream_hub",
-        )
-    if (
-        started_escalation_notify_subscriber
-        and escalation_notify_subscriber is not None
-    ):
-        await _try_stop(
-            escalation_notify_subscriber.stop(),
-            API_APP_STARTUP,
+            "event_stream_hub",
+            runtime_budget,
+        ),
+        _StopStep(
+            started_escalation_notify_subscriber,
+            escalation_notify_subscriber,
             "Cleanup: failed to stop escalation notify subscriber",
-            timeout=_CLEANUP_STOP_TIMEOUT_SECONDS,
-            service="escalation_notify_subscriber",
-        )
-    if started_escalation_sweeper and escalation_sweeper is not None:
-        await _try_stop(
-            escalation_sweeper.stop(),
-            API_APP_STARTUP,
+            "escalation_notify_subscriber",
+            runtime_budget,
+        ),
+        _StopStep(
+            started_escalation_sweeper,
+            escalation_sweeper,
             "Cleanup: failed to stop escalation sweeper",
-            timeout=_CLEANUP_STOP_TIMEOUT_SECONDS,
-            service="escalation_sweeper",
-        )
-    if started_oauth_token_manager and oauth_token_manager is not None:
-        await _try_stop(
-            oauth_token_manager.stop(),
-            API_APP_STARTUP,
+            "escalation_sweeper",
+            runtime_budget,
+        ),
+        _StopStep(
+            started_oauth_token_manager,
+            oauth_token_manager,
             "Cleanup: failed to stop OAuth token manager",
-            timeout=_CLEANUP_STOP_TIMEOUT_SECONDS,
-            service="oauth_token_manager",
-        )
-    if started_integration_health_prober and integration_health_prober is not None:
-        await _try_stop(
-            integration_health_prober.stop(),
-            API_APP_STARTUP,
+            "oauth_token_manager",
+            runtime_budget,
+        ),
+        _StopStep(
+            started_integration_health_prober,
+            integration_health_prober,
             "Cleanup: failed to stop integration health prober",
-            timeout=_CLEANUP_STOP_TIMEOUT_SECONDS,
-            service="integration_health_prober",
-        )
-    if started_webhook_event_bridge and webhook_event_bridge is not None:
-        await _try_stop(
-            webhook_event_bridge.stop(),
-            API_APP_STARTUP,
+            "integration_health_prober",
+            runtime_budget,
+        ),
+        _StopStep(
+            started_webhook_event_bridge,
+            webhook_event_bridge,
             "Cleanup: failed to stop webhook event bridge",
-            timeout=_CLEANUP_STOP_TIMEOUT_SECONDS,
-            service="webhook_event_bridge",
-        )
-    if started_provider_health_prober and provider_health_prober is not None:
-        await _try_stop(
-            provider_health_prober.stop(),
-            API_APP_STARTUP,
+            "webhook_event_bridge",
+            runtime_budget,
+        ),
+        _StopStep(
+            started_provider_health_prober,
+            provider_health_prober,
             "Cleanup: failed to stop provider health prober",
-            timeout=_CLEANUP_STOP_TIMEOUT_SECONDS,
-            service="provider_health_prober",
-        )
-    if started_approval_timeout_scheduler and approval_timeout_scheduler is not None:
-        await _try_stop(
-            approval_timeout_scheduler.stop(),
-            API_APP_STARTUP,
+            "provider_health_prober",
+            runtime_budget,
+        ),
+        _StopStep(
+            started_approval_timeout_scheduler,
+            approval_timeout_scheduler,
             "Cleanup: failed to stop approval timeout scheduler",
-        )
-    if started_backup_service and backup_service is not None:
-        await _try_stop(
-            backup_service.stop(),
-            API_APP_STARTUP,
+        ),
+        _StopStep(
+            started_backup_service,
+            backup_service,
             "Cleanup: failed to stop backup service",
-        )
-    if started_meeting_scheduler and meeting_scheduler is not None:
-        await _try_stop(
-            meeting_scheduler.stop(),
-            API_APP_STARTUP,
+        ),
+        _StopStep(
+            started_meeting_scheduler,
+            meeting_scheduler,
             "Cleanup: failed to stop meeting scheduler",
-        )
-    if started_task_engine and task_engine is not None:
-        await _try_stop(
-            task_engine.stop(),
-            API_APP_STARTUP,
-            "Cleanup: failed to stop task engine",
-        )
-    if started_settings_dispatcher and settings_dispatcher is not None:
-        await _try_stop(
-            settings_dispatcher.stop(),
-            API_APP_STARTUP,
+        ),
+        _StopStep(
+            started_task_engine, task_engine, "Cleanup: failed to stop task engine"
+        ),
+        _StopStep(
+            started_settings_dispatcher,
+            settings_dispatcher,
             "Cleanup: failed to stop settings dispatcher",
-        )
-    if started_bridge and bridge is not None:
-        await _try_stop(
-            bridge.stop(),
-            API_APP_STARTUP,
-            "Cleanup: failed to stop message bus bridge",
-        )
-    if (
-        started_distributed_backend_services
-        and distributed_backend_services is not None
-    ):
-        await _try_stop(
-            distributed_backend_services.stop(),
-            API_APP_STARTUP,
+        ),
+        _StopStep(started_bridge, bridge, "Cleanup: failed to stop message bus bridge"),
+        _StopStep(
+            started_distributed_backend_services,
+            distributed_backend_services,
             "Cleanup: failed to stop distributed backend services",
-        )
-    if started_distributed_task_queue and distributed_task_queue is not None:
-        logger.info(
-            API_APP_STARTUP,
-            service="distributed_task_queue",
-            phase="stopping_on_cleanup",
-        )
-        ok = await _try_stop(
-            distributed_task_queue.stop(),
-            API_APP_STARTUP,
+        ),
+        _StopStep(
+            started_distributed_task_queue,
+            distributed_task_queue,
             "Cleanup: failed to stop distributed task queue",
-        )
-        if ok:
+            "distributed_task_queue",
+            log_phase=True,
+        ),
+        _StopStep(started_bus, message_bus, "Cleanup: failed to stop message bus"),
+    )
+    for step in steps:
+        if not (step.started and step.service is not None):
+            continue
+        if step.log_phase:
             logger.info(
-                API_APP_STARTUP,
-                service="distributed_task_queue",
-                phase="stopped_on_cleanup",
+                API_APP_STARTUP, service=step.service_name, phase="stopping_on_cleanup"
             )
-    if started_bus and message_bus is not None:
-        await _try_stop(
-            message_bus.stop(),
+        ok = await _try_stop(
+            step.service.stop(),
             API_APP_STARTUP,
-            "Cleanup: failed to stop message bus",
+            step.error_msg,
+            timeout=step.timeout,
+            service=step.service_name,
         )
+        if step.log_phase and ok:
+            logger.info(
+                API_APP_STARTUP, service=step.service_name, phase="stopped_on_cleanup"
+            )
     if started_persistence and persistence is not None:
         await _try_stop(
             persistence.disconnect(),

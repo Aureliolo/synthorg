@@ -253,7 +253,12 @@ async def _backup_restore(
         # instead of reaching for the api-side ``idempotency_service_of``
         # accessor; the dedup state lives in the shared repo, so a
         # per-call instance is equivalent.
-        service = IdempotencyService(persistence_of(app_state).idempotency_keys)
+        # Thread the app clock seam so the in-flight poll honours an
+        # injected FakeClock in tests rather than waiting in real time.
+        service = IdempotencyService(
+            persistence_of(app_state).idempotency_keys,
+            clock=app_state.clock,
+        )
         outcome = await service.run_idempotent(
             scope="mcp:backup_restore",
             key=f"{backup_id}:{args.idempotency_key}",

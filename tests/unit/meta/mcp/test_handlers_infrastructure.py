@@ -422,7 +422,7 @@ class TestBackup:
         assert exec_events[0]["tool_name"] == "synthorg_backup_restore"
 
     async def test_restore_requires_idempotency_key(
-        self, fake_app_state: AppState
+        self, fake_app_state: AppState, fake_backup: AsyncMock
     ) -> None:
         handler = INFRASTRUCTURE_HANDLERS["synthorg_backup_restore"]
         response = await handler(
@@ -434,6 +434,9 @@ class TestBackup:
         # parse rejects the call with an error envelope rather than
         # running an unguarded (retry-unsafe) restore.
         assert json.loads(response)["status"] == "error"
+        # The destructive restore must NOT have run: validation failure
+        # has to short-circuit before the facade is ever touched.
+        fake_backup.restore_backup.assert_not_called()
 
 
 class TestUsers:

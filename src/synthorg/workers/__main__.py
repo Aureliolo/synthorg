@@ -266,15 +266,32 @@ def _resolve_http_timeout(explicit: float | None) -> float | None:
     return None
 
 
-async def _safe_cleanup(coro: Awaitable[None], *, step: str) -> None:
+async def _safe_cleanup(coro: Awaitable[None], *, step: str) -> bool:
     """Await a teardown *coro*, logging and swallowing non-critical failures.
 
     Each ``finally`` teardown step must run even if a prior one raised, so a
     ``task_queue.stop()`` timeout cannot strand an open persistence
     connection. ``MemoryError`` / ``RecursionError`` still propagate.
+
+    ``asyncio.CancelledError`` (a ``BaseException``) is swallowed here too so
+    a cancellation of one step does not skip the remaining teardown steps and
+    leak their resources; the caller re-raises a single ``CancelledError``
+    after every step has run.
+
+    Returns:
+        ``True`` when the step was cancelled (the caller must re-raise the
+        cancellation once all steps complete), ``False`` otherwise.
     """
     try:
         await coro
+    except asyncio.CancelledError:
+        logger.warning(
+            WORKERS_MAIN_SHUTDOWN_CLEANUP_FAILED,
+            step=step,
+            error_type="CancelledError",
+            error="cleanup step cancelled; continuing remaining teardown",
+        )
+        return True
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
@@ -283,6 +300,7 @@ async def _safe_cleanup(coro: Awaitable[None], *, step: str) -> None:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+    return False
 
 
 async def _async_main(argv: list[str]) -> int:
@@ -291,6 +309,10 @@ async def _async_main(argv: list[str]) -> int:
     Returns:
         The process exit code (``0`` on clean shutdown, non-zero on a
         usage or startup error).
+
+    Raises:
+        CancelledError: Re-raised after every teardown step runs when a
+            cleanup step is cancelled during shutdown.
     """
     args = _build_parser().parse_args(argv)
     resolved = _resolve_worker_count(args.workers)
@@ -318,17 +340,18 @@ async def _async_main(argv: list[str]) -> int:
         queue_config=queue_config,
         nats_config=nats_config,
     )
-    # Built disconnected here (cannot leak a connection) and connected
-    # inside the try so a connect failure unwinds through the same
-    # cleanup path as a queue-start failure.
-    backend = _build_seen_claims_backend(no_dedup=args.no_dedup)
     # ``queue_started`` / ``backend_connected`` gate the matching
     # ``stop()`` / ``disconnect()`` calls so a partial start does not
     # tear down a resource that never came up, and a flag-flip lets the
     # owned ``http_client`` close cleanly regardless of which stage failed.
+    backend: PersistenceBackend | None = None
     queue_started = False
     backend_connected = False
     try:
+        # Built (disconnected) INSIDE the try so a raise here still unwinds
+        # through the finally and closes the already-created ``http_client``;
+        # connected below so a connect failure shares the same cleanup path.
+        backend = _build_seen_claims_backend(no_dedup=args.no_dedup)
         await task_queue.start()
         queue_started = True
         seen_claims: SeenClaimsRepository | None = None
@@ -350,13 +373,21 @@ async def _async_main(argv: list[str]) -> int:
     finally:
         # Each step is individually guarded so a failure in one (e.g. a
         # queue drain timeout) cannot skip a later one and leak its
-        # resource (the open persistence connection).
+        # resource (the open persistence connection). A cancellation of any
+        # step is collected and re-raised only after every step has run.
+        cancelled = False
         if http_client is not None:
-            await _safe_cleanup(http_client.aclose(), step="http_client_close")
+            cancelled |= await _safe_cleanup(
+                http_client.aclose(), step="http_client_close"
+            )
         if queue_started:
-            await _safe_cleanup(task_queue.stop(), step="task_queue_stop")
+            cancelled |= await _safe_cleanup(task_queue.stop(), step="task_queue_stop")
         if backend is not None and backend_connected:
-            await _safe_cleanup(backend.disconnect(), step="backend_disconnect")
+            cancelled |= await _safe_cleanup(
+                backend.disconnect(), step="backend_disconnect"
+            )
+        if cancelled:
+            raise asyncio.CancelledError
     return 0
 
 

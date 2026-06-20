@@ -252,9 +252,9 @@ class NotificationDispatcher:
         re-opening on top of the stuck send.
 
         Raises:
-            TimeoutError: If the in-flight dispatch drain exceeds
-                ``_stop_drain_timeout_seconds``; the dispatcher is then
-                marked unrestartable.
+            TimeoutError: If the in-flight dispatch drain or the sink-close
+                fan-out exceeds ``_stop_drain_timeout_seconds``; the
+                dispatcher is then marked unrestartable.
         """
         async with self._lifecycle_lock:
             if not self._started:
@@ -277,14 +277,37 @@ class NotificationDispatcher:
                 )
                 raise
             sinks = list(self._sinks)
-            async with asyncio.TaskGroup() as tg:
-                for sink in sinks:
-                    _ = tg.create_task(self._safe_close(sink))
+            try:
+                await asyncio.wait_for(
+                    asyncio.shield(self._close_sinks(sinks)),
+                    timeout=self._stop_drain_timeout_seconds,
+                )
+            except TimeoutError:
+                # A sink whose close() hangs forever would otherwise hold
+                # the lifecycle lock indefinitely. Mark unrestartable so a
+                # later start() refuses rather than layering on the stuck
+                # close, mirroring the in-flight-drain guard above.
+                self._stop_failed = True
+                logger.error(
+                    NOTIFICATION_DISPATCHER_CLOSED,
+                    error=(
+                        "sink-close fan-out exceeded hard deadline; "
+                        "dispatcher marked unrestartable"
+                    ),
+                    timeout_seconds=self._stop_drain_timeout_seconds,
+                )
+                raise
             self._started = False
             logger.info(
                 NOTIFICATION_DISPATCHER_CLOSED,
                 sinks=len(sinks),
             )
+
+    async def _close_sinks(self, sinks: list[NotificationSink]) -> None:
+        """Close every sink concurrently with per-sink error isolation."""
+        async with asyncio.TaskGroup() as tg:
+            for sink in sinks:
+                _ = tg.create_task(self._safe_close(sink))
 
     @staticmethod
     async def _safe_start(

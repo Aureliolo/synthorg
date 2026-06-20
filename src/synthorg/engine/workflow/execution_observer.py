@@ -44,7 +44,9 @@ class WorkflowExecutionObserver:
         task_engine: Required by the underlying ``WorkflowExecutionService``.
         config_resolver: Resolver the underlying service uses to resolve
             ``engine.max_subworkflow_depth`` per activation so operator
-            overrides (DB > env > YAML) flow through unchanged. ``None``
+            overrides (DB > env > code default; YAML is a company-template
+            ingestion format, not a precedence tier) flow through
+            unchanged. ``None``
             falls back to the ``EngineBridgeConfig`` seed default; this
             observer never activates workflows (only forwards terminal
             task transitions), so the depth cap is immaterial here, but

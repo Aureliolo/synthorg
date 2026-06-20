@@ -182,10 +182,24 @@ class AppState(AppStateSliceMixin):
         pending = {task for task in pending if not task.done()}
         if not pending:
             return
-        _, still_running = await asyncio.wait(
+        done, still_running = await asyncio.wait(
             pending,
             timeout=_ENTRY_TASK_DRAIN_GRACE_SECONDS,
         )
+        # Surface failures from tasks that completed within the grace window
+        # too -- otherwise a task that raised before the deadline has its
+        # exception abandoned with no post-mortem trace (only the cancelled
+        # stragglers below were being inspected).
+        for task in done:
+            exc = task.exception()
+            if exc is not None and not isinstance(exc, asyncio.CancelledError):
+                logger.warning(
+                    API_APP_SHUTDOWN,
+                    service="entry_task_drain",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    note="entry background task raised before shutdown drain deadline",
+                )
         for task in still_running:
             task.cancel()
         if still_running:

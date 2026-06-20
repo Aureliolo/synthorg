@@ -120,13 +120,19 @@ def _build_idem_key(
     Returns:
         Resulting string.
     """
-    nonce_for_key = (
-        nonce
-        if len(nonce) <= MAX_NONCE_CHARS
-        else hashlib.sha256(
-            nonce.encode("utf-8", errors="replace"),
-        ).hexdigest()
-    )
+    # Domain-separate raw from hashed nonce material: without the prefix a
+    # short raw nonce that happens to equal some long nonce's SHA-256 hex
+    # digest would collide on the same idempotency key and suppress a
+    # distinct webhook event.
+    if len(nonce) <= MAX_NONCE_CHARS:
+        nonce_for_key = f"raw:{nonce}"
+    else:
+        nonce_for_key = (
+            "sha256:"
+            + hashlib.sha256(
+                nonce.encode("utf-8", errors="replace"),
+            ).hexdigest()
+        )
     encoded_name = _len_prefixed(connection_name)
     encoded_event = _len_prefixed(event_type)
     raw_key = f"{encoded_name}:{encoded_event}:{_len_prefixed(nonce_for_key)}"
@@ -136,5 +142,7 @@ def _build_idem_key(
         ).hexdigest()
         raw_key = f"{encoded_name}:{encoded_event}:sha256:{nonce_digest}"
         if len(raw_key) > _IDEMPOTENCY_KEY_MAX_LEN:
-            raw_key = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+            raw_key = hashlib.sha256(
+                raw_key.encode("utf-8", errors="replace"),
+            ).hexdigest()
     return raw_key

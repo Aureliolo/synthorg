@@ -242,6 +242,33 @@ class SharedRateLimitCoordinator:
                         )
                     )
                     raise
+                except BaseException as exc:
+                    # If ``stop()`` itself is cancelled (hard process
+                    # shutdown cancels us), the shielded ``drain_task`` would
+                    # be left running on a closing loop. Cancel and reap it
+                    # before propagating (mirrors ``backup/scheduler.py``).
+                    logger.warning(
+                        RATE_LIMIT_COORDINATOR_STOPPED,
+                        connection_name=self._connection_name,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                        note="shutdown_interrupted",
+                    )
+                    drain_task.cancel()
+                    try:
+                        await drain_task
+                    except asyncio.CancelledError:
+                        pass
+                    except Exception as drain_exc:  # noqa: BLE001 -- criticals re-raised
+                        reraise_critical(drain_exc)
+                        logger.warning(
+                            RATE_LIMIT_COORDINATOR_STOPPED,
+                            connection_name=self._connection_name,
+                            error_type=type(drain_exc).__name__,
+                            error=safe_error_description(drain_exc),
+                            note="drain_task_error_on_interrupt",
+                        )
+                    raise
                 self._task = None
             if self._subscribed:
                 try:

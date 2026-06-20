@@ -93,6 +93,11 @@ class WebhookEventBridge:
         # instead of real wall-clock sleeps.
         self._clock: Clock = clock or SystemClock()
         self._task: asyncio.Task[None] | None = None
+        # Tracks whether a live bus subscription is currently held. A done
+        # poll task whose self-stop unsubscribe FAILED leaves this True, so
+        # ``start()`` must not clear the stale handle and re-subscribe (that
+        # would stack a duplicate subscriber on the live ghost subscription).
+        self._subscribed = False
         # Eager lifecycle lock per ``docs/reference/lifecycle-sync.md``;
         # ``asyncio.Lock`` is loop-agnostic until first ``acquire()``,
         # so app-wire-time construction is safe and prevents a racing
@@ -225,11 +230,13 @@ class WebhookEventBridge:
                 )
                 raise WebhookBridgeUnrestartableError(msg)
             # A poll loop that self-stopped on the max-consecutive-errors
-            # path leaves its task done (and, on an unsubscribe failure
-            # there, still referenced). Treat a done task as absent so the
-            # bridge re-subscribes and re-runs instead of refusing forever
-            # on the stale handle.
-            if self._task is not None and self._task.done():
+            # path leaves its task done. Treat a done task as absent ONLY
+            # when its unsubscribe succeeded (``_subscribed`` is False) so
+            # the bridge re-subscribes and re-runs; a done task whose
+            # self-stop unsubscribe FAILED stays referenced (``_subscribed``
+            # still True) so ``start()`` refuses rather than stacking a
+            # duplicate subscriber on the live ghost subscription.
+            if self._task is not None and self._task.done() and not self._subscribed:
                 self._task = None
             if self._task is not None:
                 return
@@ -237,6 +244,7 @@ class WebhookEventBridge:
                 WEBHOOK_CHANNEL.name,
                 _SUBSCRIBER_ID,
             )
+            self._subscribed = True
             self._task = asyncio.create_task(
                 self._poll_loop(),
                 name="webhook-event-bridge",
@@ -317,6 +325,33 @@ class WebhookEventBridge:
                     )
                 )
                 raise
+            except BaseException as exc:
+                # If ``stop()`` itself is cancelled (process shutting down
+                # hard and the surrounding ``TaskGroup`` cancels us), the
+                # shielded ``drain_task`` would otherwise be left running on
+                # a closing event loop. Cancel and reap it before
+                # propagating so callers never observe a half-cleaned bridge
+                # (mirrors ``backup/scheduler.py``).
+                logger.warning(
+                    WEBHOOK_BRIDGE_STOPPED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    note="shutdown_interrupted",
+                )
+                drain_task.cancel()
+                try:
+                    await drain_task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as drain_exc:  # noqa: BLE001 -- criticals re-raised
+                    reraise_critical(drain_exc)
+                    logger.warning(
+                        WEBHOOK_BRIDGE_STOPPED,
+                        error_type=type(drain_exc).__name__,
+                        error=safe_error_description(drain_exc),
+                        note="drain_task_error_on_interrupt",
+                    )
+                raise
             try:
                 await self._bus.unsubscribe(
                     WEBHOOK_CHANNEL.name,
@@ -337,6 +372,7 @@ class WebhookEventBridge:
                     ),
                 )
                 raise
+            self._subscribed = False
             self._task = None
             logger.info(WEBHOOK_BRIDGE_STOPPED)
 
@@ -482,7 +518,11 @@ class WebhookEventBridge:
                                 "in partial-stop state"
                             ),
                         )
+                        # ``_subscribed`` stays True: the subscription is
+                        # still live, so ``start()`` must refuse rather than
+                        # stack a duplicate against the ghost subscription.
                         return
+                    self._subscribed = False
                     self._task = None
                     return
                 logger.warning(

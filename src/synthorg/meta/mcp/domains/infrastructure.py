@@ -1,8 +1,13 @@
+# module-kind: declarative
 """Infrastructure domain MCP tools.
 
 Covers health, settings, providers, backup, audit, events, users,
 projects, requests, setup, simulations, template packs, and other
 infrastructure controllers.
+
+A declarative tool registry: maps MCP tool names to their handler +
+args-model bindings with no business logic of its own, so it is exempt
+from the default module-size cap.
 """
 
 from typing import TYPE_CHECKING

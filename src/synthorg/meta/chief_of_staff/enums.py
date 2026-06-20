@@ -5,7 +5,7 @@ agent-invite surfaces. The conversational turn / status enums live in
 ``synthorg.communication.conversation.enums``.
 """
 
-from enum import StrEnum
+from enum import Enum, StrEnum
 
 
 class ConversationKind(StrEnum):
@@ -41,6 +41,22 @@ class ConversationParticipantStatus(StrEnum):
 
     ACTIVE = "active"
     REMOVED = "removed"
+
+
+class ParticipantAdmission(Enum):
+    """Outcome of an atomic admit-under-cap participant insert.
+
+    Attributes:
+        ADMITTED: The agent was inserted as an active participant.
+        ALREADY_ACTIVE: The agent was already an active member; the call
+            was an idempotent no-op.
+        CAP_REACHED: The conversation was already at
+            ``group_chat_max_participants``; no row was inserted.
+    """
+
+    ADMITTED = "admitted"
+    ALREADY_ACTIVE = "already_active"
+    CAP_REACHED = "cap_reached"
 
 
 class ConversationInviteStatus(StrEnum):
