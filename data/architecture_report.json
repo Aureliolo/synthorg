@@ -1154,14 +1154,14 @@
     },
     "src/synthorg/providers/drivers/litellm_driver.py": {
       "cap": 700,
-      "loc": 699,
-      "ratio": 0.999,
+      "loc": 681,
+      "ratio": 0.973,
       "tier": "adapter"
     },
     "src/synthorg/providers/health_prober.py": {
       "cap": 500,
-      "loc": 499,
-      "ratio": 0.998,
+      "loc": 500,
+      "ratio": 1.0,
       "tier": "code"
     },
     "src/synthorg/providers/management/_capabilities_mixin.py": {
@@ -1178,8 +1178,8 @@
     },
     "src/synthorg/providers/management/service.py": {
       "cap": 1100,
-      "loc": 1073,
-      "ratio": 0.975,
+      "loc": 1081,
+      "ratio": 0.983,
       "tier": "complex_service"
     },
     "src/synthorg/providers/models.py": {
@@ -1428,7 +1428,7 @@
     "synthorg.meta.models": 63,
     "synthorg.meta.signal_models": 20,
     "synthorg.notifications.models": 20,
-    "synthorg.observability": 1611,
+    "synthorg.observability": 1612,
     "synthorg.observability.background_tasks": 25,
     "synthorg.observability.events.api": 172,
     "synthorg.observability.events.chief_of_staff": 29,
@@ -1443,7 +1443,7 @@
     "synthorg.observability.events.memory": 55,
     "synthorg.observability.events.meta": 59,
     "synthorg.observability.events.ontology": 21,
-    "synthorg.observability.events.provider": 39,
+    "synthorg.observability.events.provider": 40,
     "synthorg.observability.events.security": 73,
     "synthorg.observability.events.settings": 37,
     "synthorg.observability.events.tool": 24,
@@ -1462,8 +1462,8 @@
     "synthorg.persistence.state": 62,
     "synthorg.project_brain.models": 24,
     "synthorg.providers.cost_recording": 37,
-    "synthorg.providers.enums": 89,
-    "synthorg.providers.errors": 41,
+    "synthorg.providers.enums": 90,
+    "synthorg.providers.errors": 42,
     "synthorg.providers.models": 115,
     "synthorg.providers.protocol": 68,
     "synthorg.providers.registry": 33,
@@ -1637,7 +1637,7 @@
     },
     "synthorg.providers.management.service:ProviderManagementService": {
       "lcom4": 1,
-      "loc": 873
+      "loc": 880
     },
     "synthorg.settings.dispatcher:SettingsChangeDispatcher": {
       "lcom4": 1,

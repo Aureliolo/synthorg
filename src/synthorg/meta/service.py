@@ -290,6 +290,10 @@ class SelfImprovementService(
                     # keep running during shutdown. Propagate it.
                     raise adj_result
                 if isinstance(adj_result, BaseException):
+                    # MemoryError / RecursionError are BaseException subclasses
+                    # that must propagate rather than degrade to a warning, or a
+                    # corrupted interpreter keeps running.
+                    reraise_critical(adj_result)
                     logger.warning(
                         COS_CONFIDENCE_ADJUSTMENT_FAILED,
                         proposal_id=str(original.id),

@@ -205,17 +205,18 @@ repository layer itself stays cursor-agnostic.
 
 ### Task pagination contract
 
-The `TaskRepository` protocol ships two paginated read methods that every
-backend implements:
+`TaskEngine` exposes two read methods composed over the repository's canonical
+`list_items` / `query` (which follow the no-`limit=None` shape above):
 
 - `list_tasks(*, status=None, assigned_to=None, project=None, limit=None, offset=0)`
   returns a `tuple[Task, ...]` ordered by primary key `id` (ascending, stable
-  across calls).  When `limit` is set, both `LIMIT` and `OFFSET` are pushed
-  down to the database so the repository bounds the result set; when `limit`
-  is `None` the legacy "fetch-all" semantics apply and callers rely on the
-  engine-level `_MAX_LIST_RESULTS` safety cap.  `offset > 0` with `limit=None`
-  is honoured by the repository (the `OFFSET` clause is emitted independently
-  of `LIMIT`).
+  across calls).  When `limit` is set it is pushed down to the repository so
+  the result set is bounded.  `limit=None` is an engine-level fetch-all
+  convenience -- NOT a repository sentinel (the repository layer has no
+  `limit=None`; it bounds every read and callers needing the whole set drain
+  pages via `collect_all`) -- drained under the in-memory `_MAX_LIST_RESULTS`
+  (10,000) safety cap.  `offset > 0` requires a paired explicit `limit`
+  (rejected with `ValueError` otherwise) so the returned total stays accurate.
 - `count_tasks(*, status=None, assigned_to=None, project=None)` issues a
   dedicated `SELECT COUNT(*)` with the same filter semantics and is used
   when callers need an authoritative total alongside the windowed result

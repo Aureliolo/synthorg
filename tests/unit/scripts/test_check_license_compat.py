@@ -239,9 +239,17 @@ def test_go_licenses_lgpl_requires_notice(
         monkeypatch,
         stdout="github.com/some/weaklib,https://x/COPYING.LESSER,LGPL-3.0\n",
     )
-    # Unattributed LGPL is a violation; an attribution in NOTICE clears it.
+    # Unattributed LGPL is a violation; only a full-path / module-root
+    # attribution clears it. A bare leaf segment in NOTICE prose must not,
+    # since a generic leaf word could falsely clear attribution.
     assert _MODULE._check_go_licenses(tmp_path, "", run=True)
-    assert _MODULE._check_go_licenses(tmp_path, "weaklib is attributed", run=True) == []
+    assert _MODULE._check_go_licenses(tmp_path, "weaklib is attributed", run=True)
+    assert (
+        _MODULE._check_go_licenses(
+            tmp_path, "github.com/some/weaklib is attributed", run=True
+        )
+        == []
+    )
 
 
 def test_go_licenses_missing_binary_setup_error(

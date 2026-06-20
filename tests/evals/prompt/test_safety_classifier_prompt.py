@@ -90,6 +90,8 @@ class TestSafetyClassifierPromptContract:
                 and node.attr == field
                 and isinstance(node.value, ast.Attribute)
                 and node.value.attr == "_config"
+                and isinstance(node.value.value, ast.Name)
+                and node.value.value.id == "self"
             )
 
         classify_fn: ast.FunctionDef | ast.AsyncFunctionDef | None = None

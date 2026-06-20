@@ -86,6 +86,7 @@ class TestSettingsGetSet:
         )
         assert result is not None
         restored = ProviderConfig.model_validate(json.loads(result.value)["test"])
+        assert restored.connection_name == "conn-test"
         meta = restored.models[0].metadata
         assert meta.supports_vision is True
         assert meta.family == "example-large"

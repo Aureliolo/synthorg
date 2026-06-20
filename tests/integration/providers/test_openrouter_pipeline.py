@@ -66,7 +66,7 @@ async def test_api_key_forwarded(
 ) -> None:
     """API key from OpenRouter config is forwarded."""
     config = make_openrouter_config()
-    catalog = await make_catalog_with_key("provider-openrouter", "sk-or-test-key")
+    catalog = await make_catalog_with_key("provider-gateway-test", "sk-or-test-key")
     registry = ProviderRegistry.from_config(config, connection_catalog=catalog)
     driver = registry.get("openrouter")
 

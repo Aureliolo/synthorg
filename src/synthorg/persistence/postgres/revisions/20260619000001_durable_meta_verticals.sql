@@ -22,7 +22,9 @@ CREATE TABLE experiment_assignments (
     subject_id TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(subject_id)) > 0),
     variant TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(variant)) > 0),
     assigned_at TIMESTAMPTZ NOT NULL,
-    PRIMARY KEY (experiment, subject_id)
+    PRIMARY KEY (experiment, subject_id),
+    FOREIGN KEY (experiment, variant)
+    REFERENCES experiment_variants (experiment, variant)
 );
 
 -- ``list_assignments`` pages newest-first within an experiment.
@@ -58,3 +60,19 @@ CREATE TABLE pruning_requests (
 
 -- ``list_items`` pages pending requests oldest-first by created_at.
 CREATE INDEX idx_pruning_requests_created ON pruning_requests (created_at);
+
+-- Widen the connections.connection_type CHECK to the full ConnectionType enum.
+-- The original constraint listed only 7 of 11 values, so persisting a
+-- gitlab/gitea/forgejo connection -- or the llm_provider connection now minted
+-- for every API-key provider credential -- failed the CHECK. The inline column
+-- CHECK is auto-named ``connections_connection_type_check``.
+ALTER TABLE connections
+DROP CONSTRAINT connections_connection_type_check;
+
+ALTER TABLE connections
+ADD CONSTRAINT connections_connection_type_check CHECK (
+    connection_type IN (
+        'github', 'gitlab', 'gitea', 'forgejo', 'slack', 'smtp',
+        'database', 'generic_http', 'oauth_app', 'a2a_peer', 'llm_provider'
+    )
+);

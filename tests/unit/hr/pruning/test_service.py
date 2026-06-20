@@ -930,8 +930,10 @@ class _FakeRequestRepo:
     async def list_items(
         self, *, limit: int = 100, offset: int = 0
     ) -> tuple[object, ...]:
-        _ = limit, offset
-        return tuple(self.rows.values())
+        # Honour pagination: ``rehydrate_pending`` drains via ``collect_all``,
+        # which loops until a short page -- returning every row on each call
+        # would spin forever once the set exceeds one page.
+        return tuple(list(self.rows.values())[offset : offset + limit])
 
 
 @pytest.mark.unit

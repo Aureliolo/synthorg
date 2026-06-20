@@ -145,9 +145,8 @@ class ProviderHealthProber:
     async def _resolve_probe_api_key(self, config: ProviderConfig) -> str | None:
         """Resolve a provider's api_key from its catalog connection.
 
-        Non-API-key providers return ``None``. An ``API_KEY`` provider with an
-        unresolvable key raises (``_safe_probe_one`` isolates it) rather than
-        probing unauthenticated and risking a false-healthy verdict.
+        Non-API-key providers return ``None``. An ``API_KEY`` provider whose
+        key is unresolvable raises rather than probing unauthenticated.
 
         Returns:
             The resolved api_key, or ``None`` when unresolvable by design.
@@ -155,12 +154,16 @@ class ProviderHealthProber:
         Raises:
             ProviderValidationError: When an ``API_KEY`` key is unresolvable.
         """
+        # Gate by auth type: a non-API_KEY provider needs no key, so a
+        # failing/stale-connection lookup must not skip it.
+        if config.auth_type is not AuthType.API_KEY:
+            return None
         catalog = self._connection_catalog
         key: str | None = None
         if config.connection_name is not None and catalog is not None:
             creds = await catalog.get_credentials(config.connection_name)
             key = creds.get("api_key")
-        if key is None and config.auth_type is AuthType.API_KEY:
+        if key is None:
             msg = "Cannot resolve a health-probe API key; refusing anonymous probe."
             raise ProviderValidationError(msg)
         return key

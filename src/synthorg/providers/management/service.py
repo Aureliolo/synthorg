@@ -77,6 +77,7 @@ from synthorg.providers.management._credential_helpers import (
     apply_update_with_credential,
     delete_provider_credential,
     resolve_provider_api_key,
+    rollback_credential,
     store_provider_api_key,
 )
 from synthorg.providers.management._helpers import (
@@ -428,21 +429,24 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 logger.warning(PROVIDER_NOT_FOUND, provider=name, error=msg)
                 raise ProviderNotFoundError(msg)
 
+            # Snapshot the prior secret before the in-place mint so a failed
+            # persist / allowlist step can restore it (see rollback_credential).
+            minted_credential = request.api_key is not None
+            prior_api_key: str | None = None
+            if minted_credential:
+                prior_api_key = await resolve_provider_api_key(
+                    self._app_state, existing
+                )
             updated = await apply_update_with_credential(
                 self._app_state, name, existing, request
             )
             new_providers = {**providers, name: updated}
-            # ``apply_update_with_credential`` may have minted a new catalog
-            # secret in place (overwriting the prior one, which is then
-            # unrecoverable). If the persist or allowlist step fails, drop that
-            # credential so a failed update fails closed rather than serving a
-            # half-applied secret under a config that was rolled back.
-            minted_credential = request.api_key is not None
             try:
                 await self._validate_and_persist(new_providers)
             except Exception:
-                if minted_credential:
-                    await delete_provider_credential(self._app_state, name)
+                await rollback_credential(
+                    self._app_state, name, prior_api_key, minted=minted_credential
+                )
                 raise
             try:
                 await self._allowlist.update_for_update(
@@ -452,8 +456,9 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 )
             except Exception:
                 await self._restore_providers(providers)
-                if minted_credential:
-                    await delete_provider_credential(self._app_state, name)
+                await rollback_credential(
+                    self._app_state, name, prior_api_key, minted=minted_credential
+                )
                 raise
 
             logger.info(

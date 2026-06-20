@@ -8,6 +8,7 @@ import pytest
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
 from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.providers import errors
 from synthorg.providers.drivers.litellm_driver import (
     _CREDENTIAL_CACHE_TTL,
     LiteLLMDriver,
@@ -77,14 +78,32 @@ class TestLiteLLMDriverAuth:
         kwargs = _build_kwargs(config, resolved={"api_key": "sk-test"})
         assert kwargs["api_key"] == "sk-test"
 
-    def test_build_kwargs_api_key_none_omitted(self) -> None:
+    def test_build_kwargs_api_key_none_omitted_without_catalog(self) -> None:
         config = _make_config(
             auth_type=AuthType.API_KEY,
             connection_name="provider-test",
         )
-        # No resolved credentials (catalog absent / empty): api_key omitted.
+        # No catalog wired (degraded boot / unit path): the key is omitted
+        # rather than failing closed. Fail-closed is reserved for the
+        # catalog-present-but-unresolved case (tested below).
         kwargs = _build_kwargs(config)
         assert "api_key" not in kwargs
+
+    def test_build_kwargs_api_key_catalog_present_unresolved_fails_closed(
+        self,
+    ) -> None:
+        config = _make_config(
+            auth_type=AuthType.API_KEY,
+            connection_name="provider-test",
+        )
+        catalog = AsyncMock(spec=ConnectionCatalog)
+        driver = LiteLLMDriver("test-provider", config, connection_catalog=catalog)
+        # Catalog wired but it resolved no api_key: fail closed instead of
+        # sending an unauthenticated request.
+        driver._resolved_credentials = {}
+        messages = [ChatMessage(role=MessageRole.USER, content="ping")]
+        with pytest.raises(errors.AuthenticationError):
+            driver._build_kwargs(messages, "test-provider/test-model-001")
 
     def test_build_kwargs_custom_header_auth(self) -> None:
         config = _make_config(
@@ -127,8 +146,8 @@ class TestLiteLLMDriverAuth:
         kwargs = _build_kwargs(config)
         assert "api_base" not in kwargs
 
-    def test_build_kwargs_oauth_no_token_omits_api_key(self) -> None:
-        """OAuth auth without a pre-fetched token omits api_key from kwargs."""
+    def test_build_kwargs_oauth_no_token_omits_without_catalog(self) -> None:
+        """OAuth without a catalog omits api_key (no fail-closed off-catalog)."""
         config = _make_config(
             auth_type=AuthType.OAUTH,
             oauth_token_url="https://auth.example.com/token",

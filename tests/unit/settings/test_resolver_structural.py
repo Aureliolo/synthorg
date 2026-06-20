@@ -355,6 +355,7 @@ class TestGetProviderConfigs:
         assert "test-provider" in result
         assert isinstance(result["test-provider"], ProviderConfig)
         assert result["test-provider"].driver == "litellm"
+        assert result["test-provider"].connection_name == "conn-test"
 
     async def test_empty_dict_is_valid_override(self, mock_settings: AsyncMock) -> None:
         """Empty JSON dict is a valid override returning empty dict."""

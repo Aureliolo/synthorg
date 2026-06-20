@@ -1190,8 +1190,8 @@ CREATE TABLE connections (
     name TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(name) > 0),
     connection_type TEXT NOT NULL CHECK (
         connection_type IN (
-            'github', 'slack', 'smtp', 'database',
-            'generic_http', 'oauth_app', 'a2a_peer'
+            'github', 'gitlab', 'gitea', 'forgejo', 'slack', 'smtp',
+            'database', 'generic_http', 'oauth_app', 'a2a_peer', 'llm_provider'
         )
     ),
     auth_method TEXT NOT NULL CHECK (
@@ -2309,7 +2309,9 @@ CREATE TABLE experiment_assignments (
     subject_id TEXT NOT NULL CHECK (LENGTH(TRIM(subject_id)) > 0),
     variant TEXT NOT NULL CHECK (LENGTH(TRIM(variant)) > 0),
     assigned_at TEXT NOT NULL CHECK (assigned_at LIKE '%+00:00' OR assigned_at LIKE '%Z'),
-    PRIMARY KEY (experiment, subject_id)
+    PRIMARY KEY (experiment, subject_id),
+    FOREIGN KEY (experiment, variant)
+    REFERENCES experiment_variants (experiment, variant)
 );
 CREATE INDEX idx_experiment_assignments_exp_assigned
 ON experiment_assignments (experiment, assigned_at DESC);

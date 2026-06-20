@@ -411,14 +411,13 @@ def _run_go_licenses(cli_dir: Path) -> str:
         detail = completed.stderr.strip() or "no output"
         msg = f"go-licenses produced no licence rows (rc={completed.returncode}): {detail}"
         raise SetupError(msg)
-    if completed.returncode != 0 and completed.stderr.strip():
-        # go-licenses exited non-zero but still emitted rows: some modules were
-        # skipped (e.g. no LICENSE file found). Surface them so an incomplete
-        # closure does not pass silently as a clean scan.
-        print(
-            f"::warning::go-licenses skipped modules (rc={completed.returncode}): "
-            f"{completed.stderr.strip()}"
-        )
+    if completed.returncode != 0:
+        # A non-zero exit means go-licenses skipped modules (e.g. no LICENSE
+        # file found). Fail closed: an incomplete closure must not pass as a
+        # clean scan, or a skipped module's AGPL/GPL/LGPL licence slips through.
+        detail = completed.stderr.strip() or "unknown go-licenses failure"
+        msg = f"go-licenses scan was incomplete (rc={completed.returncode}): {detail}"
+        raise SetupError(msg)
     return completed.stdout
 
 
@@ -429,8 +428,10 @@ def _go_notice_covers(notice: str, module: str) -> bool:
     name, which mangles the dots in a Go import path (``github.com`` ->
     ``github-com``), so it cannot match a Go module path written verbatim in
     NOTICE. This does a direct, case-insensitive substring check against the
-    full import path, the conventional module root (first three path
-    components, e.g. ``github.com/org/repo``), and the leaf segment.
+    full import path and the conventional module root (first three path
+    components, e.g. ``github.com/org/repo``). The bare leaf segment is
+    deliberately excluded: a generic leaf (e.g. a common word) can appear in
+    NOTICE prose and falsely clear attribution.
 
     Returns:
         ``True`` when any candidate form is attributed in NOTICE.
@@ -442,7 +443,7 @@ def _go_notice_covers(notice: str, module: str) -> bool:
         if len(parts) >= _GO_MODULE_ROOT_SEGMENTS
         else module
     )
-    candidates = {module, module_root, parts[-1]}
+    candidates = {module, module_root}
     return any(
         candidate.lower() in notice_lower for candidate in candidates if candidate
     )

@@ -68,7 +68,7 @@ def make_openrouter_config() -> dict[str, ProviderConfig]:
     return {
         "openrouter": ProviderConfig(
             driver="litellm",
-            connection_name="provider-openrouter",
+            connection_name="provider-gateway-test",
             base_url="https://openrouter.ai/api/v1",
             models=(
                 ProviderModelConfig(

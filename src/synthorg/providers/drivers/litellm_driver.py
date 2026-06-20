@@ -66,6 +66,7 @@ from synthorg.providers import errors
 from synthorg.providers._cost import compute_token_cost
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
+from synthorg.providers.drivers.litellm_auth import AuthContext, apply_auth_kwargs
 from synthorg.providers.drivers.litellm_kwargs import (
     _AcompletionKwargs,
     _apply_completion_config,
@@ -540,52 +541,16 @@ class LiteLLMDriver(BaseCompletionProvider):
             kwargs["stream"] = True
             kwargs["stream_options"] = {"include_usage": True}
 
-        resolved = self._resolved_credentials
-        match self._config.auth_type:
-            case AuthType.API_KEY:
-                # Catalog-only: the key is resolved from the
-                # ``connection_name`` connection. With no embedded fallback,
-                # an unresolved key leaves ``api_key`` unset and the request
-                # goes out unauthenticated (the provider rejects it loudly).
-                key = resolved.get("api_key") if resolved else None
-                if key is not None:
-                    kwargs["api_key"] = key
-            case AuthType.OAUTH:
-                # Catalog-backed OAuth stores the bearer under the
-                # ``access_token`` key (set by
-                # ``ConnectionCatalog.store_oauth_tokens``); ``api_key`` is
-                # the legacy catalog key. Both come from the catalog now --
-                # there is no embedded fallback.
-                key = None
-                if resolved:
-                    key = resolved.get("access_token") or resolved.get("api_key")
-                if key is not None:
-                    kwargs["api_key"] = key
-            case AuthType.CUSTOM_HEADER:
-                # Prefer catalog-resolved credentials so a
-                # ``connection_name`` provider can ship the header
-                # without duplicating it in config. Fall back to the
-                # embedded fields for the legacy, catalog-less path.
-                header_name = resolved.get("custom_header_name") if resolved else None
-                if header_name is None:
-                    header_name = self._config.custom_header_name
-                header_value = resolved.get("custom_header_value") if resolved else None
-                if header_value is None:
-                    header_value = self._config.custom_header_value
-                if header_name and header_value:
-                    kwargs["extra_headers"] = {header_name: header_value}
-            case AuthType.SUBSCRIPTION:
-                # Pass as api_key -- the correct kwarg for LiteLLM
-                # authentication.  Do NOT use "auth_token" -- it is
-                # not a litellm.completion() parameter and is silently
-                # discarded.
-                token = resolved.get("subscription_token") if resolved else None
-                if token is None:
-                    token = self._config.subscription_token
-                if token is not None:
-                    kwargs["api_key"] = token
-            case AuthType.NONE:
-                pass
+        apply_auth_kwargs(
+            kwargs,
+            AuthContext(
+                config=self._config,
+                resolved=self._resolved_credentials,
+                catalog_present=self._connection_catalog is not None,
+                provider_name=self._provider_name,
+                litellm_model=litellm_model,
+            ),
+        )
 
         if self._config.base_url is not None:
             kwargs["api_base"] = self._config.base_url

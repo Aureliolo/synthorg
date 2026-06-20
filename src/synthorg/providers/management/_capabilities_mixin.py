@@ -559,21 +559,22 @@ class ProviderCapabilitiesMixin:
                     self._app_state, name, raw_api_key
                 )
                 update_fields = {**update_fields, "connection_name": conn_name}
-            # Re-validate the merged config (model_copy(update=) skips model
-            # validators, so it would not catch a credential state the
-            # auth-type invariants forbid).
-            updated = ProviderConfig.model_validate(
-                {**existing.model_dump(mode="python"), **update_fields}
-            )
-            new_providers = {**providers, name: updated}
             try:
+                # Re-validate the merged config inside the try (model_copy
+                # skips model validators, so it would not catch a credential
+                # state the auth-type invariants forbid) -- a validation
+                # failure here must also unwind the mint above.
+                updated = ProviderConfig.model_validate(
+                    {**existing.model_dump(mode="python"), **update_fields}
+                )
+                new_providers = {**providers, name: updated}
                 await self._validate_and_persist(new_providers)
             except Exception:
                 # The mint above overwrote the prior secret in place (the old
-                # one is unrecoverable). If the validate/persist step fails,
-                # drop the rotated credential so the rotation fails closed --
-                # the operator retries rather than the provider silently
-                # serving a secret the failed operation reported as un-applied.
+                # one is unrecoverable). If config validation or the persist
+                # step fails, drop the rotated credential so the rotation fails
+                # closed -- the operator re-supplies the key and retries rather
+                # than the provider silently serving a half-applied secret.
                 if raw_api_key is not None:
                     await delete_provider_credential(self._app_state, name)
                 raise

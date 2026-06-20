@@ -47,7 +47,11 @@ async def store_provider_api_key(
 
     The ConnectionCatalog has no secret-update seam, so this deletes any
     existing connection and recreates it: idempotent, and it doubles as
-    rotation. Runs inside the service lock held by the caller.
+    rotation. The prior credential is snapshotted first so a failed
+    re-create restores it rather than orphaning the provider (the
+    delete-then-create swap is forced by the connection name being a primary
+    key -- two connections cannot share it). Runs inside the service lock
+    held by the caller.
 
     Returns:
         The connection name to stamp onto ``ProviderConfig.connection_name``.
@@ -67,19 +71,33 @@ async def store_provider_api_key(
         logger.warning(PROVIDER_VALIDATION_FAILED, provider=provider_name, error=msg)
         raise ProviderValidationError(msg)
     conn_name = credential_connection_name(provider_name)
+    prior: dict[str, str] | None = None
+    with contextlib.suppress(ConnectionNotFoundError):
+        prior = dict(await catalog.get_credentials(conn_name))
     with contextlib.suppress(ConnectionNotFoundError):
         await catalog.delete(conn_name)
-    # No suppress on create: the delete above already cleared any existing
-    # entry (ConnectionNotFoundError when absent is benign). A
-    # DuplicateConnectionError here means the delete did not take effect, so
-    # the new key was NOT stored -- swallowing it would return a connection
-    # name pointing at the un-rotated secret. Let it propagate.
-    await catalog.create(
-        name=conn_name,
-        connection_type=ConnectionType.LLM_PROVIDER,
-        auth_method=AuthMethod.API_KEY.value,
-        credentials={"api_key": api_key},
-    )
+    try:
+        await catalog.create(
+            name=conn_name,
+            connection_type=ConnectionType.LLM_PROVIDER,
+            auth_method=AuthMethod.API_KEY.value,
+            credentials={"api_key": api_key},
+        )
+    except Exception as exc:
+        # The delete above already removed the prior connection; if the
+        # re-create fails, restore the snapshot so the provider is not left
+        # referencing a vanished connection. Best-effort: a restore failure
+        # must not mask the original error.
+        reraise_critical(exc)
+        if prior is not None:
+            with contextlib.suppress(Exception):
+                await catalog.create(
+                    name=conn_name,
+                    connection_type=ConnectionType.LLM_PROVIDER,
+                    auth_method=AuthMethod.API_KEY.value,
+                    credentials=prior,
+                )
+        raise
     return conn_name
 
 
@@ -102,6 +120,36 @@ async def delete_provider_credential(app_state: AppState, provider_name: str) ->
         logger.warning(
             PROVIDER_VALIDATION_FAILED,
             provider=provider_name,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+
+
+async def rollback_credential(
+    app_state: AppState,
+    name: str,
+    prior_api_key: str | None,
+    *,
+    minted: bool,
+) -> None:
+    """Best-effort restore of a provider's pre-update catalog credential.
+
+    A mint overwrites the prior secret in place; a failed persist /
+    allowlist step puts the ``prior_api_key`` snapshot back (or drops the
+    minted credential when there was none). Logged, never raised.
+    """
+    if not minted:
+        return
+    try:
+        if prior_api_key is not None:
+            await store_provider_api_key(app_state, name, prior_api_key)
+        else:
+            await delete_provider_credential(app_state, name)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised below
+        reraise_critical(exc)
+        logger.warning(
+            PROVIDER_VALIDATION_FAILED,
+            provider=name,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
@@ -203,5 +251,6 @@ __all__ = [
     "credential_connection_name",
     "delete_provider_credential",
     "resolve_provider_api_key",
+    "rollback_credential",
     "store_provider_api_key",
 ]

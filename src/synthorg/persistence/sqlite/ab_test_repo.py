@@ -67,6 +67,9 @@ def _row_to_record(row: aiosqlite.Row) -> AbTestRecord:
         QueryError: If the row contains corrupt or unparseable data.
     """
     try:
+        # A corrupt ``variants`` cell can decode to a list/str/number; the
+        # ``.get()`` calls below then raise AttributeError, which is caught
+        # alongside the parse errors and wrapped as QueryError.
         payload = json.loads(str(row["variants"]))
         arms = tuple(
             AbTestArm(
@@ -89,7 +92,14 @@ def _row_to_record(row: aiosqlite.Row) -> AbTestRecord:
             created_at=coerce_row_timestamp(row["created_at"]),
             updated_at=coerce_row_timestamp(row["updated_at"]),
         )
-    except (ValueError, TypeError, KeyError, IndexError, json.JSONDecodeError) as exc:
+    except (
+        ValueError,
+        TypeError,
+        KeyError,
+        IndexError,
+        AttributeError,
+        json.JSONDecodeError,
+    ) as exc:
         logger.warning(
             META_ABTEST_PERSISTENCE_FAILED,
             operation="deserialize",
