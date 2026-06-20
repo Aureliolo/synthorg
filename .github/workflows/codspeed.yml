@@ -10,7 +10,7 @@ name: CodSpeed
 # Web into two separate workflows (the prior layout) caused the second-
 # completing workflow's results to overwrite the first's CodSpeed PR
 # comment, with the missing benchmarks marked "unknown cause" -- the
-# regression risk that motivated #1640. Sharing one workflow run also
+# regression scenario this consolidated layout prevents. Sharing one workflow run also
 # requires a SINGLE auth method across all bench jobs (OIDC here, declared
 # via id-token: write on each shard).
 #
@@ -28,7 +28,12 @@ name: CodSpeed
 # Mode rationale: CPU Simulation (cachegrind / valgrind), instruction-count
 # variance under 1% across runners. Walltime would need Macro Runners
 # (CodSpeed's bare-metal pool) to match that variance, which we have
-# explicitly scoped out to keep the gate free-tier.
+# explicitly scoped out to keep the gate free-tier. The memory instrument
+# rides alongside simulation in the same invocation (mode: simulation,memory):
+# as of CodSpeed runner 4.17 memtrack runs sudo-less via file capabilities on
+# standard GitHub-hosted runners, so heap-allocation regressions surface next
+# to CPU in the same PR report at no extra job. Both surfaces meet the floor
+# (pytest-codspeed 5.0.3 >= 4.3.0, @codspeed/vitest-plugin 5.6.0 >= 5.2.0).
 
 on:
   push:
@@ -89,8 +94,10 @@ jobs:
     runs-on: ubuntu-24.04
     # 30 (was 15) so the worst case of the 3-attempt CodSpeed ladder below
     # (a transient OIDC/upload failure forcing up to three benchmark runs)
-    # still completes within the job budget. Steady state runs once; the
-    # extra runs only occur during an actual CodSpeed outage.
+    # still completes within the job budget. Each attempt now runs two
+    # instruments (simulation + memory) over the same serial suite; both are
+    # fast relative to cachegrind, so the budget holds. Steady state runs
+    # once; the extra runs only occur during an actual CodSpeed outage.
     timeout-minutes: 30
     permissions:
       contents: read
@@ -116,9 +123,9 @@ jobs:
       # the check loud. The benchmark re-runs only when an attempt actually
       # fails -- the steady-state path runs the suite once.
       #
-      # The env / with block (typeguard suppression, serial -n0, simulation
-      # mode) is identical across attempts; see the inline rationale on
-      # attempt 1.
+      # The env / with block (typeguard suppression, serial -n0,
+      # simulation+memory mode) is identical across attempts; see the
+      # inline rationale on attempt 1.
       - name: Run CodSpeed Python benchmarks (attempt 1/3)
         id: codspeed-py-1
         continue-on-error: true
@@ -131,7 +138,7 @@ jobs:
           # Both are required -- either one left active re-instruments synthorg.
           SYNTHORG_BENCH_NO_TYPEGUARD: "1"
         with:
-          mode: simulation
+          mode: simulation,memory
           # -n0 overrides the project-wide -n=8 in pyproject.toml addopts;
           # pytest-codspeed must run serial for deterministic measurements.
           # --typeguard-packages= overrides the addopts default so the typeguard
@@ -150,7 +157,7 @@ jobs:
         env:
           SYNTHORG_BENCH_NO_TYPEGUARD: "1"
         with:
-          mode: simulation
+          mode: simulation,memory
           run: uv run python -m pytest tests/benchmarks/ --codspeed -n0 --typeguard-packages=
       - name: Backoff before CodSpeed Python attempt 3
         if: ${{ !cancelled() && steps.codspeed-py-1.outcome == 'failure' && steps.codspeed-py-2.outcome == 'failure' }}
@@ -163,7 +170,7 @@ jobs:
         env:
           SYNTHORG_BENCH_NO_TYPEGUARD: "1"
         with:
-          mode: simulation
+          mode: simulation,memory
           run: uv run python -m pytest tests/benchmarks/ --codspeed -n0 --typeguard-packages=
 
   # ── Shard 2: React dashboard benchmarks ──
@@ -172,8 +179,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04
-    # 30 (was 15): headroom for the 3-attempt CodSpeed ladder below (see
-    # the codspeed-python job for the rationale).
+    # 30 (was 15): headroom for the 3-attempt CodSpeed ladder below, each
+    # attempt running two instruments (simulation + memory); see the
+    # codspeed-python job for the rationale.
     timeout-minutes: 30
     permissions:
       contents: read
@@ -207,7 +215,7 @@ jobs:
         continue-on-error: true
         uses: CodSpeedHQ/action@63f3e98b61959fe67f146a3ff022e4136fe9bb9c # v4.17.6
         with:
-          mode: simulation
+          mode: simulation,memory
           run: npm --prefix web run bench
       - name: Backoff before CodSpeed Web attempt 2
         if: ${{ !cancelled() && steps.codspeed-web-1.outcome == 'failure' }}
@@ -220,7 +228,7 @@ jobs:
         continue-on-error: true
         uses: CodSpeedHQ/action@63f3e98b61959fe67f146a3ff022e4136fe9bb9c # v4.17.6
         with:
-          mode: simulation
+          mode: simulation,memory
           run: npm --prefix web run bench
       - name: Backoff before CodSpeed Web attempt 3
         if: ${{ !cancelled() && steps.codspeed-web-1.outcome == 'failure' && steps.codspeed-web-2.outcome == 'failure' }}
@@ -231,7 +239,7 @@ jobs:
         if: ${{ !cancelled() && steps.codspeed-web-1.outcome == 'failure' && steps.codspeed-web-2.outcome == 'failure' }}
         uses: CodSpeedHQ/action@63f3e98b61959fe67f146a3ff022e4136fe9bb9c # v4.17.6
         with:
-          mode: simulation
+          mode: simulation,memory
           run: npm --prefix web run bench
 
   # ── Branch-protection-friendly aggregators ──

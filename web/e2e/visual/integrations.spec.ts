@@ -6,11 +6,9 @@ test.describe('Integrations dashboard', () => {
   test.beforeEach(async ({ page }) => {
     await freezeTime(page)
     await mockIntegrationRoutes(page)
+    // mockApiRoutes stubs `GET /auth/me` to a non-401, keeping the app
+    // authenticated (HttpOnly-cookie auth) so it never redirects to login.
     await mockApiRoutes(page)
-    await page.addInitScript(() => {
-      localStorage.setItem('auth_token', 'mock-token')
-      localStorage.setItem('auth_token_expires_at', String(Date.now() + 86400000))
-    })
   })
 
   test('Connections page loads with connections and health', async ({ page }) => {
