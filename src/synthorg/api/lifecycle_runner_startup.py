@@ -440,42 +440,43 @@ async def _run_startup(  # noqa: PLR0913
     # AFTER SettingsService auto-wire; resolver drives max_subworkflow_depth.
     # Mirror the auto_wire_settings failure path so a resolver or
     # register_observer() raise here still triggers _safe_shutdown instead of
-    # leaving the app half-wired.
-    # Unconditional: the webhook replay protector's in-process nonce cache
-    # MUST be a single shared instance regardless of persistence, so it is
-    # wired on every startup. The helper internally skips only the
-    # persistence-dependent activity service when the backend is absent.
-    _wire_webhook_request_services(persistence, app_state)
-    if persistence is not None:
-        try:
+    # leaving the app half-wired. The webhook request-service wiring is
+    # unconditional (the replay protector's in-process nonce cache MUST be a
+    # single shared instance regardless of persistence; the helper internally
+    # skips only the persistence-dependent activity service when the backend
+    # is absent) but is kept INSIDE this guard so a raise there cleans up the
+    # already-started services rather than leaking them.
+    try:
+        _wire_webhook_request_services(persistence, app_state)
+        if persistence is not None:
             await _wire_workflow_observer(task_engine, persistence, app_state)
             _wire_workflow_execution_service(persistence, app_state)
-        except Exception as exc:
-            reraise_critical(exc)
-            log_exception_redacted(
-                logger,
-                API_APP_STARTUP,
-                exc,
-                detail="workflow_observer_auto_wire_failed",
-            )
-            await _safe_shutdown(
-                task_engine,
-                meeting_scheduler,
-                backup_service,
-                approval_timeout_scheduler,
-                settings_dispatcher,
-                bridge,
-                message_bus,
-                persistence,
-                performance_tracker=app_state.slice(HrStateSlice).performance_tracker,
-                distributed_task_queue=app_state.slice(
-                    RuntimeStateSlice
-                ).distributed_task_queue,
-                distributed_backend_services=app_state.slice(
-                    RuntimeStateSlice
-                ).distributed_backend_services,
-            )
-            raise
+    except Exception as exc:
+        reraise_critical(exc)
+        log_exception_redacted(
+            logger,
+            API_APP_STARTUP,
+            exc,
+            detail="workflow_observer_auto_wire_failed",
+        )
+        await _safe_shutdown(
+            task_engine,
+            meeting_scheduler,
+            backup_service,
+            approval_timeout_scheduler,
+            settings_dispatcher,
+            bridge,
+            message_bus,
+            persistence,
+            performance_tracker=app_state.slice(HrStateSlice).performance_tracker,
+            distributed_task_queue=app_state.slice(
+                RuntimeStateSlice
+            ).distributed_task_queue,
+            distributed_backend_services=app_state.slice(
+                RuntimeStateSlice
+            ).distributed_backend_services,
+        )
+        raise
 
     # Single boot ApprovalGate: wired here (after persistence connects, before
     # the appended worker-execution-service install hook reads the

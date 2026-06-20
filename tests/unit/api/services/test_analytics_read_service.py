@@ -29,6 +29,9 @@ async def test_list_tasks_delegates_to_repo_with_empty_filter() -> None:
     repo.query.assert_awaited_once()
     spec = repo.query.await_args.args[0]
     assert isinstance(spec, TaskFilterSpec)
+    # Verify the spec is genuinely the empty/default filter, not just the
+    # right type -- the analytics aggregates depend on an unfiltered query.
+    assert spec == TaskFilterSpec()
 
 
 async def test_list_tasks_returns_empty_when_repo_empty() -> None:

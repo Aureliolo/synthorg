@@ -590,8 +590,8 @@
     },
     "src/synthorg/engine/workflow/webhook_bridge.py": {
       "cap": 500,
-      "loc": 451,
-      "ratio": 0.902,
+      "loc": 410,
+      "ratio": 0.82,
       "tier": "code"
     },
     "src/synthorg/engine/workspace/environment/devcontainer.py": {
@@ -692,14 +692,8 @@
     },
     "src/synthorg/integrations/oauth/token_manager.py": {
       "cap": 500,
-      "loc": 461,
-      "ratio": 0.922,
-      "tier": "code"
-    },
-    "src/synthorg/integrations/rate_limiting/shared_state.py": {
-      "cap": 500,
-      "loc": 423,
-      "ratio": 0.846,
+      "loc": 418,
+      "ratio": 0.836,
       "tier": "code"
     },
     "src/synthorg/memory/backends/composite/adapter.py": {
@@ -1373,7 +1367,7 @@
     "synthorg.core.autonomy_enums": 36,
     "synthorg.core.boundary": 37,
     "synthorg.core.clock": 176,
-    "synthorg.core.critical_errors": 533,
+    "synthorg.core.critical_errors": 534,
     "synthorg.core.domain_errors": 217,
     "synthorg.core.effective_autonomy": 22,
     "synthorg.core.error_taxonomy": 61,

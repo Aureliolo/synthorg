@@ -408,7 +408,9 @@ class SQLiteConversationParticipantRepository:
             participant.agent_id,
             participant.agent_name,
             participant.participant_role,
-            participant.status.value,
+            # Force ACTIVE: the method's contract is to ADMIT, so the row is
+            # always written active regardless of the input row's status.
+            active,
             participant.added_by,
             format_iso_utc(participant.added_at),
         )

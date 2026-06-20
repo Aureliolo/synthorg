@@ -45,6 +45,7 @@ from synthorg.meta.mcp.handlers.infrastructure._shared import (
     _to_jsonable,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.idempotency import IDEMPOTENCY_CLAIM_IN_FLIGHT
 from synthorg.observability.events.mcp import (
     MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
@@ -265,6 +266,15 @@ async def _backup_restore(
             callback=_restore,
         )
         if outcome.timed_out:
+            # Log the in-flight conflict for observability parity with the
+            # other error branches below and the REST controller.
+            logger.warning(
+                IDEMPOTENCY_CLAIM_IN_FLIGHT,
+                scope="mcp:backup_restore",
+                idempotency_key=args.idempotency_key,
+                tool_name=tool,
+                backup_id=backup_id,
+            )
             msg = "Concurrent in-flight restore with this idempotency key"
             return err(ConflictError(msg), domain_code="conflict")
         payload = outcome.result

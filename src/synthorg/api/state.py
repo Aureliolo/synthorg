@@ -191,8 +191,15 @@ class AppState(AppStateSliceMixin):
         # exception abandoned with no post-mortem trace (only the cancelled
         # stragglers below were being inspected).
         for task in done:
+            # ``task.exception()`` RAISES ``CancelledError`` on a cancelled
+            # task rather than returning it, which would abort this loop and
+            # skip the straggler cancel/await below. Guard with
+            # ``task.cancelled()`` first so a cancelled completion is a clean
+            # skip, not a raised exception.
+            if task.cancelled():
+                continue
             exc = task.exception()
-            if exc is not None and not isinstance(exc, asyncio.CancelledError):
+            if exc is not None:
                 logger.warning(
                     API_APP_SHUTDOWN,
                     service="entry_task_drain",

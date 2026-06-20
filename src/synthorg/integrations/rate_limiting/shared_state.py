@@ -29,7 +29,7 @@ from synthorg.integrations.errors import (
     IntegrationLifecycleConflictError,
 )
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.background_tasks import log_task_exceptions
+from synthorg.observability.background_tasks import drain_lifecycle_task
 from synthorg.observability.events.integrations import (
     RATE_LIMIT_ACQUIRE_PUBLISHED,
     RATE_LIMIT_COORDINATOR_STARTED,
@@ -195,79 +195,20 @@ class SharedRateLimitCoordinator:
         async with self._lifecycle_lock:
             task = self._task
             if task is not None:
-                task.cancel()
-
-                async def _drain() -> None:
-                    """Await the cancelled poll task, swallowing its cancellation."""
-                    try:
-                        await task
-                    except asyncio.CancelledError:
-                        pass
-                    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                        reraise_critical(exc)
-                        logger.warning(
-                            RATE_LIMIT_COORDINATOR_STOPPED,
-                            connection_name=self._connection_name,
-                            error_type=type(exc).__name__,
-                            error=safe_error_description(exc),
-                            note="shutdown",
-                        )
-
-                drain_task: asyncio.Task[None] = asyncio.create_task(_drain())
                 try:
-                    await asyncio.wait_for(
-                        asyncio.shield(drain_task),
+                    await drain_lifecycle_task(
+                        task,
                         timeout=self._stop_drain_timeout_seconds,
-                    )
-                except TimeoutError:
-                    self._stop_failed = True
-                    logger.error(
-                        RATE_LIMIT_COORDINATOR_STOPPED,
-                        connection_name=self._connection_name,
-                        error=(
+                        logger_=logger,
+                        event=RATE_LIMIT_COORDINATOR_STOPPED,
+                        timeout_message=(
                             "stop exceeded hard deadline; coordinator "
                             "marked unrestartable"
                         ),
-                        timeout_seconds=self._stop_drain_timeout_seconds,
-                    )
-                    # The shielded drain keeps running orphaned past the
-                    # deadline; log its eventual outcome rather than letting a
-                    # later failure surface as "task exception never retrieved".
-                    drain_task.add_done_callback(
-                        log_task_exceptions(
-                            logger,
-                            RATE_LIMIT_COORDINATOR_STOPPED,
-                            connection_name=self._connection_name,
-                            note="orphaned_drain_after_timeout",
-                        )
-                    )
-                    raise
-                except BaseException as exc:
-                    # If ``stop()`` itself is cancelled (hard process
-                    # shutdown cancels us), the shielded ``drain_task`` would
-                    # be left running on a closing loop. Cancel and reap it
-                    # before propagating (mirrors ``backup/scheduler.py``).
-                    logger.warning(
-                        RATE_LIMIT_COORDINATOR_STOPPED,
                         connection_name=self._connection_name,
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
-                        note="shutdown_interrupted",
                     )
-                    drain_task.cancel()
-                    try:
-                        await drain_task
-                    except asyncio.CancelledError:
-                        pass
-                    except Exception as drain_exc:  # noqa: BLE001 -- criticals re-raised
-                        reraise_critical(drain_exc)
-                        logger.warning(
-                            RATE_LIMIT_COORDINATOR_STOPPED,
-                            connection_name=self._connection_name,
-                            error_type=type(drain_exc).__name__,
-                            error=safe_error_description(drain_exc),
-                            note="drain_task_error_on_interrupt",
-                        )
+                except TimeoutError:
+                    self._stop_failed = True
                     raise
                 self._task = None
             if self._subscribed:

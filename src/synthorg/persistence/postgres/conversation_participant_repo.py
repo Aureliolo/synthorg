@@ -376,7 +376,9 @@ class PostgresConversationParticipantRepository:
             participant.agent_id,
             participant.agent_name,
             participant.participant_role,
-            participant.status.value,
+            # Force ACTIVE: the method's contract is to ADMIT, so the row is
+            # always written active regardless of the input row's status.
+            ConversationParticipantStatus.ACTIVE.value,
             participant.added_by,
             participant.added_at,
         )

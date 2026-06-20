@@ -21,6 +21,7 @@ from types import MappingProxyType
 from typing import Any, Final
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.async_task import (
     BACKGROUND_TASKS_DRAIN_TIMEOUT,
@@ -286,3 +287,99 @@ def log_task_exceptions(  # type: ignore[explicit-any]  # structlog proxy; see l
         )
 
     return _on_done
+
+
+async def drain_lifecycle_task(  # type: ignore[explicit-any]  # structlog proxy; see log_task_exceptions
+    task: asyncio.Task[None],
+    *,
+    timeout: float,  # noqa: ASYNC109 -- per-service shutdown drain budget
+    logger_: Any,
+    event: str,
+    timeout_message: str,
+    **log_fields: object,
+) -> None:
+    """Cancel *task* and drain it under a hard *timeout*, reaping on interrupt.
+
+    The canonical lifecycle-stop drain shared by the poll-loop services
+    (webhook bridge, OAuth token manager, rate-limit coordinator, ...).
+    Cancels *task*, then awaits it inside a shielded ``wait_for`` so a hung
+    coroutine cannot hold the lifecycle lock past the deadline:
+
+    * on timeout, logs *timeout_message* at ERROR, attaches an
+      orphan-logging done-callback (the shielded drain keeps running), and
+      re-raises ``TimeoutError`` so the caller can mark itself unrestartable;
+    * if ``stop()`` itself is cancelled (hard process shutdown), cancels and
+      reaps the shielded drain before re-raising so it is never left running
+      on a closing loop.
+
+    *log_fields* are threaded into every log call (e.g. a connection name).
+
+    Raises:
+        TimeoutError: If the drain exceeds *timeout* (caller marks
+            unrestartable).
+    """
+    task.cancel()
+
+    async def _drain() -> None:
+        """Await the cancelled task, swallowing its own cancellation."""
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger_.warning(
+                event,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="shutdown",
+                **log_fields,
+            )
+
+    drain_task: asyncio.Task[None] = asyncio.create_task(_drain())
+    try:
+        await asyncio.wait_for(asyncio.shield(drain_task), timeout=timeout)
+    except TimeoutError:
+        logger_.error(
+            event,
+            error=timeout_message,
+            timeout_seconds=timeout,
+            **log_fields,
+        )
+        # The shielded drain keeps running past the deadline; log its eventual
+        # outcome rather than dropping it silently.
+        drain_task.add_done_callback(
+            log_task_exceptions(
+                logger_,
+                event,
+                note="orphaned_drain_after_timeout",
+                **log_fields,
+            )
+        )
+        raise
+    except BaseException as exc:
+        # ``stop()`` itself was cancelled; the shielded drain would otherwise
+        # be left running on a closing loop. Cancel and reap it before
+        # propagating so callers never observe a half-cleaned-up service.
+        logger_.warning(
+            event,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            note="shutdown_interrupted",
+            **log_fields,
+        )
+        drain_task.cancel()
+        try:
+            await drain_task
+        except asyncio.CancelledError:
+            pass
+        except Exception as drain_exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(drain_exc)
+            logger_.warning(
+                event,
+                error_type=type(drain_exc).__name__,
+                error=safe_error_description(drain_exc),
+                note="drain_task_error_on_interrupt",
+                **log_fields,
+            )
+        raise

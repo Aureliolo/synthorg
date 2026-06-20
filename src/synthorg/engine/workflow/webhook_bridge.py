@@ -29,7 +29,10 @@ from synthorg.observability import (
     log_exception_redacted,
     safe_error_description,
 )
-from synthorg.observability.background_tasks import log_task_exceptions
+from synthorg.observability.background_tasks import (
+    drain_lifecycle_task,
+    log_task_exceptions,
+)
 from synthorg.observability.events.integrations import (
     WEBHOOK_BRIDGE_EVENT_FORWARDED,
     WEBHOOK_BRIDGE_PAUSED,
@@ -285,72 +288,18 @@ class WebhookEventBridge:
             task = self._task
             if task is None:
                 return
-            task.cancel()
-
-            async def _drain() -> None:
-                """Await the cancelled poll task, swallowing its cancellation."""
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
-                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                    reraise_critical(exc)
-                    logger.warning(
-                        WEBHOOK_BRIDGE_STOPPED,
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
-                        note="shutdown",
-                    )
-
-            drain_task: asyncio.Task[None] = asyncio.create_task(_drain())
             try:
-                await asyncio.wait_for(
-                    asyncio.shield(drain_task),
+                await drain_lifecycle_task(
+                    task,
                     timeout=self._stop_drain_timeout_seconds,
+                    logger_=logger,
+                    event=WEBHOOK_BRIDGE_STOPPED,
+                    timeout_message=(
+                        "stop exceeded hard deadline; bridge marked unrestartable"
+                    ),
                 )
             except TimeoutError:
                 self._stop_failed = True
-                logger.error(
-                    WEBHOOK_BRIDGE_STOPPED,
-                    error=("stop exceeded hard deadline; bridge marked unrestartable"),
-                    timeout_seconds=self._stop_drain_timeout_seconds,
-                )
-                # Log the orphaned drain's eventual outcome (it keeps running
-                # past the deadline) rather than dropping it silently.
-                drain_task.add_done_callback(
-                    log_task_exceptions(
-                        logger,
-                        WEBHOOK_BRIDGE_STOPPED,
-                        note="orphaned_drain_after_timeout",
-                    )
-                )
-                raise
-            except BaseException as exc:
-                # If ``stop()`` itself is cancelled (process shutting down
-                # hard and the surrounding ``TaskGroup`` cancels us), the
-                # shielded ``drain_task`` would otherwise be left running on
-                # a closing event loop. Cancel and reap it before
-                # propagating so callers never observe a half-cleaned bridge
-                # (mirrors ``backup/scheduler.py``).
-                logger.warning(
-                    WEBHOOK_BRIDGE_STOPPED,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                    note="shutdown_interrupted",
-                )
-                drain_task.cancel()
-                try:
-                    await drain_task
-                except asyncio.CancelledError:
-                    pass
-                except Exception as drain_exc:  # noqa: BLE001 -- criticals re-raised
-                    reraise_critical(drain_exc)
-                    logger.warning(
-                        WEBHOOK_BRIDGE_STOPPED,
-                        error_type=type(drain_exc).__name__,
-                        error=safe_error_description(drain_exc),
-                        note="drain_task_error_on_interrupt",
-                    )
                 raise
             try:
                 await self._bus.unsubscribe(

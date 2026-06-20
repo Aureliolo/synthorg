@@ -132,7 +132,7 @@ async def _do_restore_as_dict(
     """Bridge a ``RestoreResponse``-returning callable to a JSON dict.
 
     Mirrors :func:`_do_backup_as_dict`: the idempotency service caches a
-    JSON-serialized response, so the Pydantic model is dumped (and
+    JSON-serialised response, so the Pydantic model is dumped (and
     round-trip validated to reject a corrupt payload before it pollutes
     the cache) and re-validated on the controller's cache-hit branch.
 
