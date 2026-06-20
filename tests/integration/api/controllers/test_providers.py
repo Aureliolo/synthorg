@@ -75,7 +75,12 @@ class TestProviderControllerDbOverride:
         app = await _build_app_with_db_providers(
             fake_persistence,
             fake_message_bus,
-            {"test-provider": {"driver": "litellm"}},
+            {
+                "test-provider": {
+                    "driver": "litellm",
+                    "connection_name": "provider-test",
+                }
+            },
         )
         async with LoopAsyncClient(app) as client:
             client.headers.update(make_auth_headers("observer"))

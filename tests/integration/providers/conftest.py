@@ -20,12 +20,15 @@ from litellm.types.utils import (  # type: ignore[attr-defined]
 
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.resilience_config import RetryConfig
+from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.integrations.connections.models import AuthMethod, ConnectionType
 from synthorg.providers.enums import AuthType, MessageRole
 from synthorg.providers.models import (
     ChatMessage,
     ToolDefinition,
 )
 from tests._shared import JsonDict
+from tests._shared.connection_catalog import make_in_memory_catalog
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -86,6 +89,25 @@ def make_openrouter_config() -> dict[str, ProviderConfig]:
             retry=RetryConfig(max_retries=0),
         ),
     }
+
+
+async def make_catalog_with_key(
+    connection_name: str, api_key: str
+) -> ConnectionCatalog:
+    """In-memory catalog holding one provider API-key connection.
+
+    Catalog-only credentials mean the driver resolves its api_key from a
+    ConnectionCatalog connection at call time; tests asserting the key is
+    forwarded must wire one rather than embedding the secret on the config.
+    """
+    catalog = make_in_memory_catalog()
+    await catalog.create(
+        name=connection_name,
+        connection_type=ConnectionType.LLM_PROVIDER,
+        auth_method=AuthMethod.API_KEY.value,
+        credentials={"api_key": api_key},
+    )
+    return catalog
 
 
 def make_ollama_config() -> dict[str, ProviderConfig]:
