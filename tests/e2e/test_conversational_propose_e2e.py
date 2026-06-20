@@ -21,7 +21,6 @@ Zero real LLM spend: every provider is scripted/deterministic.
 from collections.abc import AsyncGenerator
 from datetime import date
 from pathlib import Path
-from uuid import uuid4
 
 import pytest
 
@@ -287,7 +286,7 @@ def _resume_service(
 
 def _make_agent(name: str, skill: str, *, level: SeniorityLevel) -> AgentIdentity:
     return AgentIdentity(
-        id=uuid4(),
+        id=as_uuid(name),
         name=name,
         role="developer",
         department="engineering",

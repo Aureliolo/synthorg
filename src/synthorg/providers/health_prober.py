@@ -38,7 +38,11 @@ from synthorg.providers.discovery_policy import (
     is_url_allowed,
     resolve_discovery_target,
 )
-from synthorg.providers.errors import ProviderLifecycleConflictError
+from synthorg.providers.enums import AuthType
+from synthorg.providers.errors import (
+    ProviderLifecycleConflictError,
+    ProviderValidationError,
+)
 from synthorg.providers.health import ProviderHealthRecord, ProviderHealthTracker
 from synthorg.providers.health_prober_helpers import (
     build_auth_headers,
@@ -141,18 +145,42 @@ class ProviderHealthProber:
     async def _resolve_probe_api_key(self, config: ProviderConfig) -> str | None:
         """Resolve a provider's api_key from its catalog connection.
 
-        Returns ``None`` when the provider has no ``connection_name`` or no
-        catalog is wired, so the probe pings without an Authorization header.
-        A catalog lookup failure propagates and is recorded as a failed probe
-        by the caller, rather than silently probing unauthenticated.
+        Returns ``None`` for providers that do not authenticate with an API
+        key, so the probe pings without an Authorization header. For an
+        ``API_KEY`` provider whose key cannot be resolved (no catalog wired,
+        or the connection carries no key) this raises instead of returning
+        ``None`` -- probing such a provider unauthenticated would let an
+        endpoint that serves unauthenticated requests report it healthy and
+        mask a missing credential. The raise is isolated by ``_safe_probe_one``
+        (logged, no healthy record written). A catalog lookup error likewise
+        propagates rather than silently probing unauthenticated.
 
         Returns:
             The resolved api_key, or ``None`` when unresolvable by design.
+
+        Raises:
+            ProviderValidationError: When an ``API_KEY`` provider's key
+                cannot be resolved.
         """
+        requires_key = config.auth_type is AuthType.API_KEY
         if config.connection_name is None or self._connection_catalog is None:
+            if requires_key:
+                msg = (
+                    "Cannot resolve an API key for the health probe of "
+                    f"{config.litellm_provider!r} (no connection_name or "
+                    "catalog wired); refusing to probe unauthenticated."
+                )
+                raise ProviderValidationError(msg)
             return None
         creds = await self._connection_catalog.get_credentials(config.connection_name)
-        return creds.get("api_key")
+        api_key = creds.get("api_key")
+        if api_key is None and requires_key:
+            msg = (
+                "Catalog connection carries no api_key; refusing to probe "
+                f"API_KEY provider {config.litellm_provider!r} unauthenticated."
+            )
+            raise ProviderValidationError(msg)
+        return api_key
 
     async def start(self) -> None:
         """Start the background probe loop.

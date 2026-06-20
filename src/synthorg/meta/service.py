@@ -284,6 +284,11 @@ class SelfImprovementService(
                 results,
                 strict=True,
             ):
+                if isinstance(adj_result, asyncio.CancelledError):
+                    # gather(return_exceptions=True) captures CancelledError
+                    # as a result; swallowing it would let a cancelled cycle
+                    # keep running during shutdown. Propagate it.
+                    raise adj_result
                 if isinstance(adj_result, BaseException):
                     logger.warning(
                         COS_CONFIDENCE_ADJUSTMENT_FAILED,

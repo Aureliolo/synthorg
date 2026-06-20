@@ -1124,14 +1124,14 @@
     },
     "src/synthorg/providers/health_prober.py": {
       "cap": 500,
-      "loc": 489,
-      "ratio": 0.978,
+      "loc": 516,
+      "ratio": 1.032,
       "tier": "code"
     },
     "src/synthorg/providers/management/_capabilities_mixin.py": {
       "cap": 600,
-      "loc": 547,
-      "ratio": 0.912,
+      "loc": 549,
+      "ratio": 0.915,
       "tier": "service"
     },
     "src/synthorg/providers/management/capability_dtos.py": {
@@ -1142,8 +1142,8 @@
     },
     "src/synthorg/providers/management/service.py": {
       "cap": 1100,
-      "loc": 1027,
-      "ratio": 0.934,
+      "loc": 1032,
+      "ratio": 0.938,
       "tier": "complex_service"
     },
     "src/synthorg/providers/models.py": {
@@ -1331,7 +1331,7 @@
     "synthorg.core.autonomy_enums": 36,
     "synthorg.core.boundary": 37,
     "synthorg.core.clock": 175,
-    "synthorg.core.critical_errors": 533,
+    "synthorg.core.critical_errors": 534,
     "synthorg.core.domain_errors": 214,
     "synthorg.core.effective_autonomy": 22,
     "synthorg.core.error_taxonomy": 61,
@@ -1420,7 +1420,7 @@
     "synthorg.persistence.state": 66,
     "synthorg.project_brain.models": 24,
     "synthorg.providers.cost_recording": 37,
-    "synthorg.providers.enums": 87,
+    "synthorg.providers.enums": 89,
     "synthorg.providers.errors": 41,
     "synthorg.providers.models": 115,
     "synthorg.providers.protocol": 68,
@@ -1591,11 +1591,11 @@
     },
     "synthorg.providers.management._capabilities_mixin:ProviderCapabilitiesMixin": {
       "lcom4": 1,
-      "loc": 426
+      "loc": 428
     },
     "synthorg.providers.management.service:ProviderManagementService": {
       "lcom4": 1,
-      "loc": 827
+      "loc": 832
     },
     "synthorg.settings.dispatcher:SettingsChangeDispatcher": {
       "lcom4": 1,

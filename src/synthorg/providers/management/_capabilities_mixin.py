@@ -556,7 +556,12 @@ class ProviderCapabilitiesMixin:
                     self._app_state, name, raw_api_key
                 )
                 update_fields = {**update_fields, "connection_name": conn_name}
-            updated = existing.model_copy(update=update_fields)
+            # Re-validate the merged config (model_copy(update=) skips model
+            # validators, so it would not catch a credential state the
+            # auth-type invariants forbid).
+            updated = ProviderConfig.model_validate(
+                {**existing.model_dump(mode="python"), **update_fields}
+            )
             new_providers = {**providers, name: updated}
             await self._validate_and_persist(new_providers)
 

@@ -111,7 +111,6 @@ class SQLitePruningRequestRepository:
                 evaluation = excluded.evaluation,
                 approval_id = excluded.approval_id,
                 status = excluded.status,
-                created_at = excluded.created_at,
                 decided_at = excluded.decided_at,
                 decided_by = excluded.decided_by
         """

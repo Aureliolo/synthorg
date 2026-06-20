@@ -118,7 +118,7 @@ Run 'synthorg start' afterwards to bring the stack back up.`,
 func init() {
 	// backup create flags
 	backupCreateCmd.Flags().StringVarP(&backupCreateOutput, "output", "o", "", "save backup archive to local path")
-	backupCreateCmd.Flags().StringVar(&backupCreateTimeout, "timeout", "60s", "API request timeout")
+	backupCreateCmd.Flags().StringVar(&backupCreateTimeout, "timeout", config.DefaultBackupCreateTimeout.String(), "API request timeout")
 
 	// backup list flags
 	backupListCmd.Flags().IntVarP(&backupListLimit, "limit", "n", 0, "show N most recent backups (0=all)")
@@ -140,7 +140,7 @@ func init() {
 	}
 	backupRestoreCmd.Flags().BoolVar(&backupRestoreDryRun, "dry-run", false, "preview what would be restored without executing")
 	backupRestoreCmd.Flags().BoolVar(&backupRestoreNoRestart, "no-restart", false, "restore without stopping containers")
-	backupRestoreCmd.Flags().StringVar(&backupRestoreTimeout, "timeout", "30s", "API request timeout")
+	backupRestoreCmd.Flags().StringVar(&backupRestoreTimeout, "timeout", config.DefaultBackupRestoreTimeout.String(), "API request timeout")
 
 	backupCmd.AddCommand(backupCreateCmd)
 	backupCmd.AddCommand(backupListCmd)
@@ -283,7 +283,7 @@ func buildLocalJWT(secret string) (string, error) {
 	)
 	signingInput := header + "." + payload
 	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(signingInput))
+	_, _ = mac.Write([]byte(signingInput)) // hash.Hash.Write never returns an error
 	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 	return signingInput + "." + sig, nil
 }
@@ -528,7 +528,7 @@ func runBackupList(cmd *cobra.Command, _ []string) error {
 
 // fetchBackupList calls the admin/backups API and decodes the envelope.
 func fetchBackupList(ctx context.Context, state config.State, errOut *ui.UI) ([]backupInfo, error) {
-	body, statusCode, err := backupAPIRequest(ctx, state.BackendPort, http.MethodGet, "", nil, 10*time.Second, state.JWTSecret)
+	body, statusCode, err := backupAPIRequest(ctx, state.BackendPort, http.MethodGet, "", nil, config.DefaultBackupListTimeout, state.JWTSecret)
 	if err != nil {
 		return nil, fmt.Errorf("listing backups: %w", err)
 	}
@@ -732,8 +732,14 @@ func handleRestartAfterRestore(ctx context.Context, cmd *cobra.Command, out, err
 	// already down (a restore onto a stopped install), `compose down` is a
 	// pointless churn with a misleading "Stopping containers..." step; skip
 	// straight to the start hint so the operator sees an honest next action.
-	if psOut, psErr := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "-q"); psErr == nil &&
-		strings.TrimSpace(psOut) == "" {
+	psOut, psErr := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "-q")
+	switch {
+	case psErr != nil:
+		// ps query failed: container state is unknown. `compose down` is
+		// idempotent on an already-stopped stack, so proceed, but surface why
+		// the skip check was bypassed rather than swallowing the error.
+		errOut.Warn(fmt.Sprintf("Could not check container state: %v; attempting stop anyway", psErr))
+	case strings.TrimSpace(psOut) == "":
 		out.HintNextStep("Run 'synthorg start' to bring the stack back up")
 		return nil
 	}

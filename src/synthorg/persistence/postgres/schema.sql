@@ -2233,6 +2233,8 @@ CREATE TABLE experiment_variants (
     created_at TIMESTAMPTZ NOT NULL,
     PRIMARY KEY (experiment, variant)
 );
+CREATE INDEX idx_experiment_variants_exp_created
+ON experiment_variants (experiment, created_at);
 
 CREATE TABLE experiment_assignments (
     experiment TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(experiment)) > 0),
@@ -2265,3 +2267,4 @@ CREATE TABLE pruning_requests (
     decided_at TIMESTAMPTZ,
     decided_by TEXT
 );
+CREATE INDEX idx_pruning_requests_created ON pruning_requests (created_at);

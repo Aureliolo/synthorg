@@ -71,8 +71,7 @@ class PostgresExperimentRepository:
             VALUES (%s, %s, %s, %s, %s)
             ON CONFLICT (experiment, variant) DO UPDATE SET
                 weight = EXCLUDED.weight,
-                description = EXCLUDED.description,
-                created_at = EXCLUDED.created_at
+                description = EXCLUDED.description
         """
         params = (
             variant.experiment,

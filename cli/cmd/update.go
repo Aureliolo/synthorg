@@ -828,8 +828,15 @@ func performRestart(ctx context.Context, out io.Writer, info docker.Info, safeDi
 	// bound to the published ports. A non-empty `ps -q` here is a hard error
 	// so the operator clears the stragglers rather than starting a
 	// split-brain stack.
-	if psOut, psErr := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "-q"); psErr == nil &&
-		strings.TrimSpace(psOut) != "" {
+	psOut, psErr := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "-q")
+	if psErr != nil {
+		// Fail closed: a ps query error means the stack state is unknown, so
+		// we cannot confirm it is down. Proceeding to `up -d` here would risk
+		// a split-brain stack, exactly what this assertion guards against.
+		sp.Error("Could not verify containers stopped")
+		return false, fmt.Errorf("verifying compose is fully stopped: %w", psErr)
+	}
+	if strings.TrimSpace(psOut) != "" {
 		sp.Error("Containers still running after stop")
 		return false, fmt.Errorf(
 			"compose down reported success but containers are still running; " +

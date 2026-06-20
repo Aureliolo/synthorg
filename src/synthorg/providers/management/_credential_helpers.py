@@ -14,13 +14,13 @@ import contextlib
 
 from synthorg.api.state import AppState
 from synthorg.config.schema import ProviderConfig
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.connections.models import AuthMethod, ConnectionType
 from synthorg.integrations.errors import (
     ConnectionNotFoundError,
-    DuplicateConnectionError,
 )
 from synthorg.integrations.state import provider_credential_catalog_of
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import PROVIDER_VALIDATION_FAILED
 from synthorg.providers._auth_type_descriptor import AUTH_TYPE_DESCRIPTORS
 from synthorg.providers.enums import AuthType
@@ -69,23 +69,42 @@ async def store_provider_api_key(
     conn_name = credential_connection_name(provider_name)
     with contextlib.suppress(ConnectionNotFoundError):
         await catalog.delete(conn_name)
-    with contextlib.suppress(DuplicateConnectionError):
-        await catalog.create(
-            name=conn_name,
-            connection_type=ConnectionType.LLM_PROVIDER,
-            auth_method=AuthMethod.API_KEY.value,
-            credentials={"api_key": api_key},
-        )
+    # No suppress on create: the delete above already cleared any existing
+    # entry (ConnectionNotFoundError when absent is benign). A
+    # DuplicateConnectionError here means the delete did not take effect, so
+    # the new key was NOT stored -- swallowing it would return a connection
+    # name pointing at the un-rotated secret. Let it propagate.
+    await catalog.create(
+        name=conn_name,
+        connection_type=ConnectionType.LLM_PROVIDER,
+        auth_method=AuthMethod.API_KEY.value,
+        credentials={"api_key": api_key},
+    )
     return conn_name
 
 
 async def delete_provider_credential(app_state: AppState, provider_name: str) -> None:
-    """Best-effort removal of a provider's backing credential connection."""
+    """Best-effort removal of a provider's backing credential connection.
+
+    A missing connection is benign (already absent). Any other backend
+    failure is logged with a redacted description rather than swallowed,
+    so an orphaned secret left behind on delete is at least observable.
+    """
     catalog = provider_credential_catalog_of(app_state)
     if catalog is None:
         return
-    with contextlib.suppress(ConnectionNotFoundError):
+    try:
         await catalog.delete(credential_connection_name(provider_name))
+    except ConnectionNotFoundError:
+        return
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised below
+        reraise_critical(exc)
+        logger.warning(
+            PROVIDER_VALIDATION_FAILED,
+            provider=provider_name,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
 
 
 async def resolve_provider_api_key(
@@ -95,16 +114,33 @@ async def resolve_provider_api_key(
 
     Returns ``None`` when the config carries no ``connection_name`` or no
     credential catalog is wired (the caller then proceeds without an
-    Authorization header).
+    Authorization header). Both ``None`` paths log a warning: a config
+    that references a connection but resolves to no key signals a boot
+    ordering race (catalog not yet wired) or a misconfigured connection,
+    both of which otherwise surface only as opaque downstream auth 401s.
 
     Returns:
         The resolved api_key, or ``None``.
     """
+    if config.connection_name is None:
+        return None
     catalog = provider_credential_catalog_of(app_state)
-    if config.connection_name is None or catalog is None:
+    if catalog is None:
+        logger.warning(
+            PROVIDER_VALIDATION_FAILED,
+            connection_name=config.connection_name,
+            error="credential catalog not wired; proceeding without auth header",
+        )
         return None
     creds = await catalog.get_credentials(config.connection_name)
-    return creds.get("api_key")
+    api_key = creds.get("api_key")
+    if api_key is None:
+        logger.warning(
+            PROVIDER_VALIDATION_FAILED,
+            connection_name=config.connection_name,
+            error="catalog connection carries no api_key credential",
+        )
+    return api_key
 
 
 async def apply_update_with_credential(

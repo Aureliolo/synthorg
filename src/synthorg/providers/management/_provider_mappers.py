@@ -8,6 +8,7 @@ secret-free response DTOs.
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.providers.capabilities import ModelCapabilities
+from synthorg.providers.enums import AuthType
 from synthorg.providers.management._provider_responses import (
     ProviderModelResponse,
     ProviderResponse,
@@ -61,7 +62,9 @@ def to_provider_response(
         auth_type=config.auth_type,
         base_url=config.base_url,
         models=config.models,
-        has_api_key=config.connection_name is not None,
+        has_api_key=(
+            config.auth_type is AuthType.API_KEY and config.connection_name is not None
+        ),
         has_oauth_credentials=(
             config.oauth_client_id is not None
             and config.oauth_client_secret is not None

@@ -672,6 +672,10 @@ class TestSerializeRoundTrip:
         )
         # Read the serialized blob from settings
         setting = await settings_service.get("providers", "configs")
+        # The plaintext key is catalog-only and must never reach the persisted
+        # provider-config blob (a serializer regression that embedded it would
+        # otherwise pass every other assertion below).
+        assert "sk-round-trip" not in setting.value
         serialized = json.loads(setting.value)
         assert "test-provider" in serialized
 

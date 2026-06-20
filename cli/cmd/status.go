@@ -774,7 +774,7 @@ func printResourceUsage(ctx context.Context, out *ui.UI, info docker.Info, dataD
 // NAME column carries no internal spaces, so the first whitespace-delimited
 // token is the exact container name.
 func filterStatsByName(statsOut string, names map[string]struct{}) string {
-	lines := strings.Split(strings.TrimRight(statsOut, "\n"), "\n")
+	lines := strings.Split(strings.TrimSuffix(statsOut, "\n"), "\n")
 	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
 		return ""
 	}

@@ -13,6 +13,10 @@ CREATE TABLE experiment_variants (
     PRIMARY KEY (experiment, variant)
 );
 
+-- ``list_for_experiment`` filters by experiment and orders by created_at.
+CREATE INDEX idx_experiment_variants_exp_created
+ON experiment_variants (experiment, created_at);
+
 CREATE TABLE experiment_assignments (
     experiment TEXT NOT NULL CHECK (LENGTH(TRIM(experiment)) > 0),
     subject_id TEXT NOT NULL CHECK (LENGTH(TRIM(subject_id)) > 0),
@@ -51,3 +55,6 @@ CREATE TABLE pruning_requests (
     decided_at TEXT CHECK (decided_at IS NULL OR decided_at LIKE '%+00:00' OR decided_at LIKE '%Z'),
     decided_by TEXT
 );
+
+-- ``list_items`` pages pending requests oldest-first by created_at.
+CREATE INDEX idx_pruning_requests_created ON pruning_requests (created_at);

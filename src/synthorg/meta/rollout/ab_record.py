@@ -7,7 +7,9 @@ mapping, and the best-effort ``persist_ab_test_record`` that builds and
 writes a record without ever sinking the rollout itself.
 """
 
+from collections.abc import Mapping
 from datetime import datetime
+from types import MappingProxyType
 from typing import Final, Protocol, runtime_checkable
 from uuid import UUID
 
@@ -27,12 +29,14 @@ from synthorg.observability.events.meta import META_ABTEST_RECORD_WRITE_FAILED
 logger = get_logger(__name__)
 
 #: Maps a terminal rollout outcome to its durable record status.
-TERMINAL_STATUS: Final[dict[RolloutOutcome, AbTestStatus]] = {
-    RolloutOutcome.SUCCESS: AbTestStatus.COMPLETED,
-    RolloutOutcome.REGRESSED: AbTestStatus.REGRESSED,
-    RolloutOutcome.INCONCLUSIVE: AbTestStatus.INCONCLUSIVE,
-    RolloutOutcome.FAILED: AbTestStatus.FAILED,
-}
+TERMINAL_STATUS: Final[Mapping[RolloutOutcome, AbTestStatus]] = MappingProxyType(
+    {
+        RolloutOutcome.SUCCESS: AbTestStatus.COMPLETED,
+        RolloutOutcome.REGRESSED: AbTestStatus.REGRESSED,
+        RolloutOutcome.INCONCLUSIVE: AbTestStatus.INCONCLUSIVE,
+        RolloutOutcome.FAILED: AbTestStatus.FAILED,
+    }
+)
 
 
 @runtime_checkable

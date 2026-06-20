@@ -66,7 +66,7 @@ export function StrategyControls({ strategies }: StrategyControlsProps) {
 
   return (
     <SectionCard title="Strategies" icon={Settings}>
-      <div className="flex flex-col gap-card-gap">
+      <div className="flex flex-col gap-grid-gap">
         {ordered.map((strategy, index) => (
           <div
             key={strategy.name}

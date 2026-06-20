@@ -2301,6 +2301,8 @@ CREATE TABLE experiment_variants (
     created_at TEXT NOT NULL CHECK (created_at LIKE '%+00:00' OR created_at LIKE '%Z'),
     PRIMARY KEY (experiment, variant)
 );
+CREATE INDEX idx_experiment_variants_exp_created
+ON experiment_variants (experiment, created_at);
 
 CREATE TABLE experiment_assignments (
     experiment TEXT NOT NULL CHECK (LENGTH(TRIM(experiment)) > 0),
@@ -2333,3 +2335,4 @@ CREATE TABLE pruning_requests (
     decided_at TEXT CHECK (decided_at IS NULL OR decided_at LIKE '%+00:00' OR decided_at LIKE '%Z'),
     decided_by TEXT
 );
+CREATE INDEX idx_pruning_requests_created ON pruning_requests (created_at);

@@ -167,6 +167,7 @@ const (
 
 	DefaultBackupCreateTimeout    = 60 * time.Second
 	DefaultBackupRestoreTimeout   = 30 * time.Second
+	DefaultBackupListTimeout      = 10 * time.Second
 	DefaultHealthCheckTimeout     = 5 * time.Second
 	DefaultSelfUpdateHTTPTimeout  = 5 * time.Minute
 	DefaultSelfUpdateAPITimeout   = 30 * time.Second

@@ -364,8 +364,16 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 )
             new_config = build_provider_config(request, connection_name=conn_name)
             new_providers = {**providers, request.name: new_config}
-            await self._validate_and_persist(new_providers)
-            await self._allowlist.update_for_create(new_config)
+            try:
+                await self._validate_and_persist(new_providers)
+                await self._allowlist.update_for_create(new_config)
+            except Exception:
+                # The catalog mint above already ran; if persistence/allowlist
+                # fails the config is never stored, so the minted secret would
+                # be an orphaned connection with no owning provider. Remove it.
+                if conn_name is not None:
+                    await delete_provider_credential(self._app_state, request.name)
+                raise
 
             logger.info(
                 SECURITY_PROVIDER_CREATED,

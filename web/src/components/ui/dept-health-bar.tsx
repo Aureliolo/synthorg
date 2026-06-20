@@ -8,7 +8,7 @@ const BAR_COLOR_CLASSES: Record<SemanticColor, string> = {
   danger: 'bg-danger',
 }
 
-interface DeptHealthBarProps {
+export interface DeptHealthBarProps {
   name: string
   health?: number | null
   agentCount: number

@@ -15,7 +15,6 @@ import {
   type UserResponse,
 } from '@/api/endpoints/users'
 import { createLogger } from '@/lib/logger'
-import { sanitizeForLog } from '@/utils/logging'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
 import type { OrgRole } from '@/api/types/enums'
@@ -68,7 +67,7 @@ async function fetchUsersImpl(set: UsersSet): Promise<void> {
       loading: false,
     })
   } catch (err) {
-    log.error('Failed to fetch users', sanitizeForLog(err))
+    log.error('Failed to fetch users', getErrorMessage(err))
     if (token !== listRequestToken) return
     set({ loading: false, error: getErrorMessage(err) })
   }
@@ -107,7 +106,7 @@ async function fetchMoreUsersImpl(
       }
     })
   } catch (err) {
-    log.error('Failed to fetch more users', sanitizeForLog(err))
+    log.error('Failed to fetch more users', getErrorMessage(err))
     if (token !== listRequestToken) {
       set({ loadingMore: false })
       return
@@ -134,7 +133,7 @@ async function grantOrgRoleImpl(
     })
     return updated
   } catch (err) {
-    log.error('Failed to grant org role', sanitizeForLog(err))
+    log.error('Failed to grant org role', getErrorMessage(err))
     useToastStore.getState().add({
       variant: 'error',
       title: 'Failed to grant role',
@@ -155,7 +154,7 @@ async function revokeOrgRoleImpl(
   try {
     await apiRevokeOrgRole(userId, role)
     void get().fetchUsers().catch((refetchErr: unknown) => {
-      log.warn('users post-revoke refetch failed', sanitizeForLog(refetchErr))
+      log.warn('users post-revoke refetch failed', getErrorMessage(refetchErr))
     })
     useToastStore.getState().add({
       variant: 'success',
@@ -164,7 +163,7 @@ async function revokeOrgRoleImpl(
     set({ submitting: false })
     return true
   } catch (err) {
-    log.error('Failed to revoke org role', sanitizeForLog(err))
+    log.error('Failed to revoke org role', getErrorMessage(err))
     useToastStore.getState().add({
       variant: 'error',
       title: 'Failed to revoke role',

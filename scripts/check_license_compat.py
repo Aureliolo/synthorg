@@ -109,6 +109,10 @@ _GO_LICENSES_TIMEOUT_SECONDS: int = 600
 # rows with fewer fields are malformed and skipped.
 _GO_LICENSES_CSV_MIN_FIELDS: int = 3
 
+# A Go module root is conventionally the first three import-path components
+# (``host/org/repo``); used to match NOTICE attributions.
+_GO_MODULE_ROOT_SEGMENTS: int = 3
+
 
 @dataclass(frozen=True)
 class Violation:
@@ -407,7 +411,41 @@ def _run_go_licenses(cli_dir: Path) -> str:
         detail = completed.stderr.strip() or "no output"
         msg = f"go-licenses produced no licence rows (rc={completed.returncode}): {detail}"
         raise SetupError(msg)
+    if completed.returncode != 0 and completed.stderr.strip():
+        # go-licenses exited non-zero but still emitted rows: some modules were
+        # skipped (e.g. no LICENSE file found). Surface them so an incomplete
+        # closure does not pass silently as a clean scan.
+        print(
+            f"::warning::go-licenses skipped modules (rc={completed.returncode}): "
+            f"{completed.stderr.strip()}"
+        )
     return completed.stdout
+
+
+def _go_notice_covers(notice: str, module: str) -> bool:
+    """Whether NOTICE attributes a Go module by path, root, or leaf.
+
+    ``_notice_covers`` canonicalises its argument as a Python distribution
+    name, which mangles the dots in a Go import path (``github.com`` ->
+    ``github-com``), so it cannot match a Go module path written verbatim in
+    NOTICE. This does a direct, case-insensitive substring check against the
+    full import path, the conventional module root (first three path
+    components, e.g. ``github.com/org/repo``), and the leaf segment.
+
+    Returns:
+        ``True`` when any candidate form is attributed in NOTICE.
+    """
+    notice_lower = notice.lower()
+    parts = module.split("/")
+    module_root = (
+        "/".join(parts[:_GO_MODULE_ROOT_SEGMENTS])
+        if len(parts) >= _GO_MODULE_ROOT_SEGMENTS
+        else module
+    )
+    candidates = {module, module_root, parts[-1]}
+    return any(
+        candidate.lower() in notice_lower for candidate in candidates if candidate
+    )
 
 
 def _check_go_licenses(repo_root: Path, notice: str, *, run: bool) -> list[Violation]:
@@ -447,7 +485,7 @@ def _check_go_licenses(repo_root: Path, notice: str, *, run: bool) -> list[Viola
                     " redistribution",
                 )
             )
-        elif family == "lgpl" and not _notice_covers(notice, module.rsplit("/", 1)[-1]):
+        elif family == "lgpl" and not _go_notice_covers(notice, module):
             violations.append(
                 Violation(
                     "NOTICE",

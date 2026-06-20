@@ -742,7 +742,18 @@ func httpGetWithClient(ctx context.Context, client *http.Client, rawURL string, 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("http %d from %s", resp.StatusCode, rawURL)
 	}
-	return io.ReadAll(io.LimitReader(resp.Body, maxBytes))
+	// Read one byte past the cap so a body that exactly fills maxBytes is
+	// distinguishable from one that was silently truncated at the cap; the
+	// latter otherwise surfaces only as a confusing downstream checksum
+	// mismatch.
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("response from %s exceeds %d byte cap", rawURL, maxBytes)
+	}
+	return data, nil
 }
 
 // retryAfterMessage renders the HTTP Retry-After header (RFC 9110

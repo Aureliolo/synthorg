@@ -104,7 +104,6 @@ class PostgresPruningRequestRepository:
                 evaluation = EXCLUDED.evaluation,
                 approval_id = EXCLUDED.approval_id,
                 status = EXCLUDED.status,
-                created_at = EXCLUDED.created_at,
                 decided_at = EXCLUDED.decided_at,
                 decided_by = EXCLUDED.decided_by
         """

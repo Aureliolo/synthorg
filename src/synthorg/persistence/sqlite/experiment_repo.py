@@ -75,8 +75,7 @@ class SQLiteExperimentRepository:
             VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(experiment, variant) DO UPDATE SET
                 weight = excluded.weight,
-                description = excluded.description,
-                created_at = excluded.created_at
+                description = excluded.description
         """
         params = (
             variant.experiment,

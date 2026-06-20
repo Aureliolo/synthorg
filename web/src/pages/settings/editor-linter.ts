@@ -36,8 +36,12 @@ export function buildSchemaInfo(entries: SettingEntry[]): SchemaInfo {
   for (const entry of entries) {
     const ns = entry.definition.namespace
     knownNamespaces.add(ns)
-    if (!namespaceKeys.has(ns)) namespaceKeys.set(ns, new Set())
-    namespaceKeys.get(ns)!.add(entry.definition.key)
+    let keys = namespaceKeys.get(ns)
+    if (!keys) {
+      keys = new Set()
+      namespaceKeys.set(ns, keys)
+    }
+    keys.add(entry.definition.key)
     keyTypes.set(`${ns}/${entry.definition.key}`, entry.definition.type)
   }
 
