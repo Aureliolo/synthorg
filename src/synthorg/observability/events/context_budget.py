@@ -24,3 +24,25 @@ CONTEXT_BUDGET_AGENT_COMPACTION_REQUESTED: Final[str] = (
 CONTEXT_BUDGET_EPISTEMIC_MARKERS_PRESERVED: Final[str] = (
     "context_budget.epistemic_markers.preserved"
 )
+
+# Phase-2: LLM-backed summariser
+CONTEXT_BUDGET_COMPACTION_LLM_STARTED: Final[str] = (
+    "context_budget.compaction.llm.started"
+)
+CONTEXT_BUDGET_COMPACTION_LLM_COMPLETED: Final[str] = (
+    "context_budget.compaction.llm.completed"
+)
+CONTEXT_BUDGET_COMPACTION_LLM_FALLBACK: Final[str] = (
+    "context_budget.compaction.llm.fallback"
+)
+
+# Phase-2: memory offload of archived turn batches
+CONTEXT_BUDGET_COMPACTION_OFFLOAD_STORED: Final[str] = (
+    "context_budget.compaction.offload.stored"
+)
+CONTEXT_BUDGET_COMPACTION_OFFLOAD_FAILED: Final[str] = (
+    "context_budget.compaction.offload.failed"
+)
+CONTEXT_BUDGET_COMPACTION_OFFLOAD_REHYDRATED: Final[str] = (
+    "context_budget.compaction.offload.rehydrated"
+)
