@@ -1,5 +1,6 @@
 """Backup MCP handlers (infrastructure sub-domain)."""
 
+import hashlib
 from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING
@@ -56,6 +57,20 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
+
+
+def _restore_idempotency_key(backup_id: str, idempotency_key: str) -> str:
+    """Return a fixed-width restore dedup key.
+
+    Hashes ``backup_id:idempotency_key`` into a SHA-256 digest so a
+    max-length caller key cannot overflow the durable idempotency store's
+    255-char key column, mirroring the REST restore path.
+
+    Returns:
+        The 64-char hex dedup key.
+    """
+    material = f"{backup_id}:{idempotency_key}"
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
 async def _backup_list(
@@ -262,7 +277,7 @@ async def _backup_restore(
         )
         outcome = await service.run_idempotent(
             scope="mcp:backup_restore",
-            key=f"{backup_id}:{args.idempotency_key}",
+            key=_restore_idempotency_key(backup_id, args.idempotency_key),
             callback=_restore,
         )
         if outcome.timed_out:

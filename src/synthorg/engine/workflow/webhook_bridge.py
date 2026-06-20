@@ -78,6 +78,8 @@ class WebhookEventBridge:
         bus: The message bus instance.
         ceremony_scheduler: The ceremony scheduler holding the
             active sprint and strategy.
+        config_resolver: Optional resolver for operator-tuned bridge settings.
+        clock: Optional clock seam for poll and backoff sleeps.
     """
 
     def __init__(

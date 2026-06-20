@@ -314,6 +314,14 @@ async def drain_lifecycle_task(  # type: ignore[explicit-any]  # structlog proxy
 
     *log_fields* are threaded into every log call (e.g. a connection name).
 
+    Args:
+        task: Lifecycle task to cancel and drain.
+        timeout: Maximum drain duration in seconds.
+        logger_: Structlog logger for lifecycle outcome events.
+        event: Observability event name used for drain logs.
+        timeout_message: Redacted error message emitted on timeout.
+        **log_fields: Structured fields included in each log call.
+
     Raises:
         TimeoutError: If the drain exceeds *timeout* (caller marks
             unrestartable).

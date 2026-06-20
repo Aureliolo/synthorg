@@ -63,6 +63,9 @@ from synthorg.observability.events.idempotency import IDEMPOTENCY_CLAIM_IN_FLIGH
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
+# Durable idempotency-key column bound; a header longer than this would
+# overflow the store, so the inbound key is capped at the column width.
+_IDEMPOTENCY_KEY_MAX_LENGTH: Final[int] = 255
 
 
 def _restore_idempotency_key(
@@ -181,7 +184,7 @@ class BackupController(Controller):
                 # exhaust the durable idempotency store with arbitrarily
                 # large keys; 255 chars is plenty for UUIDs / SHAs and
                 # matches common header-value column widths.
-                max_length=255,
+                max_length=_IDEMPOTENCY_KEY_MAX_LENGTH,
             ),
         ],
     ) -> ApiResponse[BackupManifest]:
@@ -386,7 +389,7 @@ class BackupController(Controller):
                 ),
                 required=True,
                 min_length=1,
-                max_length=255,
+                max_length=_IDEMPOTENCY_KEY_MAX_LENGTH,
             ),
         ],
     ) -> ApiResponse[RestoreResponse]:
