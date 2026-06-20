@@ -12,7 +12,6 @@ deterministic line-window split.
 :class:`KnowledgeDependencyError` with install guidance.
 """
 
-import functools
 from typing import TYPE_CHECKING
 
 from synthorg.core.text_estimation import DEFAULT_CHAR_PER_TOKEN
@@ -27,7 +26,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.knowledge import KNOWLEDGE_GRAMMAR_LOAD_FAILED
 
 if TYPE_CHECKING:
-    import tree_sitter
+    from tree_sitter_language_pack import Node, Parser
 
 logger = get_logger(__name__)
 
@@ -84,28 +83,24 @@ def _language_for(path: str) -> str | None:
     return None
 
 
-@functools.cache
-def _cached_grammar(language: str) -> tree_sitter.Language | None:
-    """Load a tree-sitter grammar once per process; None when absent.
+def _load_parser(language: str) -> Parser | None:
+    """Build a tree-sitter parser for *language*; None when its grammar is absent.
 
-    ``tree_sitter_language_pack.get_language`` loads a compiled grammar
-    binary from disk on every call. The knowledge-ingestion path chunks
-    many units, so memoising the grammar avoids reloading the same binary
-    for each one -- a redundant cost that, under heavy parallel load, can
-    stretch a single cold load into a multi-second stall. Grammars are
-    immutable metadata, so sharing one instance across calls (and threads)
-    is safe; a fresh ``Parser`` is still built per call by ``_load_parser``.
+    Uses ``tree_sitter_language_pack.get_parser``, which returns a fresh
+    ``Parser`` backed by the pack's in-memory grammar registry (no per-call
+    disk load). A new parser per call keeps parsing state unshared across
+    threads, so the knowledge-ingestion path can chunk units in parallel.
 
     Returns:
-        The cached ``tree_sitter.Language``, or ``None`` when the grammar
-        for ``language`` is absent.
+        A configured ``Parser``, or ``None`` when the grammar for
+        ``language`` is absent.
 
     Raises:
         KnowledgeDependencyError: When the ``tree-sitter`` extras are not
             installed.
     """
     try:
-        from tree_sitter_language_pack import get_language  # noqa: PLC0415
+        from tree_sitter_language_pack import get_parser  # noqa: PLC0415
     except ImportError as exc:
         msg = (
             "Code chunking needs the 'tree-sitter' extras. Install with "
@@ -113,7 +108,7 @@ def _cached_grammar(language: str) -> tree_sitter.Language | None:
         )
         raise KnowledgeDependencyError(msg) from exc
     try:
-        return get_language(language)
+        return get_parser(language)
     except (LookupError, OSError, ValueError) as exc:
         # A missing grammar is the expected "degrade to line-window"
         # path; log at WARNING so a corrupt grammar pack or I/O failure
@@ -124,37 +119,6 @@ def _cached_grammar(language: str) -> tree_sitter.Language | None:
             error_type=type(exc).__name__,
         )
         return None
-
-
-def _load_parser(language: str) -> tree_sitter.Parser | None:
-    """Build a tree-sitter parser from a cached grammar; None when absent.
-
-    Uses the standard ``tree_sitter.Parser`` + ``get_language`` path
-    (the tree-sitter Python API) rather than the language pack's bundled
-    fast-binding, whose ``Tree`` / ``Node`` surface differs. The grammar
-    load is memoised by :func:`_cached_grammar`; a fresh ``Parser`` is
-    built per call so parsing state is never shared across threads.
-
-    Returns:
-        A configured ``tree_sitter.Parser``, or ``None`` when the grammar
-        for ``language`` is absent.
-
-    Raises:
-        KnowledgeDependencyError: When the ``tree-sitter`` extras are not
-            installed.
-    """
-    try:
-        from tree_sitter import Parser  # noqa: PLC0415
-    except ImportError as exc:
-        msg = (
-            "Code chunking needs the 'tree-sitter' extras. Install with "
-            "`pip install synthorg[knowledge]`."
-        )
-        raise KnowledgeDependencyError(msg) from exc
-    grammar = _cached_grammar(language)
-    if grammar is None:
-        return None
-    return Parser(grammar)
 
 
 class CodeChunker:
@@ -188,7 +152,7 @@ class CodeChunker:
     def _ast_chunks(
         self,
         *,
-        parser: tree_sitter.Parser,
+        parser: Parser,
         path: str,
         text: str,
         lines: list[str],
@@ -199,7 +163,13 @@ class CodeChunker:
             The chunk pieces for the parsed tree: one per top-level
             definition plus packed module-level runs.
         """
-        tree = parser.parse(text.encode("utf-8"))
+        tree = parser.parse(text)
+        if tree is None:
+            return self._line_windows(path=path, lines=lines)
+        # ``Node`` exposes byte offsets, not the matched text, so the
+        # UTF-8 encoding is sliced to recover a definition's name.
+        source = text.encode("utf-8")
+        root = tree.root_node()
         pieces: list[ChunkPiece] = []
         buffer: list[int] = []  # 0-indexed line numbers of pending module-level run
 
@@ -211,10 +181,13 @@ class CodeChunker:
             )
             buffer.clear()
 
-        for child in tree.root_node.named_children:
-            start_row = int(child.start_point[0])
-            end_row = int(child.end_point[0])
-            if _is_definition(child.type):
+        for index in range(root.named_child_count()):
+            child = root.named_child(index)
+            if child is None:
+                continue
+            start_row = child.start_position().row
+            end_row = child.end_position().row
+            if _is_definition(child.kind()):
                 flush_buffer()
                 self._emit_lines(
                     pieces,
@@ -222,7 +195,7 @@ class CodeChunker:
                     lines=lines,
                     start=start_row,
                     end=end_row,
-                    symbol=_node_symbol(child),
+                    symbol=_node_symbol(child, source),
                 )
             else:
                 buffer.extend(range(start_row, end_row + 1))
@@ -360,17 +333,21 @@ def _is_definition(node_type: str) -> bool:
     return any(marker in node_type for marker in _DEFINITION_MARKERS)
 
 
-def _node_symbol(node: tree_sitter.Node) -> str | None:
+def _node_symbol(node: Node, source: bytes) -> str | None:
     """Extract a definition's name via the ``name`` field, if present.
+
+    ``source`` is the UTF-8-encoded unit text; the name node carries byte
+    offsets into it rather than the matched text directly.
 
     Returns:
         The decoded definition name, or ``None`` when the node has no
         ``name`` field or it is empty.
     """
     name_node = node.child_by_field_name("name")
-    if name_node is None or name_node.text is None:
+    if name_node is None:
         return None
-    symbol = name_node.text.decode("utf-8", errors="replace").strip()
+    raw = source[name_node.start_byte() : name_node.end_byte()]
+    symbol = raw.decode("utf-8", errors="replace").strip()
     return symbol or None
 
 
