@@ -753,5 +753,8 @@ func Save(s State) error {
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
-	return os.WriteFile(StatePath(safeDir), data, 0o600)
+	if err := os.WriteFile(StatePath(safeDir), data, 0o600); err != nil {
+		return fmt.Errorf("writing config file: %w", err)
+	}
+	return nil
 }

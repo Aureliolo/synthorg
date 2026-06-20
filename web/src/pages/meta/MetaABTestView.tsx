@@ -44,6 +44,20 @@ const statusColors: Record<AbTestStatus, string> = {
   failed: 'bg-danger/15 text-danger',
 }
 
+const FALLBACK_BADGE_COLOR = 'bg-muted text-muted-foreground'
+
+// Index by a widened string so the lookup is honestly `string | undefined`
+// (noUncheckedIndexedAccess): an unknown backend enum value (status / verdict
+// drift) degrades to a neutral badge / its raw label rather than rendering a
+// classless, unstyled chip.
+function badgeColor(map: Record<string, string>, key: string): string {
+  return map[key] ?? FALLBACK_BADGE_COLOR
+}
+
+function badgeLabel(map: Record<string, string>, key: string): string {
+  return map[key] ?? key
+}
+
 export function MetaABTestView({ tests }: MetaABTestViewProps) {
   if (tests.length === 0) {
     return (
@@ -113,11 +127,14 @@ function ABTestHeader({ test }: ABTestHeaderProps) {
         </p>
       </div>
       <div className="flex items-center gap-2">
-        <Badge className={statusColors[test.status]} label={statusLabels[test.status]} />
+        <Badge
+          className={badgeColor(statusColors, test.status)}
+          label={badgeLabel(statusLabels, test.status)}
+        />
         {test.verdict && (
           <Badge
-            className={verdictColors[test.verdict]}
-            label={verdictLabels[test.verdict]}
+            className={badgeColor(verdictColors, test.verdict)}
+            label={badgeLabel(verdictLabels, test.verdict)}
           />
         )}
       </div>

@@ -131,40 +131,58 @@ async function runAct(
   }
 }
 
+type FetchAllResults = readonly [
+  PromiseSettledResult<Awaited<ReturnType<typeof getMetaConfig>>>,
+  PromiseSettledResult<Awaited<ReturnType<typeof listProposals>>>,
+  PromiseSettledResult<Awaited<ReturnType<typeof listABTests>>>,
+  PromiseSettledResult<Awaited<ReturnType<typeof getSignals>>>,
+  PromiseSettledResult<Awaited<ReturnType<typeof getEvolutionSummary>>>,
+  PromiseSettledResult<Awaited<ReturnType<typeof getEvolutionAxisStats>>>,
+]
+
+// Map the settled results to a partial update carrying ONLY the fields that
+// resolved, so a failed endpoint leaves its prior value untouched instead of
+// being wiped. Extracted so runFetchAll stays under the complexity cap.
+function buildFetchAllUpdate(results: FetchAllResults): Partial<MetaState> {
+  const [config, proposals, abTests, signals, evolutionSummary, evolutionAxes] = results
+  const update: Partial<MetaState> = {}
+  if (config.status === 'fulfilled') update.config = config.value
+  if (proposals.status === 'fulfilled') update.proposals = proposals.value
+  if (abTests.status === 'fulfilled') update.abTests = abTests.value
+  if (signals.status === 'fulfilled') update.signals = signals.value
+  if (evolutionSummary.status === 'fulfilled') {
+    update.evolutionSummary = evolutionSummary.value
+  }
+  if (evolutionAxes.status === 'fulfilled') {
+    update.evolutionAxes = evolutionAxes.value
+  }
+  return update
+}
+
 async function runFetchAll(set: MetaSet): Promise<void> {
   set({ loading: true, error: null })
-  try {
-    const [config, proposals, abTests, signals, evolutionSummary, evolutionAxes] =
-      await Promise.all([
-        getMetaConfig(),
-        listProposals(),
-        listABTests(),
-        getSignals(),
-        getEvolutionSummary(),
-        getEvolutionAxisStats(),
-      ])
-    set({
-      config,
-      proposals,
-      abTests,
-      signals,
-      evolutionSummary,
-      evolutionAxes,
-      loading: false,
-    })
-  } catch (err) {
-    log.error('Failed to fetch meta data', sanitizeForLog(err))
-    set({
-      config: null,
-      proposals: [],
-      abTests: [],
-      signals: null,
-      evolutionSummary: null,
-      evolutionAxes: [],
-      error: getErrorMessage(err),
-      loading: false,
-    })
+  // allSettled (not all): a single failing endpoint must not wipe the data
+  // the other five returned. Only successfully-fetched fields are updated;
+  // failed ones keep their prior value and the first error is surfaced.
+  const results = await Promise.allSettled([
+    getMetaConfig(),
+    listProposals(),
+    listABTests(),
+    getSignals(),
+    getEvolutionSummary(),
+    getEvolutionAxisStats(),
+  ])
+  const failure = results.find(
+    (r): r is PromiseRejectedResult => r.status === 'rejected',
+  )
+  if (failure) {
+    log.error('Failed to fetch some meta data', sanitizeForLog(failure.reason))
   }
+  set({
+    ...buildFetchAllUpdate(results),
+    error: failure ? getErrorMessage(failure.reason) : null,
+    loading: false,
+  })
 }
 
 async function runFetchProposals(set: MetaSet): Promise<void> {

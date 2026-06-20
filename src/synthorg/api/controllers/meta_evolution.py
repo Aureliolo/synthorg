@@ -31,18 +31,32 @@ from synthorg.meta.state import MetaStateSlice
 _DEFAULT_PAGE_SIZE: Final[int] = 50
 _DEFAULT_EVOLUTION_WINDOW_DAYS: Final[int] = 30
 _MIN_WINDOW_DAYS: Final[int] = 1
+_MAX_WINDOW_DAYS: Final[int] = 365
+_MAX_FILTER_CHARS: Final[int] = 256
 
 WindowDays = Annotated[
     int,
-    QueryParameter(ge=_MIN_WINDOW_DAYS, description="Look-back window in days."),
+    QueryParameter(
+        ge=_MIN_WINDOW_DAYS,
+        le=_MAX_WINDOW_DAYS,
+        description="Look-back window in days.",
+    ),
 ]
 AgentIdFilter = Annotated[
     str | None,
-    QueryParameter(required=False, description="Optional agent-id filter."),
+    QueryParameter(
+        required=False,
+        max_length=_MAX_FILTER_CHARS,
+        description="Optional agent-id filter.",
+    ),
 ]
 AxisFilter = Annotated[
     str | None,
-    QueryParameter(required=False, description="Optional adaptation-axis filter."),
+    QueryParameter(
+        required=False,
+        max_length=_MAX_FILTER_CHARS,
+        description="Optional adaptation-axis filter.",
+    ),
 ]
 
 

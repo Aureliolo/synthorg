@@ -32,9 +32,12 @@ class TestMigrateConfigs:
         configs: dict[str, object] = {
             "example-provider": {"auth_type": "api_key", "api_key": _SECRET},
         }
-        count = await migration._migrate_configs(mock_of[AppState](), configs)
+        migrated, failed = await migration._migrate_configs(
+            mock_of[AppState](), configs
+        )
 
-        assert count == 1
+        assert migrated == 1
+        assert failed == 0
         conf = configs["example-provider"]
         assert isinstance(conf, dict)
         assert conf["connection_name"] == "provider-example-provider"
@@ -54,9 +57,12 @@ class TestMigrateConfigs:
             "already": {"auth_type": "api_key", "connection_name": "provider-already"},
             "no-secret": {"auth_type": "none"},
         }
-        count = await migration._migrate_configs(mock_of[AppState](), configs)
+        migrated, failed = await migration._migrate_configs(
+            mock_of[AppState](), configs
+        )
 
-        assert count == 0
+        assert migrated == 0
+        assert failed == 0
         assert calls == []
 
     async def test_catalog_absent_leaves_config_untouched(
@@ -70,13 +76,18 @@ class TestMigrateConfigs:
         configs: dict[str, object] = {
             "example-provider": {"auth_type": "api_key", "api_key": _SECRET},
         }
-        count = await migration._migrate_configs(mock_of[AppState](), configs)
+        migrated, failed = await migration._migrate_configs(
+            mock_of[AppState](), configs
+        )
 
-        # Mint failed: nothing migrated, config left as-is for a later retry.
-        assert count == 0
+        # Mint failed: nothing migrated, the embedded key is left in place
+        # (not popped) so the next boot can retry without losing it.
+        assert migrated == 0
+        assert failed == 1
         conf = configs["example-provider"]
         assert isinstance(conf, dict)
         assert "connection_name" not in conf
+        assert conf["api_key"] == _SECRET
 
     async def test_key_value_never_logged(
         self, monkeypatch: pytest.MonkeyPatch

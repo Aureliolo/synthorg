@@ -98,7 +98,6 @@ class PostgresActivePrincipleRepository:
                 scope_kind = EXCLUDED.scope_kind,
                 evolution_mode = EXCLUDED.evolution_mode,
                 severity = EXCLUDED.severity,
-                created_at = EXCLUDED.created_at,
                 updated_at = EXCLUDED.updated_at
         """
         params = (

@@ -62,7 +62,9 @@ interface AxisStatsProps {
 }
 
 function AxisStats({ axes }: AxisStatsProps) {
-  const max = Math.max(...axes.map((a) => a.count), 1)
+  // reduce, not Math.max(...spread): the axes list autopaginates (up to the
+  // backend page cap), and a large spread can overflow the JS argument limit.
+  const max = axes.reduce((acc, a) => Math.max(acc, a.count), 1)
   return (
     <div>
       <p className="mb-2 text-xs font-medium text-muted-foreground">
@@ -129,11 +131,24 @@ interface OutcomeRowProps {
 }
 
 function OutcomeRow({ outcome }: OutcomeRowProps) {
+  const decision = outcome.applied ? 'Applied' : 'Rejected'
+  // Synthesise one accessible label for the whole row and hide the
+  // individual spans so screen readers announce a single coherent unit
+  // rather than four disconnected fragments.
+  const rowLabel = `${outcome.agent_id}, ${outcome.axis}, ${decision}, ${formatDateTime(outcome.proposed_at)}`
   return (
-    <li className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-xs">
-      <span className="truncate text-foreground">{outcome.agent_id}</span>
-      <span className="shrink-0 text-muted-foreground">{outcome.axis}</span>
+    <li
+      aria-label={rowLabel}
+      className="flex items-center justify-between gap-2 rounded-md border border-border bg-card p-card-tight text-xs"
+    >
+      <span aria-hidden="true" className="truncate text-foreground">
+        {outcome.agent_id}
+      </span>
+      <span aria-hidden="true" className="shrink-0 text-muted-foreground">
+        {outcome.axis}
+      </span>
       <span
+        aria-hidden="true"
         className={cn(
           'shrink-0 rounded-full px-2 py-0.5 font-medium',
           outcome.applied
@@ -141,9 +156,9 @@ function OutcomeRow({ outcome }: OutcomeRowProps) {
             : 'bg-muted text-muted-foreground',
         )}
       >
-        {outcome.applied ? 'Applied' : 'Rejected'}
+        {decision}
       </span>
-      <span className="shrink-0 text-muted-foreground">
+      <span aria-hidden="true" className="shrink-0 text-muted-foreground">
         {formatDateTime(outcome.proposed_at)}
       </span>
     </li>

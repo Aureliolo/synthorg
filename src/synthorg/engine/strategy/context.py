@@ -6,12 +6,13 @@ how lenses and principles are applied to agent recommendations.
 """
 
 import json
-from typing import Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.strategy.models import StrategicContext, StrategyConfig
@@ -29,9 +30,9 @@ logger = get_logger(__name__)
 
 #: Fraction of recent completed meetings reaching consensus (decisions made,
 #: no conflicts) at or above which the org reads as internally aligned.
-_HIGH_ALIGNMENT_RATIO: float = 0.6
+_HIGH_ALIGNMENT_RATIO: Final[float] = 0.6
 #: Fraction at or below which recent meetings read as contested.
-_LOW_ALIGNMENT_RATIO: float = 0.3
+_LOW_ALIGNMENT_RATIO: Final[float] = 0.3
 
 _STRATEGIC_CONTEXT_AGENT_ID: NotBlankStr = NotBlankStr("system:strategy")
 """Synthetic agent id used for org-level strategic-context entries."""
@@ -324,7 +325,10 @@ class MeetingContextProvider:
         qualifier = _alignment_qualifier(ratio)
         if qualifier is None:
             return fallback_ctx
-        position = NotBlankStr(f"{qualifier} {fallback_ctx.competitive_position}")
+        # Strip any qualifier a prior reload already prepended so repeated
+        # refreshes do not compound ("aligned aligned challenger").
+        base_position = _strip_alignment_qualifier(fallback_ctx.competitive_position)
+        position = NotBlankStr(f"{qualifier} {base_position}")
         logger.info(
             STRATEGY_CONTEXT_MEETING_QUERIED,
             outcome="qualifier_applied",
@@ -332,6 +336,19 @@ class MeetingContextProvider:
             meetings=len(recent),
         )
         return fallback_ctx.model_copy(update={"competitive_position": position})
+
+
+def _strip_alignment_qualifier(position: str) -> str:
+    """Drop a leading ``aligned`` / ``contested`` qualifier if present.
+
+    Returns:
+        ``position`` without a single leading alignment-qualifier word, so a
+        re-resolved context does not stack qualifiers across reloads.
+    """
+    for qualifier in ("aligned ", "contested "):
+        if position.startswith(qualifier):
+            return position[len(qualifier) :]
+    return position
 
 
 def _alignment_qualifier(ratio: float) -> str | None:
@@ -379,9 +396,9 @@ class CompositeContextProvider:
             provider in the chain.
 
         Raises:
-            RuntimeError: When every provider raises a non-critical
-                exception (the final fallback should make this
-                unreachable in practice).
+            ServiceUnavailableError: When every provider raises a
+                non-critical exception (the final config fallback should
+                make this unreachable in practice).
         """
         last_exc: Exception | None = None
         for i, provider in enumerate(self._providers):
@@ -400,8 +417,8 @@ class CompositeContextProvider:
                 last_exc = exc
                 continue
         # Should not happen with ConfigContextProvider as final fallback.
-        msg = "All context providers failed"
-        raise RuntimeError(msg) from last_exc
+        msg = "All strategic-context providers failed"
+        raise ServiceUnavailableError(msg) from last_exc
 
 
 async def build_context(

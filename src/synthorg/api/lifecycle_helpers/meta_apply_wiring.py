@@ -258,7 +258,7 @@ async def _wire_department_service(
     """
     from synthorg.organization.state import OrganizationStateSlice  # noqa: PLC0415
 
-    service = DepartmentService(repo=repo)
+    service = DepartmentService(repo=repo, clock=app_state.clock)
     await service.rehydrate()
     app_state.wire(OrganizationStateSlice, department_service=service)
     return service

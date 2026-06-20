@@ -6,6 +6,7 @@ import pytest
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.completion_enums import FinishReason
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.compaction.llm_summarizer import LLMSummarizer
 from synthorg.engine.compaction.memory_offload import MemoryOffloader
 from synthorg.engine.compaction.models import CompactionConfig
@@ -20,6 +21,8 @@ from synthorg.providers.models import (
     TokenUsage,
 )
 from tests._shared import mock_of
+
+pytestmark = pytest.mark.unit
 
 
 def _msg(role: MessageRole, content: str) -> ChatMessage:
@@ -455,7 +458,10 @@ class TestPhase2Compaction:
             memory_offload_enabled=True,
         )
         backend = mock_of[MemoryBackend](
-            store=AsyncMock(spec=MemoryBackend.store, return_value=None),
+            store=AsyncMock(
+                spec=MemoryBackend.store,
+                return_value=NotBlankStr("mem-offload-1"),
+            ),
         )
         offloader = MemoryOffloader(backend=backend)
         callback = make_compaction_callback(config=config, offloader=offloader)

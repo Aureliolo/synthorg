@@ -71,12 +71,12 @@ class ArchitectureApplier:
 
         Each ``ArchitectureChange`` is applied via the context's
         ``apply_change``, which returns a per-change undo closure. The
-        application is transactional in the :class:`ConfigApplier` mould:
-        undos are tracked in order, and a mid-list failure triggers a
-        reverse-order rollback that reverses every already-applied change
-        before returning a failure result. ``modify_workflow`` reuses the
-        already-durable ``WorkflowService.update_definition()`` inside the
-        context. On success the cached read snapshot is refreshed.
+        application is transactional: undos are tracked in order, and a
+        mid-list failure triggers a reverse-order rollback that reverses
+        every already-applied change before returning a failure result.
+        ``modify_workflow`` reuses the already-durable
+        ``WorkflowService.update_definition()`` inside the context. On
+        success the cached read snapshot is refreshed.
 
         Args:
             proposal: The approved architecture proposal.
@@ -123,10 +123,18 @@ class ArchitectureApplier:
                 applied=len(undos),
                 rollback_failures=failures,
             )
+            rollback_note = (
+                "State fully restored."
+                if failures == 0
+                else (
+                    f"WARNING: {failures} rollback step(s) failed; registries "
+                    "may be partially mutated."
+                )
+            )
             return ApplyResult(
                 success=False,
                 error_message=(
-                    "Architecture apply failed and was rolled back. Check logs."
+                    f"Architecture apply failed. {rollback_note} Check logs."
                 ),
                 changes_applied=0,
             )

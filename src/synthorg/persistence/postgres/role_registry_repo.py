@@ -124,7 +124,6 @@ class PostgresRoleRegistryRepository:
                 system_prompt_template = EXCLUDED.system_prompt_template,
                 description = EXCLUDED.description,
                 is_builtin = EXCLUDED.is_builtin,
-                created_at = EXCLUDED.created_at,
                 updated_at = EXCLUDED.updated_at
         """
         role = entity.role

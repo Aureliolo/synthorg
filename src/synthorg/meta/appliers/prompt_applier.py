@@ -1,11 +1,12 @@
 """Prompt applier.
 
-Validates approved prompt tuning proposals (constitutional principles
-injected or removed in the strategy configuration); ``apply()`` is a
-documented stub pending the meta-apply mutation epic (see
-:meth:`PromptApplier.apply`), matching the architecture / config
-appliers. ``dry_run()`` validates target scope references, principle
-text quality, duplicates, and conflicting evolution modes.
+Validates and applies approved prompt tuning proposals (constitutional
+principles injected or removed in the active-principle store).
+``apply()`` persists each :class:`PromptChange` as a durable
+``ActivePrinciple`` through the context's write seam, rolling back
+already-created entries on partial failure and refreshing the cached
+snapshot on success. ``dry_run()`` validates target scope references,
+principle text quality, duplicates, and conflicting evolution modes.
 """
 
 from typing import Final, Protocol, runtime_checkable
@@ -37,7 +38,7 @@ logger = get_logger(__name__)
 
 _PRINCIPLE_MIN_CHARS: Final[int] = 10
 _PRINCIPLE_MAX_CHARS: Final[int] = 4000
-_SCOPE_ALL = "all"
+_SCOPE_ALL: Final[str] = "all"
 
 
 @runtime_checkable
@@ -128,12 +129,12 @@ class PromptApplier:
         """Apply prompt changes by persisting durable active principles.
 
         Each ``PromptChange`` is written through the context's durable write
-        seam as an active principle. The application is transactional in the
-        :class:`ConfigApplier` mould: created ids are tracked in order, and a
-        mid-list failure triggers a reverse-order rollback that deletes the
-        already-created principles before returning a failure result. On
-        success the cached read snapshot is refreshed so the next prompt build
-        sees the new principles without a restart.
+        seam as an active principle. The application is transactional: created
+        ids are tracked in order, and a mid-list failure triggers a
+        reverse-order rollback that deletes the already-created principles
+        before returning a failure result. On success the cached read snapshot
+        is refreshed so the next prompt build sees the new principles without a
+        restart.
 
         Args:
             proposal: The approved prompt tuning proposal.
@@ -180,9 +181,17 @@ class PromptApplier:
                 applied=len(applied),
                 rollback_failures=failures,
             )
+            rollback_note = (
+                "Active principles fully restored."
+                if failures == 0
+                else (
+                    f"WARNING: {failures} rollback delete(s) failed; the "
+                    "active-principle store may be partially mutated."
+                )
+            )
             return ApplyResult(
                 success=False,
-                error_message="Prompt apply failed and was rolled back. Check logs.",
+                error_message=f"Prompt apply failed. {rollback_note} Check logs.",
                 changes_applied=0,
             )
         await context.refresh_snapshot()
@@ -286,12 +295,20 @@ class PromptApplier:
                 )
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
-                return self._fail(
-                    proposal,
-                    error_message=(
-                        f"dry run context failure: "
-                        f"{type(exc).__name__}: {safe_error_description(exc)[:200]}"
-                    ),
+                # Collect-and-continue so a context failure on one change does
+                # not mask validation errors in the remaining changes (matches
+                # the architecture applier's per-change error collection).
+                reason = f"{type(exc).__name__}: {safe_error_description(exc)[:200]}"
+                errors.append(
+                    f"dry run context failure for scope "
+                    f"{change.target_scope!r}: {reason}"
+                )
+                logger.warning(
+                    META_DRY_RUN_FAILED,
+                    altitude="prompt_tuning",
+                    proposal_id=str(proposal.id),
+                    target_scope=change.target_scope,
+                    reason=reason,
                 )
 
         if errors:

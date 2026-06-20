@@ -4,6 +4,8 @@ Encapsulates strategy-specific imports, principle loading, and
 error handling so that ``prompt.py`` delegates to a single call.
 """
 
+from types import MappingProxyType
+
 from synthorg.core.agent import AgentIdentity
 from synthorg.engine.strategy.active_principle import ActivePrincipleProvider
 from synthorg.engine.strategy.active_principle_provider import (
@@ -24,15 +26,17 @@ from synthorg.observability.events.strategy import STRATEGY_PRINCIPLES_LOAD_FAIL
 
 logger = get_logger(__name__)
 
-_NULL_SECTIONS: dict[str, object] = {
-    "strategic_context": False,
-    "strategic_context_text": None,
-    "constitutional_principles_text": None,
-    "contrarian_text": None,
-    "confidence_text": None,
-    "assumption_text": None,
-    "output_instructions_text": None,
-}
+_NULL_SECTIONS: MappingProxyType[str, object] = MappingProxyType(
+    {
+        "strategic_context": False,
+        "strategic_context_text": None,
+        "constitutional_principles_text": None,
+        "contrarian_text": None,
+        "confidence_text": None,
+        "assumption_text": None,
+        "output_instructions_text": None,
+    }
+)
 
 
 def inject_strategy_context(

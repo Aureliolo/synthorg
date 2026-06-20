@@ -6,12 +6,13 @@ import (
 	"testing"
 )
 
-// TestNATSConfigContentRendersExpected pins the rendered NATS server config
+// TestNATSConfig_RendersExpected pins the rendered NATS server config
 // to its exact canonical bytes. The content is built with fmt.Sprintf from the
 // NATSClientPort / NATSHTTPPort / NATSMaxPayload constants, so this guards
 // against a constant typo or a template-format change silently altering what
 // the NATS broker is configured with.
-func TestNATSConfigContentRendersExpected(t *testing.T) {
+func TestNATSConfig_RendersExpected(t *testing.T) {
+	t.Parallel()
 	want := "host: 0.0.0.0\n" +
 		"port: 4222\n" +
 		"http_port: 8222\n" +
@@ -24,10 +25,11 @@ func TestNATSConfigContentRendersExpected(t *testing.T) {
 	}
 }
 
-// TestNATSConfigContentUsesConstants asserts the rendered config carries the
+// TestNATSConfig_UsesConstants asserts the rendered config carries the
 // values from the named constants, so the single-source-of-truth wiring holds
 // even if the surrounding template text is reworded.
-func TestNATSConfigContentUsesConstants(t *testing.T) {
+func TestNATSConfig_UsesConstants(t *testing.T) {
+	t.Parallel()
 	for _, want := range []string{
 		fmt.Sprintf("port: %d", NATSClientPort),
 		fmt.Sprintf("http_port: %d", NATSHTTPPort),

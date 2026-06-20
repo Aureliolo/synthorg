@@ -420,6 +420,12 @@
       "ratio": 0.888,
       "tier": "code"
     },
+    "src/synthorg/engine/compaction/summarizer.py": {
+      "cap": 500,
+      "loc": 403,
+      "ratio": 0.806,
+      "tier": "code"
+    },
     "src/synthorg/engine/context.py": {
       "cap": 500,
       "loc": 494,
@@ -924,6 +930,12 @@
       "ratio": 0.852,
       "tier": "code"
     },
+    "src/synthorg/organization/services.py": {
+      "cap": 600,
+      "loc": 490,
+      "ratio": 0.817,
+      "tier": "service"
+    },
     "src/synthorg/persistence/migrations.py": {
       "cap": 500,
       "loc": 414,
@@ -1347,7 +1359,7 @@
     "synthorg.api.state": 244,
     "synthorg.api.state_slices": 31,
     "synthorg.approval.enums": 75,
-    "synthorg.approval.protocol": 47,
+    "synthorg.approval.protocol": 48,
     "synthorg.approval.state": 24,
     "synthorg.budget.call_category": 45,
     "synthorg.budget.config": 29,
@@ -1372,9 +1384,9 @@
     "synthorg.core.auth.roles": 29,
     "synthorg.core.autonomy_enums": 36,
     "synthorg.core.boundary": 37,
-    "synthorg.core.clock": 178,
+    "synthorg.core.clock": 180,
     "synthorg.core.critical_errors": 545,
-    "synthorg.core.domain_errors": 219,
+    "synthorg.core.domain_errors": 220,
     "synthorg.core.effective_autonomy": 22,
     "synthorg.core.error_taxonomy": 61,
     "synthorg.core.iso_datetime": 25,
@@ -1392,7 +1404,7 @@
     "synthorg.engine.decomposition.models": 28,
     "synthorg.engine.errors": 85,
     "synthorg.engine.loop_protocol": 46,
-    "synthorg.engine.prompt_safety": 70,
+    "synthorg.engine.prompt_safety": 71,
     "synthorg.engine.state": 41,
     "synthorg.engine.strategy.models": 20,
     "synthorg.engine.task_engine": 37,
@@ -1437,7 +1449,7 @@
     "synthorg.observability.events.client": 24,
     "synthorg.observability.events.communication": 26,
     "synthorg.observability.events.config": 23,
-    "synthorg.observability.events.evolution": 23,
+    "synthorg.observability.events.evolution": 24,
     "synthorg.observability.events.execution": 38,
     "synthorg.observability.events.hr": 40,
     "synthorg.observability.events.integrations": 64,

@@ -17,6 +17,8 @@ The contexts hold the registry / principle snapshots so the synchronous
 dry-run reads never await; :meth:`refresh_snapshot` reloads them.
 """
 
+from typing import Final
+
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.normalization import collapse_whitespace_lowercase
 from synthorg.core.role import Role
@@ -42,7 +44,7 @@ from synthorg.organization.services import DepartmentService
 from synthorg.persistence.active_principle_protocol import ActivePrincipleRepository
 from synthorg.persistence.role_registry_protocol import RoleRegistryRepository
 
-_ALL_SCOPE = "all"
+_ALL_SCOPE: Final[str] = "all"
 
 
 class MetaArchitectureApplyError(
@@ -127,6 +129,10 @@ class DurablePromptApplierContext:
 
         Returns:
             The new principle's id, for reverse-order rollback.
+
+        Raises:
+            ValueError: When ``change.target_scope`` resolves to neither
+                ``all``, a known role, nor a known department.
         """
         scope = change.target_scope
         if scope == _ALL_SCOPE:
@@ -136,7 +142,11 @@ class DurablePromptApplierContext:
         elif scope in self._department_names:
             scope_kind = ScopeKind.DEPARTMENT
         else:
-            scope_kind = ScopeKind.ALL
+            msg = (
+                f"Cannot resolve scope {scope!r}: not 'all', a known role, or a "
+                "known department. Refusing to widen scope to ALL silently."
+            )
+            raise ValueError(msg)
         now = self._clock.now()
         principle = ActivePrinciple(
             principle_text=change.principle_text,
@@ -283,11 +293,13 @@ class DurableArchitectureApplierContext:
     async def _remove_role(self, change: ArchitectureChange) -> ArchitectureUndo:
         name = NotBlankStr(change.target_name)
         prior = await self._role_repo.get(name)
+        if prior is None:
+            msg = f"Role not found for removal: {change.target_name}"
+            raise MetaArchitectureApplyError(msg)
         await self._role_repo.delete(name)
 
         async def _undo() -> None:
-            if prior is not None:
-                await self._role_repo.save(prior)
+            await self._role_repo.save(prior)
 
         return _undo
 
@@ -325,6 +337,7 @@ class DurableArchitectureApplierContext:
                 name=NotBlankStr(prior.name),
                 description=NotBlankStr(prior.description or prior.name),
                 actor_id=NotBlankStr("meta-loop"),
+                department_id=prior.id,
             )
 
         return _undo

@@ -19,14 +19,15 @@ Scope mapping (``ScopeKind`` + ``scope``) decides which agents see a principle:
 
 * ``ALL`` -- every agent (``scope`` is the sentinel ``"all"``).
 * ``ROLE`` -- agents whose ``role`` matches ``scope`` (case-insensitive).
-* ``DEPARTMENT`` -- agents whose ``department`` matches ``scope``.
+* ``DEPARTMENT`` -- agents whose ``department`` matches ``scope``
+  (case-insensitive).
 """
 
 from enum import StrEnum
-from typing import Protocol, runtime_checkable
+from typing import Protocol, Self, runtime_checkable
 from uuid import UUID, uuid4
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.strategy.models import (
@@ -84,6 +85,49 @@ class ActivePrinciple(BaseModel):
     severity: PrincipleSeverity = PrincipleSeverity.WARNING
     created_at: AwareDatetime
     updated_at: AwareDatetime
+
+    @model_validator(mode="after")
+    def _validate_scope_consistency(self) -> Self:
+        """Reject a ``scope`` / ``scope_kind`` pairing that cannot match.
+
+        ``ScopeKind.ALL`` must use the ``ALL_SCOPE`` sentinel and, conversely,
+        the sentinel is reserved for ``ALL`` -- otherwise a ``ROLE``-scoped
+        principle named ``"all"`` (or an ``ALL`` principle with a role name)
+        would silently match the wrong agents.
+
+        Returns:
+            The validated instance.
+
+        Raises:
+            ValueError: When the kind and scope disagree.
+        """
+        is_all_kind = self.scope_kind is ScopeKind.ALL
+        is_all_scope = self.scope == ALL_SCOPE
+        if is_all_kind != is_all_scope:
+            msg = (
+                f"scope_kind={self.scope_kind.value!r} and scope={self.scope!r} "
+                "are inconsistent: ALL requires scope='all' and vice versa"
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _updated_at_not_before_created(self) -> Self:
+        """Reject an ``updated_at`` earlier than ``created_at``.
+
+        Returns:
+            The validated instance.
+
+        Raises:
+            ValueError: When ``updated_at`` precedes ``created_at``.
+        """
+        if self.updated_at < self.created_at:
+            msg = (
+                f"updated_at ({self.updated_at.isoformat()}) must be >= "
+                f"created_at ({self.created_at.isoformat()})"
+            )
+            raise ValueError(msg)
+        return self
 
     def to_constitutional(self) -> ConstitutionalPrinciple:
         """Project to the prompt-injection :class:`ConstitutionalPrinciple`.

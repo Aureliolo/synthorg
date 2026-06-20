@@ -106,7 +106,6 @@ class SQLiteActivePrincipleRepository:
                 scope_kind = excluded.scope_kind,
                 evolution_mode = excluded.evolution_mode,
                 severity = excluded.severity,
-                created_at = excluded.created_at,
                 updated_at = excluded.updated_at
         """
         params = (

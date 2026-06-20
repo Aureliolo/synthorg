@@ -158,8 +158,11 @@ class PostgresEvolutionOutcomeRepository:
             Number of rows removed.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If the threshold is naive or the query fails.
         """
+        if threshold.tzinfo is None:
+            msg = f"threshold must be timezone-aware, got naive {threshold!r}"
+            raise QueryError(msg)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

@@ -16,6 +16,7 @@ snapshot refreshed at boot / reload is the right granularity -- the same
 trade-off the active-principle ambient provider makes.
 """
 
+import asyncio
 from collections.abc import Awaitable, Callable
 
 from synthorg.engine.strategy.models import StrategicContext
@@ -42,15 +43,24 @@ class CachedStrategicContextProvider:
     def __init__(self, *, resolver: StrategicContextResolver) -> None:
         self._resolver = resolver
         self._snapshot: StrategicContext | None = None
+        self._refresh_lock = asyncio.Lock()
 
     async def refresh(self) -> None:
-        """Re-resolve and cache the strategic context snapshot."""
-        self._snapshot = await self._resolver()
-        logger.info(
+        """Re-resolve and cache the strategic context snapshot.
+
+        Serialised so two concurrent reloads cannot race the assignment.
+        The org fields (industry / maturity / competitive position) are
+        logged at DEBUG only: they are internal strategy intelligence and
+        must not reach an external sink via routine INFO events.
+        """
+        async with self._refresh_lock:
+            snapshot = await self._resolver()
+            self._snapshot = snapshot
+        logger.debug(
             STRATEGY_CONTEXT_SNAPSHOT_REFRESHED,
-            maturity_stage=self._snapshot.maturity_stage,
-            industry=self._snapshot.industry,
-            competitive_position=self._snapshot.competitive_position,
+            maturity_stage=snapshot.maturity_stage,
+            industry=snapshot.industry,
+            competitive_position=snapshot.competitive_position,
         )
 
     def current(self) -> StrategicContext | None:

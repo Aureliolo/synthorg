@@ -116,13 +116,27 @@ def build_strategic_prompt_sections(
             "These anti-trendslop rules govern your strategic analysis. "
             "Violations of critical principles must be explicitly justified."
         ]
+        has_untrusted = False
         for i, p in enumerate(principles, 1):
             # "warning" is the default severity -- omit the tag so only
             # non-default severities (critical, informational) are marked.
             severity_tag = (
                 f" [{p.severity.value}]" if p.severity.value != "warning" else ""
             )
-            lines.append(f"{i}. {p.text}{severity_tag}")
+            # Active principles are authored by the self-improvement meta-loop's
+            # LLM (untrusted): fence their text so a crafted principle cannot
+            # smuggle instructions into the system prompt. Pack / custom
+            # principles are repo / operator authored and stay verbatim as
+            # authoritative rules.
+            if p.category == "active":
+                has_untrusted = True
+                rendered = wrap_untrusted(TAG_CONFIG_VALUE, p.text)
+            else:
+                rendered = p.text
+            lines.append(f"{i}. {rendered}{severity_tag}")
+        if has_untrusted:
+            lines.append("")
+            lines.append(untrusted_content_directive((TAG_CONFIG_VALUE,)))
         principles_text = "\n".join(lines)
 
     # Contrarian analysis section.

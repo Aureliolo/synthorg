@@ -1,3 +1,4 @@
+# module-kind: declarative
 """EvolutionOutcomeRecord repository protocol.
 
 Append-only durable log of the terminal outcome of every evolution
@@ -8,9 +9,9 @@ ring buffer on boot.
 """
 
 from datetime import datetime
-from typing import Protocol, override, runtime_checkable
+from typing import Protocol, Self, override, runtime_checkable
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.evolution.outcome_models import EvolutionOutcomeRecord
@@ -45,6 +46,29 @@ class EvolutionOutcomeFilterSpec(BaseModel):
         default=None,
         description="Only outcomes recorded strictly before this instant.",
     )
+
+    @model_validator(mode="after")
+    def _validate_window_order(self) -> Self:
+        """Reject an inverted ``[since, until)`` window.
+
+        An inverted window would silently return zero rows from the
+        backend rather than surfacing the misconfiguration.
+
+        Returns:
+            The validated instance.
+
+        Raises:
+            ValueError: When both bounds are set and ``since >= until``.
+        """
+        since = self.since
+        until = self.until
+        if since is not None and until is not None and since >= until:
+            msg = (
+                f"since ({since.isoformat()}) must be earlier than "
+                f"until ({until.isoformat()})"
+            )
+            raise ValueError(msg)
+        return self
 
 
 @runtime_checkable
@@ -132,3 +156,6 @@ class EvolutionOutcomeRepository(
             PersistenceError: If the operation fails.
         """
         ...
+
+
+__all__ = ["EvolutionOutcomeFilterSpec", "EvolutionOutcomeRepository"]

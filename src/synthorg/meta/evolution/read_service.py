@@ -14,10 +14,17 @@ from synthorg.core.types import NotBlankStr
 from synthorg.meta.evolution.outcome_models import EvolutionOutcomeRecord
 from synthorg.meta.evolution.outcome_store import roll_up_outcomes
 from synthorg.meta.signal_models import OrgEvolutionSummary
+from synthorg.observability import get_logger
+from synthorg.observability.events.evolution import (
+    EVOLUTION_OUTCOMES_QUERIED,
+    EVOLUTION_SUMMARY_DRAINED,
+)
 from synthorg.persistence.evolution_outcome_protocol import (
     EvolutionOutcomeFilterSpec,
     EvolutionOutcomeRepository,
 )
+
+logger = get_logger(__name__)
 
 
 class EvolutionReadService:
@@ -44,7 +51,15 @@ class EvolutionReadService:
             The matching outcome records.
         """
         spec = EvolutionOutcomeFilterSpec(agent_id=agent_id, axis=axis)
-        return await self._repo.query(spec, limit=limit, offset=offset)
+        records = await self._repo.query(spec, limit=limit, offset=offset)
+        logger.debug(
+            EVOLUTION_OUTCOMES_QUERIED,
+            count=len(records),
+            limit=limit,
+            offset=offset,
+            filtered=agent_id is not None or axis is not None,
+        )
+        return records
 
     async def summary(
         self,
@@ -64,6 +79,12 @@ class EvolutionReadService:
         spec = EvolutionOutcomeFilterSpec(since=since, until=until)
         records = await collect_all(
             lambda limit, offset: self._repo.query(spec, limit=limit, offset=offset)
+        )
+        logger.debug(
+            EVOLUTION_SUMMARY_DRAINED,
+            count=len(records),
+            since=since.isoformat(),
+            until=until.isoformat(),
         )
         return roll_up_outcomes(records)
 

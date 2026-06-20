@@ -2318,3 +2318,5 @@ CREATE TABLE evolution_outcomes (
 );
 CREATE INDEX idx_evolution_outcomes_recorded ON evolution_outcomes (recorded_at DESC);
 CREATE INDEX idx_evolution_outcomes_axis ON evolution_outcomes (axis);
+CREATE INDEX idx_evolution_outcomes_agent
+ON evolution_outcomes (agent_id, recorded_at DESC);

@@ -34,6 +34,10 @@ logger = get_logger(__name__)
 OFFLOAD_TAG: Final[NotBlankStr] = NotBlankStr("compaction:offloaded")
 _OFFLOAD_SOURCE: Final[NotBlankStr] = NotBlankStr("compaction")
 _DEFAULT_REHYDRATE_LIMIT: Final[int] = 20
+#: Upper bound on a single offloaded batch's serialised size. A very long
+#: archived window (many verbose tool outputs) could otherwise store a
+#: multi-megabyte entry and, across many compactions, fill the backend.
+_MAX_OFFLOAD_CHARS: Final[int] = 100_000
 
 
 class MemoryOffloader:
@@ -61,6 +65,13 @@ class MemoryOffloader:
         content = _serialise_batch(archivable)
         if not content:
             return
+        if len(content) > _MAX_OFFLOAD_CHARS:
+            content = content[:_MAX_OFFLOAD_CHARS]
+            logger.debug(
+                CONTEXT_BUDGET_COMPACTION_OFFLOAD_STORED,
+                execution_id=execution_id,
+                truncated_to=_MAX_OFFLOAD_CHARS,
+            )
         request = MemoryStoreRequest(
             category=MemoryCategory.PROCEDURAL,
             content=NotBlankStr(content),

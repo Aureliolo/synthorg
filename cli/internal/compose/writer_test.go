@@ -26,7 +26,7 @@ func TestWriteNATSConfig(t *testing.T) {
 			t.Fatalf("read written file: %v", err)
 		}
 		if string(got) != NATSConfig() {
-			t.Errorf("file content does not match canonical NATSConfigContent")
+			t.Errorf("file content does not match NATSConfig()")
 		}
 	})
 

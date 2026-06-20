@@ -15,6 +15,11 @@ from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.prompt_safety import (
+    TAG_TASK_DATA,
+    untrusted_content_directive,
+    wrap_untrusted,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.context_budget import (
     CONTEXT_BUDGET_COMPACTION_LLM_COMPLETED,
@@ -30,7 +35,8 @@ logger = get_logger(__name__)
 _SYSTEM_PROMPT = (
     "You compress an AI agent's earlier conversation turns into a concise "
     "summary. Preserve decisions, open questions, constraints, and any "
-    "stated uncertainty. Write 3-6 sentences, no preamble."
+    "stated uncertainty. Write 3-6 sentences, no preamble.\n\n"
+    + untrusted_content_directive((TAG_TASK_DATA,))
 )
 
 # Framework-overhead attribution for the compaction summary call.
@@ -155,12 +161,17 @@ class LLMSummarizer:
 def _build_transcript(messages: tuple[ChatMessage, ...]) -> str:
     """Join archived messages into a role-tagged transcript.
 
+    Each message body is the agent's own conversation / tool content
+    (untrusted), so it is fenced with ``wrap_untrusted`` and the system
+    prompt carries the matching directive: a crafted earlier turn cannot
+    redirect the summariser.
+
     Returns:
         The transcript text, or an empty string when no message carries
         content.
     """
     lines = [
-        f"{m.role.value}: {m.content.strip()}"
+        f"{m.role.value}: {wrap_untrusted(TAG_TASK_DATA, m.content.strip())}"
         for m in messages
         if m.content and m.content.strip()
     ]

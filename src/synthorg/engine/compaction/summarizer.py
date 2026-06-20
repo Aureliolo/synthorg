@@ -5,6 +5,8 @@ turns into a summary message when the context fill level exceeds a
 configurable threshold.
 """
 
+from typing import Final
+
 from synthorg.core.task_enums import Complexity
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.compaction.epistemic import (
@@ -42,10 +44,10 @@ type _ConversationSplit = tuple[
     tuple[ChatMessage, ...],
 ]
 
-_MAX_SUMMARY_CHARS: int = 500
-"""Internal constant by design: maximum characters in the generated
-summary text.  Defensive cap; prevents bloated summaries in
-compaction memory.  Not exposed to the settings registry."""
+_MAX_SUMMARY_CHARS: Final[int] = 500
+"""Defensive cap on the snippet-join summary length; prevents bloated
+summaries when many long assistant messages are archived. Not exposed to
+the settings registry (the LLM summariser has its own token cap)."""
 
 
 def make_compaction_callback(
@@ -114,13 +116,14 @@ def _do_compaction(
     return _finalise(ctx, head, archivable, recent, estimator, summary_text)
 
 
-async def _do_compaction_phase2(
+async def _do_compaction_phase2(  # noqa: PLR0913 -- ctx + config + estimator + two Phase-2 collaborators + force flag
     ctx: AgentContext,
     config: CompactionConfig,
     estimator: PromptTokenEstimator,
     *,
     summarizer: LLMSummarizer | None,
     offloader: MemoryOffloader | None,
+    force: bool = False,
 ) -> AgentContext | None:
     """Phase-2 compaction: LLM summary and/or memory offload.
 
@@ -128,10 +131,18 @@ async def _do_compaction_phase2(
     absent / disabled / fails. The offload is best-effort and never
     blocks the compaction.
 
+    Args:
+        ctx: Current agent context.
+        config: Compaction configuration.
+        estimator: Token estimator.
+        summarizer: Optional LLM-backed summariser.
+        offloader: Optional memory offloader.
+        force: Skip the fill-threshold check (agent-initiated compaction).
+
     Returns:
         New compacted ``AgentContext`` or ``None`` if no compaction needed.
     """
-    prep = _prepare_compaction(ctx, config, force=False)
+    prep = _prepare_compaction(ctx, config, force=force)
     if prep is None:
         return None
     head, archivable, recent = prep
@@ -427,25 +438,41 @@ def _build_summary(
     return f"[Archived {len(messages)} messages. Summary of prior work: {joined}]"
 
 
-def force_compaction(
+async def force_compaction(
     ctx: AgentContext,
     config: CompactionConfig,
     estimator: PromptTokenEstimator,
+    *,
+    summarizer: LLMSummarizer | None = None,
+    offloader: MemoryOffloader | None = None,
 ) -> AgentContext | None:
     """Compact context without checking the fill threshold.
 
     Used when an agent explicitly requests compaction via the
-    ``compact_context`` tool.  Delegates to ``_do_compaction``
-    with ``force=True`` which skips the fill-threshold comparison
-    entirely while preserving all other checks (minimum message
-    count, recent turn preservation).
+    ``compact_context`` tool. Skips the fill-threshold comparison while
+    preserving all other checks (minimum message count, recent-turn
+    preservation). When a Phase-2 ``summarizer`` / ``offloader`` is
+    supplied (and enabled in ``config``) the forced compaction runs the
+    same semantic summary / memory-offload path as the threshold-triggered
+    callback, rather than silently downgrading to the Phase-1 text summary.
 
     Args:
         ctx: Current agent context.
         config: Compaction configuration.
         estimator: Token estimator.
+        summarizer: Optional LLM-backed summariser (Phase-2).
+        offloader: Optional memory offloader for archived batches (Phase-2).
 
     Returns:
         Compacted context, or ``None`` if too few messages.
     """
-    return _do_compaction(ctx, config, estimator, force=True)
+    if summarizer is None and offloader is None:
+        return _do_compaction(ctx, config, estimator, force=True)
+    return await _do_compaction_phase2(
+        ctx,
+        config,
+        estimator,
+        summarizer=summarizer,
+        offloader=offloader,
+        force=True,
+    )

@@ -124,7 +124,6 @@ class SQLiteRoleRegistryRepository:
                 system_prompt_template = excluded.system_prompt_template,
                 description = excluded.description,
                 is_builtin = excluded.is_builtin,
-                created_at = excluded.created_at,
                 updated_at = excluded.updated_at
         """
         role = entity.role

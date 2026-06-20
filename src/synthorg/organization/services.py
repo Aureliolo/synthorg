@@ -19,12 +19,12 @@ with no runtime benefit.
 import asyncio
 import copy
 from collections.abc import Mapping, Sequence
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast, override
 from uuid import UUID, uuid4
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.actor_context import ActorIdentity, ActorKind, actor_scope
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.pagination import collect_all
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
@@ -252,10 +252,16 @@ class DepartmentService:
     :meth:`delete_department`).
     """
 
-    def __init__(self, *, repo: DepartmentRepository | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        repo: DepartmentRepository | None = None,
+        clock: Clock | None = None,
+    ) -> None:
         self._departments: dict[UUID, _DepartmentRecord] = {}
         self._lock = asyncio.Lock()
         self._repo = repo
+        self._clock = clock if clock is not None else SystemClock()
 
     async def rehydrate(self) -> None:
         """Load durable departments into the in-memory cache at boot.
@@ -331,23 +337,34 @@ class DepartmentService:
         name: NotBlankStr,
         description: NotBlankStr,
         actor_id: NotBlankStr,
+        department_id: UUID | None = None,
     ) -> _DepartmentRecord:
         """Create a department, auditing the event on success.
+
+        Args:
+            name: Department display name (UNIQUE in the durable store).
+            description: Human-readable description.
+            actor_id: Auditing actor identifier.
+            department_id: Optional explicit primary key. Supplied by
+                rollback paths so a re-created department keeps its
+                original id and existing references stay valid; defaults
+                to a fresh ``uuid4()``.
 
         Returns:
             A deep copy of the newly created department record.
         """
         record = _DepartmentRecord(
-            id=uuid4(),
+            id=department_id if department_id is not None else uuid4(),
             name=name,
             description=description,
-            created_at=datetime.now(UTC),
+            created_at=self._clock.now(),
         )
-        # Write durable first so a unique-name collision surfaces before the
-        # in-memory cache is mutated (the repo's name column is UNIQUE).
-        if self._repo is not None:
-            await self._repo.save(record.to_durable())
+        # Durable write and cache insert are serialised under one lock so the
+        # in-memory cache never diverges from the store: a unique-name
+        # collision raises here before the cache is mutated.
         async with self._lock:
+            if self._repo is not None:
+                await self._repo.save(record.to_durable())
             self._departments[record.id] = record
         logger.info(
             DEPARTMENT_CREATED_VIA_MCP,
@@ -382,10 +399,12 @@ class DepartmentService:
                 record.name = name
             if description is not None:
                 record.description = description
-            record.updated_at = datetime.now(UTC)
+            record.updated_at = self._clock.now()
             returned = copy.deepcopy(record)
-        if self._repo is not None:
-            await self._repo.save(returned.to_durable())
+            # Durable write stays under the lock so a failed save cannot leave
+            # the cache ahead of the store for a concurrent reader.
+            if self._repo is not None:
+                await self._repo.save(returned.to_durable())
         logger.info(
             DEPARTMENT_UPDATED_VIA_MCP,
             department_id=department_id,
@@ -411,9 +430,14 @@ class DepartmentService:
         except ValueError:
             return False
         async with self._lock:
-            removed = self._departments.pop(key, None) is not None
-        if removed and self._repo is not None:
-            await self._repo.delete(NotBlankStr(str(key)))
+            removed = key in self._departments
+            if removed:
+                # Durable delete under the lock and before the cache pop so a
+                # failed delete leaves both stores consistent and a concurrent
+                # rehydrate cannot resurrect a half-removed row.
+                if self._repo is not None:
+                    await self._repo.delete(NotBlankStr(str(key)))
+                self._departments.pop(key, None)
         if removed:
             logger.info(
                 DEPARTMENT_DELETED_VIA_MCP,

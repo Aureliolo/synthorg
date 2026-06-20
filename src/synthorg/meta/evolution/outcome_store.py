@@ -17,6 +17,7 @@ from collections import deque
 from datetime import datetime
 from typing import Final
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.evolution.outcome_models import EvolutionOutcomeRecord
@@ -48,15 +49,23 @@ class InMemoryEvolutionOutcomeStore:
     Args:
         max_results: Ring buffer capacity.  Oldest entries are evicted
             when the buffer is full.
+        clock: Clock seam for the ``recorded_at`` stamp built in
+            :meth:`record`; tests inject a ``FakeClock``.
     """
 
-    def __init__(self, *, max_results: int = _DEFAULT_MAX_RESULTS) -> None:
+    def __init__(
+        self,
+        *,
+        max_results: int = _DEFAULT_MAX_RESULTS,
+        clock: Clock | None = None,
+    ) -> None:
         if max_results < 1:
             msg = f"max_results must be >= 1, got {max_results}"
             raise ValueError(msg)
         self._max_results = max_results
         self._records: deque[EvolutionOutcomeRecord] = deque(maxlen=max_results)
         self._lock = asyncio.Lock()
+        self._clock: Clock = clock if clock is not None else SystemClock()
 
     async def record(
         self,
@@ -78,6 +87,7 @@ class InMemoryEvolutionOutcomeStore:
                 axis=axis,
                 applied=applied,
                 proposed_at=proposed_at,
+                recorded_at=self._clock.now(),
             )
             await self.ingest(record)
             logger.debug(
@@ -107,11 +117,13 @@ class InMemoryEvolutionOutcomeStore:
         async with self._lock:
             evicted = len(self._records) == self._max_results
             self._records.append(record)
-        if evicted:
-            logger.info(
-                EVOLUTION_OUTCOME_STORE_EVICTED,
-                max_results=self._max_results,
-            )
+            # Logged under the lock so two concurrent ingests cannot both
+            # observe a full buffer and double-count the single eviction.
+            if evicted:
+                logger.info(
+                    EVOLUTION_OUTCOME_STORE_EVICTED,
+                    max_results=self._max_results,
+                )
 
     async def query(
         self,

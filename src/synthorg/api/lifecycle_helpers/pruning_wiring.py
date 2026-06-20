@@ -15,12 +15,22 @@ tracker / approval store) leaves the service absent rather than poisoning
 startup.
 """
 
+from typing import TYPE_CHECKING
+
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.pruning_request_protocol import PruningRequestRepository
+
+if TYPE_CHECKING:
+    # Annotation-only imports: kept out of the module body so this early
+    # boot-wiring helper does not pull the HR / approval hubs into the
+    # cold-import graph (the concrete classes are imported lazily in _wire).
+    from synthorg.approval.protocol import ApprovalStoreProtocol
+    from synthorg.hr.performance.tracker import PerformanceTracker
+    from synthorg.hr.registry import AgentRegistryService
 
 logger = get_logger(__name__)
 
@@ -77,24 +87,20 @@ async def wire_pruning(app_state: AppState) -> None:
 async def _wire(
     app_state: AppState,
     *,
-    registry: object,
-    tracker: object,
-    approval_store: object,
+    registry: AgentRegistryService,
+    tracker: PerformanceTracker,
+    approval_store: ApprovalStoreProtocol,
 ) -> None:
     from synthorg.hr.offboarding_service import OffboardingService  # noqa: PLC0415
-    from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: PLC0415
     from synthorg.hr.pruning.service import PruningService  # noqa: PLC0415
-    from synthorg.hr.registry import AgentRegistryService  # noqa: PLC0415
 
-    assert isinstance(registry, AgentRegistryService)  # noqa: S101
-    assert isinstance(tracker, PerformanceTracker)  # noqa: S101
     repo = _build_pruning_request_repo(app_state)
     offboarding = OffboardingService(registry=registry)
     service = PruningService(
         policies=(),
         registry=registry,
         tracker=tracker,
-        approval_store=approval_store,  # type: ignore[arg-type]
+        approval_store=approval_store,
         offboarding_service=offboarding,
         request_repo=repo,
     )

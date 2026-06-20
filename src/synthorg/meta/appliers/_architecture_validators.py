@@ -222,7 +222,7 @@ def _validate_change(
     """Validate a single ``ArchitectureChange``.
 
     Returns:
-        List of the declared element type.
+        Validation error messages; empty when valid.
     """
     if change.operation not in _SUPPORTED_OPS:
         return [
@@ -305,7 +305,7 @@ def _validate_role_description(description: object) -> list[str]:
     helper ensures the value is a usable non-blank bounded string.
 
     Returns:
-        List of the declared element type.
+        Validation error messages; empty when valid.
     """
     if description is None:
         return ["create_role: 'description' must not be None"]
@@ -330,7 +330,7 @@ def _validate_role_department(
     """Validate the ``department`` reference for a new role.
 
     Returns:
-        List of the declared element type.
+        Validation error messages; empty when valid.
     """
     if dept is None:
         return []
@@ -349,7 +349,7 @@ def _validate_skill_list(skills: Sequence[object]) -> list[str]:
     """Validate each entry in ``required_skills`` (type, length, count).
 
     Returns:
-        List of the declared element type.
+        Validation error messages; empty when valid.
     """
     errors: list[str] = []
     if len(skills) > _MAX_SKILLS_PER_ROLE:
@@ -374,7 +374,7 @@ def _validate_authority_level(value: object) -> list[str]:
     """Validate the optional ``authority_level`` free-text field.
 
     Returns:
-        List of the declared element type.
+        Validation error messages; empty when valid.
     """
     if value is None:
         return []
@@ -394,7 +394,7 @@ def _validate_tool_access(value: object) -> list[str]:
     """Validate the optional ``tool_access`` list of tool identifiers.
 
     Returns:
-        List of the declared element type.
+        Validation error messages; empty when valid.
     """
     if value is None:
         return []
@@ -423,7 +423,7 @@ def _validate_dept_policies(value: object) -> list[str]:
     """Validate the optional ``policies`` list for a new department.
 
     Returns:
-        List of the declared element type.
+        Validation error messages; empty when valid.
     """
     if value is None:
         return []
@@ -452,7 +452,7 @@ def _validate_dept_head(value: object) -> list[str]:
     """Validate the optional ``head`` reference on a new department.
 
     Returns:
-        List of the declared element type.
+        Validation error messages; empty when valid.
     """
     if value is None:
         return []

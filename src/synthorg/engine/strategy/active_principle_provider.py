@@ -14,6 +14,7 @@ filtered per request is cheaper than a per-agent durable query and keeps the
 read path await-free.
 """
 
+import asyncio
 from collections.abc import Awaitable, Callable
 
 from synthorg.engine.strategy.active_principle import (
@@ -73,16 +74,21 @@ class CachedActivePrincipleProvider:
     def __init__(self, *, loader: ActivePrincipleLoader) -> None:
         self._loader = loader
         self._snapshot: tuple[ActivePrinciple, ...] = ()
+        self._refresh_lock = asyncio.Lock()
 
     async def refresh(self) -> None:
         """Reload the snapshot from the durable store.
 
         Called at boot and by the prompt applier after a successful write.
+        Serialised so two concurrent refreshes cannot interleave their load
+        and assignment and leave the cache holding the older loader result.
         """
-        self._snapshot = await self._loader()
+        async with self._refresh_lock:
+            snapshot = await self._loader()
+            self._snapshot = snapshot
         logger.info(
             STRATEGY_ACTIVE_PRINCIPLE_SNAPSHOT_REFRESHED,
-            count=len(self._snapshot),
+            count=len(snapshot),
         )
 
     def list_active(

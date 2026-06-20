@@ -74,6 +74,11 @@ EVOLUTION_OUTCOME_RECORDED: Final[str] = "evolution.outcome.recorded"
 EVOLUTION_OUTCOME_RECORD_FAILED: Final[str] = "evolution.outcome.record_failed"
 EVOLUTION_OUTCOME_STORE_EVICTED: Final[str] = "evolution.outcome.store_evicted"
 
+# ── Outcome read-service events (back /meta/evolution/* endpoints) ──
+
+EVOLUTION_OUTCOMES_QUERIED: Final[str] = "evolution.outcome.queried"
+EVOLUTION_SUMMARY_DRAINED: Final[str] = "evolution.outcome.summary_drained"
+
 EVOLUTION_GUARD_DECISION: Final[str] = "evolution.guard.decision"
 """Composite guard reached a decision.
 

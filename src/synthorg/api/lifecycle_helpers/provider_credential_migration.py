@@ -60,6 +60,8 @@ async def migrate_embedded_provider_keys(app_state: AppState) -> None:
         logger.warning(
             PROVIDER_CREDENTIAL_MIGRATION_FAILED,
             phase="read",
+            namespace=_NAMESPACE,
+            key=_KEY,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
@@ -67,7 +69,19 @@ async def migrate_embedded_provider_keys(app_state: AppState) -> None:
     if not isinstance(configs, dict):
         return
 
-    migrated = await _migrate_configs(app_state, configs)
+    migrated, failed = await _migrate_configs(app_state, configs)
+    if failed:
+        # A failed mint leaves that provider's raw api_key in ``configs``.
+        # Skip the write-back entirely so the plaintext key is never
+        # persisted; the stored setting is left untouched and the next boot
+        # retries the whole migration.
+        logger.warning(
+            PROVIDER_CREDENTIAL_MIGRATION_FAILED,
+            phase="persist_skipped",
+            migrated=migrated,
+            failed=failed,
+        )
+        return
     if migrated == 0:
         return
     try:
@@ -84,18 +98,22 @@ async def migrate_embedded_provider_keys(app_state: AppState) -> None:
     logger.info(PROVIDER_CREDENTIAL_MIGRATION_COMPLETED, migrated=migrated)
 
 
-async def _migrate_configs(app_state: AppState, configs: dict[str, object]) -> int:
+async def _migrate_configs(
+    app_state: AppState, configs: dict[str, object]
+) -> tuple[int, int]:
     """Mint a catalog connection for each embedded key, rewriting in place.
 
     Returns:
-        The number of provider configs migrated (an embedded key minted and
-        rewritten onto ``connection_name``).
+        A ``(migrated, failed)`` pair: the number of provider configs
+        migrated (an embedded key minted and rewritten onto
+        ``connection_name``) and the number whose mint raised.
     """
     from synthorg.providers.management._credential_helpers import (  # noqa: PLC0415
         store_provider_api_key,
     )
 
     migrated = 0
+    failed = 0
     for name, conf in configs.items():
         if not isinstance(conf, dict):
             continue
@@ -108,6 +126,10 @@ async def _migrate_configs(app_state: AppState, configs: dict[str, object]) -> i
             conn_name = await store_provider_api_key(app_state, name, str(api_key))
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
+            # Leave the embedded key in place (do not pop): the caller skips
+            # the write-back when any mint failed, so the plaintext is never
+            # persisted and the next boot retries this provider.
+            failed += 1
             logger.warning(
                 PROVIDER_CREDENTIAL_MIGRATION_FAILED,
                 phase="mint",
@@ -120,7 +142,7 @@ async def _migrate_configs(app_state: AppState, configs: dict[str, object]) -> i
         conf.pop("api_key", None)
         migrated += 1
         logger.info(PROVIDER_CREDENTIAL_MIGRATED, provider=name)
-    return migrated
+    return migrated, failed
 
 
 __all__ = ["migrate_embedded_provider_keys"]

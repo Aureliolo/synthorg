@@ -3,7 +3,6 @@
 from datetime import date
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, PropertyMock
-from uuid import uuid4
 
 import pytest
 
@@ -27,15 +26,16 @@ from synthorg.engine.evolution.protocols import (
 from synthorg.engine.evolution.service import EvolutionService
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.seniority import SeniorityLevel
+from tests._shared import as_uuid, mock_of, sid
 
-_AGENT_ID = str(uuid4())
+pytestmark = pytest.mark.unit
+
+_AGENT_ID = sid("evolution-agent-1")
 
 
 def _make_identity() -> AgentIdentity:
-    from uuid import UUID
-
     return AgentIdentity(
-        id=UUID(_AGENT_ID),
+        id=as_uuid("evolution-agent-1"),
         name="test-agent",
         role="test-role",
         department="engineering",
@@ -97,9 +97,10 @@ def _make_service(  # noqa: PLR0913 -- keyword-only test collaborator DI
         store.get_current = AsyncMock(return_value=_make_identity())
         store.list_versions = AsyncMock(return_value=())
 
-    tracker = MagicMock(spec=PerformanceTracker)
-    tracker.get_snapshot = AsyncMock(return_value=None)
-    tracker.get_task_metrics = MagicMock(return_value=())
+    tracker = mock_of[PerformanceTracker](
+        get_snapshot=AsyncMock(return_value=None),
+        get_task_metrics=MagicMock(return_value=()),
+    )
 
     proposer = AsyncMock(spec=AdaptationProposer)
     proposer.name = "test_proposer"

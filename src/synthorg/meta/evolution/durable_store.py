@@ -57,7 +57,9 @@ class DurableEvolutionOutcomeStore:
     ) -> None:
         self._repo = repo
         self._clock: Clock = clock if clock is not None else SystemClock()
-        self._buffer = InMemoryEvolutionOutcomeStore(max_results=max_results)
+        self._buffer = InMemoryEvolutionOutcomeStore(
+            max_results=max_results, clock=self._clock
+        )
         self._max_results = max_results
 
     async def record(
@@ -92,6 +94,10 @@ class DurableEvolutionOutcomeStore:
                 error=safe_error_description(exc),
             )
             return
+        # Hot buffer first so the signals aggregator stays current even when
+        # the durable append fails; the failure log carries the record's
+        # timestamps (the record has no domain id) so the dropped durable
+        # write can be reconciled against the buffer after restart.
         await self._buffer.ingest(record)
         try:
             await self._repo.append(record)
@@ -102,6 +108,8 @@ class DurableEvolutionOutcomeStore:
                 agent_id=agent_id,
                 axis=axis,
                 phase="durable_append",
+                proposed_at=record.proposed_at.isoformat(),
+                recorded_at=record.recorded_at.isoformat(),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -154,12 +162,15 @@ class DurableEvolutionOutcomeStore:
         the repo) and ingests them oldest-first so the buffer's append
         order matches a live run.
         """
+        # Clear BEFORE querying the durable log: clearing after the query
+        # would silently wipe any outcome recorded concurrently between the
+        # query returning and the clear, dropping it from every hot read.
+        await self._buffer.clear()
         records = await self._repo.query(
             EvolutionOutcomeFilterSpec(),
             limit=self._max_results,
             offset=0,
         )
-        await self._buffer.clear()
         for record in reversed(records):
             await self._buffer.ingest(record)
 
