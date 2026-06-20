@@ -38,6 +38,12 @@
       "enabled": false
     },
     {
+      "description": "Cap the undici overrides pin at 7.x. jsdom (Vitest's DOM test environment) self-requires undici ^7.25.0, and the package.json overrides blocks (web/ and site/) force every undici instance (including jsdom's nested copy) to one version, so an 8.x override would violate jsdom's own constraint and break the test environment. Capping at <8 keeps undici inside the grouped Web dependencies PR while tracking the newest 7.x patch/minor, and stops Renovate re-proposing the 8.x major every cycle. Lift when jsdom depends on undici 8.",
+      "matchManagers": ["npm"],
+      "matchDepNames": ["undici"],
+      "allowedVersions": "<8"
+    },
+    {
       "description": "Python dependencies (pep621 + pre-commit). Footprint: pyproject.toml, uv.lock, .pre-commit-config.yaml. Disjoint from Web and Infrastructure groups.",
       "matchManagers": ["pep621", "pre-commit"],
       "groupName": "Python dependencies",

@@ -29,5 +29,9 @@
     "@types/react-dom": "19.2.3",
     "jsdom": "29.1.1",
     "vitest": "4.1.9"
+  },
+  "overrides": {
+    "esbuild": "0.28.1",
+    "undici": "7.28.0"
   }
 }
