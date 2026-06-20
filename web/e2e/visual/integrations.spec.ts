@@ -1,14 +1,14 @@
 import { expect, test } from '@playwright/test'
 import { freezeTime, mockApiRoutes, waitForFonts } from '../fixtures/mock-api'
 import { mockIntegrationRoutes } from '../fixtures/integrations-mocks'
-import { seedAuth } from '../fixtures/auth'
 
 test.describe('Integrations dashboard', () => {
   test.beforeEach(async ({ page }) => {
     await freezeTime(page)
     await mockIntegrationRoutes(page)
+    // mockApiRoutes stubs `GET /auth/me` to a non-401, keeping the app
+    // authenticated (HttpOnly-cookie auth) so it never redirects to login.
     await mockApiRoutes(page)
-    await seedAuth(page)
   })
 
   test('Connections page loads with connections and health', async ({ page }) => {

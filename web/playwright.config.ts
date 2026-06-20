@@ -22,7 +22,6 @@ export default defineConfig({
     // (retries: 1), so a flake that only reproduces on the second run
     // still leaves a diagnostic artifact instead of discarding it.
     video: 'retain-on-failure-and-retries',
-    // Disable animations for deterministic screenshots
     reducedMotion: 'reduce',
     // Bound individual actions / navigations so a wedged click or load
     // fails fast inside the per-test budget instead of consuming it.
@@ -30,7 +29,6 @@ export default defineConfig({
     navigationTimeout: 30_000,
   },
 
-  // Screenshot comparison settings
   expect: {
     // Web-first assertions (``toBeVisible`` etc.) retry up to this long;
     // the 5s default races slow first-paint under CI load.

@@ -12,7 +12,7 @@ npm --prefix web run lint                  # ESLint (zero warnings enforced)
 npm --prefix web run type-check            # TypeScript type checking
 npm --prefix web run test                  # Vitest unit tests (coverage scoped to files changed vs origin/main)
 npm --prefix web run test -- --coverage    # Full suite (matches CI; active-handle gate is built into the setupFiles)
-npm --prefix web run bench                 # Vitest performance benchmarks (CodSpeed CPU Simulation; *.bench.ts files under web/src/__tests__/benchmarks/)
+npm --prefix web run bench                 # Vitest performance benchmarks (CodSpeed simulation + memory; *.bench.ts files under web/src/__tests__/benchmarks/)
 npm --prefix web run size                  # size-limit bundle-size budget check (requires `npm run build` first)
 npm --prefix web run analyze               # bundle size treemap (opens stats.html)
 npm --prefix web run e2e                   # Playwright visual regression tests

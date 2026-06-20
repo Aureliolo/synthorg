@@ -10,7 +10,7 @@ name: CodSpeed
 # Web into two separate workflows (the prior layout) caused the second-
 # completing workflow's results to overwrite the first's CodSpeed PR
 # comment, with the missing benchmarks marked "unknown cause" -- the
-# regression risk that motivated #1640. Sharing one workflow run also
+# regression scenario this consolidated layout prevents. Sharing one workflow run also
 # requires a SINGLE auth method across all bench jobs (OIDC here, declared
 # via id-token: write on each shard).
 #
@@ -29,12 +29,11 @@ name: CodSpeed
 # variance under 1% across runners. Walltime would need Macro Runners
 # (CodSpeed's bare-metal pool) to match that variance, which we have
 # explicitly scoped out to keep the gate free-tier. The memory instrument
-# rides alongside simulation in the same invocation (``mode:
-# simulation,memory``): as of CodSpeed runner 4.17 memtrack runs sudo-less
-# via file capabilities on standard GitHub-hosted runners, so heap-
-# allocation regressions surface next to CPU in the same PR report at no
-# extra job. Both surfaces meet the floor (pytest-codspeed 5.0.3 >= 4.3.0,
-# @codspeed/vitest-plugin 5.6.0 >= 5.2.0).
+# rides alongside simulation in the same invocation (mode: simulation,memory):
+# as of CodSpeed runner 4.17 memtrack runs sudo-less via file capabilities on
+# standard GitHub-hosted runners, so heap-allocation regressions surface next
+# to CPU in the same PR report at no extra job. Both surfaces meet the floor
+# (pytest-codspeed 5.0.3 >= 4.3.0, @codspeed/vitest-plugin 5.6.0 >= 5.2.0).
 
 on:
   push:
@@ -95,8 +94,10 @@ jobs:
     runs-on: ubuntu-24.04
     # 30 (was 15) so the worst case of the 3-attempt CodSpeed ladder below
     # (a transient OIDC/upload failure forcing up to three benchmark runs)
-    # still completes within the job budget. Steady state runs once; the
-    # extra runs only occur during an actual CodSpeed outage.
+    # still completes within the job budget. Each attempt now runs two
+    # instruments (simulation + memory) over the same serial suite; both are
+    # fast relative to cachegrind, so the budget holds. Steady state runs
+    # once; the extra runs only occur during an actual CodSpeed outage.
     timeout-minutes: 30
     permissions:
       contents: read
@@ -178,8 +179,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04
-    # 30 (was 15): headroom for the 3-attempt CodSpeed ladder below (see
-    # the codspeed-python job for the rationale).
+    # 30 (was 15): headroom for the 3-attempt CodSpeed ladder below, each
+    # attempt running two instruments (simulation + memory); see the
+    # codspeed-python job for the rationale.
     timeout-minutes: 30
     permissions:
       contents: read
