@@ -1,16 +1,13 @@
 import { test, expect } from '@playwright/test'
 import { mockApiRoutes, freezeTime, waitForFonts } from '../fixtures/mock-api'
+import { seedAuth } from '../fixtures/auth'
 
 test.describe('Dashboard visual regression', () => {
   test.beforeEach(async ({ page }) => {
     await freezeTime(page)
     await mockApiRoutes(page)
-    // Set auth token to bypass login
-    await page.addInitScript(() => {
-      localStorage.setItem('auth_token', 'mock-token')
-      // Set expiration far in the future (auth store checks this on init)
-      localStorage.setItem('auth_token_expires_at', String(Date.now() + 86400000))
-    })
+    // Bypass login: seed a mock token the auth store reads on init.
+    await seedAuth(page)
   })
 
   test('dashboard page screenshot', async ({ page }) => {

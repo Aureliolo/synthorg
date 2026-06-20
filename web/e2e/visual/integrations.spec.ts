@@ -1,16 +1,14 @@
 import { expect, test } from '@playwright/test'
 import { freezeTime, mockApiRoutes, waitForFonts } from '../fixtures/mock-api'
 import { mockIntegrationRoutes } from '../fixtures/integrations-mocks'
+import { seedAuth } from '../fixtures/auth'
 
 test.describe('Integrations dashboard', () => {
   test.beforeEach(async ({ page }) => {
     await freezeTime(page)
     await mockIntegrationRoutes(page)
     await mockApiRoutes(page)
-    await page.addInitScript(() => {
-      localStorage.setItem('auth_token', 'mock-token')
-      localStorage.setItem('auth_token_expires_at', String(Date.now() + 86400000))
-    })
+    await seedAuth(page)
   })
 
   test('Connections page loads with connections and health', async ({ page }) => {

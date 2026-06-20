@@ -18,6 +18,10 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:4173',
     trace: 'on-first-retry',
+    // Keep a video of any attempt that fails, including the CI retry
+    // (retries: 1), so a flake that only reproduces on the second run
+    // still leaves a diagnostic artifact instead of discarding it.
+    video: 'retain-on-failure-and-retries',
     // Disable animations for deterministic screenshots
     reducedMotion: 'reduce',
     // Bound individual actions / navigations so a wedged click or load
