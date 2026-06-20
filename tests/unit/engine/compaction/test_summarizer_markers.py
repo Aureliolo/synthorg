@@ -294,7 +294,7 @@ def _make_identity(name: str = "test-agent") -> AgentIdentity:
 class TestForceCompaction:
     """Tests for force_compaction function."""
 
-    def test_force_compaction_too_few_messages(self) -> None:
+    async def test_force_compaction_too_few_messages(self) -> None:
         """force_compaction returns None with too few messages."""
         identity = _make_identity()
         ctx = AgentContext.from_identity(identity)
@@ -309,11 +309,11 @@ class TestForceCompaction:
         config = CompactionConfig(min_messages_to_compact=4)
         estimator = DefaultTokenEstimator()
 
-        result = force_compaction(ctx, config, estimator)
+        result = await force_compaction(ctx, config, estimator)
 
         assert result is None
 
-    def test_force_compaction_bypasses_threshold(self) -> None:
+    async def test_force_compaction_bypasses_threshold(self) -> None:
         """force_compaction runs even when fill is below threshold."""
         identity = _make_identity()
         ctx = AgentContext.from_identity(identity)
@@ -338,7 +338,7 @@ class TestForceCompaction:
         estimator = DefaultTokenEstimator()
 
         # Should succeed despite low fill percentage
-        result = force_compaction(ctx, config, estimator)
+        result = await force_compaction(ctx, config, estimator)
 
         # Forced compaction should produce a compacted context
         assert result is not None

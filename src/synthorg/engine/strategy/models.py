@@ -48,6 +48,7 @@ class ContextSource(StrEnum):
 
     CONFIG = "config"
     MEMORY = "memory"
+    MEETING = "meeting"
     COMPOSITE = "composite"
 
 
@@ -205,6 +206,9 @@ class StrategicContextConfig(BaseModel):
         maturity_stage: Company maturity stage.
         industry: Industry sector.
         competitive_position: Market position.
+        meeting_lookback: How many recent completed meetings the
+            ``MEETING`` source inspects when deriving an internal-alignment
+            qualifier on the competitive position.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -224,6 +228,11 @@ class StrategicContextConfig(BaseModel):
     competitive_position: NotBlankStr = Field(
         default="challenger",
         description="Market competitive position",
+    )
+    meeting_lookback: int = Field(
+        default=5,
+        ge=1,
+        description="Recent completed meetings inspected by the MEETING source",
     )
 
 

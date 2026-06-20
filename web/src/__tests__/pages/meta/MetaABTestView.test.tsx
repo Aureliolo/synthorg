@@ -1,31 +1,26 @@
 import { render, screen } from '@testing-library/react'
-import type { ABTestSummary, ABTestGroupMetrics } from '@/api/endpoints/meta'
+import type { AbTestArm, AbTestRecord } from '@/api/endpoints/meta'
 import { MetaABTestView } from '@/pages/meta/MetaABTestView'
 
-function makeGroupMetrics(
-  group: 'control' | 'treatment',
-  overrides: Partial<ABTestGroupMetrics> = {},
-): ABTestGroupMetrics {
+function makeArm(name: string, overrides: Partial<AbTestArm> = {}): AbTestArm {
   return {
-    group,
+    name,
     agent_count: 10,
-    observation_count: 20,
-    avg_quality_score: 7.5,
-    avg_success_rate: 0.85,
-    total_spend: 100.0,
+    fraction: 0.5,
     ...overrides,
   }
 }
 
-function makeTest(overrides: Partial<ABTestSummary> = {}): ABTestSummary {
+function makeTest(overrides: Partial<AbTestRecord> = {}): AbTestRecord {
   return {
-    proposal_id: '550e8400-e29b-41d4-a716-446655440000',
-    proposal_title: 'Increase collaboration threshold',
-    control_metrics: makeGroupMetrics('control'),
-    treatment_metrics: makeGroupMetrics('treatment'),
+    id: '550e8400-e29b-41d4-a716-446655440000',
+    name: 'Increase collaboration threshold',
+    status: 'running',
     verdict: null,
     observation_hours_elapsed: 24,
-    observation_hours_total: 48,
+    arms: [makeArm('control'), makeArm('treatment')],
+    created_at: '2026-05-19T09:00:00Z',
+    updated_at: '2026-05-19T10:00:00Z',
     ...overrides,
   }
 }
@@ -36,28 +31,31 @@ describe('MetaABTestView', () => {
     expect(screen.getByText('No active A/B tests')).toBeInTheDocument()
   })
 
-  it('renders proposal title for active test', () => {
+  it('renders test name for active test', () => {
     render(<MetaABTestView tests={[makeTest()]} />)
     expect(
       screen.getByText('Increase collaboration threshold'),
     ).toBeInTheDocument()
   })
 
-  it('shows control and treatment agent counts', () => {
+  it('shows control and treatment arm agent counts', () => {
     render(<MetaABTestView tests={[makeTest()]} />)
-    expect(screen.getByText(/Control \(10 agents\)/)).toBeInTheDocument()
-    expect(screen.getByText(/Treatment \(10 agents\)/)).toBeInTheDocument()
+    expect(screen.getByText(/control \(10 agents\)/)).toBeInTheDocument()
+    expect(screen.getByText(/treatment \(10 agents\)/)).toBeInTheDocument()
+  })
+
+  it('shows the status badge', () => {
+    render(<MetaABTestView tests={[makeTest()]} />)
+    expect(screen.getByText('Running')).toBeInTheDocument()
   })
 
   it('shows verdict badge when verdict is set', () => {
-    render(
-      <MetaABTestView tests={[makeTest({ verdict: 'treatment_wins' })]} />,
-    )
+    render(<MetaABTestView tests={[makeTest({ verdict: 'treatment_wins' })]} />)
     expect(screen.getByText('Treatment Wins')).toBeInTheDocument()
   })
 
-  it('shows observation progress', () => {
+  it('shows observation hours elapsed', () => {
     render(<MetaABTestView tests={[makeTest()]} />)
-    expect(screen.getByText(/24\.0h \/ 48h/)).toBeInTheDocument()
+    expect(screen.getByText(/24\.0h observation/)).toBeInTheDocument()
   })
 })

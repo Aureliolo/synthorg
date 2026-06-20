@@ -6,6 +6,7 @@ Covers :class:`DepartmentService`, :class:`TeamService`, and
 and is already exercised via the MCP handler tests.
 """
 
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -18,6 +19,8 @@ from synthorg.organization.services import (
     DepartmentService,
     RoleVersionService,
 )
+from synthorg.persistence.department_protocol import DepartmentRepository
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -86,6 +89,30 @@ class TestDepartmentService:
             actor_id=NotBlankStr("alice"),
         )
         assert result is None
+
+    async def test_update_durable_save_failure_leaves_cache_unchanged(self) -> None:
+        # A failed durable write must not leave the in-memory cache ahead of
+        # the store: the mutation is applied to a copy and only committed after
+        # save() succeeds. The create save succeeds; the update save raises.
+        repo = mock_of[DepartmentRepository](
+            save=AsyncMock(side_effect=[None, RuntimeError("db down")]),
+        )
+        service = DepartmentService(repo=repo)
+        created = await service.create_department(
+            name=NotBlankStr("old"),
+            description=NotBlankStr("initial"),
+            actor_id=NotBlankStr("alice"),
+        )
+        with pytest.raises(RuntimeError, match="db down"):
+            await service.update_department(
+                department_id=NotBlankStr(str(created.id)),
+                actor_id=NotBlankStr("bob"),
+                name=NotBlankStr("new"),
+            )
+        fetched = await service.get_department(NotBlankStr(str(created.id)))
+        assert fetched is not None
+        assert fetched.name == "old"
+        assert fetched.description == "initial"
 
     async def test_delete_returns_true_when_present(self) -> None:
         service = DepartmentService()

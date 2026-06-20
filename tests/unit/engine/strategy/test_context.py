@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 from typeguard import suppress_type_checks
 
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.strategy.context import (
@@ -263,11 +264,11 @@ class TestCompositeContextProvider:
         assert ctx.maturity_stage == "growth"
 
     @pytest.mark.unit
-    async def test_all_providers_fail_raises_runtime_error(
+    async def test_all_providers_fail_raises_service_unavailable(
         self,
         default_strategy_config: StrategyConfig,
     ) -> None:
-        """When all providers fail, RuntimeError is raised."""
+        """When all providers fail, a ServiceUnavailableError is raised."""
 
         class FailingProvider:
             async def provide(self, *, config: StrategyConfig) -> StrategicContext:
@@ -277,7 +278,9 @@ class TestCompositeContextProvider:
         provider = CompositeContextProvider(
             providers=(FailingProvider(), FailingProvider()),
         )
-        with pytest.raises(RuntimeError, match="All context providers failed"):
+        with pytest.raises(
+            ServiceUnavailableError, match="All strategic-context providers failed"
+        ):
             await provider.provide(config=default_strategy_config)
 
 

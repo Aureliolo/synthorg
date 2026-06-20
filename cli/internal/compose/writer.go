@@ -79,7 +79,7 @@ func WriteNATSConfig(busBackend, safeDir string) error {
 		}
 		return nil
 	}
-	return atomicWriteRooted(root, NATSConfigFilename, []byte(NATSConfigContent))
+	return atomicWriteRooted(root, NATSConfigFilename, []byte(NATSConfig()))
 }
 
 // atomicWriteRooted stages content into a unique temp sibling and

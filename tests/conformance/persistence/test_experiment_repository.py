@@ -18,7 +18,7 @@ import pytest
 from synthorg.core.domain_errors import ConflictError
 from synthorg.core.types import NotBlankStr
 from synthorg.experiments.models import ExperimentAssignment, ExperimentVariant
-from synthorg.experiments.protocol import ExperimentRepository
+from synthorg.persistence.experiment_protocol import ExperimentRepository
 from synthorg.persistence.postgres.experiment_repo import PostgresExperimentRepository
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.sqlite.experiment_repo import SQLiteExperimentRepository

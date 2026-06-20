@@ -28,3 +28,11 @@ STRATEGY_CONSENSUS_DETECTED: Final[str] = "strategy.consensus.detected"
 STRATEGY_CONSENSUS_NOT_DETECTED: Final[str] = "strategy.consensus.not_detected"
 STRATEGY_DETECTOR_UNAVAILABLE: Final[str] = "strategy.detector.unavailable"
 STRATEGY_DETECTOR_FALLBACK: Final[str] = "strategy.detector.fallback"
+STRATEGY_ACTIVE_PRINCIPLE_PERSISTENCE_FAILED: Final[str] = (
+    "strategy.active_principle.persistence_failed"
+)
+STRATEGY_ACTIVE_PRINCIPLE_SNAPSHOT_REFRESHED: Final[str] = (
+    "strategy.active_principle.snapshot_refreshed"
+)
+STRATEGY_CONTEXT_MEETING_QUERIED: Final[str] = "strategy.context.meeting_queried"
+STRATEGY_CONTEXT_SNAPSHOT_REFRESHED: Final[str] = "strategy.context.snapshot_refreshed"

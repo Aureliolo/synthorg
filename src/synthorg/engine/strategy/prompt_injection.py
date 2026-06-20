@@ -16,6 +16,9 @@ from synthorg.engine.strategy.models import (
     StrategyConfig,
 )
 from synthorg.engine.strategy.output import build_output_instructions
+from synthorg.engine.strategy.strategic_context_provider import (
+    current_strategic_context,
+)
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.strategy import (
@@ -80,19 +83,26 @@ def build_strategic_prompt_sections(
     """
     output_mode = agent.strategic_output_mode or config.output_mode
 
-    # Strategic context section.  Reads context directly from config
-    # fields; a future memory / composite provider path will wire
-    # build_context() in front of this read.
-    # The context fields are admin-set but may carry per-tenant
-    # content in a multi-tenant deployment, so we wrap each value
-    # in a ``<config-value>`` fence and append a directive below
-    # telling the model those fences contain data, not commands.
-    industry = wrap_untrusted(TAG_CONFIG_VALUE, config.context.industry)
-    maturity = wrap_untrusted(TAG_CONFIG_VALUE, config.context.maturity_stage)
-    position = wrap_untrusted(
-        TAG_CONFIG_VALUE,
-        config.context.competitive_position,
+    # Strategic context section. Prefer the ambient resolved context
+    # (memory / meeting / composite source, refreshed at boot + on
+    # settings reload) when one is bound; otherwise read the static
+    # config fields. The fields are admin-set but may carry per-tenant
+    # content in a multi-tenant deployment, so we wrap each value in a
+    # ``<config-value>`` fence and append a directive below telling the
+    # model those fences contain data, not commands.
+    resolved = current_strategic_context()
+    ctx_industry = resolved.industry if resolved else config.context.industry
+    ctx_maturity = (
+        resolved.maturity_stage if resolved else config.context.maturity_stage
     )
+    ctx_position = (
+        resolved.competitive_position
+        if resolved
+        else config.context.competitive_position
+    )
+    industry = wrap_untrusted(TAG_CONFIG_VALUE, ctx_industry)
+    maturity = wrap_untrusted(TAG_CONFIG_VALUE, ctx_maturity)
+    position = wrap_untrusted(TAG_CONFIG_VALUE, ctx_position)
     context_text = (
         f"You operate in the industry {industry} at the stage "
         f"{maturity}. Competitive position: {position}.\n\n"
@@ -106,13 +116,27 @@ def build_strategic_prompt_sections(
             "These anti-trendslop rules govern your strategic analysis. "
             "Violations of critical principles must be explicitly justified."
         ]
+        has_untrusted = False
         for i, p in enumerate(principles, 1):
             # "warning" is the default severity -- omit the tag so only
             # non-default severities (critical, informational) are marked.
             severity_tag = (
                 f" [{p.severity.value}]" if p.severity.value != "warning" else ""
             )
-            lines.append(f"{i}. {p.text}{severity_tag}")
+            # Active principles are authored by the self-improvement meta-loop's
+            # LLM (untrusted): fence their text so a crafted principle cannot
+            # smuggle instructions into the system prompt. Pack / custom
+            # principles are repo / operator authored and stay verbatim as
+            # authoritative rules.
+            if p.category == "active":
+                has_untrusted = True
+                rendered = wrap_untrusted(TAG_CONFIG_VALUE, p.text)
+            else:
+                rendered = p.text
+            lines.append(f"{i}. {rendered}{severity_tag}")
+        if has_untrusted:
+            lines.append("")
+            lines.append(untrusted_content_directive((TAG_CONFIG_VALUE,)))
         principles_text = "\n".join(lines)
 
     # Contrarian analysis section.

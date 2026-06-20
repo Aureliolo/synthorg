@@ -10,11 +10,11 @@ than poisoning startup.
 
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.experiments.protocol import ExperimentRepository
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.ab_test_protocol import AbTestRepository
+from synthorg.persistence.experiment_protocol import ExperimentRepository
 
 logger = get_logger(__name__)
 

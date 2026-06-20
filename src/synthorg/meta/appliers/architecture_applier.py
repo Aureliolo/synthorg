@@ -11,6 +11,7 @@ validators live in ``_architecture_validators``.
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.appliers._architecture_validators import (
     ArchitectureApplierContext,
+    ArchitectureUndo,
     _PendingChanges,
     _validate_change,
 )
@@ -27,6 +28,8 @@ from synthorg.observability import (
 from synthorg.observability.events.meta import (
     META_APPLY_COMPLETED,
     META_APPLY_FAILED,
+    META_APPLY_REFRESH_FAILED,
+    META_APPLY_STARTED,
     META_DRY_RUN_COMPLETED,
     META_DRY_RUN_FAILED,
     META_DRY_RUN_STARTED,
@@ -65,52 +68,160 @@ class ArchitectureApplier:
         self,
         proposal: ImprovementProposal,
     ) -> ApplyResult:
-        """Apply architecture changes from the proposal.
+        """Apply architecture changes through the durable registry seam.
 
-        .. warning::
-            Registry mutation is **not** implemented here.  The
-            ``dry_run`` validator is shipped; the mutating ``apply``
-            path still needs a mutation protocol on
-            ``ArchitectureApplierContext`` and a transactional registry
-            writer -- tracked separately.  For now ``apply()`` counts
-            the changes and logs ``META_APPLY_COMPLETED`` so the
-            meta-loop's bookkeeping stays consistent with the other
-            appliers (config / prompt) that follow the same pattern.
-            Callers that need real state changes must not rely on this
-            method yet.
+        Each ``ArchitectureChange`` is applied via the context's
+        ``apply_change``, which returns a per-change undo closure. The
+        application is transactional: undos are tracked in order, and a
+        mid-list failure triggers a reverse-order rollback that reverses
+        every already-applied change before returning a failure result.
+        ``modify_workflow`` reuses the already-durable
+        ``WorkflowService.update_definition()`` inside the context. On
+        success the cached read snapshot is refreshed.
 
         Args:
             proposal: The approved architecture proposal.
 
         Returns:
-            Result indicating the count of changes "applied" and,
-            until real apply lands, ``success=True`` with no side
-            effects.  Raises only ``MemoryError`` / ``RecursionError``.
+            Result indicating success or failure.
         """
-        try:
-            count = len(proposal.architecture_changes)
-            logger.info(
-                META_APPLY_COMPLETED,
+        if self._context is None:
+            logger.warning(
+                META_APPLY_FAILED,
                 altitude="architecture",
-                changes=count,
                 proposal_id=str(proposal.id),
-                note="registry mutation not yet implemented",
+                reason="no_context",
             )
-            return ApplyResult(success=True, changes_applied=count)
+            return ApplyResult(
+                success=False,
+                error_message=(
+                    "ArchitectureApplier.apply requires an "
+                    "ArchitectureApplierContext; none was injected"
+                ),
+                changes_applied=0,
+            )
+        context = self._context
+        # Mirror dry_run's altitude / non-empty guards so a misrouted or empty
+        # proposal cannot reach the durable path and return success with zero
+        # changes applied.
+        if proposal.altitude != ProposalAltitude.ARCHITECTURE:
+            error_message = (
+                f"Expected ARCHITECTURE altitude, got {proposal.altitude.value}"
+            )
+            logger.warning(
+                META_APPLY_FAILED,
+                altitude="architecture",
+                proposal_id=str(proposal.id),
+                reason=error_message,
+            )
+            return ApplyResult(
+                success=False, error_message=error_message, changes_applied=0
+            )
+        if not proposal.architecture_changes:
+            error_message = "Proposal has no architecture changes"
+            logger.warning(
+                META_APPLY_FAILED,
+                altitude="architecture",
+                proposal_id=str(proposal.id),
+                reason=error_message,
+            )
+            return ApplyResult(
+                success=False, error_message=error_message, changes_applied=0
+            )
+        logger.info(
+            META_APPLY_STARTED,
+            altitude="architecture",
+            proposal_id=str(proposal.id),
+            changes=len(proposal.architecture_changes),
+        )
+        undos: list[ArchitectureUndo] = []
+        try:
+            for change in proposal.architecture_changes:
+                undo = await context.apply_change(change)
+                undos.append(undo)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
+            failures = await self._rollback(undos, proposal=proposal)
             log_exception_redacted(
                 logger,
                 META_APPLY_FAILED,
                 exc,
                 altitude="architecture",
                 proposal_id=str(proposal.id),
+                applied=len(undos),
+                rollback_failures=failures,
+            )
+            rollback_note = (
+                "State fully restored."
+                if failures == 0
+                else (
+                    f"WARNING: {failures} rollback step(s) failed; registries "
+                    "may be partially mutated."
+                )
             )
             return ApplyResult(
                 success=False,
-                error_message="Architecture apply failed. Check logs.",
+                error_message=(
+                    f"Architecture apply failed. {rollback_note} Check logs."
+                ),
                 changes_applied=0,
             )
+        try:
+            await context.refresh_snapshot()
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # Changes are already durably committed; a failed read-snapshot
+            # refresh leaves the in-memory cache stale but the store correct.
+            # Reporting failure here would risk an upstream retry re-running
+            # the non-idempotent mutations, so we succeed and warn instead
+            # (the next apply / restart re-reads the snapshot).
+            reraise_critical(exc)
+            logger.warning(
+                META_APPLY_REFRESH_FAILED,
+                altitude="architecture",
+                proposal_id=str(proposal.id),
+                changes=len(undos),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+        logger.info(
+            META_APPLY_COMPLETED,
+            altitude="architecture",
+            changes=len(undos),
+            proposal_id=str(proposal.id),
+        )
+        return ApplyResult(success=True, changes_applied=len(undos))
+
+    async def _rollback(
+        self,
+        undos: list[ArchitectureUndo],
+        *,
+        proposal: ImprovementProposal,
+    ) -> int:
+        """Reverse previously-applied changes after a failed apply.
+
+        A rollback step that itself fails is logged and skipped so one bad
+        undo cannot abort the rest of the restoration.
+
+        Returns:
+            The number of rollback steps that failed; ``0`` means the
+            registries were fully restored.
+        """
+        failures = 0
+        for undo in reversed(undos):
+            try:
+                await undo()
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                failures += 1
+                logger.warning(
+                    META_APPLY_FAILED,
+                    altitude="architecture",
+                    proposal_id=str(proposal.id),
+                    reason="rollback_step_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+        return failures
 
     async def dry_run(
         self,

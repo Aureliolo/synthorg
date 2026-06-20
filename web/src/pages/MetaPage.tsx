@@ -1,6 +1,7 @@
 import {
   Brain,
   ClipboardList,
+  Dna,
   FlaskConical,
   MessageCircle,
   Settings2,
@@ -25,6 +26,7 @@ import { MetaGroup } from './meta/MetaGroup'
 import { MetaPropose } from './meta/MetaPropose'
 import { MetaProposalList } from './meta/MetaProposalList'
 import { MetaRuleStatus } from './meta/MetaRuleStatus'
+import { MetaEvolutionView } from './meta/MetaEvolutionView'
 import { MetaSignalOverview } from './meta/MetaSignalOverview'
 
 type MetaPageMode = 'loading' | 'error' | 'disabled' | 'ready'
@@ -75,7 +77,8 @@ interface MetaPageReadyProps {
 }
 
 function MetaPageReady({ data }: MetaPageReadyProps) {
-  const { config, proposals, abTests, signals } = data
+  const { config, proposals, abTests, evolutionSummary, evolutionAxes, signals } =
+    data
   const pendingCount = proposals.filter((p) => p.status === 'pending').length
   const activeRollouts = proposals.filter((p) => p.status === 'approved').length
   return (
@@ -98,6 +101,9 @@ function MetaPageReady({ data }: MetaPageReadyProps) {
         </div>
         <SectionCard title="A/B Tests" icon={FlaskConical}>
           <MetaABTestView tests={abTests} />
+        </SectionCard>
+        <SectionCard title="Agent Evolution" icon={Dna}>
+          <MetaEvolutionView summary={evolutionSummary} axes={evolutionAxes} />
         </SectionCard>
         <SectionCard title="Experiment Registry" icon={FlaskConical}>
           <ExperimentExplorer />

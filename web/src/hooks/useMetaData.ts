@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react'
 
 import type {
-  ABTestSummary,
+  AbTestRecord,
+  EvolutionAxisStat,
+  EvolutionSummary,
   MetaConfig,
   ProposalSummary,
   SignalsResponse,
@@ -13,7 +15,9 @@ const POLL_INTERVAL = 30_000
 interface UseMetaDataReturn {
   config: MetaConfig | null
   proposals: readonly ProposalSummary[]
-  abTests: readonly ABTestSummary[]
+  abTests: readonly AbTestRecord[]
+  evolutionSummary: EvolutionSummary | null
+  evolutionAxes: readonly EvolutionAxisStat[]
   signals: SignalsResponse | null
   loading: boolean
   error: string | null
@@ -23,6 +27,8 @@ export function useMetaData(): UseMetaDataReturn {
   const config = useMetaStore((s) => s.config)
   const proposals = useMetaStore((s) => s.proposals)
   const abTests = useMetaStore((s) => s.abTests)
+  const evolutionSummary = useMetaStore((s) => s.evolutionSummary)
+  const evolutionAxes = useMetaStore((s) => s.evolutionAxes)
   const signals = useMetaStore((s) => s.signals)
   const loading = useMetaStore((s) => s.loading)
   const error = useMetaStore((s) => s.error)
@@ -50,5 +56,14 @@ export function useMetaData(): UseMetaDataReturn {
     return () => clearInterval(id)
   }, [])
 
-  return { config, proposals, abTests, signals, loading, error }
+  return {
+    config,
+    proposals,
+    abTests,
+    evolutionSummary,
+    evolutionAxes,
+    signals,
+    loading,
+    error,
+  }
 }

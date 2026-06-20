@@ -116,15 +116,18 @@ class TestModelRefreshScheduler:
 
         monkeypatch.setattr(scheduler_module, "_STOP_DRAIN_TIMEOUT_SECONDS", 0.05)
         started = asyncio.Event()
+        release_cleanup = asyncio.Event()
 
         async def _run_cycle(**_kwargs: object) -> RefreshCycleReport:
             started.set()
             try:
-                await asyncio.sleep(10)
+                await asyncio.sleep(10)  # parked until stop() cancels the task
             finally:
-                # Cancellation-time cleanup that outlasts the (tiny) drain
-                # deadline, forcing stop() onto its hard-timeout branch.
-                await asyncio.sleep(0.3)
+                # Cancellation-time cleanup that deterministically outlasts the
+                # drain deadline (gated on an Event the test only sets after it
+                # has asserted the hard-timeout branch), so stop() is forced
+                # onto its hard-timeout branch without a wall-clock race.
+                await release_cleanup.wait()
             return RefreshCycleReport()
 
         service = mock_of[ModelRefreshService](
@@ -137,8 +140,13 @@ class TestModelRefreshScheduler:
         )
         await scheduler.start()
         await asyncio.wait_for(started.wait(), timeout=5.0)
-        with pytest.raises(TimeoutError):
-            await scheduler.stop()
+        try:
+            with pytest.raises(TimeoutError):
+                await scheduler.stop()
+        finally:
+            # Always release the parked cancellation cleanup so a failed
+            # assertion cannot leave the orphaned cycle task blocked.
+            release_cleanup.set()
         with pytest.raises(RuntimeError, match="unrestartable"):
             await scheduler.start()
 

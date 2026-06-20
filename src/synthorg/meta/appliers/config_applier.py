@@ -1,9 +1,10 @@
 """Config applier.
 
-Validates approved config tuning proposals against the ``RootConfig``
-schema; ``apply()`` is a documented stub pending the meta-apply
-mutation epic (see :meth:`ConfigApplier.apply`), matching the
-architecture / prompt appliers.  ``dry_run()`` walks the
+Validates and applies approved config tuning proposals against the
+``RootConfig`` schema. ``apply()`` persists each :class:`ConfigChange`
+through the injected :class:`SettingsWritePort` (the DB precedence
+tier) with best-effort reverse-order rollback on partial failure.
+``dry_run()`` walks the
 current ``RootConfig`` tree by dotted path and checks each leaf
 assignment against its declared type / ``Annotated`` metadata via
 ``TypeAdapter``.  Cross-field ``@model_validator`` rules on

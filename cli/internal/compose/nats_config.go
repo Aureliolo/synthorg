@@ -23,16 +23,21 @@ const (
 	NATSMaxPayload = "16MB"
 )
 
-// NATSConfigContent is the canonical NATS server config the CLI writes
+// natsConfigContent is the canonical NATS server config the CLI writes
 // alongside compose.yml when the distributed bus mode is active. The
 // rendered compose file references this via `configs.nats-config.file`.
+//
+// It is an unexported package `var` (not a `const`) only because
+// `fmt.Sprintf` is not a constant expression; callers outside the package
+// read it through the immutable [NATSConfig] getter so the rendered config
+// cannot be reassigned at a distance.
 //
 // Settings rationale:
 //   - `host: 0.0.0.0` so the broker accepts connections from other
 //     services on the synthorg-net docker network.
 //   - `jetstream.store_dir: /data` matches the synthorg-nats-data volume
 //     mount, persisting JetStream state across container restarts.
-var NATSConfigContent = fmt.Sprintf(`host: 0.0.0.0
+var natsConfigContent = fmt.Sprintf(`host: 0.0.0.0
 port: %d
 http_port: %d
 jetstream {
@@ -40,6 +45,12 @@ jetstream {
 }
 max_payload: %s
 `, NATSClientPort, NATSHTTPPort, NATSMaxPayload)
+
+// NATSConfig returns the canonical NATS server config the CLI writes
+// alongside compose.yml when the distributed bus mode is active.
+func NATSConfig() string {
+	return natsConfigContent
+}
 
 // NATSConfigFilename is the on-disk name for the NATS config file the
 // CLI writes next to compose.yml. Kept as a package-level constant so

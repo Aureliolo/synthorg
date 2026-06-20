@@ -277,8 +277,22 @@ func resolveCountTunables(t Tunables, s State) (Tunables, error) {
 	if t.MaxBinaryBytes, err = resolveBytesField("max_binary_bytes", EnvMaxBinaryBytes, s.MaxBinaryBytes, t.MaxBinaryBytes); err != nil {
 		return t, err
 	}
-	t.MaxArchiveEntryBytes, err = resolveBytesField("max_archive_entry_bytes", EnvMaxArchiveEntryBytes, s.MaxArchiveEntryBytes, t.MaxArchiveEntryBytes)
-	return t, err
+	if t.MaxBinaryBytes < MinBinaryBytes {
+		return t, fmt.Errorf(
+			"max_binary_bytes: %d is below the %d minimum floor; a smaller cap would silently truncate the self-update binary download",
+			t.MaxBinaryBytes, MinBinaryBytes,
+		)
+	}
+	if t.MaxArchiveEntryBytes, err = resolveBytesField("max_archive_entry_bytes", EnvMaxArchiveEntryBytes, s.MaxArchiveEntryBytes, t.MaxArchiveEntryBytes); err != nil {
+		return t, err
+	}
+	if t.MaxArchiveEntryBytes < MinArchiveEntryBytes {
+		return t, fmt.Errorf(
+			"max_archive_entry_bytes: %d is below the %d minimum floor; a smaller cap would silently truncate the self-update archive entry",
+			t.MaxArchiveEntryBytes, MinArchiveEntryBytes,
+		)
+	}
+	return t, nil
 }
 
 // firstNonEmpty returns the first whitespace-trimmed non-empty string

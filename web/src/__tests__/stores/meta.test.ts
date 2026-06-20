@@ -20,6 +20,8 @@ function resetStore() {
     config: null,
     proposals: [],
     abTests: [],
+    evolutionSummary: null,
+    evolutionAxes: [],
     signals: null,
     activeAgents: [],
     loading: false,
@@ -44,7 +46,13 @@ describe('fetchProposals', () => {
   it('stores proposals and clears error on success', async () => {
     server.use(
       http.get('/api/v1/meta/proposals', () =>
-        HttpResponse.json(apiSuccess([])),
+        HttpResponse.json({
+          success: true,
+          data: [],
+          error: null,
+          error_detail: null,
+          pagination: { limit: 50, next_cursor: null, has_more: false },
+        }),
       ),
     )
     useMetaStore.setState({ error: 'stale' })

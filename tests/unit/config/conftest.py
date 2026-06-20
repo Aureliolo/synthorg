@@ -26,6 +26,7 @@ from synthorg.config.schema import (
 )
 from synthorg.core.company import CompanyConfig
 from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
+from synthorg.engine.compaction.models import CompactionConfig
 from synthorg.engine.coordination.section_config import CoordinationSectionConfig
 from synthorg.engine.evolution.config import EvolutionConfig
 from synthorg.engine.stagnation.models import StagnationDetectionConfig
@@ -146,6 +147,11 @@ class RootConfigFactory(ModelFactory[RootConfig]):
     # polyfactory draws the two fields independently, intermittently producing
     # the rejected combination.
     posture = PostureConfig()
+    # Pinned to the valid default: CompactionConfig's cross-field validator
+    # requires llm_summary_model whenever llm_summarizer_enabled=True, and
+    # polyfactory draws the two fields independently, intermittently producing
+    # the rejected combination.
+    compaction = CompactionConfig()
 
 
 # ── Sample YAML strings ──────────────────────────────────────────

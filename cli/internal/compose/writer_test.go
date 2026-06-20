@@ -25,8 +25,8 @@ func TestWriteNATSConfig(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read written file: %v", err)
 		}
-		if string(got) != NATSConfigContent {
-			t.Errorf("file content does not match canonical NATSConfigContent")
+		if string(got) != NATSConfig() {
+			t.Errorf("file content does not match NATSConfig()")
 		}
 	})
 
@@ -112,7 +112,7 @@ func TestWriteNATSConfig_AtomicRewrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read nats.conf: %v", err)
 	}
-	if string(got) != NATSConfigContent {
+	if string(got) != NATSConfig() {
 		t.Errorf("nats.conf content mismatch after atomic rewrite")
 	}
 
@@ -140,7 +140,7 @@ func TestWriteComposeAndNATS(t *testing.T) {
 		if err != nil {
 			t.Fatalf("nats.conf should exist: %v", err)
 		}
-		if string(got) != NATSConfigContent {
+		if string(got) != NATSConfig() {
 			t.Errorf("nats.conf content mismatch")
 		}
 	})

@@ -56,6 +56,7 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
     from synthorg.budget.coordination_config import ErrorTaxonomyConfig
     from synthorg.engine.classification.protocol import ClassificationSink
+    from synthorg.engine.compaction.protocol import CompactionCallback
     from synthorg.engine.evolution.service import EvolutionService
     from synthorg.engine.routing_policy.router import StakesRouter
     from synthorg.providers.protocol import CompletionProvider
@@ -437,6 +438,7 @@ def _build_evolution_service_or_none(
     from synthorg.engine.evolution.factory import (  # noqa: PLC0415
         build_evolution_service,
     )
+    from synthorg.meta.state import evolution_outcome_store_of  # noqa: PLC0415
     from synthorg.versioning import VersioningService  # noqa: PLC0415
 
     try:
@@ -447,6 +449,7 @@ def _build_evolution_service_or_none(
             tracker=tracker,
             memory_backend=app_state.slice(MemoryStateSlice).backend,
             provider=provider,
+            outcome_sink=evolution_outcome_store_of(app_state),
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
@@ -461,6 +464,48 @@ def _build_evolution_service_or_none(
     app_state.wire(EngineStateSlice, evolution_service=service)
     logger.info(API_APP_STARTUP, service="evolution", note="wired")
     return service
+
+
+def _build_compaction_callback(
+    app_state: AppState,
+    provider: CompletionProvider,
+) -> CompactionCallback:
+    """Build the boot compaction callback from the live config.
+
+    Phase-1 text compaction is always wired (the callback fires once the
+    context fill threshold is reached). The Phase-2 LLM summariser and
+    memory offloader are built only when their config flags are on and
+    their collaborator (provider / memory backend) is present; otherwise
+    the callback degrades to the Phase-1 text summary.
+
+    Returns:
+        The compaction callback for the boot ``AgentEngine``.
+    """
+    from synthorg.engine.compaction.llm_summarizer import LLMSummarizer  # noqa: PLC0415
+    from synthorg.engine.compaction.memory_offload import (  # noqa: PLC0415
+        MemoryOffloader,
+    )
+    from synthorg.engine.compaction.summarizer import (  # noqa: PLC0415
+        make_compaction_callback,
+    )
+
+    config = app_state.config.compaction
+    summarizer = None
+    if config.llm_summarizer_enabled and config.llm_summary_model is not None:
+        summarizer = LLMSummarizer(
+            provider=provider,
+            model=config.llm_summary_model,
+            temperature=config.llm_summary_temperature,
+            max_tokens=config.llm_summary_max_tokens,
+            cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
+        )
+    offloader = None
+    backend = app_state.slice(MemoryStateSlice).backend
+    if config.memory_offload_enabled and backend is not None:
+        offloader = MemoryOffloader(backend=backend)
+    return make_compaction_callback(
+        config=config, summarizer=summarizer, offloader=offloader
+    )
 
 
 def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
@@ -524,6 +569,7 @@ def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
         flight_recorder_sink=flight_recorder_sink,
         steering_inbox=boot_steering_inbox(app_state),
         stagnation_detector=create_stagnation_detector(app_state.config.stagnation),
+        compaction_callback=_build_compaction_callback(app_state, provider),
         clock=app_state.clock,
     )
 

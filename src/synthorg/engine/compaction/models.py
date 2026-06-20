@@ -8,6 +8,8 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.types import NotBlankStr
+
 
 class CompactionConfig(BaseModel):
     """Configuration for context compaction behavior.
@@ -40,6 +42,16 @@ class CompactionConfig(BaseModel):
             greater than ``fill_threshold_percent``.
         preserve_epistemic_markers: Detect and preserve epistemic
             markers (hedging, reconsideration, etc.) in summaries.
+        llm_summarizer_enabled: Use an LLM to summarise the archived turn
+            batch (Phase-2) instead of the snippet-join text summary; the
+            text summary remains the fallback on any provider failure.
+        llm_summary_model: Model id for the LLM summariser. Required when
+            ``llm_summarizer_enabled`` is True.
+        llm_summary_temperature: Sampling temperature for the LLM summary.
+        llm_summary_max_tokens: Max tokens for the LLM summary response.
+        memory_offload_enabled: Persist the archived turn batch to the
+            memory backend (tagged ``compaction:offloaded``, PROCEDURAL)
+            so a resume path can re-hydrate the offloaded detail.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -79,6 +91,45 @@ class CompactionConfig(BaseModel):
         default=True,
         description=("Detect and preserve epistemic markers in compaction summaries."),
     )
+    llm_summarizer_enabled: bool = Field(
+        default=False,
+        description="Use an LLM to summarise the archived turn batch (Phase-2).",
+    )
+    llm_summary_model: NotBlankStr | None = Field(
+        default=None,
+        description="Model id for the LLM summariser (required when enabled).",
+    )
+    llm_summary_temperature: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=2.0,
+        description="Sampling temperature for the LLM compaction summary.",
+    )
+    llm_summary_max_tokens: int = Field(
+        default=500,
+        ge=1,
+        description="Max tokens for the LLM compaction summary response.",
+    )
+    memory_offload_enabled: bool = Field(
+        default=False,
+        description="Persist the archived turn batch to the memory backend.",
+    )
+
+    @model_validator(mode="after")
+    def _validate_llm_model_present(self) -> Self:
+        """The summariser model is required when the LLM summariser is on.
+
+        Returns:
+            ``self`` unchanged when the invariant holds.
+
+        Raises:
+            ValueError: When ``llm_summarizer_enabled`` is set without a
+                ``llm_summary_model``.
+        """
+        if self.llm_summarizer_enabled and self.llm_summary_model is None:
+            msg = "llm_summary_model is required when llm_summarizer_enabled=True"
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def _validate_safety_above_fill(self) -> Self:

@@ -22,6 +22,7 @@ from synthorg.engine.evolution.protocols import (
     AdaptationGuard,
     AdaptationProposer,
     EvolutionContext,
+    EvolutionOutcomeSink,
     EvolutionTrigger,
 )
 from synthorg.engine.identity.store.protocol import IdentityVersionStore
@@ -68,6 +69,8 @@ class EvolutionService:
         adapters: Mapping from axis to adapter.
         trigger: Evolution trigger (None = triggers disabled).
         memory_backend: Memory backend for context retrieval.
+        outcome_sink: Durable sink recording each proposal's terminal
+            applied / not-applied outcome (None = outcomes not logged).
         config: Evolution configuration.
     """
 
@@ -81,6 +84,7 @@ class EvolutionService:
         adapters: dict[AdaptationAxis, AdaptationAdapter],
         trigger: EvolutionTrigger | None = None,
         memory_backend: MemoryBackend | None = None,
+        outcome_sink: EvolutionOutcomeSink | None = None,
         config: EvolutionConfig,
     ) -> None:
         self._identity_store = identity_store
@@ -90,6 +94,7 @@ class EvolutionService:
         self._guard = guard
         self._adapters = MappingProxyType(copy.deepcopy(adapters))
         self._memory_backend = memory_backend
+        self._outcome_sink = outcome_sink
         self._config = config
 
     async def evolve(
@@ -180,7 +185,35 @@ class EvolutionService:
             proposals=len(proposals),
             applied=applied_count,
         )
+        await self._record_outcomes(events)
         return tuple(events)
+
+    async def _record_outcomes(self, events: list[EvolutionEvent]) -> None:
+        """Record each event's terminal outcome into the durable sink.
+
+        Best-effort: a sink failure is logged and never blocks the
+        evolution result. No-op when no sink is wired.
+        """
+        if self._outcome_sink is None:
+            return
+        for event in events:
+            try:
+                await self._outcome_sink.record(
+                    agent_id=event.agent_id,
+                    axis=NotBlankStr(event.proposal.axis.value),
+                    applied=event.applied,
+                    proposed_at=event.proposal.proposed_at,
+                )
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                logger.warning(
+                    EVOLUTION_ADAPTATION_FAILED,
+                    agent_id=str(event.agent_id),
+                    axis=event.proposal.axis.value,
+                    source="outcome_sink",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
 
     async def _process_proposal(
         self,

@@ -19,12 +19,13 @@ with no runtime benefit.
 import asyncio
 import copy
 from collections.abc import Mapping, Sequence
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast, override
 from uuid import UUID, uuid4
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.actor_context import ActorIdentity, ActorKind, actor_scope
+from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.pagination import collect_all
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.company import (
@@ -35,7 +36,9 @@ from synthorg.observability.events.company import (
     DEPARTMENTS_REORDERED_VIA_MCP,
     ORG_CAPABILITY_UNSUPPORTED,
 )
+from synthorg.organization.department_record import _DepartmentRecord
 from synthorg.organization.models import UpdateCompanyRequest
+from synthorg.persistence.department_protocol import DepartmentRepository
 
 if TYPE_CHECKING:
     from synthorg.api.services.org_mutations import OrgMutationService
@@ -240,33 +243,6 @@ class CompanyReadService:
 # ── DepartmentService ───────────────────────────────────────────────
 
 
-class _DepartmentRecord:
-    __slots__ = ("created_at", "description", "id", "name", "updated_at")
-
-    def __init__(
-        self,
-        *,
-        id: UUID,  # noqa: A002
-        name: str,
-        description: str,
-        created_at: datetime,
-    ) -> None:
-        self.id = id
-        self.name = name
-        self.description = description
-        self.created_at = created_at
-        self.updated_at = created_at
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "id": str(self.id),
-            "name": self.name,
-            "description": self.description,
-            "created_at": self.created_at.isoformat(),
-            "updated_at": self.updated_at.isoformat(),
-        }
-
-
 class DepartmentService:
     """Department CRUD + health.
 
@@ -276,9 +252,34 @@ class DepartmentService:
     :meth:`delete_department`).
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        repo: DepartmentRepository | None = None,
+        clock: Clock | None = None,
+    ) -> None:
         self._departments: dict[UUID, _DepartmentRecord] = {}
         self._lock = asyncio.Lock()
+        self._repo = repo
+        self._clock = clock if clock is not None else SystemClock()
+
+    async def rehydrate(self) -> None:
+        """Load durable departments into the in-memory cache at boot.
+
+        A no-op when no durable repository is wired (the in-memory service
+        stands alone). After this the cache mirrors the durable store, so
+        reads stay in memory and writes go through to the repository.
+        """
+        if self._repo is None:
+            return
+        repo = self._repo
+        records = await collect_all(
+            lambda limit, offset: repo.list_items(limit=limit, offset=offset)
+        )
+        async with self._lock:
+            self._departments = {
+                record.id: _DepartmentRecord.from_durable(record) for record in records
+            }
 
     async def list_departments(
         self,
@@ -336,19 +337,34 @@ class DepartmentService:
         name: NotBlankStr,
         description: NotBlankStr,
         actor_id: NotBlankStr,
+        department_id: UUID | None = None,
     ) -> _DepartmentRecord:
         """Create a department, auditing the event on success.
+
+        Args:
+            name: Department display name (UNIQUE in the durable store).
+            description: Human-readable description.
+            actor_id: Auditing actor identifier.
+            department_id: Optional explicit primary key. Supplied by
+                rollback paths so a re-created department keeps its
+                original id and existing references stay valid; defaults
+                to a fresh ``uuid4()``.
 
         Returns:
             A deep copy of the newly created department record.
         """
         record = _DepartmentRecord(
-            id=uuid4(),
+            id=department_id if department_id is not None else uuid4(),
             name=name,
             description=description,
-            created_at=datetime.now(UTC),
+            created_at=self._clock.now(),
         )
+        # Durable write and cache insert are serialised under one lock so the
+        # in-memory cache never diverges from the store: a unique-name
+        # collision raises here before the cache is mutated.
         async with self._lock:
+            if self._repo is not None:
+                await self._repo.save(record.to_durable())
             self._departments[record.id] = record
         logger.info(
             DEPARTMENT_CREATED_VIA_MCP,
@@ -376,15 +392,24 @@ class DepartmentService:
         except ValueError:
             return None
         async with self._lock:
-            record = self._departments.get(key)
-            if record is None:
+            current = self._departments.get(key)
+            if current is None:
                 return None
+            # Mutate a copy and only commit it to the cache after the durable
+            # write succeeds, so a failed save cannot leave the in-memory cache
+            # ahead of the store.
+            candidate = copy.deepcopy(current)
             if name is not None:
-                record.name = name
+                candidate.name = name
             if description is not None:
-                record.description = description
-            record.updated_at = datetime.now(UTC)
-            returned = copy.deepcopy(record)
+                candidate.description = description
+            candidate.updated_at = self._clock.now()
+            # Durable write stays under the lock so a failed save cannot leave
+            # the cache ahead of the store for a concurrent reader.
+            if self._repo is not None:
+                await self._repo.save(candidate.to_durable())
+            self._departments[key] = candidate
+            returned = copy.deepcopy(candidate)
         logger.info(
             DEPARTMENT_UPDATED_VIA_MCP,
             department_id=department_id,
@@ -410,7 +435,14 @@ class DepartmentService:
         except ValueError:
             return False
         async with self._lock:
-            removed = self._departments.pop(key, None) is not None
+            removed = key in self._departments
+            if removed:
+                # Durable delete under the lock and before the cache pop so a
+                # failed delete leaves both stores consistent and a concurrent
+                # rehydrate cannot resurrect a half-removed row.
+                if self._repo is not None:
+                    await self._repo.delete(NotBlankStr(str(key)))
+                self._departments.pop(key, None)
         if removed:
             logger.info(
                 DEPARTMENT_DELETED_VIA_MCP,

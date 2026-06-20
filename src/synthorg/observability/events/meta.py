@@ -77,6 +77,7 @@ META_ROLLBACK_FAILED: Final[str] = "meta.rollback.failed"
 META_APPLY_STARTED: Final[str] = "meta.apply.started"
 META_APPLY_COMPLETED: Final[str] = "meta.apply.completed"
 META_APPLY_FAILED: Final[str] = "meta.apply.failed"
+META_APPLY_REFRESH_FAILED: Final[str] = "meta.apply.refresh_failed"
 
 # -- Dry-run events -----------------------------------------------------
 

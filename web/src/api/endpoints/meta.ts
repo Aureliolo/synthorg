@@ -13,8 +13,18 @@ import type {
   GroupConverseResult,
   ProposeResult,
 } from '../types'
-import type { ApiResponse } from '../types/http'
-import { apiClient, unwrap } from '../client'
+import type {
+  ApiResponse,
+  PaginatedResponse,
+  PaginationParams,
+} from '../types/http'
+import {
+  apiClient,
+  paginateAll,
+  unwrap,
+  unwrapPaginated,
+  type PaginatedResult,
+} from '../client'
 
 // Re-export the generated DTO so call sites that previously imported
 // the hand-maintained interface keep working without changing every
@@ -43,28 +53,65 @@ export interface SignalsResponse {
   domains: SignalDomain[]
 }
 
-export interface ABTestGroupMetrics {
-  group: 'control' | 'treatment'
+// A/B-test wire shape. The backend serialises the durable ``AbTestRecord``
+// to a plain dict (not a named OpenAPI schema), so this interface is
+// hand-maintained against ``_ab_test_to_dict`` in the meta controller.
+export type AbTestStatus =
+  | 'running'
+  | 'completed'
+  | 'regressed'
+  | 'inconclusive'
+  | 'failed'
+
+export type ABTestVerdict =
+  | 'treatment_wins'
+  | 'control_wins'
+  | 'inconclusive'
+  | 'treatment_regressed'
+
+export interface AbTestArm {
+  name: string
   agent_count: number
-  observation_count: number
-  avg_quality_score: number
-  avg_success_rate: number
-  total_spend: number
+  fraction: number
 }
 
-export interface ABTestSummary {
-  proposal_id: string
-  proposal_title: string
-  control_metrics: ABTestGroupMetrics
-  treatment_metrics: ABTestGroupMetrics
-  verdict:
-    | 'treatment_wins'
-    | 'control_wins'
-    | 'inconclusive'
-    | 'treatment_regressed'
-    | null
+export interface AbTestRecord {
+  id: string
+  name: string
+  status: AbTestStatus
+  verdict: ABTestVerdict | null
   observation_hours_elapsed: number
-  observation_hours_total: number
+  arms: readonly AbTestArm[]
+  created_at: string
+  updated_at: string
+}
+
+// Evolution-outcome wire shapes (durable engine evolution log).
+export interface EvolutionRecentOutcome {
+  agent_id: string
+  axis: string
+  applied: boolean
+  proposed_at: string
+}
+
+export interface EvolutionSummary {
+  total_proposals: number
+  approval_rate: number
+  most_adapted_axis: string | null
+  recent_outcomes: readonly EvolutionRecentOutcome[]
+}
+
+export interface EvolutionOutcome {
+  agent_id: string
+  axis: string
+  applied: boolean
+  proposed_at: string
+  recorded_at: string
+}
+
+export interface EvolutionAxisStat {
+  axis: string
+  count: number
 }
 
 export interface MetaConfig {
@@ -92,11 +139,22 @@ export async function getMetaConfig(): Promise<MetaConfig> {
   return unwrap(response)
 }
 
-export async function listProposals(): Promise<ProposalSummary[]> {
-  const response = await apiClient.get<ApiResponse<ProposalSummary[]>>(
+function _pageParams(cursor: string | null): PaginationParams {
+  return cursor ? { cursor } : {}
+}
+
+async function fetchProposalsPage(
+  cursor: string | null,
+): Promise<PaginatedResult<ProposalSummary>> {
+  const response = await apiClient.get<PaginatedResponse<ProposalSummary>>(
     `${BASE}/proposals`,
+    { params: _pageParams(cursor) },
   )
-  return unwrap(response)
+  return unwrapPaginated<ProposalSummary>(response)
+}
+
+export async function listProposals(): Promise<ProposalSummary[]> {
+  return paginateAll<ProposalSummary>(fetchProposalsPage)
 }
 
 export async function getSignals(): Promise<SignalsResponse> {
@@ -106,11 +164,46 @@ export async function getSignals(): Promise<SignalsResponse> {
   return unwrap(response)
 }
 
-export async function listABTests(): Promise<ABTestSummary[]> {
-  const response = await apiClient.get<ApiResponse<ABTestSummary[]>>(
+async function fetchABTestsPage(
+  cursor: string | null,
+): Promise<PaginatedResult<AbTestRecord>> {
+  const response = await apiClient.get<PaginatedResponse<AbTestRecord>>(
     `${BASE}/ab-tests`,
+    { params: _pageParams(cursor) },
+  )
+  return unwrapPaginated<AbTestRecord>(response)
+}
+
+export async function listABTests(): Promise<AbTestRecord[]> {
+  return paginateAll<AbTestRecord>(fetchABTestsPage)
+}
+
+export async function getEvolutionSummary(): Promise<EvolutionSummary> {
+  const response = await apiClient.get<ApiResponse<EvolutionSummary>>(
+    `${BASE}/evolution/summary`,
   )
   return unwrap(response)
+}
+
+async function fetchEvolutionOutcomesPage(
+  cursor: string | null,
+): Promise<PaginatedResult<EvolutionOutcome>> {
+  const response = await apiClient.get<PaginatedResponse<EvolutionOutcome>>(
+    `${BASE}/evolution/outcomes`,
+    { params: _pageParams(cursor) },
+  )
+  return unwrapPaginated<EvolutionOutcome>(response)
+}
+
+export async function listEvolutionOutcomes(): Promise<EvolutionOutcome[]> {
+  return paginateAll<EvolutionOutcome>(fetchEvolutionOutcomesPage)
+}
+
+export async function getEvolutionAxisStats(): Promise<EvolutionAxisStat[]> {
+  const response = await apiClient.get<ApiResponse<{ axes: EvolutionAxisStat[] }>>(
+    `${BASE}/evolution/axes/stats`,
+  )
+  return unwrap(response).axes
 }
 
 export async function postChatPropose(

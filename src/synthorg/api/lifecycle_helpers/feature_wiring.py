@@ -25,6 +25,7 @@ from synthorg.api.lifecycle_helpers.deliverable_receipt_wiring import (
 from synthorg.api.lifecycle_helpers.finetune_wiring import (
     _wire_fine_tune_orchestrator,
 )
+from synthorg.api.lifecycle_helpers.meta_apply_wiring import wire_meta_apply
 from synthorg.api.lifecycle_helpers.meta_wiring import (
     _wire_ab_test_repo,
     _wire_analytics_collector,
@@ -503,12 +504,15 @@ async def _wire_signals_service(
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-    # The evolution-outcome store is intentionally left unwired: its only
-    # producer is the self-improvement cycle (SelfImprovementService), which
-    # is out of scope here, so wiring a read-only store with no writer would
-    # be a ghost. The aggregator degrades to an empty evolution summary until
-    # that producer ships. The error-taxonomy store IS wired -- it has a live
-    # producer (the classification sinks).
+    # The evolution-outcome store is built earlier (``wire_evolution_outcomes``)
+    # when persistence is available; the engine evolution loop writes through
+    # it as its durable outcome sink. The aggregator shares that same store so
+    # the evolution signal domain reflects real, restart-surviving outcomes.
+    # When persistence is absent the store is ``None`` and the aggregator
+    # degrades to an empty evolution summary. The error-taxonomy store IS wired
+    # too -- it has a live producer (the classification sinks).
+    from synthorg.meta.state import evolution_outcome_store_of  # noqa: PLC0415
+
     try:
         signals_service = build_signals_service(
             performance_tracker=performance_tracker,
@@ -516,6 +520,7 @@ async def _wire_signals_service(
             approval_store=effective_approval_store,
             scaling_service=app_state.slice(HrStateSlice).scaling_service,
             error_store=app_state.slice(EngineStateSlice).error_taxonomy_store,
+            evolution_store=evolution_outcome_store_of(app_state),
             budget_total_monthly=budget_total_monthly,
             cost_record_provider=cost_record_provider,
             coordination_metrics_store=app_state.slice(
@@ -648,6 +653,7 @@ async def _wire_meta_features(
     await _wire_reports_service(app_state)
     await _wire_experiment_service(app_state)
     await _wire_ab_test_repo(app_state)
+    await wire_meta_apply(app_state)
     await _wire_org_inflection_monitor(app_state, si_config=si_config)
     await _wire_analytics_collector(si_config=si_config)
     await _wire_chief_of_staff_chat(

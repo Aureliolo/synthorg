@@ -35,7 +35,7 @@ whether the backend is a cloud API, OpenRouter, Ollama, or a custom endpoint.
         litellm_provider: "anthropic"  # LiteLLM routing identifier (optional, defaults to provider name)
         family: "example-family"       # cross-validation grouping (optional)
         auth_type: api_key             # api_key | oauth | custom_header | subscription | none
-        api_key: "${PROVIDER_API_KEY}"
+        connection_name: "provider-example-provider"  # catalog connection holding the secret (api_key / custom_header auth)
         # subscription_token: "..."    # subscription token (subscription auth only; passed to LiteLLM as api_key; sensitive -- use env vars or secret management)
         # tos_accepted_at: "..."       # timestamp when subscription ToS was accepted
         models:                        # example entries -- real list loaded from provider
@@ -60,7 +60,7 @@ whether the backend is a cloud API, OpenRouter, Ollama, or a custom endpoint.
 
       openrouter:
         auth_type: api_key           # api_key | oauth | custom_header | subscription | none
-        api_key: "${OPENROUTER_API_KEY}"
+        connection_name: "provider-openrouter"  # catalog connection holding the secret
         base_url: "https://openrouter.ai/api/v1"
         models:                        # example entries
           - id: "vendor-a/model-medium"
@@ -83,6 +83,23 @@ whether the backend is a cloud API, OpenRouter, Ollama, or a custom endpoint.
             cost_per_1k_input: 0.0
             cost_per_1k_output: 0.0
     ```
+
+    **Catalog-only credentials.** `ProviderConfig` no longer carries an
+    embedded `api_key:`. Secrets for the `api_key` and `custom_header` auth
+    types live in the connection catalog (Fernet-encrypted at rest); the
+    provider config references the catalog entry by `connection_name`, and the
+    resolver reads the secret from there. A config that sets an `api_key` /
+    `custom_header` auth type without a `connection_name` is rejected at
+    validation time.
+
+    **Operator migration.** Installs that previously persisted an embedded
+    `api_key` are upgraded automatically: a one-time, idempotent boot hook runs
+    after persistence connects (before the normal provider parse), reads each
+    stored config through a transitional schema that tolerates the old
+    `api_key`, mints a catalog connection (`provider-<name>`) for the secret,
+    and re-persists the config on `connection_name`. The boot hook never logs
+    the key. No operator action is required; the upgrade is transparent on the
+    first start after the change.
 
 ## Cost Recording
 

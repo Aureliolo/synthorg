@@ -2,6 +2,16 @@
 
 from typing import Final
 
+# ── Credential migration (embedded api_key -> catalog) ────────────
+
+PROVIDER_CREDENTIAL_MIGRATED: Final[str] = "provider.credential.migrated"
+PROVIDER_CREDENTIAL_MIGRATION_FAILED: Final[str] = (
+    "provider.credential.migration_failed"
+)
+PROVIDER_CREDENTIAL_MIGRATION_COMPLETED: Final[str] = (
+    "provider.credential.migration_completed"
+)
+
 # ── Provider lifecycle ────────────────────────────────────────────
 
 PROVIDER_REGISTRY_BUILT: Final[str] = "provider.registry.built"

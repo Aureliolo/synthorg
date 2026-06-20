@@ -359,7 +359,7 @@ models in `memory/consolidation/config.py`:
 | `RetentionConfig` | Company-level per-category `RetentionRule` tuples (category + retention_days), optional `default_retention_days` fallback; agents can override via `MemoryConfig.retention_overrides` |
 | `ArchivalConfig` | Enables/disables archival of consolidated entries to `ArchivalStore`, nested `DualModeConfig` |
 | `DualModeConfig` | Density-aware dual-mode archival: threshold, summarization model, anchor/fact limits |
-| `LLMConsolidationConfig` | Tuning knobs for the LLM synthesis op: group threshold, temperature, max summary tokens, distillation context toggle, prompt caps (`max_entry_input_chars`, `max_total_user_content_chars`) |
+| `LLMConsolidationConfig` | Tuning knobs for the LLM synthesis op: group threshold, temperature, `top_p`, max summary tokens, distillation context toggle, prompt caps (`max_entry_input_chars`, `max_total_user_content_chars`) |
 
 #### Consolidation Strategies (axis split, ADR-0005)
 
@@ -398,7 +398,8 @@ op-specific dependencies are present (missing -> `MemoryConfigError`).
 `LLMConsolidationConfig` accepts
 `group_threshold` (default 3, minimum 3; smaller groups cannot meaningfully
 deduplicate against the retained entry), `temperature` (default 0.3),
-`max_summary_tokens` (default 500), and `include_distillation_context` (default
+`top_p` (nucleus-sampling cap for the synthesis call, default 1.0, range
+0.0-1.0), `max_summary_tokens` (default 500), and `include_distillation_context` (default
 True; when enabled, the strategy queries the backend for at most 5 recent
 entries tagged `"distillation"` and embeds their trajectory summaries,
 truncated to ~500 chars each, in the synthesis system prompt). The per-entry

@@ -8,16 +8,27 @@ lists of human-readable error strings; no state is mutated outside the
 supplied ``_PendingChanges``.
 """
 
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Final, Protocol, runtime_checkable
 
 from synthorg.meta.appliers._validation import validate_payload_keys
 from synthorg.meta.models import ArchitectureChange
+from synthorg.organization.enums import DepartmentName
+
+#: Undo closure returned by ``apply_change``. Calling it reverses exactly the
+#: one change it was produced for (delete a created role / re-save a removed
+#: department / restore a prior workflow definition), so the applier can roll
+#: back a partially-applied proposal in reverse order.
+ArchitectureUndo = Callable[[], Awaitable[None]]
 
 
 @runtime_checkable
 class ArchitectureApplierContext(Protocol):
-    """Read-only view of role/department/workflow registries.
+    """Registry view + durable write seam for the architecture applier.
+
+    The read methods (sync) back ``dry_run`` validation; ``apply_change``
+    (async) backs the real ``apply`` path, returning a per-change undo closure
+    so a partially-applied proposal can be rolled back in reverse order.
 
     Defined alongside the validators that consume it (the per-operation
     dry-run checks below) so the applier can import it together with
@@ -43,6 +54,22 @@ class ArchitectureApplierContext(Protocol):
 
     def department_in_use(self, name: str) -> bool:
         """Return True when removing the department would dangle references."""
+        ...
+
+    async def apply_change(self, change: ArchitectureChange) -> ArchitectureUndo:
+        """Durably apply one architecture change and return its undo.
+
+        Returns:
+            A coroutine factory that, when awaited, reverses this change.
+
+        Raises:
+            Exception: On a durable-write failure (the applier rolls back
+                the already-applied changes).
+        """
+        ...
+
+    async def refresh_snapshot(self) -> None:
+        """Reload the cached read snapshot after a successful apply."""
         ...
 
 
@@ -196,7 +223,7 @@ def _validate_change(
     """Validate a single ``ArchitectureChange``.
 
     Returns:
-        List of the declared element type.
+        Validation error messages; empty when valid.
     """
     if change.operation not in _SUPPORTED_OPS:
         return [
@@ -279,7 +306,7 @@ def _validate_role_description(description: object) -> list[str]:
     helper ensures the value is a usable non-blank bounded string.
 
     Returns:
-        List of the declared element type.
+        Validation error messages; empty when valid.
     """
     if description is None:
         return ["create_role: 'description' must not be None"]
@@ -304,7 +331,7 @@ def _validate_role_department(
     """Validate the ``department`` reference for a new role.
 
     Returns:
-        List of the declared element type.
+        Validation error messages; empty when valid.
     """
     if dept is None:
         return []
@@ -316,6 +343,14 @@ def _validate_role_department(
     removed = dept in pending.removed_departments
     if not known_dept or removed:
         return [f"create_role: department {dept!r} does not exist"]
+    # Mirror the apply-time constraint (``_build_role_record`` constructs a
+    # ``DepartmentName`` enum): a durable department whose name is not a known
+    # ``DepartmentName`` would pass dry-run but fail apply. Reject it here so a
+    # proposal that cannot apply never passes validation.
+    try:
+        DepartmentName(dept)
+    except ValueError:
+        return [f"create_role: department {dept!r} is not a known DepartmentName"]
     return []
 
 
@@ -323,7 +358,7 @@ def _validate_skill_list(skills: Sequence[object]) -> list[str]:
     """Validate each entry in ``required_skills`` (type, length, count).
 
     Returns:
-        List of the declared element type.
+        Validation error messages; empty when valid.
     """
     errors: list[str] = []
     if len(skills) > _MAX_SKILLS_PER_ROLE:
@@ -348,7 +383,7 @@ def _validate_authority_level(value: object) -> list[str]:
     """Validate the optional ``authority_level`` free-text field.
 
     Returns:
-        List of the declared element type.
+        Validation error messages; empty when valid.
     """
     if value is None:
         return []
@@ -368,7 +403,7 @@ def _validate_tool_access(value: object) -> list[str]:
     """Validate the optional ``tool_access`` list of tool identifiers.
 
     Returns:
-        List of the declared element type.
+        Validation error messages; empty when valid.
     """
     if value is None:
         return []
@@ -397,7 +432,7 @@ def _validate_dept_policies(value: object) -> list[str]:
     """Validate the optional ``policies`` list for a new department.
 
     Returns:
-        List of the declared element type.
+        Validation error messages; empty when valid.
     """
     if value is None:
         return []
@@ -426,7 +461,7 @@ def _validate_dept_head(value: object) -> list[str]:
     """Validate the optional ``head`` reference on a new department.
 
     Returns:
-        List of the declared element type.
+        Validation error messages; empty when valid.
     """
     if value is None:
         return []

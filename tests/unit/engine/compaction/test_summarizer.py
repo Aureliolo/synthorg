@@ -1,13 +1,28 @@
 """Tests for the compaction summarizer callback factory."""
 
+from unittest.mock import AsyncMock
+
 import pytest
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.completion_enums import FinishReason
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.compaction.llm_summarizer import LLMSummarizer
+from synthorg.engine.compaction.memory_offload import MemoryOffloader
 from synthorg.engine.compaction.models import CompactionConfig
 from synthorg.engine.compaction.summarizer import make_compaction_callback
 from synthorg.engine.context import AgentContext
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage
+from synthorg.providers.models import (
+    ChatMessage,
+    CompletionConfig,
+    CompletionResponse,
+    TokenUsage,
+)
+from tests._shared import mock_of
+
+pytestmark = pytest.mark.unit
 
 
 def _msg(role: MessageRole, content: str) -> ChatMessage:
@@ -331,3 +346,131 @@ class TestCompactionSanitization:
         assert summary_msg.content is not None
         assert "C:\\Users\\dev" not in summary_msg.content
         assert "[REDACTED_PATH]" in summary_msg.content
+
+
+class _FakeProvider:
+    def __init__(
+        self, *, content: str | None = None, error: Exception | None = None
+    ) -> None:
+        self._content = content
+        self._error = error
+
+    async def complete(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        config: CompletionConfig | None = None,
+    ) -> CompletionResponse:
+        del messages, model, config
+        if self._error is not None:
+            raise self._error
+        return CompletionResponse(
+            content=self._content,
+            finish_reason=FinishReason.STOP,
+            usage=TokenUsage(input_tokens=1, output_tokens=1, cost=0.0),
+            model="example-small-001",
+        )
+
+
+def _phase2_messages() -> tuple[ChatMessage, ...]:
+    return (
+        _msg(MessageRole.SYSTEM, "system prompt"),
+        _msg(MessageRole.USER, "question 1"),
+        _msg(MessageRole.ASSISTANT, "answer 1"),
+        _msg(MessageRole.USER, "question 2"),
+        _msg(MessageRole.ASSISTANT, "answer 2"),
+        _msg(MessageRole.USER, "question 3"),
+        _msg(MessageRole.ASSISTANT, "answer 3"),
+        _msg(MessageRole.USER, "question 4"),
+    )
+
+
+@pytest.mark.unit
+class TestPhase2Compaction:
+    """make_compaction_callback with the Phase-2 summariser / offloader."""
+
+    async def test_llm_summary_replaces_text_summary(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        config = CompactionConfig(
+            fill_threshold_percent=80.0,
+            min_messages_to_compact=4,
+            preserve_recent_turns=1,
+            llm_summarizer_enabled=True,
+            llm_summary_model="example-small-001",
+        )
+        summarizer = LLMSummarizer(
+            provider=_FakeProvider(content="LLM SEMANTIC SUMMARY"),
+            model="example-small-001",
+            temperature=0.3,
+            max_tokens=100,
+        )
+        callback = make_compaction_callback(config=config, summarizer=summarizer)
+        ctx = _build_context(
+            sample_agent_with_personality,
+            messages=_phase2_messages(),
+            capacity=1000,
+            fill=850,
+        )
+        result = await callback(ctx)
+        assert result is not None
+        assert result.conversation[1].content == "LLM SEMANTIC SUMMARY"
+
+    async def test_llm_failure_falls_back_to_text_summary(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        config = CompactionConfig(
+            fill_threshold_percent=80.0,
+            min_messages_to_compact=4,
+            preserve_recent_turns=1,
+            llm_summarizer_enabled=True,
+            llm_summary_model="example-small-001",
+        )
+        summarizer = LLMSummarizer(
+            provider=_FakeProvider(error=RuntimeError("down")),
+            model="example-small-001",
+            temperature=0.3,
+            max_tokens=100,
+        )
+        callback = make_compaction_callback(config=config, summarizer=summarizer)
+        ctx = _build_context(
+            sample_agent_with_personality,
+            messages=_phase2_messages(),
+            capacity=1000,
+            fill=850,
+        )
+        result = await callback(ctx)
+        assert result is not None
+        # Phase-1 text summary used on LLM failure.
+        assert "Archived" in (result.conversation[1].content or "")
+
+    async def test_offload_called_when_enabled(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        config = CompactionConfig(
+            fill_threshold_percent=80.0,
+            min_messages_to_compact=4,
+            preserve_recent_turns=1,
+            memory_offload_enabled=True,
+        )
+        backend = mock_of[MemoryBackend](
+            store=AsyncMock(
+                spec=MemoryBackend.store,
+                return_value=NotBlankStr("mem-offload-1"),
+            ),
+        )
+        offloader = MemoryOffloader(backend=backend)
+        callback = make_compaction_callback(config=config, offloader=offloader)
+        ctx = _build_context(
+            sample_agent_with_personality,
+            messages=_phase2_messages(),
+            capacity=1000,
+            fill=850,
+        )
+        result = await callback(ctx)
+        assert result is not None
+        backend.store.assert_awaited_once()
