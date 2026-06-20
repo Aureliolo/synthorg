@@ -5,7 +5,10 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
-from synthorg.backup.models import BackupTrigger
+from pydantic import ValidationError
+
+from synthorg.backup.errors import RestoreError
+from synthorg.backup.models import BackupTrigger, RestoreConfirmation
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
@@ -293,6 +296,16 @@ async def _backup_restore(
             msg = "Concurrent in-flight restore with this idempotency key"
             return err(ConflictError(msg), domain_code="conflict")
         payload = outcome.result
+        # Validate the (possibly cached) payload shape before reporting
+        # success, mirroring the REST restore path: a stale or corrupt
+        # idempotency-store row must force a rerun rather than emit a
+        # malformed success response.
+        try:
+            RestoreConfirmation.model_validate(payload)
+        except (ValueError, TypeError, ValidationError) as exc:
+            log_handler_invoke_failed(tool, exc)
+            msg = "Cached restore response failed validation; rerun the restore"
+            return err(RestoreError(msg))
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except GuardrailViolationError as exc:

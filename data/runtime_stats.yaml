@@ -1,6 +1,6 @@
 schema_version: 1
-last_generated_utc: '2026-06-20T08:52:56Z'
-generator_revision: ff51de822
+last_generated_utc: '2026-06-20T09:15:10Z'
+generator_revision: f0431d1a0
 stats:
   tests:
     raw: 36935
