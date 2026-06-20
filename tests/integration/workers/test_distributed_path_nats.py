@@ -47,10 +47,54 @@ _ACK_WAIT_SECONDS: Final[int] = 2
 _MAX_DELIVER: Final[int] = 2
 _HEARTBEAT_SECONDS: Final[int] = 1
 
+_READINESS_TIMEOUT_SECONDS: Final[float] = 60.0
+"""Cold-start budget for the container's JetStream subsystem to accept a
+connection and answer ``account_info``. Probed once per module (in the
+container fixture, outside any per-test ``_HARD_CAP_SECONDS``) so that every
+test's ``queue.start()`` runs against an already-warm server and stays well
+within its cap. Without this, the first test absorbs the cold-start cost
+inside the 25s per-test cap and trips it under CI image-pull contention."""
+
+_READINESS_POLL_SECONDS: Final[float] = 0.25
+
+
+async def _await_jetstream_ready(url: str) -> None:
+    """Poll-connect until the JetStream subsystem answers, or time out.
+
+    A freshly started ``nats -js`` container accepts the TCP port before its
+    JetStream subsystem is ready to create streams. Confirming ``account_info``
+    (which only succeeds once JetStream is initialised) before any test runs
+    moves the cold-start latency out of the capped per-test ``queue.start()``.
+
+    Raises:
+        TimeoutError: When JetStream does not answer within the budget.
+    """
+    import nats
+
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + _READINESS_TIMEOUT_SECONDS
+    last_error: str = "no connection attempt completed"
+    while loop.time() < deadline:
+        try:
+            connection = await nats.connect(url, connect_timeout=2)
+            try:
+                await connection.jetstream().account_info()
+                return
+            finally:
+                await connection.close()
+        except Exception as exc:
+            last_error = f"{type(exc).__name__}: {exc}"
+            await asyncio.sleep(_READINESS_POLL_SECONDS)
+    msg = (
+        f"NATS JetStream not ready within {_READINESS_TIMEOUT_SECONDS}s "
+        f"(last error: {last_error})"
+    )
+    raise TimeoutError(msg)
+
 
 @pytest.fixture(scope="module")
 def nats_url() -> Iterator[str]:
-    """Start a NATS JetStream container for the module's tests."""
+    """Start a NATS JetStream container, warm it, then yield its URL."""
     try:
         from testcontainers.core.container import DockerContainer
     except ImportError:
@@ -67,8 +111,14 @@ def nats_url() -> Iterator[str]:
 
     host = container.get_container_host_ip()
     port = int(container.get_exposed_port(4222))
+    url = f"nats://{host}:{port}"
     try:
-        yield f"nats://{host}:{port}"
+        asyncio.run(_await_jetstream_ready(url))
+    except Exception as exc:
+        container.stop()
+        pytest.skip(f"NATS JetStream did not become ready: {exc}")
+    try:
+        yield url
     finally:
         container.stop()
 

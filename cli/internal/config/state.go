@@ -157,10 +157,10 @@ const (
 	DefaultDHIRegistry     = "dhi.io"
 	// renovate: datasource=docker depName=dhi.io/postgres
 	DefaultPostgresImageTag    = "18-debian13"
-	DefaultPostgresImageDigest = "sha256:4d4135f54087141a72a9ea2e0da2bc6a4c0f00d467c4acc586df441447c771f7"
+	DefaultPostgresImageDigest = "sha256:0e7e99976a6fe74dacc6669f8102cc79c0ca075549ee0df5add51d6c4bf9578d"
 	// renovate: datasource=docker depName=dhi.io/nats
 	DefaultNATSImageTag    = "2.14-debian13"
-	DefaultNATSImageDigest = "sha256:9f40e94feabca9822e3d38d04cece0e0b0e1174baaaab56a44647d64468e456f"
+	DefaultNATSImageDigest = "sha256:081f7895b874bd1306e61bf631631ac47e227a1ea9c60bfd2551b9be2dec8370"
 
 	DefaultNATSURLValue          = "nats://nats:4222"
 	DefaultNATSStreamPrefixValue = "SYNTHORG"

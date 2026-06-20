@@ -7,7 +7,7 @@ x-logging: &logging
 services:
   postgres:
     # renovate: datasource=docker depName=dhi.io/postgres
-    image: dhi.io/postgres:18-debian13@sha256:4d4135f54087141a72a9ea2e0da2bc6a4c0f00d467c4acc586df441447c771f7
+    image: dhi.io/postgres:18-debian13@sha256:0e7e99976a6fe74dacc6669f8102cc79c0ca075549ee0df5add51d6c4bf9578d
     ports:
       - "${POSTGRES_PORT:-3002}:5432"
     volumes:
@@ -173,7 +173,7 @@ services:
   # --max_payload CLI flag, so non-default settings need a config file.
   nats:
     # renovate: datasource=docker depName=dhi.io/nats
-    image: dhi.io/nats:2.14-debian13@sha256:9f40e94feabca9822e3d38d04cece0e0b0e1174baaaab56a44647d64468e456f
+    image: dhi.io/nats:2.14-debian13@sha256:081f7895b874bd1306e61bf631631ac47e227a1ea9c60bfd2551b9be2dec8370
     command: ["-c", "/etc/nats/nats.conf"]
     ports:
       - "${NATS_CLIENT_PORT:-3003}:4222"
