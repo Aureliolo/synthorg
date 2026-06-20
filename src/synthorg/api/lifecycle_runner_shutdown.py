@@ -426,6 +426,20 @@ async def _run_shutdown(  # noqa: PLR0913
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+    # Clear the process-global ambient strategic-context and active-principle
+    # providers bound at startup. Both are module-level (visible across every
+    # request coroutine and the render worker), so a stale snapshot would
+    # outlive the app and leak into the next lifespan entry on hot-reload /
+    # test teardown -- the same hazard the rate-limit factory clears above.
+    from synthorg.engine.strategy.active_principle_provider import (  # noqa: PLC0415
+        set_active_principle_provider,
+    )
+    from synthorg.engine.strategy.strategic_context_provider import (  # noqa: PLC0415
+        set_strategic_context_provider,
+    )
+
+    set_strategic_context_provider(None)
+    set_active_principle_provider(None)
     if tasks.auto_wired_dispatcher is not None:
         await _try_stop(
             tasks.auto_wired_dispatcher.stop(),

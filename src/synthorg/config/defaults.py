@@ -42,6 +42,7 @@ def default_config_dict() -> dict[str, object]:
         "performance": {},
         "training": {},
         "evolution": {},
+        "compaction": {},
         "task_engine": {},
         "queue": {},
         "coordination": {},

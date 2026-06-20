@@ -830,8 +830,8 @@
     },
     "src/synthorg/meta/feature.py": {
       "cap": 100,
-      "loc": 90,
-      "ratio": 0.9,
+      "loc": 92,
+      "ratio": 0.92,
       "tier": "feature"
     },
     "src/synthorg/meta/mcp/handlers/common_args.py": {
@@ -1316,8 +1316,8 @@
     },
     "src/synthorg/workers/_engine_assembly.py": {
       "cap": 600,
-      "loc": 554,
-      "ratio": 0.923,
+      "loc": 555,
+      "ratio": 0.925,
       "tier": "orchestrator"
     },
     "src/synthorg/workers/claim.py": {
@@ -1349,14 +1349,14 @@
     "synthorg.approval.enums": 75,
     "synthorg.approval.protocol": 47,
     "synthorg.approval.state": 24,
-    "synthorg.budget.call_category": 44,
+    "synthorg.budget.call_category": 45,
     "synthorg.budget.config": 29,
     "synthorg.budget.coordination_config": 21,
     "synthorg.budget.cost_record": 27,
     "synthorg.budget.currency": 70,
     "synthorg.budget.errors": 25,
     "synthorg.budget.state": 30,
-    "synthorg.budget.tracker": 83,
+    "synthorg.budget.tracker": 84,
     "synthorg.client.models": 39,
     "synthorg.communication.bus_protocol": 32,
     "synthorg.communication.conversation.enums": 21,
@@ -1387,7 +1387,7 @@
     "synthorg.core.role": 20,
     "synthorg.core.task": 96,
     "synthorg.core.task_enums": 88,
-    "synthorg.core.types": 1151,
+    "synthorg.core.types": 1152,
     "synthorg.engine.context": 39,
     "synthorg.engine.decomposition.models": 28,
     "synthorg.engine.errors": 85,
@@ -1463,7 +1463,7 @@
     "synthorg.persistence.sqlite._shared": 82,
     "synthorg.persistence.state": 66,
     "synthorg.project_brain.models": 24,
-    "synthorg.providers.cost_recording": 37,
+    "synthorg.providers.cost_recording": 38,
     "synthorg.providers.enums": 91,
     "synthorg.providers.errors": 42,
     "synthorg.providers.models": 117,

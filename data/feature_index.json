@@ -808,6 +808,7 @@
     {
       "controllers": [
         "MetaController",
+        "MetaEvolutionController",
         "ConversationalController",
         "MetaAnalyticsController",
         "AnalyticsOverviewController",
@@ -1288,6 +1289,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-20T19:06:56.901494Z",
+  "generated_at": "2026-06-20T19:37:20.891828Z",
   "schema_version": 1
 }

@@ -497,6 +497,7 @@ def _build_compaction_callback(
             model=config.llm_summary_model,
             temperature=config.llm_summary_temperature,
             max_tokens=config.llm_summary_max_tokens,
+            cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
         )
     offloader = None
     backend = app_state.slice(MemoryStateSlice).backend

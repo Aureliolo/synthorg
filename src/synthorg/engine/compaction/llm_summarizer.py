@@ -11,13 +11,17 @@ silent.
 
 from typing import Protocol, runtime_checkable
 
+from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.context_budget import (
     CONTEXT_BUDGET_COMPACTION_LLM_COMPLETED,
     CONTEXT_BUDGET_COMPACTION_LLM_FALLBACK,
     CONTEXT_BUDGET_COMPACTION_LLM_STARTED,
 )
+from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig, CompletionResponse
 
@@ -28,6 +32,9 @@ _SYSTEM_PROMPT = (
     "summary. Preserve decisions, open questions, constraints, and any "
     "stated uncertainty. Write 3-6 sentences, no preamble."
 )
+
+# Framework-overhead attribution for the compaction summary call.
+_SUMMARY_AGENT_ID: NotBlankStr = NotBlankStr("system")
 
 
 @runtime_checkable
@@ -57,6 +64,8 @@ class LLMSummarizer:
         model: Model id for the summary call.
         temperature: Sampling temperature (pinned explicitly).
         max_tokens: Max tokens for the summary response.
+        cost_tracker: Sink for the per-call cost record (``None`` makes
+            recording a no-op).
     """
 
     def __init__(
@@ -66,9 +75,11 @@ class LLMSummarizer:
         model: str,
         temperature: float,
         max_tokens: int,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
         self._provider = provider
         self._model = model
+        self._cost_tracker = cost_tracker
         self._config = CompletionConfig(
             temperature=temperature,
             max_tokens=max_tokens,
@@ -106,9 +117,15 @@ class LLMSummarizer:
             model=self._model,
         )
         try:
-            response = await self._provider.complete(
-                messages, self._model, config=self._config
-            )
+            async with cost_recording_scope(
+                cost_tracker=self._cost_tracker,
+                agent_id=_SUMMARY_AGENT_ID,
+                task_id=NotBlankStr(f"compaction:{execution_id}"),
+                call_category=LLMCallCategory.SYSTEM,
+            ):
+                response = await self._provider.complete(
+                    messages, self._model, config=self._config
+                )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(

@@ -880,6 +880,19 @@ def _restore_app_state(
         setattr(holder, name, value)
     app_state._slices.clear()
     app_state._slices.update(saved_slices)
+    # The shared app runs with ``_skip_lifecycle_shutdown=True``, so the
+    # on-shutdown clear of the process-global ambient strategy providers
+    # never fires. Reset them here so a snapshot the per-test startup bound
+    # cannot bleed into a later non-API test sharing the xdist worker.
+    from synthorg.engine.strategy.active_principle_provider import (
+        set_active_principle_provider,
+    )
+    from synthorg.engine.strategy.strategic_context_provider import (
+        set_strategic_context_provider,
+    )
+
+    set_strategic_context_provider(None)
+    set_active_principle_provider(None)
 
 
 @contextlib.contextmanager

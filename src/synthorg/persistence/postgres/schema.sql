@@ -2289,9 +2289,9 @@ CREATE INDEX idx_active_principles_created ON active_principles (created_at DESC
 CREATE TABLE roles (
     name TEXT NOT NULL PRIMARY KEY CHECK (CHAR_LENGTH(TRIM(name)) > 0),
     department TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(department)) > 0),
-    required_skills JSONB NOT NULL DEFAULT '[]'::jsonb,
+    required_skills JSONB NOT NULL DEFAULT '[]'::JSONB,
     authority_level TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(authority_level)) > 0),
-    tool_access JSONB NOT NULL DEFAULT '[]'::jsonb,
+    tool_access JSONB NOT NULL DEFAULT '[]'::JSONB,
     system_prompt_template TEXT,
     description TEXT NOT NULL DEFAULT '',
     is_builtin BOOLEAN NOT NULL DEFAULT FALSE,

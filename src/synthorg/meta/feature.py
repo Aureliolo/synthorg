@@ -22,6 +22,7 @@ from synthorg.api.controllers.experiments import ExperimentsController
 from synthorg.api.controllers.learning import LearningController
 from synthorg.api.controllers.meta import MetaController
 from synthorg.api.controllers.meta_analytics import MetaAnalyticsController
+from synthorg.api.controllers.meta_evolution import MetaEvolutionController
 from synthorg.meta.mcp.domains.analytics import ANALYTICS_TOOLS
 from synthorg.meta.mcp.domains.meta import META_TOOLS
 from synthorg.meta.mcp.domains.signals import SIGNAL_MCP_TOOLS
@@ -69,6 +70,7 @@ FEATURE: FeatureModule = FeatureManifest(
     state_slice=MetaStateSlice,
     controllers=(
         MetaController,
+        MetaEvolutionController,
         ConversationalController,
         MetaAnalyticsController,
         AnalyticsOverviewController,
