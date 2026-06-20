@@ -23,7 +23,7 @@ CREATE TABLE experiment_assignments (
 
 -- ``list_assignments`` pages newest-first within an experiment.
 CREATE INDEX idx_experiment_assignments_exp_assigned
-    ON experiment_assignments (experiment, assigned_at DESC);
+ON experiment_assignments (experiment, assigned_at DESC);
 
 CREATE TABLE ab_tests (
     id TEXT NOT NULL PRIMARY KEY CHECK (CHAR_LENGTH(TRIM(id)) > 0),

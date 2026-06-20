@@ -20,6 +20,7 @@ from synthorg.providers.errors import (
     ProviderNotFoundError,
     ProviderValidationError,
 )
+from synthorg.providers.management._credential_helpers import resolve_provider_api_key
 from synthorg.providers.management.service import ProviderManagementService
 from synthorg.providers.state import ProvidersStateSlice, provider_registry_of
 from synthorg.settings.service import SettingsService
@@ -475,7 +476,10 @@ class TestAuthTypeTransitions:
         assert result.auth_type == AuthType.API_KEY
         # The explicit key is minted into the catalog and resolved via
         # connection_name.
-        assert await service._resolve_provider_api_key(result) == "sk-new-explicit-key"
+        assert (
+            await resolve_provider_api_key(service._app_state, result)
+            == "sk-new-explicit-key"
+        )
         # OAuth fields should still be cleared
         assert result.oauth_token_url is None
         assert result.oauth_client_id is None
@@ -499,7 +503,9 @@ class TestAuthTypeTransitions:
         )
         result = await service.update_provider("test-provider", update)
         assert result.auth_type == AuthType.API_KEY
-        assert await service._resolve_provider_api_key(result) == "sk-new-key"
+        assert (
+            await resolve_provider_api_key(service._app_state, result) == "sk-new-key"
+        )
         assert result.subscription_token is None
         assert result.tos_accepted_at is None
 

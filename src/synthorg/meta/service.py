@@ -42,7 +42,7 @@ from synthorg.meta.models import (
     RuleMatch,
 )
 from synthorg.meta.protocol import ImprovementStrategy
-from synthorg.meta.rollout.ab_test import AbTestRecordSink
+from synthorg.meta.rollout.ab_record import AbTestRecordSink
 from synthorg.meta.rollout.before_after import RolloutSnapshotBuilder
 from synthorg.meta.rollout.group_aggregator import GroupSignalAggregator
 from synthorg.meta.rollout.roster import OrgRoster

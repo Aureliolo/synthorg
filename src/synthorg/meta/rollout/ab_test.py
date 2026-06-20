@@ -10,11 +10,10 @@ exceeds the configured threshold.
 import asyncio
 import hashlib
 from datetime import datetime, timedelta
-from typing import Final, Protocol, runtime_checkable
+from typing import Final
 from uuid import UUID
 
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     ImprovementProposal,
@@ -27,25 +26,27 @@ from synthorg.meta.protocol import ProposalApplier, RegressionDetector
 from synthorg.meta.rollout._observation import validate_window_and_interval
 from synthorg.meta.rollout.ab_comparator import ABTestComparator
 from synthorg.meta.rollout.ab_models import (
-    AbTestArm,
     ABTestComparison,
     ABTestGroup,
-    AbTestRecord,
     AbTestStatus,
     ABTestVerdict,
     GroupAssignment,
     GroupMetrics,
+)
+from synthorg.meta.rollout.ab_record import (
+    TERMINAL_STATUS,
+    AbTestRecordSink,
+    persist_ab_test_record,
 )
 from synthorg.meta.rollout.group_aggregator import (
     GroupSamples,
     GroupSignalAggregator,
 )
 from synthorg.meta.rollout.roster import NoOpOrgRoster, OrgRoster
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.events.meta import (
     META_ABTEST_GROUPS_ASSIGNED,
     META_ABTEST_OBSERVATION_STARTED,
-    META_ABTEST_RECORD_WRITE_FAILED,
     META_ROLLOUT_COMPLETED,
     META_ROLLOUT_FAILED,
     META_ROLLOUT_OBSERVATION_COMPLETED,
@@ -54,28 +55,6 @@ from synthorg.observability.events.meta import (
 )
 
 logger = get_logger(__name__)
-
-
-@runtime_checkable
-class AbTestRecordSink(Protocol):
-    """Narrow write seam for persisting durable A/B-test records.
-
-    The durable ``AbTestRepository`` satisfies this structurally via its
-    ``save`` upsert; the rollout depends only on this minimal surface so
-    it stays decoupled from the persistence layer.
-    """
-
-    async def save(self, entity: AbTestRecord, /) -> None:
-        """Upsert an A/B-test record keyed by proposal id."""
-        ...
-
-
-_TERMINAL_STATUS: Final[dict[RolloutOutcome, AbTestStatus]] = {
-    RolloutOutcome.SUCCESS: AbTestStatus.COMPLETED,
-    RolloutOutcome.REGRESSED: AbTestStatus.REGRESSED,
-    RolloutOutcome.INCONCLUSIVE: AbTestStatus.INCONCLUSIVE,
-    RolloutOutcome.FAILED: AbTestStatus.FAILED,
-}
 
 _DEFAULT_CONTROL_FRACTION: Final[float] = 0.5
 _DEFAULT_MIN_AGENTS_PER_GROUP: Final[int] = 5
@@ -175,46 +154,22 @@ class ABTestRollout:
     ) -> None:
         """Best-effort durable write of the rollout's A/B-test record.
 
-        No-op when no sink is wired. The ``save`` upsert preserves the
-        first ``created_at`` so a running record is replaced in place by
-        its terminal verdict. A write failure is logged and swallowed so
-        persistence never sinks the rollout itself.
+        No-op when no sink is wired; otherwise delegates to
+        :func:`persist_ab_test_record`, which builds the record and
+        writes it without ever sinking the rollout itself.
         """
         if self._record_sink is None:
             return
-        now = self._clock.now()
-        record = AbTestRecord(
-            id=NotBlankStr(str(proposal.id)),
-            name=proposal.title,
+        await persist_ab_test_record(
+            self._record_sink,
+            proposal_id=proposal.id,
+            proposal_title=proposal.title,
+            assignment=assignment,
             status=status,
-            arms=(
-                AbTestArm(
-                    name=NotBlankStr("control"),
-                    agent_count=len(assignment.control_agent_ids),
-                    fraction=assignment.control_fraction,
-                ),
-                AbTestArm(
-                    name=NotBlankStr("treatment"),
-                    agent_count=len(assignment.treatment_agent_ids),
-                    fraction=1.0 - assignment.control_fraction,
-                ),
-            ),
             verdict=verdict,
             observation_hours_elapsed=observation_hours_elapsed,
-            created_at=now,
-            updated_at=now,
+            now=self._clock.now(),
         )
-        try:
-            await self._record_sink.save(record)
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised below
-            reraise_critical(exc)
-            logger.warning(
-                META_ABTEST_RECORD_WRITE_FAILED,
-                proposal_id=str(proposal.id),
-                status=status.value,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
 
     @property
     def name(self) -> NotBlankStr:
@@ -381,7 +336,7 @@ class ABTestRollout:
         await self._persist_record(
             proposal=proposal,
             assignment=assignment,
-            status=_TERMINAL_STATUS[outcome],
+            status=TERMINAL_STATUS[outcome],
             verdict=comparison.verdict,
             observation_hours_elapsed=elapsed,
         )
@@ -435,7 +390,7 @@ class ABTestRollout:
         await self._persist_record(
             proposal=proposal,
             assignment=assignment,
-            status=_TERMINAL_STATUS[outcome],
+            status=TERMINAL_STATUS[outcome],
             verdict=last_comparison.verdict,
             observation_hours_elapsed=elapsed,
         )

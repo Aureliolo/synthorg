@@ -18,7 +18,6 @@ core.
 """
 
 import asyncio
-import contextlib
 import json
 from collections.abc import AsyncIterator, Mapping
 
@@ -36,11 +35,6 @@ from synthorg.config.schema import (
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
-from synthorg.integrations.connections.models import AuthMethod, ConnectionType
-from synthorg.integrations.errors import (
-    ConnectionNotFoundError,
-    DuplicateConnectionError,
-)
 from synthorg.integrations.state import provider_credential_catalog_of
 from synthorg.observability import (
     get_logger,
@@ -78,6 +72,12 @@ from synthorg.providers.errors import (
 )
 from synthorg.providers.management._capabilities_mixin import (
     ProviderCapabilitiesMixin,
+)
+from synthorg.providers.management._credential_helpers import (
+    apply_update_with_credential,
+    delete_provider_credential,
+    resolve_provider_api_key,
+    store_provider_api_key,
 )
 from synthorg.providers.management._helpers import (
     apply_update,
@@ -325,138 +325,6 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             raise ProviderNotFoundError(msg)
         return config
 
-    def _credential_connection_name(self, provider_name: str) -> str:
-        """Catalog connection name backing a provider's API-key credential.
-
-        Returns:
-            The deterministic ``provider-<name>`` connection name.
-        """
-        return f"provider-{provider_name}"
-
-    async def _store_provider_api_key(self, provider_name: str, api_key: str) -> str:
-        """Mint (or replace) the catalog connection holding the provider key.
-
-        The ConnectionCatalog has no secret-update seam, so this deletes any
-        existing connection and recreates it: idempotent, and it doubles as
-        rotation. Runs inside the service lock held by the caller.
-
-        Returns:
-            The connection name to stamp onto
-            ``ProviderConfig.connection_name``.
-
-        Raises:
-            ProviderValidationError: When no credential catalog is wired (a
-                connected persistence backend is required for catalog-backed
-                provider credentials).
-        """
-        catalog = provider_credential_catalog_of(self._app_state)
-        if catalog is None:
-            msg = (
-                "Cannot store the provider API key: no credential catalog is "
-                "available. A connected persistence backend is required for "
-                "catalog-backed provider credentials."
-            )
-            logger.warning(
-                PROVIDER_VALIDATION_FAILED,
-                provider=provider_name,
-                error=msg,
-            )
-            raise ProviderValidationError(msg)
-        conn_name = self._credential_connection_name(provider_name)
-        with contextlib.suppress(ConnectionNotFoundError):
-            await catalog.delete(conn_name)
-        with contextlib.suppress(DuplicateConnectionError):
-            await catalog.create(
-                name=conn_name,
-                connection_type=ConnectionType.LLM_PROVIDER,
-                auth_method=AuthMethod.API_KEY.value,
-                credentials={"api_key": api_key},
-            )
-        return conn_name
-
-    async def _delete_provider_credential(self, provider_name: str) -> None:
-        """Best-effort removal of a provider's backing credential connection."""
-        catalog = provider_credential_catalog_of(self._app_state)
-        if catalog is None:
-            return
-        with contextlib.suppress(ConnectionNotFoundError):
-            await catalog.delete(self._credential_connection_name(provider_name))
-
-    async def _resolve_provider_api_key(self, config: ProviderConfig) -> str | None:
-        """Resolve a provider's api_key from its catalog connection.
-
-        Returns ``None`` when the config carries no ``connection_name`` or no
-        credential catalog is wired (the caller then proceeds without an
-        Authorization header).
-
-        Returns:
-            The resolved api_key, or ``None``.
-        """
-        catalog = provider_credential_catalog_of(self._app_state)
-        if config.connection_name is None or catalog is None:
-            return None
-        creds = await catalog.get_credentials(config.connection_name)
-        return creds.get("api_key")
-
-    async def _apply_update_with_credential(
-        self,
-        name: str,
-        existing: ProviderConfig,
-        request: UpdateProviderRequest,
-    ) -> ProviderConfig:
-        """Merge an update, minting/clearing the backing credential connection.
-
-        API-key credentials are catalog-only: a secret supplied at the
-        boundary is minted into the connection catalog and referenced by
-        ``connection_name``; a clear request (or a switch to an auth type
-        that has no api-key credential) deletes the backing connection.
-        The resolved reference is threaded into ``apply_update`` so the
-        merged config validates with a complete credential.
-
-        Returns:
-            The merged ``ProviderConfig`` with ``connection_name`` reflecting
-            the catalog mutation.
-
-        Raises:
-            ProviderValidationError: When clearing the API key of an
-                API_KEY provider (which would leave it unable to
-                authenticate); the operator must switch auth_type or delete.
-        """
-        final_auth_type = (
-            request.auth_type if request.auth_type is not None else existing.auth_type
-        )
-        descriptor = AUTH_TYPE_DESCRIPTORS[final_auth_type]
-        if descriptor.supports_api_key:
-            if request.api_key is not None:
-                conn_name = await self._store_provider_api_key(
-                    name,
-                    request.api_key.get_secret_value(),
-                )
-                return apply_update(existing, request, connection_name=conn_name)
-            if request.clear_api_key:
-                if final_auth_type is AuthType.API_KEY:
-                    # API_KEY auth has no other credential source, so clearing
-                    # it would leave the provider unable to authenticate.
-                    # Force the operator to switch auth_type or delete instead.
-                    msg = (
-                        "Cannot clear the API key of an API_KEY provider; "
-                        "switch auth_type or delete the provider instead."
-                    )
-                    logger.warning(
-                        PROVIDER_VALIDATION_FAILED,
-                        provider=name,
-                        error=msg,
-                    )
-                    raise ProviderValidationError(msg)
-                await self._delete_provider_credential(name)
-                return apply_update(existing, request, connection_name=None)
-            return apply_update(existing, request)
-        # The new auth type does not use an api-key connection; drop any
-        # backing credential the provider previously referenced.
-        if existing.connection_name is not None:
-            await self._delete_provider_credential(name)
-        return apply_update(existing, request, connection_name=None)
-
     async def create_provider(
         self,
         request: CreateProviderRequest,
@@ -489,7 +357,8 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             mints_api_key = AUTH_TYPE_DESCRIPTORS[request.auth_type].supports_api_key
             conn_name: str | None = None
             if mints_api_key and request.api_key is not None:
-                conn_name = await self._store_provider_api_key(
+                conn_name = await store_provider_api_key(
+                    self._app_state,
                     request.name,
                     request.api_key.get_secret_value(),
                 )
@@ -538,7 +407,9 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 logger.warning(PROVIDER_NOT_FOUND, provider=name, error=msg)
                 raise ProviderNotFoundError(msg)
 
-            updated = await self._apply_update_with_credential(name, existing, request)
+            updated = await apply_update_with_credential(
+                self._app_state, name, existing, request
+            )
             new_providers = {**providers, name: updated}
             await self._validate_and_persist(new_providers)
             await self._allowlist.update_for_update(
@@ -584,7 +455,7 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             await self._validate_and_persist(new_providers)
             # Remove the catalog connection minted for this provider's
             # credential so a deleted provider leaves no orphaned secret.
-            await self._delete_provider_credential(name)
+            await delete_provider_credential(self._app_state, name)
             await self._allowlist.update_for_delete(
                 removed_config,
                 new_providers,
@@ -908,7 +779,7 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             return ()
 
         resolved_hint = preset_hint or infer_preset_hint(config.base_url)
-        api_key = await self._resolve_provider_api_key(config)
+        api_key = await resolve_provider_api_key(self._app_state, config)
         headers = build_discovery_headers(config, api_key)
         policy = await self._allowlist.load()
         trust = is_url_allowed(config.base_url, policy)

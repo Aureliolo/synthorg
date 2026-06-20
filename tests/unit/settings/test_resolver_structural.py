@@ -338,7 +338,7 @@ class TestGetProviderConfigs:
         from synthorg.config.schema import ProviderConfig
 
         prov_data = {
-            "test-provider": {"driver": "litellm"},
+            "test-provider": {"driver": "litellm", "connection_name": "conn-test"},
         }
         mock_settings.get.return_value = _make_value(
             json.dumps(prov_data),

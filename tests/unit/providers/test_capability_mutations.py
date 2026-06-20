@@ -35,6 +35,7 @@ from synthorg.providers.errors import (
     ProviderAlreadyExistsError,
     ProviderValidationError,
 )
+from synthorg.providers.management._credential_helpers import resolve_provider_api_key
 from synthorg.providers.management.audit_service import ProviderAuditService
 from synthorg.providers.management.preset_override_service import (
     PresetOverrideService,
@@ -342,11 +343,17 @@ class TestCredentialsRotation:
         # connection catalog via the config's connection_name, never an
         # embedded field.
         assert result.connection_name == "provider-cloud-test"
-        assert await service._resolve_provider_api_key(result) == "rotated-secret-y"
+        assert (
+            await resolve_provider_api_key(service._app_state, result)
+            == "rotated-secret-y"
+        )
         # Round-trip the config to confirm rotation persisted: the
         # in-memory provider state reflects the new key, not the old.
         persisted = await service.get_provider("cloud-test")
-        assert await service._resolve_provider_api_key(persisted) == "rotated-secret-y"
+        assert (
+            await resolve_provider_api_key(service._app_state, persisted)
+            == "rotated-secret-y"
+        )
         # Audit row carries the masked secret only.
         assert len(audit_repo.records) == 1
         masked = audit_repo.records[0].payload["masked_secret"]

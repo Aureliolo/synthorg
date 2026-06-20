@@ -15,6 +15,7 @@ from typing import Protocol
 
 from pydantic import JsonValue
 
+from synthorg.api.state import AppState
 from synthorg.config.model_staleness import ModelStaleness, StalenessReason
 from synthorg.config.provider_schema import (
     ProviderConfig,
@@ -42,6 +43,7 @@ from synthorg.providers.management._capability_helpers import (
     credentials_update_fields,
     provider_actor_from_context,
 )
+from synthorg.providers.management._credential_helpers import store_provider_api_key
 from synthorg.providers.management.audit_service import ProviderAuditService
 from synthorg.providers.management.capability_dtos import (
     AddModelRequest,
@@ -116,6 +118,7 @@ class _ServiceProtocol(Protocol):
     _lock: asyncio.Lock
     _config_resolver: ConfigResolver
     _audit_service: ProviderAuditService | None
+    _app_state: AppState
 
     async def get_provider(self, name: str) -> ProviderConfig:
         """Load a provider by name (provided by the host service)."""
@@ -134,10 +137,6 @@ class _ServiceProtocol(Protocol):
         self, new_providers: dict[str, ProviderConfig]
     ) -> None:
         """Validate + persist + hot-reload providers (provided by host)."""
-        ...
-
-    async def _store_provider_api_key(self, provider_name: str, api_key: str) -> str:
-        """Mint the catalog connection backing a provider key (host)."""
         ...
 
 
@@ -553,7 +552,9 @@ class ProviderCapabilitiesMixin:
                 # API-key credentials are catalog-only: mint the rotated
                 # secret into the connection catalog and re-point
                 # connection_name instead of embedding it on the config.
-                conn_name = await self._store_provider_api_key(name, raw_api_key)
+                conn_name = await store_provider_api_key(
+                    self._app_state, name, raw_api_key
+                )
                 update_fields = {**update_fields, "connection_name": conn_name}
             updated = existing.model_copy(update=update_fields)
             new_providers = {**providers, name: updated}

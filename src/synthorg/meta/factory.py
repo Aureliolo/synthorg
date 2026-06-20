@@ -38,7 +38,8 @@ from synthorg.meta.guards.rollback_plan import RollbackPlanGuard
 from synthorg.meta.guards.scope_check import ScopeCheckGuard
 from synthorg.meta.models import ProposalAltitude
 from synthorg.meta.protocol import ImprovementStrategy, ProposalApplier, ProposalGuard
-from synthorg.meta.rollout.ab_test import AbTestRecordSink, ABTestRollout
+from synthorg.meta.rollout.ab_record import AbTestRecordSink
+from synthorg.meta.rollout.ab_test import ABTestRollout
 from synthorg.meta.rollout.before_after import (
     BeforeAfterRollout,
     RolloutSnapshotBuilder,
