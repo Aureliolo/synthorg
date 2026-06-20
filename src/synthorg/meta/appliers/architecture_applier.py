@@ -101,6 +101,33 @@ class ArchitectureApplier:
                 changes_applied=0,
             )
         context = self._context
+        # Mirror dry_run's altitude / non-empty guards so a misrouted or empty
+        # proposal cannot reach the durable path and return success with zero
+        # changes applied.
+        if proposal.altitude != ProposalAltitude.ARCHITECTURE:
+            error_message = (
+                f"Expected ARCHITECTURE altitude, got {proposal.altitude.value}"
+            )
+            logger.warning(
+                META_APPLY_FAILED,
+                altitude="architecture",
+                proposal_id=str(proposal.id),
+                reason=error_message,
+            )
+            return ApplyResult(
+                success=False, error_message=error_message, changes_applied=0
+            )
+        if not proposal.architecture_changes:
+            error_message = "Proposal has no architecture changes"
+            logger.warning(
+                META_APPLY_FAILED,
+                altitude="architecture",
+                proposal_id=str(proposal.id),
+                reason=error_message,
+            )
+            return ApplyResult(
+                success=False, error_message=error_message, changes_applied=0
+            )
         logger.info(
             META_APPLY_STARTED,
             altitude="architecture",

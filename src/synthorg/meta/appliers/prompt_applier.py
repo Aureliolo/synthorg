@@ -159,6 +159,33 @@ class PromptApplier:
                 changes_applied=0,
             )
         context = self._context
+        # Mirror dry_run's altitude / non-empty guards so a misrouted or empty
+        # proposal cannot reach the durable path and return success with zero
+        # changes applied.
+        if proposal.altitude != ProposalAltitude.PROMPT_TUNING:
+            error_message = (
+                f"Expected PROMPT_TUNING altitude, got {proposal.altitude.value}"
+            )
+            logger.warning(
+                META_APPLY_FAILED,
+                altitude="prompt_tuning",
+                proposal_id=str(proposal.id),
+                reason=error_message,
+            )
+            return ApplyResult(
+                success=False, error_message=error_message, changes_applied=0
+            )
+        if not proposal.prompt_changes:
+            error_message = "Proposal has no prompt changes"
+            logger.warning(
+                META_APPLY_FAILED,
+                altitude="prompt_tuning",
+                proposal_id=str(proposal.id),
+                reason=error_message,
+            )
+            return ApplyResult(
+                success=False, error_message=error_message, changes_applied=0
+            )
         logger.info(
             META_APPLY_STARTED,
             altitude="prompt_tuning",

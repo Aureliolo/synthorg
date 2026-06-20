@@ -476,6 +476,39 @@ class TestPromptApplier:
         assert len(context.created) == 1
         assert context.deleted == []
 
+    async def test_apply_rejects_wrong_altitude(self) -> None:
+        context = _FakePromptContext()
+        applier = PromptApplier(context=context)
+        # A valid ARCHITECTURE proposal misrouted to the prompt applier.
+        misrouted = _proposal_architecture(
+            _arch("create_role", "r1", payload={"description": "d"}),
+        )
+        result = await applier.apply(misrouted)
+        assert not result.success
+        assert result.changes_applied == 0
+        assert "altitude" in (result.error_message or "")
+        assert context.created == []
+        assert context.refreshed == 0
+
+    async def test_apply_rejects_empty_proposal(self) -> None:
+        context = _FakePromptContext()
+        applier = PromptApplier(context=context)
+        # model_copy skips validation, so this exercises the defensive guard
+        # against a proposal that the model invariant would normally forbid.
+        empty = _proposal_prompt(
+            PromptChange(
+                principle_text="be concise and helpful",
+                target_scope="all",
+                description="d",
+            ),
+        ).model_copy(update={"prompt_changes": ()})
+        result = await applier.apply(empty)
+        assert not result.success
+        assert result.changes_applied == 0
+        assert "no prompt changes" in (result.error_message or "")
+        assert context.created == []
+        assert context.refreshed == 0
+
     async def test_dry_run_without_context_rejects(self) -> None:
         applier = PromptApplier()
         proposal = _proposal_prompt(
@@ -726,6 +759,39 @@ class TestArchitectureApplier:
         assert result.changes_applied == 1
         assert context.applied == ["new-role"]
         assert context.undone == []
+
+    async def test_apply_rejects_wrong_altitude(self) -> None:
+        context = _FakeArchContext()
+        applier = ArchitectureApplier(context=context)
+        # A valid PROMPT_TUNING proposal misrouted to the architecture applier.
+        misrouted = _proposal_prompt(
+            PromptChange(
+                principle_text="be concise and helpful",
+                target_scope="all",
+                description="d",
+            ),
+        )
+        result = await applier.apply(misrouted)
+        assert not result.success
+        assert result.changes_applied == 0
+        assert "altitude" in (result.error_message or "")
+        assert context.applied == []
+        assert context.refreshed == 0
+
+    async def test_apply_rejects_empty_proposal(self) -> None:
+        context = _FakeArchContext()
+        applier = ArchitectureApplier(context=context)
+        # model_copy skips validation, so this exercises the defensive guard
+        # against a proposal that the model invariant would normally forbid.
+        empty = _proposal_architecture(
+            _arch("create_role", "r1", payload={"description": "d"}),
+        ).model_copy(update={"architecture_changes": ()})
+        result = await applier.apply(empty)
+        assert not result.success
+        assert result.changes_applied == 0
+        assert "no architecture changes" in (result.error_message or "")
+        assert context.applied == []
+        assert context.refreshed == 0
 
     async def test_apply_rolls_back_in_reverse_on_failure(self) -> None:
         context = _FakeArchContext(fail_after=2)
