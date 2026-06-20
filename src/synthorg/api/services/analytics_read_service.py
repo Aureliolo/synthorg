@@ -46,14 +46,18 @@ class AnalyticsReadService:
         spec = TaskFilterSpec()
         tasks: list[Task] = []
         offset = 0
-        while True:
-            page = await self._task_repo.query(
-                spec, limit=_FETCH_PAGE_SIZE, offset=offset
-            )
+        page = await self._task_repo.query(spec, limit=_FETCH_PAGE_SIZE, offset=offset)
+        # Condition-driven (not ``while True``) so the fetch-all pagination
+        # terminates on the first short page and reads as the bounded loop it
+        # is, never a daemon needing a kill-switch.
+        while page:
             tasks.extend(page)
             if len(page) < _FETCH_PAGE_SIZE:
                 break
             offset += _FETCH_PAGE_SIZE
+            page = await self._task_repo.query(
+                spec, limit=_FETCH_PAGE_SIZE, offset=offset
+            )
         return tuple(tasks)
 
 
