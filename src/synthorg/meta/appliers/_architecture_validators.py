@@ -8,16 +8,26 @@ lists of human-readable error strings; no state is mutated outside the
 supplied ``_PendingChanges``.
 """
 
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Final, Protocol, runtime_checkable
 
 from synthorg.meta.appliers._validation import validate_payload_keys
 from synthorg.meta.models import ArchitectureChange
 
+#: Undo closure returned by ``apply_change``. Calling it reverses exactly the
+#: one change it was produced for (delete a created role / re-save a removed
+#: department / restore a prior workflow definition), so the applier can roll
+#: back a partially-applied proposal in reverse order.
+ArchitectureUndo = Callable[[], Awaitable[None]]
+
 
 @runtime_checkable
 class ArchitectureApplierContext(Protocol):
-    """Read-only view of role/department/workflow registries.
+    """Registry view + durable write seam for the architecture applier.
+
+    The read methods (sync) back ``dry_run`` validation; ``apply_change``
+    (async) backs the real ``apply`` path, returning a per-change undo closure
+    so a partially-applied proposal can be rolled back in reverse order.
 
     Defined alongside the validators that consume it (the per-operation
     dry-run checks below) so the applier can import it together with
@@ -43,6 +53,22 @@ class ArchitectureApplierContext(Protocol):
 
     def department_in_use(self, name: str) -> bool:
         """Return True when removing the department would dangle references."""
+        ...
+
+    async def apply_change(self, change: ArchitectureChange) -> ArchitectureUndo:
+        """Durably apply one architecture change and return its undo.
+
+        Returns:
+            A coroutine factory that, when awaited, reverses this change.
+
+        Raises:
+            Exception: On a durable-write failure (the applier rolls back
+                the already-applied changes).
+        """
+        ...
+
+    async def refresh_snapshot(self) -> None:
+        """Reload the cached read snapshot after a successful apply."""
         ...
 
 

@@ -1,5 +1,7 @@
 """Unit tests for meta-loop proposal appliers (apply + dry_run)."""
 
+from collections.abc import Awaitable, Callable
+
 import pytest
 
 from synthorg.config.schema import RootConfig
@@ -315,18 +317,25 @@ class TestConfigApplier:
 
 
 class _FakePromptContext:
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         roles: frozenset[str] = frozenset(),
         departments: frozenset[str] = frozenset(),
         existing: dict[str, frozenset[str]] | None = None,
         overridden: frozenset[str] = frozenset(),
+        fail_after: int | None = None,
+        fail_delete: bool = False,
     ) -> None:
         self._roles = roles
         self._departments = departments
         self._existing = existing or {}
         self._overridden = overridden
+        self._fail_after = fail_after
+        self._fail_delete = fail_delete
+        self.created: list[str] = []
+        self.deleted: list[str] = []
+        self.refreshed = 0
 
     def known_roles(self) -> frozenset[str]:
         return self._roles
@@ -340,6 +349,23 @@ class _FakePromptContext:
     def scope_overridden(self, scope: str) -> bool:
         return scope in self._overridden
 
+    async def create_principle(self, change: PromptChange) -> str:
+        if self._fail_after is not None and len(self.created) >= self._fail_after:
+            msg = "create_principle boom"
+            raise ValueError(msg)
+        principle_id = f"pid-{len(self.created)}-{change.target_scope}"
+        self.created.append(principle_id)
+        return principle_id
+
+    async def delete_principle(self, principle_id: str) -> None:
+        if self._fail_delete:
+            msg = "delete_principle boom"
+            raise ValueError(msg)
+        self.deleted.append(principle_id)
+
+    async def refresh_snapshot(self) -> None:
+        self.refreshed += 1
+
 
 class TestPromptApplier:
     def test_altitude(self) -> None:
@@ -348,7 +374,7 @@ class TestPromptApplier:
     def test_context_protocol_conformance(self) -> None:
         assert isinstance(_FakePromptContext(), PromptApplierContext)
 
-    async def test_apply_success(self) -> None:
+    async def test_apply_without_context_rejects(self) -> None:
         applier = PromptApplier()
         proposal = _proposal_prompt(
             PromptChange(
@@ -358,8 +384,73 @@ class TestPromptApplier:
             ),
         )
         result = await applier.apply(proposal)
+        assert not result.success
+        assert result.changes_applied == 0
+        assert "PromptApplierContext" in (result.error_message or "")
+
+    async def test_apply_persists_each_change(self) -> None:
+        context = _FakePromptContext(roles=frozenset({"engineer"}))
+        applier = PromptApplier(context=context)
+        proposal = _proposal_prompt(
+            PromptChange(
+                principle_text="be concise and helpful",
+                target_scope="all",
+                description="d",
+            ),
+            PromptChange(
+                principle_text="engineers cite source files",
+                target_scope="engineer",
+                description="d",
+            ),
+        )
+        result = await applier.apply(proposal)
         assert result.success
-        assert result.changes_applied == 1
+        assert result.changes_applied == 2
+        assert len(context.created) == 2
+        assert context.deleted == []
+        assert context.refreshed == 1
+
+    async def test_apply_rolls_back_on_failure(self) -> None:
+        context = _FakePromptContext(fail_after=1)
+        applier = PromptApplier(context=context)
+        proposal = _proposal_prompt(
+            PromptChange(
+                principle_text="first principle text",
+                target_scope="all",
+                description="d",
+            ),
+            PromptChange(
+                principle_text="second principle text",
+                target_scope="all",
+                description="d",
+            ),
+        )
+        result = await applier.apply(proposal)
+        assert not result.success
+        assert result.changes_applied == 0
+        # The one created principle is rolled back (reverse order, single item).
+        assert context.deleted == list(reversed(context.created))
+        assert context.refreshed == 0
+
+    async def test_apply_rollback_delete_failure_is_swallowed(self) -> None:
+        context = _FakePromptContext(fail_after=1, fail_delete=True)
+        applier = PromptApplier(context=context)
+        proposal = _proposal_prompt(
+            PromptChange(
+                principle_text="first principle text",
+                target_scope="all",
+                description="d",
+            ),
+            PromptChange(
+                principle_text="second principle text",
+                target_scope="all",
+                description="d",
+            ),
+        )
+        result = await applier.apply(proposal)
+        # A failing rollback delete does not abort the apply result.
+        assert not result.success
+        assert context.deleted == []
 
     async def test_dry_run_without_context_rejects(self) -> None:
         applier = PromptApplier()
@@ -494,7 +585,7 @@ class TestPromptApplier:
 
 
 class _FakeArchContext:
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         roles: frozenset[str] = frozenset(),
@@ -502,12 +593,17 @@ class _FakeArchContext:
         workflows: frozenset[str] = frozenset(),
         roles_in_use: frozenset[str] = frozenset(),
         depts_in_use: frozenset[str] = frozenset(),
+        fail_after: int | None = None,
     ) -> None:
         self._roles = roles
         self._departments = departments
         self._workflows = workflows
         self._roles_in_use = roles_in_use
         self._depts_in_use = depts_in_use
+        self._fail_after = fail_after
+        self.applied: list[str] = []
+        self.undone: list[str] = []
+        self.refreshed = 0
 
     def has_role(self, name: str) -> bool:
         return name in self._roles
@@ -523,6 +619,23 @@ class _FakeArchContext:
 
     def department_in_use(self, name: str) -> bool:
         return name in self._depts_in_use
+
+    async def apply_change(
+        self, change: ArchitectureChange
+    ) -> Callable[[], Awaitable[None]]:
+        if self._fail_after is not None and len(self.applied) >= self._fail_after:
+            msg = "apply_change boom"
+            raise ValueError(msg)
+        self.applied.append(change.target_name)
+        target = change.target_name
+
+        async def _undo() -> None:
+            self.undone.append(target)
+
+        return _undo
+
+    async def refresh_snapshot(self) -> None:
+        self.refreshed += 1
 
 
 def _arch(
@@ -546,14 +659,45 @@ class TestArchitectureApplier:
     def test_context_protocol_conformance(self) -> None:
         assert isinstance(_FakeArchContext(), ArchitectureApplierContext)
 
-    async def test_apply_success(self) -> None:
+    async def test_apply_without_context_rejects(self) -> None:
         applier = ArchitectureApplier()
         proposal = _proposal_architecture(
             _arch("create_role", "new-role", payload={"description": "d"}),
         )
         result = await applier.apply(proposal)
+        assert not result.success
+        assert result.changes_applied == 0
+        assert "ArchitectureApplierContext" in (result.error_message or "")
+
+    async def test_apply_applies_each_change(self) -> None:
+        context = _FakeArchContext()
+        applier = ArchitectureApplier(context=context)
+        proposal = _proposal_architecture(
+            _arch("create_role", "new-role", payload={"description": "d"}),
+            _arch("create_department", "new-dept"),
+        )
+        result = await applier.apply(proposal)
         assert result.success
-        assert result.changes_applied == 1
+        assert result.changes_applied == 2
+        assert context.applied == ["new-role", "new-dept"]
+        assert context.undone == []
+        assert context.refreshed == 1
+
+    async def test_apply_rolls_back_in_reverse_on_failure(self) -> None:
+        context = _FakeArchContext(fail_after=2)
+        applier = ArchitectureApplier(context=context)
+        proposal = _proposal_architecture(
+            _arch("create_role", "role-a", payload={"description": "d"}),
+            _arch("create_role", "role-b", payload={"description": "d"}),
+            _arch("create_role", "role-c", payload={"description": "d"}),
+        )
+        result = await applier.apply(proposal)
+        assert not result.success
+        assert result.changes_applied == 0
+        # First two applied (a, b); third fails -> undo in reverse (b, a).
+        assert context.applied == ["role-a", "role-b"]
+        assert context.undone == ["role-b", "role-a"]
+        assert context.refreshed == 0
 
     async def test_dry_run_without_context_rejects(self) -> None:
         applier = ArchitectureApplier()
@@ -1146,6 +1290,15 @@ class TestArchitectureApplier:
 
             def department_in_use(self, name: str) -> bool:
                 return False
+
+            async def apply_change(
+                self, change: ArchitectureChange
+            ) -> Callable[[], Awaitable[None]]:
+                async def _undo() -> None: ...
+
+                return _undo
+
+            async def refresh_snapshot(self) -> None: ...
 
         applier = ArchitectureApplier(context=_BoomContext())
         proposal = _proposal_architecture(

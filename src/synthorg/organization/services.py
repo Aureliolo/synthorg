@@ -25,6 +25,7 @@ from uuid import UUID, uuid4
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.actor_context import ActorIdentity, ActorKind, actor_scope
+from synthorg.core.pagination import collect_all
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.company import (
@@ -35,7 +36,9 @@ from synthorg.observability.events.company import (
     DEPARTMENTS_REORDERED_VIA_MCP,
     ORG_CAPABILITY_UNSUPPORTED,
 )
+from synthorg.organization.department_record import _DepartmentRecord
 from synthorg.organization.models import UpdateCompanyRequest
+from synthorg.persistence.department_protocol import DepartmentRepository
 
 if TYPE_CHECKING:
     from synthorg.api.services.org_mutations import OrgMutationService
@@ -240,33 +243,6 @@ class CompanyReadService:
 # ── DepartmentService ───────────────────────────────────────────────
 
 
-class _DepartmentRecord:
-    __slots__ = ("created_at", "description", "id", "name", "updated_at")
-
-    def __init__(
-        self,
-        *,
-        id: UUID,  # noqa: A002
-        name: str,
-        description: str,
-        created_at: datetime,
-    ) -> None:
-        self.id = id
-        self.name = name
-        self.description = description
-        self.created_at = created_at
-        self.updated_at = created_at
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "id": str(self.id),
-            "name": self.name,
-            "description": self.description,
-            "created_at": self.created_at.isoformat(),
-            "updated_at": self.updated_at.isoformat(),
-        }
-
-
 class DepartmentService:
     """Department CRUD + health.
 
@@ -276,9 +252,28 @@ class DepartmentService:
     :meth:`delete_department`).
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, repo: DepartmentRepository | None = None) -> None:
         self._departments: dict[UUID, _DepartmentRecord] = {}
         self._lock = asyncio.Lock()
+        self._repo = repo
+
+    async def rehydrate(self) -> None:
+        """Load durable departments into the in-memory cache at boot.
+
+        A no-op when no durable repository is wired (the in-memory service
+        stands alone). After this the cache mirrors the durable store, so
+        reads stay in memory and writes go through to the repository.
+        """
+        if self._repo is None:
+            return
+        repo = self._repo
+        records = await collect_all(
+            lambda limit, offset: repo.list_items(limit=limit, offset=offset)
+        )
+        async with self._lock:
+            self._departments = {
+                record.id: _DepartmentRecord.from_durable(record) for record in records
+            }
 
     async def list_departments(
         self,
@@ -348,6 +343,10 @@ class DepartmentService:
             description=description,
             created_at=datetime.now(UTC),
         )
+        # Write durable first so a unique-name collision surfaces before the
+        # in-memory cache is mutated (the repo's name column is UNIQUE).
+        if self._repo is not None:
+            await self._repo.save(record.to_durable())
         async with self._lock:
             self._departments[record.id] = record
         logger.info(
@@ -385,6 +384,8 @@ class DepartmentService:
                 record.description = description
             record.updated_at = datetime.now(UTC)
             returned = copy.deepcopy(record)
+        if self._repo is not None:
+            await self._repo.save(returned.to_durable())
         logger.info(
             DEPARTMENT_UPDATED_VIA_MCP,
             department_id=department_id,
@@ -411,6 +412,8 @@ class DepartmentService:
             return False
         async with self._lock:
             removed = self._departments.pop(key, None) is not None
+        if removed and self._repo is not None:
+            await self._repo.delete(NotBlankStr(str(key)))
         if removed:
             logger.info(
                 DEPARTMENT_DELETED_VIA_MCP,

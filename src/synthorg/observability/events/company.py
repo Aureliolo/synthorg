@@ -19,3 +19,7 @@ TEAM_DELETED_VIA_MCP: Final[str] = "organization.team.deleted_via_mcp"
 # -- Capability guards ---------------------------------------------------
 
 ORG_CAPABILITY_UNSUPPORTED: Final[str] = "organization.capability.unsupported"
+
+# -- Durable department store --------------------------------------------
+
+DEPARTMENT_PERSISTENCE_FAILED: Final[str] = "organization.department.persistence_failed"

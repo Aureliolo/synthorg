@@ -17,6 +17,7 @@ from pydantic import ValidationError as PydanticValidationError
 from synthorg.core.domain_errors import NotFoundError, ValidationError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.normalization import normalize_ascii_lowercase
+from synthorg.engine.strategy.active_principle import ActivePrincipleProvider
 from synthorg.engine.strategy.models import (
     ConstitutionalPrinciple,
     ConstitutionalPrincipleConfig,
@@ -276,15 +277,31 @@ def load_pack(name: str) -> PrinciplePack:
 
 def load_and_merge(
     config: ConstitutionalPrincipleConfig,
+    *,
+    active_principles: ActivePrincipleProvider | None = None,
+    role: str | None = None,
+    department: str | None = None,
 ) -> tuple[ConstitutionalPrinciple, ...]:
-    """Load a principle pack and merge with custom principles.
+    """Load a principle pack and merge with custom and active principles.
+
+    The merge order is pack, then operator ``config.custom``, then durable
+    active principles applied by the self-improvement meta-loop. Active
+    principles are filtered to those in scope for the agent's ``role`` and
+    ``department`` (plus every organisation-wide principle), so a role- or
+    department-scoped principle only reaches the agents it targets.
 
     Args:
         config: Principle configuration with pack name and custom
             principles.
+        active_principles: Optional durable active-principle read seam. When
+            ``None`` (no durable store wired) only pack + custom load, exactly
+            as before.
+        role: The agent's role name, for ``ScopeKind.ROLE`` filtering.
+        department: The agent's department name, for ``ScopeKind.DEPARTMENT``
+            filtering.
 
     Returns:
-        Tuple of all principles (pack + custom), deduplicated by ID.
+        Tuple of all principles (pack + custom + active), deduplicated by ID.
 
     Raises:
         StrategyPackValidationError: When a custom principle is
@@ -313,6 +330,16 @@ def load_and_merge(
         if principle.id not in existing_ids:
             principles.append(principle)
             existing_ids.add(principle.id)
+
+    # Layer durable active principles applied by the meta-loop, in scope for
+    # this agent. Each projects to a ``ConstitutionalPrinciple`` with an
+    # ``active:<uuid>`` id, so they dedup against pack / custom by id.
+    if active_principles is not None:
+        for active in active_principles.list_active(role=role, department=department):
+            principle = active.to_constitutional()
+            if principle.id not in existing_ids:
+                principles.append(principle)
+                existing_ids.add(principle.id)
 
     return tuple(principles)
 

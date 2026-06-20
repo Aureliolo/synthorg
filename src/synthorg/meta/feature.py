@@ -102,6 +102,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "ReportsService",
         "OrgInflectionMonitor",
         "build_analytics_collector",
+        "SelfImprovementService",
     ),
     depends_on=(),
 )

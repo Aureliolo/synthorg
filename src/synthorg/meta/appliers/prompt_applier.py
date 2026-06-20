@@ -27,6 +27,7 @@ from synthorg.observability import (
 from synthorg.observability.events.meta import (
     META_APPLY_COMPLETED,
     META_APPLY_FAILED,
+    META_APPLY_STARTED,
     META_DRY_RUN_COMPLETED,
     META_DRY_RUN_FAILED,
     META_DRY_RUN_STARTED,
@@ -41,7 +42,13 @@ _SCOPE_ALL = "all"
 
 @runtime_checkable
 class PromptApplierContext(Protocol):
-    """Read-only view of prompt-scope targets used by ``dry_run``."""
+    """Prompt-scope view + durable write seam for the prompt applier.
+
+    The read methods (sync, served from an in-memory snapshot) back
+    ``dry_run`` validation; the write methods (async) back the real
+    ``apply`` path so a snapshot-and-rollback application can create durable
+    active principles and undo them on partial failure.
+    """
 
     def known_roles(self) -> frozenset[str]:
         """Return all registered role names."""
@@ -62,6 +69,29 @@ class PromptApplierContext(Protocol):
 
     def scope_overridden(self, scope: str) -> bool:
         """Return True when an ``OVERRIDE`` principle already exists at ``scope``."""
+        ...
+
+    async def create_principle(self, change: PromptChange) -> str:
+        """Persist a durable active principle from ``change``.
+
+        Returns:
+            The new principle's id, for reverse-order rollback.
+
+        Raises:
+            Exception: On a durable-write failure (the applier rolls back).
+        """
+        ...
+
+    async def delete_principle(self, principle_id: str) -> None:
+        """Delete a previously-created active principle (rollback).
+
+        Raises:
+            Exception: On a durable-delete failure.
+        """
+        ...
+
+    async def refresh_snapshot(self) -> None:
+        """Reload the cached read snapshot after a successful apply."""
         ...
 
 
@@ -95,18 +125,15 @@ class PromptApplier:
         self,
         proposal: ImprovementProposal,
     ) -> ApplyResult:
-        """Apply prompt changes from the proposal.
+        """Apply prompt changes by persisting durable active principles.
 
-        .. warning::
-            Prompt persistence is **not** implemented here. Like the
-            architecture applier, this ships ``dry_run`` validation
-            only; the mutating ``apply`` path still needs a write seam
-            on the prompt context and a transactional principle-store
-            writer, tracked separately. For now ``apply()`` counts the
-            changes and logs ``META_APPLY_COMPLETED`` (with ``note``
-            flagging that nothing was persisted) so the meta-loop's
-            bookkeeping stays consistent with the other appliers.
-            Callers must not rely on this method to persist prompts yet.
+        Each ``PromptChange`` is written through the context's durable write
+        seam as an active principle. The application is transactional in the
+        :class:`ConfigApplier` mould: created ids are tracked in order, and a
+        mid-list failure triggers a reverse-order rollback that deletes the
+        already-created principles before returning a failure result. On
+        success the cached read snapshot is refreshed so the next prompt build
+        sees the new principles without a restart.
 
         Args:
             proposal: The approved prompt tuning proposal.
@@ -114,30 +141,94 @@ class PromptApplier:
         Returns:
             Result indicating success or failure.
         """
-        try:
-            count = len(proposal.prompt_changes)
-            logger.info(
-                META_APPLY_COMPLETED,
+        if self._context is None:
+            logger.warning(
+                META_APPLY_FAILED,
                 altitude="prompt_tuning",
-                changes=count,
                 proposal_id=str(proposal.id),
-                note="prompt persistence not yet implemented",
+                reason="no_context",
             )
-            return ApplyResult(success=True, changes_applied=count)
+            return ApplyResult(
+                success=False,
+                error_message=(
+                    "PromptApplier.apply requires a PromptApplierContext; "
+                    "none was injected"
+                ),
+                changes_applied=0,
+            )
+        context = self._context
+        logger.info(
+            META_APPLY_STARTED,
+            altitude="prompt_tuning",
+            proposal_id=str(proposal.id),
+            changes=len(proposal.prompt_changes),
+        )
+        applied: list[str] = []
+        try:
+            for change in proposal.prompt_changes:
+                principle_id = await context.create_principle(change)
+                applied.append(principle_id)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
+            failures = await self._rollback(applied, proposal=proposal)
             log_exception_redacted(
                 logger,
                 META_APPLY_FAILED,
                 exc,
                 altitude="prompt_tuning",
                 proposal_id=str(proposal.id),
+                applied=len(applied),
+                rollback_failures=failures,
             )
             return ApplyResult(
                 success=False,
-                error_message="Prompt apply failed. Check logs.",
+                error_message="Prompt apply failed and was rolled back. Check logs.",
                 changes_applied=0,
             )
+        await context.refresh_snapshot()
+        logger.info(
+            META_APPLY_COMPLETED,
+            altitude="prompt_tuning",
+            changes=len(applied),
+            proposal_id=str(proposal.id),
+        )
+        return ApplyResult(success=True, changes_applied=len(applied))
+
+    async def _rollback(
+        self,
+        applied: list[str],
+        *,
+        proposal: ImprovementProposal,
+    ) -> int:
+        """Delete previously-created principles after a failed apply.
+
+        A rollback delete that itself fails is logged and skipped so one
+        bad id cannot abort the rest of the restoration.
+
+        Returns:
+            The number of rollback deletes that failed; ``0`` means the
+            store was fully restored.
+        """
+        if self._context is None:
+            return 0
+        context = self._context
+        failures = 0
+        for principle_id in reversed(applied):
+            try:
+                await context.delete_principle(principle_id)
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                failures += 1
+                logger.warning(
+                    META_APPLY_FAILED,
+                    altitude="prompt_tuning",
+                    proposal_id=str(proposal.id),
+                    reason="rollback_delete_failed",
+                    principle_id=principle_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+        return failures
 
     async def dry_run(
         self,
