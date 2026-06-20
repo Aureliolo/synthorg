@@ -21,7 +21,6 @@ tier, so the stakes-aware run costs strictly less.
 from collections.abc import AsyncGenerator
 from datetime import date
 from pathlib import Path
-from uuid import uuid4
 
 import pytest
 
@@ -195,6 +194,7 @@ def _provider_catalogue() -> dict[str, ProviderConfig]:
     """A single provider exposing the three tier aliases the router uses."""
     return {
         _PROVIDER: ProviderConfig(
+            connection_name="conn-test",
             driver="scripted",
             models=tuple(
                 ProviderModelConfig(
@@ -213,7 +213,7 @@ def _provider_catalogue() -> dict[str, ProviderConfig]:
 def _large_tier_agent(name: str, skill: str) -> AgentIdentity:
     """An agent configured on the large tier (flat keeps it there)."""
     return AgentIdentity(
-        id=uuid4(),
+        id=as_uuid(name),
         name=name,
         role="developer",
         department="engineering",

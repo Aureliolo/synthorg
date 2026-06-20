@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 def make_provider_config(  # noqa: PLR0913
     *,
     driver: str = "litellm",
-    api_key: str | None = "sk-test-key",
+    connection_name: str | None = "conn-test",
     base_url: str | None = None,
     models: tuple[ProviderModelConfig, ...] | None = None,
     retry: RetryConfig | None = None,
@@ -45,7 +45,7 @@ def make_provider_config(  # noqa: PLR0913
         )
     return ProviderConfig(
         driver=driver,
-        api_key=api_key,
+        connection_name=connection_name,
         base_url=base_url,
         models=models,
         retry=retry or RetryConfig(max_retries=0),

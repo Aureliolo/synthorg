@@ -20,12 +20,15 @@ from litellm.types.utils import (  # type: ignore[attr-defined]
 
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.resilience_config import RetryConfig
-from synthorg.providers.enums import MessageRole
+from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.integrations.connections.models import AuthMethod, ConnectionType
+from synthorg.providers.enums import AuthType, MessageRole
 from synthorg.providers.models import (
     ChatMessage,
     ToolDefinition,
 )
 from tests._shared import JsonDict
+from tests._shared.connection_catalog import make_in_memory_catalog
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -38,7 +41,7 @@ def make_provider_config() -> dict[str, ProviderConfig]:
     return {
         "example-provider": ProviderConfig(
             driver="litellm",
-            api_key="sk-test-key",
+            connection_name="provider-example",
             models=(
                 ProviderModelConfig(
                     id="test-model-001",
@@ -65,7 +68,7 @@ def make_openrouter_config() -> dict[str, ProviderConfig]:
     return {
         "openrouter": ProviderConfig(
             driver="litellm",
-            api_key="sk-or-test-key",
+            connection_name="provider-gateway-test",
             base_url="https://openrouter.ai/api/v1",
             models=(
                 ProviderModelConfig(
@@ -88,12 +91,31 @@ def make_openrouter_config() -> dict[str, ProviderConfig]:
     }
 
 
+async def make_catalog_with_key(
+    connection_name: str, api_key: str
+) -> ConnectionCatalog:
+    """In-memory catalog holding one provider API-key connection.
+
+    Catalog-only credentials mean the driver resolves its api_key from a
+    ConnectionCatalog connection at call time; tests asserting the key is
+    forwarded must wire one rather than embedding the secret on the config.
+    """
+    catalog = make_in_memory_catalog()
+    await catalog.create(
+        name=connection_name,
+        connection_type=ConnectionType.LLM_PROVIDER,
+        auth_method=AuthMethod.API_KEY.value,
+        credentials={"api_key": api_key},
+    )
+    return catalog
+
+
 def make_ollama_config() -> dict[str, ProviderConfig]:
     """Provider config -- local, no api_key, zero cost (Ollama-shaped)."""
     return {
         "ollama": ProviderConfig(
             driver="litellm",
-            api_key=None,
+            auth_type=AuthType.NONE,
             base_url="http://localhost:11434",
             models=(
                 ProviderModelConfig(

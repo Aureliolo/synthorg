@@ -106,6 +106,7 @@ class LLMSynthesisOp:
         self._cost_tracker = cost_tracker
         self._completion_config = CompletionConfig(
             temperature=cfg.temperature,
+            top_p=cfg.top_p,
             max_tokens=cfg.max_summary_tokens,
         )
 

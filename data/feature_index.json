@@ -709,6 +709,7 @@
       "settings_namespace": "integrations",
       "state_slice_fields": [
         "connection_catalog",
+        "provider_credential_catalog",
         "connection_service",
         "oauth_token_manager",
         "oauth_state_service",
@@ -855,6 +856,7 @@
       "state_slice_fields": [
         "signals_service",
         "experiment_service",
+        "ab_test_repo",
         "self_improvement_service",
         "reports_service",
         "analytics_service",
@@ -1282,6 +1284,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-20T09:32:52.111245Z",
+  "generated_at": "2026-06-20T13:56:26.653050Z",
   "schema_version": 1
 }

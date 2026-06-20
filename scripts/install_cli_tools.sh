@@ -7,11 +7,16 @@
 #   scripts/install_cli_tools.sh lychee         # install lychee only
 #   scripts/install_cli_tools.sh golangci-lint  # install golangci-lint only
 #   scripts/install_cli_tools.sh vale           # install vale + run `vale sync`
+#   scripts/install_cli_tools.sh go-licenses    # install go-licenses only
 #
-# Three binaries:
+# Four binaries (the first three are the always-on pre-push toolchain that
+# `all` installs; go-licenses is opt-in, installed on demand by the CI
+# license-scan job and by local `--scan-go-modules` runs):
 #   * golangci-lint -- Go linter for the cli/ binary.
 #   * lychee -- Rust link-checker for README + CLAUDE.md + docs/**/*.md.
 #   * vale -- Go prose linter for README + every CLAUDE.md tier + docs/**/*.md.
+#   * go-licenses -- Go module-closure licence scanner (Apache-2.0) for the
+#     opt-in `check_license_compat.py --scan-go-modules` transitive scan.
 #
 # golangci-lint is intentionally NOT declared as a `tool` directive in cli/go.mod:
 # it is GPL-3.0, and the `tool` directive would pull ~170 GPL-licensed transitive
@@ -56,6 +61,13 @@ _cleanup_tmpdirs() {
   for dir in "${_cleanup_dirs[@]:-}"; do
     [ -n "${dir:-}" ] && [ -d "${dir}" ] && rm -rf "${dir}"
   done
+  # Always succeed: cleanup is best-effort and runs from the EXIT trap, whose
+  # final status becomes the script's exit code. When ``_cleanup_dirs`` is
+  # empty (e.g. the ``go-licenses`` target, which registers no tmpdir), the
+  # ``"${_cleanup_dirs[@]:-}"`` guard yields one empty element whose
+  # ``[ -n "" ]`` test returns 1 -- that would otherwise fail an
+  # already-successful install and send the CI retry ladder spinning.
+  return 0
 }
 trap _cleanup_tmpdirs EXIT
 
@@ -584,6 +596,48 @@ sync_vale_packages() {
 }
 
 # ---------------------------------------------------------------------------
+# go-licenses (Go module-closure licence scanner)
+# ---------------------------------------------------------------------------
+
+# renovate: datasource=go depName=github.com/google/go-licenses
+GO_LICENSES_VERSION="v1.6.0"
+
+extract_go_licenses_version() {
+  # go-licenses has no --version flag; the installed pseudo-version is not
+  # introspectable from the binary, so presence on PATH is the only check.
+  command -v go-licenses 2>/dev/null || true
+}
+
+install_go_licenses() {
+  if ! command -v go >/dev/null 2>&1; then
+    echo "error: go is not installed or not on PATH" >&2
+    return 1
+  fi
+
+  if [ -n "$(extract_go_licenses_version)" ]; then
+    echo "go-licenses already installed ($(command -v go-licenses)), skipping"
+    return 0
+  fi
+
+  echo "Installing go-licenses ${GO_LICENSES_VERSION}..."
+  # Apache-2.0, so unlike golangci-lint it carries no GPL transitive-closure
+  # risk; still installed as an external binary (never a cli/go.mod tool
+  # directive) so it stays out of the shipped module graph entirely.
+  go install "github.com/google/go-licenses@${GO_LICENSES_VERSION}"
+
+  local gobin gopath install_dir
+  gobin=$(go env GOBIN 2>/dev/null || true)
+  gopath=$(go env GOPATH 2>/dev/null || true)
+  install_dir="${gobin:-$(printf '%s' "${gopath}" | tr ':;' '\n' | head -n1)/bin}"
+
+  if ! command -v go-licenses >/dev/null 2>&1; then
+    echo "error: go-licenses installed but not on PATH -- ensure ${install_dir} is on PATH (GOBIN='${gobin}', GOPATH='${gopath}')" >&2
+    return 1
+  fi
+  echo "go-licenses ready: $(command -v go-licenses)"
+}
+
+# ---------------------------------------------------------------------------
 # Dispatcher
 # ---------------------------------------------------------------------------
 
@@ -605,8 +659,11 @@ case "${target}" in
     install_vale
     sync_vale_packages
     ;;
+  go-licenses)
+    install_go_licenses
+    ;;
   *)
-    echo "error: unknown target '${target}' (expected: all | golangci-lint | lychee | vale)" >&2
+    echo "error: unknown target '${target}' (expected: all | golangci-lint | lychee | vale | go-licenses)" >&2
     exit 2
     ;;
 esac

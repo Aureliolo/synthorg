@@ -48,11 +48,11 @@ var (
 	// (called from root.go PersistentPreRunE) overwrites this with the
 	// operator's resolved State.MaxAPIResponseBytes when set.
 	maxAPIResponseBytes  int64 = config.DefaultMaxAPIResponseBytes
-	maxBinaryBytes       int64 = 256 * 1024 * 1024 // 256 MiB for binary archives
-	maxArchiveEntryBytes int64 = 128 * 1024 * 1024 // 128 MiB per archive entry
+	maxBinaryBytes       int64 = config.DefaultMaxBinaryBytes
+	maxArchiveEntryBytes int64 = config.DefaultMaxArchiveEntryBytes
 
-	httpTimeout = 5 * time.Minute
-	apiTimeout  = 30 * time.Second
+	httpTimeout = config.DefaultSelfUpdateHTTPTimeout
+	apiTimeout  = config.DefaultSelfUpdateAPITimeout
 )
 
 // checkRedirectHost validates that each redirect hop stays within
@@ -742,7 +742,18 @@ func httpGetWithClient(ctx context.Context, client *http.Client, rawURL string, 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("http %d from %s", resp.StatusCode, rawURL)
 	}
-	return io.ReadAll(io.LimitReader(resp.Body, maxBytes))
+	// Read one byte past the cap so a body that exactly fills maxBytes is
+	// distinguishable from one that was silently truncated at the cap; the
+	// latter otherwise surfaces only as a confusing downstream checksum
+	// mismatch.
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("response from %s exceeds %d byte cap", rawURL, maxBytes)
+	}
+	return data, nil
 }
 
 // retryAfterMessage renders the HTTP Retry-After header (RFC 9110

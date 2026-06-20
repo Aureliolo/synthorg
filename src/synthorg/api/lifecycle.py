@@ -29,6 +29,7 @@ from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.integrations.state import provider_credential_catalog_of
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_SHUTDOWN, API_APP_STARTUP
 from synthorg.persistence.protocol import PersistenceBackend
@@ -288,6 +289,7 @@ async def _maybe_start_health_prober(
             health_tracker=provider_health_tracker_of(app_state),
             config_resolver=config_resolver_of(app_state),
             discovery_policy_loader=policy_loader,
+            connection_catalog=provider_credential_catalog_of(app_state),
         )
         await prober.start()
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised

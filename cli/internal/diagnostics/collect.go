@@ -121,7 +121,7 @@ func collectHealth(ctx context.Context, r *Report, backendPort int) {
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()
-	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, config.DefaultHealthResponseLimit))
 	if readErr != nil {
 		r.Errors = append(r.Errors, fmt.Sprintf("health read: %v", readErr))
 	}

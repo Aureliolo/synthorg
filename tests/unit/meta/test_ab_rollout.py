@@ -786,6 +786,87 @@ class TestABTestRollout:
         assert rollout._control_fraction == 0.3
 
 
+# -- AbTestRecord write seam ----------------------------------------------
+
+
+class _RecordingSink:
+    """Capture A/B-test records written by the rollout."""
+
+    def __init__(self) -> None:
+        self.saved: list[object] = []
+
+    async def save(self, entity: object, /) -> None:
+        self.saved.append(entity)
+
+
+def _ab_rollout_with_sink(sink: _RecordingSink) -> ABTestRollout:
+    from tests._shared.fake_clock import FakeClock
+
+    return ABTestRollout(
+        min_agents_per_group=1,
+        min_observations_per_group=10,
+        clock=FakeClock(),
+        roster=_StaticRoster(10),
+        check_interval_hours=4.0,
+        record_sink=sink,
+    )
+
+
+class TestAbTestRecordSink:
+    """The rollout persists a running record then a terminal record."""
+
+    async def test_successful_execute_persists_running_then_terminal(self) -> None:
+        from synthorg.meta.rollout.ab_models import AbTestRecord, AbTestStatus
+
+        sink = _RecordingSink()
+        rollout = _ab_rollout_with_sink(sink)
+        await rollout.execute(
+            proposal=_proposal(),
+            applier=_StubApplier(),
+            detector=_StubDetector(),
+        )
+        records = [r for r in sink.saved if isinstance(r, AbTestRecord)]
+        assert len(records) == 2
+        assert records[0].status is AbTestStatus.RUNNING
+        # Null aggregator yields no samples, so the terminal verdict is
+        # INCONCLUSIVE; the arm breakdown reflects the 5/5 split.
+        assert records[-1].status is AbTestStatus.INCONCLUSIVE
+        assert records[-1].id == str(_FIXED_PROPOSAL_ID)
+        assert {arm.name for arm in records[-1].arms} == {"control", "treatment"}
+
+    async def test_failed_apply_persists_failed_record(self) -> None:
+        from synthorg.meta.rollout.ab_models import AbTestRecord, AbTestStatus
+
+        sink = _RecordingSink()
+        rollout = _ab_rollout_with_sink(sink)
+        await rollout.execute(
+            proposal=_proposal(),
+            applier=_FailApplier(),
+            detector=_StubDetector(),
+        )
+        records = [r for r in sink.saved if isinstance(r, AbTestRecord)]
+        assert len(records) == 1
+        assert records[0].status is AbTestStatus.FAILED
+
+    async def test_too_few_agents_persists_inconclusive_record(self) -> None:
+        from synthorg.meta.rollout.ab_models import AbTestRecord, AbTestStatus
+
+        sink = _RecordingSink()
+        rollout = ABTestRollout(
+            min_agents_per_group=100,
+            roster=_StaticRoster(10),
+            record_sink=sink,
+        )
+        await rollout.execute(
+            proposal=_proposal(),
+            applier=_StubApplier(),
+            detector=_StubDetector(),
+        )
+        records = [r for r in sink.saved if isinstance(r, AbTestRecord)]
+        assert len(records) == 1
+        assert records[0].status is AbTestStatus.INCONCLUSIVE
+
+
 # -- GroupAssignment disjoint validator ------------------------------------
 
 

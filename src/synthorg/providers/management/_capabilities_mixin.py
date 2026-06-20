@@ -15,6 +15,7 @@ from typing import Protocol
 
 from pydantic import JsonValue
 
+from synthorg.api.state import AppState
 from synthorg.config.model_staleness import ModelStaleness, StalenessReason
 from synthorg.config.provider_schema import (
     ProviderConfig,
@@ -41,6 +42,10 @@ from synthorg.providers.errors import (
 from synthorg.providers.management._capability_helpers import (
     credentials_update_fields,
     provider_actor_from_context,
+)
+from synthorg.providers.management._credential_helpers import (
+    delete_provider_credential,
+    store_provider_api_key,
 )
 from synthorg.providers.management.audit_service import ProviderAuditService
 from synthorg.providers.management.capability_dtos import (
@@ -116,6 +121,7 @@ class _ServiceProtocol(Protocol):
     _lock: asyncio.Lock
     _config_resolver: ConfigResolver
     _audit_service: ProviderAuditService | None
+    _app_state: AppState
 
     async def get_provider(self, name: str) -> ProviderConfig:
         """Load a provider by name (provided by the host service)."""
@@ -542,10 +548,36 @@ class ProviderCapabilitiesMixin:
                 )
                 raise ProviderValidationError(msg)
 
-            update_fields, masked_secret = credentials_update_fields(request)
-            updated = existing.model_copy(update=update_fields)
-            new_providers = {**providers, name: updated}
-            await self._validate_and_persist(new_providers)
+            update_fields, masked_secret, raw_api_key = credentials_update_fields(
+                request,
+            )
+            if raw_api_key is not None:
+                # API-key credentials are catalog-only: mint the rotated
+                # secret into the connection catalog and re-point
+                # connection_name instead of embedding it on the config.
+                conn_name = await store_provider_api_key(
+                    self._app_state, name, raw_api_key
+                )
+                update_fields = {**update_fields, "connection_name": conn_name}
+            try:
+                # Re-validate the merged config inside the try (model_copy
+                # skips model validators, so it would not catch a credential
+                # state the auth-type invariants forbid) -- a validation
+                # failure here must also unwind the mint above.
+                updated = ProviderConfig.model_validate(
+                    {**existing.model_dump(mode="python"), **update_fields}
+                )
+                new_providers = {**providers, name: updated}
+                await self._validate_and_persist(new_providers)
+            except Exception:
+                # The mint above overwrote the prior secret in place (the old
+                # one is unrecoverable). If config validation or the persist
+                # step fails, drop the rotated credential so the rotation fails
+                # closed -- the operator re-supplies the key and retries rather
+                # than the provider silently serving a half-applied secret.
+                if raw_api_key is not None:
+                    await delete_provider_credential(self._app_state, name)
+                raise
 
         logger.info(
             PROVIDER_CREDENTIALS_ROTATED,

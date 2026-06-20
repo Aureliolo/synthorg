@@ -10,9 +10,11 @@ than poisoning startup.
 
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.experiments.protocol import ExperimentRepository
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.persistence.ab_test_protocol import AbTestRepository
 
 logger = get_logger(__name__)
 
@@ -89,6 +91,160 @@ async def _wire_reports_service(app_state: AppState) -> None:
         )
         return
     logger.info(API_APP_STARTUP, service="reports", note="wired")
+
+
+async def _wire_experiment_service(app_state: AppState) -> None:
+    """Wire a durable-backed ``ExperimentService`` at boot.
+
+    Best-effort + idempotent. Builds the per-backend
+    :class:`ExperimentRepository` over the connected persistence layer and
+    installs ``ExperimentService`` on ``MetaStateSlice`` BEFORE any request
+    arrives, so ``experiment_service_of`` finds the pre-wired durable value
+    and never falls back to the in-memory repository. When persistence is
+    absent the hook skips and the lazy in-memory fallback stands in.
+    """
+    from synthorg.experiments.service import ExperimentService  # noqa: PLC0415
+    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
+    from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
+
+    if app_state.slice(MetaStateSlice).experiment_service is not None:
+        return
+    if app_state.slice(PersistenceStateSlice).backend is None:
+        logger.info(
+            API_APP_STARTUP,
+            service="experiment_service",
+            note="persistence absent; in-memory fallback stands in",
+        )
+        return
+    try:
+        repo = _build_experiment_repo(app_state)
+        service = ExperimentService(repository=repo, clock=app_state.clock)
+        app_state.wire(MetaStateSlice, experiment_service=service)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_APP_STARTUP,
+            service="experiment_service",
+            note="durable experiment wiring failed; in-memory fallback stands in",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return
+    logger.info(API_APP_STARTUP, service="experiment_service", note="wired (durable)")
+
+
+def _build_experiment_repo(app_state: AppState) -> ExperimentRepository:
+    """Build the per-backend durable experiment repository.
+
+    Returns:
+        The SQLite or Postgres ``ExperimentRepository`` over the connected
+        persistence layer.
+    """
+    from synthorg.persistence.backend_dispatch import build_for_backend  # noqa: PLC0415
+    from synthorg.persistence.db_handle import (  # noqa: PLC0415
+        postgres_pool,
+        sqlite_connection,
+    )
+    from synthorg.persistence.state import persistence_of  # noqa: PLC0415
+
+    persistence = persistence_of(app_state)
+
+    def _build_sqlite() -> ExperimentRepository:
+        from synthorg.persistence.sqlite.experiment_repo import (  # noqa: PLC0415
+            SQLiteExperimentRepository,
+        )
+
+        return SQLiteExperimentRepository(
+            sqlite_connection(persistence),
+            write_context=persistence.write_context,
+        )
+
+    def _build_postgres() -> ExperimentRepository:
+        from synthorg.persistence.postgres.experiment_repo import (  # noqa: PLC0415
+            PostgresExperimentRepository,
+        )
+
+        return PostgresExperimentRepository(postgres_pool(persistence))
+
+    return build_for_backend(
+        persistence, sqlite=_build_sqlite, postgres=_build_postgres
+    )
+
+
+async def _wire_ab_test_repo(app_state: AppState) -> None:
+    """Wire the durable A/B-test repository at boot.
+
+    Best-effort + idempotent. Builds the per-backend
+    :class:`AbTestRepository` over the connected persistence layer and
+    installs it on ``MetaStateSlice`` so the ``/meta/ab-tests`` endpoints
+    serve real rollout records and the ``ABTestRollout`` strategy has a
+    durable write sink. When persistence is absent the hook skips and the
+    endpoints degrade to an empty page / 404.
+    """
+    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
+    from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
+
+    if app_state.slice(MetaStateSlice).ab_test_repo is not None:
+        return
+    if app_state.slice(PersistenceStateSlice).backend is None:
+        logger.info(
+            API_APP_STARTUP,
+            service="ab_test_repo",
+            note="persistence absent; A/B-test endpoints degrade to empty",
+        )
+        return
+    try:
+        repo = _build_ab_test_repo(app_state)
+        app_state.wire(MetaStateSlice, ab_test_repo=repo)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_APP_STARTUP,
+            service="ab_test_repo",
+            note="A/B-test repo wiring failed; endpoints degrade to empty",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return
+    logger.info(API_APP_STARTUP, service="ab_test_repo", note="wired (durable)")
+
+
+def _build_ab_test_repo(app_state: AppState) -> AbTestRepository:
+    """Build the per-backend durable A/B-test repository.
+
+    Returns:
+        The SQLite or Postgres ``AbTestRepository`` over the connected
+        persistence layer.
+    """
+    from synthorg.persistence.backend_dispatch import build_for_backend  # noqa: PLC0415
+    from synthorg.persistence.db_handle import (  # noqa: PLC0415
+        postgres_pool,
+        sqlite_connection,
+    )
+    from synthorg.persistence.state import persistence_of  # noqa: PLC0415
+
+    persistence = persistence_of(app_state)
+
+    def _build_sqlite() -> AbTestRepository:
+        from synthorg.persistence.sqlite.ab_test_repo import (  # noqa: PLC0415
+            SQLiteAbTestRepository,
+        )
+
+        return SQLiteAbTestRepository(
+            sqlite_connection(persistence),
+            write_context=persistence.write_context,
+        )
+
+    def _build_postgres() -> AbTestRepository:
+        from synthorg.persistence.postgres.ab_test_repo import (  # noqa: PLC0415
+            PostgresAbTestRepository,
+        )
+
+        return PostgresAbTestRepository(postgres_pool(persistence))
+
+    return build_for_backend(
+        persistence, sqlite=_build_sqlite, postgres=_build_postgres
+    )
 
 
 async def _wire_org_inflection_monitor(

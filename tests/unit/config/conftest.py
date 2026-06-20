@@ -68,6 +68,9 @@ class ProviderModelConfigFactory(ModelFactory[ProviderModelConfig]):
 class ProviderConfigFactory(ModelFactory[ProviderConfig]):
     __model__ = ProviderConfig
     auth_type = "api_key"
+    # API-key auth resolves its credential from the catalog, so a
+    # connection_name is mandatory; pin it deterministically.
+    connection_name = "provider-factory"
     models = ()
     retry = RetryConfig()
     rate_limiter = RateLimiterConfig()
@@ -169,6 +172,7 @@ budget:
     hard_stop_at: 100
 providers:
   example-provider:
+    connection_name: provider-example
     models:
       - id: test-model-001
         alias: medium
@@ -207,6 +211,7 @@ budget:
     hard_stop_at: 100
 providers:
   example-provider:
+    connection_name: provider-example
     base_url: ${EXAMPLE_PROVIDER_BASE_URL:-https://api.example.com}
 """
 

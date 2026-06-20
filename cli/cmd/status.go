@@ -61,21 +61,34 @@ func init() {
 func runStatus(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 	opts := GetGlobalOpts(ctx)
-	state, err := config.Load(opts.DataDir)
-	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
-	}
-	if statusCheck {
-		return runStatusCheckExitCode(ctx, state)
-	}
+
+	// Validate --interval up front, BEFORE the --check dispatch: a malformed
+	// or non-positive interval is a usage error in every mode. Previously
+	// --check returned before the interval was ever parsed, so a scripted
+	// `status --check --interval bogus` silently ignored the bad value.
 	interval, parseErr := time.ParseDuration(statusInterval)
 	if parseErr != nil {
 		return fmt.Errorf("invalid --interval %q: %w", statusInterval, parseErr)
 	}
-	if statusWatch {
-		if interval <= 0 {
-			return fmt.Errorf("invalid --interval %q: must be > 0", statusInterval)
+	if interval <= 0 {
+		return fmt.Errorf("invalid --interval %q: must be > 0", statusInterval)
+	}
+
+	state, err := config.Load(opts.DataDir)
+	if statusCheck {
+		// --check is a scripted health probe that must still run when the
+		// config cannot be loaded (uninitialised host, unreadable state):
+		// fall back to the default backend port and probe anyway rather
+		// than aborting with a config error the script cannot act on.
+		if err != nil {
+			state = config.DefaultState()
 		}
+		return runStatusCheckExitCode(ctx, state)
+	}
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+	if statusWatch {
 		return runStatusWatch(cmd, state, opts, interval)
 	}
 	if err := runStatusOnce(cmd, state, opts); err != nil {
@@ -724,21 +737,63 @@ func filterByServices(out *ui.UI, containers []containerInfo, services string) [
 }
 
 func printResourceUsage(ctx context.Context, out *ui.UI, info docker.Info, dataDir string) {
-	psOut, err := docker.ComposeExecOutput(ctx, info, dataDir, "ps", "-q")
-	if err != nil || strings.TrimSpace(psOut) == "" {
+	// Resolve the compose project's container NAMES rather than passing
+	// `ps -q` IDs straight to `docker stats -- <ids>`. `docker stats` has
+	// no --ignore-errors flag, so a single ID that has exited between the
+	// listing and the stats call hard-fails the whole invocation (a TOCTOU
+	// race during restarts that blanks the entire resource section). Running
+	// `docker stats` over ALL running containers can never fail on a
+	// vanished specific target; we then filter the rendered rows to this
+	// project's names.
+	namesOut, err := docker.ComposeExecOutput(ctx, info, dataDir, "ps", "--format", "{{.Name}}")
+	if err != nil || strings.TrimSpace(namesOut) == "" {
 		return
 	}
-	ids := strings.Fields(strings.TrimSpace(psOut))
-	statsArgs := append([]string{"stats", "--no-stream", "--format",
-		"table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}", "--"}, ids...)
-	statsOut, err := docker.RunCmd(ctx, info.DockerPath, statsArgs...)
+	composeNames := make(map[string]struct{})
+	for _, name := range strings.Fields(namesOut) {
+		composeNames[name] = struct{}{}
+	}
+	statsOut, err := docker.RunCmd(ctx, info.DockerPath, "stats", "--no-stream", "--format",
+		"table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}")
 	if err != nil {
 		out.Warn(fmt.Sprintf("Could not get resource usage: %v", err))
 		return
 	}
+	filtered := filterStatsByName(statsOut, composeNames)
+	if filtered == "" {
+		return
+	}
 	w := out.Writer()
 	_, _ = fmt.Fprintln(w, "Resource usage:")
-	_, _ = fmt.Fprintln(w, statsOut)
+	_, _ = fmt.Fprintln(w, filtered)
+}
+
+// filterStatsByName keeps the header row plus the rows of `docker stats`
+// table output whose first (NAME) column is in names. Returns "" when no
+// data row matches, so the caller can omit an empty resource section. The
+// NAME column carries no internal spaces, so the first whitespace-delimited
+// token is the exact container name.
+func filterStatsByName(statsOut string, names map[string]struct{}) string {
+	lines := strings.Split(strings.TrimSuffix(statsOut, "\n"), "\n")
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
+		return ""
+	}
+	kept := []string{lines[0]} // header row
+	matched := false
+	for _, line := range lines[1:] {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		if _, ok := names[fields[0]]; ok {
+			kept = append(kept, line)
+			matched = true
+		}
+	}
+	if !matched {
+		return ""
+	}
+	return strings.Join(kept, "\n")
 }
 
 // healthResponse holds the parsed health check JSON.
@@ -762,7 +817,7 @@ func fetchHealth(ctx context.Context, port int) ([]byte, int, error) {
 		return nil, 0, fmt.Errorf("backend unreachable: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, config.DefaultHealthResponseLimit))
 	if err != nil {
 		return nil, 0, fmt.Errorf("health check read error: %w", err)
 	}

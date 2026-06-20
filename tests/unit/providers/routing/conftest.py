@@ -89,7 +89,7 @@ def two_provider_config() -> dict[str, ProviderConfig]:
     return {
         "test-provider-a": ProviderConfig(
             driver="litellm",
-            api_key="sk-test-a",
+            connection_name="provider-test-a",
             models=(
                 ProviderModelConfig(
                     id="test-shared-001",
@@ -102,7 +102,7 @@ def two_provider_config() -> dict[str, ProviderConfig]:
         ),
         "test-provider-b": ProviderConfig(
             driver="litellm",
-            api_key="sk-test-b",
+            connection_name="provider-test-b",
             models=(
                 ProviderModelConfig(
                     id="test-shared-001",
@@ -122,7 +122,7 @@ def three_model_provider() -> dict[str, ProviderConfig]:
     return {
         "test-provider": ProviderConfig(
             driver="litellm",
-            api_key="sk-test",
+            connection_name="provider-test",
             models=(SMALL_MODEL, MEDIUM_MODEL, LARGE_MODEL),
         ),
     }

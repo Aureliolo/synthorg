@@ -54,6 +54,13 @@ class IntegrationsStateSlice(BaseFeatureStateSlice):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     connection_catalog: ConnectionCatalog | None = None
+    # Always-on credential catalog: the same ConnectionCatalog instance is
+    # published here whenever persistence is connected, INDEPENDENT of
+    # ``integrations.enabled``. LLM provider authentication resolves
+    # credentials through this so it never regresses on a minimal install
+    # with the integrations feature off. ``connection_catalog`` above stays
+    # gated on ``integrations.enabled`` for the integrations controllers.
+    provider_credential_catalog: ConnectionCatalog | None = None
     connection_service: ConnectionService | None = None
     oauth_token_manager: OAuthTokenManager | None = None
     oauth_state_service: OAuthStateService | None = None
@@ -79,6 +86,23 @@ def connection_catalog_of(app_state: AppStateSliceMixin) -> ConnectionCatalog:
         app_state.slice(IntegrationsStateSlice).connection_catalog,
         "Connection Catalog",
     )
+
+
+def provider_credential_catalog_of(
+    app_state: AppStateSliceMixin,
+) -> ConnectionCatalog | None:
+    """Resolve the always-on credential catalog for provider auth.
+
+    Unlike :func:`connection_catalog_of` this does NOT raise when absent:
+    LLM provider credential resolution treats a missing catalog as "no
+    catalog-backed credentials available" and degrades to its own handling
+    (the empty-company / no-persistence path has no provider to authenticate
+    anyway). Returns ``None`` when persistence is not connected.
+
+    Returns:
+        The wired credential catalog, or ``None``.
+    """
+    return app_state.slice(IntegrationsStateSlice).provider_credential_catalog
 
 
 def connection_service_of(app_state: AppStateSliceMixin) -> ConnectionService:

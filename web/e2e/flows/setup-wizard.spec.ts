@@ -151,3 +151,111 @@ test.describe('Setup wizard company submit', () => {
     await expect(page.getByText(/Ada \(engineering\)/).first()).toBeVisible()
   })
 })
+
+/**
+ * Seed the wizard's persisted store on the FINAL ``complete`` step with
+ * every prerequisite quick-mode step done and a non-null
+ * ``companyResponse`` (without which ``CompleteStep`` renders the
+ * skip-wizard fallback instead of the review + complete UI).
+ */
+async function seedWizardOnCompleteStep(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      'synthorg-setup-wizard-v1',
+      JSON.stringify({
+        version: 3,
+        state: {
+          currentStep: 'complete',
+          wizardMode: 'quick',
+          stepsCompleted: {
+            account: false,
+            mode: true,
+            template: false,
+            company: true,
+            providers: true,
+            agents: false,
+            theme: false,
+            complete: false,
+          },
+          companyResponse: {
+            company_name: 'E2E Test Co',
+            description: null,
+            template_applied: null,
+            department_count: 1,
+            agent_count: 1,
+            agents: [{ name: 'Ada', department: 'engineering', tier: 'medium' }],
+          },
+        },
+      }),
+    )
+  })
+}
+
+test.describe('Setup wizard complete step', () => {
+  test.beforeEach(async ({ page }) => {
+    await freezeTime(page)
+    await installWebSocketHarness(page)
+    await seedWizardOnCompleteStep(page)
+    await mockApiRoutes(page)
+    await page.route('**/api/v1/auth/me', (route) =>
+      route.fulfill({ status: 401, json: { success: false, data: null, error: 'Not authenticated', error_detail: null } }),
+    )
+  })
+
+  test('completes setup and fires the POST /setup/complete round-trip', async ({ page }) => {
+    await page.route('**/api/v1/setup/complete', (route) => {
+      if (route.request().method() !== 'POST') {
+        route.fallback()
+        return
+      }
+      route.fulfill({
+        json: ok({
+          setup_complete: true,
+          embedder_selected: true,
+          embedder_failure_reason: null,
+        }),
+      })
+    })
+
+    await page.goto('/setup/complete')
+    await expect(page).toHaveURL(/\/setup\/complete/)
+
+    // "Complete Setup" opens the launch confirmation; "Launch" fires the
+    // POST. Asserting the round-trip lands (not just the click) proves the
+    // completion store action reached the endpoint.
+    await clickButton(page, /complete setup/i)
+    const [completed] = await Promise.all([
+      page.waitForResponse(
+        (res) =>
+          res.url().includes('/api/v1/setup/complete') &&
+          res.request().method() === 'POST',
+      ),
+      clickButton(page, /^launch$/i),
+    ])
+    expect(completed.request().method()).toBe('POST')
+    // On success the wizard navigates away from the complete step.
+    await expect(page).not.toHaveURL(/\/setup\/complete/)
+  })
+
+  test('renders an error banner when POST /setup/complete fails', async ({ page }) => {
+    await page.route('**/api/v1/setup/complete', (route) => {
+      if (route.request().method() !== 'POST') {
+        route.fallback()
+        return
+      }
+      route.fulfill({
+        status: 500,
+        json: { success: false, data: null, error: 'Internal error', error_detail: null },
+      })
+    })
+
+    await page.goto('/setup/complete')
+    await clickButton(page, /complete setup/i)
+    await clickButton(page, /^launch$/i)
+
+    // The completion store sets ``completionError``; CompleteStep renders
+    // an error banner and keeps the operator on the step to retry.
+    await expect(page.getByText(/could not complete setup/i)).toBeVisible()
+    await expect(page).toHaveURL(/\/setup\/complete/)
+  })
+})

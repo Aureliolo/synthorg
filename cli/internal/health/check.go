@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/Aureliolo/synthorg/cli/internal/config"
 )
 
 // healthResponse mirrors the backend API response envelope.
@@ -145,7 +147,7 @@ func checkOnce(ctx context.Context, url string) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, config.DefaultHealthResponseLimit))
 	if err != nil {
 		return err
 	}

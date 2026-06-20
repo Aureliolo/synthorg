@@ -289,6 +289,7 @@ export const CONNECTION_TYPE_VALUES = [
     'generic_http',
     'oauth_app',
     'a2a_peer',
+    'llm_provider',
 ] as const
 export type ConnectionType = (typeof CONNECTION_TYPE_VALUES)[number]
 

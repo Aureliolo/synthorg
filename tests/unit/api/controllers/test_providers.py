@@ -75,7 +75,7 @@ class TestProviderResponseSecurity:
 
         provider = ProviderConfig(
             driver="test-driver",
-            api_key="test-placeholder",
+            connection_name="provider-test",
         )
         response = to_provider_response(provider, name=None)
         assert response.has_api_key is True
@@ -109,7 +109,6 @@ class TestProviderResponseSecurity:
         provider = ProviderConfig(
             driver="test-driver",
             auth_type=AuthType.OAUTH,
-            api_key="secret-key",
             oauth_token_url="https://auth.example.com/token",
             oauth_client_id="client-id",
             oauth_client_secret="secret-value",
@@ -117,7 +116,6 @@ class TestProviderResponseSecurity:
         response = to_provider_response(provider, name=None)
         dumped = response.model_dump()
         all_values = json.dumps(dumped)
-        assert "secret-key" not in all_values
         assert "secret-value" not in all_values
         # oauth_client_id is intentionally non-secret (included for frontend UX)
         assert "client-id" in all_values
@@ -282,7 +280,9 @@ class TestListModelsBatchCapabilities:
             ProviderModelConfig(id="m2"),
             ProviderModelConfig(id="m3"),
         )
-        provider = ProviderConfig(driver="test-driver", models=models)
+        provider = ProviderConfig(
+            connection_name="conn-test", driver="test-driver", models=models
+        )
         caps_lookup = {
             "m1": ModelCapabilities(
                 model_id="m1",
@@ -339,6 +339,7 @@ class TestListModelsBatchCapabilities:
         from synthorg.config.schema import ProviderConfig
 
         provider = ProviderConfig(
+            connection_name="conn-test",
             driver="test-driver",
             models=(ProviderModelConfig(id="only"),),
         )

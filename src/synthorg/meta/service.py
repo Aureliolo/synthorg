@@ -42,6 +42,7 @@ from synthorg.meta.models import (
     RuleMatch,
 )
 from synthorg.meta.protocol import ImprovementStrategy
+from synthorg.meta.rollout.ab_record import AbTestRecordSink
 from synthorg.meta.rollout.before_after import RolloutSnapshotBuilder
 from synthorg.meta.rollout.group_aggregator import GroupSignalAggregator
 from synthorg.meta.rollout.roster import OrgRoster
@@ -124,6 +125,10 @@ class SelfImprovementService(
             resolver short-circuits to the YAML-baked
             ``config.enabled`` fallback so the standalone constructor
             still works.
+        ab_test_record_sink: Durable sink for A/B-test rollout records,
+            threaded into the ``ABTestRollout`` strategy so completed
+            rollouts surface through the ``/meta/ab-tests`` endpoints.
+            ``None`` leaves A/B rollouts in-memory only.
     """
 
     def __init__(  # noqa: PLR0913
@@ -142,6 +147,7 @@ class SelfImprovementService(
         group_aggregator: GroupSignalAggregator | None = None,
         approval_store: ApprovalStoreProtocol | None = None,
         config_resolver: ConfigResolver | None = None,
+        ab_test_record_sink: AbTestRecordSink | None = None,
     ) -> None:
         if config.enabled and approval_store is None:
             # Fail-fast so callers notice at construction time rather
@@ -182,6 +188,7 @@ class SelfImprovementService(
             roster=roster,
             snapshot_builder=snapshot_builder,
             group_aggregator=group_aggregator,
+            ab_test_record_sink=ab_test_record_sink,
         )
 
         # Cross-deployment analytics emitter.
@@ -277,7 +284,16 @@ class SelfImprovementService(
                 results,
                 strict=True,
             ):
+                if isinstance(adj_result, asyncio.CancelledError):
+                    # gather(return_exceptions=True) captures CancelledError
+                    # as a result; swallowing it would let a cancelled cycle
+                    # keep running during shutdown. Propagate it.
+                    raise adj_result
                 if isinstance(adj_result, BaseException):
+                    # MemoryError / RecursionError are BaseException subclasses
+                    # that must propagate rather than degrade to a warning, or a
+                    # corrupted interpreter keeps running.
+                    reraise_critical(adj_result)
                     logger.warning(
                         COS_CONFIDENCE_ADJUSTMENT_FAILED,
                         proposal_id=str(original.id),

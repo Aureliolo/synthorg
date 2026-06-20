@@ -41,3 +41,32 @@ class TestMemoryConsolidationPromptContract:
             "abstractive consolidation must bind temperature to an "
             "explicit numeric literal so drift is detectable"
         )
+
+
+@pytest.mark.unit
+class TestLLMSynthesisConfigBinding:
+    """``LLMSynthesisOp`` must thread its config sampling into the call."""
+
+    def test_completion_config_binds_temperature_and_top_p(self) -> None:
+        """The synthesis op's CompletionConfig reflects config sampling.
+
+        Proves the config fields actually drive the call-time sampling
+        rather than being silently dropped: a custom ``temperature`` /
+        ``top_p`` on ``LLMConsolidationConfig`` must surface on the
+        built ``CompletionConfig``.
+        """
+        from synthorg.memory.consolidation.config import LLMConsolidationConfig
+        from synthorg.memory.consolidation.llm_op import LLMSynthesisOp
+        from synthorg.memory.consolidation.provider_port import CompletionPort
+        from synthorg.memory.protocol import MemoryBackend
+        from tests._shared import mock_of
+
+        cfg = LLMConsolidationConfig(temperature=0.7, top_p=0.5)
+        op = LLMSynthesisOp(
+            backend=mock_of[MemoryBackend](),
+            provider=mock_of[CompletionPort](),
+            model="test-small-001",
+            config=cfg,
+        )
+        assert op._completion_config.temperature == 0.7
+        assert op._completion_config.top_p == 0.5

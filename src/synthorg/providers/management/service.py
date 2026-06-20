@@ -35,6 +35,7 @@ from synthorg.config.schema import (
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.integrations.state import provider_credential_catalog_of
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -55,6 +56,7 @@ from synthorg.observability.events.security import (
     SECURITY_PROVIDER_DELETED,
     SECURITY_PROVIDER_UPDATED,
 )
+from synthorg.providers._auth_type_descriptor import AUTH_TYPE_DESCRIPTORS
 from synthorg.providers.discovery import discover_models
 from synthorg.providers.discovery_policy import (
     ProviderDiscoveryPolicy,
@@ -70,6 +72,13 @@ from synthorg.providers.errors import (
 )
 from synthorg.providers.management._capabilities_mixin import (
     ProviderCapabilitiesMixin,
+)
+from synthorg.providers.management._credential_helpers import (
+    apply_update_with_credential,
+    delete_provider_credential,
+    resolve_provider_api_key,
+    rollback_credential,
+    store_provider_api_key,
 )
 from synthorg.providers.management._helpers import (
     apply_update,
@@ -122,7 +131,6 @@ logger = get_logger(__name__)
 # is not whitelisted here.
 _SENSITIVE_PROVIDER_FIELDS: frozenset[str] = frozenset(
     {
-        "api_key",
         "subscription_token",
         "oauth_client_secret",
         "custom_header_value",
@@ -342,10 +350,47 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 )
                 raise ProviderAlreadyExistsError(msg)
 
-            new_config = build_provider_config(request)
-            new_providers = {**providers, request.name: new_config}
-            await self._validate_and_persist(new_providers)
-            await self._allowlist.update_for_create(new_config)
+            # Catalog-only credentials: an api_key supplied at the boundary is
+            # minted into a ConnectionCatalog connection FIRST, then threaded
+            # into the config as connection_name -- API_KEY auth mandates it,
+            # so the config could not validate with the secret embedded or
+            # absent. The secret is never persisted on the ProviderConfig.
+            mints_api_key = AUTH_TYPE_DESCRIPTORS[request.auth_type].supports_api_key
+            conn_name: str | None = None
+            if mints_api_key and request.api_key is not None:
+                conn_name = await store_provider_api_key(
+                    self._app_state,
+                    request.name,
+                    request.api_key.get_secret_value(),
+                )
+            try:
+                # Config construction stays inside the try: a validation
+                # failure here must also unwind the catalog mint above,
+                # else the secret is left orphaned with no owning provider.
+                new_config = build_provider_config(request, connection_name=conn_name)
+                new_providers = {**providers, request.name: new_config}
+                await self._validate_and_persist(new_providers)
+            except Exception:
+                # Pre-persist failure (build / validate / persist): nothing is
+                # durably stored, so drop the minted secret to avoid an
+                # orphaned connection with no owning provider.
+                if conn_name is not None:
+                    await delete_provider_credential(self._app_state, request.name)
+                raise
+            try:
+                await self._allowlist.update_for_create(new_config)
+            except Exception:
+                # Post-persist failure: the config (referencing conn_name) is
+                # already stored, so roll it back to the pre-create snapshot
+                # BEFORE dropping the secret -- otherwise the persisted config
+                # would point at a deleted credential. Only drop the secret if
+                # the restore actually succeeded; a swallowed restore failure
+                # leaves the config persisted, so deleting the credential it
+                # references would orphan it.
+                restored = await self._restore_providers(providers)
+                if restored and conn_name is not None:
+                    await delete_provider_credential(self._app_state, request.name)
+                raise
 
             logger.info(
                 SECURITY_PROVIDER_CREATED,
@@ -387,14 +432,54 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 logger.warning(PROVIDER_NOT_FOUND, provider=name, error=msg)
                 raise ProviderNotFoundError(msg)
 
-            updated = apply_update(existing, request)
-            new_providers = {**providers, name: updated}
-            await self._validate_and_persist(new_providers)
-            await self._allowlist.update_for_update(
-                existing,
-                updated,
-                new_providers,
+            # ``apply_update_with_credential`` mutates the catalog in both
+            # directions: it mints/replaces the secret when an api_key is
+            # supplied, and DELETES the backing connection when the update
+            # clears the key or switches to an auth type that has none.
+            # Snapshot the prior secret before any of those so a failed
+            # persist / allowlist step restores it (see rollback_credential).
+            final_auth_type = (
+                request.auth_type
+                if request.auth_type is not None
+                else existing.auth_type
             )
+            supports_api_key = AUTH_TYPE_DESCRIPTORS[final_auth_type].supports_api_key
+            credential_mutated = (
+                supports_api_key
+                and (request.api_key is not None or request.clear_api_key)
+            ) or (not supports_api_key and existing.connection_name is not None)
+            prior_api_key: str | None = (
+                await resolve_provider_api_key(self._app_state, existing)
+                if credential_mutated
+                else None
+            )
+            try:
+                updated = await apply_update_with_credential(
+                    self._app_state, name, existing, request
+                )
+                new_providers = {**providers, name: updated}
+                await self._validate_and_persist(new_providers)
+            except Exception:
+                await rollback_credential(
+                    self._app_state, name, prior_api_key, mutated=credential_mutated
+                )
+                raise
+            try:
+                await self._allowlist.update_for_update(
+                    existing,
+                    updated,
+                    new_providers,
+                )
+            except Exception:
+                # Roll the config back first; only mutate the credential if the
+                # restore succeeded, else the still-persisted updated config
+                # would be left referencing a rolled-back credential.
+                restored = await self._restore_providers(providers)
+                if restored:
+                    await rollback_credential(
+                        self._app_state, name, prior_api_key, mutated=credential_mutated
+                    )
+                raise
 
             logger.info(
                 SECURITY_PROVIDER_UPDATED,
@@ -431,6 +516,9 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             removed_config = providers[name]
             new_providers = {k: v for k, v in providers.items() if k != name}
             await self._validate_and_persist(new_providers)
+            # Remove the catalog connection minted for this provider's
+            # credential so a deleted provider leaves no orphaned secret.
+            await delete_provider_credential(self._app_state, name)
             await self._allowlist.update_for_delete(
                 removed_config,
                 new_providers,
@@ -577,6 +665,10 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         )
 
         driver = LiteLLMDriver(name, config)
+        # Bind the always-on credential catalog so a connection_name-backed
+        # provider resolves its credentials during the probe, exactly as it
+        # will at runtime. Embedded fields still work when no catalog is wired.
+        driver.bind_credential_catalog(provider_credential_catalog_of(self._app_state))
         messages = [ChatMessage(role=MessageRole.USER, content="ping")]
         start = self._clock.monotonic()
         # Probes hit a real provider and are billed; route through the
@@ -750,7 +842,8 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             return ()
 
         resolved_hint = preset_hint or infer_preset_hint(config.base_url)
-        headers = build_discovery_headers(config)
+        api_key = await resolve_provider_api_key(self._app_state, config)
+        headers = build_discovery_headers(config, api_key)
         policy = await self._allowlist.load()
         trust = is_url_allowed(config.base_url, policy)
         return await discover_models(
@@ -897,6 +990,40 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 driver=updated.driver,
                 auth_type=updated.auth_type,
             )
+        return True
+
+    async def _restore_providers(
+        self,
+        snapshot: Mapping[str, ProviderConfig],
+    ) -> bool:
+        """Best-effort rollback to a pre-mutation provider snapshot.
+
+        Re-persists ``snapshot`` so a post-persist step that fails (e.g. an
+        allowlist update) leaves no half-applied config behind. ``snapshot``
+        was a valid persisted state moments earlier, so this should succeed; a
+        rollback failure is logged, never raised, so it cannot mask the
+        original error that triggered the rollback.
+
+        Args:
+            snapshot: The provider mapping to restore.
+
+        Returns:
+            ``True`` if the snapshot was re-persisted; ``False`` if the
+            restore itself failed (so callers must NOT then mutate the
+            credential, which the now-still-persisted config still
+            references).
+        """
+        try:
+            await self._validate_and_persist(dict(snapshot))
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised below
+            reraise_critical(exc)
+            logger.warning(
+                PROVIDER_VALIDATION_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                provider_count=len(snapshot),
+            )
+            return False
         return True
 
     async def _validate_and_persist(

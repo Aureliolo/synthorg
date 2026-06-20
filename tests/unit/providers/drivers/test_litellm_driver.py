@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.completion_enums import FinishReason
+from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.providers.drivers.litellm_driver import LiteLLMDriver
 from synthorg.providers.enums import (
     MessageRole,
@@ -148,7 +149,15 @@ class TestDoComplete:
             await driver.complete(_user_message(), "nonexistent")
 
     async def test_api_key_passed_to_litellm(self) -> None:
-        driver = _make_driver()
+        # Catalog-only credentials: the key is resolved from the bound
+        # catalog via connection_name, then forwarded to litellm.
+        catalog = AsyncMock(spec=ConnectionCatalog)
+        catalog.get_credentials.return_value = {"api_key": "sk-test-key"}
+        driver = LiteLLMDriver(
+            "example-provider",
+            make_provider_config(),
+            connection_catalog=catalog,
+        )
         mock_resp = make_mock_response()
 
         with patch(_PATCH_ACOMPLETION, new_callable=AsyncMock) as m:

@@ -1196,8 +1196,8 @@ CREATE TABLE connections (
     name TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(name) > 0),
     connection_type TEXT NOT NULL CHECK (
         connection_type IN (
-            'github', 'slack', 'smtp', 'database',
-            'generic_http', 'oauth_app', 'a2a_peer'
+            'github', 'gitlab', 'gitea', 'forgejo', 'slack', 'smtp',
+            'database', 'generic_http', 'oauth_app', 'a2a_peer', 'llm_provider'
         )
     ),
     auth_method TEXT NOT NULL CHECK (
@@ -2224,3 +2224,49 @@ CREATE TABLE upgrade_recommendations (
 );
 CREATE INDEX idx_ur_status
 ON upgrade_recommendations (status, created_at DESC, id DESC);
+
+CREATE TABLE experiment_variants (
+    experiment TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(experiment)) > 0),
+    variant TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(variant)) > 0),
+    weight INTEGER NOT NULL CHECK (weight >= 1 AND weight <= 1000),
+    description TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (experiment, variant)
+);
+CREATE INDEX idx_experiment_variants_exp_created
+ON experiment_variants (experiment, created_at);
+
+CREATE TABLE experiment_assignments (
+    experiment TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(experiment)) > 0),
+    subject_id TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(subject_id)) > 0),
+    variant TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(variant)) > 0),
+    assigned_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (experiment, subject_id),
+    FOREIGN KEY (experiment, variant)
+    REFERENCES experiment_variants (experiment, variant)
+);
+CREATE INDEX idx_experiment_assignments_exp_assigned
+ON experiment_assignments (experiment, assigned_at DESC);
+
+CREATE TABLE ab_tests (
+    id TEXT NOT NULL PRIMARY KEY CHECK (CHAR_LENGTH(TRIM(id)) > 0),
+    name TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(name)) > 0),
+    status TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(status)) > 0),
+    variants JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX idx_ab_tests_created ON ab_tests (created_at DESC);
+
+CREATE TABLE pruning_requests (
+    agent_id TEXT NOT NULL PRIMARY KEY CHECK (CHAR_LENGTH(TRIM(agent_id)) > 0),
+    id TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(id)) > 0),
+    agent_name TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(agent_name)) > 0),
+    evaluation JSONB NOT NULL,
+    approval_id TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(approval_id)) > 0),
+    status TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(status)) > 0),
+    created_at TIMESTAMPTZ NOT NULL,
+    decided_at TIMESTAMPTZ,
+    decided_by TEXT
+);
+CREATE INDEX idx_pruning_requests_created ON pruning_requests (created_at);

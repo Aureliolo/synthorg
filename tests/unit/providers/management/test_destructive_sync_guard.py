@@ -29,7 +29,7 @@ def _config_with_models(count: int) -> ProviderConfig:
     return ProviderConfig(
         driver="litellm",
         auth_type=AuthType.API_KEY,
-        api_key="test-key",
+        connection_name="provider-sync-guard",
         base_url="http://example/api",
         models=tuple(
             # Alias must be unique across the model tuple; cycle

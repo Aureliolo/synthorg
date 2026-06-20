@@ -118,7 +118,7 @@ Run 'synthorg start' afterwards to bring the stack back up.`,
 func init() {
 	// backup create flags
 	backupCreateCmd.Flags().StringVarP(&backupCreateOutput, "output", "o", "", "save backup archive to local path")
-	backupCreateCmd.Flags().StringVar(&backupCreateTimeout, "timeout", "60s", "API request timeout")
+	backupCreateCmd.Flags().StringVar(&backupCreateTimeout, "timeout", config.DefaultBackupCreateTimeout.String(), "API request timeout")
 
 	// backup list flags
 	backupListCmd.Flags().IntVarP(&backupListLimit, "limit", "n", 0, "show N most recent backups (0=all)")
@@ -140,7 +140,7 @@ func init() {
 	}
 	backupRestoreCmd.Flags().BoolVar(&backupRestoreDryRun, "dry-run", false, "preview what would be restored without executing")
 	backupRestoreCmd.Flags().BoolVar(&backupRestoreNoRestart, "no-restart", false, "restore without stopping containers")
-	backupRestoreCmd.Flags().StringVar(&backupRestoreTimeout, "timeout", "30s", "API request timeout")
+	backupRestoreCmd.Flags().StringVar(&backupRestoreTimeout, "timeout", config.DefaultBackupRestoreTimeout.String(), "API request timeout")
 
 	backupCmd.AddCommand(backupCreateCmd)
 	backupCmd.AddCommand(backupListCmd)
@@ -255,21 +255,35 @@ var backupClient = &http.Client{}
 // minJWTSecretLen is the minimum acceptable length for the JWT signing secret.
 const minJWTSecretLen = 32
 
+// backupJWTExpiration is the lifetime of the short-lived CLI->backend admin
+// token minted by buildLocalJWT. Kept tight: the token only needs to survive
+// one backup/restore round-trip, so a short window bounds the blast radius if
+// it ever leaks from a process listing or proxy log.
+const backupJWTExpiration = 60 * time.Second
+
+// maxBackupResponseBytes caps how many bytes are read from a backup API
+// response. Defaults to the shared API-response default and is overwritten by
+// applyTunables (root.go PersistentPreRunE) with the operator's resolved
+// Tunables.MaxAPIResponseBytes, so the backup read cap tracks the same
+// env > state > default precedence as every other byte limit.
+var maxBackupResponseBytes = config.DefaultMaxAPIResponseBytes
+
 // buildLocalJWT generates a short-lived JWT signed with the shared secret so
 // the CLI can authenticate against the backend's admin endpoints. The token
-// uses HMAC-SHA256 (HS256) and expires after 60 seconds.
+// uses HMAC-SHA256 (HS256) and expires after backupJWTExpiration.
 func buildLocalJWT(secret string) (string, error) {
 	if len(secret) < minJWTSecretLen {
 		return "", fmt.Errorf("jwt_secret is too short (%d chars); minimum is %d", len(secret), minJWTSecretLen)
 	}
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
 	now := time.Now().Unix()
+	exp := now + int64(backupJWTExpiration.Seconds())
 	payload := base64.RawURLEncoding.EncodeToString(
-		fmt.Appendf(nil, `{"sub":"system","iss":"synthorg-cli","aud":"synthorg-backend","iat":%d,"exp":%d}`, now, now+60),
+		fmt.Appendf(nil, `{"sub":"system","iss":"synthorg-cli","aud":"synthorg-backend","iat":%d,"exp":%d}`, now, exp),
 	)
 	signingInput := header + "." + payload
 	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(signingInput))
+	_, _ = mac.Write([]byte(signingInput)) // hash.Hash.Write never returns an error
 	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 	return signingInput + "." + sig, nil
 }
@@ -297,9 +311,15 @@ func backupAPIRequest(ctx context.Context, port int, method, path string, body [
 		return nil, 0, fmt.Errorf("backend unreachable: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1 MB limit
+	// Read one byte past the cap so an over-size body is detected explicitly
+	// rather than silently truncated and failing later as a misleading parse
+	// error. Matches the pattern in selfupdate/updater.go and verify/*.
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxBackupResponseBytes+1))
 	if err != nil {
 		return nil, 0, fmt.Errorf("reading response: %w", err)
+	}
+	if int64(len(respBody)) > maxBackupResponseBytes {
+		return nil, 0, fmt.Errorf("response exceeds maximum size of %d bytes", maxBackupResponseBytes)
 	}
 	return respBody, resp.StatusCode, nil
 }
@@ -514,7 +534,7 @@ func runBackupList(cmd *cobra.Command, _ []string) error {
 
 // fetchBackupList calls the admin/backups API and decodes the envelope.
 func fetchBackupList(ctx context.Context, state config.State, errOut *ui.UI) ([]backupInfo, error) {
-	body, statusCode, err := backupAPIRequest(ctx, state.BackendPort, http.MethodGet, "", nil, 10*time.Second, state.JWTSecret)
+	body, statusCode, err := backupAPIRequest(ctx, state.BackendPort, http.MethodGet, "", nil, config.DefaultBackupListTimeout, state.JWTSecret)
 	if err != nil {
 		return nil, fmt.Errorf("listing backups: %w", err)
 	}
@@ -712,6 +732,22 @@ func handleRestartAfterRestore(ctx context.Context, cmd *cobra.Command, out, err
 		errOut.Warn(fmt.Sprintf("Could not detect Docker: %v", err))
 		errOut.HintNextStep("Run 'synthorg stop' then 'synthorg start' manually")
 		return fmt.Errorf("restore succeeded but post-restore restart failed: %w", err)
+	}
+
+	// Only stop containers that are actually running. When the stack is
+	// already down (a restore onto a stopped install), `compose down` is a
+	// pointless churn with a misleading "Stopping containers..." step; skip
+	// straight to the start hint so the operator sees an honest next action.
+	psOut, psErr := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "-q", "--filter", "status=running")
+	switch {
+	case psErr != nil:
+		// ps query failed: container state is unknown. `compose down` is
+		// idempotent on an already-stopped stack, so proceed, but surface why
+		// the skip check was bypassed rather than swallowing the error.
+		errOut.Warn(fmt.Sprintf("Could not check container state: %v; attempting stop anyway", psErr))
+	case strings.TrimSpace(psOut) == "":
+		out.HintNextStep("Run 'synthorg start' to bring the stack back up")
+		return nil
 	}
 
 	out.Step("Stopping containers for restart...")

@@ -9,9 +9,7 @@ Validates the bootstrap-to-API wiring path:
 6. Use LoopAsyncClient to create a task and trigger coordination
 """
 
-from collections.abc import AsyncIterator
 from datetime import date
-from uuid import uuid4
 
 import pytest
 
@@ -20,7 +18,6 @@ from synthorg.budget.tracker import CostTracker
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.auth.config import AuthConfig
-from synthorg.core.completion_enums import FinishReason
 from synthorg.core.role import Authority, Skill
 from synthorg.core.task_enums import CoordinationTopology
 from synthorg.engine.task_engine import TaskEngine
@@ -28,14 +25,6 @@ from synthorg.engine.task_engine_config import TaskEngineConfig
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
-from synthorg.providers.models import (
-    ChatMessage,
-    CompletionConfig,
-    CompletionResponse,
-    StreamChunk,
-    TokenUsage,
-    ToolDefinition,
-)
 from tests._shared import LoopAsyncClient, as_uuid
 from tests._shared import build_test_app as create_app
 from tests.unit.api.conftest import (
@@ -54,49 +43,6 @@ from tests.unit.engine.task_engine_helpers import (
 pytestmark = pytest.mark.integration
 _TEST_JWT_SECRET = "test-secret-that-is-at-least-32-characters-long"
 
-# ── Mock Provider ──────────────────────────────────────────────────
-
-
-class _DeterministicProvider:
-    """Mock provider that returns a fixed completion."""
-
-    async def complete(
-        self,
-        messages: list[ChatMessage],
-        model: str,
-        *,
-        tools: list[ToolDefinition] | None = None,
-        config: CompletionConfig | None = None,
-    ) -> CompletionResponse:
-        return CompletionResponse(
-            content="Task completed successfully.",
-            finish_reason=FinishReason.STOP,
-            usage=TokenUsage(
-                input_tokens=10,
-                output_tokens=5,
-                cost=0.001,
-            ),
-            model=model,
-        )
-
-    async def stream(
-        self,
-        messages: list[ChatMessage],
-        model: str,
-        *,
-        tools: list[ToolDefinition] | None = None,
-        config: CompletionConfig | None = None,
-    ) -> AsyncIterator[StreamChunk]:
-        msg = "stream not supported"
-        raise NotImplementedError(msg)
-
-    async def get_model_capabilities(
-        self,
-        model: str,
-    ) -> None:
-        return None
-
-
 # ── Helpers ────────────────────────────────────────────────────────
 
 
@@ -106,7 +52,7 @@ def _make_test_agent(
     skills: tuple[str, ...] = ("python", "testing"),
 ) -> AgentIdentity:
     return AgentIdentity(
-        id=uuid4(),
+        id=as_uuid(name),
         name=name,
         role="developer",
         department="engineering",
@@ -134,7 +80,6 @@ def _seed_test_users(
 # ── Tests ──────────────────────────────────────────────────────────
 
 
-@pytest.mark.integration
 class TestBuildCoordinatorFactory:
     """Verify build_coordinator() wires real services from config."""
 
@@ -208,7 +153,6 @@ class TestBuildCoordinatorFactory:
             await coordinator._decomposition_service.decompose_task(task, context)
 
 
-@pytest.mark.integration
 class TestCoordinationWiring:
     """Full bootstrap → API → coordination integration test."""
 
@@ -297,7 +241,11 @@ class TestCoordinationWiring:
             agent_registry=registry,
             settings_service=settings_service,
             provider_registry=ProviderRegistry.from_config(
-                {"test-provider": ProviderConfig(driver="scripted")},
+                {
+                    "test-provider": ProviderConfig(
+                        driver="scripted", connection_name="conn-scripted"
+                    )
+                },
             ),
         )
 

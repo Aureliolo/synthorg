@@ -35,6 +35,7 @@ from synthorg.providers.errors import (
     ProviderAlreadyExistsError,
     ProviderValidationError,
 )
+from synthorg.providers.management._credential_helpers import resolve_provider_api_key
 from synthorg.providers.management.audit_service import ProviderAuditService
 from synthorg.providers.management.preset_override_service import (
     PresetOverrideService,
@@ -42,6 +43,7 @@ from synthorg.providers.management.preset_override_service import (
 from synthorg.providers.management.service import ProviderManagementService
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
+from tests._shared import make_in_memory_catalog
 
 pytestmark = pytest.mark.unit
 
@@ -131,7 +133,9 @@ def _make_provider_config(
 ) -> ProviderConfig:
     extras: dict[str, object] = {}
     if auth_type == AuthType.API_KEY:
-        extras["api_key"] = "initial-secret-x"
+        # Catalog-only credentials: the secret lives in the connection
+        # catalog (pre-minted by the service fixture), referenced here.
+        extras["connection_name"] = f"provider-{name}"
     elif auth_type == AuthType.SUBSCRIPTION:
         extras["subscription_token"] = "initial-token-x"
         extras["tos_accepted_at"] = datetime.now(UTC).isoformat()
@@ -178,6 +182,9 @@ def service(audit_service: ProviderAuditService) -> ProviderManagementService:
     app_state = MagicMock(spec=AppState)
     app_state.swap_provider_registry = MagicMock()
     app_state.swap_model_router = MagicMock()
+    # Functional in-memory credential catalog so the catalog-only
+    # rotation path (mint secret, re-point connection_name) round-trips.
+    app_state.slice.return_value.provider_credential_catalog = make_in_memory_catalog()
     config = MagicMock(spec=RootConfig)
     config.providers = {}
 
@@ -332,11 +339,21 @@ class TestCredentialsRotation:
             "cloud-test",
             request,
         )
-        assert result.api_key == "rotated-secret-y"
+        # Catalog-only credentials: the rotated secret resolves from the
+        # connection catalog via the config's connection_name, never an
+        # embedded field.
+        assert result.connection_name == "provider-cloud-test"
+        assert (
+            await resolve_provider_api_key(service._app_state, result)
+            == "rotated-secret-y"
+        )
         # Round-trip the config to confirm rotation persisted: the
         # in-memory provider state reflects the new key, not the old.
         persisted = await service.get_provider("cloud-test")
-        assert persisted.api_key == "rotated-secret-y"
+        assert (
+            await resolve_provider_api_key(service._app_state, persisted)
+            == "rotated-secret-y"
+        )
         # Audit row carries the masked secret only.
         assert len(audit_repo.records) == 1
         masked = audit_repo.records[0].payload["masked_secret"]

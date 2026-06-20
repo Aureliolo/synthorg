@@ -15,6 +15,7 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -97,6 +98,19 @@ class BaseCompletionProvider(ABC):
         self._retry_handler = retry_handler
         self._rate_limiter = rate_limiter
         self._clock: Clock = clock if clock is not None else SystemClock()
+
+    def bind_credential_catalog(  # noqa: B027 -- intentional concrete no-op default
+        self, catalog: ConnectionCatalog | None
+    ) -> None:
+        """Bind the credential catalog used to resolve ``connection_name``.
+
+        No-op by default. Drivers that resolve provider credentials from the
+        ConnectionCatalog (the LiteLLM driver) override this to store the
+        catalog after construction, so ``ProviderRegistry.from_config`` can
+        inject the always-on credential catalog without threading it through
+        every driver factory signature. Idempotent and safe to call with
+        ``None`` (leaves the driver without catalog-backed resolution).
+        """
 
     def _provider_label(self) -> str:
         """Return the bounded provider identifier used for metrics / logs.

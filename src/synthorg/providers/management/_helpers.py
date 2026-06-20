@@ -2,6 +2,7 @@
 
 import re
 from datetime import UTC, datetime
+from enum import Enum, auto
 from types import MappingProxyType
 from typing import Final
 from urllib.parse import urlparse
@@ -29,6 +30,19 @@ from synthorg.providers.management.dtos import (
 
 logger = get_logger(__name__)
 
+
+class _Unset(Enum):
+    """Sentinel for the ``connection_name`` override.
+
+    Distinguishes "leave connection_name to the auth-switch logic" from
+    "override it with this concrete value (including ``None``)".
+    """
+
+    UNSET = auto()
+
+
+_UNSET = _Unset.UNSET
+
 # Date suffix pattern for model names (e.g. "-YYYYMMDD" like "-20250514")
 _DATE_SUFFIX_RE = re.compile(r"-\d{8}$")
 _DEFAULT_MAX_CONTEXT: Final[int] = 200_000
@@ -53,11 +67,17 @@ def _unwrap_secret(value: SecretStr | str | None) -> str | None:
 
 def build_provider_config(
     request: CreateProviderRequest,
+    *,
+    connection_name: str | None = None,
 ) -> ProviderConfig:
     """Build a ProviderConfig from a create request.
 
     Args:
         request: Create provider request.
+        connection_name: Catalog connection the service has already minted
+            for an api-key credential. Threaded in (rather than attached
+            afterwards) so an API-key config validates on construction --
+            API_KEY auth mandates connection_name.
 
     Returns:
         Frozen ProviderConfig.
@@ -66,11 +86,14 @@ def build_provider_config(
     tos_accepted_at = (
         datetime.now(UTC) if is_subscription and request.tos_accepted else None
     )
+    # api_key is NOT embedded here: the management service mints it into a
+    # ConnectionCatalog connection and threads connection_name in (catalog-only
+    # credentials). The secret never lands on the ProviderConfig.
     return ProviderConfig(
         driver=request.driver,
         litellm_provider=request.litellm_provider,
         auth_type=request.auth_type,
-        api_key=_unwrap_secret(request.api_key),
+        connection_name=connection_name,
         subscription_token=(
             _unwrap_secret(request.subscription_token) if is_subscription else None
         ),
@@ -111,6 +134,8 @@ _UPDATE_SECRET_FIELDS: frozenset[str] = frozenset(
 def apply_update(
     existing: ProviderConfig,
     request: UpdateProviderRequest,
+    *,
+    connection_name: str | None | _Unset = _UNSET,
 ) -> ProviderConfig:
     """Apply partial update fields to an existing config.
 
@@ -120,6 +145,12 @@ def apply_update(
     Args:
         existing: Current provider configuration.
         request: Partial update request.
+        connection_name: Override for the catalog ``connection_name``.
+            Left unset, the field follows the auth-switch clearing logic
+            (cleared when the new auth type does not own it). Pass a
+            concrete value (string or ``None``) when the service has just
+            minted or deleted the backing credential connection so the
+            merged config validates with a complete credential reference.
 
     Returns:
         New ProviderConfig with updates applied.
@@ -175,6 +206,12 @@ def apply_update(
         final_auth_type = existing.auth_type
     _apply_credential_updates(updates, request, final_auth_type)
 
+    # The service mints/deletes the catalog connection out-of-band and
+    # passes the resulting reference here so the merged config validates
+    # with a complete credential (API-key auth requires connection_name).
+    if not isinstance(connection_name, _Unset):
+        updates["connection_name"] = connection_name
+
     # Use model_validate (not model_copy) to run validators on the merged result
     merged = {**existing.model_dump(mode="python"), **updates}
     return ProviderConfig.model_validate(merged)
@@ -185,22 +222,15 @@ def _apply_credential_updates(
     request: UpdateProviderRequest,
     final_auth_type: AuthType,
 ) -> None:
-    """Apply set/clear logic for api_key, subscription_token, and tos_accepted_at.
+    """Apply set/clear logic for subscription_token and tos_accepted_at.
 
-    ``api_key`` and ``subscription_token`` arrive as ``SecretStr`` on
-    the request DTO; unwrap to the raw string before storing on
-    ``ProviderConfig`` (which keeps these as plain ``NotBlankStr``).
+    ``subscription_token`` arrives as ``SecretStr`` on the request DTO;
+    unwrap to the raw string before storing on ``ProviderConfig`` (which
+    keeps it as a plain ``NotBlankStr``). The API-key credential is no
+    longer embedded: it lives in the connection catalog and the service
+    stamps ``connection_name`` via ``apply_update``'s override argument.
     """
     descriptor = AUTH_TYPE_DESCRIPTORS[final_auth_type]
-
-    # api_key: only set/clear when the resulting auth type supports it
-    if descriptor.supports_api_key:
-        if request.api_key is not None:
-            updates["api_key"] = _unwrap_secret(request.api_key)
-        elif request.clear_api_key:
-            updates["api_key"] = None
-    else:
-        updates["api_key"] = None
 
     # subscription_token + tos_accepted_at: only the subscription-style
     # auth type (the one mandating ToS) owns these fields.
@@ -240,6 +270,7 @@ PORT_TO_PRESET: Final[MappingProxyType[int, str]] = MappingProxyType(
 
 def build_discovery_headers(
     config: ProviderConfig,
+    api_key: str | None,
 ) -> dict[str, str] | None:
     """Build auth headers for model discovery from provider config.
 
@@ -250,13 +281,16 @@ def build_discovery_headers(
 
     Args:
         config: Provider configuration.
+        api_key: The catalog-resolved API key for the provider's
+            ``connection_name`` (the credential is no longer embedded on
+            the config); ``None`` when unresolved.
 
     Returns:
         Auth headers dict, or ``None``.
     """
     style = AUTH_TYPE_DESCRIPTORS[config.auth_type].discovery_style
-    if style is DiscoveryAuthStyle.BEARER_API_KEY and config.api_key:
-        return {"Authorization": f"Bearer {config.api_key}"}
+    if style is DiscoveryAuthStyle.BEARER_API_KEY and api_key:
+        return {"Authorization": f"Bearer {api_key}"}
     if (
         style is DiscoveryAuthStyle.CUSTOM_HEADER
         and config.custom_header_name

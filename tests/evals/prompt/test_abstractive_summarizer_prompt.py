@@ -31,3 +31,42 @@ class TestAbstractiveSummarizerPromptContract:
             f"abstractive summariser system-prompt fingerprint drifted: got "
             f"{fp!r}, expected {self.PINNED_FP!r}. Update the pin if intentional."
         )
+
+    async def test_summarize_passes_pinned_config(self) -> None:
+        """Call-site proof: ``summarize`` hands the pinned config to the provider.
+
+        The constant + fingerprint checks above can pass while a future
+        refactor slips a different config into the actual provider call.
+        This exercises ``summarize`` with a stub provider and asserts the
+        ``config=`` kwarg is exactly ``self._config`` (built from
+        ``_DEFAULT_TEMPERATURE``).
+        """
+        from types import SimpleNamespace
+        from typing import cast
+        from unittest.mock import AsyncMock
+
+        from typeguard import suppress_type_checks
+
+        from synthorg.memory.consolidation.abstractive import (
+            _DEFAULT_TEMPERATURE,
+            AbstractiveSummarizer,
+        )
+        from synthorg.providers.protocol import CompletionProvider
+
+        provider = SimpleNamespace(
+            complete=AsyncMock(
+                spec=CompletionProvider.complete,
+                return_value=SimpleNamespace(content="a concise summary"),
+            ),
+        )
+        with suppress_type_checks():
+            summarizer = AbstractiveSummarizer(
+                provider=cast(CompletionProvider, provider),
+                model="test-small-001",
+            )
+            await summarizer.summarize("some sparse conversational text")
+
+        provider.complete.assert_awaited_once()
+        passed_config = provider.complete.await_args.kwargs["config"]
+        assert passed_config is summarizer._config
+        assert passed_config.temperature == _DEFAULT_TEMPERATURE

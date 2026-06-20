@@ -19,6 +19,7 @@ from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
+from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_HEALTH_PROBE_FAILED,
@@ -37,7 +38,11 @@ from synthorg.providers.discovery_policy import (
     is_url_allowed,
     resolve_discovery_target,
 )
-from synthorg.providers.errors import ProviderLifecycleConflictError
+from synthorg.providers.enums import AuthType
+from synthorg.providers.errors import (
+    ProviderLifecycleConflictError,
+    ProviderValidationError,
+)
 from synthorg.providers.health import ProviderHealthRecord, ProviderHealthTracker
 from synthorg.providers.health_prober_helpers import (
     build_auth_headers,
@@ -82,6 +87,7 @@ class ProviderHealthProber:
     __slots__ = (
         "_clock",
         "_config_resolver",
+        "_connection_catalog",
         "_discovery_policy_loader",
         "_health_tracker",
         "_interval",
@@ -93,7 +99,7 @@ class ProviderHealthProber:
         "_task",
     )
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 -- explicit DI; all kw-only after the 2nd arg
         self,
         health_tracker: ProviderHealthTracker,
         config_resolver: ConfigResolver,
@@ -101,6 +107,7 @@ class ProviderHealthProber:
         discovery_policy_loader: (
             Callable[[], Awaitable[ProviderDiscoveryPolicy]] | None
         ) = None,
+        connection_catalog: ConnectionCatalog | None = None,
         interval_seconds: int = _DEFAULT_INTERVAL_SECONDS,
         clock: Clock | None = None,
     ) -> None:
@@ -110,6 +117,10 @@ class ProviderHealthProber:
         self._health_tracker = health_tracker
         self._config_resolver = config_resolver
         self._discovery_policy_loader = discovery_policy_loader
+        # Catalog-only credentials: probes resolve the provider's api_key from
+        # its connection_name connection. None disables auth headers on the
+        # probe (the provider may still answer an unauthenticated ping).
+        self._connection_catalog = connection_catalog
         self._interval = interval_seconds
         # Time seam: tests inject ``FakeClock`` to drive the drain
         # deadline and probe-cycle cadence on virtual time, so the
@@ -130,6 +141,32 @@ class ProviderHealthProber:
         # per cycle. The flag clears on the first successful resolution
         # so a re-failure surfaces a fresh warning.
         self._resolve_failed_logged: bool = False
+
+    async def _resolve_probe_api_key(self, config: ProviderConfig) -> str | None:
+        """Resolve a provider's api_key from its catalog connection.
+
+        Non-API-key providers return ``None``. An ``API_KEY`` provider whose
+        key is unresolvable raises rather than probing unauthenticated.
+
+        Returns:
+            The resolved api_key, or ``None`` when unresolvable by design.
+
+        Raises:
+            ProviderValidationError: When an ``API_KEY`` key is unresolvable.
+        """
+        # Gate by auth type: a non-API_KEY provider needs no key, so a
+        # failing/stale-connection lookup must not skip it.
+        if config.auth_type is not AuthType.API_KEY:
+            return None
+        catalog = self._connection_catalog
+        key: str | None = None
+        if config.connection_name is not None and catalog is not None:
+            creds = await catalog.get_credentials(config.connection_name)
+            key = creds.get("api_key")
+        if key is None:
+            msg = "Cannot resolve a health-probe API key; refusing anonymous probe."
+            raise ProviderValidationError(msg)
+        return key
 
     async def start(self) -> None:
         """Start the background probe loop.
@@ -475,7 +512,8 @@ class ProviderHealthProber:
             ollama_port=ollama_port,
         )
         auth_type = str(config.auth_type)
-        headers = build_auth_headers(auth_type, config.api_key)
+        api_key = await self._resolve_probe_api_key(config)
+        headers = build_auth_headers(auth_type, api_key)
 
         logger.debug(PROVIDER_HEALTH_PROBE_STARTED, provider=name)
         result = await self._execute_probe(url, headers, validation=validation)

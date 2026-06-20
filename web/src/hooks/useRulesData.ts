@@ -12,8 +12,6 @@ import { getErrorMessage } from '@/utils/errors'
 
 const log = createLogger('rules-data')
 
-let _mergedRequestToken = 0
-
 export interface UseRulesDataReturn {
   /** All rules (built-in + custom) from /api/meta/rules. */
   allRules: readonly RuleListItem[]
@@ -43,20 +41,24 @@ export function useRulesData(): UseRulesDataReturn {
   const [mergedLoading, setMergedLoading] = useState(false)
   const [mergedError, setMergedError] = useState<string | null>(null)
 
+  // Per-instance request token so two mounted consumers cannot invalidate
+  // each other's in-flight fetch (a module-level counter is shared state).
+  const mergedRequestTokenRef = useRef(0)
+
   const fetchMergedRules = useCallback(async () => {
-    const token = ++_mergedRequestToken
+    const token = ++mergedRequestTokenRef.current
     setMergedLoading(true)
     setMergedError(null)
     try {
       const rules = await listAllRules()
-      if (token !== _mergedRequestToken) return
+      if (token !== mergedRequestTokenRef.current) return
       setAllRules(rules)
     } catch (err) {
-      if (token !== _mergedRequestToken) return
+      if (token !== mergedRequestTokenRef.current) return
       log.error('Failed to fetch merged rules', err)
       setMergedError(getErrorMessage(err))
     } finally {
-      if (token === _mergedRequestToken) {
+      if (token === mergedRequestTokenRef.current) {
         setMergedLoading(false)
       }
     }

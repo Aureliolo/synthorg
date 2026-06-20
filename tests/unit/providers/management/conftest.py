@@ -14,7 +14,7 @@ from synthorg.settings.encryption import SettingsEncryptor
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
 from synthorg.settings.state import config_resolver_of
-from tests._shared import make_app_state
+from tests._shared import make_app_state, make_in_memory_catalog
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
 
@@ -71,11 +71,17 @@ def app_state(
     fake_message_bus: FakeMessageBus,
     settings_service: SettingsService,
 ) -> AppState:
-    """AppState assembled from fakes for isolated service tests."""
+    """AppState assembled from fakes for isolated service tests.
+
+    Wires a functional in-memory ConnectionCatalog onto
+    ``provider_credential_catalog`` so the catalog-only credential path
+    (mint-on-create, resolve-at-probe) works under unit tests.
+    """
     from synthorg.api.approval_store import ApprovalStore
+    from synthorg.integrations.state import IntegrationsStateSlice
     from synthorg.settings.resolver import ConfigResolver
 
-    return make_app_state(
+    state = make_app_state(
         config=root_config,
         approval_store=ApprovalStore(),
         persistence=fake_persistence,
@@ -86,6 +92,11 @@ def app_state(
             config=root_config,
         ),
     )
+    state.wire(
+        IntegrationsStateSlice,
+        provider_credential_catalog=make_in_memory_catalog(),
+    )
+    return state
 
 
 @pytest.fixture

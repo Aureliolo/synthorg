@@ -8744,7 +8744,7 @@ export type components = {
             readonly name: string;
             readonly npm_package: string | null;
             /** @enum {string|null} */
-            readonly required_connection_type: "github" | "gitlab" | "gitea" | "forgejo" | "slack" | "smtp" | "database" | "generic_http" | "oauth_app" | "a2a_peer" | null;
+            readonly required_connection_type: "github" | "gitlab" | "gitea" | "forgejo" | "slack" | "smtp" | "database" | "generic_http" | "oauth_app" | "a2a_peer" | "llm_provider" | null;
             /** @default [] */
             readonly tags: readonly string[];
             /**
@@ -9306,7 +9306,7 @@ export type components = {
          * @description Supported external service connection types.
          * @enum {string}
          */
-        readonly ConnectionType: "github" | "gitlab" | "gitea" | "forgejo" | "slack" | "smtp" | "database" | "generic_http" | "oauth_app" | "a2a_peer";
+        readonly ConnectionType: "github" | "gitlab" | "gitea" | "forgejo" | "slack" | "smtp" | "database" | "generic_http" | "oauth_app" | "a2a_peer" | "llm_provider";
         /**
          * ContentType
          * @description Content types available for training extraction.

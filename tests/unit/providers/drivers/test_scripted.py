@@ -118,6 +118,7 @@ class TestFactoryRegistration:
         registry = ProviderRegistry.from_config(
             {
                 "test-provider": ProviderConfig(
+                    connection_name="conn-test",
                     driver="scripted",
                     models=(),
                 ),

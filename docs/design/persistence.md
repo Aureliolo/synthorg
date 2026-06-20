@@ -166,14 +166,22 @@ mutated from multiple workers.
 
 ### Repository pagination contract
 
-The `limit: int | None = None, offset: int = 0` keyword-only signature is the
-canonical pagination shape for `list_*`/`query` methods across the repository
-layer. `limit=None` preserves fetch-all semantics so internal callers that do
-not paginate are unaffected; setting it pushes `LIMIT`/`OFFSET` down to the
-database. The pattern is implemented by:
+The `limit: int = DEFAULT_PAGE_SIZE, offset: int = 0` keyword-only signature is
+the canonical pagination shape for `list_*`/`query` methods across the
+repository layer: results are bounded by default (`DEFAULT_PAGE_SIZE` and
+`DEFAULT_LIST_LIMIT` are both 100; a few domains pin their own default, such as
+the 5-fact `OrgFactRepository`), and every read clamps `limit` to
+`MAX_LIST_LIMIT` (10,000) so a caller cannot request an unbounded scan. There is
+no `limit=None` fetch-all sentinel: callers that genuinely need the whole set
+drain successive pages via the `collect_all` / `collect_all_mapping` helpers in
+`synthorg.core.pagination`. `offset` pushes `LIMIT`/`OFFSET` down to the
+database. The shape is carried by the `IdKeyedRepository.list_items` /
+`FilteredQueryRepository.query` generics (ADR-0001) and by the bespoke list
+methods below:
 
-- `TaskRepository.list_tasks` (filterable + paginated; documented in detail
-  below).
+- `TaskRepository.list_items`, `query` (the `IdKeyedRepository` +
+  `FilteredQueryRepository` generics; filterable + paginated, documented in
+  detail below).
 - `ConnectionRepository.list_items`, `query` (the `IdKeyedRepository` +
   `FilteredQueryRepository` generics; paginated since the durable backends
   landed; in-memory stubs and durable repos share the signature).
@@ -197,17 +205,18 @@ repository layer itself stays cursor-agnostic.
 
 ### Task pagination contract
 
-The `TaskRepository` protocol ships two paginated read methods that every
-backend implements:
+`TaskEngine` exposes two read methods composed over the repository's canonical
+`list_items` / `query` (which follow the no-`limit=None` shape above):
 
 - `list_tasks(*, status=None, assigned_to=None, project=None, limit=None, offset=0)`
   returns a `tuple[Task, ...]` ordered by primary key `id` (ascending, stable
-  across calls).  When `limit` is set, both `LIMIT` and `OFFSET` are pushed
-  down to the database so the repository bounds the result set; when `limit`
-  is `None` the legacy "fetch-all" semantics apply and callers rely on the
-  engine-level `_MAX_LIST_RESULTS` safety cap.  `offset > 0` with `limit=None`
-  is honoured by the repository (the `OFFSET` clause is emitted independently
-  of `LIMIT`).
+  across calls).  When `limit` is set it is pushed down to the repository so
+  the result set is bounded.  `limit=None` is an engine-level fetch-all
+  convenience -- NOT a repository sentinel (the repository layer has no
+  `limit=None`; it bounds every read and callers needing the whole set drain
+  pages via `collect_all`) -- drained under the in-memory `_MAX_LIST_RESULTS`
+  (10,000) safety cap.  `offset > 0` requires a paired explicit `limit`
+  (rejected with `ValueError` otherwise) so the returned total stays accurate.
 - `count_tasks(*, status=None, assigned_to=None, project=None)` issues a
   dedicated `SELECT COUNT(*)` with the same filter semantics and is used
   when callers need an authoritative total alongside the windowed result

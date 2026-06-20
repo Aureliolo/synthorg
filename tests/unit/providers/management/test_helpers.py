@@ -22,15 +22,22 @@ from synthorg.providers.management._helpers import (
 def _make_config(
     *,
     auth_type: AuthType = AuthType.API_KEY,
-    api_key: str | None = None,
+    connection_name: str | None = None,
     base_url: str | None = None,
     **kwargs: object,
 ) -> ProviderConfig:
-    """Build a ProviderConfig with sensible defaults for testing."""
+    """Build a ProviderConfig with sensible defaults for testing.
+
+    API-key auth resolves its credential from the catalog, so a default
+    ``connection_name`` is supplied when one is not passed explicitly to
+    keep the config valid.
+    """
+    if auth_type == AuthType.API_KEY and connection_name is None:
+        connection_name = "provider-test"
     return ProviderConfig(
         driver="litellm",
         auth_type=auth_type,
-        api_key=api_key,
+        connection_name=connection_name,
         base_url=base_url,
         models=(
             ProviderModelConfig(
@@ -53,7 +60,8 @@ class TestBuildDiscoveryHeaders:
             subscription_token="test-subscription-token",
             tos_accepted_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
-        headers = build_discovery_headers(config)
+        # Subscription auth uses subscription_token, not the api_key arg.
+        headers = build_discovery_headers(config, None)
         assert headers == {"Authorization": "Bearer test-subscription-token"}
 
     def test_subscription_no_token_returns_none(self) -> None:
@@ -65,21 +73,26 @@ class TestBuildDiscoveryHeaders:
         )
         # Bypass frozen model to simulate a cleared token
         object.__setattr__(config, "subscription_token", None)
-        headers = build_discovery_headers(config)
+        headers = build_discovery_headers(config, None)
         assert headers is None
 
 
 @pytest.mark.unit
 class TestApplyCredentialUpdates:
     def test_switch_from_subscription_to_api_key_clears_fields(self) -> None:
-        """Switching from subscription to api_key clears token and tos."""
+        """Switching to api_key clears subscription token and tos.
+
+        The api_key itself is no longer written onto the config by the
+        helper: it is minted into the catalog by the service, which
+        stamps connection_name separately.
+        """
         updates: dict[str, object] = {}
         request = UpdateProviderRequest(
             auth_type=AuthType.API_KEY,
             api_key=SecretStr("sk-new"),
         )
         _apply_credential_updates(updates, request, AuthType.API_KEY)
-        assert updates["api_key"] == "sk-new"
+        assert "api_key" not in updates
         assert updates["subscription_token"] is None
         assert updates["tos_accepted_at"] is None
 
@@ -130,28 +143,32 @@ class TestApplyUpdateAuthTransitions:
             auth_type=AuthType.API_KEY,
             api_key=SecretStr("sk-new-key"),
         )
-        result = apply_update(existing, request)
+        # The service mints the key into the catalog and threads the
+        # resulting connection_name through apply_update.
+        result = apply_update(existing, request, connection_name="provider-new")
         assert result.auth_type == AuthType.API_KEY
-        assert result.api_key == "sk-new-key"
+        assert result.connection_name == "provider-new"
         assert result.subscription_token is None
         assert result.tos_accepted_at is None
 
-    def test_switch_from_api_key_to_subscription_clears_api_key(
+    def test_switch_from_api_key_to_subscription_clears_connection(
         self,
     ) -> None:
-        """Switching to subscription clears api_key and sets token."""
+        """Switching to subscription clears connection_name and sets token."""
         existing = _make_config(
             auth_type=AuthType.API_KEY,
-            api_key="sk-old",
+            connection_name="provider-old",
         )
         request = UpdateProviderRequest(
             auth_type=AuthType.SUBSCRIPTION,
             subscription_token=SecretStr("test-subscription-token"),
             tos_accepted=True,
         )
-        result = apply_update(existing, request)
+        # The service deletes the orphaned credential connection and
+        # threads connection_name=None through apply_update.
+        result = apply_update(existing, request, connection_name=None)
         assert result.auth_type == AuthType.SUBSCRIPTION
-        assert result.api_key is None
+        assert result.connection_name is None
         assert result.subscription_token == "test-subscription-token"
         assert result.tos_accepted_at is not None
 
@@ -165,7 +182,10 @@ class TestApplyUpdateAuthTransitions:
         is then rejected by the final ``ProviderConfig`` validation rather
         than silently applied.
         """
-        existing = _make_config(auth_type=AuthType.API_KEY, api_key="sk-old")
+        existing = _make_config(
+            auth_type=AuthType.API_KEY,
+            connection_name="provider-old",
+        )
         request = UpdateProviderRequest.model_construct(
             auth_type="bogus",  # type: ignore[arg-type]  # deliberately invalid
             api_key=None,
@@ -417,11 +437,17 @@ class TestDiffProviderUpdate:
     def test_sensitive_fields_collapse_to_redacted_sentinel(self) -> None:
         from synthorg.providers.management.service import _diff_provider_update
 
-        before = _make_config(api_key="old-secret-do-not-leak")
-        after = before.model_copy(update={"api_key": "new-secret-do-not-leak"})
+        before = _make_config(
+            auth_type=AuthType.SUBSCRIPTION,
+            subscription_token="old-secret-do-not-leak",
+            tos_accepted_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        after = before.model_copy(
+            update={"subscription_token": "new-secret-do-not-leak"},
+        )
 
         diff = _diff_provider_update(before, after)
-        assert diff["fields_changed"] == ["api_key"]
+        assert diff["fields_changed"] == ["subscription_token"]
         inner = diff["diff"]
         assert isinstance(inner, dict)
         # Neither the prior nor the new credential may appear; both
@@ -429,7 +455,7 @@ class TestDiffProviderUpdate:
         # ``this-field-changed`` signal so the audit row is still
         # informative.
         assert inner == {
-            "api_key": {"old": "<redacted>", "new": "<redacted>"},
+            "subscription_token": {"old": "<redacted>", "new": "<redacted>"},
         }
         rendered = repr(inner)
         assert "old-secret-do-not-leak" not in rendered

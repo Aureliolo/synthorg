@@ -38,6 +38,7 @@ from synthorg.meta.guards.rollback_plan import RollbackPlanGuard
 from synthorg.meta.guards.scope_check import ScopeCheckGuard
 from synthorg.meta.models import ProposalAltitude
 from synthorg.meta.protocol import ImprovementStrategy, ProposalApplier, ProposalGuard
+from synthorg.meta.rollout.ab_record import AbTestRecordSink
 from synthorg.meta.rollout.ab_test import ABTestRollout
 from synthorg.meta.rollout.before_after import (
     BeforeAfterRollout,
@@ -309,13 +310,14 @@ def build_confidence_adjuster(
     assert_never(strategy)
 
 
-def build_rollout_strategies(
+def build_rollout_strategies(  # noqa: PLR0913
     config: SelfImprovementConfig | None = None,
     *,
     clock: Clock | None = None,
     roster: OrgRoster | None = None,
     snapshot_builder: RolloutSnapshotBuilder | None = None,
     group_aggregator: GroupSignalAggregator | None = None,
+    ab_test_record_sink: AbTestRecordSink | None = None,
 ) -> Mapping[str, BeforeAfterRollout | CanarySubsetRollout | ABTestRollout]:
     """Build available rollout strategies wired with injected dependencies.
 
@@ -330,6 +332,10 @@ def build_rollout_strategies(
             snapshot. Defaults to an empty snapshot.
         group_aggregator: Per-group sample aggregator. Defaults to a
             null aggregator that emits no samples.
+        ab_test_record_sink: Durable sink for A/B-test rollout records.
+            When wired, each ``ABTestRollout`` persists a record so the
+            ``/meta/ab-tests`` endpoints surface real rollouts. ``None``
+            (no persistence) leaves the rollout in-memory only.
 
     Returns:
         Read-only mapping of strategy name to rollout strategy.
@@ -361,6 +367,7 @@ def build_rollout_strategies(
             roster=roster,
             group_aggregator=group_aggregator,
             check_interval_hours=check_interval,
+            record_sink=ab_test_record_sink,
         ),
     }
     # Intentionally no deepcopy: injected Clock/OrgRoster/

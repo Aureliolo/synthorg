@@ -34,7 +34,7 @@ def _two_provider_config() -> dict[str, ProviderConfig]:
     return {
         "provider-expensive": ProviderConfig(
             driver="litellm",
-            api_key="sk-test-a",
+            connection_name="conn-expensive",
             models=(
                 ProviderModelConfig(
                     id="test-shared-001",
@@ -46,7 +46,7 @@ def _two_provider_config() -> dict[str, ProviderConfig]:
         ),
         "provider-cheap": ProviderConfig(
             driver="litellm",
-            api_key="sk-test-b",
+            connection_name="conn-cheap",
             models=(
                 ProviderModelConfig(
                     id="test-shared-001",

@@ -15,7 +15,11 @@ from synthorg.providers.registry import ProviderRegistry
 if TYPE_CHECKING:
     from synthorg.providers.models import ChatMessage
 
-from .conftest import build_model_response, make_openrouter_config
+from .conftest import (
+    build_model_response,
+    make_catalog_with_key,
+    make_openrouter_config,
+)
 
 pytestmark = pytest.mark.integration
 _PATCH_TARGET = "synthorg.providers.drivers.litellm_driver._litellm.acompletion"
@@ -62,7 +66,8 @@ async def test_api_key_forwarded(
 ) -> None:
     """API key from OpenRouter config is forwarded."""
     config = make_openrouter_config()
-    registry = ProviderRegistry.from_config(config)
+    catalog = await make_catalog_with_key("provider-gateway-test", "sk-or-test-key")
+    registry = ProviderRegistry.from_config(config, connection_catalog=catalog)
     driver = registry.get("openrouter")
 
     mock_resp = build_model_response()

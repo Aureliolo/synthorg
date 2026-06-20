@@ -45,6 +45,10 @@ class ConnectionType(StrEnum):
     GENERIC_HTTP = "generic_http"
     OAUTH_APP = "oauth_app"
     A2A_PEER = "a2a_peer"
+    # Backs an LLM provider's API-key credential (minted on provider create).
+    # Unlike GENERIC_HTTP it does not require a base_url: providers that route
+    # through litellm's default endpoints have no base_url of their own.
+    LLM_PROVIDER = "llm_provider"
 
 
 class AuthMethod(StrEnum):

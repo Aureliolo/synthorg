@@ -15,9 +15,9 @@ from synthorg.providers.enums import AuthType
 
 # The owned credential fields each AuthType must expose.
 _EXPECTED_OWNED: dict[AuthType, tuple[str, ...]] = {
-    AuthType.API_KEY: ("api_key",),
+    AuthType.API_KEY: ("connection_name",),
     AuthType.OAUTH: (
-        "api_key",
+        "connection_name",
         "oauth_client_secret",
         "oauth_token_url",
         "oauth_client_id",

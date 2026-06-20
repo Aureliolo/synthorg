@@ -24,7 +24,7 @@ pytestmark = pytest.mark.unit
 def _config() -> ProviderConfig:
     return ProviderConfig(
         driver="scripted",
-        api_key=None,
+        connection_name="conn-cassette",
         models=(
             ProviderModelConfig(
                 id="test-model",

@@ -11,3 +11,5 @@ EXPERIMENT_ASSIGNMENT_REPLAYED: Final[str] = "experiments.assignment.replayed"
 # experiment was queried with no variants registered, rather than
 # only the controller's error envelope.
 EXPERIMENT_NOT_FOUND: Final[str] = "experiments.not_found"
+# Durable-repository read/write failure (SQLite / Postgres backends).
+EXPERIMENT_PERSISTENCE_FAILED: Final[str] = "experiments.persistence.failed"

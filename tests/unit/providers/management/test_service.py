@@ -20,6 +20,7 @@ from synthorg.providers.errors import (
     ProviderNotFoundError,
     ProviderValidationError,
 )
+from synthorg.providers.management._credential_helpers import resolve_provider_api_key
 from synthorg.providers.management.service import ProviderManagementService
 from synthorg.providers.state import ProvidersStateSlice, provider_registry_of
 from synthorg.settings.service import SettingsService
@@ -116,7 +117,9 @@ class TestUpdateProvider:
         )
         result = await service.update_provider("test-provider", update)
         assert result.base_url == "http://localhost:5000"
-        assert result.api_key == "sk-original"
+        # The api_key is minted into the catalog on create and referenced by
+        # connection_name; a partial update preserves that reference.
+        assert result.connection_name == "provider-test-provider"
 
 
 @pytest.mark.unit
@@ -319,7 +322,7 @@ class TestConcurrency:
 
 @pytest.mark.unit
 class TestClearApiKey:
-    async def test_clear_api_key_removes_key(
+    async def test_clear_api_key_on_api_key_auth_rejected(
         self,
         service: ProviderManagementService,
     ) -> None:
@@ -329,9 +332,12 @@ class TestClearApiKey:
                 api_key="sk-original",
             ),
         )
+        # Catalog-only credentials: API_KEY auth has no other credential
+        # source, so clearing it would leave the provider unable to
+        # authenticate. The operator must switch auth_type or delete.
         update = UpdateProviderRequest(clear_api_key=True)
-        result = await service.update_provider("test-provider", update)
-        assert result.api_key is None
+        with pytest.raises(ProviderValidationError, match="switch auth_type"):
+            await service.update_provider("test-provider", update)
 
     async def test_api_key_takes_precedence_over_clear(
         self,
@@ -417,7 +423,9 @@ class TestAuthTypeTransitions:
         )
         result = await service.update_provider("test-provider", update)
         assert result.auth_type == AuthType.NONE
-        assert result.api_key is None
+        # NONE auth has no api-key connection; the backing connection is
+        # deleted and connection_name cleared.
+        assert result.connection_name is None
 
     async def test_switch_to_custom_header_clears_oauth_fields(
         self,
@@ -466,7 +474,12 @@ class TestAuthTypeTransitions:
         )
         result = await service.update_provider("test-provider", update)
         assert result.auth_type == AuthType.API_KEY
-        assert result.api_key == "sk-new-explicit-key"
+        # The explicit key is minted into the catalog and resolved via
+        # connection_name.
+        assert (
+            await resolve_provider_api_key(service._app_state, result)
+            == "sk-new-explicit-key"
+        )
         # OAuth fields should still be cleared
         assert result.oauth_token_url is None
         assert result.oauth_client_id is None
@@ -490,7 +503,9 @@ class TestAuthTypeTransitions:
         )
         result = await service.update_provider("test-provider", update)
         assert result.auth_type == AuthType.API_KEY
-        assert result.api_key == "sk-new-key"
+        assert (
+            await resolve_provider_api_key(service._app_state, result) == "sk-new-key"
+        )
         assert result.subscription_token is None
         assert result.tos_accepted_at is None
 
@@ -513,7 +528,8 @@ class TestAuthTypeTransitions:
         result = await service.update_provider("test-provider", update)
         assert result.auth_type == AuthType.SUBSCRIPTION
         assert result.subscription_token == "test-subscription-token"
-        assert result.api_key is None
+        # The api-key connection is deleted on switch away from API_KEY.
+        assert result.connection_name is None
         assert result.tos_accepted_at is not None
 
     async def test_subscription_tos_accepted_stamps_timestamp(
@@ -656,6 +672,10 @@ class TestSerializeRoundTrip:
         )
         # Read the serialized blob from settings
         setting = await settings_service.get("providers", "configs")
+        # The plaintext key is catalog-only and must never reach the persisted
+        # provider-config blob (a serializer regression that embedded it would
+        # otherwise pass every other assertion below).
+        assert "sk-round-trip" not in setting.value
         serialized = json.loads(setting.value)
         assert "test-provider" in serialized
 
@@ -664,5 +684,7 @@ class TestSerializeRoundTrip:
         restored = ProviderConfig.model_validate(raw)
         assert restored.driver == "litellm"
         assert restored.auth_type == AuthType.API_KEY
-        assert restored.api_key == "sk-round-trip"
+        # The secret is stored in the catalog, never serialised on the config;
+        # the persisted blob carries only the connection_name reference.
+        assert restored.connection_name == "provider-test-provider"
         assert restored.base_url == "http://localhost:8080"

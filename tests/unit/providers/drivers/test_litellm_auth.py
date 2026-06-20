@@ -8,6 +8,7 @@ import pytest
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
 from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.providers import errors
 from synthorg.providers.drivers.litellm_driver import (
     _CREDENTIAL_CACHE_TTL,
     LiteLLMDriver,
@@ -21,7 +22,6 @@ from tests._shared.fake_clock import FakeClock
 def _make_config(
     *,
     auth_type: AuthType = AuthType.API_KEY,
-    api_key: str | None = None,
     base_url: str | None = None,
     custom_header_name: str | None = None,
     custom_header_value: str | None = None,
@@ -31,7 +31,6 @@ def _make_config(
     return ProviderConfig(
         driver="litellm",
         auth_type=auth_type,
-        api_key=api_key,
         base_url=base_url,
         custom_header_name=custom_header_name,
         custom_header_value=custom_header_value,
@@ -47,9 +46,20 @@ def _make_config(
     )
 
 
-def _build_kwargs(config: ProviderConfig) -> _AcompletionKwargs:
-    """Extract _build_kwargs result from a driver."""
+def _build_kwargs(
+    config: ProviderConfig,
+    *,
+    resolved: dict[str, str] | None = None,
+) -> _AcompletionKwargs:
+    """Extract _build_kwargs result from a driver.
+
+    Credentials are catalog-only, so ``resolved`` simulates what
+    ``_ensure_credentials_resolved`` would have fetched from the
+    ConnectionCatalog for the provider's ``connection_name``.
+    """
     driver = LiteLLMDriver("test-provider", config)
+    if resolved is not None:
+        driver._resolved_credentials = resolved
     messages = [ChatMessage(role=MessageRole.USER, content="ping")]
     return driver._build_kwargs(
         messages,
@@ -62,18 +72,38 @@ class TestLiteLLMDriverAuth:
     def test_build_kwargs_api_key_auth(self) -> None:
         config = _make_config(
             auth_type=AuthType.API_KEY,
-            api_key="sk-test",
+            connection_name="provider-test",
         )
-        kwargs = _build_kwargs(config)
+        # Credentials are catalog-only: the key arrives via resolved creds.
+        kwargs = _build_kwargs(config, resolved={"api_key": "sk-test"})
         assert kwargs["api_key"] == "sk-test"
 
-    def test_build_kwargs_api_key_none_omitted(self) -> None:
+    def test_build_kwargs_api_key_none_omitted_without_catalog(self) -> None:
         config = _make_config(
             auth_type=AuthType.API_KEY,
-            api_key=None,
+            connection_name="provider-test",
         )
+        # No catalog wired (degraded boot / unit path): the key is omitted
+        # rather than failing closed. Fail-closed is reserved for the
+        # catalog-present-but-unresolved case (tested below).
         kwargs = _build_kwargs(config)
         assert "api_key" not in kwargs
+
+    def test_build_kwargs_api_key_catalog_present_unresolved_fails_closed(
+        self,
+    ) -> None:
+        config = _make_config(
+            auth_type=AuthType.API_KEY,
+            connection_name="provider-test",
+        )
+        catalog = AsyncMock(spec=ConnectionCatalog)
+        driver = LiteLLMDriver("test-provider", config, connection_catalog=catalog)
+        # Catalog wired but it resolved no api_key: fail closed instead of
+        # sending an unauthenticated request.
+        driver._resolved_credentials = {}
+        messages = [ChatMessage(role=MessageRole.USER, content="ping")]
+        with pytest.raises(errors.AuthenticationError):
+            driver._build_kwargs(messages, "test-provider/test-model-001")
 
     def test_build_kwargs_custom_header_auth(self) -> None:
         config = _make_config(
@@ -94,12 +124,13 @@ class TestLiteLLMDriverAuth:
     def test_build_kwargs_oauth_passes_api_key(self) -> None:
         config = _make_config(
             auth_type=AuthType.OAUTH,
-            api_key="oauth-token-123",
+            connection_name="provider-oauth",
             oauth_token_url="https://auth.example.com/token",
             oauth_client_id="client-id",
             oauth_client_secret="client-secret",
         )
-        kwargs = _build_kwargs(config)
+        # Catalog-backed OAuth resolves the bearer under access_token.
+        kwargs = _build_kwargs(config, resolved={"access_token": "oauth-token-123"})
         assert kwargs["api_key"] == "oauth-token-123"
 
     def test_build_kwargs_base_url_always_set(self) -> None:
@@ -115,11 +146,10 @@ class TestLiteLLMDriverAuth:
         kwargs = _build_kwargs(config)
         assert "api_base" not in kwargs
 
-    def test_build_kwargs_oauth_no_token_omits_api_key(self) -> None:
-        """OAuth auth without a pre-fetched token omits api_key from kwargs."""
+    def test_build_kwargs_oauth_no_token_omits_without_catalog(self) -> None:
+        """OAuth without a catalog omits api_key (no fail-closed off-catalog)."""
         config = _make_config(
             auth_type=AuthType.OAUTH,
-            api_key=None,
             oauth_token_url="https://auth.example.com/token",
             oauth_client_id="client-id",
             oauth_client_secret="client-secret",
@@ -168,7 +198,6 @@ class TestLiteLLMDriverCredentialCacheClock:
     async def test_cache_hit_within_ttl(self) -> None:
         config = _make_config(
             auth_type=AuthType.API_KEY,
-            api_key="sk-cached",
             connection_name="conn-1",
         )
         catalog = AsyncMock(spec=ConnectionCatalog)
@@ -189,7 +218,6 @@ class TestLiteLLMDriverCredentialCacheClock:
     async def test_cache_miss_after_ttl(self) -> None:
         config = _make_config(
             auth_type=AuthType.API_KEY,
-            api_key="sk-cached",
             connection_name="conn-1",
         )
         catalog = AsyncMock(spec=ConnectionCatalog)
@@ -217,7 +245,6 @@ class TestLiteLLMDriverCredentialCacheClock:
         """
         config = _make_config(
             auth_type=AuthType.API_KEY,
-            api_key="sk-cached",
             connection_name="conn-1",
         )
         catalog = AsyncMock(spec=ConnectionCatalog)
@@ -241,6 +268,9 @@ class TestLiteLLMDriverCredentialCacheClock:
         config = _make_config(
             auth_type=AuthType.OAUTH,
             connection_name="conn-oauth",
+            oauth_token_url="https://auth.example.com/token",
+            oauth_client_id="client-id",
+            oauth_client_secret="client-secret",
         )
         catalog = AsyncMock(spec=ConnectionCatalog)
         catalog.get_credentials.return_value = {"access_token": "live"}

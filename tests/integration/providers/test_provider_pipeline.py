@@ -23,6 +23,7 @@ from .conftest import (
     build_finish_chunk,
     build_model_response,
     build_usage_chunk,
+    make_catalog_with_key,
     make_provider_config,
 )
 
@@ -121,7 +122,8 @@ async def test_api_key_forwarded(
 ) -> None:
     """API key from config is forwarded to litellm."""
     config = make_provider_config()
-    registry = ProviderRegistry.from_config(config)
+    catalog = await make_catalog_with_key("provider-example", "sk-test-key")
+    registry = ProviderRegistry.from_config(config, connection_catalog=catalog)
     driver = registry.get("example-provider")
 
     mock_resp = build_model_response()

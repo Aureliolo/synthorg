@@ -16,7 +16,14 @@ Reference implementation: ``synthorg.engine.quality.graders.llm``.
 
 import pytest
 
-from tests.evals.prompt._harness import fingerprint_prompt
+from synthorg.engine.quality.graders._llm_parser import parse_verdict
+from synthorg.engine.quality.verification import VerificationVerdict
+from tests.evals.prompt._harness import (
+    LabelledExample,
+    assert_accuracy_at_least,
+    fingerprint_prompt,
+    run_grader,
+)
 
 
 @pytest.mark.unit
@@ -111,3 +118,40 @@ class TestRubricGraderPromptContract:
             "If this was intentional, update the pinned fingerprint "
             "AND extend the labelled example set to cover the new behaviour."
         )
+
+
+@pytest.mark.unit
+class TestRubricGraderVerdictParse:
+    """Labelled eval for the deterministic verdict-parse contract.
+
+    The prompt asks the LLM to emit a verdict of ``pass`` / ``fail`` /
+    ``refer``; this grades that :func:`parse_verdict` maps each valid
+    verdict to the right :class:`VerificationVerdict` and fails closed
+    (a reason string the grader routes to ``REFER``) on an unknown or
+    non-string verdict -- the security-critical behaviour that the
+    fingerprint + temperature checks alone do not cover.
+    """
+
+    EXAMPLES: tuple[LabelledExample, ...] = (
+        LabelledExample(name="pass", inp="pass", expected=VerificationVerdict.PASS),
+        LabelledExample(name="fail", inp="fail", expected=VerificationVerdict.FAIL),
+        LabelledExample(name="refer", inp="refer", expected=VerificationVerdict.REFER),
+        # Unknown verdict -> reason string (grader routes it to REFER).
+        LabelledExample(name="unknown_refers", inp="approved", expected=str),
+        # Non-string verdict -> reason string (fails closed to REFER).
+        LabelledExample(name="non_string_refers", inp=123, expected=str),
+    )
+
+    def test_parse_verdict_matches_labelled_examples(self) -> None:
+        """Every labelled (raw verdict, expected outcome) pair grades."""
+
+        def _grade(actual_input: object, expected: object) -> bool:
+            result = parse_verdict(actual_input)
+            if expected is str:
+                # Malformed verdict: must fail closed to a reason string,
+                # which ``grade`` routes to a REFER verdict.
+                return isinstance(result, str)
+            return result == expected
+
+        outcome = run_grader(self.EXAMPLES, _grade)
+        assert_accuracy_at_least(outcome, 1.0)
