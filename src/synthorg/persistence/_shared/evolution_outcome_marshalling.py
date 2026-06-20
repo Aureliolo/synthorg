@@ -81,6 +81,45 @@ def outcome_to_payload(
     }
 
 
+def _require_str(value: object, field: str) -> str:
+    """Return ``value`` when it is a string, else reject it.
+
+    Rejecting a non-string outright avoids ``str(None) -> "None"`` smuggling
+    a blank/None id past the ``NotBlankStr`` field validator. Blank strings
+    are still caught by the model's ``NotBlankStr`` validation downstream.
+
+    Returns:
+        The value, narrowed to ``str``.
+
+    Raises:
+        TypeError: When ``value`` is not a string.
+    """
+    if not isinstance(value, str):
+        msg = f"{field} must be a string, got {type(value).__name__}"
+        raise TypeError(msg)
+    return value
+
+
+def _coerce_applied(value: object) -> bool:
+    """Coerce the ``applied`` column to a strict bool.
+
+    Accepts only a real boolean or the SQLite 0/1 INTEGER encoding; anything
+    else (e.g. a truthy non-bool) is corrupt persisted data.
+
+    Returns:
+        The coerced boolean.
+
+    Raises:
+        ValueError: When ``value`` is neither a bool nor 0/1.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and value in (0, 1):
+        return bool(value)
+    msg = f"applied must be a bool or 0/1, got {value!r}"
+    raise ValueError(msg)
+
+
 def row_to_outcome_record(row: dict[str, object]) -> EvolutionOutcomeRecord:
     """Deserialise a row mapping into an :class:`EvolutionOutcomeRecord`.
 
@@ -99,9 +138,9 @@ def row_to_outcome_record(row: dict[str, object]) -> EvolutionOutcomeRecord:
     """
     try:
         return EvolutionOutcomeRecord(
-            agent_id=NotBlankStr(str(row["agent_id"])),
-            axis=NotBlankStr(str(row["axis"])),
-            applied=bool(row["applied"]),
+            agent_id=NotBlankStr(_require_str(row["agent_id"], "agent_id")),
+            axis=NotBlankStr(_require_str(row["axis"], "axis")),
+            applied=_coerce_applied(row["applied"]),
             proposed_at=coerce_row_timestamp(row["proposed_at"]),
             recorded_at=coerce_row_timestamp(row["recorded_at"]),
         )

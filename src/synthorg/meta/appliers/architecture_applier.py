@@ -28,6 +28,7 @@ from synthorg.observability import (
 from synthorg.observability.events.meta import (
     META_APPLY_COMPLETED,
     META_APPLY_FAILED,
+    META_APPLY_REFRESH_FAILED,
     META_APPLY_STARTED,
     META_DRY_RUN_COMPLETED,
     META_DRY_RUN_FAILED,
@@ -138,7 +139,23 @@ class ArchitectureApplier:
                 ),
                 changes_applied=0,
             )
-        await context.refresh_snapshot()
+        try:
+            await context.refresh_snapshot()
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # Changes are already durably committed; a failed read-snapshot
+            # refresh leaves the in-memory cache stale but the store correct.
+            # Reporting failure here would risk an upstream retry re-running
+            # the non-idempotent mutations, so we succeed and warn instead
+            # (the next apply / restart re-reads the snapshot).
+            reraise_critical(exc)
+            logger.warning(
+                META_APPLY_REFRESH_FAILED,
+                altitude="architecture",
+                proposal_id=str(proposal.id),
+                changes=len(undos),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
         logger.info(
             META_APPLY_COMPLETED,
             altitude="architecture",

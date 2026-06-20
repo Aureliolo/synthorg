@@ -392,19 +392,24 @@ class DepartmentService:
         except ValueError:
             return None
         async with self._lock:
-            record = self._departments.get(key)
-            if record is None:
+            current = self._departments.get(key)
+            if current is None:
                 return None
+            # Mutate a copy and only commit it to the cache after the durable
+            # write succeeds, so a failed save cannot leave the in-memory cache
+            # ahead of the store.
+            candidate = copy.deepcopy(current)
             if name is not None:
-                record.name = name
+                candidate.name = name
             if description is not None:
-                record.description = description
-            record.updated_at = self._clock.now()
-            returned = copy.deepcopy(record)
+                candidate.description = description
+            candidate.updated_at = self._clock.now()
             # Durable write stays under the lock so a failed save cannot leave
             # the cache ahead of the store for a concurrent reader.
             if self._repo is not None:
-                await self._repo.save(returned.to_durable())
+                await self._repo.save(candidate.to_durable())
+            self._departments[key] = candidate
+            returned = copy.deepcopy(candidate)
         logger.info(
             DEPARTMENT_UPDATED_VIA_MCP,
             department_id=department_id,

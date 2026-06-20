@@ -41,9 +41,22 @@ def _str_tuple(raw: object) -> tuple[NotBlankStr, ...]:
 
     Returns:
         The decoded tuple.
+
+    Raises:
+        TypeError: If the decoded JSON is not an array.
+        ValueError: If any element is not a non-blank string. Both surface
+            as ``QueryError`` via ``_row_to_record`` so corrupt persisted
+            payloads fail loudly instead of being coerced into a wrong tuple
+            (e.g. a JSON string silently iterated into per-character entries).
     """
     decoded = json.loads(str(raw))
-    return tuple(NotBlankStr(str(item)) for item in decoded)
+    if not isinstance(decoded, list):
+        msg = f"expected JSON array, got {type(decoded).__name__}"
+        raise TypeError(msg)
+    if not all(isinstance(item, str) and item.strip() for item in decoded):
+        msg = "expected JSON array of non-blank strings"
+        raise ValueError(msg)
+    return tuple(NotBlankStr(item) for item in decoded)
 
 
 def _row_to_record(row: aiosqlite.Row) -> RoleRecord:

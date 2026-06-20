@@ -753,6 +753,12 @@ func Save(s State) error {
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
+	// safeDir is the SecurePath-cleaned, absolute form of the user's own
+	// data dir (--data-dir / SYNTHORG_DATA_DIR / config). A path-injection
+	// flag here is accepted by design: this is a local single-user CLI with
+	// no privilege boundary -- the only actor who can influence the path is
+	// the user writing to their own install directory -- so no filesystem
+	// containment is enforced.
 	if err := os.WriteFile(StatePath(safeDir), data, 0o600); err != nil {
 		return fmt.Errorf("writing config file: %w", err)
 	}

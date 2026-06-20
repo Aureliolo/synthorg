@@ -13,6 +13,7 @@ from typing import Final, Protocol, runtime_checkable
 
 from synthorg.meta.appliers._validation import validate_payload_keys
 from synthorg.meta.models import ArchitectureChange
+from synthorg.organization.enums import DepartmentName
 
 #: Undo closure returned by ``apply_change``. Calling it reverses exactly the
 #: one change it was produced for (delete a created role / re-save a removed
@@ -342,6 +343,14 @@ def _validate_role_department(
     removed = dept in pending.removed_departments
     if not known_dept or removed:
         return [f"create_role: department {dept!r} does not exist"]
+    # Mirror the apply-time constraint (``_build_role_record`` constructs a
+    # ``DepartmentName`` enum): a durable department whose name is not a known
+    # ``DepartmentName`` would pass dry-run but fail apply. Reject it here so a
+    # proposal that cannot apply never passes validation.
+    try:
+        DepartmentName(dept)
+    except ValueError:
+        return [f"create_role: department {dept!r} is not a known DepartmentName"]
     return []
 
 

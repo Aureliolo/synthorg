@@ -46,12 +46,18 @@ def _str_tuple(raw: object) -> tuple[NotBlankStr, ...]:
 
     Raises:
         TypeError: When the decoded value is not a JSON array.
+        ValueError: When any element is not a non-blank string. Both surface
+            as ``QueryError`` via ``_row_to_record`` so corrupt persisted
+            payloads fail loudly instead of being coerced into a wrong tuple.
     """
     decoded = json.loads(raw) if isinstance(raw, str) else raw
     if not isinstance(decoded, list):
         msg = f"Expected a JSON array, got {type(decoded).__name__}"
         raise TypeError(msg)
-    return tuple(NotBlankStr(str(item)) for item in decoded)
+    if not all(isinstance(item, str) and item.strip() for item in decoded):
+        msg = "Expected a JSON array of non-blank strings"
+        raise ValueError(msg)
+    return tuple(NotBlankStr(item) for item in decoded)
 
 
 def _row_to_record(row: DictRow) -> RoleRecord:

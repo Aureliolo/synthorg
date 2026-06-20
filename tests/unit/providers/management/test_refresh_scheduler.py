@@ -140,11 +140,13 @@ class TestModelRefreshScheduler:
         )
         await scheduler.start()
         await asyncio.wait_for(started.wait(), timeout=5.0)
-        with pytest.raises(TimeoutError):
-            await scheduler.stop()
-        # Release the parked cancellation cleanup now that the hard-timeout
-        # branch has been asserted, so the orphaned cycle task can finish.
-        release_cleanup.set()
+        try:
+            with pytest.raises(TimeoutError):
+                await scheduler.stop()
+        finally:
+            # Always release the parked cancellation cleanup so a failed
+            # assertion cannot leave the orphaned cycle task blocked.
+            release_cleanup.set()
         with pytest.raises(RuntimeError, match="unrestartable"):
             await scheduler.start()
 

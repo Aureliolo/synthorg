@@ -110,8 +110,12 @@ async def _wire(app_state: AppState) -> None:
     prompt_context = DurablePromptApplierContext(
         principle_repo=principle_repo,
         provider=provider,
-        role_names=architecture_context.role_names(),
-        department_names=architecture_context.department_names(),
+        # Bind the architecture context's live snapshot accessors so roles /
+        # departments created by an architecture apply (which refreshes that
+        # context) are immediately visible to prompt dry-run scope validation
+        # without a process restart.
+        role_names=architecture_context.role_names,
+        department_names=architecture_context.department_names,
         clock=app_state.clock,
     )
 

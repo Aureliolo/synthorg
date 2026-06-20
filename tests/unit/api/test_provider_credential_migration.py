@@ -32,12 +32,13 @@ class TestMigrateConfigs:
         configs: dict[str, object] = {
             "example-provider": {"auth_type": "api_key", "api_key": _SECRET},
         }
-        migrated, failed = await migration._migrate_configs(
+        migrated, failed, changed = await migration._migrate_configs(
             mock_of[AppState](), configs
         )
 
         assert migrated == 1
         assert failed == 0
+        assert changed is True
         conf = configs["example-provider"]
         assert isinstance(conf, dict)
         assert conf["connection_name"] == "provider-example-provider"
@@ -57,13 +58,49 @@ class TestMigrateConfigs:
             "already": {"auth_type": "api_key", "connection_name": "provider-already"},
             "no-secret": {"auth_type": "none"},
         }
-        migrated, failed = await migration._migrate_configs(
+        migrated, failed, changed = await migration._migrate_configs(
             mock_of[AppState](), configs
         )
 
         assert migrated == 0
         assert failed == 0
+        # No mint and no scrub (neither config carried an embedded api_key),
+        # so there is nothing to persist.
+        assert changed is False
         assert calls == []
+
+    async def test_scrub_only_rewrite_is_reported_as_changed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A config already migrated onto a connection_name but still carrying a
+        # stray plaintext api_key must be scrubbed AND reported as changed so
+        # the caller persists the cleaned config (no mint happens here).
+        calls: list[str] = []
+
+        async def _store(_app: object, name: str, _key: str) -> str:
+            calls.append(name)
+            return f"provider-{name}"
+
+        monkeypatch.setattr(_STORE_PATH, _store)
+        configs: dict[str, object] = {
+            "stale": {
+                "auth_type": "api_key",
+                "connection_name": "provider-stale",
+                "api_key": _SECRET,
+            },
+        }
+        migrated, failed, changed = await migration._migrate_configs(
+            mock_of[AppState](), configs
+        )
+
+        assert migrated == 0
+        assert failed == 0
+        assert changed is True
+        assert calls == []
+        conf = configs["stale"]
+        assert isinstance(conf, dict)
+        assert "api_key" not in conf
+        assert conf["connection_name"] == "provider-stale"
 
     async def test_catalog_absent_leaves_config_untouched(
         self, monkeypatch: pytest.MonkeyPatch
@@ -76,7 +113,7 @@ class TestMigrateConfigs:
         configs: dict[str, object] = {
             "example-provider": {"auth_type": "api_key", "api_key": _SECRET},
         }
-        migrated, failed = await migration._migrate_configs(
+        migrated, failed, changed = await migration._migrate_configs(
             mock_of[AppState](), configs
         )
 
@@ -84,6 +121,8 @@ class TestMigrateConfigs:
         # (not popped) so the next boot can retry without losing it.
         assert migrated == 0
         assert failed == 1
+        # The embedded key is left in place for retry, so nothing is scrubbed.
+        assert changed is False
         conf = configs["example-provider"]
         assert isinstance(conf, dict)
         assert "connection_name" not in conf

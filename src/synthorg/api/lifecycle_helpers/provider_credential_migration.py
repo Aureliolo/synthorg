@@ -69,7 +69,7 @@ async def migrate_embedded_provider_keys(app_state: AppState) -> None:
     if not isinstance(configs, dict):
         return
 
-    migrated, failed = await _migrate_configs(app_state, configs)
+    migrated, failed, changed = await _migrate_configs(app_state, configs)
     if failed:
         # A failed mint leaves that provider's raw api_key in ``configs``.
         # Skip the write-back entirely so the plaintext key is never
@@ -82,7 +82,9 @@ async def migrate_embedded_provider_keys(app_state: AppState) -> None:
             failed=failed,
         )
         return
-    if migrated == 0:
+    if not changed:
+        # Nothing minted AND nothing scrubbed: the stored configs are already
+        # clean, so there is no rewrite to persist.
         return
     try:
         await settings.set(_NAMESPACE, _KEY, json.dumps(configs))
@@ -100,13 +102,17 @@ async def migrate_embedded_provider_keys(app_state: AppState) -> None:
 
 async def _migrate_configs(
     app_state: AppState, configs: dict[str, object]
-) -> tuple[int, int]:
+) -> tuple[int, int, bool]:
     """Mint a catalog connection for each embedded key, rewriting in place.
 
     Returns:
-        A ``(migrated, failed)`` pair: the number of provider configs
-        migrated (an embedded key minted and rewritten onto
-        ``connection_name``) and the number whose mint raised.
+        A ``(migrated, failed, changed)`` triple: the number of provider
+        configs migrated (an embedded key minted and rewritten onto
+        ``connection_name``), the number whose mint raised, and whether any
+        config was rewritten at all -- including scrub-only rewrites where an
+        embedded ``api_key`` was removed from an already-migrated config. The
+        caller persists the rewrite whenever ``changed`` is set so scrubbed
+        plaintext keys never linger in storage.
     """
     from synthorg.providers.management._credential_helpers import (  # noqa: PLC0415
         store_provider_api_key,
@@ -114,13 +120,18 @@ async def _migrate_configs(
 
     migrated = 0
     failed = 0
+    changed = False
     for name, conf in configs.items():
         if not isinstance(conf, dict):
             continue
         api_key = conf.get("api_key")
         if not api_key or conf.get("connection_name"):
             # Nothing embedded, or already migrated onto a catalog connection.
-            conf.pop("api_key", None)
+            # Scrub any stray plaintext key and record the rewrite so the
+            # caller persists the cleaned config.
+            if "api_key" in conf:
+                conf.pop("api_key", None)
+                changed = True
             continue
         try:
             conn_name = await store_provider_api_key(app_state, name, str(api_key))
@@ -141,8 +152,9 @@ async def _migrate_configs(
         conf["connection_name"] = conn_name
         conf.pop("api_key", None)
         migrated += 1
+        changed = True
         logger.info(PROVIDER_CREDENTIAL_MIGRATED, provider=name)
-    return migrated, failed
+    return migrated, failed, changed
 
 
 __all__ = ["migrate_embedded_provider_keys"]

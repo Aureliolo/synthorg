@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import type {
+  EvolutionAxisStat,
   getEvolutionSummary,
   getMetaConfig,
   getSignals,
@@ -57,7 +58,11 @@ export const metaHandlers = [
     HttpResponse.json(paginatedEnvelopeFor<typeof listEvolutionOutcomes>([])),
   ),
   http.get('/api/v1/meta/evolution/axes/stats', () =>
-    HttpResponse.json(apiSuccess({ axes: [] })),
+    // ``getEvolutionAxisStats`` flattens ``.axes`` from the envelope, so its
+    // return type is ``EvolutionAxisStat[]`` and ``successFor<typeof fn>``
+    // cannot express the nested wire payload. Pin the envelope's data type
+    // explicitly so the mock still turns red if ``EvolutionAxisStat`` drifts.
+    HttpResponse.json(apiSuccess<{ axes: EvolutionAxisStat[] }>({ axes: [] })),
   ),
   http.post('/api/v1/meta/chat/propose', async ({ request }) => {
     let body: unknown

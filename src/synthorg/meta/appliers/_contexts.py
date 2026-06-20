@@ -17,6 +17,7 @@ The contexts hold the registry / principle snapshots so the synchronous
 dry-run reads never await; :meth:`refresh_snapshot` reloads them.
 """
 
+from collections.abc import Callable
 from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
@@ -65,8 +66,11 @@ class DurablePromptApplierContext:
     Args:
         principle_repo: Durable active-principle store (the write target).
         provider: Cached read provider refreshed after each apply.
-        role_names: Snapshot of registered role names (scope validation).
-        department_names: Snapshot of registered department names.
+        role_names: Live accessor for the registered role names (scope
+            validation). Bound to the architecture context's snapshot so
+            roles created by an architecture apply are visible to prompt
+            dry-runs without a process restart.
+        department_names: Live accessor for the registered department names.
         clock: Time source for principle timestamps.
     """
 
@@ -75,8 +79,8 @@ class DurablePromptApplierContext:
         *,
         principle_repo: ActivePrincipleRepository,
         provider: CachedActivePrincipleProvider,
-        role_names: frozenset[str],
-        department_names: frozenset[str],
+        role_names: Callable[[], frozenset[str]],
+        department_names: Callable[[], frozenset[str]],
         clock: Clock | None = None,
     ) -> None:
         self._repo = principle_repo
@@ -89,17 +93,17 @@ class DurablePromptApplierContext:
         """Return all registered role names.
 
         Returns:
-            The role-name snapshot.
+            The current role-name set (read live, not a frozen snapshot).
         """
-        return self._role_names
+        return self._role_names()
 
     def known_departments(self) -> frozenset[str]:
         """Return all registered department names.
 
         Returns:
-            The department-name snapshot.
+            The current department-name set (read live, not a frozen snapshot).
         """
-        return self._department_names
+        return self._department_names()
 
     def existing_principles(self, scope: str) -> frozenset[str]:
         """Return normalised principle texts already active at ``scope``.
@@ -137,9 +141,9 @@ class DurablePromptApplierContext:
         scope = change.target_scope
         if scope == _ALL_SCOPE:
             scope_kind = ScopeKind.ALL
-        elif scope in self._role_names:
+        elif scope in self.known_roles():
             scope_kind = ScopeKind.ROLE
-        elif scope in self._department_names:
+        elif scope in self.known_departments():
             scope_kind = ScopeKind.DEPARTMENT
         else:
             msg = (

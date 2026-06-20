@@ -65,8 +65,13 @@ def inject_strategy_context(
     assert strategy_config is not None  # noqa: S101
 
     # An explicit provider (tests) wins; otherwise fall back to the ambient
-    # provider the engine binds around the prompt build.
-    provider = active_principles or current_active_principle_provider()
+    # provider the engine binds around the prompt build. Use an explicit
+    # None-check so a falsey-but-present provider is still honoured.
+    provider = (
+        active_principles
+        if active_principles is not None
+        else current_active_principle_provider()
+    )
 
     # Load principles if configured.
     principles: tuple[ConstitutionalPrinciple, ...] = ()

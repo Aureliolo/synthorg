@@ -326,6 +326,7 @@ class _FakePromptContext:
         overridden: frozenset[str] = frozenset(),
         fail_after: int | None = None,
         fail_delete: bool = False,
+        fail_refresh: bool = False,
     ) -> None:
         self._roles = roles
         self._departments = departments
@@ -333,6 +334,7 @@ class _FakePromptContext:
         self._overridden = overridden
         self._fail_after = fail_after
         self._fail_delete = fail_delete
+        self._fail_refresh = fail_refresh
         self.created: list[str] = []
         self.deleted: list[str] = []
         self.refreshed = 0
@@ -364,6 +366,9 @@ class _FakePromptContext:
         self.deleted.append(principle_id)
 
     async def refresh_snapshot(self) -> None:
+        if self._fail_refresh:
+            msg = "refresh_snapshot boom"
+            raise RuntimeError(msg)
         self.refreshed += 1
 
 
@@ -450,6 +455,25 @@ class TestPromptApplier:
         result = await applier.apply(proposal)
         # A failing rollback delete does not abort the apply result.
         assert not result.success
+        assert context.deleted == []
+
+    async def test_apply_succeeds_when_post_commit_refresh_fails(self) -> None:
+        # Principles are already durably persisted; a failed read-snapshot
+        # refresh must not turn into a failure result (that would risk an
+        # upstream retry re-creating the principles).
+        context = _FakePromptContext(fail_refresh=True)
+        applier = PromptApplier(context=context)
+        proposal = _proposal_prompt(
+            PromptChange(
+                principle_text="be concise and helpful",
+                target_scope="all",
+                description="d",
+            ),
+        )
+        result = await applier.apply(proposal)
+        assert result.success
+        assert result.changes_applied == 1
+        assert len(context.created) == 1
         assert context.deleted == []
 
     async def test_dry_run_without_context_rejects(self) -> None:
@@ -594,6 +618,7 @@ class _FakeArchContext:
         roles_in_use: frozenset[str] = frozenset(),
         depts_in_use: frozenset[str] = frozenset(),
         fail_after: int | None = None,
+        fail_refresh: bool = False,
     ) -> None:
         self._roles = roles
         self._departments = departments
@@ -601,6 +626,7 @@ class _FakeArchContext:
         self._roles_in_use = roles_in_use
         self._depts_in_use = depts_in_use
         self._fail_after = fail_after
+        self._fail_refresh = fail_refresh
         self.applied: list[str] = []
         self.undone: list[str] = []
         self.refreshed = 0
@@ -635,6 +661,9 @@ class _FakeArchContext:
         return _undo
 
     async def refresh_snapshot(self) -> None:
+        if self._fail_refresh:
+            msg = "refresh_snapshot boom"
+            raise RuntimeError(msg)
         self.refreshed += 1
 
 
@@ -682,6 +711,21 @@ class TestArchitectureApplier:
         assert context.applied == ["new-role", "new-dept"]
         assert context.undone == []
         assert context.refreshed == 1
+
+    async def test_apply_succeeds_when_post_commit_refresh_fails(self) -> None:
+        # Changes are already durably committed; a failed read-snapshot refresh
+        # must report success (not failure) so an upstream retry cannot re-run
+        # the non-idempotent mutations.
+        context = _FakeArchContext(fail_refresh=True)
+        applier = ArchitectureApplier(context=context)
+        proposal = _proposal_architecture(
+            _arch("create_role", "new-role", payload={"description": "d"}),
+        )
+        result = await applier.apply(proposal)
+        assert result.success
+        assert result.changes_applied == 1
+        assert context.applied == ["new-role"]
+        assert context.undone == []
 
     async def test_apply_rolls_back_in_reverse_on_failure(self) -> None:
         context = _FakeArchContext(fail_after=2)
@@ -769,6 +813,24 @@ class TestArchitectureApplier:
         assert not result.success
         assert "department" in (result.error_message or "")
 
+    async def test_dry_run_create_role_non_enum_department_rejected(self) -> None:
+        # A durable department whose name is not a DepartmentName enum value
+        # exists in the registry, but apply (``DepartmentName(...)``) would
+        # reject a role pointing at it. Dry-run must reject it too rather than
+        # passing a proposal that cannot apply.
+        context = _FakeArchContext(departments=frozenset({"custom-squad"}))
+        applier = ArchitectureApplier(context=context)
+        proposal = _proposal_architecture(
+            _arch(
+                "create_role",
+                "new-role",
+                payload={"description": "d", "department": "custom-squad"},
+            ),
+        )
+        result = await applier.dry_run(proposal)
+        assert not result.success
+        assert "is not a known DepartmentName" in (result.error_message or "")
+
     async def test_dry_run_modify_workflow_missing(self) -> None:
         applier = ArchitectureApplier(context=_FakeArchContext())
         proposal = _proposal_architecture(
@@ -832,11 +894,11 @@ class TestArchitectureApplier:
         context = _FakeArchContext()
         applier = ArchitectureApplier(context=context)
         proposal = _proposal_architecture(
-            _arch("create_department", "eng", payload={}),
+            _arch("create_department", "engineering", payload={}),
             _arch(
                 "create_role",
                 "senior-engineer",
-                payload={"description": "d", "department": "eng"},
+                payload={"description": "d", "department": "engineering"},
             ),
         )
         result = await applier.dry_run(proposal)
@@ -1116,15 +1178,15 @@ class TestArchitectureApplier:
         marks that department as in-use for downstream
         ``remove_department`` changes in the same proposal."""
         applier = ArchitectureApplier(
-            context=_FakeArchContext(departments=frozenset({"dept-a"})),
+            context=_FakeArchContext(departments=frozenset({"engineering"})),
         )
         proposal = _proposal_architecture(
             _arch(
                 "create_role",
                 "r1",
-                payload={"description": "d", "department": "dept-a"},
+                payload={"description": "d", "department": "engineering"},
             ),
-            _arch("remove_department", "dept-a"),
+            _arch("remove_department", "engineering"),
         )
         result = await applier.dry_run(proposal)
         assert not result.success
@@ -1233,16 +1295,16 @@ class TestArchitectureApplier:
         release its in-flight department reference so a later
         remove_department for that dept is not falsely blocked."""
         applier = ArchitectureApplier(
-            context=_FakeArchContext(departments=frozenset({"dept-a"})),
+            context=_FakeArchContext(departments=frozenset({"engineering"})),
         )
         proposal = _proposal_architecture(
             _arch(
                 "create_role",
                 "r1",
-                payload={"description": "d", "department": "dept-a"},
+                payload={"description": "d", "department": "engineering"},
             ),
             _arch("remove_role", "r1"),
-            _arch("remove_department", "dept-a"),
+            _arch("remove_department", "engineering"),
         )
         result = await applier.dry_run(proposal)
         assert result.success, result.error_message
