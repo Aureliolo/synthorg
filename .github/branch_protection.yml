@@ -48,6 +48,22 @@ rulesets:
         exclude: []
     rules:
       - type: deletion
+      # Merge queue: the required status checks below are evaluated on the
+      # queue's `merge_group` ref at merge time, not on the PR head. This
+      # dissolves the deadlock where a dropped one-shot pull_request dispatch
+      # left a required `*-Pass` context stuck at "Expected" forever (see
+      # docs/reference/claude-reference.md, Merge queue). Parameters mirror the
+      # live ruleset (GitHub defaults except merge_method, which matches the
+      # repo's squash-merge house style); the audit diffs them byte-for-byte.
+      - type: merge_queue
+        parameters:
+          check_response_timeout_minutes: 60
+          grouping_strategy: ALLGREEN
+          max_entries_to_build: 5
+          max_entries_to_merge: 5
+          merge_method: SQUASH
+          min_entries_to_merge: 1
+          min_entries_to_merge_wait_minutes: 5
       - type: non_fast_forward
       - type: required_signatures
       - type: required_status_checks

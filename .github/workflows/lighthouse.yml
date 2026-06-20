@@ -19,6 +19,14 @@ name: Lighthouse CI
 on:
   pull_request:
     branches: [main]
+  # The required `Lighthouse Pass` context must report on the merge-queue ref
+  # so a dropped pull_request dispatch on a PR head can never permanently
+  # block a merge. `lighthouse-dashboard` runs in the queue (self-contained);
+  # `lighthouse-site` is a no-op there (it audits the per-PR Cloudflare
+  # preview URL, which does not exist for a merge-group ref) and the
+  # aggregator treats that skip as a pass. See
+  # docs/reference/claude-reference.md (Merge queue).
+  merge_group:
   workflow_dispatch:
 
 permissions: {}
@@ -43,10 +51,19 @@ jobs:
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          # fetch-depth: 0 so paths-filter can git-diff the merge-group range
+          # (base_sha..head_sha). On pull_request paths-filter uses the GitHub
+          # API and needs no history, so this is harmless there.
+          fetch-depth: "0"
           persist-credentials: false
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
         id: filter
         with:
+          # base/ref make the diff correct on `merge_group` (empty/falsy on
+          # pull_request, so default detection is preserved there). See ci.yml
+          # Detect Changes for the full rationale.
+          base: ${{ github.event.merge_group.base_sha }}
+          ref: ${{ github.event.merge_group.head_sha }}
           filters: |
             dashboard:
               - 'web/**'
@@ -97,10 +114,16 @@ jobs:
     # workflow-level fork gate below is the actual control: same-repo
     # PRs (and manual dispatch) only, so a fork PR cannot exfiltrate
     # the token. Same pattern as ``cloudflare-preview``.
+    # merge_group is added to the trigger-OR group: the dashboard audit is
+    # self-contained (local build + vite preview, no fork-token exposure and
+    # no PR-preview URL dependency), so it runs in the merge queue. The
+    # `lighthouse` environment carries no branch policy, so a merge-group ref
+    # can read LHCI_GITHUB_APP_TOKEN.
     if: >-
       needs.changes.outputs.dashboard == 'true' &&
       (github.event.pull_request.head.repo.full_name == github.repository ||
-       github.event_name == 'workflow_dispatch')
+       github.event_name == 'workflow_dispatch' ||
+       github.event_name == 'merge_group')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: lighthouse
