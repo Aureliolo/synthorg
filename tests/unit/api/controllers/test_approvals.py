@@ -1,15 +1,25 @@
 """Tests for approvals controller."""
 
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from unittest.mock import patch
-from uuid import UUID
+from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import UUID, uuid4
 
 import pytest
+from litestar.datastructures import State
 
 from synthorg.api.approval_store import ApprovalStore
+from synthorg.api.controllers.approvals._shared import _to_approval_response
+from synthorg.api.controllers.approvals.decisions import (
+    ApprovalsDecisionsController,
+    _decide_idempotent,
+)
+from synthorg.api.dto import ApproveRequest, RejectRequest
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.domain_errors import ConflictError
+from synthorg.idempotency import IdempotencyResult, IdempotencyService
 from synthorg.settings.resolver import ConfigResolver
 from tests._shared import (
     JsonDict,
@@ -25,6 +35,19 @@ from tests.unit.api.conftest import make_approval, make_auth_headers
 _BASE = "/api/v1/approvals"
 _WRITE_HEADERS = make_auth_headers("ceo")
 _READ_HEADERS = make_auth_headers("observer")
+
+
+def _idem(headers: Mapping[str, str]) -> dict[str, str]:
+    """Merge a fresh required Idempotency-Key into decision request headers.
+
+    The approve/reject endpoints require the header. A unique key per
+    call keeps the shared session-scoped idempotency store from returning
+    a prior test's cached decision.
+
+    Returns:
+        A new headers dict carrying a unique ``Idempotency-Key``.
+    """
+    return {**headers, "Idempotency-Key": str(uuid4())}
 
 
 def _create_payload(
@@ -224,7 +247,7 @@ class TestCreateApproval:
         resp = await async_test_client.post(
             _BASE,
             json=_create_payload(),
-            headers=_WRITE_HEADERS,
+            headers=_idem(_WRITE_HEADERS),
         )
         assert resp.status_code == 201
         body = resp.json()
@@ -236,7 +259,7 @@ class TestCreateApproval:
         resp = await async_test_client.post(
             _BASE,
             json=_create_payload(ttl_seconds=3600),
-            headers=_WRITE_HEADERS,
+            headers=_idem(_WRITE_HEADERS),
         )
         assert resp.status_code == 201
         assert resp.json()["data"]["expires_at"] is not None
@@ -245,7 +268,7 @@ class TestCreateApproval:
         resp = await async_test_client.post(
             _BASE,
             json=_create_payload(),
-            headers=_WRITE_HEADERS,
+            headers=_idem(_WRITE_HEADERS),
         )
         assert resp.status_code == 201
         assert resp.json()["data"]["expires_at"] is None
@@ -256,7 +279,7 @@ class TestCreateApproval:
         resp = await async_test_client.post(
             _BASE,
             json=_create_payload(task_id="task-001"),
-            headers=_WRITE_HEADERS,
+            headers=_idem(_WRITE_HEADERS),
         )
         assert resp.status_code == 201
         assert resp.json()["data"]["task_id"] == "task-001"
@@ -267,7 +290,7 @@ class TestCreateApproval:
         resp = await async_test_client.post(
             _BASE,
             json=_create_payload(metadata={"pr": "42"}),
-            headers=_WRITE_HEADERS,
+            headers=_idem(_WRITE_HEADERS),
         )
         assert resp.status_code == 201
         assert resp.json()["data"]["metadata"] == {"pr": "42"}
@@ -304,7 +327,7 @@ class TestApproveApproval:
         resp = await async_test_client.post(
             f"{_BASE}/{sid('approval-001')}/approve",
             json={"comment": "Looks good"},
-            headers=_WRITE_HEADERS,
+            headers=_idem(_WRITE_HEADERS),
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -321,7 +344,7 @@ class TestApproveApproval:
         resp = await async_test_client.post(
             f"{_BASE}/{sid('approval-001')}/approve",
             json={},
-            headers=make_auth_headers("manager"),
+            headers=_idem(make_auth_headers("manager")),
         )
         assert resp.status_code == 200
         assert resp.json()["data"]["decided_by"] == "test-manager"
@@ -330,7 +353,7 @@ class TestApproveApproval:
         resp = await async_test_client.post(
             f"{_BASE}/nonexistent/approve",
             json={},
-            headers=_WRITE_HEADERS,
+            headers=_idem(_WRITE_HEADERS),
         )
         assert resp.status_code == 404
 
@@ -356,7 +379,7 @@ class TestApproveApproval:
         resp = await async_test_client.post(
             f"{_BASE}/{sid('decided-001')}/approve",
             json={},
-            headers=_WRITE_HEADERS,
+            headers=_idem(_WRITE_HEADERS),
         )
         assert resp.status_code == 409
 
@@ -381,7 +404,7 @@ class TestApproveApproval:
         resp = await async_test_client.post(
             f"{_BASE}/{sid('expired-001')}/approve",
             json={},
-            headers=_WRITE_HEADERS,
+            headers=_idem(_WRITE_HEADERS),
         )
         assert resp.status_code == 409
 
@@ -407,7 +430,7 @@ class TestRejectApproval:
         resp = await async_test_client.post(
             f"{_BASE}/{sid('approval-001')}/reject",
             json={"reason": "Too risky"},
-            headers=_WRITE_HEADERS,
+            headers=_idem(_WRITE_HEADERS),
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -425,7 +448,7 @@ class TestRejectApproval:
         resp = await async_test_client.post(
             f"{_BASE}/{sid('approval-001')}/reject",
             json={},
-            headers=_WRITE_HEADERS,
+            headers=_idem(_WRITE_HEADERS),
         )
         assert resp.status_code == 400
 
@@ -433,7 +456,7 @@ class TestRejectApproval:
         resp = await async_test_client.post(
             f"{_BASE}/nonexistent/reject",
             json={"reason": "nope"},
-            headers=_WRITE_HEADERS,
+            headers=_idem(_WRITE_HEADERS),
         )
         assert resp.status_code == 404
 
@@ -460,7 +483,7 @@ class TestRejectApproval:
         resp = await async_test_client.post(
             f"{_BASE}/{sid('decided-002')}/reject",
             json={"reason": "nope again"},
-            headers=_WRITE_HEADERS,
+            headers=_idem(_WRITE_HEADERS),
         )
         assert resp.status_code == 409
 
@@ -533,6 +556,135 @@ class TestApprovalUrgencyFields:
         assert data["urgency_level"] == expected_urgency
         assert data["seconds_remaining"] is not None
 
+
+@pytest.mark.unit
+class TestApprovalIdempotency:
+    """Idempotency-Key contract on the approve / reject decision endpoints."""
+
+    async def test_approve_missing_idempotency_key_rejected(
+        self,
+        async_test_client: LoopAsyncClient,
+        approval_store: ApprovalStore,
+    ) -> None:
+        await _seed_item(approval_store)
+        # No Idempotency-Key header: the required HeaderParameter rejects
+        # the request before any decision runs.
+        resp = await async_test_client.post(
+            f"{_BASE}/{sid('approval-001')}/approve",
+            json={},
+            headers=_WRITE_HEADERS,
+        )
+        assert resp.status_code == 400
+
+    async def test_reject_missing_idempotency_key_rejected(
+        self,
+        async_test_client: LoopAsyncClient,
+        approval_store: ApprovalStore,
+    ) -> None:
+        await _seed_item(approval_store)
+        resp = await async_test_client.post(
+            f"{_BASE}/{sid('approval-001')}/reject",
+            json={"reason": "nope"},
+            headers=_WRITE_HEADERS,
+        )
+        assert resp.status_code == 400
+
+    @pytest.mark.parametrize(
+        ("endpoint", "scope", "data"),
+        [
+            ("approve", "approval:approve", ApproveRequest()),
+            ("reject", "approval:reject", RejectRequest(reason="no")),
+        ],
+    )
+    async def test_decision_binds_resource_scoped_idempotency_key(
+        self,
+        endpoint: str,
+        scope: str,
+        data: ApproveRequest | RejectRequest,
+    ) -> None:
+        # The dedup key MUST bind the approval id so the same caller token
+        # reused against a different approval cannot return this one's
+        # cached decision. Capture the (scope, key) the controller forwards
+        # to ``run_idempotent`` without running the callback (the canned
+        # result short-circuits the decision body).
+        captured: dict[str, str] = {}
+        item = make_approval(approval_id="bind-1")
+        canned = _to_approval_response(
+            item,
+            now=datetime.now(UTC),
+            urgency_critical_seconds=3600.0,
+            urgency_high_seconds=7200.0,
+        ).model_dump(mode="json")
+
+        async def _capture(
+            *,
+            scope: str,
+            key: str,
+            callback: Callable[[], Awaitable[object]],
+        ) -> IdempotencyResult:
+            # The callback (the real decision body) is intentionally not
+            # invoked: this test pins the key shape, not the decision.
+            del callback
+            captured["scope"] = scope
+            captured["key"] = key
+            return IdempotencyResult(result=canned, fresh=True, timed_out=False)
+
+        service: IdempotencyService = mock_of[IdempotencyService](
+            run_idempotent=_capture,
+        )
+        # ``self`` is unused by the decision body; a spec'd mock stands in
+        # so the raw ``.fn`` can be invoked without instantiating the
+        # litestar-managed controller (mirrors the webhook ingest tests).
+        controller_self = MagicMock(spec=ApprovalsDecisionsController)
+        method = getattr(ApprovalsDecisionsController, endpoint).fn
+
+        with patch(
+            "synthorg.api.controllers.approvals.decisions.idempotency_service_of",
+            return_value=service,
+        ):
+            await method(
+                controller_self,
+                state=State({"app_state": make_app_state()}),
+                approval_id=sid("bind-1"),
+                data=data,
+                request=MagicMock(spec=object),
+                idempotency_key="raw-token",
+            )
+
+        assert captured["scope"] == scope
+        assert captured["key"] == f"{sid('bind-1')}:raw-token"
+
+    async def test_decide_idempotent_maps_timed_out_to_conflict(self) -> None:
+        # A concurrent in-flight claim that never resolves surfaces as
+        # ``timed_out``; ``_decide_idempotent`` must translate that into a
+        # 409 ConflictError rather than validating a ``None`` result.
+        service: IdempotencyService = mock_of[IdempotencyService](
+            run_idempotent=AsyncMock(
+                return_value=IdempotencyResult(
+                    result=None, fresh=False, timed_out=True
+                ),
+            ),
+        )
+
+        async def _never_called() -> dict[str, object]:
+            msg = "callback must not run when the claim is in-flight"
+            raise AssertionError(msg)
+
+        with (
+            patch(
+                "synthorg.api.controllers.approvals.decisions.idempotency_service_of",
+                return_value=service,
+            ),
+            pytest.raises(ConflictError),
+        ):
+            await _decide_idempotent(
+                make_app_state(),
+                scope="approval:approve",
+                key="a1:key",
+                endpoint="approvals.approve",
+                decide=_never_called,
+            )
+
     async def test_create_approval_includes_urgency(
         self,
         async_test_client: LoopAsyncClient,
@@ -540,7 +692,7 @@ class TestApprovalUrgencyFields:
         resp = await async_test_client.post(
             _BASE,
             json=_create_payload(ttl_seconds=600),
-            headers=_WRITE_HEADERS,
+            headers=_idem(_WRITE_HEADERS),
         )
         assert resp.status_code == 201
         data = resp.json()["data"]
@@ -556,7 +708,7 @@ class TestApprovalUrgencyFields:
         resp = await async_test_client.post(
             f"{_BASE}/{sid('approval-001')}/approve",
             json={"comment": "ok"},
-            headers=_WRITE_HEADERS,
+            headers=_idem(_WRITE_HEADERS),
         )
         assert resp.status_code == 200
         data = resp.json()["data"]
@@ -571,7 +723,7 @@ class TestApprovalUrgencyFields:
         resp = await async_test_client.post(
             _BASE,
             json=_create_payload(),
-            headers=_WRITE_HEADERS,
+            headers=_idem(_WRITE_HEADERS),
         )
         approval_id = resp.json()["data"]["id"]
         resp = await async_test_client.get(
@@ -592,7 +744,7 @@ class TestApprovalUrgencyFields:
         resp = await async_test_client.post(
             f"{_BASE}/{sid('rej-001')}/reject",
             json={"reason": "Too risky"},
-            headers=_WRITE_HEADERS,
+            headers=_idem(_WRITE_HEADERS),
         )
         assert resp.status_code == 200
         data = resp.json()["data"]
@@ -681,7 +833,7 @@ class TestBoardMemberApprovalAccess:
         resp = await async_test_client.post(
             f"{_BASE}/{sid('bm-approve-001')}/approve",
             json={"comment": "Approved by board"},
-            headers=make_auth_headers("board_member"),
+            headers=_idem(make_auth_headers("board_member")),
         )
         assert resp.status_code == 200
         assert resp.json()["data"]["status"] == "approved"
@@ -696,7 +848,7 @@ class TestBoardMemberApprovalAccess:
         resp = await async_test_client.post(
             f"{_BASE}/{sid('bm-reject-001')}/reject",
             json={"reason": "Board disagrees"},
-            headers=make_auth_headers("board_member"),
+            headers=_idem(make_auth_headers("board_member")),
         )
         assert resp.status_code == 200
         assert resp.json()["data"]["status"] == "rejected"

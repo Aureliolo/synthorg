@@ -109,6 +109,17 @@ class BackupService(BackupServiceArchiveMixin):
         return self._scheduler
 
     @property
+    def is_unrestartable(self) -> bool:
+        """Whether a timed-out scheduler ``stop()`` left the service unrestartable.
+
+        Delegates to the scheduler's flag: ``start()`` raises
+        :class:`BackupUnrestartableError` while this is ``True``, so a
+        caller can probe it before attempting a restart instead of
+        catching the exception.
+        """
+        return self._scheduler.is_unrestartable
+
+    @property
     def on_startup(self) -> bool:
         """Whether to create a backup on application startup."""
         return self._config.on_startup

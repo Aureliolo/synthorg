@@ -189,6 +189,9 @@ async def _wire_conversational_repositories_and_reconcile(
         The repositories, or ``None`` when persistence is absent / not
         connected.
     """
+    from synthorg.meta.chief_of_staff.resume_service import (  # noqa: PLC0415
+        ConversationalResumeService,
+    )
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
     from synthorg.persistence.conversational_factory import (  # noqa: PLC0415
         build_conversational_repositories,
@@ -197,16 +200,28 @@ async def _wire_conversational_repositories_and_reconcile(
     repositories = build_conversational_repositories(persistence)
     if repositories is None:
         return None
+    # The resume flows route every proposal/invite/participant repo call
+    # through this ungated facade, so it is wired alongside the repos it
+    # wraps (toggle-independent: a decided conversational approval still
+    # resolves after the propose/invite features are switched off).
     app_state.wire(
         MetaStateSlice,
         conversational_proposal_repo=repositories.proposal_repo,
         conversation_invite_repo=repositories.invite_repo,
         conversation_participant_repo=repositories.participant_repo,
+        conversational_resume_service=ConversationalResumeService(
+            proposal_repo=repositories.proposal_repo,
+            invite_repo=repositories.invite_repo,
+            participant_repo=repositories.participant_repo,
+        ),
     )
     logger.info(
         API_APP_STARTUP,
         service="chief_of_staff_proposer",
-        note="conversational proposal + invite + participant repos wired",
+        note=(
+            "conversational proposal + invite + participant repos + "
+            "resume service wired"
+        ),
     )
     # Best-effort cleanup: a transient persistence error here must not
     # poison startup (the controllers would simply 503), so a failed

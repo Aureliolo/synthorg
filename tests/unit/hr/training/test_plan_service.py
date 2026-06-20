@@ -78,6 +78,53 @@ def _build_service() -> tuple[TrainingPlanService, AsyncMock, AsyncMock]:
     return service, plan_repo, result_repo
 
 
+class TestReads:
+    """The read companions delegate to the right repo and forward the id."""
+
+    async def test_latest_pending_delegates_to_plan_repo(self) -> None:
+        service, plan_repo, _ = _build_service()
+        plan = _plan()
+        plan_repo.latest_pending.return_value = plan
+        result = await service.latest_pending(NotBlankStr("agent-1"))
+        plan_repo.latest_pending.assert_awaited_once_with(NotBlankStr("agent-1"))
+        assert result is plan
+
+    async def test_latest_by_agent_delegates_to_plan_repo(self) -> None:
+        service, plan_repo, _ = _build_service()
+        plan = _plan()
+        plan_repo.latest_by_agent.return_value = plan
+        result = await service.latest_by_agent(NotBlankStr("agent-1"))
+        plan_repo.latest_by_agent.assert_awaited_once_with(NotBlankStr("agent-1"))
+        assert result is plan
+
+    async def test_get_delegates_to_plan_repo(self) -> None:
+        service, plan_repo, _ = _build_service()
+        plan = _plan()
+        plan_repo.get.return_value = plan
+        result = await service.get(NotBlankStr("plan-1"))
+        plan_repo.get.assert_awaited_once_with(NotBlankStr("plan-1"))
+        assert result is plan
+
+    async def test_latest_result_delegates_to_result_repo(self) -> None:
+        service, _, result_repo = _build_service()
+        res = _result()
+        result_repo.get_latest.return_value = res
+        result = await service.latest_result(NotBlankStr("agent-1"))
+        result_repo.get_latest.assert_awaited_once_with(NotBlankStr("agent-1"))
+        assert result is res
+
+    async def test_reads_return_none_when_absent(self) -> None:
+        service, plan_repo, result_repo = _build_service()
+        plan_repo.latest_pending.return_value = None
+        plan_repo.latest_by_agent.return_value = None
+        plan_repo.get.return_value = None
+        result_repo.get_latest.return_value = None
+        assert await service.latest_pending(NotBlankStr("agent-1")) is None
+        assert await service.latest_by_agent(NotBlankStr("agent-1")) is None
+        assert await service.get(NotBlankStr("plan-1")) is None
+        assert await service.latest_result(NotBlankStr("agent-1")) is None
+
+
 class TestCreatePlan:
     async def test_persists_plan_and_returns_it_unchanged(self) -> None:
         service, plan_repo, _ = _build_service()

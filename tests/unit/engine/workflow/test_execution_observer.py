@@ -11,6 +11,8 @@ from synthorg.engine.task_engine_models import TaskStateChanged
 from synthorg.engine.workflow.execution_observer import (
     WorkflowExecutionObserver,
 )
+from synthorg.settings.resolver import ConfigResolver
+from tests._shared import mock_of
 
 
 # Concrete fakes (not spec=Protocol) per the test guideline:
@@ -54,19 +56,22 @@ class TestWorkflowExecutionObserver:
         definition_repo = MagicMock(spec=_FakeDefinitionRepo)
         execution_repo = MagicMock(spec=_FakeExecutionRepo)
         task_engine = MagicMock(spec=TaskEngine)
+        resolver: ConfigResolver = mock_of[ConfigResolver]()
 
         observer = WorkflowExecutionObserver(
             definition_repo=definition_repo,
             execution_repo=execution_repo,
             task_engine=task_engine,
-            max_subworkflow_depth=16,
+            config_resolver=resolver,
         )
 
         service = observer._service
         assert service._definition_repo is definition_repo
         assert service._execution_repo is execution_repo
         assert service._task_engine is task_engine
-        assert service._max_subworkflow_depth == 16
+        # The observer threads the resolver into the service; depth is
+        # resolved per activation (the observer never activates).
+        assert service._config_resolver is resolver
 
     @pytest.mark.unit
     @pytest.mark.parametrize(
@@ -82,7 +87,7 @@ class TestWorkflowExecutionObserver:
             definition_repo=MagicMock(spec=_FakeDefinitionRepo),
             execution_repo=MagicMock(spec=_FakeExecutionRepo),
             task_engine=MagicMock(spec=TaskEngine),
-            max_subworkflow_depth=16,
+            config_resolver=mock_of[ConfigResolver](),
         )
 
         event = _make_event(new_status=status)

@@ -112,9 +112,13 @@ async def _wire_workflow_observer(
 ) -> None:
     """Register WorkflowExecutionObserver on `task_engine` once.
 
-    Must be called after the SettingsService auto-wire so `config_resolver`
-    drives `max_subworkflow_depth`. Falls back to the seed default (with INFO
-    log) when no resolver is wired, so executions still advance.
+    Must be called after the SettingsService auto-wire so the observer's
+    underlying service resolves `max_subworkflow_depth` from the live
+    `config_resolver`. Passes `config_resolver=None` (with an INFO log) when
+    no resolver is wired; the service then falls back to the
+    `EngineBridgeConfig` seed default. The observer never activates
+    workflows (only forwards terminal task transitions), so the depth cap is
+    immaterial here, but the resolver is threaded for forward-compatibility.
     """
     if task_engine is None or persistence is None:
         return
@@ -132,15 +136,8 @@ async def _wire_workflow_observer(
         for o in getattr(task_engine, "_observers", ())
     ):
         return
-    if app_state.slice(SettingsStateSlice).config_resolver is not None:
-        engine_bridge = await config_resolver_of(app_state).get_engine_bridge_config()
-        max_depth = engine_bridge.max_subworkflow_depth
-    else:
-        from synthorg.settings.bridge_configs import (  # noqa: PLC0415
-            EngineBridgeConfig,
-        )
-
-        max_depth = EngineBridgeConfig().max_subworkflow_depth
+    config_resolver = app_state.slice(SettingsStateSlice).config_resolver
+    if config_resolver is None:
         logger.info(
             API_APP_STARTUP,
             component="workflow_execution_observer",
@@ -148,15 +145,137 @@ async def _wire_workflow_observer(
                 "config_resolver not wired; registering observer with the "
                 "EngineBridgeConfig seed default for max_subworkflow_depth"
             ),
-            max_subworkflow_depth=max_depth,
         )
     observer = WorkflowExecutionObserver(
         definition_repo=persistence.workflow_definitions,
         execution_repo=persistence.workflow_executions,
         task_engine=task_engine,  # type: ignore[arg-type]
-        max_subworkflow_depth=max_depth,
+        config_resolver=config_resolver,
     )
     task_engine.register_observer(observer)  # type: ignore[attr-defined]
+
+
+def _wire_workflow_execution_service(
+    persistence: PersistenceBackend | None,
+    app_state: AppState,
+) -> None:
+    """Wire the singleton ``WorkflowExecutionService`` onto ``EngineStateSlice``.
+
+    Constructed once after persistence connects and the SettingsService
+    auto-wire publishes ``config_resolver`` (the service resolves
+    ``max_subworkflow_depth`` per ``activate`` so a live settings change is
+    honoured without reconstruction). Idempotent; skips when already wired
+    or a prerequisite (task engine / workflow repos / resolver) is absent,
+    in which case the controller's 503 path
+    (``workflow_execution_service_of``) fires, matching the previous
+    per-request construction's ``config_resolver``-mandatory contract.
+    """
+    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
+    from synthorg.engine.workflow.execution_service import (  # noqa: PLC0415
+        WorkflowExecutionService,
+    )
+
+    if app_state.slice(EngineStateSlice).workflow_execution_service is not None:
+        return
+    task_engine = app_state.slice(EngineStateSlice).task_engine
+    if task_engine is None or persistence is None:
+        return
+    if not (
+        hasattr(persistence, "workflow_definitions")
+        and hasattr(persistence, "workflow_executions")
+    ):
+        return
+    config_resolver = app_state.slice(SettingsStateSlice).config_resolver
+    if config_resolver is None:
+        # Mirror the observer wirer's diagnostic: without the resolver the
+        # service stays unwired and every /workflow-executions endpoint 503s,
+        # so log the cause rather than leaving an operator to infer it from a
+        # bare "service not wired" 503.
+        logger.warning(
+            API_APP_STARTUP,
+            component="workflow_execution_service",
+            note=(
+                "config_resolver not wired; skipping WorkflowExecutionService "
+                "wiring (workflow-execution endpoints will 503)"
+            ),
+        )
+        return
+    service = WorkflowExecutionService(
+        definition_repo=persistence.workflow_definitions,
+        execution_repo=persistence.workflow_executions,
+        task_engine=task_engine,
+        config_resolver=config_resolver,
+    )
+    app_state.wire_if_field_absent(
+        EngineStateSlice, "workflow_execution_service", service
+    )
+    logger.info(
+        API_SERVICE_AUTO_WIRED,
+        service="workflow_execution_service",
+    )
+
+
+def _wire_webhook_request_services(
+    persistence: PersistenceBackend | None,
+    app_state: AppState,
+) -> None:
+    """Wire the webhook activity service + replay protector onto the slice.
+
+    Both are request-path singletons the webhooks controller used to
+    build lazily under a module-level ``threading.Lock``. Wiring them
+    once at startup removes that double-checked-lock and keeps the
+    controller free of direct ``persistence.webhook_receipts`` access:
+
+    * The activity service (read path) needs a connected persistence
+      backend; skipped (controller 503s) when persistence is absent.
+    * The replay protector's in-process nonce cache MUST be a single
+      instance shared by every request, so a per-request build is wrong
+      regardless of persistence; it is wired from
+      ``integrations.webhooks.replay_window_seconds``.
+
+    Idempotent: each field is wired only when absent, so a shared-app
+    re-entry into lifespan does not discard the protector's seen-nonce
+    cache.
+    """
+    from synthorg.api.controllers._webhooks_wiring import (  # noqa: PLC0415
+        _REPLAY_PROTECTOR_MAX_ENTRIES,
+    )
+    from synthorg.integrations.state import IntegrationsStateSlice  # noqa: PLC0415
+    from synthorg.integrations.webhooks.activity_service import (  # noqa: PLC0415
+        WebhookActivityService,
+    )
+    from synthorg.integrations.webhooks.replay_protection import (  # noqa: PLC0415
+        ReplayProtector,
+    )
+
+    slice_ = app_state.slice(IntegrationsStateSlice)
+    if slice_.webhook_replay_protector is None:
+        cfg = app_state.config.integrations.webhooks
+        app_state.wire_if_field_absent(
+            IntegrationsStateSlice,
+            "webhook_replay_protector",
+            ReplayProtector(
+                window_seconds=cfg.replay_window_seconds,
+                max_entries=_REPLAY_PROTECTOR_MAX_ENTRIES,
+            ),
+        )
+        logger.info(API_SERVICE_AUTO_WIRED, service="webhook_replay_protector")
+    if (
+        slice_.webhook_activity_service is None
+        and persistence is not None
+        and getattr(persistence, "is_connected", False)
+        and hasattr(persistence, "webhook_receipts")
+    ):
+        app_state.wire_if_field_absent(
+            IntegrationsStateSlice,
+            "webhook_activity_service",
+            WebhookActivityService(receipts_repo=persistence.webhook_receipts),
+        )
+        logger.info(
+            API_SERVICE_AUTO_WIRED,
+            service="webhook_activity_service",
+            backend=type(persistence).__name__,
+        )
 
 
 async def _wire_approval_gate(

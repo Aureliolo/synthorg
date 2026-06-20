@@ -39,7 +39,12 @@ from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.group_chat import GroupChatService
 from synthorg.meta.chief_of_staff.group_invite import GroupInviteCoordinator
 from synthorg.meta.chief_of_staff.group_models import GroupConverseArgs
-from synthorg.meta.state import MetaStateSlice
+from synthorg.meta.chief_of_staff.resume_service import (
+    ConversationalResumeService,
+)
+from synthorg.persistence.conversational_proposal_protocol import (
+    ConversationalProposalRepository,
+)
 from synthorg.providers.drivers.scripted import (
     ScriptedDriver,
     SequencedResponseStrategy,
@@ -52,7 +57,7 @@ from synthorg.providers.models import (
     ToolDefinition,
 )
 from synthorg.providers.registry import ProviderRegistry
-from tests._shared import FakeClock, make_app_state
+from tests._shared import FakeClock, make_app_state, mock_of
 from tests._shared.scripted_provider import make_text_response
 from tests.unit.meta.chief_of_staff.group_chat_fakes import (
     FakeInviteRepo,
@@ -181,12 +186,11 @@ def _consent_app_state(
         approval_store=approval_store,
         agent_registry=registry,
         clock=FakeClock(start=START + timedelta(minutes=1)),
-        slices={
-            MetaStateSlice: {
-                "conversation_invite_repo": invite_repo,
-                "conversation_participant_repo": participant_repo,
-            }
-        },
+        conversational_resume_service=ConversationalResumeService(
+            proposal_repo=mock_of[ConversationalProposalRepository](),
+            invite_repo=invite_repo,
+            participant_repo=participant_repo,
+        ),
     )
 
 

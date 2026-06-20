@@ -18246,7 +18246,10 @@ export interface operations {
     readonly ApiV1AdminBackupsRestoreRestoreBackup: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: never;
+            readonly header: {
+                /** @description RFC-style retry-safe key. Required: identical keys within 24h return the cached restore result instead of running a second restore. Without a key a 5xx-driven client retry could launch concurrent restores over the same data. */
+                readonly "Idempotency-Key": string;
+            };
             readonly path?: never;
             readonly cookie?: never;
         };
@@ -19769,7 +19772,10 @@ export interface operations {
     readonly ApiV1ApprovalsApprovalIdApproveApprove: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: never;
+            readonly header: {
+                /** @description RFC-style retry-safe key. Required: an identical key within 24h returns the cached decision response instead of re-running the decision, so a 5xx-driven client retry cannot double-fire the notification / resume-signal side effects. */
+                readonly "Idempotency-Key": string;
+            };
             readonly path: {
                 /** @description Resource identifier */
                 readonly approval_id: string;
@@ -19804,7 +19810,10 @@ export interface operations {
     readonly ApiV1ApprovalsApprovalIdRejectReject: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: never;
+            readonly header: {
+                /** @description RFC-style retry-safe key. Required: an identical key within 24h returns the cached decision response instead of re-running the decision, so a 5xx-driven client retry cannot double-fire the notification / resume-signal side effects. */
+                readonly "Idempotency-Key": string;
+            };
             readonly path: {
                 /** @description Resource identifier */
                 readonly approval_id: string;

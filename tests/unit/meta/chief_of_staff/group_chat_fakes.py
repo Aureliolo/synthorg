@@ -17,6 +17,7 @@ from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.enums import (
     ConversationInviteStatus,
     ConversationParticipantStatus,
+    ParticipantAdmission,
 )
 from synthorg.meta.chief_of_staff.group_chat import GroupChatService
 from synthorg.meta.chief_of_staff.group_invite import GroupInviteCoordinator
@@ -97,6 +98,35 @@ class FakeParticipantRepo:
 
     async def count(self, filter_spec: ConversationParticipantFilterSpec) -> int:
         return len(await self.query(filter_spec))
+
+    async def admit_active_within_cap(
+        self,
+        participant: ConversationParticipant,
+        *,
+        cap: int,
+    ) -> ParticipantAdmission:
+        active = ConversationParticipantStatus.ACTIVE
+        same_pair = [
+            (key, p)
+            for key, p in self.items.items()
+            if p.conversation_id == participant.conversation_id
+            and p.agent_id == participant.agent_id
+        ]
+        if any(p.status is active for _, p in same_pair):
+            return ParticipantAdmission.ALREADY_ACTIVE
+        active_count = sum(
+            1
+            for p in self.items.values()
+            if p.conversation_id == participant.conversation_id and p.status is active
+        )
+        if active_count >= cap:
+            return ParticipantAdmission.CAP_REACHED
+        # Upsert on the natural (conversation_id, agent_id) key: drop any
+        # existing removed row for the pair before inserting the active one.
+        for key, _ in same_pair:
+            del self.items[key]
+        self.items[str(participant.id)] = participant
+        return ParticipantAdmission.ADMITTED
 
 
 class FakeInviteRepo:

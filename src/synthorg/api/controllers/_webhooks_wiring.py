@@ -1,6 +1,6 @@
-"""Boundary types and lazy-wired services for the webhooks controller.
+"""Boundary types and idempotency-key helpers for the webhooks controller.
 
-Three groups of helpers live here so the controller module stays focused
+Two groups of helpers live here so the controller module stays focused
 on request handling:
 
 * :class:`WebhookEventPayload`: the typed Pydantic boundary for inbound
@@ -8,33 +8,22 @@ on request handling:
   rejected at ``parse_typed`` time.
 * :func:`_build_idem_scope` / :func:`_build_idem_key`: pure functions
   that compose the durable idempotency-key for a webhook delivery.
-* :func:`_get_activity_service` / :func:`_get_replay_protector`: lazy
-  accessors cached on ``app_state``. Both serialise the construct-and-
-  store step through a :class:`threading.Lock` so two concurrent first
-  requests cannot both build an instance and have the second silently
-  overwrite the first. The lost-write is especially harmful for the
-  replay protector, whose in-process nonce cache is the source of
-  truth between durable-idempotency reads. A thread lock (not an
-  ``asyncio.Lock``) is used here because the critical section is
-  purely synchronous (one getattr, one constructor call, one setattr)
-  and a thread lock has no event-loop affinity, so the same module
-  remains usable when a test fixture tears down its loop between
-  cases.
+
+The webhook activity service and replay protector are wired once at
+startup (``_wire_webhook_request_services``) onto
+``IntegrationsStateSlice`` and read through ``webhook_activity_service_of``
+/ ``webhook_replay_protector_of`` so the controller never touches
+``persistence.webhook_receipts`` directly. The replay protector's
+in-process nonce cache is the source of truth between durable-
+idempotency reads, so a single wired instance must serve every request.
 """
 
 import hashlib
-import threading
 from typing import Final
 
-from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict
 
-from synthorg.integrations.webhooks.activity_service import WebhookActivityService
-from synthorg.integrations.webhooks.replay_protection import (
-    MAX_NONCE_CHARS,
-    ReplayProtector,
-)
-from synthorg.persistence.state import persistence_of
+from synthorg.integrations.webhooks.replay_protection import MAX_NONCE_CHARS
 
 
 class WebhookEventPayload(
@@ -131,13 +120,19 @@ def _build_idem_key(
     Returns:
         Resulting string.
     """
-    nonce_for_key = (
-        nonce
-        if len(nonce) <= MAX_NONCE_CHARS
-        else hashlib.sha256(
-            nonce.encode("utf-8", errors="replace"),
-        ).hexdigest()
-    )
+    # Domain-separate raw from hashed nonce material: without the prefix a
+    # short raw nonce that happens to equal some long nonce's SHA-256 hex
+    # digest would collide on the same idempotency key and suppress a
+    # distinct webhook event.
+    if len(nonce) <= MAX_NONCE_CHARS:
+        nonce_for_key = f"raw:{nonce}"
+    else:
+        nonce_for_key = (
+            "sha256:"
+            + hashlib.sha256(
+                nonce.encode("utf-8", errors="replace"),
+            ).hexdigest()
+        )
     encoded_name = _len_prefixed(connection_name)
     encoded_event = _len_prefixed(event_type)
     raw_key = f"{encoded_name}:{encoded_event}:{_len_prefixed(nonce_for_key)}"
@@ -147,81 +142,7 @@ def _build_idem_key(
         ).hexdigest()
         raw_key = f"{encoded_name}:{encoded_event}:sha256:{nonce_digest}"
         if len(raw_key) > _IDEMPOTENCY_KEY_MAX_LEN:
-            raw_key = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+            raw_key = hashlib.sha256(
+                raw_key.encode("utf-8", errors="replace"),
+            ).hexdigest()
     return raw_key
-
-
-# Module-level locks serialise the construct-and-store half of the
-# lazy-init helpers below. ``threading.Lock`` (not ``asyncio.Lock``)
-# is used so the lock has no event-loop affinity: a test fixture that
-# tears down its loop between cases cannot leave these locks bound to
-# a closed loop, and the critical sections held under each lock are
-# purely synchronous (one getattr, one constructor call, one setattr)
-# so there is no need for cooperative-scheduling semantics.
-_activity_service_lock: Final[threading.Lock] = threading.Lock()
-_replay_protector_lock: Final[threading.Lock] = threading.Lock()
-
-
-async def _get_activity_service(state: State) -> WebhookActivityService:
-    """Return (and lazily build) the read-only webhook activity service.
-
-    The service holds a reference to the persistence-backed
-    :class:`WebhookReceiptRepository` so the controller body never
-    touches ``persistence.webhook_receipts`` directly. The cache lives
-    on ``app_state`` so a single instance survives across requests.
-    The lock guards against concurrent first-call races.
-
-    Returns:
-        ``WebhookActivityService`` instance.
-    """
-    app_state = state["app_state"]
-    cached: WebhookActivityService | None = getattr(
-        app_state,
-        "_webhook_activity_service",
-        None,
-    )
-    if cached is not None:
-        return cached
-    with _activity_service_lock:
-        cached = getattr(app_state, "_webhook_activity_service", None)
-        if cached is None:
-            cached = WebhookActivityService(
-                receipts_repo=persistence_of(app_state).webhook_receipts,
-            )
-            app_state._webhook_activity_service = cached  # noqa: SLF001
-        return cached
-
-
-async def _get_replay_protector(state: State) -> ReplayProtector:
-    """Return (and lazily build) a config-driven ``ReplayProtector``.
-
-    The protector instance is cached on ``app_state`` so the nonce
-    cache persists across requests, but is constructed from
-    ``integrations.webhooks.replay_window_seconds`` at first use
-    instead of being frozen at module-import time. Two concurrent
-    first requests must not both construct a protector: the second
-    write would discard the nonces the first had already seen, briefly
-    weakening replay protection. The lock makes the construct-and-
-    store atomic.
-
-    Returns:
-        ``ReplayProtector`` instance.
-    """
-    app_state = state["app_state"]
-    cached: ReplayProtector | None = getattr(
-        app_state,
-        "_webhook_replay_protector",
-        None,
-    )
-    if cached is not None:
-        return cached
-    with _replay_protector_lock:
-        cached = getattr(app_state, "_webhook_replay_protector", None)
-        if cached is None:
-            cfg = app_state.config.integrations.webhooks
-            cached = ReplayProtector(
-                window_seconds=cfg.replay_window_seconds,
-                max_entries=_REPLAY_PROTECTOR_MAX_ENTRIES,
-            )
-            app_state._webhook_replay_protector = cached  # noqa: SLF001
-        return cached

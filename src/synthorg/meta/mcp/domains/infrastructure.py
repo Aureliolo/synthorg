@@ -1,8 +1,13 @@
+# module-kind: declarative
 """Infrastructure domain MCP tools.
 
 Covers health, settings, providers, backup, audit, events, users,
 projects, requests, setup, simulations, template packs, and other
 infrastructure controllers.
+
+A declarative tool registry: maps MCP tool names to their handler +
+args-model bindings with no business logic of its own, so it is exempt
+from the default module-size cap.
 """
 
 from typing import TYPE_CHECKING
@@ -159,13 +164,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "trigger": {
                 "type": "string",
                 "description": "What initiated the backup",
-                "enum": [
-                    "scheduled",
-                    "manual",
-                    "shutdown",
-                    "startup",
-                    "pre_migration",
-                ],
+                "enum": ["scheduled", "manual", "shutdown", "startup", "pre_migration"],
             },
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
@@ -206,9 +205,13 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
         "Restore from a backup (destructive; requires confirm).",
         {
             "backup_id": {"type": "string", "description": "Backup UUID to restore"},
+            "idempotency_key": {
+                "type": "string",
+                "description": "Identical key returns the cached restore result.",
+            },
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("backup_id", *ADMIN_GUARDRAIL_REQUIRED),
+        required=("backup_id", "idempotency_key", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=BackupRestoreArgs,
     ),
     # --- Audit ---

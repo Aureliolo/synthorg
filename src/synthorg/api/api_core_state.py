@@ -4,11 +4,11 @@ Holds the cross-cutting API services that belong to no single domain
 feature: the opaque-pagination cursor secret, the auth service, the
 session / lockout / refresh-token stores, the WebSocket ticket store,
 the user-presence tracker, the org-mutation service, the workflow
-rollback service, and the idempotency service. The cursor secret and
-auth service are wired in ``create_app``; the persistence-backed
-auth stores and services are wired once persistence is connected. All
-fields are ``None`` until wired; readers pass them through
-``require_service`` to surface a clean 503 before that.
+rollback service, the idempotency service, and the analytics read
+service. The cursor secret and auth service are wired in ``create_app``;
+the persistence-backed auth stores and services are wired once
+persistence is connected. All fields are ``None`` until wired; readers
+pass them through ``require_service`` to surface a clean 503 before that.
 
 The mutable coordination primitives that ``AppState`` still owns
 directly (request locks, bridge-config snapshots, shutdown event,
@@ -24,14 +24,13 @@ from synthorg.api.auth.presence import UserPresence
 from synthorg.api.auth.service import AuthService
 from synthorg.api.auth.ticket_store import WsTicketStore
 from synthorg.api.cursor import CursorSecret
-from synthorg.api.services.idempotency_service import (
-    IdempotencyService,
-)
+from synthorg.api.services.analytics_read_service import AnalyticsReadService
 from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.api.services.workflow_rollback_service import (
     WorkflowRollbackService,
 )
 from synthorg.api.state_slices import AppStateSliceMixin
+from synthorg.idempotency import IdempotencyService
 from synthorg.persistence.auth_protocol import (
     LockoutRepository as LockoutStore,
 )
@@ -59,6 +58,7 @@ class ApiCoreStateSlice(BaseFeatureStateSlice):
     org_mutation_service: OrgMutationService | None = None
     workflow_rollback_service: WorkflowRollbackService | None = None
     idempotency_service: IdempotencyService | None = None
+    analytics_read_service: AnalyticsReadService | None = None
 
 
 def auth_service_of(app_state: AppStateSliceMixin) -> AuthService:
@@ -188,3 +188,27 @@ def idempotency_service_of(app_state: AppStateSliceMixin) -> IdempotencyService:
     candidate = IdempotencyService(persistence_of(app_state).idempotency_keys)
     app_state.wire_if_field_absent(ApiCoreStateSlice, "idempotency_service", candidate)
     return app_state.slice(ApiCoreStateSlice).idempotency_service or candidate
+
+
+def analytics_read_service_of(
+    app_state: AppStateSliceMixin,
+) -> AnalyticsReadService:
+    """Resolve the analytics read service, lazily wrapping ``tasks``.
+
+    Raises a 503 (via :func:`persistence_of`) when persistence is not
+    connected. ``wire_if_field_absent`` makes the check + install atomic
+    so concurrent first-readers cannot overwrite each other.
+
+    Returns:
+        The wired or lazily-composed analytics read service.
+    """
+    existing = app_state.slice(ApiCoreStateSlice).analytics_read_service
+    if existing is not None:
+        return existing
+    from synthorg.persistence.state import persistence_of  # noqa: PLC0415
+
+    candidate = AnalyticsReadService(task_repo=persistence_of(app_state).tasks)
+    app_state.wire_if_field_absent(
+        ApiCoreStateSlice, "analytics_read_service", candidate
+    )
+    return app_state.slice(ApiCoreStateSlice).analytics_read_service or candidate

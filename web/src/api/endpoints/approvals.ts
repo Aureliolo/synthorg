@@ -1,4 +1,5 @@
 import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
+import { idempotencyKeyHeader } from '../idempotency'
 import type {
   ApprovalFilters,
   ApprovalResponse,
@@ -23,12 +24,30 @@ export async function createApproval(data: CreateApprovalRequest): Promise<Appro
   return unwrap(response)
 }
 
-export async function approveApproval(id: string, data?: ApproveRequest): Promise<ApprovalResponse> {
-  const response = await apiClient.post<ApiResponse<ApprovalResponse>>(`/approvals/${encodeURIComponent(id)}/approve`, data ?? {})
+export async function approveApproval(
+  id: string,
+  data?: ApproveRequest,
+  idempotencyKey?: string,
+): Promise<ApprovalResponse> {
+  // The backend requires the Idempotency-Key header on the decision so a
+  // 5xx-driven retry cannot re-fire the notify / resume-signal side effects.
+  const response = await apiClient.post<ApiResponse<ApprovalResponse>>(
+    `/approvals/${encodeURIComponent(id)}/approve`,
+    data ?? {},
+    { headers: idempotencyKeyHeader(idempotencyKey) },
+  )
   return unwrap(response)
 }
 
-export async function rejectApproval(id: string, data: RejectRequest): Promise<ApprovalResponse> {
-  const response = await apiClient.post<ApiResponse<ApprovalResponse>>(`/approvals/${encodeURIComponent(id)}/reject`, data)
+export async function rejectApproval(
+  id: string,
+  data: RejectRequest,
+  idempotencyKey?: string,
+): Promise<ApprovalResponse> {
+  const response = await apiClient.post<ApiResponse<ApprovalResponse>>(
+    `/approvals/${encodeURIComponent(id)}/reject`,
+    data,
+    { headers: idempotencyKeyHeader(idempotencyKey) },
+  )
   return unwrap(response)
 }

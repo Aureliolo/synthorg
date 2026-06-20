@@ -9,7 +9,6 @@ receive the original reply rather than a 409.
 Default TTL is 24 hours (matches Stripe-style retry windows).
 """
 
-import asyncio
 import hashlib
 import json
 from collections.abc import Awaitable, Callable
@@ -31,6 +30,7 @@ from synthorg.observability.events.idempotency import (
     IDEMPOTENCY_FAIL,
 )
 from synthorg.persistence.idempotency_protocol import (
+    IdempotencyClaim,
     IdempotencyOutcome,
     IdempotencyRepository,
 )
@@ -233,48 +233,72 @@ class IdempotencyService:
             ttl_seconds=self._ttl_seconds,
             now=now,
         )
-
         if claim.outcome is IdempotencyOutcome.COMPLETED:
-            logger.info(
-                IDEMPOTENCY_CLAIM_COMPLETED,
-                scope=scope,
-                key=key,
-            )
+            logger.info(IDEMPOTENCY_CLAIM_COMPLETED, scope=scope, key=key)
             cached = (
                 json.loads(claim.cached_response) if claim.cached_response else None
             )
             return cached, False, False
-
         if claim.outcome is IdempotencyOutcome.IN_FLIGHT:
-            logger.info(
-                IDEMPOTENCY_CLAIM_IN_FLIGHT,
-                scope=scope,
-                key=key,
-            )
-            poll_outcome, body = await self._wait_for_in_flight(
-                scope=scope,
-                key=key,
-            )
-            if poll_outcome is _PollOutcome.COMPLETED:
-                return body, False, False
-            if poll_outcome is _PollOutcome.LEADER_FAILED:
-                # Tell the caller to re-claim. The repo's claim() has
-                # already rotated the lease for the FAILED row so the
-                # next call lands FRESH.
-                return _LeaderFailedSentinel, False, False
-            # TIMED_OUT -- caller surfaces 409 Conflict.
-            return None, False, True
+            return await self._resolve_in_flight(scope=scope, key=key)
+        return await self._execute_fresh_claim(
+            claim=claim,
+            scope=scope,
+            key=key,
+            callback=callback,
+        )
 
-        # FRESH -- execute the callback under the claim. The
-        # ``claim_token`` is the lease this worker owns; ``complete``
-        # / ``fail`` enforce token equality so a slow worker that
-        # ran past the in-flight window cannot CAS-overwrite a row
-        # the rotation handed to a fresh worker. The
-        # ``IdempotencyClaim`` model_validator already enforces that
-        # FRESH outcomes carry a non-None token, so this lookup is
-        # type-safe; we surface a defensive ValueError to the
-        # operator instead of an untyped AttributeError if the
-        # invariant ever regressed.
+    async def _resolve_in_flight(
+        self,
+        *,
+        scope: NotBlankStr,
+        key: NotBlankStr,
+    ) -> tuple[object, bool, bool]:
+        """Map an IN_FLIGHT poll outcome to ``(result, fresh, timed_out)``.
+
+        Returns:
+            Tuple of the declared element types. ``_LeaderFailedSentinel``
+            in the first slot tells the caller to re-claim (the prior
+            leader flipped the row to FAILED and ``claim()`` rotated the
+            lease so the next call lands FRESH).
+        """
+        logger.info(IDEMPOTENCY_CLAIM_IN_FLIGHT, scope=scope, key=key)
+        poll_outcome, body = await self._wait_for_in_flight(scope=scope, key=key)
+        if poll_outcome is _PollOutcome.COMPLETED:
+            return body, False, False
+        if poll_outcome is _PollOutcome.LEADER_FAILED:
+            return _LeaderFailedSentinel, False, False
+        # TIMED_OUT -- caller surfaces 409 Conflict.
+        return None, False, True
+
+    async def _execute_fresh_claim(
+        self,
+        *,
+        claim: IdempotencyClaim,
+        scope: NotBlankStr,
+        key: NotBlankStr,
+        callback: Callable[[], Awaitable[object]],
+    ) -> tuple[object, bool, bool]:
+        """Run *callback* under a FRESH claim and record its completion.
+
+        The ``claim_token`` is the lease this worker owns; ``complete`` /
+        ``fail`` enforce token equality so a slow worker that ran past the
+        in-flight window cannot CAS-overwrite a row the rotation handed to
+        a fresh worker. The ``IdempotencyClaim`` model_validator already
+        enforces that FRESH outcomes carry a non-None token, so the lookup
+        is type-safe; a defensive ``ValueError`` surfaces to the operator
+        instead of an untyped ``AttributeError`` if that ever regressed.
+
+        Returns:
+            ``(result, fresh=True, timed_out=False)``. The result is
+            round-tripped through ``json.loads`` so the fresh path returns
+            the same shape as the replay path.
+
+        Raises:
+            ValueError: When a FRESH claim is missing its token.
+            MemoryError: Re-raised unchanged (never touches the claim row).
+            RecursionError: Re-raised unchanged.
+        """
         token = claim.claim_token
         if token is None:
             msg = "FRESH claim must carry a claim_token"
@@ -287,25 +311,14 @@ class IdempotencyService:
             # the claim row. Project convention.
             raise
         except Exception:
-            await self._mark_failed_safely(
-                scope=scope,
-                key=key,
-                claim_token=token,
-            )
+            await self._mark_failed_safely(scope=scope, key=key, claim_token=token)
             raise
-
         body = await self._record_completion(
             scope=scope,
             key=key,
             result=result,
             claim_token=token,
         )
-        # Round-trip through ``json.loads`` so the fresh-path return
-        # value has the same shape as the replay-path return value
-        # (which is always ``json.loads(body)``). Without this, a fresh
-        # caller would receive ``dict[str, object]`` while a replay
-        # caller would receive whatever JSON-decoding produces, leaving
-        # callers with type-unstable behaviour they cannot reason about.
         return json.loads(body), True, False
 
     async def _wait_for_in_flight(
@@ -335,8 +348,12 @@ class IdempotencyService:
         deadline = self._clock.monotonic() + _IN_FLIGHT_POLL_TIMEOUT_SECONDS
         backoff = _IN_FLIGHT_POLL_INITIAL_BACKOFF_SECONDS
         while self._clock.monotonic() < deadline:
-            await asyncio.sleep(backoff)
+            await self._clock.sleep(backoff)
             backoff = min(backoff * 2, _IN_FLIGHT_POLL_MAX_BACKOFF_SECONDS)
+            # Re-check the deadline after the sleep so a long final backoff
+            # does not buy one more DB round-trip past the budget.
+            if self._clock.monotonic() >= deadline:
+                break
             record = await self._repo.get(scope=scope, key=key)
             if record is None:
                 # The leader's row was deleted (cleanup / TTL expiry).

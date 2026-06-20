@@ -21,13 +21,13 @@ from litestar.datastructures import State
 from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.controllers.webhooks import _shared as webhooks_shared
 from synthorg.api.controllers.webhooks.retry import WebhooksRetryController
-from synthorg.api.services.idempotency_service import (
-    IdempotencyResult,
-    IdempotencyService,
-)
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.core.types import NotBlankStr
+from synthorg.idempotency import (
+    IdempotencyResult,
+    IdempotencyService,
+)
 from synthorg.integrations.connections.models import WebhookReceipt
 from synthorg.observability.events.integrations import (
     WEBHOOK_RECEIPT_STATUS_TRANSITIONED,

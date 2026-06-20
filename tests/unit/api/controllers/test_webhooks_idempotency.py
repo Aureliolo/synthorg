@@ -26,9 +26,9 @@ from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.controllers import _webhooks_wiring
 from synthorg.api.controllers.webhooks import _shared as webhooks_shared
 from synthorg.api.controllers.webhooks import ingest as webhooks_ingest
-from synthorg.api.services.idempotency_service import IdempotencyService
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.config.schema import RootConfig
+from synthorg.idempotency import IdempotencyService
 from synthorg.observability.events.integrations import WEBHOOK_ACCEPTED
 from tests._shared import JsonDict, make_app_state, mock_of
 
@@ -123,7 +123,7 @@ class TestPublishWithDurableIdempotency:
             spy,
         )
 
-        from synthorg.api.services.idempotency_service import IdempotencyResult
+        from synthorg.idempotency import IdempotencyResult
 
         async def run_idempotent(
             *,

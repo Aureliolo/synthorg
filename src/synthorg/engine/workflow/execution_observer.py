@@ -27,6 +27,7 @@ from synthorg.persistence.workflow_definition_protocol import (
 from synthorg.persistence.workflow_execution_protocol import (
     WorkflowExecutionRepository,
 )
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -41,11 +42,16 @@ class WorkflowExecutionObserver:
         definition_repo: Repository for reading workflow definitions.
         execution_repo: Repository for persisting execution state.
         task_engine: Required by the underlying ``WorkflowExecutionService``.
-        max_subworkflow_depth: Maximum nested subworkflow depth allowed
-            before the underlying service refuses to spawn another
-            child execution; resolved from
-            ``EngineBridgeConfig.max_subworkflow_depth`` at startup so
-            operator overrides (DB > env > YAML) flow through unchanged.
+        config_resolver: Resolver the underlying service uses to resolve
+            ``engine.max_subworkflow_depth`` per activation so operator
+            overrides (DB > env > code default; YAML is a company-template
+            ingestion format, not a precedence tier) flow through
+            unchanged. ``None``
+            falls back to the ``EngineBridgeConfig`` seed default; this
+            observer never activates workflows (only forwards terminal
+            task transitions), so the depth cap is immaterial here, but
+            the resolver is threaded so a wired observer honours live
+            settings if the underlying behaviour ever broadens.
     """
 
     def __init__(
@@ -54,13 +60,13 @@ class WorkflowExecutionObserver:
         definition_repo: WorkflowDefinitionRepository,
         execution_repo: WorkflowExecutionRepository,
         task_engine: TaskEngine,
-        max_subworkflow_depth: int,
+        config_resolver: ConfigResolver | None = None,
     ) -> None:
         self._service = WorkflowExecutionService(
             definition_repo=definition_repo,
             execution_repo=execution_repo,
             task_engine=task_engine,
-            max_subworkflow_depth=max_subworkflow_depth,
+            config_resolver=config_resolver,
         )
 
     async def __call__(self, event: TaskStateChanged) -> None:

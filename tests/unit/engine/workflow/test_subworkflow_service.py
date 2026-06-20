@@ -1,7 +1,6 @@
 """Tests for SubworkflowService."""
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -24,11 +23,14 @@ from synthorg.engine.workflow.subworkflow_models import (
     ParentReference,
     SubworkflowSummary,
 )
+from synthorg.engine.workflow.subworkflow_registry import SubworkflowRegistry
 from synthorg.engine.workflow.subworkflow_service import (
     SubworkflowHasParentsError,
     SubworkflowService,
 )
-from tests._shared import as_pk, as_uuid
+from tests._shared import as_pk, as_uuid, mock_of
+
+pytestmark = pytest.mark.unit
 
 
 def _make_subdef(
@@ -89,16 +91,15 @@ def _summary(sub_id: str, *, name: str = "Inner") -> SubworkflowSummary:
     )
 
 
-def _service(registry: AsyncMock | None = None) -> SubworkflowService:
+def _service(registry: SubworkflowRegistry | None = None) -> SubworkflowService:
     return SubworkflowService(
-        registry=registry or AsyncMock(),
+        registry=registry or mock_of[SubworkflowRegistry](),
     )
 
 
 class TestSubworkflowServiceList:
-    @pytest.mark.unit
     async def test_lists_unfiltered(self) -> None:
-        registry = AsyncMock()
+        registry = mock_of[SubworkflowRegistry]()
         registry.list_all.return_value = (
             _summary("b-2"),
             _summary("a-1"),
@@ -111,22 +112,19 @@ class TestSubworkflowServiceList:
         assert page[0].subworkflow_id == "a-1"
         assert page[1].subworkflow_id == "b-2"
 
-    @pytest.mark.unit
     async def test_query_filters_via_search(self) -> None:
-        registry = AsyncMock()
+        registry = mock_of[SubworkflowRegistry]()
         registry.search.return_value = (_summary("a-1"),)
         service = _service(registry)
         _page, total = await service.list_summaries(offset=0, limit=10, query="ner")
         assert total == 1
         registry.search.assert_awaited_once()
 
-    @pytest.mark.unit
     async def test_invalid_offset_rejected(self) -> None:
         service = _service()
         with pytest.raises(ValueError, match="offset"):
             await service.list_summaries(offset=-1, limit=10)
 
-    @pytest.mark.unit
     async def test_invalid_limit_rejected(self) -> None:
         service = _service()
         with pytest.raises(ValueError, match="limit"):
@@ -134,18 +132,16 @@ class TestSubworkflowServiceList:
 
 
 class TestSubworkflowServiceGet:
-    @pytest.mark.unit
     async def test_get_specific_version(self) -> None:
-        registry = AsyncMock()
+        registry = mock_of[SubworkflowRegistry]()
         defn = _make_subdef()
         registry.get.return_value = defn
         service = _service(registry)
         result = await service.get(NotBlankStr("sub-1"), NotBlankStr("1.0.0"))
         assert result.id == as_uuid("sub-1")
 
-    @pytest.mark.unit
     async def test_resolves_latest_when_version_omitted(self) -> None:
-        registry = AsyncMock()
+        registry = mock_of[SubworkflowRegistry]()
         registry.latest_version.return_value = "1.2.3"
         registry.get.return_value = _make_subdef(version="1.2.3")
         service = _service(registry)
@@ -153,9 +149,8 @@ class TestSubworkflowServiceGet:
         assert result.version == "1.2.3"
         registry.get.assert_awaited_with(NotBlankStr("sub-1"), NotBlankStr("1.2.3"))
 
-    @pytest.mark.unit
     async def test_no_versions_raises_not_found(self) -> None:
-        registry = AsyncMock()
+        registry = mock_of[SubworkflowRegistry]()
         registry.latest_version.return_value = None
         service = _service(registry)
         with pytest.raises(SubworkflowNotFoundError):
@@ -163,16 +158,14 @@ class TestSubworkflowServiceGet:
 
 
 class TestSubworkflowServiceCreate:
-    @pytest.mark.unit
     async def test_publishes_subworkflow(self) -> None:
-        registry = AsyncMock()
+        registry = mock_of[SubworkflowRegistry]()
         service = _service(registry)
         defn = _make_subdef()
         result = await service.create(defn, saved_by="alice")
         assert result.id == as_uuid("sub-1")
         registry.register.assert_awaited_once_with(defn)
 
-    @pytest.mark.unit
     async def test_rejects_non_subworkflow(self) -> None:
         service = _service()
         defn = _make_subdef(is_subworkflow=False)
@@ -184,9 +177,8 @@ class TestSubworkflowServiceCreate:
 
 
 class TestSubworkflowServiceDelete:
-    @pytest.mark.unit
     async def test_deletes_when_no_parents(self) -> None:
-        registry = AsyncMock()
+        registry = mock_of[SubworkflowRegistry]()
         registry.find_parents.return_value = ()
         service = _service(registry)
         await service.delete(
@@ -197,9 +189,8 @@ class TestSubworkflowServiceDelete:
         )
         registry.delete.assert_awaited_once()
 
-    @pytest.mark.unit
     async def test_blocks_when_parents_pin(self) -> None:
-        registry = AsyncMock()
+        registry = mock_of[SubworkflowRegistry]()
         registry.find_parents.return_value = (
             ParentReference(
                 parent_id=NotBlankStr("wf-parent"),

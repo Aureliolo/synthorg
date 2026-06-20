@@ -38,6 +38,8 @@ from synthorg.integrations.oauth.token_manager import (
 )
 from synthorg.integrations.tunnel.mcp_service import TunnelService
 from synthorg.integrations.tunnel.protocol import TunnelProvider
+from synthorg.integrations.webhooks.activity_service import WebhookActivityService
+from synthorg.integrations.webhooks.replay_protection import ReplayProtector
 from synthorg.integrations.webhooks.service import WebhookService
 from synthorg.tools.mcp.factory import MCPToolFactory
 
@@ -63,6 +65,8 @@ class IntegrationsStateSlice(BaseFeatureStateSlice):
     mcp_installations_repo: McpInstallationRepository | None = None
     mcp_bridge_factory: MCPToolFactory | None = None
     health_prober_service: HealthProberService | None = None
+    webhook_activity_service: WebhookActivityService | None = None
+    webhook_replay_protector: ReplayProtector | None = None
 
 
 def connection_catalog_of(app_state: AppStateSliceMixin) -> ConnectionCatalog:
@@ -108,4 +112,37 @@ def webhook_service_of(app_state: AppStateSliceMixin) -> WebhookService:
     """
     return require_service(
         app_state.slice(IntegrationsStateSlice).webhook_service, "Webhook Service"
+    )
+
+
+def webhook_activity_service_of(
+    app_state: AppStateSliceMixin,
+) -> WebhookActivityService:
+    """Resolve the read-only webhook activity service, or raise 503.
+
+    Returns:
+        The wired webhook activity service.
+    """
+    return require_service(
+        app_state.slice(IntegrationsStateSlice).webhook_activity_service,
+        "Webhook Activity Service",
+    )
+
+
+def webhook_replay_protector_of(
+    app_state: AppStateSliceMixin,
+) -> ReplayProtector:
+    """Resolve the singleton webhook replay protector, or raise 503.
+
+    The protector's in-process nonce cache is the source of truth
+    between durable-idempotency reads, so a single wired instance must
+    serve every request; a per-request build would discard already-seen
+    nonces and briefly weaken replay protection.
+
+    Returns:
+        The wired webhook replay protector.
+    """
+    return require_service(
+        app_state.slice(IntegrationsStateSlice).webhook_replay_protector,
+        "Webhook Replay Protector",
     )

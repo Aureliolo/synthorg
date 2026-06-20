@@ -48,7 +48,6 @@ WORKERS_DEAD_LETTER_DUPLICATE_SUPPRESSED: Final[str] = (
     "workers.dead_letter.duplicate_suppressed"
 )
 WORKERS_DEAD_LETTER_FAILED: Final[str] = "workers.dead_letter.failed"
-WORKERS_DEAD_LETTER_PARSE_FAILED: Final[str] = "workers.dead_letter.parse_failed"
 
 # seen_claims pruner (backend-side)
 WORKERS_SEEN_CLAIMS_PRUNER_STARTED: Final[str] = "workers.seen_claims_pruner.started"
@@ -71,6 +70,9 @@ WORKERS_HEARTBEAT_SUBSCRIBER_STOPPED: Final[str] = (
 WORKERS_HEARTBEAT_OBSERVED: Final[str] = "workers.heartbeat_subscriber.observed"
 WORKERS_HEARTBEAT_STALE: Final[str] = "workers.heartbeat_subscriber.worker_stale"
 WORKERS_HEARTBEAT_SUBSCRIBER_FAILED: Final[str] = "workers.heartbeat_subscriber.failed"
+WORKERS_HEARTBEAT_SUBSCRIBER_START_REJECTED: Final[str] = (
+    "workers.heartbeat_subscriber.start_rejected"
+)
 
 # Dispatcher
 WORKERS_DISPATCHER_QUEUE_NOT_RUNNING: Final[str] = (
@@ -124,6 +126,11 @@ WORKERS_MAIN_INVALID_EXECUTOR_CONFIG: Final[str] = (
 )
 WORKERS_MAIN_PLACEHOLDER_EXECUTOR_INVOKED: Final[str] = (
     "workers.main.placeholder_executor_invoked"
+)
+WORKERS_MAIN_SEEN_CLAIMS_WIRED: Final[str] = "workers.main.seen_claims_wired"
+WORKERS_MAIN_SEEN_CLAIMS_SKIPPED: Final[str] = "workers.main.seen_claims_skipped"
+WORKERS_MAIN_SHUTDOWN_CLEANUP_FAILED: Final[str] = (
+    "workers.main.shutdown_cleanup_failed"
 )
 
 # HTTP-callback executor events

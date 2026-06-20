@@ -99,6 +99,16 @@ class BackupScheduler:
         """Whether the scheduler loop is currently active."""
         return self._task is not None and not self._task.done()
 
+    @property
+    def is_unrestartable(self) -> bool:
+        """Whether a timed-out ``stop()`` left the scheduler unrestartable.
+
+        ``True`` once a drain exceeded the hard deadline; the orphan task
+        may still hold the backup lock, so ``start()`` refuses until a
+        fresh scheduler is constructed.
+        """
+        return self._stop_failed
+
     async def start(self) -> None:
         """Start the background scheduler loop.
 

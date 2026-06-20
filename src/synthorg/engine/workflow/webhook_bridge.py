@@ -6,7 +6,6 @@ sprints.
 """
 
 import asyncio
-import contextlib
 from collections.abc import Mapping
 from typing import Final
 
@@ -15,9 +14,12 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.message import DataPart
 from synthorg.core.boundary import parse_typed
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler
+from synthorg.engine.workflow.errors import WebhookBridgeUnrestartableError
 from synthorg.engine.workflow.strategies.external_trigger import (
     ExternalTriggerStrategy,
 )
@@ -27,7 +29,10 @@ from synthorg.observability import (
     log_exception_redacted,
     safe_error_description,
 )
-from synthorg.observability.background_tasks import log_task_exceptions
+from synthorg.observability.background_tasks import (
+    drain_lifecycle_task,
+    log_task_exceptions,
+)
 from synthorg.observability.events.integrations import (
     WEBHOOK_BRIDGE_EVENT_FORWARDED,
     WEBHOOK_BRIDGE_PAUSED,
@@ -73,6 +78,8 @@ class WebhookEventBridge:
         bus: The message bus instance.
         ceremony_scheduler: The ceremony scheduler holding the
             active sprint and strategy.
+        config_resolver: Optional resolver for operator-tuned bridge settings.
+        clock: Optional clock seam for poll and backoff sleeps.
     """
 
     def __init__(
@@ -81,16 +88,31 @@ class WebhookEventBridge:
         ceremony_scheduler: CeremonyScheduler,
         *,
         config_resolver: ConfigResolver | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._bus = bus
         self._scheduler = ceremony_scheduler
         self._config_resolver = config_resolver
+        # Clock seam: the poll loop's pause / error-backoff waits route
+        # through the clock so tests can drive them with a ``FakeClock``
+        # instead of real wall-clock sleeps.
+        self._clock: Clock = clock or SystemClock()
         self._task: asyncio.Task[None] | None = None
+        # Tracks whether a live bus subscription is currently held. A done
+        # poll task whose self-stop unsubscribe FAILED leaves this True, so
+        # ``start()`` must not clear the stale handle and re-subscribe (that
+        # would stack a duplicate subscriber on the live ghost subscription).
+        self._subscribed = False
         # Eager lifecycle lock per ``docs/reference/lifecycle-sync.md``;
         # ``asyncio.Lock`` is loop-agnostic until first ``acquire()``,
         # so app-wire-time construction is safe and prevents a racing
         # ``stop()`` from observing a half-published lock attribute.
         self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
+        # Survives a timed-out stop so a later start() cannot stack a
+        # second poll loop on the orphaned one (canonical lifecycle
+        # pattern, see docs/reference/lifecycle-sync.md).
+        self._stop_failed = False
+        self._stop_drain_timeout_seconds: float = DEFAULT_DRAIN_TIMEOUT_SECONDS
         # Resolver-failure warnings are log-once per run of failures
         # to keep the polling loop from flooding logs during a
         # prolonged settings outage. Flags reset on the first
@@ -194,14 +216,40 @@ class WebhookEventBridge:
         return value
 
     async def start(self) -> None:
-        """Subscribe and start the polling task."""
+        """Subscribe and start the polling task.
+
+        Raises:
+            WebhookBridgeUnrestartableError: If the bridge was previously
+                stopped with a timeout and is unrestartable.
+        """
         async with self._lifecycle_lock:
+            if self._stop_failed:
+                msg = (
+                    "WebhookEventBridge is unrestartable after a timed-out "
+                    "stop; construct a fresh bridge instead"
+                )
+                logger.warning(
+                    WEBHOOK_BRIDGE_STOPPED,
+                    error=msg,
+                    note="unrestartable",
+                )
+                raise WebhookBridgeUnrestartableError(msg)
+            # A poll loop that self-stopped on the max-consecutive-errors
+            # path leaves its task done. Treat a done task as absent ONLY
+            # when its unsubscribe succeeded (``_subscribed`` is False) so
+            # the bridge re-subscribes and re-runs; a done task whose
+            # self-stop unsubscribe FAILED stays referenced (``_subscribed``
+            # still True) so ``start()`` refuses rather than stacking a
+            # duplicate subscriber on the live ghost subscription.
+            if self._task is not None and self._task.done() and not self._subscribed:
+                self._task = None
             if self._task is not None:
                 return
             await self._bus.subscribe(
                 WEBHOOK_CHANNEL.name,
                 _SUBSCRIBER_ID,
             )
+            self._subscribed = True
             self._task = asyncio.create_task(
                 self._poll_loop(),
                 name="webhook-event-bridge",
@@ -232,30 +280,50 @@ class WebhookEventBridge:
         on a failed unsubscribe would let a later ``start()``
         register a duplicate subscriber id against a live ghost
         subscription.
+
+        Raises:
+            TimeoutError: If the poll-task drain exceeds
+                ``_stop_drain_timeout_seconds``; the bridge is then
+                marked unrestartable.
         """
         async with self._lifecycle_lock:
-            if self._task is None:
+            task = self._task
+            if task is None:
                 return
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
+            try:
+                await drain_lifecycle_task(
+                    task,
+                    timeout=self._stop_drain_timeout_seconds,
+                    logger_=logger,
+                    event=WEBHOOK_BRIDGE_STOPPED,
+                    timeout_message=(
+                        "stop exceeded hard deadline; bridge marked unrestartable"
+                    ),
+                )
+            except TimeoutError:
+                self._stop_failed = True
+                raise
             try:
                 await self._bus.unsubscribe(
                     WEBHOOK_CHANNEL.name,
                     _SUBSCRIBER_ID,
                 )
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     WEBHOOK_BRIDGE_STOPPED,
                     subscriber_id=_SUBSCRIBER_ID,
                     channel=WEBHOOK_CHANNEL.name,
-                    error=(
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    note=(
                         "unsubscribe failed -- bridge remains in "
                         "partial-stop state; call stop() again after "
                         "the bus recovers"
                     ),
                 )
                 raise
+            self._subscribed = False
             self._task = None
             logger.info(WEBHOOK_BRIDGE_STOPPED)
 
@@ -312,9 +380,8 @@ class WebhookEventBridge:
 
         Raises:
             asyncio.CancelledError: If the polling task is cancelled
-                by ``stop()``; propagation lets the surrounding
-                ``contextlib.suppress`` in ``stop()`` short-circuit
-                cleanly.
+                by ``stop()``; propagation lets the shielded drain in
+                ``stop()`` observe the cancellation and complete cleanly.
         """
         consecutive_errors = 0
         while True:
@@ -325,7 +392,7 @@ class WebhookEventBridge:
                 # bridge unexpectedly.
                 consecutive_errors = 0
                 logger.debug(WEBHOOK_BRIDGE_PAUSED, reason="paused_by_setting")
-                await asyncio.sleep(await self._get_poll_timeout())
+                await self._clock.sleep(await self._get_poll_timeout())
                 continue
             poll_timeout = await self._get_poll_timeout()
             max_errors = await self._get_max_consecutive_errors()
@@ -402,7 +469,11 @@ class WebhookEventBridge:
                                 "in partial-stop state"
                             ),
                         )
+                        # ``_subscribed`` stays True: the subscription is
+                        # still live, so ``start()`` must refuse rather than
+                        # stack a duplicate against the ghost subscription.
                         return
+                    self._subscribed = False
                     self._task = None
                     return
                 logger.warning(
@@ -413,7 +484,7 @@ class WebhookEventBridge:
                 )
                 # Back off for one poll interval before retrying so the
                 # loop does not tight-spin on a hot error path.
-                await asyncio.sleep(poll_timeout)
+                await self._clock.sleep(poll_timeout)
 
     async def _forward(self, message: object) -> None:
         """Extract event data and call on_external_event."""

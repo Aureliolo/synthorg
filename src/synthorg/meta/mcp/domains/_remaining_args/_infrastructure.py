@@ -109,8 +109,19 @@ class BackupRestoreArgs(_BackupIdArgs, AdminGuardrailFields):
 
     Restoring overwrites the current system state.  Treat as
     destructive: callers must supply ``confirm=True`` and a non-blank
-    ``reason`` (mixin) in addition to the backup UUID.
+    ``reason`` (mixin) in addition to the backup UUID. A required
+    ``idempotency_key`` makes a re-issued restore (e.g. an agent retry
+    after a transport error) a no-op that returns the cached result
+    instead of overwriting state a second time.
     """
+
+    idempotency_key: NotBlankStr = Field(
+        max_length=255,
+        description=(
+            "Retry-safe key: an identical key returns the cached restore "
+            "result instead of re-running the restore."
+        ),
+    )
 
 
 class AuditListArgs(PaginationFields):

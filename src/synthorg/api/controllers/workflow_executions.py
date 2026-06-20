@@ -5,7 +5,6 @@ from typing import Final
 from litestar import Controller, Request, Response, get, post
 from litestar.datastructures import State
 
-from synthorg._core.features import require_service
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_workflow import (
     ActivateWorkflowRequest,
@@ -28,17 +27,14 @@ from synthorg.core.persistence_errors import (
 from synthorg.engine.errors import (
     WorkflowExecutionNotFoundError,
 )
-from synthorg.engine.state import EngineStateSlice
+from synthorg.engine.state import workflow_execution_service_of
 from synthorg.engine.workflow.execution_models import WorkflowExecution
-from synthorg.engine.workflow.execution_service import WorkflowExecutionService
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow_execution import (
     WORKFLOW_EXEC_CANCELLED,
     WORKFLOW_EXEC_NOT_FOUND,
     WORKFLOW_EXECUTION_USERNAME_FALLBACK,
 )
-from synthorg.persistence.state import persistence_of
-from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
 
@@ -71,39 +67,6 @@ def _extract_username(request: Request[object, object, State]) -> str:
         path=str(request.url),
     )
     return "api"
-
-
-async def _build_service(state: State) -> WorkflowExecutionService:
-    """Construct a WorkflowExecutionService from app state.
-
-    Resolves ``engine.max_subworkflow_depth`` through the engine bridge
-    config so the service inherits the operator's settings (DB > env >
-    code default, via :class:`SettingsService` / :class:`ConfigResolver`)
-    on every request. The ``config_resolver`` slot is mandatory: an
-    unwired resolver raises a 503 instead of silently falling back to
-    the Pydantic default, so a wiring failure surfaces immediately
-    rather than running executions with code defaults.
-
-    Returns:
-        ``WorkflowExecutionService`` instance.
-
-    Raises:
-        ServiceUnavailableError: When ``config_resolver`` is not wired
-            (surfaced through ``config_resolver_of``).
-    """
-    app_state = state.app_state
-    # Resolver is mandatory: silently falling back to ``EngineBridgeConfig()``
-    # would hide a wiring failure and run executions with the code default
-    # instead of the resolved DB / env value (Cat-1 precedence).
-    engine_bridge = await config_resolver_of(app_state).get_engine_bridge_config()
-    return WorkflowExecutionService(
-        definition_repo=persistence_of(app_state).workflow_definitions,
-        execution_repo=persistence_of(app_state).workflow_executions,
-        task_engine=require_service(
-            app_state.slice(EngineStateSlice).task_engine, "Task Engine"
-        ),
-        max_subworkflow_depth=engine_bridge.max_subworkflow_depth,
-    )
 
 
 class WorkflowExecutionController(Controller):
@@ -141,7 +104,7 @@ class WorkflowExecutionController(Controller):
                 ``WORKFLOW_EXECUTION_NOT_FOUND``) when the definition is absent.
         """
         activated_by = _extract_username(request)
-        service = await _build_service(state)
+        service = workflow_execution_service_of(state.app_state)
         try:
             execution = await service.activate(
                 workflow_id,
@@ -180,7 +143,7 @@ class WorkflowExecutionController(Controller):
         Returns:
             Result matching the declared return annotation.
         """
-        service = await _build_service(state)
+        service = workflow_execution_service_of(state.app_state)
         # Over-fetch by one page so the cursor paginator can detect
         # has_more without a separate COUNT round-trip.
         executions = await service.list_executions(workflow_id, limit=limit + 1)
@@ -215,7 +178,7 @@ class WorkflowExecutionController(Controller):
             WorkflowExecutionNotFoundError: If no execution exists for
                 ``execution_id``.
         """
-        service = await _build_service(state)
+        service = workflow_execution_service_of(state.app_state)
         execution = await service.get_execution(execution_id)
         execution = require_resource_or_404(
             execution,
@@ -265,7 +228,7 @@ class WorkflowExecutionController(Controller):
             VersionConflictError: Raised on the corresponding failure path.
         """
         cancelled_by = _extract_username(request)
-        service = await _build_service(state)
+        service = workflow_execution_service_of(state.app_state)
         try:
             execution = await service.cancel_execution(
                 execution_id,

@@ -4,6 +4,7 @@ All endpoints require CEO or the internal SYSTEM role
 (used by the CLI for ``synthorg backup`` / ``synthorg wipe``).
 """
 
+import hashlib
 from collections.abc import Awaitable, Callable
 from typing import Annotated, Final
 
@@ -33,6 +34,7 @@ from synthorg.backup.errors import (
     RestoreError,
 )
 from synthorg.backup.models import (
+    BackupComponent,
     BackupInfo,
     BackupManifest,
     BackupTrigger,
@@ -61,6 +63,35 @@ from synthorg.observability.events.idempotency import IDEMPOTENCY_CLAIM_IN_FLIGH
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
+# Durable idempotency-key column bound; a header longer than this would
+# overflow the store, so the inbound key is capped at the column width.
+_IDEMPOTENCY_KEY_MAX_LENGTH: Final[int] = 255
+
+
+def _restore_idempotency_key(
+    backup_id: str,
+    components: tuple[BackupComponent, ...] | None,
+    raw_key: str,
+) -> str:
+    """Derive the durable dedup key for a restore from its full intent.
+
+    Binds the backup id, the canonical component set, AND the caller's
+    raw key into a single SHA-256 digest. Hashing serves two ends: a
+    reused token against a different backup OR a different component
+    selection can never collide on a cached result, and the fixed-length
+    output can never overflow the 255-char key column (the raw composite
+    ``backup_id:components:key`` could, given the 255-char header bound).
+
+    Returns:
+        The 64-char hex dedup key.
+    """
+    canonical_components = (
+        "*"
+        if components is None
+        else ",".join(sorted(component.value for component in components))
+    )
+    intent = f"{backup_id}\x00{canonical_components}\x00{raw_key}"
+    return hashlib.sha256(intent.encode("utf-8", errors="replace")).hexdigest()
 
 
 def _backup_service(app_state: AppState) -> BackupService:
@@ -95,6 +126,25 @@ async def _do_backup_as_dict(
     manifest = await backup_callable()
     dumped = manifest.model_dump(mode="json")
     BackupManifest.model_validate(dumped)
+    return dumped
+
+
+async def _do_restore_as_dict(
+    restore_callable: Callable[[], Awaitable[RestoreResponse]],
+) -> dict[str, object]:
+    """Bridge a ``RestoreResponse``-returning callable to a JSON dict.
+
+    Mirrors :func:`_do_backup_as_dict`: the idempotency service caches a
+    JSON-serialised response, so the Pydantic model is dumped (and
+    round-trip validated to reject a corrupt payload before it pollutes
+    the cache) and re-validated on the controller's cache-hit branch.
+
+    Returns:
+        Mapping with the declared key/value types.
+    """
+    response = await restore_callable()
+    dumped = response.model_dump(mode="json")
+    RestoreResponse.model_validate(dumped)
     return dumped
 
 
@@ -134,7 +184,7 @@ class BackupController(Controller):
                 # exhaust the durable idempotency store with arbitrarily
                 # large keys; 255 chars is plenty for UUIDs / SHAs and
                 # matches common header-value column widths.
-                max_length=255,
+                max_length=_IDEMPOTENCY_KEY_MAX_LENGTH,
             ),
         ],
     ) -> ApiResponse[BackupManifest]:
@@ -192,7 +242,7 @@ class BackupController(Controller):
             raise ConflictError(msg)
         try:
             manifest = BackupManifest.model_validate(outcome.result)
-        except (ValueError, TypeError) as exc:
+        except (ValueError, TypeError, ValidationError) as exc:
             # A corrupt or stale cached payload (e.g. schema added a
             # field after the entry was stored) would otherwise leak
             # the raw pydantic ValidationError. Surface a 5xx instead
@@ -326,6 +376,22 @@ class BackupController(Controller):
         self,
         state: State,
         data: RestoreRequest,
+        idempotency_key: Annotated[
+            NotBlankStr,
+            HeaderParameter(
+                name="Idempotency-Key",
+                description=(
+                    "RFC-style retry-safe key. Required: identical keys "
+                    "within 24h return the cached restore result instead of "
+                    "running a second restore. Without a key a 5xx-driven "
+                    "client retry could launch concurrent restores over the "
+                    "same data."
+                ),
+                required=True,
+                min_length=1,
+                max_length=_IDEMPOTENCY_KEY_MAX_LENGTH,
+            ),
+        ],
     ) -> ApiResponse[RestoreResponse]:
         """Restore from a backup.
 
@@ -334,16 +400,21 @@ class BackupController(Controller):
         Args:
             state: Application state.
             data: Restore request with backup_id and confirmation.
+            idempotency_key: Required caller-supplied retry token; a
+                repeated key within the TTL returns the cached result
+                rather than re-running the restore.
 
         Returns:
             Restore response with safety backup ID.
 
         Raises:
             ValidationError: If confirm is false or manifest invalid (422).
-            ConflictError: If a backup is in progress (409).
+            ConflictError: If a backup is in progress (409) or a
+                concurrent restore holds the same idempotency key.
             NotFoundError: If the backup does not exist (404).
             RestoreError: If the restore fails (re-raised so the
-                ``BACKUP_RESTORE_FAILED`` code survives).
+                ``BACKUP_RESTORE_FAILED`` code survives), or a cached
+                restore payload fails validation.
             BackupNotFoundError: Raised on the corresponding failure path.
         """
         if not data.confirm:
@@ -362,10 +433,25 @@ class BackupController(Controller):
             raise ValidationError(msg)
 
         app_state: AppState = state.app_state
-        try:
-            response = await _backup_service(app_state).restore_from_backup(
+
+        async def _do_restore() -> RestoreResponse:
+            return await _backup_service(app_state).restore_from_backup(
                 data.backup_id,
                 components=data.components,
+            )
+
+        try:
+            outcome = await idempotency_service_of(app_state).run_idempotent(
+                scope="backup:restore",
+                # Bind the backup id AND the component selection into the
+                # key so a reused token on a different backup -- or the same
+                # backup with a different component set -- cannot return this
+                # restore's cached result. Hashed so the composite can never
+                # overflow the 255-char key column.
+                key=_restore_idempotency_key(
+                    data.backup_id, data.components, idempotency_key
+                ),
+                callback=lambda: _do_restore_as_dict(_do_restore),
             )
         except BackupNotFoundError:
             logger.warning(
@@ -413,4 +499,28 @@ class BackupController(Controller):
                 logger, BACKUP_RESTORE_FAILED, exc, backup_id=data.backup_id
             )
             raise
+
+        if outcome.timed_out:
+            # Discriminated 409 path: a concurrent in-flight restore holds
+            # the same idempotency key.
+            logger.warning(
+                IDEMPOTENCY_CLAIM_IN_FLIGHT,
+                scope="backup:restore",
+                idempotency_key=idempotency_key,
+                endpoint="backup.restore",
+            )
+            msg = "Concurrent in-flight restore with this idempotency key"
+            raise ConflictError(msg)
+        try:
+            response = RestoreResponse.model_validate(outcome.result)
+        except (ValueError, TypeError, ValidationError) as exc:
+            log_exception_redacted(
+                logger,
+                BACKUP_RESTORE_FAILED,
+                exc,
+                backup_id=data.backup_id,
+                stage="cached_restore_validate",
+            )
+            msg = "Cached restore response failed validation; rerun the restore"
+            raise RestoreError(msg) from exc
         return ApiResponse(data=response)

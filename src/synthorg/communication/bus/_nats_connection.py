@@ -20,6 +20,7 @@ from synthorg.communication.bus.errors import (
 )
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.communication import (
     COMM_BUS_CONNECTED,
     COMM_BUS_DISCONNECTED,
@@ -248,14 +249,50 @@ async def stop(state: _NatsState) -> None:
         state.subscriptions.clear()
 
         if state.client is not None:
+            client = state.client
+
+            async def _drain_client() -> None:
+                """Drain the NATS client, logging (not raising) on failure.
+
+                Errors are swallowed here so a timed-out ``stop`` that
+                abandons the shielded drain does not surface a late
+                "task exception never retrieved" once the orphaned drain
+                eventually fails.
+
+                Raises:
+                    asyncio.CancelledError: Propagated when the drain task
+                        itself is cancelled (not on the ``wait_for``
+                        deadline, which leaves the shielded task running).
+                """
+                try:
+                    await client.drain()
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                    reraise_critical(exc)
+                    logger.warning(
+                        COMM_BUS_DISCONNECTED,
+                        phase="stop_drain",
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
+
+            # Shield the drain so the ``wait_for`` deadline does not
+            # cancel the underlying ``client.drain()`` mid-flush; a
+            # timed-out stop abandons the drain rather than tearing it
+            # down (canonical pattern, see docs/reference/lifecycle-sync.md).
+            drain_task: asyncio.Task[None] = asyncio.create_task(_drain_client())
             try:
                 await asyncio.wait_for(
-                    state.client.drain(),
+                    asyncio.shield(drain_task),
                     timeout=state.stop_drain_timeout_seconds,
                 )
             except TimeoutError as exc:
                 state.stop_failed = True
-                logger.warning(
+                # ERROR (not WARNING): the bus is now permanently
+                # unrestartable for the process lifetime, matching every
+                # sibling lifecycle service's drain-timeout log level.
+                logger.error(
                     COMM_BUS_DISCONNECTED,
                     phase="stop_drain",
                     error_type=type(exc).__name__,
@@ -267,20 +304,22 @@ async def stop(state: _NatsState) -> None:
                     f"JetStreamMessageBus.stop() drain exceeded "
                     f"{state.stop_drain_timeout_seconds}s"
                 )
+                # The shielded drain keeps running orphaned past the
+                # deadline; log its eventual outcome rather than letting a
+                # later failure surface as "task exception never retrieved".
+                drain_task.add_done_callback(
+                    log_task_exceptions(
+                        logger,
+                        COMM_BUS_DISCONNECTED,
+                        note="orphaned_drain_after_timeout",
+                    )
+                )
                 # Release the retained handles before propagating so a
                 # timed-out drain does not leak the dead client.
                 state.client = None
                 state.js = None
                 state.kv = None
                 raise BusStopTimeoutError(msg) from exc
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                logger.warning(
-                    COMM_BUS_DISCONNECTED,
-                    phase="stop_drain",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
             state.client = None
             state.js = None
             state.kv = None

@@ -64,7 +64,8 @@
         "user_presence",
         "org_mutation_service",
         "workflow_rollback_service",
-        "idempotency_service"
+        "idempotency_service",
+        "analytics_read_service"
       ]
     },
     {
@@ -718,7 +719,9 @@
         "mcp_catalog_service",
         "mcp_installations_repo",
         "mcp_bridge_factory",
-        "health_prober_service"
+        "health_prober_service",
+        "webhook_activity_service",
+        "webhook_replay_protector"
       ]
     },
     {
@@ -861,6 +864,7 @@
         "conversational_proposal_repo",
         "conversation_invite_repo",
         "conversation_participant_repo",
+        "conversational_resume_service",
         "role_router",
         "group_chat_service",
         "conversational_actor",
@@ -1278,6 +1282,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-19T21:32:00.590946Z",
+  "generated_at": "2026-06-20T09:32:52.111245Z",
   "schema_version": 1
 }

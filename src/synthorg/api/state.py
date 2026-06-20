@@ -34,8 +34,12 @@ from synthorg.engine.pipeline.entry.task_board_adapter import TaskBoardEntryAdap
 from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.shutdown import CooperativeTimeoutStrategy, ShutdownManager
 from synthorg.notifications.dispatcher import NotificationDispatcher
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.api import API_APP_SHUTDOWN
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.workers.execution_service import WorkerExecutionService
+
+logger = get_logger(__name__)
 
 # Grace window the cooperative shutdown manager waits for in-flight
 # multi-agent parallel tasks to exit at a turn boundary before it
@@ -45,6 +49,14 @@ from synthorg.workers.execution_service import WorkerExecutionService
 # deadline (75s in api/server.py).
 _SHUTDOWN_GRACE_SECONDS: Final[float] = 8.0
 _SHUTDOWN_CLEANUP_SECONDS: Final[float] = 2.0
+
+# Grace window the objective / brownfield entry background tasks get to
+# finish at a turn boundary on shutdown before stragglers are cancelled.
+# These are fire-and-forget entry-processing tasks tracked only in their
+# in-memory sets, so without an explicit drain they are abandoned mid-flight
+# when the loop tears down (silent work loss). Kept short so the two drains
+# stay well within the orchestrator SIGKILL deadline.
+_ENTRY_TASK_DRAIN_GRACE_SECONDS: Final[float] = 3.0
 
 
 class AppState(AppStateSliceMixin):
@@ -154,6 +166,72 @@ class AppState(AppStateSliceMixin):
             The mutable task set (callers add/discard their own tasks).
         """
         return self._brownfield_background_tasks
+
+    async def drain_entry_background_tasks(self) -> None:
+        """Drain in-flight objective / brownfield entry background tasks.
+
+        Gives the live tasks a bounded grace
+        (``_ENTRY_TASK_DRAIN_GRACE_SECONDS``) to finish at a turn boundary,
+        then cancels any straggler and awaits its cancellation so the
+        coroutine unwinds cleanly rather than being abandoned when the
+        loop tears down. Snapshots the sets up front because a completing
+        task's done-callback discards itself from the live set (mutation
+        during iteration). Idempotent and safe when both sets are empty.
+        """
+        pending = self._objective_background_tasks | self._brownfield_background_tasks
+        pending = {task for task in pending if not task.done()}
+        if not pending:
+            return
+        done, still_running = await asyncio.wait(
+            pending,
+            timeout=_ENTRY_TASK_DRAIN_GRACE_SECONDS,
+        )
+        # Surface failures from tasks that completed within the grace window
+        # too -- otherwise a task that raised before the deadline has its
+        # exception abandoned with no post-mortem trace (only the cancelled
+        # stragglers below were being inspected).
+        for task in done:
+            # ``task.exception()`` RAISES ``CancelledError`` on a cancelled
+            # task rather than returning it, which would abort this loop and
+            # skip the straggler cancel/await below. Guard with
+            # ``task.cancelled()`` first so a cancelled completion is a clean
+            # skip, not a raised exception.
+            if task.cancelled():
+                continue
+            exc = task.exception()
+            if exc is not None:
+                logger.warning(
+                    API_APP_SHUTDOWN,
+                    service="entry_task_drain",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    note="entry background task raised before shutdown drain deadline",
+                )
+        for task in still_running:
+            task.cancel()
+        if still_running:
+            # Await the cancellations so the coroutines unwind before the
+            # loop closes; ``return_exceptions`` keeps one task's failure
+            # from masking the others. ``shield`` the gather so a cancel of
+            # this drain (the outer shutdown ``wait_for`` budget) does not
+            # re-orphan the very stragglers it is awaiting.
+            results = await asyncio.shield(
+                asyncio.gather(*still_running, return_exceptions=True)
+            )
+            # Surface any non-cancellation failure a straggler raised before
+            # it was cancelled; otherwise abandoned work disappears with no
+            # post-mortem trace.
+            for result in results:
+                if isinstance(result, BaseException) and not isinstance(
+                    result, asyncio.CancelledError
+                ):
+                    logger.warning(
+                        API_APP_SHUTDOWN,
+                        service="entry_task_drain",
+                        error_type=type(result).__name__,
+                        error=safe_error_description(result),
+                        note="entry background task raised during shutdown drain",
+                    )
 
     # -- Hot-swap seams (thin shims over ``wire``) -----------------------
     # Public names preserved for the boot install + ``post_setup_reinit``.

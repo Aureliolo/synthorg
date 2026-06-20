@@ -133,6 +133,10 @@ def make_app_state(  # type: ignore[explicit-any]  # heterogeneous service/confi
             MetaStateSlice,
             "conversational_proposal_repo",
         ),
+        "conversational_resume_service": (
+            MetaStateSlice,
+            "conversational_resume_service",
+        ),
         "chief_of_staff_proposer": (MetaStateSlice, "chief_of_staff_proposer"),
         "review_gate_service": (ApprovalStateSlice, "review_gate"),
         "settings_service": (SettingsStateSlice, "settings_service"),

@@ -4,6 +4,7 @@ import copy
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import override
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -34,7 +35,9 @@ from synthorg.engine.workflow.execution_service import (
 from synthorg.persistence.workflow_execution_protocol import (
     WorkflowExecutionFilterSpec,
 )
-from tests._shared import as_uuid
+from synthorg.settings.bridge_configs import EngineBridgeConfig
+from synthorg.settings.resolver import ConfigResolver
+from tests._shared import as_uuid, mock_of
 from tests.unit.engine.workflow.conftest import (
     make_edge,
     make_end_node,
@@ -243,6 +246,21 @@ def task_engine() -> FakeTaskEngine:
     return FakeTaskEngine()
 
 
+def _depth_resolver(depth: int = 16) -> ConfigResolver:
+    """Fake resolver returning a bridge config with the given depth cap.
+
+    Returns:
+        A spec'd ``ConfigResolver`` whose bridge config carries *depth*.
+    """
+    resolver: ConfigResolver = mock_of[ConfigResolver](
+        get_engine_bridge_config=AsyncMock(
+            spec=ConfigResolver.get_engine_bridge_config,
+            return_value=EngineBridgeConfig(max_subworkflow_depth=depth),
+        ),
+    )
+    return resolver
+
+
 @pytest.fixture
 def service(
     def_repo: FakeDefinitionRepo,
@@ -253,7 +271,7 @@ def service(
         definition_repo=def_repo,
         execution_repo=exec_repo,
         task_engine=task_engine,
-        max_subworkflow_depth=16,
+        config_resolver=_depth_resolver(),
     )
 
 

@@ -9,15 +9,21 @@ Individual poll failures are logged and do not propagate.
 """
 
 import asyncio
-import contextlib
 
+from synthorg.budget.errors import QuotaPollerUnrestartableError
 from synthorg.budget.quota import QuotaSnapshot, QuotaWindow
 from synthorg.budget.quota_poller_config import QuotaPollerConfig
 from synthorg.budget.quota_tracker import QuotaTracker
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
 from synthorg.notifications.dispatcher import NotificationDispatcher
-from synthorg.observability import get_logger, log_exception_redacted
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
+from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.quota import (
     QUOTA_ALERT_COOLDOWN_ACTIVE,
     QUOTA_POLL_COMPLETED,
@@ -63,6 +69,11 @@ class QuotaPoller:
         # ever run, so a half-published lock attribute would race.
         self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
         self._cooldown: dict[_CooldownKey, float] = {}
+        # Survives a timed-out stop so a later start() cannot stack a
+        # second poll loop on the orphaned one (canonical lifecycle
+        # pattern, see docs/reference/lifecycle-sync.md).
+        self._stop_failed = False
+        self._stop_drain_timeout_seconds: float = DEFAULT_DRAIN_TIMEOUT_SECONDS
 
     async def start(self) -> None:
         """Start the background polling loop.
@@ -70,27 +81,56 @@ class QuotaPoller:
         Creates an ``asyncio.Task`` that calls :meth:`poll_once`
         repeatedly at the configured interval.  Calling ``start()``
         when already running is a no-op.
+
+        Raises:
+            QuotaPollerUnrestartableError: If the poller was previously
+                stopped with a timeout and is unrestartable.
         """
         async with self._lifecycle_lock:
+            if self._stop_failed:
+                msg = (
+                    "QuotaPoller is unrestartable after a timed-out stop; "
+                    "construct a fresh poller instead"
+                )
+                logger.warning(QUOTA_POLLER_STOPPED, error=msg, note="unrestartable")
+                raise QuotaPollerUnrestartableError(msg)
             if self._task is not None and not self._task.done():
                 return
             if self._task is not None and self._task.done():
                 self._task = None
-            self._task = asyncio.get_running_loop().create_task(
+            task = asyncio.get_running_loop().create_task(
                 self._poll_loop(),
                 name="quota-poller",
             )
+            # Surface a crashed poll loop promptly rather than letting the
+            # exception sit buffered on the task handle until a later
+            # lifecycle call clears it.
+            task.add_done_callback(
+                log_task_exceptions(
+                    logger,
+                    QUOTA_POLL_FAILED,
+                    note="quota_poller_loop",
+                )
+            )
+            self._task = task
             logger.info(
                 QUOTA_POLLER_STARTED,
                 interval=self._config.poll_interval_seconds,
             )
 
     async def stop(self) -> None:
-        """Cancel the background polling task and wait for it to finish."""
+        """Cancel the background polling task and wait for it to finish.
+
+        Raises:
+            TimeoutError: If the poll-task drain exceeds
+                ``_stop_drain_timeout_seconds``; the poller is then
+                marked unrestartable.
+        """
         async with self._lifecycle_lock:
-            if self._task is None:
+            task = self._task
+            if task is None:
                 return
-            if self._task.done():
+            if task.done():
                 # The task already exited (e.g. cancellation racing
                 # with a self-finishing loop body). Clear the
                 # reference so a subsequent ``start()`` is treated as
@@ -98,9 +138,46 @@ class QuotaPoller:
                 # task and short-circuiting.
                 self._task = None
                 return
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
+            task.cancel()
+
+            async def _drain() -> None:
+                """Await the cancelled poll task, swallowing its cancellation."""
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                    reraise_critical(exc)
+                    logger.warning(
+                        QUOTA_POLLER_STOPPED,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                        note="shutdown",
+                    )
+
+            drain_task: asyncio.Task[None] = asyncio.create_task(_drain())
+            try:
+                await asyncio.wait_for(
+                    asyncio.shield(drain_task),
+                    timeout=self._stop_drain_timeout_seconds,
+                )
+            except TimeoutError:
+                self._stop_failed = True
+                logger.error(
+                    QUOTA_POLLER_STOPPED,
+                    error=("stop exceeded hard deadline; poller marked unrestartable"),
+                    timeout_seconds=self._stop_drain_timeout_seconds,
+                )
+                # Log the orphaned drain's eventual outcome (it keeps running
+                # past the deadline) rather than dropping it silently.
+                drain_task.add_done_callback(
+                    log_task_exceptions(
+                        logger,
+                        QUOTA_POLLER_STOPPED,
+                        note="orphaned_drain_after_timeout",
+                    )
+                )
+                raise
             self._task = None
             logger.info(QUOTA_POLLER_STOPPED)
 

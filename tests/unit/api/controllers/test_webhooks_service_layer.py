@@ -6,7 +6,8 @@ Two structural invariants are pinned:
    :class:`WebhookEventPayload` boundary that rejects non-JSON bodies and
    non-object payloads (arrays, scalars, ``null``).
 2. ``list_activity`` never reaches into ``state["app_state"].persistence``;
-   it routes through :class:`WebhookActivityService` instead.
+   it routes through the startup-wired :class:`WebhookActivityService`
+   read from ``IntegrationsStateSlice``.
 
 A static AST walk verifies the controller never touches
 ``persistence.webhook_receipts``. Parametrised model tests verify the
@@ -17,18 +18,21 @@ import ast
 import inspect
 
 import pytest
-from litestar.datastructures import State
 from pydantic import JsonValue, ValidationError
 
-from synthorg.api.controllers._webhooks_wiring import (
-    WebhookEventPayload,
-    _get_activity_service,
-)
+from synthorg.api.controllers._webhooks_wiring import WebhookEventPayload
 from synthorg.api.controllers.webhooks import activity as webhooks_activity
 from synthorg.api.controllers.webhooks.activity import WebhooksActivityController
+from synthorg.api.lifecycle_runner_support import _wire_webhook_request_services
+from synthorg.integrations.state import (
+    IntegrationsStateSlice,
+    webhook_activity_service_of,
+    webhook_replay_protector_of,
+)
 from synthorg.integrations.webhooks.activity_service import (
     WebhookActivityService,
 )
+from synthorg.integrations.webhooks.replay_protection import ReplayProtector
 from synthorg.persistence.protocol import PersistenceBackend
 from tests._shared import make_app_state, mock_of
 
@@ -91,13 +95,14 @@ class TestListActivityRoutesThroughService:
 
     def test_controller_body_does_not_access_persistence(self) -> None:
         """AST walk: the ``list_activity`` body never reads ``.persistence``."""
-        # The helper ``_get_activity_service`` is the one place that
-        # bridges from ``persistence.webhook_receipts`` into the service
-        # facade. Everywhere else, the controller must route through the
-        # service. Walking the AST avoids false positives a substring
-        # match would hit (e.g. a comment that mentions "persistence").
-        # Litestar's ``@get`` decorator wraps the method into a route
-        # handler; the original function is accessible via ``.fn``.
+        # The startup wirer (``_wire_webhook_request_services``) is the one
+        # place that bridges ``persistence.webhook_receipts`` into the
+        # service facade. The controller must route through the wired
+        # service via ``webhook_activity_service_of``. Walking the AST
+        # avoids false positives a substring match would hit (e.g. a comment
+        # that mentions "persistence"). Litestar's ``@get`` decorator wraps
+        # the method into a route handler; the original function is
+        # accessible via ``.fn``.
         handler = WebhooksActivityController.list_activity
         source = inspect.getsource(handler.fn)
         tree = ast.parse(inspect.cleandoc(source))
@@ -111,30 +116,48 @@ class TestListActivityRoutesThroughService:
                     f"route through WebhookActivityService instead.",
                 )
 
-    async def test_get_activity_service_caches_per_app_state(self) -> None:
-        """Multiple calls reuse the same instance on ``app_state``."""
+    def test_startup_wiring_publishes_singletons_idempotently(self) -> None:
+        """``_wire_webhook_request_services`` wires both singletons once."""
 
         class _StubReceiptsRepo:
             pass
 
-        state = State(
-            {
-                "app_state": make_app_state(
-                    persistence=mock_of[PersistenceBackend](
-                        webhook_receipts=_StubReceiptsRepo()
-                    )
-                )
-            }
+        persistence = mock_of[PersistenceBackend](
+            is_connected=True,
+            webhook_receipts=_StubReceiptsRepo(),
         )
-        first = await _get_activity_service(state)
-        second = await _get_activity_service(state)
-        assert first is second
-        assert isinstance(first, WebhookActivityService)
+        app_state = make_app_state(persistence=persistence)
+
+        _wire_webhook_request_services(persistence, app_state)
+        activity = webhook_activity_service_of(app_state)
+        protector = webhook_replay_protector_of(app_state)
+        assert isinstance(activity, WebhookActivityService)
+        assert isinstance(protector, ReplayProtector)
+
+        # Second wiring pass must NOT replace the instances: the
+        # protector's seen-nonce cache is the source of truth between
+        # durable-idempotency reads and a re-entry into lifespan must not
+        # discard it.
+        _wire_webhook_request_services(persistence, app_state)
+        assert webhook_activity_service_of(app_state) is activity
+        assert webhook_replay_protector_of(app_state) is protector
+
+    def test_replay_protector_wired_even_without_persistence(self) -> None:
+        """The config-only protector wires regardless of persistence."""
+        app_state = make_app_state(persistence=None)
+        _wire_webhook_request_services(None, app_state)
+        assert isinstance(
+            webhook_replay_protector_of(app_state),
+            ReplayProtector,
+        )
+        # The activity service stays unwired (read path needs persistence),
+        # so its accessor 503s rather than returning a half-built service.
+        assert app_state.slice(IntegrationsStateSlice).webhook_activity_service is None
 
     def test_activity_controller_imports_service_accessor(self) -> None:
-        """The activity sub-controller binds the lazy service accessor."""
-        # ``activity`` imports the lazy accessor from ``_webhooks_wiring``
-        # as a bare module global, so the controller body has a single
-        # canonical import. Pin the wire so an accidental rename in the
-        # wiring module is caught here.
-        assert hasattr(webhooks_activity, "_get_activity_service")
+        """The activity sub-controller binds the slice accessor."""
+        # ``activity`` reads the startup-wired service via
+        # ``webhook_activity_service_of`` as a bare module global, so the
+        # controller body has a single canonical import. Pin the wire so an
+        # accidental rename in the integrations state module is caught here.
+        assert hasattr(webhooks_activity, "webhook_activity_service_of")

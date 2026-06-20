@@ -33,11 +33,7 @@ from synthorg.engine.state import EngineStateSlice
 from synthorg.hr.state import agent_registry_of
 from synthorg.meta.chief_of_staff.group_models import ConversationInvite
 from synthorg.meta.chief_of_staff.models import ConversationalProposal
-from synthorg.meta.state import (
-    MetaStateSlice,
-    conversation_invite_repo_of,
-    conversation_participant_repo_of,
-)
+from synthorg.meta.state import MetaStateSlice, conversational_resume_service_of
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -123,29 +119,21 @@ async def _load_conversational_proposal(
         ``(handled, proposal)``: the proposal when present, ``None`` otherwise.
     """
     from synthorg.approval.enums import ApprovalSource  # noqa: PLC0415
-    from synthorg.persistence.conversational_proposal_protocol import (  # noqa: PLC0415
-        ConversationalProposalFilterSpec,
-    )
 
     item = await _reread_approval_item(app_state, approval_id)
     if item is None or item.source is not ApprovalSource.CONVERSATIONAL_INTAKE:
         return False, None
     # This flow now owns the decision regardless of outcome.
-    if app_state.slice(MetaStateSlice).conversational_proposal_repo is None:
+    service = app_state.slice(MetaStateSlice).conversational_resume_service
+    if service is None:
         logger.error(
             APPROVAL_GATE_CONVERSATIONAL_FAILED,
             approval_id=approval_id,
-            note="conversational proposal repo not wired",
+            note="conversational resume service not wired",
         )
-        msg = "Conversational proposal repository unavailable"
+        msg = "Conversational resume service unavailable"
         raise ServiceUnavailableError(msg)
-    repo = require_service(
-        app_state.slice(MetaStateSlice).conversational_proposal_repo,
-        "Conversational Proposal Repository",
-    )
-    proposals = await repo.query(
-        ConversationalProposalFilterSpec(approval_id=approval_id),
-    )
+    proposals = await service.proposals_for_approval(approval_id)
     if not proposals:
         logger.error(
             APPROVAL_GATE_CONVERSATIONAL_NO_PROPOSAL,
@@ -165,15 +153,12 @@ async def _reject_conversational_proposal(
         ConversationalProposalStatus,
     )
 
-    repo = require_service(
-        app_state.slice(MetaStateSlice).conversational_proposal_repo,
-        "Conversational Proposal Repository",
-    )
+    service = conversational_resume_service_of(app_state)
     proposal_id = str(proposal.id)
-    transitioned = await repo.transition_if(
+    transitioned = await service.transition_proposal(
         proposal_id,
-        ConversationalProposalStatus.PENDING,
-        ConversationalProposalStatus.REJECTED,
+        from_status=ConversationalProposalStatus.PENDING,
+        to_status=ConversationalProposalStatus.REJECTED,
     )
     if transitioned:
         logger.info(
@@ -214,10 +199,7 @@ async def _execute_conversational_proposal(
     )
     from synthorg.engine.pipeline.models import WorkItem  # noqa: PLC0415
 
-    repo = require_service(
-        app_state.slice(MetaStateSlice).conversational_proposal_repo,
-        "Conversational Proposal Repository",
-    )
+    service = conversational_resume_service_of(app_state)
     proposal_id = str(proposal.id)
     work_item_json = proposal.work_item_json
 
@@ -238,10 +220,10 @@ async def _execute_conversational_proposal(
     # both drive the pipeline for the same proposal. Only the winner
     # of this transition runs the pipeline; the loser returns without
     # side-effects.
-    acquired = await repo.transition_if(
+    acquired = await service.transition_proposal(
         proposal_id,
-        ConversationalProposalStatus.PENDING,
-        ConversationalProposalStatus.EXECUTING,
+        from_status=ConversationalProposalStatus.PENDING,
+        to_status=ConversationalProposalStatus.EXECUTING,
     )
     if not acquired:
         logger.warning(
@@ -271,10 +253,10 @@ async def _execute_conversational_proposal(
         # The approve decision is already persisted; a pipeline failure
         # must not 5xx the response. Revert EXECUTING -> PENDING so the
         # proposal is retryable rather than stuck in EXECUTING forever.
-        reverted = await repo.transition_if(
+        reverted = await service.transition_proposal(
             proposal_id,
-            ConversationalProposalStatus.EXECUTING,
-            ConversationalProposalStatus.PENDING,
+            from_status=ConversationalProposalStatus.EXECUTING,
+            to_status=ConversationalProposalStatus.PENDING,
         )
         log_exception_redacted(
             logger,
@@ -288,10 +270,10 @@ async def _execute_conversational_proposal(
         )
         return
 
-    transitioned = await repo.transition_if(
+    transitioned = await service.transition_proposal(
         proposal_id,
-        ConversationalProposalStatus.EXECUTING,
-        ConversationalProposalStatus.EXECUTED,
+        from_status=ConversationalProposalStatus.EXECUTING,
+        to_status=ConversationalProposalStatus.EXECUTED,
     )
     if transitioned:
         logger.info(
@@ -390,23 +372,20 @@ async def _load_conversation_invite(
         The ``(owns_decision, invite)`` pair.
     """
     from synthorg.approval.enums import ApprovalSource  # noqa: PLC0415
-    from synthorg.persistence.conversation_invite_protocol import (  # noqa: PLC0415
-        ConversationInviteFilterSpec,
-    )
 
     item = await _reread_approval_item(app_state, approval_id)
     if item is None or item.source is not ApprovalSource.CONVERSATIONAL_INVITE:
         return False, None
-    if app_state.slice(MetaStateSlice).conversation_invite_repo is None:
+    service = app_state.slice(MetaStateSlice).conversational_resume_service
+    if service is None:
         logger.error(
             COS_GROUP_INVITE_FAILED,
             approval_id=approval_id,
-            note="conversation invite repo not wired",
+            note="conversational resume service not wired",
         )
-        msg = "Conversation invite repository unavailable"
+        msg = "Conversational resume service unavailable"
         raise ServiceUnavailableError(msg)
-    repo = conversation_invite_repo_of(app_state)
-    invites = await repo.query(ConversationInviteFilterSpec(approval_id=approval_id))
+    invites = await service.invites_for_approval(approval_id)
     if not invites:
         logger.error(
             COS_GROUP_INVITE_FAILED,
@@ -427,11 +406,11 @@ async def _decline_invite(
         ConversationInviteStatus,
     )
 
-    repo = conversation_invite_repo_of(app_state)
-    transitioned = await repo.transition_if(
+    service = conversational_resume_service_of(app_state)
+    transitioned = await service.transition_invite(
         str(invite.id),
-        ConversationInviteStatus.PENDING,
-        ConversationInviteStatus.DECLINED,
+        from_status=ConversationInviteStatus.PENDING,
+        to_status=ConversationInviteStatus.DECLINED,
     )
     if transitioned:
         logger.info(
@@ -472,11 +451,11 @@ async def _accept_invite(
         ConversationInviteStatus,
     )
 
-    invite_repo = conversation_invite_repo_of(app_state)
-    acquired = await invite_repo.transition_if(
+    service = conversational_resume_service_of(app_state)
+    acquired = await service.transition_invite(
         str(invite.id),
-        ConversationInviteStatus.PENDING,
-        ConversationInviteStatus.ACCEPTED,
+        from_status=ConversationInviteStatus.PENDING,
+        to_status=ConversationInviteStatus.ACCEPTED,
     )
     if not acquired:
         logger.warning(
@@ -490,10 +469,10 @@ async def _accept_invite(
         await _add_invited_participant(app_state, invite, decided_by)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        reverted = await invite_repo.transition_if(
+        reverted = await service.transition_invite(
             str(invite.id),
-            ConversationInviteStatus.ACCEPTED,
-            ConversationInviteStatus.PENDING,
+            from_status=ConversationInviteStatus.ACCEPTED,
+            to_status=ConversationInviteStatus.PENDING,
         )
         log_exception_redacted(
             logger,
@@ -541,9 +520,6 @@ async def _add_invited_participant(
         ConversationParticipant,
     )
     from synthorg.meta.state import self_improvement_config_of  # noqa: PLC0415
-    from synthorg.persistence.conversation_participant_protocol import (  # noqa: PLC0415
-        ConversationParticipantFilterSpec,
-    )
 
     identity = await agent_registry_of(app_state).get(invite.target_agent_id)
     if identity is None:
@@ -555,27 +531,18 @@ async def _add_invited_participant(
             note="invited agent no longer registered; roster row not added",
         )
         return
-    participant_repo = conversation_participant_repo_of(app_state)
-    roster = await participant_repo.query(
-        ConversationParticipantFilterSpec(
-            conversation_id=invite.conversation_id,
-            status=ConversationParticipantStatus.ACTIVE,
-        )
+    from synthorg.meta.chief_of_staff.enums import (  # noqa: PLC0415
+        ParticipantAdmission,
     )
-    if any(p.agent_id == invite.target_agent_id for p in roster):
-        return
+
+    service = conversational_resume_service_of(app_state)
     meta_config = await self_improvement_config_of(app_state)
     cap = meta_config.chief_of_staff.group_chat_max_participants
-    if len(roster) >= cap:
-        logger.warning(
-            COS_GROUP_INVITE_FAILED,
-            invite_id=invite.id,
-            conversation_id=invite.conversation_id,
-            target_agent_id=invite.target_agent_id,
-            note="participant cap reached at accept; roster row not added",
-        )
-        return
-    await participant_repo.save(
+    # Atomic admit-under-cap: the duplicate check, the active-count read,
+    # and the insert run in one backend transaction, so two concurrent
+    # consents for different agents cannot both pass the cap and push the
+    # roster to ``cap + 1`` (the prior read-then-write here raced).
+    outcome = await service.admit_participant_within_cap(
         ConversationParticipant(
             conversation_id=invite.conversation_id,
             agent_id=invite.target_agent_id,
@@ -584,8 +551,20 @@ async def _add_invited_participant(
             status=ConversationParticipantStatus.ACTIVE,
             added_by=NotBlankStr(decided_by),
             added_at=app_state.clock.now(),
-        )
+        ),
+        cap=cap,
     )
+    if outcome is ParticipantAdmission.ALREADY_ACTIVE:
+        return
+    if outcome is ParticipantAdmission.CAP_REACHED:
+        logger.warning(
+            COS_GROUP_INVITE_FAILED,
+            invite_id=invite.id,
+            conversation_id=invite.conversation_id,
+            target_agent_id=invite.target_agent_id,
+            note="participant cap reached at accept; roster row not added",
+        )
+        return
     logger.info(
         COS_GROUP_PARTICIPANTS_ADDED,
         invite_id=invite.id,

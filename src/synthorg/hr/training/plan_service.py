@@ -28,6 +28,7 @@ from collections.abc import Mapping
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.persistence_errors import PersistenceError
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.training.models import (
     TrainingPlan,
     TrainingPlanStatus,
@@ -77,6 +78,42 @@ class TrainingPlanService:
         self._plan_repo = plan_repo
         self._result_repo = result_repo
         self._clock = clock or SystemClock()
+
+    async def latest_pending(self, agent_id: NotBlankStr) -> TrainingPlan | None:
+        """Return the agent's latest PENDING plan, or ``None``.
+
+        Read companion to the write methods so the controller's
+        ``execute`` / ``preview`` paths reach the plan repository through
+        the service instead of a direct repo touch.
+
+        Returns:
+            The latest pending plan, or ``None`` when none is staged.
+        """
+        return await self._plan_repo.latest_pending(agent_id)
+
+    async def latest_by_agent(self, agent_id: NotBlankStr) -> TrainingPlan | None:
+        """Return the agent's most recently created plan regardless of status.
+
+        Returns:
+            The latest plan for the agent, or ``None`` when none exists.
+        """
+        return await self._plan_repo.latest_by_agent(agent_id)
+
+    async def get(self, plan_id: NotBlankStr) -> TrainingPlan | None:
+        """Return a single plan by id, or ``None`` when absent.
+
+        Returns:
+            The plan with the given id, or ``None``.
+        """
+        return await self._plan_repo.get(plan_id)
+
+    async def latest_result(self, agent_id: NotBlankStr) -> TrainingResult | None:
+        """Return the agent's latest training result, or ``None``.
+
+        Returns:
+            The latest stored result for the agent, or ``None``.
+        """
+        return await self._result_repo.get_latest(agent_id)
 
     async def create_plan(self, plan: TrainingPlan) -> TrainingPlan:
         """Persist a freshly created plan and emit the creation audit event.

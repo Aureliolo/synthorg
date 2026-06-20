@@ -21,6 +21,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.enums import (
     ConversationKind,
     ConversationParticipantStatus,
+    ParticipantAdmission,
 )
 from synthorg.meta.chief_of_staff.group_models import ConversationParticipant
 from synthorg.meta.chief_of_staff.models import Conversation
@@ -341,6 +342,109 @@ class TestConversationParticipantRepository:
         assert await repo.delete(NotBlankStr(str(participant.id))) is True
         assert await repo.get(NotBlankStr(str(participant.id))) is None
         assert await repo.delete(NotBlankStr(str(participant.id))) is False
+
+    async def test_admit_within_cap_inserts_active(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await _save_conversation(backend, "conv-admit")
+        repo = _participant_repo(backend)
+        outcome = await repo.admit_active_within_cap(
+            _make_participant(participant_id="ad1", conversation_id="conv-admit"),
+            cap=3,
+        )
+        assert outcome is ParticipantAdmission.ADMITTED
+        active = await repo.query(
+            ConversationParticipantFilterSpec(
+                conversation_id=sid("conv-admit"),
+                status=ConversationParticipantStatus.ACTIVE,
+            )
+        )
+        assert {r.id for r in active} == {as_uuid("ad1")}
+
+    async def test_admit_within_cap_already_active_is_noop(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await _save_conversation(backend, "conv-dup-admit")
+        repo = _participant_repo(backend)
+        first = _make_participant(
+            participant_id="dup1", conversation_id="conv-dup-admit"
+        )
+        await repo.admit_active_within_cap(first, cap=3)
+        # A second admit for the same agent (fresh row id) is an idempotent
+        # no-op, not a duplicate insert or a cap consumption.
+        outcome = await repo.admit_active_within_cap(
+            _make_participant(participant_id="dup2", conversation_id="conv-dup-admit"),
+            cap=3,
+        )
+        assert outcome is ParticipantAdmission.ALREADY_ACTIVE
+        count = await repo.count(
+            ConversationParticipantFilterSpec(
+                conversation_id=sid("conv-dup-admit"),
+                status=ConversationParticipantStatus.ACTIVE,
+            )
+        )
+        assert count == 1
+
+    async def test_admit_within_cap_rejects_at_cap(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await _save_conversation(backend, "conv-cap")
+        repo = _participant_repo(backend)
+        await repo.admit_active_within_cap(
+            _make_participant(
+                participant_id="cap1",
+                conversation_id="conv-cap",
+                agent_id="agent-1",
+            ),
+            cap=1,
+        )
+        outcome = await repo.admit_active_within_cap(
+            _make_participant(
+                participant_id="cap2",
+                conversation_id="conv-cap",
+                agent_id="agent-2",
+            ),
+            cap=1,
+        )
+        assert outcome is ParticipantAdmission.CAP_REACHED
+        count = await repo.count(
+            ConversationParticipantFilterSpec(
+                conversation_id=sid("conv-cap"),
+                status=ConversationParticipantStatus.ACTIVE,
+            )
+        )
+        assert count == 1
+
+    async def test_admit_within_cap_readmits_removed_agent(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await _save_conversation(backend, "conv-readmit")
+        repo = _participant_repo(backend)
+        removed = _make_participant(
+            participant_id="rm1",
+            conversation_id="conv-readmit",
+            agent_id="agent-back",
+            status=ConversationParticipantStatus.REMOVED,
+        )
+        await repo.save(removed)
+        # Re-admitting flips the natural-key row back to active rather than
+        # colliding with the (conversation_id, agent_id) UNIQUE constraint.
+        outcome = await repo.admit_active_within_cap(
+            _make_participant(
+                participant_id="rm2",
+                conversation_id="conv-readmit",
+                agent_id="agent-back",
+            ),
+            cap=3,
+        )
+        assert outcome is ParticipantAdmission.ADMITTED
+        active = await repo.query(
+            ConversationParticipantFilterSpec(
+                conversation_id=sid("conv-readmit"),
+                status=ConversationParticipantStatus.ACTIVE,
+            )
+        )
+        assert {r.agent_id for r in active} == {"agent-back"}
 
     async def test_protocol_runtime_check(self, backend: PersistenceBackend) -> None:
         repo = _participant_repo(backend)

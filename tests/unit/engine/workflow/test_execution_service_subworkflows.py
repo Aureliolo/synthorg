@@ -12,6 +12,7 @@ Covers:
 
 from datetime import UTC, datetime
 from typing import override
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -37,7 +38,9 @@ from synthorg.engine.workflow.execution_service import (
     WorkflowExecutionService,
 )
 from synthorg.engine.workflow.subworkflow_registry import SubworkflowRegistry
-from tests._shared import as_pk, as_uuid, sid
+from synthorg.settings.bridge_configs import EngineBridgeConfig
+from synthorg.settings.resolver import ConfigResolver
+from tests._shared import as_pk, as_uuid, mock_of, sid
 from tests.unit.engine.workflow.test_subworkflow_registry import (
     FakeSubworkflowRepository,
 )
@@ -208,6 +211,21 @@ class _FakeExecutionRepo:
         self.saved.append(execution)
 
 
+def _depth_resolver(depth: int = 16) -> ConfigResolver:
+    """Fake resolver returning a bridge config with the given depth cap.
+
+    Returns:
+        A spec'd ``ConfigResolver`` whose bridge config carries *depth*.
+    """
+    resolver: ConfigResolver = mock_of[ConfigResolver](
+        get_engine_bridge_config=AsyncMock(
+            spec=ConfigResolver.get_engine_bridge_config,
+            return_value=EngineBridgeConfig(max_subworkflow_depth=depth),
+        ),
+    )
+    return resolver
+
+
 async def _build_service(
     parent: WorkflowDefinition,
     registry: SubworkflowRegistry,
@@ -222,7 +240,7 @@ async def _build_service(
         execution_repo=execution_repo,  # type: ignore[arg-type]
         task_engine=task_engine,
         subworkflow_registry=registry,
-        max_subworkflow_depth=max_depth,
+        config_resolver=_depth_resolver(max_depth),
     )
     return service, task_engine, execution_repo
 
@@ -297,7 +315,7 @@ class TestSubworkflowExecution:
             definition_repo=definition_repo,  # type: ignore[arg-type]
             execution_repo=execution_repo,  # type: ignore[arg-type]
             task_engine=task_engine,
-            max_subworkflow_depth=16,
+            config_resolver=_depth_resolver(),
             subworkflow_registry=None,
         )
 

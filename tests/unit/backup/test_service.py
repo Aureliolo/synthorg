@@ -435,3 +435,18 @@ class TestServiceLifecycle:
         ) as mock_stop:
             await service.stop()
             mock_stop.assert_called_once()
+
+    def test_is_unrestartable_delegates_to_scheduler(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """is_unrestartable surfaces the scheduler's timed-out-stop flag."""
+        bp = tmp_path / "backups"
+        service = _make_service(bp)
+
+        assert service.is_unrestartable is False
+        # A timed-out scheduler stop sets the private flag; the service
+        # property must reflect it without the caller catching the
+        # BackupUnrestartableError raised by start().
+        service._scheduler._stop_failed = True
+        assert service.is_unrestartable is True

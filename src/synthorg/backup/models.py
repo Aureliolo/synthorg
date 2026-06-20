@@ -189,3 +189,17 @@ class RestoreResponse(BaseModel):
     restored_components: tuple[BackupComponent, ...]
     safety_backup_id: NotBlankStr
     restart_required: bool = True
+
+
+class RestoreConfirmation(BaseModel):
+    """Confirmation payload returned by the MCP backup-restore tool.
+
+    Attributes:
+        backup_id: The backup that was restored from.
+        restored: Always ``True`` for a successful restore.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    backup_id: NotBlankStr
+    restored: bool
