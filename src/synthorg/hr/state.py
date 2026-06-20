@@ -20,6 +20,7 @@ from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.personalities.service import PersonalityService
 from synthorg.hr.promotion.cycle_scheduler import PromotionCycleScheduler
 from synthorg.hr.promotion.service import PromotionService
+from synthorg.hr.pruning.service import PruningService
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.scaling.decision_service import (
     ScalingDecisionService,
@@ -46,6 +47,7 @@ class HrStateSlice(BaseFeatureStateSlice):
     scaling_decision_service: ScalingDecisionService | None = None
     promotion_service: PromotionService | None = None
     promotion_cycle_scheduler: PromotionCycleScheduler | None = None
+    pruning_service: PruningService | None = None
 
 
 def agent_registry_of(app_state: AppStateSliceMixin) -> AgentRegistryService:
