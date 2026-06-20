@@ -24230,6 +24230,7 @@ export interface operations {
     readonly ApiV1MetaEvolutionAxesStatsGetEvolutionAxesStats: {
         readonly parameters: {
             readonly query?: {
+                /** @description Look-back window in days. */
                 readonly window_days?: number;
             };
             readonly header?: never;
@@ -24258,7 +24259,9 @@ export interface operations {
     readonly ApiV1MetaEvolutionOutcomesListEvolutionOutcomes: {
         readonly parameters: {
             readonly query?: {
+                /** @description Optional agent-id filter. */
                 readonly agent_id?: string | null;
+                /** @description Optional adaptation-axis filter. */
                 readonly axis?: string | null;
                 /** @description Opaque pagination cursor returned by the previous page */
                 readonly cursor?: string | null;
@@ -24291,6 +24294,7 @@ export interface operations {
     readonly ApiV1MetaEvolutionSummaryGetEvolutionSummary: {
         readonly parameters: {
             readonly query?: {
+                /** @description Look-back window in days. */
                 readonly window_days?: number;
             };
             readonly header?: never;

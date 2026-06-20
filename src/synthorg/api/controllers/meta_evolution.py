@@ -8,10 +8,11 @@ result rather than 503-ing.
 """
 
 from datetime import timedelta
-from typing import Final
+from typing import Annotated, Final
 
 from litestar import Controller, get
 from litestar.datastructures import State
+from litestar.params import QueryParameter
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access
@@ -29,6 +30,20 @@ from synthorg.meta.state import MetaStateSlice
 
 _DEFAULT_PAGE_SIZE: Final[int] = 50
 _DEFAULT_EVOLUTION_WINDOW_DAYS: Final[int] = 30
+_MIN_WINDOW_DAYS: Final[int] = 1
+
+WindowDays = Annotated[
+    int,
+    QueryParameter(ge=_MIN_WINDOW_DAYS, description="Look-back window in days."),
+]
+AgentIdFilter = Annotated[
+    str | None,
+    QueryParameter(required=False, description="Optional agent-id filter."),
+]
+AxisFilter = Annotated[
+    str | None,
+    QueryParameter(required=False, description="Optional adaptation-axis filter."),
+]
 
 
 def _outcome_to_dict(record: EvolutionOutcomeRecord) -> dict[str, object]:
@@ -83,7 +98,7 @@ class MetaEvolutionController(Controller):
     async def get_evolution_summary(
         self,
         state: State,
-        window_days: int = _DEFAULT_EVOLUTION_WINDOW_DAYS,
+        window_days: WindowDays = _DEFAULT_EVOLUTION_WINDOW_DAYS,
     ) -> ApiResponse[dict[str, object]]:
         """Summarise evolution outcomes over a recent window.
 
@@ -111,8 +126,8 @@ class MetaEvolutionController(Controller):
         state: State,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_PAGE_SIZE,
-        agent_id: str | None = None,
-        axis: str | None = None,
+        agent_id: AgentIdFilter = None,
+        axis: AxisFilter = None,
     ) -> PaginatedResponse[dict[str, object]]:
         """List recorded evolution outcomes, newest-first, paginated.
 
@@ -152,7 +167,7 @@ class MetaEvolutionController(Controller):
     async def get_evolution_axes_stats(
         self,
         state: State,
-        window_days: int = _DEFAULT_EVOLUTION_WINDOW_DAYS,
+        window_days: WindowDays = _DEFAULT_EVOLUTION_WINDOW_DAYS,
     ) -> ApiResponse[dict[str, object]]:
         """Per-axis outcome counts over a recent window.
 
