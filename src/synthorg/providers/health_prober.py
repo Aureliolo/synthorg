@@ -145,42 +145,25 @@ class ProviderHealthProber:
     async def _resolve_probe_api_key(self, config: ProviderConfig) -> str | None:
         """Resolve a provider's api_key from its catalog connection.
 
-        Returns ``None`` for providers that do not authenticate with an API
-        key, so the probe pings without an Authorization header. For an
-        ``API_KEY`` provider whose key cannot be resolved (no catalog wired,
-        or the connection carries no key) this raises instead of returning
-        ``None`` -- probing such a provider unauthenticated would let an
-        endpoint that serves unauthenticated requests report it healthy and
-        mask a missing credential. The raise is isolated by ``_safe_probe_one``
-        (logged, no healthy record written). A catalog lookup error likewise
-        propagates rather than silently probing unauthenticated.
+        Non-API-key providers return ``None``. An ``API_KEY`` provider with an
+        unresolvable key raises (``_safe_probe_one`` isolates it) rather than
+        probing unauthenticated and risking a false-healthy verdict.
 
         Returns:
             The resolved api_key, or ``None`` when unresolvable by design.
 
         Raises:
-            ProviderValidationError: When an ``API_KEY`` provider's key
-                cannot be resolved.
+            ProviderValidationError: When an ``API_KEY`` key is unresolvable.
         """
-        requires_key = config.auth_type is AuthType.API_KEY
-        if config.connection_name is None or self._connection_catalog is None:
-            if requires_key:
-                msg = (
-                    "Cannot resolve an API key for the health probe of "
-                    f"{config.litellm_provider!r} (no connection_name or "
-                    "catalog wired); refusing to probe unauthenticated."
-                )
-                raise ProviderValidationError(msg)
-            return None
-        creds = await self._connection_catalog.get_credentials(config.connection_name)
-        api_key = creds.get("api_key")
-        if api_key is None and requires_key:
-            msg = (
-                "Catalog connection carries no api_key; refusing to probe "
-                f"API_KEY provider {config.litellm_provider!r} unauthenticated."
-            )
+        catalog = self._connection_catalog
+        key: str | None = None
+        if config.connection_name is not None and catalog is not None:
+            creds = await catalog.get_credentials(config.connection_name)
+            key = creds.get("api_key")
+        if key is None and config.auth_type is AuthType.API_KEY:
+            msg = "Cannot resolve a health-probe API key; refusing anonymous probe."
             raise ProviderValidationError(msg)
-        return api_key
+        return key
 
     async def start(self) -> None:
         """Start the background probe loop.
