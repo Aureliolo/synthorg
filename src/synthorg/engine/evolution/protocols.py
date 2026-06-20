@@ -183,6 +183,36 @@ class AdaptationAdapter(Protocol):
         ...
 
 
+@runtime_checkable
+class EvolutionOutcomeSink(Protocol):
+    """Narrow write seam for recording terminal evolution outcomes.
+
+    The engine evolution loop records each applied / not-applied event
+    here after processing a proposal. Kept deliberately narrow (no
+    persistence or meta imports) so the engine never depends on the
+    meta-loop's durable store; the durable store satisfies it
+    structurally.
+    """
+
+    async def record(
+        self,
+        *,
+        agent_id: NotBlankStr,
+        axis: NotBlankStr,
+        applied: bool,
+        proposed_at: datetime,
+    ) -> None:
+        """Record a terminal evolution outcome.
+
+        Args:
+            agent_id: Agent the proposal targeted.
+            axis: Adaptation axis value.
+            applied: Whether the adaptation was applied without rollback.
+            proposed_at: When the proposal was generated.
+        """
+        ...
+
+
 # Rebuild EvolutionContext model with forward references resolved at runtime.
 
 EvolutionContext.model_rebuild()

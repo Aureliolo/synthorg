@@ -12,7 +12,6 @@ from typing import Self
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.models import ProposalAltitude
 
 
 class EvolutionOutcomeRecord(BaseModel):
@@ -20,8 +19,11 @@ class EvolutionOutcomeRecord(BaseModel):
 
     Attributes:
         agent_id: Which agent was the target of the proposal.
-        axis: Which altitude / axis the proposal targeted (matches
-            :class:`~synthorg.meta.models.ProposalAltitude` values).
+        axis: Which axis the proposal targeted. A free string so the
+            store records both the engine evolution loop's per-agent
+            ``AdaptationAxis`` values (identity / strategy_selection /
+            prompt_template) and the meta-loop's ``ProposalAltitude``
+            values without coupling the two enums.
         applied: ``True`` when the proposal was applied and did not
             roll back; ``False`` for rejected / rolled-back / failed.
         proposed_at: When the proposal was generated.
@@ -33,7 +35,7 @@ class EvolutionOutcomeRecord(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     agent_id: NotBlankStr
-    axis: ProposalAltitude
+    axis: NotBlankStr
     applied: bool
     proposed_at: AwareDatetime
     recorded_at: AwareDatetime = Field(

@@ -20,7 +20,6 @@ from typing import Final
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.evolution.outcome_models import EvolutionOutcomeRecord
-from synthorg.meta.models import ProposalAltitude
 from synthorg.meta.signal_models import EvolutionOutcomeSummary, OrgEvolutionSummary
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evolution import (
@@ -74,27 +73,19 @@ class InMemoryEvolutionOutcomeStore:
         blocked by a store failure.
         """
         try:
-            altitude = ProposalAltitude(axis)
             record = EvolutionOutcomeRecord(
                 agent_id=agent_id,
-                axis=altitude,
+                axis=axis,
                 applied=applied,
                 proposed_at=proposed_at,
             )
-            async with self._lock:
-                evicted = len(self._records) == self._max_results
-                self._records.append(record)
+            await self.ingest(record)
             logger.debug(
                 EVOLUTION_OUTCOME_RECORDED,
                 agent_id=agent_id,
                 axis=axis,
                 applied=applied,
             )
-            if evicted:
-                logger.info(
-                    EVOLUTION_OUTCOME_STORE_EVICTED,
-                    max_results=self._max_results,
-                )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
@@ -103,6 +94,23 @@ class InMemoryEvolutionOutcomeStore:
                 axis=axis,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
+            )
+
+    async def ingest(self, record: EvolutionOutcomeRecord) -> None:
+        """Append a pre-built outcome record to the ring buffer.
+
+        Shared by :meth:`record` (after building the record from kwargs)
+        and the durable write-through / rehydrate paths, which already
+        hold a fully-formed :class:`EvolutionOutcomeRecord` and need a
+        consistent ``recorded_at`` across the buffer and the durable log.
+        """
+        async with self._lock:
+            evicted = len(self._records) == self._max_results
+            self._records.append(record)
+        if evicted:
+            logger.info(
+                EVOLUTION_OUTCOME_STORE_EVICTED,
+                max_results=self._max_results,
             )
 
     async def query(
@@ -146,34 +154,7 @@ class InMemoryEvolutionOutcomeStore:
             msg = f"max_recent must be >= 1, got {max_recent}"
             raise ValueError(msg)
         records = await self.query(since=since, until=until)
-        if not records:
-            return OrgEvolutionSummary()
-
-        applied_count = sum(1 for r in records if r.applied)
-        total = len(records)
-        approval_rate = applied_count / total
-
-        axis_counts: dict[str, int] = {}
-        for record in records:
-            axis_counts[record.axis] = axis_counts.get(record.axis, 0) + 1
-        most_adapted = _pick_most_adapted(axis_counts)
-
-        recent = tuple(
-            EvolutionOutcomeSummary(
-                agent_id=r.agent_id,
-                axis=r.axis,
-                applied=r.applied,
-                proposed_at=r.proposed_at,
-            )
-            for r in records[:max_recent]
-        )
-
-        return OrgEvolutionSummary(
-            recent_outcomes=recent,
-            total_proposals=total,
-            approval_rate=approval_rate,
-            most_adapted_axis=most_adapted,
-        )
+        return roll_up_outcomes(records, max_recent=max_recent)
 
     async def count(self) -> int:
         """Return current buffer size (not capacity).
@@ -188,6 +169,48 @@ class InMemoryEvolutionOutcomeStore:
         """Drop all stored records."""
         async with self._lock:
             self._records.clear()
+
+
+def roll_up_outcomes(
+    records: tuple[EvolutionOutcomeRecord, ...],
+    *,
+    max_recent: int = _DEFAULT_MAX_RECENT,
+) -> OrgEvolutionSummary:
+    """Roll a newest-first record tuple into an :class:`OrgEvolutionSummary`.
+
+    Shared by the in-memory ring-buffer summary and the durable
+    read-service window summary so both compute approval rate, the most
+    adapted axis, and the recent-outcomes tail identically.
+
+    Args:
+        records: Outcome records, newest-first.
+        max_recent: How many of the newest records to surface.
+
+    Returns:
+        The rolled-up summary; empty when ``records`` is empty.
+    """
+    if not records:
+        return OrgEvolutionSummary()
+    applied_count = sum(1 for r in records if r.applied)
+    total = len(records)
+    axis_counts: dict[str, int] = {}
+    for record in records:
+        axis_counts[record.axis] = axis_counts.get(record.axis, 0) + 1
+    recent = tuple(
+        EvolutionOutcomeSummary(
+            agent_id=r.agent_id,
+            axis=r.axis,
+            applied=r.applied,
+            proposed_at=r.proposed_at,
+        )
+        for r in records[:max_recent]
+    )
+    return OrgEvolutionSummary(
+        recent_outcomes=recent,
+        total_proposals=total,
+        approval_rate=applied_count / total,
+        most_adapted_axis=_pick_most_adapted(axis_counts),
+    )
 
 
 def _validate_window(since: datetime, until: datetime) -> None:
@@ -223,4 +246,5 @@ def _pick_most_adapted(axis_counts: dict[str, int]) -> NotBlankStr | None:
 
 __all__ = [
     "InMemoryEvolutionOutcomeStore",
+    "roll_up_outcomes",
 ]

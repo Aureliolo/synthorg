@@ -437,6 +437,7 @@ def _build_evolution_service_or_none(
     from synthorg.engine.evolution.factory import (  # noqa: PLC0415
         build_evolution_service,
     )
+    from synthorg.meta.state import evolution_outcome_store_of  # noqa: PLC0415
     from synthorg.versioning import VersioningService  # noqa: PLC0415
 
     try:
@@ -447,6 +448,7 @@ def _build_evolution_service_or_none(
             tracker=tracker,
             memory_backend=app_state.slice(MemoryStateSlice).backend,
             provider=provider,
+            outcome_sink=evolution_outcome_store_of(app_state),
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)

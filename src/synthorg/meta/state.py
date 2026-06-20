@@ -24,6 +24,8 @@ from synthorg.meta.chief_of_staff.propose import (
 from synthorg.meta.chief_of_staff.resume_service import ConversationalResumeService
 from synthorg.meta.chief_of_staff.routing import RoleRouter
 from synthorg.meta.config import SelfImprovementConfig
+from synthorg.meta.evolution.outcome_store_protocol import EvolutionOutcomeStore
+from synthorg.meta.evolution.read_service import EvolutionReadService
 from synthorg.meta.reports.service import ReportsService
 from synthorg.meta.rules.service import CustomRulesService
 from synthorg.meta.service import SelfImprovementService
@@ -63,6 +65,8 @@ class MetaStateSlice(BaseFeatureStateSlice):
     conversational_actor: ConversationalActor | None = None
     custom_rules_service: CustomRulesService | None = None
     self_improvement_config: SelfImprovementConfig | None = None
+    evolution_outcome_store: EvolutionOutcomeStore | None = None
+    evolution_read_service: EvolutionReadService | None = None
 
 
 def signals_service_of(app_state: AppStateSliceMixin) -> SignalsService:
@@ -141,6 +145,35 @@ def self_improvement_service_of(
     return require_service(
         app_state.slice(MetaStateSlice).self_improvement_service,
         "Self-Improvement Service",
+    )
+
+
+def evolution_outcome_store_of(
+    app_state: AppStateSliceMixin,
+) -> EvolutionOutcomeStore | None:
+    """Return the durable evolution-outcome store, or ``None`` when absent.
+
+    Soft accessor: shared by the signals aggregator and the engine
+    evolution sink. ``None`` when persistence is unavailable, so the
+    aggregator degrades to an empty evolution summary.
+
+    Returns:
+        The wired evolution-outcome store, or ``None``.
+    """
+    return app_state.slice(MetaStateSlice).evolution_outcome_store
+
+
+def evolution_read_service_of(
+    app_state: AppStateSliceMixin,
+) -> EvolutionReadService:
+    """Resolve the evolution read service from its slice, or raise 503.
+
+    Returns:
+        The wired evolution read service.
+    """
+    return require_service(
+        app_state.slice(MetaStateSlice).evolution_read_service,
+        "Evolution Read Service",
     )
 
 

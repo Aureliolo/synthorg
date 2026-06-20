@@ -22,6 +22,7 @@ from synthorg.engine.evolution.protocols import (
     AdaptationAdapter,
     AdaptationGuard,
     AdaptationProposer,
+    EvolutionOutcomeSink,
 )
 from synthorg.engine.evolution.service import EvolutionService
 from synthorg.hr.performance.tracker import PerformanceTracker
@@ -74,13 +75,14 @@ def _make_decision(
     )
 
 
-def _make_service(
+def _make_service(  # noqa: PLR0913 -- keyword-only test collaborator DI
     *,
     proposals: tuple[AdaptationProposal, ...] = (),
     guard_approves: bool = True,
     config: EvolutionConfig | None = None,
     identity_store: AsyncMock | None = None,
     extra_adapters: dict[AdaptationAxis, object] | None = None,
+    outcome_sink: object | None = None,
 ) -> EvolutionService:
     """Build an EvolutionService with mocked dependencies."""
     if config is None:
@@ -133,6 +135,7 @@ def _make_service(
         proposer=proposer,
         guard=guard,
         adapters=cast(dict[AdaptationAxis, AdaptationAdapter], adapters),
+        outcome_sink=cast("EvolutionOutcomeSink | None", outcome_sink),
         config=config,
     )
 
@@ -174,6 +177,39 @@ class TestEvolutionServiceEvolve:
         events = await service.evolve(agent_id=_AGENT_ID)
         assert len(events) == 1
         assert events[0].applied is False
+
+    @pytest.mark.unit
+    async def test_outcome_sink_records_each_event(self) -> None:
+        """Each processed proposal's terminal outcome reaches the sink."""
+        sink = AsyncMock(spec=EvolutionOutcomeSink)
+        proposal = _make_proposal()
+        service = _make_service(
+            proposals=(proposal,),
+            guard_approves=True,
+            outcome_sink=sink,
+        )
+        events = await service.evolve(agent_id=_AGENT_ID)
+        assert events[0].applied is True
+        sink.record.assert_awaited_once()
+        kwargs = sink.record.await_args.kwargs
+        assert kwargs["agent_id"] == _AGENT_ID
+        assert kwargs["axis"] == AdaptationAxis.PROMPT_TEMPLATE.value
+        assert kwargs["applied"] is True
+
+    @pytest.mark.unit
+    async def test_outcome_sink_failure_does_not_block(self) -> None:
+        """A sink failure is swallowed; evolve still returns its events."""
+        sink = AsyncMock(spec=EvolutionOutcomeSink)
+        sink.record = AsyncMock(side_effect=RuntimeError("durable down"))
+        proposal = _make_proposal()
+        service = _make_service(
+            proposals=(proposal,),
+            guard_approves=True,
+            outcome_sink=sink,
+        )
+        events = await service.evolve(agent_id=_AGENT_ID)
+        assert len(events) == 1
+        assert events[0].applied is True
 
     @pytest.mark.unit
     async def test_disabled_axis_rejected(self) -> None:

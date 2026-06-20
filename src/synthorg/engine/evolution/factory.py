@@ -23,6 +23,7 @@ from synthorg.engine.evolution.protocols import (
     AdaptationAdapter,
     AdaptationGuard,
     AdaptationProposer,
+    EvolutionOutcomeSink,
     EvolutionTrigger,
 )
 from synthorg.engine.identity.store.factory import build_identity_store
@@ -50,6 +51,7 @@ def build_evolution_service(  # noqa: PLR0913
     provider: CompletionProvider | None = None,
     shadow_runner: ShadowAgentRunner | None = None,
     shadow_task_sampler: TaskSampler | None = None,
+    outcome_sink: EvolutionOutcomeSink | None = None,
 ) -> EvolutionService:
     """Build a fully wired ``EvolutionService`` from configuration.
 
@@ -66,6 +68,8 @@ def build_evolution_service(  # noqa: PLR0913
         shadow_task_sampler: Required when shadow evaluation is enabled
             *and* ``task_provider == "recent_history"``.  Returns recent
             completed tasks for the agent.
+        outcome_sink: Durable sink recording each proposal's terminal
+            outcome; ``None`` leaves outcomes unlogged.
 
     Returns:
         Configured evolution service.
@@ -106,6 +110,7 @@ def build_evolution_service(  # noqa: PLR0913
         guard=guard,
         adapters=adapters,
         memory_backend=memory_backend,
+        outcome_sink=outcome_sink,
         config=config,
     )
 

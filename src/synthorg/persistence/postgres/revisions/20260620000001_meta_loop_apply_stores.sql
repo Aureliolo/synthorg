@@ -53,3 +53,21 @@ CREATE TABLE departments (
 
 -- ``list_departments`` pages newest-first by created_at.
 CREATE INDEX idx_departments_created ON departments (created_at DESC);
+
+-- Durable append-only log of the terminal outcome of every evolution
+-- proposal the engine evolution loop processes. The in-memory ring-buffer
+-- store stays the hot read; this table survives restart, backs the
+-- /meta/evolution/* read endpoints, and rehydrates the ring buffer at boot.
+CREATE TABLE evolution_outcomes (
+    id BIGSERIAL PRIMARY KEY,
+    agent_id TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(agent_id)) > 0),
+    axis TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(axis)) > 0),
+    applied BOOLEAN NOT NULL,
+    proposed_at TIMESTAMPTZ NOT NULL,
+    recorded_at TIMESTAMPTZ NOT NULL
+);
+
+-- Reads page newest-first by recorded_at; the axes-stats endpoint groups
+-- by axis within a window.
+CREATE INDEX idx_evolution_outcomes_recorded ON evolution_outcomes (recorded_at DESC);
+CREATE INDEX idx_evolution_outcomes_axis ON evolution_outcomes (axis);

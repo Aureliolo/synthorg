@@ -2308,3 +2308,13 @@ CREATE TABLE departments (
     updated_at TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX idx_departments_created ON departments (created_at DESC);
+CREATE TABLE evolution_outcomes (
+    id BIGSERIAL PRIMARY KEY,
+    agent_id TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(agent_id)) > 0),
+    axis TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(axis)) > 0),
+    applied BOOLEAN NOT NULL,
+    proposed_at TIMESTAMPTZ NOT NULL,
+    recorded_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX idx_evolution_outcomes_recorded ON evolution_outcomes (recorded_at DESC);
+CREATE INDEX idx_evolution_outcomes_axis ON evolution_outcomes (axis);

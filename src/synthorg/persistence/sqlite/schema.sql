@@ -2376,3 +2376,15 @@ CREATE TABLE departments (
     updated_at TEXT NOT NULL CHECK (updated_at LIKE '%+00:00' OR updated_at LIKE '%Z')
 );
 CREATE INDEX idx_departments_created ON departments (created_at DESC);
+CREATE TABLE evolution_outcomes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_id TEXT NOT NULL CHECK (LENGTH(TRIM(agent_id)) > 0),
+    axis TEXT NOT NULL CHECK (LENGTH(TRIM(axis)) > 0),
+    applied INTEGER NOT NULL CHECK (applied IN (0, 1)),
+    proposed_at TEXT NOT NULL
+    CHECK (proposed_at LIKE '%+00:00' OR proposed_at LIKE '%Z'),
+    recorded_at TEXT NOT NULL
+    CHECK (recorded_at LIKE '%+00:00' OR recorded_at LIKE '%Z')
+);
+CREATE INDEX idx_evolution_outcomes_recorded ON evolution_outcomes (recorded_at DESC);
+CREATE INDEX idx_evolution_outcomes_axis ON evolution_outcomes (axis);
