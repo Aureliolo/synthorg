@@ -202,6 +202,16 @@ const (
 	DefaultMaxBinaryBytes       int64 = 256 * 1024 * 1024
 	DefaultMaxArchiveEntryBytes int64 = 128 * 1024 * 1024
 
+	// MinBinaryBytes / MinArchiveEntryBytes are hard floors on the
+	// self-update download caps. They are a floor, not an expected value:
+	// the real synthorg binary (and the single binary entry inside its
+	// release archive) is tens of MiB, so an over-tight operator override
+	// below 1 MiB could only ever truncate a legitimate download mid-stream
+	// and fail the update open. 1 MiB rejects the pathological override
+	// while leaving operators ample room to tighten within reason.
+	MinBinaryBytes       int64 = 1 * 1024 * 1024
+	MinArchiveEntryBytes int64 = 1 * 1024 * 1024
+
 	// DefaultHealthResponseLimit caps how many bytes are read from a
 	// /readyz health response (and the equivalent diagnostic probe). The
 	// payload is a small JSON verdict; 64 KiB is generous headroom while

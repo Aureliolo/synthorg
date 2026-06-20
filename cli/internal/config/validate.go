@@ -260,15 +260,22 @@ func validateIntegerFields(s State) error {
 	return nil
 }
 
-// checkByteField returns an "invalid …" error when value is negative
-// or above MaxBytesCeiling. Zero is treated as "use default" and
-// skipped (the byte tunables are int64 with a sentinel-zero default).
-func checkByteField(name string, value int64) error {
+// checkByteField returns an "invalid …" error when value is negative,
+// above MaxBytesCeiling, or below a non-zero per-field floor. Zero is
+// treated as "use default" and skipped (the byte tunables are int64 with
+// a sentinel-zero default). A floor of 0 means the field has no minimum.
+func checkByteField(name string, value, floor int64) error {
 	if value == 0 {
 		return nil
 	}
 	if value < 0 {
 		return fmt.Errorf("invalid %s %d: must be positive", name, value)
+	}
+	if floor > 0 && value < floor {
+		return fmt.Errorf(
+			"invalid %s %d: below the %d minimum floor; a smaller cap would silently truncate the self-update download",
+			name, value, floor,
+		)
 	}
 	if value > MaxBytesCeiling {
 		return fmt.Errorf("invalid %s %d: exceeds ceiling %d (1 GiB)", name, value, MaxBytesCeiling)
@@ -277,11 +284,11 @@ func checkByteField(name string, value int64) error {
 }
 
 func validateByteFields(s State) error {
-	if err := checkByteField("max_api_response_bytes", s.MaxAPIResponseBytes); err != nil {
+	if err := checkByteField("max_api_response_bytes", s.MaxAPIResponseBytes, 0); err != nil {
 		return err
 	}
-	if err := checkByteField("max_binary_bytes", s.MaxBinaryBytes); err != nil {
+	if err := checkByteField("max_binary_bytes", s.MaxBinaryBytes, MinBinaryBytes); err != nil {
 		return err
 	}
-	return checkByteField("max_archive_entry_bytes", s.MaxArchiveEntryBytes)
+	return checkByteField("max_archive_entry_bytes", s.MaxArchiveEntryBytes, MinArchiveEntryBytes)
 }

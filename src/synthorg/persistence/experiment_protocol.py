@@ -1,11 +1,24 @@
-"""Repository protocol for the A/B experiment registry."""
+# module-kind: declarative
+"""Repository protocol for the A/B experiment registry.
+
+Relocated under the persistence boundary so the experiment repository sits
+alongside its sibling durable protocols (``ab_test_protocol``,
+``pruning_request_protocol``). The surface is bespoke under ADR-0001 D7: it
+keys variants on the composite ``(experiment, variant)`` and assignments on
+``(experiment, subject_id)`` and exposes domain reads (``list_for_experiment``,
+``list_assignments`` returning ``(page, total)``, ``assigned_at``) that no
+generic ``_generics.py`` category models, so it composes ``Protocol`` directly
+rather than a generic category.
+
+Concrete implementations live in the backend packages
+(``synthorg.persistence.sqlite`` / ``synthorg.persistence.postgres``). All
+protocols are ``@runtime_checkable``; all methods are ``async``.
+"""
 
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.types import (
-    NotBlankStr,
-)
+from synthorg.core.types import NotBlankStr
 from synthorg.experiments.models import (
     ExperimentAssignment,
     ExperimentVariant,
@@ -20,11 +33,15 @@ class ExperimentRepository(Protocol):
         """Insert or replace ``variant`` keyed on ``(experiment, variant)``."""
         ...
 
-    async def list_for_experiment(
+    async def list_for_experiment(  # lint-allow: list-pagination -- bounded arm set
         self,
         experiment: NotBlankStr,
     ) -> tuple[ExperimentVariant, ...]:
         """Return every registered variant for ``experiment``.
+
+        Bounded fixed set (the handful of A/B arms per experiment), and the
+        assignment hash walk needs every variant in registration order, so
+        this read is intentionally unpaginated (ADR-0001 D7).
 
         Ordering is by registration timestamp (oldest first) so the
         assignment hash walk is deterministic across processes.
@@ -86,3 +103,6 @@ class ExperimentRepository(Protocol):
         replay-safe ordering).
         """
         ...
+
+
+__all__ = ["ExperimentRepository"]

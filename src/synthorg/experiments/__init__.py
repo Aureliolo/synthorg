@@ -17,12 +17,14 @@ from synthorg.experiments.models import (
     ExperimentAssignment,
     ExperimentVariant,
 )
-from synthorg.experiments.protocol import ExperimentRepository
 from synthorg.experiments.service import ExperimentService
 
+# ``ExperimentRepository`` now lives under the persistence boundary
+# (``synthorg.persistence.experiment_protocol``); import it from there. It is
+# deliberately NOT re-exported here so importing the protocol does not pull
+# this package's eager service import back into a cold-start cycle.
 __all__ = (
     "ExperimentAssignment",
-    "ExperimentRepository",
     "ExperimentService",
     "ExperimentVariant",
 )

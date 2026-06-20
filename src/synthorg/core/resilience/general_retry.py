@@ -47,6 +47,13 @@ transient-failure retry with temporal backoff.
   stdlib logging-handler thread using synchronous
   ``urllib.request``.  This async helper cannot be awaited from
   there.  Bootstrap-tier code keeps its own retry loop.
+
+- ``telemetry.collector._read_peer_deployment_id`` is a synchronous
+  helper run via ``to_thread`` that re-reads a peer-created ID file
+  with a bounded ``time.sleep`` backoff (5 / 10 / 20 ms).  Being sync
+  in a worker thread it cannot await this async helper, and the retry
+  is partial-write-driven (the file exists but is mid-``write()``),
+  not transient-I/O-driven; the inline loop stays in the thread.
 """
 
 import math

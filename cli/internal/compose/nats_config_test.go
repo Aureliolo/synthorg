@@ -19,8 +19,8 @@ func TestNATSConfigContentRendersExpected(t *testing.T) {
 		"  store_dir: /data\n" +
 		"}\n" +
 		"max_payload: 16MB\n"
-	if NATSConfigContent != want {
-		t.Errorf("NATSConfigContent mismatch\n got:\n%q\nwant:\n%q", NATSConfigContent, want)
+	if NATSConfig() != want {
+		t.Errorf("NATSConfig() mismatch\n got:\n%q\nwant:\n%q", NATSConfig(), want)
 	}
 }
 
@@ -33,8 +33,8 @@ func TestNATSConfigContentUsesConstants(t *testing.T) {
 		fmt.Sprintf("http_port: %d", NATSHTTPPort),
 		"max_payload: " + NATSMaxPayload,
 	} {
-		if !strings.Contains(NATSConfigContent, want) {
-			t.Errorf("NATSConfigContent missing %q", want)
+		if !strings.Contains(NATSConfig(), want) {
+			t.Errorf("NATSConfig() missing %q", want)
 		}
 	}
 }
