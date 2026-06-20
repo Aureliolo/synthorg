@@ -67,7 +67,7 @@ runs:
   steps:
     - name: Checkout (attempt 1/5)
       id: attempt1
-      uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       continue-on-error: true
       with:
         ref: ${{ inputs.ref }}
@@ -92,7 +92,7 @@ runs:
     - name: Checkout (attempt 2/5)
       id: attempt2
       if: steps.attempt1.outcome == 'failure'
-      uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       continue-on-error: true
       with:
         ref: ${{ inputs.ref }}
@@ -111,7 +111,7 @@ runs:
     - name: Checkout (attempt 3/5)
       id: attempt3
       if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure'
-      uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       continue-on-error: true
       with:
         ref: ${{ inputs.ref }}
@@ -130,7 +130,7 @@ runs:
     - name: Checkout (attempt 4/5)
       id: attempt4
       if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure' && steps.attempt3.outcome == 'failure'
-      uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       continue-on-error: true
       with:
         ref: ${{ inputs.ref }}
@@ -151,7 +151,7 @@ runs:
     # surfaced.
     - name: Checkout (attempt 5/5)
       if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure' && steps.attempt3.outcome == 'failure' && steps.attempt4.outcome == 'failure'
-      uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       with:
         ref: ${{ inputs.ref }}
         fetch-depth: ${{ inputs.fetch-depth }}

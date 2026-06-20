@@ -122,7 +122,7 @@ jobs:
       - name: Run CodSpeed Python benchmarks (attempt 1/3)
         id: codspeed-py-1
         continue-on-error: true
-        uses: CodSpeedHQ/action@c145068895e045cc725ee76fcd2307624b65c3af # v4.17.5
+        uses: CodSpeedHQ/action@63f3e98b61959fe67f146a3ff022e4136fe9bb9c # v4.17.6
         env:
           # Measure the real production code path, not test-harness overhead:
           # typeguard is a test-only instrument (never runs in production). This
@@ -146,7 +146,7 @@ jobs:
         id: codspeed-py-2
         if: ${{ !cancelled() && steps.codspeed-py-1.outcome == 'failure' }}
         continue-on-error: true
-        uses: CodSpeedHQ/action@c145068895e045cc725ee76fcd2307624b65c3af # v4.17.5
+        uses: CodSpeedHQ/action@63f3e98b61959fe67f146a3ff022e4136fe9bb9c # v4.17.6
         env:
           SYNTHORG_BENCH_NO_TYPEGUARD: "1"
         with:
@@ -159,7 +159,7 @@ jobs:
           sleep 60
       - name: Run CodSpeed Python benchmarks (attempt 3/3)
         if: ${{ !cancelled() && steps.codspeed-py-1.outcome == 'failure' && steps.codspeed-py-2.outcome == 'failure' }}
-        uses: CodSpeedHQ/action@c145068895e045cc725ee76fcd2307624b65c3af # v4.17.5
+        uses: CodSpeedHQ/action@63f3e98b61959fe67f146a3ff022e4136fe9bb9c # v4.17.6
         env:
           SYNTHORG_BENCH_NO_TYPEGUARD: "1"
         with:
@@ -186,7 +186,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: 24.16.0
+          node-version: 24.17.0
           cache: npm
           cache-dependency-path: web/package-lock.json
 
@@ -205,7 +205,7 @@ jobs:
       - name: Run CodSpeed Web benchmarks (attempt 1/3)
         id: codspeed-web-1
         continue-on-error: true
-        uses: CodSpeedHQ/action@c145068895e045cc725ee76fcd2307624b65c3af # v4.17.5
+        uses: CodSpeedHQ/action@63f3e98b61959fe67f146a3ff022e4136fe9bb9c # v4.17.6
         with:
           mode: simulation
           run: npm --prefix web run bench
@@ -218,7 +218,7 @@ jobs:
         id: codspeed-web-2
         if: ${{ !cancelled() && steps.codspeed-web-1.outcome == 'failure' }}
         continue-on-error: true
-        uses: CodSpeedHQ/action@c145068895e045cc725ee76fcd2307624b65c3af # v4.17.5
+        uses: CodSpeedHQ/action@63f3e98b61959fe67f146a3ff022e4136fe9bb9c # v4.17.6
         with:
           mode: simulation
           run: npm --prefix web run bench
@@ -229,7 +229,7 @@ jobs:
           sleep 60
       - name: Run CodSpeed Web benchmarks (attempt 3/3)
         if: ${{ !cancelled() && steps.codspeed-web-1.outcome == 'failure' && steps.codspeed-web-2.outcome == 'failure' }}
-        uses: CodSpeedHQ/action@c145068895e045cc725ee76fcd2307624b65c3af # v4.17.5
+        uses: CodSpeedHQ/action@63f3e98b61959fe67f146a3ff022e4136fe9bb9c # v4.17.6
         with:
           mode: simulation
           run: npm --prefix web run bench
