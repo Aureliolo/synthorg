@@ -49,6 +49,16 @@ class TestLLMProviderAuthenticator:
         with pytest.raises(InvalidConnectionAuthError, match="api_key"):
             auth.validate_credentials({"api_key": "   "})
 
+    def test_non_string_api_key_rejected(self) -> None:
+        auth = get_authenticator(ConnectionType.LLM_PROVIDER)
+        # A non-string api_key (e.g. a JSON number) must be rejected, not
+        # coerced; suppress_type_checks lets the int reach the validator.
+        with (
+            pytest.raises(InvalidConnectionAuthError, match="api_key"),
+            suppress_type_checks(),
+        ):
+            auth.validate_credentials({"api_key": 123})  # type: ignore[dict-item]
+
     def test_base_url_not_required(self) -> None:
         # Unlike GENERIC_HTTP, no base_url is needed: providers routing
         # through litellm's default endpoints have none of their own.

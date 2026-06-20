@@ -80,7 +80,7 @@ test.describe('Approval critical flow', () => {
         },
       })
     })
-    await page.route('**/api/v1/approvals/approval-001/approve', (route) =>
+    await page.route(`**/api/v1/approvals/${pending.id}/approve`, (route) =>
       route.fulfill({
         json: {
           success: true,
@@ -97,7 +97,7 @@ test.describe('Approval critical flow', () => {
     const [decided] = await Promise.all([
       page.waitForResponse(
         (res) =>
-          res.url().includes('/api/v1/approvals/approval-001/approve') &&
+          res.url().includes(`/api/v1/approvals/${pending.id}/approve`) &&
           res.request().method() === 'POST',
       ),
       page.getByRole('button', { name: /^approve$/i }).first().click(),
@@ -144,7 +144,7 @@ test.describe('Approval critical flow', () => {
     })
     // Detail GET feeds the drawer a single approval (not a list), so its
     // pending footer (Approve / Reject) renders.
-    await page.route('**/api/v1/approvals/approval-001', (route) => {
+    await page.route(`**/api/v1/approvals/${pending.id}`, (route) => {
       if (route.request().method() !== 'GET') {
         route.fallback()
         return
@@ -153,7 +153,7 @@ test.describe('Approval critical flow', () => {
         json: { success: true, data: pending, error: null, error_detail: null },
       })
     })
-    await page.route('**/api/v1/approvals/approval-001/reject', (route) =>
+    await page.route(`**/api/v1/approvals/${pending.id}/reject`, (route) =>
       route.fulfill({
         json: {
           success: true,
@@ -181,7 +181,7 @@ test.describe('Approval critical flow', () => {
     const [decided] = await Promise.all([
       page.waitForResponse(
         (res) =>
-          res.url().includes('/api/v1/approvals/approval-001/reject') &&
+          res.url().includes(`/api/v1/approvals/${pending.id}/reject`) &&
           res.request().method() === 'POST',
       ),
       confirm.getByRole('button', { name: /^reject$/i }).click(),

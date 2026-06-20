@@ -115,6 +115,8 @@ class TestExperimentVariants:
 class TestExperimentAssignments:
     async def test_record_and_get(self, backend: PersistenceBackend) -> None:
         repo = _repo(backend)
+        # An assignment references a registered variant (FK), so seed it first.
+        await repo.save(_variant(variant="control"))
         await repo.record_assignment(_assignment())
         fetched = await repo.get_assignment(
             experiment=NotBlankStr("exp-1"), subject_id=NotBlankStr("subject-1")
@@ -136,6 +138,10 @@ class TestExperimentAssignments:
 
     async def test_record_is_insert_once(self, backend: PersistenceBackend) -> None:
         repo = _repo(backend)
+        # Seed both variants so the only constraint the repeat insert can
+        # violate is the (experiment, subject_id) primary key, not the FK.
+        await repo.save(_variant(variant="control"))
+        await repo.save(_variant(variant="treatment"))
         await repo.record_assignment(_assignment(variant="control"))
         # A repeat for the same (experiment, subject) conflicts; the
         # service re-reads the canonical first-writer assignment.
@@ -151,6 +157,7 @@ class TestExperimentAssignments:
         self, backend: PersistenceBackend
     ) -> None:
         repo = _repo(backend)
+        await repo.save(_variant(variant="control"))
         for index in range(3):
             await repo.record_assignment(
                 _assignment(

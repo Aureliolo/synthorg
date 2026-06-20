@@ -101,6 +101,7 @@ class ABTestRollout:
         group_aggregator: Collects per-group samples during observation.
         check_interval_hours: Polling cadence inside the window.
         thresholds: Regression thresholds for catastrophic short-circuit.
+        record_sink: Optional durable sink for A/B-test rollout records.
     """
 
     def __init__(  # noqa: PLR0913

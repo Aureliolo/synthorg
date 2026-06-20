@@ -130,15 +130,17 @@ async def rollback_credential(
     name: str,
     prior_api_key: str | None,
     *,
-    minted: bool,
+    mutated: bool,
 ) -> None:
     """Best-effort restore of a provider's pre-update catalog credential.
 
-    A mint overwrites the prior secret in place; a failed persist /
-    allowlist step puts the ``prior_api_key`` snapshot back (or drops the
-    minted credential when there was none). Logged, never raised.
+    Covers both directions of mutation: a mint overwrites the prior secret
+    in place, and an auth-type switch (or a clear) deletes it. A failed
+    persist / allowlist step puts the ``prior_api_key`` snapshot back (or
+    drops the freshly-minted credential when there was no prior). Logged,
+    never raised. A no-op when the update could not touch the credential.
     """
-    if not minted:
+    if not mutated:
         return
     try:
         if prior_api_key is not None:
@@ -180,7 +182,15 @@ async def resolve_provider_api_key(
             error="credential catalog not wired; proceeding without auth header",
         )
         return None
-    creds = await catalog.get_credentials(config.connection_name)
+    try:
+        creds = await catalog.get_credentials(config.connection_name)
+    except ConnectionNotFoundError:
+        logger.warning(
+            PROVIDER_VALIDATION_FAILED,
+            connection_name=config.connection_name,
+            error="catalog connection not found; proceeding without auth header",
+        )
+        return None
     api_key = creds.get("api_key")
     if api_key is None:
         logger.warning(

@@ -182,6 +182,12 @@ class SQLiteExperimentRepository:
                 await self._db.commit()
             except aiosqlite.IntegrityError as exc:
                 await self._rollback("record_assignment")
+                # A FK violation (variant not registered) and a PK conflict
+                # both surface as IntegrityError; only the latter is a
+                # ConflictError. Routing the FK case to QueryError keeps the
+                # error contract identical to the Postgres sibling.
+                if exc.sqlite_errorname == "SQLITE_CONSTRAINT_FOREIGNKEY":
+                    self._raise_query_error("record assignment", exc)
                 msg = (
                     f"Assignment already exists for subject "
                     f"{assignment.subject_id!r} in experiment "

@@ -848,8 +848,8 @@
     },
     "src/synthorg/meta/rollout/ab_test.py": {
       "cap": 500,
-      "loc": 498,
-      "ratio": 0.996,
+      "loc": 499,
+      "ratio": 0.998,
       "tier": "code"
     },
     "src/synthorg/meta/rules/builtin.py": {
@@ -1178,8 +1178,8 @@
     },
     "src/synthorg/providers/management/service.py": {
       "cap": 1100,
-      "loc": 1081,
-      "ratio": 0.983,
+      "loc": 1090,
+      "ratio": 0.991,
       "tier": "complex_service"
     },
     "src/synthorg/providers/models.py": {
@@ -1637,7 +1637,7 @@
     },
     "synthorg.providers.management.service:ProviderManagementService": {
       "lcom4": 1,
-      "loc": 880
+      "loc": 889
     },
     "synthorg.settings.dispatcher:SettingsChangeDispatcher": {
       "lcom4": 1,

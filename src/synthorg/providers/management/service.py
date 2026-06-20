@@ -429,23 +429,36 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 logger.warning(PROVIDER_NOT_FOUND, provider=name, error=msg)
                 raise ProviderNotFoundError(msg)
 
-            # Snapshot the prior secret before the in-place mint so a failed
-            # persist / allowlist step can restore it (see rollback_credential).
-            minted_credential = request.api_key is not None
-            prior_api_key: str | None = None
-            if minted_credential:
-                prior_api_key = await resolve_provider_api_key(
-                    self._app_state, existing
-                )
-            updated = await apply_update_with_credential(
-                self._app_state, name, existing, request
+            # ``apply_update_with_credential`` mutates the catalog in both
+            # directions: it mints/replaces the secret when an api_key is
+            # supplied, and DELETES the backing connection when the update
+            # clears the key or switches to an auth type that has none.
+            # Snapshot the prior secret before any of those so a failed
+            # persist / allowlist step restores it (see rollback_credential).
+            final_auth_type = (
+                request.auth_type
+                if request.auth_type is not None
+                else existing.auth_type
             )
-            new_providers = {**providers, name: updated}
+            supports_api_key = AUTH_TYPE_DESCRIPTORS[final_auth_type].supports_api_key
+            credential_mutated = (
+                supports_api_key
+                and (request.api_key is not None or request.clear_api_key)
+            ) or (not supports_api_key and existing.connection_name is not None)
+            prior_api_key: str | None = (
+                await resolve_provider_api_key(self._app_state, existing)
+                if credential_mutated
+                else None
+            )
             try:
+                updated = await apply_update_with_credential(
+                    self._app_state, name, existing, request
+                )
+                new_providers = {**providers, name: updated}
                 await self._validate_and_persist(new_providers)
             except Exception:
                 await rollback_credential(
-                    self._app_state, name, prior_api_key, minted=minted_credential
+                    self._app_state, name, prior_api_key, mutated=credential_mutated
                 )
                 raise
             try:
@@ -457,7 +470,7 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             except Exception:
                 await self._restore_providers(providers)
                 await rollback_credential(
-                    self._app_state, name, prior_api_key, minted=minted_credential
+                    self._app_state, name, prior_api_key, mutated=credential_mutated
                 )
                 raise
 

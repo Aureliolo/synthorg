@@ -71,6 +71,7 @@ Exit codes:
 """
 
 import argparse
+import csv
 import json
 import shutil
 import subprocess
@@ -467,11 +468,11 @@ def _check_go_licenses(repo_root: Path, notice: str, *, run: bool) -> list[Viola
         return []
     output = _run_go_licenses(cli_dir)
     violations: list[Violation] = []
-    for raw_line in output.splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-        fields = line.split(",")
+    # Parse as CSV rather than splitting on commas: a licence URL or
+    # name field can itself contain a comma (quoted by go-licenses), and
+    # a naive split would mis-extract the module / licence and let a
+    # copyleft row slip through.
+    for fields in csv.reader(output.splitlines()):
         if len(fields) < _GO_LICENSES_CSV_MIN_FIELDS:
             continue
         module = fields[0].strip()

@@ -110,12 +110,15 @@ class TestPruningRequestCrud:
         self, backend: PersistenceBackend
     ) -> None:
         repo = _repo(backend)
+        newer = _NOW + timedelta(hours=1)
         await repo.save(_request(request_id="pruning-request-1"))
-        await repo.save(_request(request_id="pruning-request-2"))
+        await repo.save(_request(request_id="pruning-request-2", created_at=newer))
 
         items = await repo.list_items()
         assert len(items) == 1
         assert str(items[0].id) == str(as_uuid("pruning-request-2"))
+        # The upsert refreshes conflict-update columns, including created_at.
+        assert items[0].created_at == newer
 
     async def test_delete(self, backend: PersistenceBackend) -> None:
         repo = _repo(backend)

@@ -106,6 +106,10 @@ test.describe('Workflows list + system.error notification path', () => {
   })
 
   test('creates a workflow via the POST /workflows round-trip', async ({ page }) => {
+    // Single source of truth for the name so the form input, the mocked
+    // response, and the toast assertion cannot drift apart if the
+    // makeWorkflow() factory defaults change.
+    const workflowName = 'Daily standup'
     // POST-specific stub wins over the GET list route (Playwright LIFO).
     await page.route('**/api/v1/workflows', (route) => {
       if (route.request().method() !== 'POST') {
@@ -113,7 +117,12 @@ test.describe('Workflows list + system.error notification path', () => {
         return
       }
       route.fulfill({
-        json: { success: true, data: makeWorkflow(), error: null, error_detail: null },
+        json: {
+          success: true,
+          data: makeWorkflow({ name: workflowName }),
+          error: null,
+          error_detail: null,
+        },
       })
     })
 
@@ -123,7 +132,7 @@ test.describe('Workflows list + system.error notification path', () => {
     // "New workflow" opens the create drawer; filling the name and
     // submitting drives the real POST round-trip the store owns.
     await clickButton(page, /new workflow/i)
-    await fillForm(page, { Name: 'Daily standup' })
+    await fillForm(page, { Name: workflowName })
 
     const [created] = await Promise.all([
       page.waitForResponse(
@@ -136,6 +145,8 @@ test.describe('Workflows list + system.error notification path', () => {
 
     // The store emits a success toast on the confirmed create; its title
     // carries the workflow name, proving the dispatch chain completed.
-    await expect(page.getByText(/Workflow Daily standup created/i).first()).toBeVisible()
+    await expect(
+      page.getByText(new RegExp(`Workflow ${workflowName} created`, 'i')).first(),
+    ).toBeVisible()
   })
 })
