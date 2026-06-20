@@ -473,8 +473,18 @@ def _check_go_licenses(repo_root: Path, notice: str, *, run: bool) -> list[Viola
     # a naive split would mis-extract the module / licence and let a
     # copyleft row slip through.
     for fields in csv.reader(output.splitlines()):
-        if len(fields) < _GO_LICENSES_CSV_MIN_FIELDS:
+        if not any(field.strip() for field in fields):
             continue
+        if len(fields) < _GO_LICENSES_CSV_MIN_FIELDS:
+            # A non-empty row that is too short means go-licenses emitted an
+            # unexpected format; fail closed rather than silently dropping a
+            # row that might carry a copyleft licence.
+            msg = (
+                f"go-licenses emitted a malformed CSV row with "
+                f"{len(fields)} field(s) (expected at least "
+                f"{_GO_LICENSES_CSV_MIN_FIELDS}): {fields!r}"
+            )
+            raise SetupError(msg)
         module = fields[0].strip()
         license_name = fields[-1].strip()
         family = _classify(license_name.lower())

@@ -383,9 +383,12 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 # Post-persist failure: the config (referencing conn_name) is
                 # already stored, so roll it back to the pre-create snapshot
                 # BEFORE dropping the secret -- otherwise the persisted config
-                # would point at a deleted credential.
-                await self._restore_providers(providers)
-                if conn_name is not None:
+                # would point at a deleted credential. Only drop the secret if
+                # the restore actually succeeded; a swallowed restore failure
+                # leaves the config persisted, so deleting the credential it
+                # references would orphan it.
+                restored = await self._restore_providers(providers)
+                if restored and conn_name is not None:
                     await delete_provider_credential(self._app_state, request.name)
                 raise
 
@@ -468,10 +471,14 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                     new_providers,
                 )
             except Exception:
-                await self._restore_providers(providers)
-                await rollback_credential(
-                    self._app_state, name, prior_api_key, mutated=credential_mutated
-                )
+                # Roll the config back first; only mutate the credential if the
+                # restore succeeded, else the still-persisted updated config
+                # would be left referencing a rolled-back credential.
+                restored = await self._restore_providers(providers)
+                if restored:
+                    await rollback_credential(
+                        self._app_state, name, prior_api_key, mutated=credential_mutated
+                    )
                 raise
 
             logger.info(
@@ -988,7 +995,7 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
     async def _restore_providers(
         self,
         snapshot: Mapping[str, ProviderConfig],
-    ) -> None:
+    ) -> bool:
         """Best-effort rollback to a pre-mutation provider snapshot.
 
         Re-persists ``snapshot`` so a post-persist step that fails (e.g. an
@@ -999,6 +1006,12 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
 
         Args:
             snapshot: The provider mapping to restore.
+
+        Returns:
+            ``True`` if the snapshot was re-persisted; ``False`` if the
+            restore itself failed (so callers must NOT then mutate the
+            credential, which the now-still-persisted config still
+            references).
         """
         try:
             await self._validate_and_persist(dict(snapshot))
@@ -1010,6 +1023,8 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 error=safe_error_description(exc),
                 provider_count=len(snapshot),
             )
+            return False
+        return True
 
     async def _validate_and_persist(
         self,
