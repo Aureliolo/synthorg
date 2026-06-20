@@ -61,6 +61,13 @@ _cleanup_tmpdirs() {
   for dir in "${_cleanup_dirs[@]:-}"; do
     [ -n "${dir:-}" ] && [ -d "${dir}" ] && rm -rf "${dir}"
   done
+  # Always succeed: cleanup is best-effort and runs from the EXIT trap, whose
+  # final status becomes the script's exit code. When ``_cleanup_dirs`` is
+  # empty (e.g. the ``go-licenses`` target, which registers no tmpdir), the
+  # ``"${_cleanup_dirs[@]:-}"`` guard yields one empty element whose
+  # ``[ -n "" ]`` test returns 1 -- that would otherwise fail an
+  # already-successful install and send the CI retry ladder spinning.
+  return 0
 }
 trap _cleanup_tmpdirs EXIT
 
