@@ -1,0 +1,94 @@
+"""Unit tests for the embedded-provider-key -> catalog boot migration.
+
+Covers the core rewrite logic of ``_migrate_configs``: minting a catalog
+connection for an embedded ``api_key`` and rewriting onto ``connection_name``,
+the idempotent skip for already-migrated configs, the catalog-absent failure
+path (mint raises -> the config is left untouched, no crash), and the
+security invariant that the key value is never logged.
+"""
+
+import pytest
+import structlog
+
+import synthorg.api.lifecycle_helpers.provider_credential_migration as migration
+from synthorg.api.state import AppState
+from synthorg.providers.errors import ProviderValidationError
+from tests._shared import mock_of
+
+pytestmark = pytest.mark.unit
+
+_SECRET = "sk-super-secret-value-1234"
+_STORE_PATH = "synthorg.providers.management._credential_helpers.store_provider_api_key"
+
+
+class TestMigrateConfigs:
+    async def test_mints_and_rewrites_embedded_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def _store(_app: object, name: str, _key: str) -> str:
+            return f"provider-{name}"
+
+        monkeypatch.setattr(_STORE_PATH, _store)
+        configs: dict[str, object] = {
+            "example-provider": {"auth_type": "api_key", "api_key": _SECRET},
+        }
+        count = await migration._migrate_configs(mock_of[AppState](), configs)
+
+        assert count == 1
+        conf = configs["example-provider"]
+        assert isinstance(conf, dict)
+        assert conf["connection_name"] == "provider-example-provider"
+        assert "api_key" not in conf
+
+    async def test_idempotent_skip_when_already_migrated(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls: list[str] = []
+
+        async def _store(_app: object, name: str, _key: str) -> str:
+            calls.append(name)
+            return f"provider-{name}"
+
+        monkeypatch.setattr(_STORE_PATH, _store)
+        configs: dict[str, object] = {
+            "already": {"auth_type": "api_key", "connection_name": "provider-already"},
+            "no-secret": {"auth_type": "none"},
+        }
+        count = await migration._migrate_configs(mock_of[AppState](), configs)
+
+        assert count == 0
+        assert calls == []
+
+    async def test_catalog_absent_leaves_config_untouched(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def _store(_app: object, _name: str, _key: str) -> str:
+            msg = "no credential catalog is available"
+            raise ProviderValidationError(msg)
+
+        monkeypatch.setattr(_STORE_PATH, _store)
+        configs: dict[str, object] = {
+            "example-provider": {"auth_type": "api_key", "api_key": _SECRET},
+        }
+        count = await migration._migrate_configs(mock_of[AppState](), configs)
+
+        # Mint failed: nothing migrated, config left as-is for a later retry.
+        assert count == 0
+        conf = configs["example-provider"]
+        assert isinstance(conf, dict)
+        assert "connection_name" not in conf
+
+    async def test_key_value_never_logged(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def _store(_app: object, name: str, _key: str) -> str:
+            return f"provider-{name}"
+
+        monkeypatch.setattr(_STORE_PATH, _store)
+        configs: dict[str, object] = {
+            "example-provider": {"auth_type": "api_key", "api_key": _SECRET},
+        }
+        with structlog.testing.capture_logs() as logs:
+            await migration._migrate_configs(mock_of[AppState](), configs)
+
+        assert _SECRET not in repr(logs)

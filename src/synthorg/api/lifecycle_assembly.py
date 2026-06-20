@@ -135,6 +135,13 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
             return
         brownfield_intake_installed = await wire_brownfield_intake(app_state)
 
+    async def _migrate_provider_credentials() -> None:
+        from synthorg.api.lifecycle_helpers.provider_credential_migration import (  # noqa: PLC0415
+            migrate_embedded_provider_keys,
+        )
+
+        await migrate_embedded_provider_keys(app_state)
+
     async def _compose_feature_slices() -> None:
         compose_feature_slices(app_state)
 
@@ -153,6 +160,10 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
     startup = [
         _compose_feature_slices,
         *startup,
+        # After persistence connects (core hooks above) and before runtime
+        # services parse providers: migrate any embedded api_key into the
+        # catalog so the resolver does not reject the stored config.
+        _migrate_provider_credentials,
         _install_runtime_services,
         _wire_features,
         _wire_brownfield_intake,
