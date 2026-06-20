@@ -45,7 +45,9 @@ from synthorg.persistence.role_registry_protocol import RoleRegistryRepository
 _ALL_SCOPE = "all"
 
 
-class MetaArchitectureApplyError(ValueError):
+class MetaArchitectureApplyError(
+    ValueError
+):  # lint-allow: domain-error-hierarchy -- internal control-flow caught by apply(); never reaches an API boundary  # noqa: E501
     """A durable architecture change could not be applied as specified.
 
     A plain ``ValueError`` subclass (not a ``DomainError``): it is raised

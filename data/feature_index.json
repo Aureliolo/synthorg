@@ -662,7 +662,8 @@
         "scaling_service",
         "scaling_decision_service",
         "promotion_service",
-        "promotion_cycle_scheduler"
+        "promotion_cycle_scheduler",
+        "pruning_service"
       ]
     },
     {
@@ -823,7 +824,8 @@
         "AnalyticsService",
         "ReportsService",
         "OrgInflectionMonitor",
-        "build_analytics_collector"
+        "build_analytics_collector",
+        "SelfImprovementService"
       ],
       "mcp_tool_names": [
         "synthorg_meta_get_config",
@@ -871,7 +873,9 @@
         "group_chat_service",
         "conversational_actor",
         "custom_rules_service",
-        "self_improvement_config"
+        "self_improvement_config",
+        "evolution_outcome_store",
+        "evolution_read_service"
       ]
     },
     {
@@ -1284,6 +1288,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-20T13:56:26.653050Z",
+  "generated_at": "2026-06-20T19:06:56.901494Z",
   "schema_version": 1
 }

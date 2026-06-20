@@ -86,6 +86,7 @@ from synthorg.api.controllers.memory.fine_tune import MemoryFineTuneController
 from synthorg.api.controllers.messages import MessageController
 from synthorg.api.controllers.meta import MetaController
 from synthorg.api.controllers.meta_analytics import MetaAnalyticsController
+from synthorg.api.controllers.meta_evolution import MetaEvolutionController
 from synthorg.api.controllers.metrics import MetricsController
 from synthorg.api.controllers.model_refresh import ModelRefreshController
 from synthorg.api.controllers.oauth import OAuthController
@@ -284,6 +285,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     PromotionController,
     TrainingController,
     MetaController,
+    MetaEvolutionController,
     ConversationalController,
     MetaAnalyticsController,
     LearningController,
@@ -397,6 +399,7 @@ __all__ = [
     "MessageController",
     "MetaAnalyticsController",
     "MetaController",
+    "MetaEvolutionController",
     "MetricsController",
     "ModelRefreshController",
     "OAuthController",
