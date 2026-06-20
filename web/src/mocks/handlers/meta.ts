@@ -1,15 +1,17 @@
 import { http, HttpResponse } from 'msw'
 import type {
+  getEvolutionSummary,
   getMetaConfig,
   getSignals,
   listABTests,
+  listEvolutionOutcomes,
   listProposals,
   postChat,
   postChatAct,
   postChatGroup,
   postChatPropose,
 } from '@/api/endpoints/meta'
-import { apiError, successFor } from './helpers'
+import { apiSuccess, apiError, paginatedEnvelopeFor, successFor } from './helpers'
 
 function _hasBlankField(body: unknown, field: string): boolean {
   if (!body || typeof body !== 'object') return true
@@ -31,7 +33,7 @@ export const metaHandlers = [
     ),
   ),
   http.get('/api/v1/meta/proposals', () =>
-    HttpResponse.json(successFor<typeof listProposals>([])),
+    HttpResponse.json(paginatedEnvelopeFor<typeof listProposals>([])),
   ),
   http.get('/api/v1/meta/signals', () =>
     HttpResponse.json(
@@ -39,7 +41,23 @@ export const metaHandlers = [
     ),
   ),
   http.get('/api/v1/meta/ab-tests', () =>
-    HttpResponse.json(successFor<typeof listABTests>([])),
+    HttpResponse.json(paginatedEnvelopeFor<typeof listABTests>([])),
+  ),
+  http.get('/api/v1/meta/evolution/summary', () =>
+    HttpResponse.json(
+      successFor<typeof getEvolutionSummary>({
+        total_proposals: 0,
+        approval_rate: 0,
+        most_adapted_axis: null,
+        recent_outcomes: [],
+      }),
+    ),
+  ),
+  http.get('/api/v1/meta/evolution/outcomes', () =>
+    HttpResponse.json(paginatedEnvelopeFor<typeof listEvolutionOutcomes>([])),
+  ),
+  http.get('/api/v1/meta/evolution/axes/stats', () =>
+    HttpResponse.json(apiSuccess({ axes: [] })),
   ),
   http.post('/api/v1/meta/chat/propose', async ({ request }) => {
     let body: unknown

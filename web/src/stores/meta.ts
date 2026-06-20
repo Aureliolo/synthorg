@@ -1,6 +1,8 @@
 import { create, type StoreApi } from 'zustand'
 
 import {
+  getEvolutionAxisStats,
+  getEvolutionSummary,
   getMetaConfig,
   getSignals,
   listABTests,
@@ -9,9 +11,11 @@ import {
   postChatAct,
   postChatGroup,
   postChatPropose,
-  type ABTestSummary,
+  type AbTestRecord,
   type ChatResponse,
   type ConversationalProposeResponse,
+  type EvolutionAxisStat,
+  type EvolutionSummary,
   type MetaConfig,
   type ProposalSummary,
   type SignalsResponse,
@@ -130,13 +134,24 @@ async function runAct(
 async function runFetchAll(set: MetaSet): Promise<void> {
   set({ loading: true, error: null })
   try {
-    const [config, proposals, abTests, signals] = await Promise.all([
-      getMetaConfig(),
-      listProposals(),
-      listABTests(),
-      getSignals(),
-    ])
-    set({ config, proposals, abTests, signals, loading: false })
+    const [config, proposals, abTests, signals, evolutionSummary, evolutionAxes] =
+      await Promise.all([
+        getMetaConfig(),
+        listProposals(),
+        listABTests(),
+        getSignals(),
+        getEvolutionSummary(),
+        getEvolutionAxisStats(),
+      ])
+    set({
+      config,
+      proposals,
+      abTests,
+      signals,
+      evolutionSummary,
+      evolutionAxes,
+      loading: false,
+    })
   } catch (err) {
     log.error('Failed to fetch meta data', sanitizeForLog(err))
     set({
@@ -144,6 +159,8 @@ async function runFetchAll(set: MetaSet): Promise<void> {
       proposals: [],
       abTests: [],
       signals: null,
+      evolutionSummary: null,
+      evolutionAxes: [],
       error: getErrorMessage(err),
       loading: false,
     })
@@ -206,7 +223,9 @@ interface MetaState {
   // Data
   config: MetaConfig | null
   proposals: readonly ProposalSummary[]
-  abTests: readonly ABTestSummary[]
+  abTests: readonly AbTestRecord[]
+  evolutionSummary: EvolutionSummary | null
+  evolutionAxes: readonly EvolutionAxisStat[]
   signals: SignalsResponse | null
   activeAgents: readonly ActiveAgentSummary[]
 
@@ -244,6 +263,8 @@ export const useMetaStore = create<MetaState>((set) => ({
   config: null,
   proposals: [],
   abTests: [],
+  evolutionSummary: null,
+  evolutionAxes: [],
   signals: null,
   activeAgents: [],
   loading: false,

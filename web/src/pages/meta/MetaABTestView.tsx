@@ -1,20 +1,17 @@
-import { motion } from 'motion/react'
-
 import { cn } from '@/lib/utils'
-import { tweenDefault } from '@/lib/motion'
 import { EmptyState } from '@/components/ui/empty-state'
 import { MetricCard } from '@/components/ui/metric-card'
 import { FlaskConical } from 'lucide-react'
 
-import type { ABTestSummary } from '@/api/endpoints/meta'
-import { DEFAULT_CURRENCY } from '@/utils/currencies'
-import { formatCurrency } from '@/utils/format'
-
-type ABTestVerdict = NonNullable<ABTestSummary['verdict']>
-type ABTestMetricsArm = ABTestSummary['control_metrics']
+import type {
+  ABTestVerdict,
+  AbTestArm,
+  AbTestRecord,
+  AbTestStatus,
+} from '@/api/endpoints/meta'
 
 interface MetaABTestViewProps {
-  tests: readonly ABTestSummary[]
+  tests: readonly AbTestRecord[]
 }
 
 const verdictLabels: Record<ABTestVerdict, string> = {
@@ -31,6 +28,22 @@ const verdictColors: Record<ABTestVerdict, string> = {
   treatment_regressed: 'bg-danger/15 text-danger',
 }
 
+const statusLabels: Record<AbTestStatus, string> = {
+  running: 'Running',
+  completed: 'Completed',
+  regressed: 'Regressed',
+  inconclusive: 'Inconclusive',
+  failed: 'Failed',
+}
+
+const statusColors: Record<AbTestStatus, string> = {
+  running: 'bg-accent/15 text-accent',
+  completed: 'bg-success/15 text-success',
+  regressed: 'bg-danger/15 text-danger',
+  inconclusive: 'bg-muted text-muted-foreground',
+  failed: 'bg-danger/15 text-danger',
+}
+
 export function MetaABTestView({ tests }: MetaABTestViewProps) {
   if (tests.length === 0) {
     return (
@@ -45,122 +58,90 @@ export function MetaABTestView({ tests }: MetaABTestViewProps) {
   return (
     <div className="space-y-section-gap">
       {tests.map((test) => (
-        <ABTestCard key={test.proposal_id} test={test} />
+        <ABTestCard key={test.id} test={test} />
       ))}
     </div>
   )
 }
 
 interface ABTestCardProps {
-  test: ABTestSummary
+  test: AbTestRecord
 }
 
 function ABTestCard({ test }: ABTestCardProps) {
-  const progress = computeObservationProgress(
-    test.observation_hours_elapsed,
-    test.observation_hours_total,
-  )
   return (
     <div className="rounded-lg border border-border bg-card p-card">
       <ABTestHeader test={test} />
-      <ObservationProgressBar
-        progress={progress}
-        elapsed={test.observation_hours_elapsed}
-        total={test.observation_hours_total}
-      />
       <div className="grid grid-cols-2 gap-grid-gap max-[767px]:grid-cols-1">
-        <ABTestArmMetrics label="Control" metrics={test.control_metrics} />
-        <ABTestArmMetrics label="Treatment" metrics={test.treatment_metrics} />
+        {test.arms.map((arm) => (
+          <ABTestArmMetrics key={arm.name} arm={arm} />
+        ))}
       </div>
     </div>
   )
 }
 
-function computeObservationProgress(elapsed: number, total: number): number {
-  if (total <= 0) return 0
-  const percent = (elapsed / total) * 100
-  return Math.min(Math.max(percent, 0), 100)
+interface BadgeProps {
+  className: string
+  label: string
+}
+
+function Badge({ className, label }: BadgeProps) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
+        className,
+      )}
+    >
+      {label}
+    </span>
+  )
 }
 
 interface ABTestHeaderProps {
-  test: ABTestSummary
+  test: AbTestRecord
 }
 
 function ABTestHeader({ test }: ABTestHeaderProps) {
   return (
-    <div className="mb-4 flex items-center justify-between">
+    <div className="mb-4 flex items-center justify-between gap-2">
       <div>
-        <h3 className="text-sm font-medium text-foreground">{test.proposal_title}</h3>
+        <h3 className="text-sm font-medium text-foreground">{test.name}</h3>
         <p className="text-xs text-muted-foreground">
-          {test.observation_hours_elapsed.toFixed(1)}h / {test.observation_hours_total}h
-          observation
+          {test.observation_hours_elapsed.toFixed(1)}h observation
         </p>
       </div>
-      {test.verdict && (
-        <span
-          className={cn(
-            'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
-            verdictColors[test.verdict],
-          )}
-        >
-          {verdictLabels[test.verdict]}
-        </span>
-      )}
-    </div>
-  )
-}
-
-interface ObservationProgressBarProps {
-  progress: number
-  elapsed: number
-  total: number
-}
-
-function ObservationProgressBar({
-  progress,
-  elapsed,
-  total,
-}: ObservationProgressBarProps) {
-  return (
-    <div
-      className="mb-4 h-1.5 w-full rounded-full bg-muted"
-      role="progressbar"
-      aria-valuenow={Math.round(progress)}
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-label={`Observation progress: ${elapsed.toFixed(1)}h of ${total}h`}
-    >
-      <motion.div
-        className="h-full rounded-full bg-accent"
-        animate={{ width: `${progress}%` }}
-        transition={tweenDefault}
-      />
+      <div className="flex items-center gap-2">
+        <Badge className={statusColors[test.status]} label={statusLabels[test.status]} />
+        {test.verdict && (
+          <Badge
+            className={verdictColors[test.verdict]}
+            label={verdictLabels[test.verdict]}
+          />
+        )}
+      </div>
     </div>
   )
 }
 
 interface ABTestArmMetricsProps {
-  label: string
-  metrics: ABTestMetricsArm
+  arm: AbTestArm
 }
 
-function ABTestArmMetrics({ label, metrics }: ABTestArmMetricsProps) {
-  const agentLabel = metrics.agent_count === 1 ? 'agent' : 'agents'
+function ABTestArmMetrics({ arm }: ABTestArmMetricsProps) {
+  const agentLabel = arm.agent_count === 1 ? 'agent' : 'agents'
   return (
     <div>
-      <p className="mb-2 text-xs font-medium text-muted-foreground">
-        {label} ({metrics.agent_count} {agentLabel})
+      <p className="mb-2 text-xs font-medium text-muted-foreground capitalize">
+        {arm.name} ({arm.agent_count} {agentLabel})
       </p>
       <div className="space-y-2">
-        <MetricCard label="Quality" value={metrics.avg_quality_score} />
         <MetricCard
-          label="Success Rate"
-          value={`${(metrics.avg_success_rate * 100).toFixed(1)}%`}
+          label="Roster Fraction"
+          value={`${(arm.fraction * 100).toFixed(1)}%`}
         />
-        <MetricCard
-          label="Spend"
-          value={formatCurrency(metrics.total_spend, DEFAULT_CURRENCY)}
-        />
+        <MetricCard label="Agents" value={arm.agent_count} />
       </div>
     </div>
   )

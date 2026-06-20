@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 
-import type { ABTestSummary } from '@/api/endpoints/meta'
+import type { AbTestRecord } from '@/api/endpoints/meta'
 import { MetaABTestView } from './MetaABTestView'
 
 const meta = {
@@ -12,32 +12,18 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-const controlMetrics = {
-  group: 'control' as const,
-  agent_count: 10,
-  observation_count: 20,
-  avg_quality_score: 7.5,
-  avg_success_rate: 0.85,
-  total_spend: 100.0,
-}
-
-const treatmentMetrics = {
-  group: 'treatment' as const,
-  agent_count: 10,
-  observation_count: 20,
-  avg_quality_score: 8.2,
-  avg_success_rate: 0.91,
-  total_spend: 95.0,
-}
-
-const baseTest: ABTestSummary = {
-  proposal_id: '550e8400-e29b-41d4-a716-446655440000',
-  proposal_title: 'Increase collaboration threshold',
-  control_metrics: controlMetrics,
-  treatment_metrics: treatmentMetrics,
+const baseTest: AbTestRecord = {
+  id: '550e8400-e29b-41d4-a716-446655440000',
+  name: 'Increase collaboration threshold',
+  status: 'running',
   verdict: null,
   observation_hours_elapsed: 24,
-  observation_hours_total: 48,
+  arms: [
+    { name: 'control', agent_count: 10, fraction: 0.5 },
+    { name: 'treatment', agent_count: 10, fraction: 0.5 },
+  ],
+  created_at: '2026-05-19T09:00:00Z',
+  updated_at: '2026-05-19T10:00:00Z',
 }
 
 /** No active A/B tests. */
@@ -53,14 +39,28 @@ export const ActiveTest: Story = {
 /** Treatment declared winner. */
 export const TreatmentWins: Story = {
   args: {
-    tests: [{ ...baseTest, verdict: 'treatment_wins', observation_hours_elapsed: 48 }],
+    tests: [
+      {
+        ...baseTest,
+        status: 'completed',
+        verdict: 'treatment_wins',
+        observation_hours_elapsed: 48,
+      },
+    ],
   },
 }
 
 /** Inconclusive result. */
 export const Inconclusive: Story = {
   args: {
-    tests: [{ ...baseTest, verdict: 'inconclusive', observation_hours_elapsed: 48 }],
+    tests: [
+      {
+        ...baseTest,
+        status: 'inconclusive',
+        verdict: 'inconclusive',
+        observation_hours_elapsed: 48,
+      },
+    ],
   },
 }
 
@@ -70,13 +70,9 @@ export const TreatmentRegressed: Story = {
     tests: [
       {
         ...baseTest,
+        status: 'regressed',
         verdict: 'treatment_regressed',
         observation_hours_elapsed: 12,
-        treatment_metrics: {
-          ...treatmentMetrics,
-          avg_quality_score: 5.0,
-          avg_success_rate: 0.65,
-        },
       },
     ],
   },
