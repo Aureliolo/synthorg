@@ -66,6 +66,15 @@ services:
       - CHOWN
       - DAC_OVERRIDE
       - FOWNER
+    # One-shot chown walk: a single busybox process, negligible memory.
+    # Limits cap the blast radius without throttling first-run chowns over
+    # a large pre-existing volume.
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "1.0"
+          pids: 64
 
   backend:
     build:
@@ -73,8 +82,8 @@ services:
       dockerfile: docker/backend/Dockerfile
       # BASE_IMAGE must come from the caller's environment (the
       # backend Dockerfile has no default and a blank value is a
-      # hard error -- see docker/backend/Dockerfile and PR #1465 for
-      # the Pinned-Dependencies rationale). CI release builds set
+      # hard error -- see docker/backend/Dockerfile for the
+      # Pinned-Dependencies rationale). CI release builds set
       # this to a digest-pinned `synthorg-backend-base@sha256:...`;
       # the DAST workflow and local dev set it to a tag like
       # `ghcr.io/aureliolo/synthorg-backend-base:main`.
@@ -177,6 +186,11 @@ services:
     command: ["-c", "/etc/nats/nats.conf"]
     ports:
       - "${NATS_CLIENT_PORT:-3003}:4222"
+      # Uncomment to expose the NATS monitoring endpoint (/varz, /healthz,
+      # server stats) to the host for debugging. It is UNAUTHENTICATED, so
+      # leave it off by default; backend /api/v1/readyz is the supported
+      # health path.
+      # - "${NATS_MONITOR_PORT:-8222}:8222"
     volumes:
       - synthorg-nats-data:/data
       - ./nats.conf:/etc/nats/nats.conf:ro

@@ -18,6 +18,34 @@ import (
 //go:embed compose.yml.tmpl
 var composeTmpl string
 
+// baseComposeTmpl is the embedded template parsed once at package load.
+// Generate clones this per call instead of re-parsing the source every
+// time: text/template parsing allocates a parse-tree node per text run
+// and action, so the cost scales with template size and previously
+// dominated Generate's per-call allocations (each added template line
+// inflated B/op). Clone shares the immutable parse tree by pointer and
+// only rebinds the parameter-bound funcs, so the heavy parse runs once.
+var baseComposeTmpl = template.Must(
+	template.New("compose").Funcs(composeParseFuncs).Parse(composeTmpl),
+)
+
+// composeParseFuncs registers every function NAME the template
+// references so Parse succeeds at package load. text/template validates
+// only that each referenced name exists at parse time (arity and the
+// real behaviour are resolved at Execute), so these are the real
+// helpers bound to empty data; Generate overwrites the data-bound ones
+// on each clone before Execute. yamlStr is genuinely static.
+var composeParseFuncs = template.FuncMap{
+	"yamlStr":            yamlStr,
+	"digestPin":          digestPin(nil),
+	"sandboxImageRef":    sandboxImageRef(nil),
+	"sidecarImageRef":    sidecarImageRef(nil),
+	"fineTuneImageRef":   fineTuneImageRef(nil, ""),
+	"distributedEnabled": Params{}.DistributedEnabled,
+	"postgresEnabled":    Params{}.PostgresEnabled,
+	"pgDSN":              func() string { return "" },
+}
+
 // Image tag and digest validation delegate to config.IsValidImageTag
 // and verify.IsValidDigest so the rules (including the 128-char Docker
 // limit) stay in a single place and cannot drift between the config
@@ -242,10 +270,17 @@ func Generate(p Params) ([]byte, error) {
 		"pgDSN":              func() string { return pgDSN(p) },
 	}
 
-	tmpl, err := template.New("compose").Funcs(funcMap).Parse(composeTmpl)
+	// Clone the once-parsed template and rebind the parameter-bound
+	// funcs rather than re-parsing the embedded source on every call.
+	// Clone shares the immutable parse tree, so this skips the
+	// allocation-heavy parse while keeping each call's funcs isolated
+	// (the base template's func map is never mutated, so concurrent
+	// Generate calls stay safe).
+	tmpl, err := baseComposeTmpl.Clone()
 	if err != nil {
-		return nil, fmt.Errorf("parsing template: %w", err)
+		return nil, fmt.Errorf("cloning template: %w", err)
 	}
+	tmpl.Funcs(funcMap)
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, p); err != nil {
 		return nil, fmt.Errorf("executing template: %w", err)

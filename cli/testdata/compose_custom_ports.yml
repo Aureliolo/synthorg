@@ -18,6 +18,15 @@ services:
       - CHOWN
       - DAC_OVERRIDE
       - FOWNER
+    # One-shot chown walk: a single busybox process, negligible memory.
+    # Limits cap the blast radius without throttling first-run chowns over
+    # a large pre-existing volume.
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "1.0"
+          pids: 64
 
   backend:
     image: ghcr.io/aureliolo/synthorg-backend:v0.2.0
@@ -91,9 +100,13 @@ services:
       - ALL
     read_only: true
     tmpfs:
-      - /tmp:noexec,nosuid,nodev,size=16m
-      - /config/caddy:noexec,nosuid,nodev,size=8m
-      - /data/caddy:noexec,nosuid,nodev,size=16m
+      # Caddy runs as uid 65532 from apko; tmpfs defaults to root-owned,
+      # which breaks autosave, instance-UUID persistence, and the
+      # storage_clean lock dir under /data/caddy. Pin the mount owner so
+      # Caddy can write without falling back to read-only mode.
+      - /tmp:noexec,nosuid,nodev,size=16m,uid=65532,gid=65532
+      - /config/caddy:noexec,nosuid,nodev,size=8m,uid=65532,gid=65532
+      - /data/caddy:noexec,nosuid,nodev,size=16m,uid=65532,gid=65532
     healthcheck:
       # Caddy serves a plain "ok" 200 at /healthz; the apko image
       # includes wget solely for this probe. Target 127.0.0.1 to avoid

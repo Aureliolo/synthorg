@@ -46,11 +46,27 @@ services:
     cap_drop:
       - ALL
     read_only: true
+    # Durable training output (checkpoints, exported models) is the
+    # orchestrator's job: the CLI/backend that drives a real fine-tune
+    # mounts a writable output target. /data here is read-only source
+    # data, so a direct `docker compose` run must add its own output
+    # volume to persist artefacts beyond container life.
+    tmpfs:
+      # read_only rootfs + /data mounted :ro leaves nowhere for the stdlib
+      # tempfile / library scratch writes the training stages make. Give
+      # them a writable /tmp so training does not fail on the locked rootfs.
+      # No noexec: torch-inductor JIT caches and dlopens compiled kernels
+      # from /tmp (default /tmp/torchinductor_*), so /tmp must allow exec.
+      # mode=1777: a bare tmpfs defaults to 0755 root-owned, which a
+      # non-root training user cannot write to; pin the sticky
+      # world-writable mode a real /tmp uses so scratch writes succeed.
+      - /tmp:nosuid,nodev,size=1g,mode=1777
     deploy:
       resources:
         limits:
           memory: 8G
           cpus: "4.0"
+          pids: 512
         reservations:
           devices:
             - driver: nvidia
