@@ -96,6 +96,12 @@ func validateUpdateFlags() error {
 		if vd <= 0 {
 			return fmt.Errorf("invalid --verify-timeout %q: must be positive", updateVerifyTimeout)
 		}
+		if vd < config.MinImageVerifyTimeout {
+			return fmt.Errorf(
+				"invalid --verify-timeout %q: %v is below the %v minimum floor; a shorter timeout would bypass cosign/SLSA verification by silently timing out",
+				updateVerifyTimeout, vd, config.MinImageVerifyTimeout,
+			)
+		}
 	}
 	return nil
 }

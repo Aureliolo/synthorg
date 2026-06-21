@@ -70,6 +70,18 @@ func TestValidateUpdateFlags(t *testing.T) {
 		}
 	})
 
+	t.Run("verify-timeout below floor rejected", func(t *testing.T) {
+		oldT, oldV := updateTimeout, updateVerifyTimeout
+		defer func() { updateTimeout, updateVerifyTimeout = oldT, oldV }()
+		updateTimeout = "90s"
+		// Positive but below MinImageVerifyTimeout (1s) would silently
+		// bypass cosign/SLSA verification by timing out early.
+		updateVerifyTimeout = "500ms"
+		if err := validateUpdateFlags(); err == nil {
+			t.Error("expected error for --verify-timeout below the 1s minimum floor")
+		}
+	})
+
 	t.Run("valid verify-timeout accepted", func(t *testing.T) {
 		oldT, oldV := updateTimeout, updateVerifyTimeout
 		defer func() { updateTimeout, updateVerifyTimeout = oldT, oldV }()
