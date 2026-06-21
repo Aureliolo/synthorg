@@ -1,5 +1,5 @@
 import { useId } from 'react'
-import { ArrowLeft, ArrowRight } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { WizardStep } from '@/stores/setup-wizard'
 
@@ -52,8 +52,9 @@ function WizardNextButton({
       aria-describedby={showReason ? reasonId : undefined}
       className="gap-2"
     >
+      {loading && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
       {loading ? 'Loading...' : nextLabel ?? 'Next'}
-      {!loading && <ArrowRight className="size-4" />}
+      {!loading && <ArrowRight className="size-4" aria-hidden="true" />}
     </Button>
   )
 }
@@ -83,16 +84,17 @@ export function WizardNavigation({
   const showReason = showNext && Boolean(nextDisabled) && Boolean(nextDisabledReason)
 
   return (
-    <div className="flex flex-col gap-2 border-t border-border px-2 pt-4">
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col gap-2 border-t border-border pt-card">
+      <div className="flex items-center justify-between gap-grid-gap">
         <Button
           type="button"
           variant="ghost"
           onClick={onBack}
           disabled={isFirst}
           className="gap-2"
+          title={isFirst ? 'This is the first step.' : undefined}
         >
-          <ArrowLeft className="size-4" />
+          <ArrowLeft className="size-4" aria-hidden="true" />
           Back
         </Button>
         {showNext && (
@@ -107,7 +109,7 @@ export function WizardNavigation({
         )}
       </div>
       {showReason && (
-        <p id={reasonId} className="text-right text-xs text-text-secondary">
+        <p id={reasonId} className="text-xs text-pretty text-muted-foreground sm:text-right">
           {nextDisabledReason}
         </p>
       )}

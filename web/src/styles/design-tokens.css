@@ -53,6 +53,7 @@
   /* -- Spacing (4px sub-grid, semantic scale) -- */
   --so-space-1: 4px;
   --so-space-2: 8px;
+  --so-space-2-5: 10px;
   --so-space-3: 12px;
   --so-space-3-5: 14px;
   --so-space-4: 16px;
@@ -162,6 +163,12 @@
    */
   --so-density-card-tight: var(--so-space-3);
   --so-density-card-roomy: var(--so-space-5);
+  /*
+   * Snug padding for compact interactive rows (radio-option tiles,
+   * preset list items) that sit one notch tighter than a card. Tracks
+   * the density axis like the other card tokens.
+   */
+  --so-density-card-snug: var(--so-space-2-5);
 
   /*
    * Dialog width axis. Pages compose them as
@@ -183,6 +190,7 @@
   --so-density-grid-gap: var(--so-space-3);
   --so-density-card-tight: var(--so-space-2);
   --so-density-card-roomy: var(--so-space-4);
+  --so-density-card-snug: var(--so-space-2);
 }
 
 .density-medium {
@@ -191,6 +199,7 @@
   --so-density-grid-gap: var(--so-space-4);
   --so-density-card-tight: var(--so-space-3);
   --so-density-card-roomy: var(--so-space-6);
+  --so-density-card-snug: var(--so-space-3);
 }
 
 .density-sparse {
@@ -199,6 +208,7 @@
   --so-density-grid-gap: var(--so-space-6);
   --so-density-card-tight: var(--so-space-4);
   --so-density-card-roomy: var(--so-space-8);
+  --so-density-card-snug: var(--so-space-3-5);
 }
 
 /* ---------------------------------------------------------------------------

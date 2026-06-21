@@ -44,7 +44,7 @@ describe('WizardProgress', () => {
     expect(screen.getByText('Agents')).toBeInTheDocument()
     expect(screen.getByText('Providers')).toBeInTheDocument()
     expect(screen.getByText('Theme')).toBeInTheDocument()
-    expect(screen.getByText('Done')).toBeInTheDocument()
+    expect(screen.getByText('Review')).toBeInTheDocument()
   })
 
   it('marks active step with aria-current', () => {

@@ -21,7 +21,7 @@ describe('WizardModeStep', () => {
       initialEntries: ['/setup/mode'],
     })
 
-    const guidedOption = screen.getByRole('button', { name: /Guided Setup/i })
+    const guidedOption = screen.getByRole('radio', { name: /Guided Setup/i })
     fireEvent.click(guidedOption)
 
     expect(useSetupWizardStore.getState().stepsCompleted.mode).toBe(true)
@@ -35,7 +35,7 @@ describe('WizardModeStep', () => {
       initialEntries: ['/setup/mode'],
     })
 
-    const quickOption = screen.getByRole('button', { name: /Quick Setup/i })
+    const quickOption = screen.getByRole('radio', { name: /Quick Setup/i })
     fireEvent.click(quickOption)
 
     expect(useSetupWizardStore.getState().wizardMode).toBe('quick')
@@ -48,7 +48,7 @@ describe('WizardModeStep', () => {
       initialEntries: ['/setup/mode'],
     })
 
-    const guidedOption = screen.getByRole('button', { name: /Guided Setup/i })
+    const guidedOption = screen.getByRole('radio', { name: /Guided Setup/i })
     guidedOption.focus()
     await user.keyboard('{Enter}')
 
@@ -63,11 +63,32 @@ describe('WizardModeStep', () => {
       initialEntries: ['/setup/mode'],
     })
 
-    const quickOption = screen.getByRole('button', { name: /Quick Setup/i })
+    const quickOption = screen.getByRole('radio', { name: /Quick Setup/i })
     quickOption.focus()
     await user.keyboard(' ')
 
     expect(useSetupWizardStore.getState().wizardMode).toBe('quick')
     expect(router.state.location.pathname).toBe('/setup/providers')
+  })
+
+  it('moves focus between options with arrow keys (radiogroup contract)', () => {
+    renderWithRouter(<WizardModeStep />, { initialEntries: ['/setup/mode'] })
+
+    const guidedOption = screen.getByRole('radio', { name: /Guided Setup/i })
+    const quickOption = screen.getByRole('radio', { name: /Quick Setup/i })
+    guidedOption.focus()
+
+    fireEvent.keyDown(guidedOption, { key: 'ArrowRight' })
+    expect(quickOption).toHaveFocus()
+
+    // Wraps back to the first option.
+    fireEvent.keyDown(quickOption, { key: 'ArrowRight' })
+    expect(guidedOption).toHaveFocus()
+
+    fireEvent.keyDown(guidedOption, { key: 'ArrowLeft' })
+    expect(quickOption).toHaveFocus()
+
+    // Arrow navigation moves focus only; it does not commit a selection.
+    expect(useSetupWizardStore.getState().stepsCompleted.mode).toBe(false)
   })
 })

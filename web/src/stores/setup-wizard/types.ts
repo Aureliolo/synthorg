@@ -146,6 +146,17 @@ export interface ProvidersSlice {
   presets: ProviderPreset[]
   presetsLoading: boolean
   presetsError: string | null
+  /**
+   * Idempotency guards that survive an empty `presets` / `providers`
+   * window (a fetch in flight before the array is populated). They let
+   * `fetchPresets` / `fetchProviders` early-return on a second call and
+   * gate the one-shot auto-probe, replacing component-level refs that
+   * reset on an `AnimatePresence` remount and re-fired the modal fetch
+   * loop. `presetsFetched` flips true on a successful presets load.
+   */
+  presetsFetched: boolean
+  providersFetched: boolean
+  probeAttempted: boolean
   probeResults: Record<string, ProbePresetResponse>
   /**
    * Per-preset probe failures keyed by preset name. Populated by the
@@ -177,6 +188,14 @@ export interface ProvidersSlice {
    * latter).
    */
   providersWarning: string | null
+  /**
+   * Error from a create / update mutation, kept separate from
+   * `providersError` (which is now load-only). The provider modal renders
+   * this inline; the page-level "Failed to load providers" banner reads
+   * only `providersError`, so a create failure no longer borrows a
+   * load-error title.
+   */
+  providersMutationError: string | null
   fetchProviders: () => Promise<void>
   fetchPresets: () => Promise<void>
   /**

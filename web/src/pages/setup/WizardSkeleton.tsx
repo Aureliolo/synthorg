@@ -2,10 +2,12 @@ import { Skeleton, SkeletonCard, SkeletonText } from '@/components/ui/skeleton'
 
 export function WizardSkeleton() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-start bg-background pt-16">
-      <div className="w-full max-w-4xl space-y-section-gap px-4">
+    // Mirror WizardShell's outer chrome (h-dvh / max-w-4xl / px-4 / py-8) so
+    // resolving from skeleton to the live shell does not jump the content.
+    <div className="flex h-dvh flex-col items-center bg-background">
+      <div className="w-full max-w-4xl space-y-section-gap px-4 py-8">
         {/* Progress bar skeleton */}
-        <div className="flex items-center justify-center gap-4">
+        <div className="flex items-center justify-center gap-grid-gap">
           {Array.from({ length: 7 }, (_, i) => (
             <div key={i} className="flex flex-col items-center gap-1">
               <Skeleton className="size-8 rounded-full" />
@@ -23,7 +25,7 @@ export function WizardSkeleton() {
         </div>
 
         {/* Navigation skeleton */}
-        <div className="flex justify-between border-t border-border pt-4">
+        <div className="flex justify-between border-t border-border pt-card">
           <Skeleton className="h-9 w-20" />
           <Skeleton className="h-9 w-20" />
         </div>

@@ -12,6 +12,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   DO_NOT_RETRY,
   MAX_RATE_LIMIT_RETRIES,
+  MIN_RETRY_BACKOFF_MS,
   isIdempotentMethod,
   retryAfterLoop,
   type RetryableResponse,
@@ -102,10 +103,16 @@ describe('retryAfterLoop', () => {
     expect(sleep).not.toHaveBeenCalled()
   })
 
-  it('always sleeps before a retry, even for a 0ms wait', async () => {
+  it('floors a 0ms wait at MIN_RETRY_BACKOFF_MS so a missing Retry-After cannot tight-loop', async () => {
     const sleep = vi.fn(async () => {})
     await runLoop([429, 200], { waitMs: 0, sleep })
-    expect(sleep).toHaveBeenCalledExactlyOnceWith(0)
+    expect(sleep).toHaveBeenCalledExactlyOnceWith(MIN_RETRY_BACKOFF_MS)
+  })
+
+  it('honours a server wait larger than the floor', async () => {
+    const sleep = vi.fn(async () => {})
+    await runLoop([429, 200], { waitMs: 1_000, sleep })
+    expect(sleep).toHaveBeenCalledExactlyOnceWith(1_000)
   })
 
   it('returns the 429 without sleeping when already aborted', async () => {

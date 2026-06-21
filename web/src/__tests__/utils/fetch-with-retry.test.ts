@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { fetchWithRetryAfter } from '@/utils/fetch-with-retry'
+import { MIN_RETRY_BACKOFF_MS } from '@/utils/retry-after'
 
 function makeResponse(
   status: number,
@@ -113,7 +114,7 @@ describe('fetchWithRetryAfter', () => {
     expect(sleep).toHaveBeenCalledTimes(2)
   })
 
-  it('treats malformed Retry-After as an immediate retry (0ms wait)', async () => {
+  it('floors a malformed Retry-After at MIN_RETRY_BACKOFF_MS', async () => {
     const fetchImpl = vi
       .fn()
       .mockResolvedValueOnce(makeResponse(429, 'not-a-date'))
@@ -125,7 +126,7 @@ describe('fetchWithRetryAfter', () => {
       { fetchImpl, sleep },
     )
     expect(resp.status).toBe(200)
-    expect(sleep).toHaveBeenCalledExactlyOnceWith(0)
+    expect(sleep).toHaveBeenCalledExactlyOnceWith(MIN_RETRY_BACKOFF_MS)
   })
 
   it('does not retry on non-429 error responses', async () => {

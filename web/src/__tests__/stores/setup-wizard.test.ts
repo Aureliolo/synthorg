@@ -867,7 +867,10 @@ describe('setup wizard store', () => {
         })
 
       expect(result).toBeNull()
-      expect(useSetupWizardStore.getState().providersError).toBe('Auth failed')
+      expect(useSetupWizardStore.getState().providersMutationError).toBe('Auth failed')
+      // The load-error slot stays clean: a create failure must not borrow the
+      // "Failed to load providers" banner title.
+      expect(useSetupWizardStore.getState().providersError).toBeNull()
     })
 
     // The lighter `createProviderFromPreset` variant returns a
@@ -960,7 +963,7 @@ describe('setup wizard store', () => {
       if (!result.ok) {
         expect(result.error).toBe('Auth failed')
       }
-      expect(useSetupWizardStore.getState().providersError).toBe('Auth failed')
+      expect(useSetupWizardStore.getState().providersMutationError).toBe('Auth failed')
       expect(useSetupWizardStore.getState().providersWarning).toBeNull()
     })
 
@@ -1015,7 +1018,7 @@ describe('setup wizard store', () => {
         })
 
       expect(result).toBeNull()
-      expect(useSetupWizardStore.getState().providersError).toBe(
+      expect(useSetupWizardStore.getState().providersMutationError).toBe(
         'Connection refused',
       )
     })

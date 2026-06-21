@@ -7,6 +7,7 @@ import { SkeletonChart } from '@/components/ui/skeleton'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { PostSetupGuidanceCard } from '@/components/setup/PostSetupGuidanceCard'
 import { useDashboardData } from '@/hooks/useDashboardData'
+import { clearFirstRunFlag, readFirstRunFlag } from '@/utils/first-run'
 import { computeMetricCards } from '@/utils/dashboard'
 import { DashboardSkeleton } from './dashboard/DashboardSkeleton'
 import { OrgHealthSection } from './dashboard/OrgHealthSection'
@@ -15,16 +16,6 @@ import { ActivityFeed } from './dashboard/ActivityFeed'
 const BudgetBurnChart = lazy(() =>
   import('./dashboard/BudgetBurnChart').then((m) => ({ default: m.BudgetBurnChart })),
 )
-
-const FIRST_RUN_KEY = 'synthorg.firstRun'
-
-function readFirstRunFlag(): boolean {
-  try {
-    return window.localStorage.getItem(FIRST_RUN_KEY) === '1'
-  } catch {
-    return false
-  }
-}
 
 type DashboardData = ReturnType<typeof useDashboardData>
 
@@ -78,11 +69,7 @@ export default function DashboardPage() {
 
   const dismissGuidance = (): void => {
     setShowGuidance(false)
-    try {
-      window.localStorage.removeItem(FIRST_RUN_KEY)
-    } catch {
-      // localStorage may be disabled; the in-memory state already hides the card.
-    }
+    clearFirstRunFlag()
   }
 
   return (

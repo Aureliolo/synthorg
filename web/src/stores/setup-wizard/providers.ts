@@ -2,8 +2,6 @@ import type { StoreApi } from 'zustand'
 import {
   createFromPreset,
   createProvider as apiCreateProvider,
-  discoverModels,
-  getProvider,
   listPresets,
   listProviders,
   probeLocal,
@@ -27,6 +25,11 @@ import type {
   SetupWizardState,
   SliceCreator,
 } from './types'
+import {
+  discoverModelsFullFlow,
+  handlePostCreatePresetDiscovery,
+  type CreatePresetOutcome,
+} from './providers-discovery'
 
 const log = createLogger('setup-wizard:providers')
 
@@ -41,8 +44,7 @@ interface ProbeOutcome {
 async function runProbeLocal(label: string): Promise<ProbeOutcome | null> {
   try {
     const response = await probeLocal()
-    const results = Object.fromEntries(Object.entries(response.results))
-    const errors = Object.fromEntries(Object.entries(response.errors))
+    const { results, errors } = response
     if (Object.keys(errors).length > 0) {
       log.warn('runProbeLocal reported per-preset errors', {
         label,
@@ -63,10 +65,14 @@ async function fetchProvidersImpl(
   set: WizSet,
   get: WizGet,
 ): Promise<void> {
+  // Idempotent, mirroring fetchPresetsImpl: a second call once providers
+  // are loaded (or a load is in flight) returns immediately, so a re-fired
+  // fetch effect cannot self-feed a request storm.
+  if (get().providersFetched || get().providersLoading) return
   set({ providersLoading: true, providersError: null })
   try {
     const providers = await listProviders()
-    set({ providers, providersLoading: false })
+    set({ providers, providersLoading: false, providersFetched: true })
     get().recomputeAgentsRevalidation()
   } catch (err) {
     log.error('fetchProviders failed:', getErrorMessage(err))
@@ -74,11 +80,16 @@ async function fetchProvidersImpl(
   }
 }
 
-async function fetchPresetsImpl(set: WizSet): Promise<void> {
+// Idempotent: a second call while presets are already loaded (or a load
+// is in flight) returns immediately. This is the store-level guard that
+// stops the modal fetch effect from self-feeding a request storm even if
+// a caller re-fires it; the modal/component guards are defence in depth.
+async function fetchPresetsImpl(set: WizSet, get: WizGet): Promise<void> {
+  if (get().presets.length > 0 || get().presetsLoading) return
   set({ presetsLoading: true, presetsError: null })
   try {
     const presets = await listPresets()
-    set({ presets, presetsLoading: false })
+    set({ presets, presetsLoading: false, presetsFetched: true })
   } catch (err) {
     log.error('fetchPresets failed:', getErrorMessage(err))
     set({ presetsError: getErrorMessage(err), presetsLoading: false })
@@ -108,49 +119,12 @@ function checkPresetAuthCompatibility(
   }
 }
 
-interface DiscoveryWarning {
-  warning: string
-}
-
-async function discoverModelsWithWarning(
-  set: WizSet,
-  get: WizGet,
-  name: string,
-  presetName: string,
-): Promise<DiscoveryWarning | null> {
-  try {
-    await discoverModels(name, presetName)
-    const refreshed = await getProvider(name)
-    set((s) => ({ providers: { ...s.providers, [name]: refreshed } }))
-    get().recomputeAgentsRevalidation()
-    if (refreshed.models.length === 0) {
-      return {
-        warning: `Provider '${name}' was created, but no models were discovered. Ensure the provider is running with models available, then refresh the providers list.`,
-      }
-    }
-    return null
-  } catch (discoveryErr) {
-    const msg = getErrorMessage(discoveryErr)
-    log.warn('Model discovery failed', {
-      provider: sanitizeForLog(name),
-      error: sanitizeForLog(msg),
-    })
-    return {
-      warning: `Provider '${name}' was created, but model discovery failed: ${msg}. Ensure the provider is running, then refresh the providers list.`,
-    }
-  }
-}
-
 interface CreateFromPresetArgs {
   presetName: string
   name: string
   apiKey: string | undefined
   baseUrl: string | undefined
 }
-
-type CreatePresetOutcome =
-  | { ok: true; warning?: string }
-  | { ok: false; error: string }
 
 function buildCreatePresetPayload(
   args: CreateFromPresetArgs,
@@ -168,38 +142,16 @@ function buildCreatePresetPayload(
   }
 }
 
-async function handlePostCreatePresetDiscovery(
-  set: WizSet,
-  get: WizGet,
-  name: string,
-  presetName: string,
-): Promise<CreatePresetOutcome | null> {
-  const discovery = await discoverModelsWithWarning(
-    set,
-    get,
-    name,
-    presetName,
-  )
-  if (!discovery) return null
-  set({ providersWarning: discovery.warning })
-  useToastStore.getState().add({
-    variant: 'success',
-    title: `Provider '${name}' created`,
-    description: discovery.warning,
-  })
-  return { ok: true, warning: discovery.warning }
-}
-
 async function createProviderFromPresetImpl(
   set: WizSet,
   get: WizGet,
   args: CreateFromPresetArgs,
 ): Promise<CreatePresetOutcome> {
-  set({ providersError: null, providersWarning: null })
+  set({ providersMutationError: null, providersWarning: null })
   const authCheck = checkPresetAuthCompatibility(get, args.presetName)
   if (!authCheck.ok) {
     const error = authCheck.error ?? 'Preset auth incompatible'
-    set({ providersError: error })
+    set({ providersMutationError: error })
     useToastStore.getState().add({
       variant: 'error',
       title: 'Preset requires extra credentials',
@@ -230,7 +182,7 @@ async function createProviderFromPresetImpl(
   } catch (err) {
     const msg = getErrorMessage(err)
     log.error('createProviderFromPreset failed:', msg)
-    set({ providersError: msg })
+    set({ providersMutationError: msg })
     useToastStore.getState().add({
       variant: 'error',
       title: 'Failed to create provider',
@@ -240,41 +192,12 @@ async function createProviderFromPresetImpl(
   }
 }
 
-async function discoverModelsFullFlow(
-  set: WizSet,
-  get: WizGet,
-  data: CreateFromPresetRequest,
-): Promise<ProviderConfig | null> {
-  try {
-    await discoverModels(data.name, data.preset_name)
-    const refreshed = await getProvider(data.name)
-    set((s) => ({ providers: { ...s.providers, [data.name]: refreshed } }))
-    get().recomputeAgentsRevalidation()
-    if (refreshed.models.length === 0) {
-      set({
-        providersWarning: `Provider '${data.name}' was created, but no models were discovered. Ensure the provider is running with models available, then refresh.`,
-      })
-    }
-    return refreshed
-  } catch (discoveryErr) {
-    const msg = getErrorMessage(discoveryErr)
-    log.warn('Model discovery failed', {
-      provider: sanitizeForLog(data.name),
-      error: sanitizeForLog(msg),
-    })
-    set({
-      providersWarning: `Provider '${data.name}' was created, but model discovery failed: ${msg}. Ensure the provider is running, then refresh.`,
-    })
-    return null
-  }
-}
-
 async function createProviderFromPresetFullImpl(
   set: WizSet,
   get: WizGet,
   data: CreateFromPresetRequest,
 ): Promise<ProviderConfig | null> {
-  set({ providersError: null, providersWarning: null })
+  set({ providersMutationError: null, providersWarning: null })
   try {
     const provider = await createFromPreset(data)
     set((s) => ({ providers: { ...s.providers, [data.name]: provider } }))
@@ -287,7 +210,7 @@ async function createProviderFromPresetFullImpl(
   } catch (err) {
     const msg = getErrorMessage(err)
     log.error('createProviderFromPresetFull failed:', msg)
-    set({ providersError: msg })
+    set({ providersMutationError: msg })
     useToastStore.getState().add({
       variant: 'error',
       ...getCrudErrorTitle(err, 'Failed to create provider'),
@@ -302,7 +225,7 @@ async function createProviderCustomImpl(
   get: WizGet,
   data: CreateProviderRequest,
 ): Promise<ProviderConfig | null> {
-  set({ providersError: null })
+  set({ providersMutationError: null })
   try {
     const provider = await apiCreateProvider(data)
     set((s) => ({ providers: { ...s.providers, [data.name]: provider } }))
@@ -311,7 +234,7 @@ async function createProviderCustomImpl(
   } catch (err) {
     const msg = getErrorMessage(err)
     log.error('createProviderCustom failed:', msg)
-    set({ providersError: msg })
+    set({ providersMutationError: msg })
     useToastStore.getState().add({
       variant: 'error',
       ...getCrudErrorTitle(err, 'Failed to create provider'),
@@ -325,13 +248,32 @@ async function testProviderConnectionImpl(
   set: WizSet,
   name: string,
 ) {
-  set({ providersError: null })
+  set({ providersMutationError: null })
   try {
-    return await testConnection(name)
+    const result = await testConnection(name)
+    useToastStore.getState().add(
+      result.success
+        ? { variant: 'success', title: `Connection to '${name}' succeeded` }
+        : {
+            variant: 'error',
+            title: `Connection to '${name}' failed`,
+            description: result.error ?? undefined,
+          },
+    )
+    return result
   } catch (err) {
-    log.error('testProviderConnection failed:', getErrorMessage(err))
-    set({ providersError: getErrorMessage(err) })
-    throw err
+    const msg = getErrorMessage(err)
+    log.error('testProviderConnection failed:', msg)
+    set({ providersMutationError: msg })
+    useToastStore.getState().add({
+      variant: 'error',
+      title: `Could not test connection to '${name}'`,
+      description: msg,
+    })
+    // The store owns the error UX (state + toast); callers must not wrap
+    // mutations in try/catch, so return the failure sentinel instead of
+    // rethrowing and leaking error ownership / unhandled rejections.
+    return { success: false, error: msg, latency_ms: null, model_tested: null }
   }
 }
 
@@ -346,9 +288,10 @@ async function probeLocalProvidersImpl(
       probeErrors: {},
       probeGlobalError: null,
       probing: true,
+      probeAttempted: true,
     })
   } else {
-    set({ probing: true, probeErrors: {}, probeGlobalError: null })
+    set({ probing: true, probeErrors: {}, probeGlobalError: null, probeAttempted: true })
   }
   const outcome = await runProbeLocal(
     reset ? 'reprobeLocalProviders' : 'probeLocalProviders',
@@ -377,16 +320,20 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (
   presets: [],
   presetsLoading: false,
   presetsError: null,
+  presetsFetched: false,
+  providersFetched: false,
+  probeAttempted: false,
   probeResults: {},
   probeErrors: {},
   probeGlobalError: null,
   probing: false,
   providersLoading: false,
   providersError: null,
+  providersMutationError: null,
   providersWarning: null,
 
   fetchProviders: () => fetchProvidersImpl(set, get),
-  fetchPresets: () => fetchPresetsImpl(set),
+  fetchPresets: () => fetchPresetsImpl(set, get),
   createProviderFromPreset: (presetName, name, apiKey, baseUrl) =>
     createProviderFromPresetImpl(set, get, {
       presetName,

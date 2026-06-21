@@ -12,7 +12,7 @@ import { Building2, Users, Server } from 'lucide-react'
 
 function SetupAgentRow({ agent }: { agent: SetupAgentSummary }) {
   return (
-    <div className="flex items-center gap-3 rounded-md border border-border p-2">
+    <div className="flex items-center gap-3 rounded-md border border-border p-card-snug">
       <Avatar name={agent.name} size="sm" />
       <div className="flex-1">
         <span className="text-sm font-medium text-foreground">{agent.name}</span>
@@ -51,7 +51,7 @@ export function SetupSummary({
           {companyResponse.template_applied && (
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">Template:</span>
-              <StatPill label="" value={companyResponse.template_applied} />
+              <StatPill value={companyResponse.template_applied} />
             </div>
           )}
           {companyResponse.description && (
@@ -65,7 +65,7 @@ export function SetupSummary({
       </SectionCard>
 
       {/* Metrics row */}
-      <StaggerGroup className="grid grid-cols-3 gap-grid-gap max-[639px]:grid-cols-1">
+      <StaggerGroup className="grid grid-cols-3 gap-grid-gap max-sm:grid-cols-1">
         <StaggerItem>
           <MetricCard label="Departments" value={companyResponse.department_count} />
         </StaggerItem>
@@ -79,7 +79,7 @@ export function SetupSummary({
 
       {/* Agent roster */}
       <SectionCard title="Agent Roster" icon={Users}>
-        <div className="space-y-2">
+        <div className="max-h-80 space-y-2 overflow-y-auto">
           {agents.map((agent, index) => (
             // eslint-disable-next-line @eslint-react/no-array-index-key -- setup agents can share names; index as tiebreaker
             <SetupAgentRow key={`${agent.name}-${index}`} agent={agent} />
@@ -91,7 +91,7 @@ export function SetupSummary({
       <SectionCard title="Connected Providers" icon={Server}>
         <div className="space-y-2">
           {Object.entries(providers).map(([name, config]) => (
-            <div key={name} className="flex items-center justify-between rounded-md border border-border p-2">
+            <div key={name} className="flex items-center justify-between rounded-md border border-border p-card-snug">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-foreground">{name}</span>
                 <span className="text-xs text-muted-foreground">{config.models.length} models</span>

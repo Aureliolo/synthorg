@@ -128,6 +128,10 @@ function AgentNode({
   const titleSuffix = agent.level ? ` · ${agent.level.replace('_', '-')}` : ''
   return (
     <g>
+      {/* <title> as a direct child of <g> (not nested in <circle>): Safari
+          / VoiceOver only reliably expose a group-level title, so the
+          per-agent name is read out for AT. */}
+      <title>{`${agent.name} -- ${agent.role}${titleSuffix}${isHead ? ' (head)' : ''}`}</title>
       <line
         x1={deptX}
         y1={deptY + deptHalfHeight}
@@ -142,9 +146,7 @@ function AgentNode({
         r={effectiveRadius}
         className={cn(NODE_FILL_CLASS[tier], NODE_STROKE_CLASS[tier])}
         strokeWidth={NODE_STROKE_WIDTH[tier]}
-      >
-        <title>{`${agent.name} -- ${agent.role}${titleSuffix}${isHead ? ' (head)' : ''}`}</title>
-      </circle>
+      />
       <text
         x={agentX}
         y={agentY + 3}
@@ -284,9 +286,12 @@ export function MiniOrgChart({ agents, className }: MiniOrgChartProps) {
       <svg
         viewBox={`0 0 ${svgWidth} ${svgHeight}`}
         width="100%"
+        className="mx-auto block"
         // Constrain max width so the chart doesn't scale up absurdly on
-        // very wide screens -- we want it legible, not gigantic.
-        style={{ maxWidth: svgWidth, display: 'block', margin: '0 auto' }}
+        // very wide screens -- we want it legible, not gigantic. Only the
+        // computed maxWidth stays inline (it is dynamic); the static
+        // display / centring move to classes.
+        style={{ maxWidth: svgWidth }}
         role="img"
         aria-label="Organization chart"
       >

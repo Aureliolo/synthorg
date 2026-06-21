@@ -6,6 +6,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useSetupStore } from '@/stores/setup'
 import { useToastStore } from '@/stores/toast'
+import { markFirstRunPending } from '@/utils/first-run'
 
 interface SkipWizardSubmit {
   companyName: string
@@ -13,7 +14,8 @@ interface SkipWizardSubmit {
   error: string | null
   setError: (value: string | null) => void
   loading: boolean
-  handleSubmit: (e?: React.SyntheticEvent) => Promise<void>
+  canSubmit: boolean
+  handleSubmit: () => Promise<void>
 }
 
 function useSkipWizardSubmit(): SkipWizardSubmit {
@@ -26,8 +28,7 @@ function useSkipWizardSubmit(): SkipWizardSubmit {
   const setCompanyNameStore = useSetupWizardStore((s) => s.setCompanyName)
   const wizardCompleteSetup = useSetupWizardStore((s) => s.completeSetup)
 
-  const handleSubmit = useCallback(async (e?: React.SyntheticEvent) => {
-    e?.preventDefault()
+  const handleSubmit = useCallback(async () => {
     const trimmed = companyName.trim()
     if (!trimmed) {
       setError('Company name is required')
@@ -75,12 +76,7 @@ function useSkipWizardSubmit(): SkipWizardSubmit {
       // Surface the post-setup guidance card on the dashboard, exactly
       // as the full wizard's Complete step does. Without this the quick-
       // setup path lands on a bare dashboard with no first-run guidance.
-      try {
-        window.localStorage.setItem('synthorg.firstRun', '1')
-      } catch {
-        // localStorage may be disabled (private mode); the guidance card
-        // simply won't surface. Setup completion proceeds regardless.
-      }
+      markFirstRunPending()
       useToastStore.getState().add({
         variant: 'success',
         title: `Welcome to ${trimmed}!`,
@@ -92,11 +88,19 @@ function useSkipWizardSubmit(): SkipWizardSubmit {
     }
   }, [companyName, setCompanyNameStore, submitCompany, wizardCompleteSetup, navigate])
 
-  return { companyName, setCompanyName, error, setError, loading, handleSubmit }
+  return {
+    companyName,
+    setCompanyName,
+    error,
+    setError,
+    loading,
+    canSubmit: companyName.trim().length > 0,
+    handleSubmit,
+  }
 }
 
 export function SkipWizardForm() {
-  const { companyName, setCompanyName, error, setError, loading, handleSubmit } =
+  const { companyName, setCompanyName, error, setError, loading, canSubmit, handleSubmit } =
     useSkipWizardSubmit()
 
   return (
@@ -108,7 +112,13 @@ export function SkipWizardForm() {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-border bg-card p-card">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          void handleSubmit()
+        }}
+        className="space-y-section-gap rounded-lg border border-border bg-card p-card"
+      >
         <InputField
           label="Company Name"
           required
@@ -131,11 +141,7 @@ export function SkipWizardForm() {
           />
         )}
 
-        <Button
-          type="submit"
-          disabled={loading || companyName.trim().length === 0}
-          className="w-full"
-        >
+        <Button type="submit" disabled={loading || !canSubmit} className="w-full">
           {loading ? 'Setting up...' : 'Complete Setup'}
         </Button>
       </form>

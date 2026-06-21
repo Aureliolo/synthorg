@@ -37,9 +37,10 @@ test.describe('Setup wizard critical flow', () => {
     await expect(
       page.getByRole('heading', { name: /how would you like to set up/i }),
     ).toBeVisible()
-    // The two mode options are the wizard's entry affordance.
-    await expect(page.getByRole('button', { name: /select guided setup/i })).toBeVisible()
-    await expect(page.getByRole('button', { name: /select quick setup/i })).toBeVisible()
+    // The two mode options are the wizard's entry affordance: a
+    // radiogroup of role="radio" options labelled by their headings.
+    await expect(page.getByRole('radio', { name: /guided setup/i })).toBeVisible()
+    await expect(page.getByRole('radio', { name: /quick setup/i })).toBeVisible()
   })
 
   test('deep-links to a setup step and renders the step heading', async ({ page }) => {

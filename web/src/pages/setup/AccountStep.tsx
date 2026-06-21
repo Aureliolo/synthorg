@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Loader2 } from 'lucide-react'
 import { createLogger } from '@/lib/logger'
 import { InputField, PasswordVisibilityGroup } from '@/components/ui/input-field'
 import { Button } from '@/components/ui/button'
@@ -229,11 +230,16 @@ function AccountFormFields({
   loading,
   strength,
 }: AccountFormFieldsProps) {
+  // Validate the confirm field on blur (not every keystroke) so the user
+  // isn't told "passwords do not match" while still typing the first one.
+  const [confirmTouched, setConfirmTouched] = useState(false)
   return (
     <>
       <InputField
         label="Username"
         required
+        autoFocus
+        autoComplete="username"
         value={username}
         onChange={(e) => setUsername(e.currentTarget.value)}
         placeholder="admin"
@@ -257,7 +263,7 @@ function AccountFormFields({
             <div className="flex items-center gap-2">
               <div className="h-1.5 flex-1 rounded-full bg-border">
                 <div
-                  className={cn('h-full rounded-full transition-all', strength.color)}
+                  className={cn('h-full rounded-full transition-[width]', strength.color)}
                   style={{ width: `${strength.percent}%` }}
                 />
               </div>
@@ -272,9 +278,14 @@ function AccountFormFields({
           required
           value={confirmPassword}
           onChange={(e) => setConfirmPassword(e.currentTarget.value)}
+          onBlur={() => setConfirmTouched(true)}
           placeholder="Repeat password"
           disabled={loading}
-          error={confirmPassword.length > 0 && password !== confirmPassword ? 'Passwords do not match' : null}
+          error={
+            confirmTouched && confirmPassword.length > 0 && password !== confirmPassword
+              ? 'Passwords do not match'
+              : null
+          }
           autoComplete="new-password"
         />
       </PasswordVisibilityGroup>
@@ -300,7 +311,13 @@ export function AccountStep() {
         </p>
       </div>
 
-      <div className="space-y-4 rounded-lg border border-border bg-card p-card">
+      <form
+        className="space-y-section-gap rounded-lg border border-border bg-card p-card"
+        onSubmit={(e) => {
+          e.preventDefault()
+          void handleSubmit()
+        }}
+      >
         <AccountFormFields
           username={username}
           setUsername={setUsername}
@@ -318,11 +335,7 @@ export function AccountStep() {
             variant="section"
             severity="warning"
             title="Could not load password policy"
-            description={
-              `Falling back to a ${minPasswordLength}-character minimum. `
-              + `If the server requires more, the create-account request will be rejected with a clear error. `
-              + `You can retry the policy fetch or proceed; either path keeps the wizard moving forwards.`
-            }
+            description={`Using the default ${minPasswordLength}-character minimum. Retry, or continue and the server enforces its own rule.`}
             onRetry={() => void fetchPolicy()}
           />
         )}
@@ -331,14 +344,15 @@ export function AccountStep() {
           <ErrorBanner variant="section" severity="error" title="Could not create account" description={error} />
         )}
 
-        <Button
-          onClick={handleSubmit}
-          disabled={loading || policyLoading}
-          className="w-full"
-        >
-          {loading ? 'Creating Account...' : 'Create Account'}
+        <Button type="submit" disabled={loading || policyLoading} className="w-full gap-2">
+          {(loading || policyLoading) && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+          {policyLoading
+            ? 'Checking password policy...'
+            : loading
+              ? 'Creating Account...'
+              : 'Create Account'}
         </Button>
-      </div>
+      </form>
     </div>
   )
 }

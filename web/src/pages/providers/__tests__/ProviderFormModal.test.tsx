@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type {
   CloudPreset,
@@ -9,13 +9,13 @@ import type {
 import { ProviderFormModal } from '../ProviderFormModal'
 import type { ProviderFormOverrides } from '../provider-form-helpers'
 
-const anthropic: CloudPreset = {
+const exampleProvider: CloudPreset = {
   kind: 'cloud',
-  name: 'anthropic',
-  display_name: 'Anthropic',
-  description: 'Claude models',
+  name: 'example-provider',
+  display_name: 'Example Provider',
+  description: 'Example cloud models',
   driver: 'litellm',
-  litellm_provider: 'anthropic',
+  litellm_provider: 'example-provider',
   auth_type: 'api_key',
   supported_auth_types: ['api_key', 'subscription'],
   default_base_url: null,
@@ -39,9 +39,9 @@ const cloudApiKeyOnly: CloudPreset = {
   default_models: [],
 }
 
-function makeOverrides(): ProviderFormOverrides {
+function makeOverrides(extra: Partial<ProviderFormOverrides> = {}): ProviderFormOverrides {
   return {
-    presets: [anthropic, cloudApiKeyOnly],
+    presets: [exampleProvider, cloudApiKeyOnly],
     presetsLoading: false,
     presetsError: null,
     onFetchPresets: vi.fn(),
@@ -51,30 +51,24 @@ function makeOverrides(): ProviderFormOverrides {
     onCreateProvider: vi.fn<
       (data: CreateProviderRequest) => Promise<ProviderConfig | null>
     >(() => Promise.resolve(null)),
+    ...extra,
   }
 }
 
 describe('ProviderFormModal: initialPreset prop', () => {
-  it('pre-fills the form when opened with initialPreset="anthropic"', async () => {
+  it('pre-fills the form when opened with a preset', async () => {
     render(
       <ProviderFormModal
         open
         onClose={() => undefined}
         mode="create"
-        initialPreset="anthropic"
+        initialPreset="example-provider"
         overrides={makeOverrides()}
       />,
     )
 
-    // Provider Name field is pre-filled with the preset name after the
-    // render-phase state sync commits.
-    const nameInput = await screen.findByLabelText<HTMLInputElement>(
-      /Provider Name/i,
-    )
-    expect(nameInput.value).toBe('anthropic')
-
-    // The "Or pick a preset" custom-mode dropdown is NOT shown (a
-    // preset was already selected).
+    const nameInput = await screen.findByLabelText<HTMLInputElement>(/Provider Name/i)
+    expect(nameInput.value).toBe('example-provider')
     expect(screen.queryByLabelText(/Or pick a preset/i)).not.toBeInTheDocument()
   })
 
@@ -89,36 +83,31 @@ describe('ProviderFormModal: initialPreset prop', () => {
       />,
     )
 
-    // Custom mode shows the "Or pick a preset" dropdown so the user
-    // can opt into a preset without going back to the picker.
-    expect(
-      await screen.findByLabelText(/Or pick a preset/i),
-    ).toBeInTheDocument()
+    expect(await screen.findByLabelText(/Or pick a preset/i)).toBeInTheDocument()
   })
 })
 
-describe('ProviderFormModal: Anthropic subscription billing banner', () => {
-  it('renders the billing-context info banner for Anthropic when subscription auth is selected', async () => {
+describe('ProviderFormModal: subscription billing banner', () => {
+  it('renders the credits banner for any subscription-supporting preset, named by display_name', async () => {
     render(
       <ProviderFormModal
         open
         onClose={() => undefined}
         mode="create"
-        initialPreset="anthropic"
+        initialPreset="example-provider"
         overrides={makeOverrides()}
       />,
     )
 
-    const select = await screen.findByLabelText<HTMLSelectElement>(
-      /Authentication/i,
-    )
+    const select = await screen.findByLabelText<HTMLSelectElement>(/Authentication/i)
     fireEvent.change(select, { target: { value: 'subscription' } })
 
     expect(
       await screen.findByText(/Counts against your subscription credits/i),
     ).toBeInTheDocument()
-    const link = screen.getByRole<HTMLAnchorElement>('link', { name: /View pricing/i })
-    expect(link.href).toContain('anthropic.com/pricing')
+    expect(screen.getByText(/Example Provider/i)).toBeInTheDocument()
+    // The vendor pricing anchor was removed; no external pricing link.
+    expect(screen.queryByRole('link', { name: /pricing/i })).not.toBeInTheDocument()
   })
 
   it('does NOT render the billing banner when the preset does not support subscription auth', async () => {
@@ -132,29 +121,100 @@ describe('ProviderFormModal: Anthropic subscription billing banner', () => {
       />,
     )
 
-    // Wait for the form to commit, then assert the banner is absent.
     await screen.findByLabelText(/Authentication/i)
     expect(
       screen.queryByText(/Counts against your subscription credits/i),
     ).not.toBeInTheDocument()
   })
+})
 
-  it('does NOT render the billing banner with API-key auth (default)', async () => {
+describe('ProviderFormModal: presets fetch storm guard (P0)', () => {
+  it('fetches presets at most once while open, even across re-renders', async () => {
+    const onFetchPresets = vi.fn()
+    const overrides = makeOverrides({ onFetchPresets, presets: [] })
+
+    const { rerender } = render(
+      <ProviderFormModal
+        open
+        onClose={() => undefined}
+        mode="create"
+        initialPreset={null}
+        overrides={overrides}
+      />,
+    )
+
+    await waitFor(() => expect(onFetchPresets).toHaveBeenCalledTimes(1))
+
+    // A parent re-render mints a fresh overrides object (new callback
+    // identities) but must NOT re-fire the fetch effect.
+    rerender(
+      <ProviderFormModal
+        open
+        onClose={() => undefined}
+        mode="create"
+        initialPreset={null}
+        overrides={makeOverrides({ onFetchPresets, presets: [] })}
+      />,
+    )
+
+    // Let any pending effect microtasks flush so a broken guard that queues
+    // a second async fetch after the rerender would be caught.
+    await waitFor(() => expect(onFetchPresets).toHaveBeenCalledTimes(1))
+  })
+})
+
+describe('ProviderFormModal: correctness', () => {
+  it('disables Create until an API key is supplied', async () => {
     render(
       <ProviderFormModal
         open
         onClose={() => undefined}
         mode="create"
-        initialPreset="anthropic"
+        initialPreset={null}
         overrides={makeOverrides()}
       />,
     )
 
-    // Default auth type is 'api_key' on the Anthropic preset; the
-    // banner is gated on subscription auth, so it should not show.
-    await screen.findByLabelText(/Authentication/i)
-    expect(
-      screen.queryByText(/Counts against your subscription credits/i),
-    ).not.toBeInTheDocument()
+    // Custom mode defaults to api_key auth with a blank key -> blocked.
+    const nameInput = await screen.findByLabelText<HTMLInputElement>(/Provider Name/i)
+    fireEvent.change(nameInput, { target: { value: 'my-provider' } })
+    const createBtn = screen.getByRole('button', { name: /Create Provider/i })
+    expect(createBtn).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText(/API Key/i), { target: { value: 'sk-test' } })
+    expect(createBtn).toBeEnabled()
+  })
+
+  it('renders custom-header credential fields when that auth type is selected', async () => {
+    render(
+      <ProviderFormModal
+        open
+        onClose={() => undefined}
+        mode="create"
+        initialPreset={null}
+        overrides={makeOverrides()}
+      />,
+    )
+
+    const select = await screen.findByLabelText<HTMLSelectElement>(/Authentication/i)
+    fireEvent.change(select, { target: { value: 'custom_header' } })
+
+    expect(await screen.findByLabelText(/Header Name/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Header Value/i)).toBeInTheDocument()
+  })
+
+  it('shows an inline error when the wizard reports a submit failure', async () => {
+    render(
+      <ProviderFormModal
+        open
+        onClose={() => undefined}
+        mode="create"
+        initialPreset="example-provider"
+        overrides={makeOverrides({ submitError: 'Provider already exists' })}
+      />,
+    )
+
+    expect(await screen.findByText(/Could not save provider/i)).toBeInTheDocument()
+    expect(screen.getByText(/Provider already exists/i)).toBeInTheDocument()
   })
 })

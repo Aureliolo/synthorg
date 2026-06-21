@@ -57,7 +57,7 @@ function TemplateGrid({
   onToggleCompare: (name: string) => void
 }) {
   return (
-    <StaggerGroup className="grid grid-cols-3 gap-grid-gap max-[1023px]:grid-cols-2 max-[639px]:grid-cols-1">
+    <StaggerGroup className="grid grid-cols-3 gap-grid-gap max-lg:grid-cols-2 max-sm:grid-cols-1">
       {templates.map((template) => (
         <TemplateGridItem
           key={template.name}
@@ -98,7 +98,7 @@ function TemplateFilterBar({
   onClearFilters,
 }: TemplateFilterBarProps) {
   return (
-    <div className="flex flex-wrap items-end gap-3">
+    <div className="flex flex-wrap items-end gap-grid-gap">
       <div className="flex-1 min-w-52 max-w-xs">
         <InputField
           label="Search"
@@ -140,13 +140,15 @@ function TemplateFilterBar({
 
       {/* Clear filters */}
       {hasActiveFilters && (
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={onClearFilters}
-          className="self-end pb-1 text-xs text-accent hover:underline"
+          className="self-end text-accent"
         >
           Clear filters
-        </button>
+        </Button>
       )}
     </div>
   )
@@ -237,7 +239,7 @@ function TemplateStepFallback({
     return (
       <div className="space-y-section-gap">
         <Skeleton className="h-6 w-48" />
-        <div className="grid grid-cols-3 gap-grid-gap">
+        <div className="grid grid-cols-3 gap-grid-gap max-lg:grid-cols-2 max-sm:grid-cols-1">
           {Array.from({ length: 6 }, (_, i) => (
             <Skeleton key={i} className="h-48 rounded-lg" />
           ))}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PresetPickerSections } from '@/components/providers/PresetPickerSections'
@@ -59,21 +59,32 @@ async function createProviderThenRefresh<T>(create: () => Promise<T>): Promise<T
   return result
 }
 
+// Stable, module-level fetch callback: it only reaches the store via
+// getState(), so its identity never changes. Keeping it out of the
+// per-render `useMemo` below stops the modal's fetch effect from seeing a
+// fresh callback every render (the original self-feeding storm trigger).
+function fetchWizardPresets(): void {
+  void useSetupWizardStore.getState().fetchPresets()
+}
+
+const createWizardFromPreset: NonNullable<ProviderFormOverrides['onCreateFromPreset']> = (data) =>
+  createProviderThenRefresh(() => useSetupWizardStore.getState().createProviderFromPresetFull(data))
+
+const createWizardProvider: NonNullable<ProviderFormOverrides['onCreateProvider']> = (data) =>
+  createProviderThenRefresh(() => useSetupWizardStore.getState().createProviderCustom(data))
+
 /** Modal overrides so the form talks to the wizard store, not Settings. */
 function buildProvidersModalOverrides(presetState: {
   presets: ProviderFormOverrides['presets']
   presetsLoading: boolean
   presetsError: string | null
+  submitError: string | null
 }): ProviderFormOverrides {
   return {
     ...presetState,
-    onFetchPresets: () => {
-      void useSetupWizardStore.getState().fetchPresets()
-    },
-    onCreateFromPreset: (data) =>
-      createProviderThenRefresh(() => useSetupWizardStore.getState().createProviderFromPresetFull(data)),
-    onCreateProvider: (data) =>
-      createProviderThenRefresh(() => useSetupWizardStore.getState().createProviderCustom(data)),
+    onFetchPresets: fetchWizardPresets,
+    onCreateFromPreset: createWizardFromPreset,
+    onCreateProvider: createWizardProvider,
   }
 }
 
@@ -113,29 +124,31 @@ function useProvidersStepController(): ProvidersStepController {
   const probing = useSetupWizardStore((s) => s.probing)
   const providersLoading = useSetupWizardStore((s) => s.providersLoading)
   const providersError = useSetupWizardStore((s) => s.providersError)
+  const providersMutationError = useSetupWizardStore((s) => s.providersMutationError)
   const providersWarning = useSetupWizardStore((s) => s.providersWarning)
   const presetsLoading = useSetupWizardStore((s) => s.presetsLoading)
   const presetsError = useSetupWizardStore((s) => s.presetsError)
 
   const [modalOpen, setModalOpen] = useState(false)
   const [modalPreset, setModalPreset] = useState<string | null>(null)
-  const fetchedRef = useRef(false)
-  const probeAttemptedRef = useRef(false)
 
-  // Fetch providers and presets once on first mount. Clear any stale
-  // providersError from an earlier visit so the step re-enters cleanly.
+  // Fetch providers and presets once on first mount, gated by store flags
+  // (not component refs) so an AnimatePresence remount cannot reset the
+  // guard and re-fire the loop. Clear any stale providersError so the step
+  // re-enters cleanly.
   useEffect(() => {
-    if (fetchedRef.current) return
-    fetchedRef.current = true
-    useSetupWizardStore.setState({ providersError: null })
-    void useSetupWizardStore.getState().fetchProviders()
-    void useSetupWizardStore.getState().fetchPresets()
+    const s = useSetupWizardStore.getState()
+    if (!s.providersFetched) {
+      useSetupWizardStore.setState({ providersError: null })
+      void s.fetchProviders()
+    }
+    if (!s.presetsFetched) void s.fetchPresets()
   }, [])
 
-  // Auto-probe local presets once after presets are loaded.
+  // Auto-probe local presets once after presets are loaded; the store's
+  // `probeAttempted` flag survives a remount.
   useEffect(() => {
-    if (presets.length > 0 && !probing && !probeAttemptedRef.current) {
-      probeAttemptedRef.current = true
+    if (presets.length > 0 && !probing && !useSetupWizardStore.getState().probeAttempted) {
       void useSetupWizardStore.getState().probeLocalProviders()
     }
   }, [presets.length, probing])
@@ -143,34 +156,41 @@ function useProvidersStepController(): ProvidersStepController {
   const validation = useMemo(() => validateProvidersStep({ providers }), [providers])
   useStepCompletionSync('providers', validation.valid)
 
-  const handleSelectCloud = useCallback((presetName: string) => {
+  // Opening the modal clears the prior mutation error so a stale "could not
+  // save" banner from an earlier attempt doesn't greet the next open.
+  const openModal = useCallback((presetName: string | null) => {
+    useSetupWizardStore.setState({ providersMutationError: null })
     setModalPreset(presetName)
     setModalOpen(true)
   }, [])
+
+  const handleSelectCloud = useCallback((presetName: string) => openModal(presetName), [openModal])
 
   const handleAddLocal = useCallback(
     (presetName: string, detectedUrl: string) => addDetectedLocalProvider(presetName, detectedUrl),
     [],
   )
 
-  const handleAddCloudCounterpart = useCallback((cloudPresetName: string) => {
-    setModalPreset(cloudPresetName)
-    setModalOpen(true)
-  }, [])
+  const handleAddCloudCounterpart = useCallback(
+    (cloudPresetName: string) => openModal(cloudPresetName),
+    [openModal],
+  )
 
-  const handleConfigureManually = useCallback(() => {
-    setModalPreset(null)
-    setModalOpen(true)
-  }, [])
+  const handleConfigureManually = useCallback(() => openModal(null), [openModal])
 
   const handleReprobe = useCallback(async () => {
-    probeAttemptedRef.current = true
     await useSetupWizardStore.getState().reprobeLocalProviders()
   }, [])
 
   const modalOverrides = useMemo(
-    () => buildProvidersModalOverrides({ presets, presetsLoading, presetsError }),
-    [presets, presetsLoading, presetsError],
+    () =>
+      buildProvidersModalOverrides({
+        presets,
+        presetsLoading,
+        presetsError,
+        submitError: providersMutationError,
+      }),
+    [presets, presetsLoading, presetsError, providersMutationError],
   )
 
   // Provider coverage for configured agents is validated on the Agents
@@ -180,14 +200,21 @@ function useProvidersStepController(): ProvidersStepController {
   // never fire usefully.
   const hasConfiguredProviders = Object.keys(providers).length > 0
 
+  const onRetryProviders = useCallback(() => {
+    void useSetupWizardStore.getState().fetchProviders()
+  }, [])
+  const onRetryPresets = useCallback(() => {
+    void useSetupWizardStore.getState().fetchPresets()
+  }, [])
+
   return {
     providers, presets, probeResults, probeErrors, probeGlobalError, probing,
     providersLoading, providersError, providersWarning, presetsLoading, presetsError,
     validation, hasConfiguredProviders,
     modalOpen, modalPreset, setModalOpen, modalOverrides,
     handleSelectCloud, handleAddLocal, handleAddCloudCounterpart, handleConfigureManually, handleReprobe,
-    onRetryProviders: () => void useSetupWizardStore.getState().fetchProviders(),
-    onRetryPresets: () => void useSetupWizardStore.getState().fetchPresets(),
+    onRetryProviders,
+    onRetryPresets,
   }
 }
 
@@ -328,11 +355,18 @@ function ProvidersPresetSection({
 function ProvidersValidationErrors({ validation }: { validation: ProvidersValidation }) {
   if (validation.valid || validation.errors.length === 0) return null
   return (
-    <ul className="space-y-1 text-xs text-muted-foreground">
-      {validation.errors.map((err) => (
-        <li key={err}>{err}</li>
-      ))}
-    </ul>
+    <ErrorBanner
+      variant="inline"
+      severity="warning"
+      title="Finish configuring providers to continue"
+      description={
+        <ul className="space-y-1">
+          {validation.errors.map((err) => (
+            <li key={err}>{err}</li>
+          ))}
+        </ul>
+      }
+    />
   )
 }
 
@@ -395,13 +429,15 @@ export function ProvidersStep() {
         onRetryPresets={c.onRetryPresets}
       />
 
-      <ProviderFormModal
-        open={c.modalOpen}
-        onClose={() => c.setModalOpen(false)}
-        mode="create"
-        initialPreset={c.modalPreset}
-        overrides={c.modalOverrides}
-      />
+      {c.modalOpen && (
+        <ProviderFormModal
+          open={c.modalOpen}
+          onClose={() => c.setModalOpen(false)}
+          mode="create"
+          initialPreset={c.modalPreset}
+          overrides={c.modalOverrides}
+        />
+      )}
 
       <ProvidersValidationErrors validation={c.validation} />
     </div>

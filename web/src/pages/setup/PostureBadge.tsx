@@ -36,9 +36,15 @@ export function PostureBadge({ posture, className }: PostureBadgeProps) {
       }
     >
       <span
+        // role + tabIndex make the badge a keyboard-focusable trigger so the
+        // posture explanation tooltip is reachable without a pointer and AT
+        // announces it as interactive; the ring gives the focus a visible state.
+        role="button"
+        tabIndex={0}
         className={cn(
           'inline-flex items-center rounded-sm border px-2 py-0.5',
           'text-compact font-medium',
+          'focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none',
           TONE_CLASS[info.tone],
           className,
         )}
