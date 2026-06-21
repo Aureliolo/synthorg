@@ -867,7 +867,7 @@ describe('setup wizard store', () => {
         })
 
       expect(result).toBeNull()
-      expect(useSetupWizardStore.getState().providersError).toBe('Auth failed')
+      expect(useSetupWizardStore.getState().providersMutationError).toBe('Auth failed')
     })
 
     // The lighter `createProviderFromPreset` variant returns a
@@ -960,7 +960,7 @@ describe('setup wizard store', () => {
       if (!result.ok) {
         expect(result.error).toBe('Auth failed')
       }
-      expect(useSetupWizardStore.getState().providersError).toBe('Auth failed')
+      expect(useSetupWizardStore.getState().providersMutationError).toBe('Auth failed')
       expect(useSetupWizardStore.getState().providersWarning).toBeNull()
     })
 
@@ -1015,7 +1015,7 @@ describe('setup wizard store', () => {
         })
 
       expect(result).toBeNull()
-      expect(useSetupWizardStore.getState().providersError).toBe(
+      expect(useSetupWizardStore.getState().providersMutationError).toBe(
         'Connection refused',
       )
     })
