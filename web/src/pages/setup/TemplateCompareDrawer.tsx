@@ -20,20 +20,12 @@ interface ComparisonRow {
   readonly getValue: (t: TemplateInfoResponse) => string | readonly string[]
 }
 
-function estimateAgentCount(template: TemplateInfoResponse): number {
-  const tags = template.tags
-  if (tags.includes('solo')) return 1
-  if (tags.includes('small-team')) return 3
-  if (tags.includes('enterprise') || tags.includes('full-company')) return 12
-  return 5
-}
-
 const COMPARISON_ROWS: readonly ComparisonRow[] = [
   {
     label: 'Category',
     getValue: (t) => getCategoryLabel(deriveCategoryFromTags(t.tags)),
   },
-  { label: 'Estimated Agents', getValue: (t) => String(estimateAgentCount(t)) },
+  { label: 'Agents', getValue: (t) => String(t.agent_count) },
   {
     label: 'Posture',
     getValue: (t) => (t.posture != null ? POSTURE_INFO[t.posture].label : '--'),
@@ -89,7 +81,7 @@ function ComparisonRowEntry({ row, templates, gridVars }: ComparisonRowProps) {
               {row.label === 'Tags' && Array.isArray(value) && value.length > 0 ? (
                 <div className="flex flex-wrap gap-1">
                   {value.map((tag: string) => (
-                    <StatPill key={tag} label="" value={tag} className="text-compact" />
+                    <StatPill key={tag} value={tag} className="text-compact" />
                   ))}
                 </div>
               ) : (

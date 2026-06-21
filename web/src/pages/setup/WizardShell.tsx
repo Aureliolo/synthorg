@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useNavigate, useParams, type NavigateFunction } from 'react-router'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { AnimatedPresence } from '@/components/ui/animated-presence'
+import { ToastContainer } from '@/components/ui/toast'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useToastStore } from '@/stores/toast'
 import type { WizardStep } from '@/stores/setup-wizard'
@@ -30,6 +31,18 @@ const STEP_COMPONENTS: Record<WizardStep, React.ComponentType> = {
 
 /** Steps hidden from the progress bar (pre-wizard gates). */
 const HIDDEN_PROGRESS_STEPS = new Set<WizardStep>(['mode'])
+
+/** Per-step browser-tab titles (the wizard renders outside AppLayout). */
+const STEP_TITLES: Record<WizardStep, string> = {
+  account: 'Account',
+  mode: 'Choose setup mode',
+  template: 'Pick a template',
+  company: 'Company details',
+  providers: 'Set up providers',
+  agents: 'Configure agents',
+  theme: 'Choose a theme',
+  complete: 'Review & complete',
+}
 
 const GENERIC_NEXT_DISABLED_REASON =
   'Complete the required fields on this step to continue.'
@@ -232,9 +245,28 @@ function useWizardStepNavigation(
   return { handleStepClick, handleBack, handleNext }
 }
 
+/**
+ * Drive the browser-tab title from the active step (the wizard renders
+ * outside AppLayout, which owns titles for the rest of the app) and reset
+ * the content scroll position to the top whenever the step changes, so a
+ * long step never leaves the next step scrolled half-way down.
+ */
+function useWizardStepChrome(
+  currentStep: WizardStep,
+  scrollRef: React.RefObject<HTMLDivElement | null>,
+): void {
+  useEffect(() => {
+    document.title = `${STEP_TITLES[currentStep]} · Setup · SynthOrg`
+  }, [currentStep])
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 })
+  }, [currentStep, scrollRef])
+}
+
 export function WizardShell() {
   const navigate = useNavigate()
   const { step: urlStep } = useParams<{ step?: string }>()
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   const currentStep = useSetupWizardStore((s) => s.currentStep)
   const stepOrder = useSetupWizardStore((s) => s.stepOrder)
@@ -248,6 +280,7 @@ export function WizardShell() {
 
   useWizardReEntryToast(companyResponse !== null, stepsCompleted.complete, stepOrder)
   useWizardUrlSync({ urlStep, stepOrder, canNavigateTo, setStep, stepsCompleted, navigate })
+  useWizardStepChrome(currentStep, scrollRef)
   const { handleStepClick, handleBack, handleNext } = useWizardStepNavigation(
     currentStep,
     stepOrder,
@@ -273,33 +306,41 @@ export function WizardShell() {
   const isModeStep = currentStep === 'mode'
 
   return (
-    <div className="flex min-h-screen flex-col items-center bg-background">
-      <div className="w-full max-w-4xl flex-1 px-4 py-8">
-        {/* Progress bar (hidden for mode selection step) */}
-        {showProgress && (
-          <div className="mb-8">
-            <WizardProgress
-              stepOrder={progressSteps}
-              currentStep={currentStep}
-              stepsCompleted={stepsCompleted}
-              stepsNeedRevalidation={stepsNeedRevalidation}
-              canNavigateTo={canNavigateTo}
-              onStepClick={handleStepClick}
-            />
-          </div>
-        )}
+    // Fixed-height shell: the shell owns the viewport height and hides its
+    // own overflow; only the content column scrolls, so the navigation
+    // stays pinned at the bottom instead of forcing a scroll-to-find-Next.
+    <div className="flex h-dvh flex-col items-center overflow-hidden bg-background">
+      <div className="flex w-full max-w-4xl flex-1 flex-col overflow-hidden px-4">
+        <h1 className="sr-only">SynthOrg setup wizard</h1>
 
-        {/* Step content */}
-        <ErrorBoundary level="page">
-          <AnimatedPresence routeKey={currentStep}>
-            <StepComponent />
-          </AnimatedPresence>
-        </ErrorBoundary>
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto py-8">
+          {/* Progress bar (hidden for mode selection step) */}
+          {showProgress && (
+            <div className="mb-8">
+              <WizardProgress
+                stepOrder={progressSteps}
+                currentStep={currentStep}
+                stepsCompleted={stepsCompleted}
+                stepsNeedRevalidation={stepsNeedRevalidation}
+                canNavigateTo={canNavigateTo}
+                onStepClick={handleStepClick}
+              />
+            </div>
+          )}
 
-        {/* Navigation: shown on every step. The mode step hides Next
+          {/* Step content */}
+          <ErrorBoundary level="page">
+            <AnimatedPresence routeKey={currentStep}>
+              <StepComponent />
+            </AnimatedPresence>
+          </ErrorBoundary>
+        </div>
+
+        {/* Navigation: pinned outside the scroll region (shrink-0) so it is
+            always reachable. Shown on every step; the mode step hides Next
             (selecting a mode auto-advances) but keeps Back so a user who
             reached mode from the account step can return. */}
-        <div className="mt-8">
+        <div className="shrink-0 bg-background pb-4">
           <WizardNavigation
             stepOrder={stepOrder}
             currentStep={currentStep}
@@ -311,6 +352,10 @@ export function WizardShell() {
           />
         </div>
       </div>
+
+      {/* Wizard renders outside AppLayout, so it mounts its own toast
+          renderer; without this, setup error/success toasts had no host. */}
+      <ToastContainer />
     </div>
   )
 }

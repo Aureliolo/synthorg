@@ -15,7 +15,7 @@ const STEP_LABELS: Record<WizardStep, string> = {
   providers: 'Providers',
   agents: 'Agents',
   theme: 'Theme',
-  complete: 'Done',
+  complete: 'Review',
 }
 
 type StepVisual = 'active' | 'warning' | 'complete' | 'pending'
@@ -45,12 +45,25 @@ interface StepView {
   key: WizardStep
   label: string
   index: number
+  total: number
   isActive: boolean
   isAccessible: boolean
   isComplete: boolean
   showWarning: boolean
   visual: StepVisual
   isLast: boolean
+}
+
+/** Accessible step name exposing position + status, not just the digit. */
+function stepAriaLabel(view: StepView): string {
+  const status = view.isActive
+    ? ', current step'
+    : view.showWarning
+      ? ', needs revalidation'
+      : view.isComplete
+        ? ', completed'
+        : ''
+  return `Step ${view.index + 1} of ${view.total}: ${view.label}${status}`
 }
 
 function StepCircle({ visual, isComplete, index }: { visual: StepVisual; isComplete: boolean; index: number }) {
@@ -60,11 +73,12 @@ function StepCircle({ visual, isComplete, index }: { visual: StepVisual; isCompl
         'flex size-8 items-center justify-center rounded-full text-xs font-semibold transition-colors',
         CIRCLE_CLASS[visual],
       )}
+      aria-hidden="true"
     >
       {visual === 'warning' ? (
-        <AlertTriangle className="size-4" aria-hidden="true" />
+        <AlertTriangle className="size-4" />
       ) : isComplete ? (
-        <Check className="size-4" aria-hidden="true" />
+        <Check className="size-4" />
       ) : (
         index + 1
       )}
@@ -75,7 +89,7 @@ function StepCircle({ visual, isComplete, index }: { visual: StepVisual; isCompl
 function StepConnector({ isComplete }: { isComplete: boolean }) {
   return (
     <div
-      className={cn('mx-1 h-px w-8', isComplete ? 'bg-success/40' : 'bg-border')}
+      className={cn('mx-1 h-px w-4 sm:w-8', isComplete ? 'bg-success/40' : 'bg-border')}
       aria-hidden="true"
     />
   )
@@ -104,9 +118,10 @@ function StepIndicator({
         onClick={() => onStepClick(key)}
         disabled={!isAccessible}
         aria-current={isActive ? 'step' : undefined}
+        aria-label={stepAriaLabel(view)}
         aria-describedby={showWarning ? `${key}-needs-revalidation` : undefined}
         className={cn(
-          'flex flex-col items-center gap-1',
+          'flex min-h-11 flex-col items-center justify-center gap-1',
           FOCUS_RING,
           'rounded-md px-2 py-1 transition-colors',
           isAccessible && !isActive && 'cursor-pointer hover:bg-card-hover',
@@ -114,7 +129,9 @@ function StepIndicator({
         )}
       >
         <StepCircleSlot view={view} />
-        <span className={cn('text-compact', LABEL_CLASS[visual])}>{label}</span>
+        <span className={cn('text-compact', LABEL_CLASS[visual])} aria-hidden="true">
+          {label}
+        </span>
         {showWarning && (
           <span id={`${key}-needs-revalidation`} className="sr-only">
             {REVALIDATION_EXPLANATION}
@@ -144,7 +161,10 @@ export function WizardProgress({
   onStepClick,
 }: WizardProgressProps) {
   return (
-    <nav aria-label="Setup progress" className="flex items-center justify-center gap-0">
+    <nav
+      aria-label="Setup progress"
+      className="flex items-center justify-center gap-0 overflow-x-auto"
+    >
       {stepOrder.map((key, index) => {
         const isActive = key === currentStep
         const isComplete = stepsCompleted[key]
@@ -157,6 +177,7 @@ export function WizardProgress({
           key,
           label: STEP_LABELS[key],
           index,
+          total: stepOrder.length,
           isActive,
           isAccessible: canNavigateTo(key),
           isComplete,

@@ -2,7 +2,7 @@ import { useCallback } from 'react'
 import { useNavigate } from 'react-router'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import type { WizardMode } from '@/stores/setup-wizard'
-import { cn } from '@/lib/utils'
+import { cn, FOCUS_RING } from '@/lib/utils'
 import { Sparkles, Zap } from 'lucide-react'
 
 interface ModeOptionProps {
@@ -14,21 +14,19 @@ interface ModeOptionProps {
   onClick: () => void
 }
 
-const SELECTED_SHADOW =
-  'shadow-[0_0_12px_color-mix(' +
-  'in_srgb,var(--so-accent)_15%,transparent)]'
-
 function ModeOption({ icon: Icon, title, description, recommended, selected, onClick }: ModeOptionProps) {
   return (
     <button
       type="button"
+      role="radio"
+      aria-checked={selected}
+      aria-label={title}
       onClick={onClick}
-      aria-pressed={selected}
-      aria-label={`Select ${title}`}
       className={cn(
         'flex flex-col items-center gap-grid-gap rounded-lg border p-card text-center transition-colors',
+        FOCUS_RING,
         selected
-          ? `border-accent bg-accent/5 ${SELECTED_SHADOW}`
+          ? 'border-accent bg-accent/5 shadow-[var(--so-shadow-accent-glow)]'
           : 'border-border bg-card hover:bg-card-hover',
       )}
     >
@@ -73,14 +71,18 @@ export function WizardModeStep() {
 
   return (
     <div className="space-y-section-gap">
-      <div className="space-y-2 text-center">
+      <div className="space-y-2">
         <h2 className="text-lg font-semibold text-foreground">How would you like to set up?</h2>
         <p className="text-sm text-muted-foreground">
           Choose how much control you want over the initial configuration.
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-grid-gap max-[639px]:grid-cols-1">
+      <div
+        role="radiogroup"
+        aria-label="Setup mode"
+        className="grid grid-cols-2 gap-grid-gap max-sm:grid-cols-1"
+      >
         <ModeOption
           icon={Sparkles}
           title="Guided Setup"

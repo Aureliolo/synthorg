@@ -19,6 +19,15 @@ import type { SetupAgentSummary, SetupCompanyResponse } from '@/api/types/setup'
 
 type TemplateVariableValue = string | number | boolean
 
+/** Model-tier profile choices (single source for the select + default). */
+const MODEL_TIER_PROFILE_OPTIONS = [
+  { value: 'economy', label: 'Economy' },
+  { value: 'balanced', label: 'Balanced' },
+  { value: 'premium', label: 'Premium' },
+] as const
+
+const DEFAULT_MODEL_TIER_PROFILE = 'balanced'
+
 interface CompanyDetailsFormProps {
   companyName: string
   setCompanyName: (value: string) => void
@@ -43,7 +52,7 @@ function CompanyDetailsForm({
   disabled,
 }: CompanyDetailsFormProps) {
   return (
-    <div className="space-y-4 rounded-lg border border-border bg-card p-card">
+    <div className="space-y-section-gap rounded-lg border border-border bg-card p-card">
       <InputField
         label="Company Name"
         required
@@ -88,12 +97,8 @@ function CompanyDetailsForm({
 
       <SelectField
         label="Model Tier Profile"
-        options={[
-          { value: 'economy', label: 'Economy' },
-          { value: 'balanced', label: 'Balanced' },
-          { value: 'premium', label: 'Premium' },
-        ]}
-        value={String(templateVariables['model_tier_profile'] ?? 'balanced')}
+        options={MODEL_TIER_PROFILE_OPTIONS}
+        value={String(templateVariables['model_tier_profile'] ?? DEFAULT_MODEL_TIER_PROFILE)}
         disabled={disabled}
         onChange={(v) => setTemplateVariable('model_tier_profile', v)}
         hint="Influences which model tiers are assigned to agents."
@@ -229,7 +234,7 @@ function CompanyPreview({
 }) {
   return (
     <>
-      <StaggerGroup className="grid grid-cols-3 gap-grid-gap max-[639px]:grid-cols-1">
+      <StaggerGroup className="grid grid-cols-3 gap-grid-gap max-sm:grid-cols-1">
         <StaggerItem>
           <MetricCard label="Departments" value={companyResponse.department_count} />
         </StaggerItem>
@@ -243,7 +248,7 @@ function CompanyPreview({
 
       {agents.length > 0 && (
         <SectionCard title="Generated Agents">
-          <ul className="space-y-1 text-xs text-muted-foreground">
+          <ul className="max-h-64 space-y-1 overflow-y-auto text-xs text-muted-foreground">
             {agents.map((agent, index) => (
               // eslint-disable-next-line @eslint-react/no-array-index-key -- names may duplicate
               <li key={`${agent.name}-${index}`}>
@@ -391,7 +396,7 @@ export function CompanyStep() {
       {selectedTemplate && (
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">Template:</span>
-          <StatPill label="" value={selectedTemplate} />
+          <StatPill value={selectedTemplate} />
         </div>
       )}
 

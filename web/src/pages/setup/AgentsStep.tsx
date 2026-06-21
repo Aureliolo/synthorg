@@ -72,7 +72,7 @@ function AgentsStepFallback({
 }) {
   if (agentsLoading) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-section-gap">
         <Skeleton className="h-32 rounded-lg" />
         {Array.from({ length: 3 }, (_, i) => (
           <Skeleton key={i} className="h-24 rounded-lg" />
@@ -198,31 +198,45 @@ function useAgentsStepController(): AgentsStepController {
   }
 }
 
-export function AgentsStep() {
-  const {
-    agents,
-    agentsLoading,
-    agentsError,
-    providers,
-    personalityPresets,
-    personalityPresetsLoading,
-    personalityPresetsError,
-    unresolvedAgents,
-    fetchAgents,
-    fetchPersonalityPresets,
-    handleNameChange,
-    handleModelChange,
-    handleRandomizeName,
-    handlePersonalityChange,
-    goToProvidersStep,
-  } = useAgentsStepController()
+function AgentsStepBanners({ c }: { c: AgentsStepController }) {
+  return (
+    <>
+      {c.agentsError && (
+        <ErrorBanner
+          title="Could not update agent"
+          description={c.agentsError}
+          onRetry={() => void c.fetchAgents()}
+        />
+      )}
 
-  if (agentsLoading || agents.length === 0) {
+      {c.personalityPresetsError && (
+        <ErrorBanner
+          severity="warning"
+          title="Could not load personality presets"
+          description="Agents can still be configured without them."
+          onRetry={() => void c.fetchPersonalityPresets()}
+        />
+      )}
+
+      {c.unresolvedAgents.length > 0 && (
+        <UnresolvedAgentsBanner
+          unresolvedAgents={c.unresolvedAgents}
+          onOpenProviders={c.goToProvidersStep}
+        />
+      )}
+    </>
+  )
+}
+
+export function AgentsStep() {
+  const c = useAgentsStepController()
+
+  if (c.agentsLoading || c.agents.length === 0) {
     return (
       <AgentsStepFallback
-        agentsLoading={agentsLoading}
-        agentsError={agentsError}
-        onRetry={() => void fetchAgents()}
+        agentsLoading={c.agentsLoading}
+        agentsError={c.agentsError}
+        onRetry={() => void c.fetchAgents()}
       />
     )
   }
@@ -236,48 +250,30 @@ export function AgentsStep() {
         </p>
       </div>
 
-      {agentsError && (
-        <ErrorBanner
-          title="Could not update agent"
-          description={agentsError}
-          onRetry={() => void fetchAgents()}
-        />
-      )}
-
-      {personalityPresetsError && (
-        <ErrorBanner
-          severity="warning"
-          title="Could not load personality presets"
-          description="Agents can still be configured without them."
-          onRetry={() => void fetchPersonalityPresets()}
-        />
-      )}
-
-      {unresolvedAgents.length > 0 && (
-        <UnresolvedAgentsBanner
-          unresolvedAgents={unresolvedAgents}
-          onOpenProviders={goToProvidersStep}
-        />
-      )}
+      <AgentsStepBanners c={c} />
 
       {/* Mini org chart */}
-      <MiniOrgChart agents={agents} />
+      <MiniOrgChart agents={c.agents} />
 
-      {/* Agent cards */}
-      <StaggerGroup className="space-y-section-gap">
-        {agents.map((agent, index) => (
+      {/* Agent cards. Clamp the total stagger so a large roster (20+
+          agents) doesn't push the last card's entrance past ~300ms. */}
+      <StaggerGroup
+        className="space-y-section-gap"
+        staggerDelay={Math.min(0.03, 0.3 / Math.max(c.agents.length, 1))}
+      >
+        {c.agents.map((agent, index) => (
           // eslint-disable-next-line @eslint-react/no-array-index-key -- names are user-editable and may duplicate; index as tiebreaker
           <StaggerItem key={`${agent.name}-${index}`}>
             <SetupAgentCard
               agent={agent}
               index={index}
-              providers={providers}
-              personalityPresets={personalityPresets}
-              personalityPresetsLoading={personalityPresetsLoading}
-              onNameChange={handleNameChange}
-              onModelChange={handleModelChange}
-              onRandomizeName={handleRandomizeName}
-              onPersonalityChange={handlePersonalityChange}
+              providers={c.providers}
+              personalityPresets={c.personalityPresets}
+              personalityPresetsLoading={c.personalityPresetsLoading}
+              onNameChange={c.handleNameChange}
+              onModelChange={c.handleModelChange}
+              onRandomizeName={c.handleRandomizeName}
+              onPersonalityChange={c.handlePersonalityChange}
             />
           </StaggerItem>
         ))}

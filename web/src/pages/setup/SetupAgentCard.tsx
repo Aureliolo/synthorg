@@ -103,20 +103,24 @@ export function SetupAgentCard({
   return (
     <div className="flex gap-3 rounded-lg border border-border bg-card p-card">
       <Avatar name={agent.name} size="md" />
-      <div className="flex-1 space-y-2">
+      <div className="min-w-0 flex-1 space-y-2">
         {/* Name + randomize */}
-        <div className="flex items-center gap-2">
-          <InlineEdit
-            value={agent.name}
-            onSave={handleNameSave}
-            validate={(v) => v.trim() ? null : 'Name is required'}
-          />
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="min-w-0 flex-1 truncate">
+            <InlineEdit
+              value={agent.name}
+              onSave={handleNameSave}
+              validate={(v) => v.trim() ? null : 'Name is required'}
+            />
+          </div>
           <Button
             variant="ghost"
             size="icon-xs"
+            className="shrink-0"
             onClick={() => { void handleRandomize() }}
             disabled={nameSaving || randomizeSaving}
             aria-label="Randomize name"
+            title="Randomize name"
           >
             <Dices className="size-3.5" />
           </Button>
@@ -134,7 +138,11 @@ export function SetupAgentCard({
           label="Personality"
           options={personalityOptions}
           value={agent.personality_preset ?? ''}
-          onChange={(val) => { void onPersonalityChange(index, val) }}
+          onChange={(val) => {
+            // Guard the empty sentinel: the placeholder option carries
+            // value="" and must never be persisted as a preset.
+            if (val) void onPersonalityChange(index, val)
+          }}
           placeholder={personalityPlaceholder(personalityPresetsLoading, personalityPresets.length)}
         />
 

@@ -39,6 +39,13 @@ const ANIMATION_TRANSITIONS: Record<ThemeSettings['animation'], Transition> = {
 // breathing, short enough to cycle multiple times per visible interaction.
 const PULSE_DURATION_S = 0.6
 
+// Fixed illustration widths for the mock sidebar (preview-only chrome, not
+// the real sidebar-width tokens).
+const SIDEBAR_PREVIEW_WIDTH: Record<'compact' | 'full', string> = {
+  compact: 'w-10',
+  full: 'w-28',
+}
+
 const SIDEBAR_NAV = [
   { icon: Home, label: 'Overview' },
   { icon: Users, label: 'Agents' },
@@ -62,7 +69,7 @@ function SidebarNavItem({ icon: Icon, label, isActive, isCompact }: SidebarNavIt
       )}
     >
       <Icon className="size-3.5 shrink-0" />
-      {!isCompact && <span className="truncate text-[9px]">{label}</span>}
+      {!isCompact && <span className="truncate text-micro">{label}</span>}
     </div>
   )
 }
@@ -75,8 +82,9 @@ function SidebarPreview({ mode }: { mode: ThemeSettings['sidebar'] }) {
   return (
     <div
       className={cn(
-        'flex flex-col gap-2 rounded-lg border border-border bg-bg-surface p-2 transition-all duration-200',
-        isCompact ? 'w-10' : 'w-28',
+        'flex flex-col gap-2 rounded-lg border border-border bg-bg-surface p-card-snug',
+        'transition-[width] duration-[var(--so-transition-default)]',
+        isCompact ? SIDEBAR_PREVIEW_WIDTH.compact : SIDEBAR_PREVIEW_WIDTH.full,
       )}
     >
       {SIDEBAR_NAV.map(({ icon, label }) => (
@@ -106,8 +114,10 @@ function AnimationDemo({ animation }: { animation: ThemeSettings['animation'] })
     if (animation === 'instant') return
     // Start with the card visible; interval toggles visibility
     let active = true
+    // Skip the toggle while the tab is hidden so a backgrounded preview
+    // doesn't burn CPU re-rendering an off-screen animation.
     const interval = setInterval(() => {
-      if (active) setCycling((v) => !v)
+      if (active && !document.hidden) setCycling((v) => !v)
     }, 1500)
     return () => {
       active = false
@@ -141,7 +151,7 @@ function AnimationDemo({ animation }: { animation: ThemeSettings['animation'] })
           </motion.div>
         )}
       </AnimatePresence>
-      <span className="text-[9px] text-text-muted italic">
+      <span className="text-micro text-text-muted italic">
         {animation === 'instant' ? 'No animations' : animation}
       </span>
     </div>
@@ -156,7 +166,7 @@ export function ThemePreview({ settings }: ThemePreviewProps) {
   return (
     <div
       className={cn(
-        'flex gap-3 rounded-lg border border-border bg-background p-4',
+        'flex gap-grid-gap rounded-lg border border-border bg-background p-card',
         DENSITY_CLASS[settings.density],
         PALETTE_CLASS[settings.palette],
       )}
@@ -169,15 +179,16 @@ export function ThemePreview({ settings }: ThemePreviewProps) {
       <SidebarPreview mode={settings.sidebar} />
 
       {/* Main content */}
-      <div className="flex-1 space-y-4">
+      <div className="flex-1 space-y-section-gap">
         {/* Metric cards */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-grid-gap">
           <MetricCard label="Active Agents" value={12} />
           <MetricCard label="Tasks Today" value={47} />
         </div>
 
-        {/* Agent card mock */}
-        <AgentCard name="Akira Tanaka" role="CEO" department="executive" status="idle" />
+        {/* Agent card mock (placeholder name; no real people per the
+            vendor-name policy) */}
+        <AgentCard name="Sample Agent" role="CEO" department="executive" status="idle" />
 
         {/* Health bar */}
         <DeptHealthBar name="Engineering" health={72} agentCount={3} />

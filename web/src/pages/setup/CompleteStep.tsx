@@ -7,6 +7,7 @@ import { SkipWizardForm } from './SkipWizardForm'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useSetupStore } from '@/stores/setup'
 import { useToastStore } from '@/stores/toast'
+import { markFirstRunPending } from '@/utils/first-run'
 import { MiniOrgChart } from './MiniOrgChart'
 import { SetupSummary } from './SetupSummary'
 import { CheckCircle } from 'lucide-react'
@@ -32,15 +33,9 @@ function useCompleteStepActions(
       variant: 'success',
       title: `Setup complete! Welcome to ${companyResponse?.company_name ?? 'your organization'}.`,
     })
-    // Surface the post-setup guidance card on the dashboard.  The flag
-    // lives in localStorage so the card stays dismissible across
-    // reloads and is read by ``PostSetupGuidanceCard`` host components.
-    try {
-      window.localStorage.setItem('synthorg.firstRun', '1')
-    } catch {
-      // localStorage may be disabled (private mode); the guidance card
-      // simply won't surface in that case.  Setup completion proceeds.
-    }
+    // Surface the post-setup guidance card on the dashboard (read by
+    // ``PostSetupGuidanceCard`` via the shared first-run flag).
+    markFirstRunPending()
     setConfirmOpen(false)
     void navigate('/')
   }, [companyResponse, navigate])
@@ -144,7 +139,7 @@ function CompleteStepFooter({
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         title="Launch your organization?"
-        description="This will start all configured agents and complete the setup process."
+        description="This starts all configured agents and finishes setup. Agents may begin working and incurring provider costs immediately, and you can't return to the setup wizard afterwards."
         confirmLabel="Launch"
         onConfirm={handleComplete}
         loading={completing}

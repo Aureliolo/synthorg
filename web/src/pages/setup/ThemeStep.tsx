@@ -1,8 +1,8 @@
-import { useEffect } from 'react'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import type { ThemeSettings } from '@/stores/setup-wizard'
 import { cn } from '@/lib/utils'
 import { ThemePreview } from './ThemePreview'
+import { useStepCompletionSync } from './_hooks'
 
 interface OptionGroupProps<K extends keyof ThemeSettings> {
   label: string
@@ -27,7 +27,10 @@ function OptionGroup<K extends keyof ThemeSettings>({
           <label
             key={opt.value}
             className={cn(
-              'flex cursor-pointer items-start gap-3 rounded-md border p-2.5 transition-colors',
+              'flex cursor-pointer items-start gap-3 rounded-md border p-card-snug transition-colors',
+              // Keyboard focus lands on the native radio; surface it on the
+              // whole option row so the focus target is visible (DS ring).
+              'focus-within:ring-2 focus-within:ring-accent focus-within:ring-offset-2 focus-within:ring-offset-background',
               current === opt.value
                 ? 'border-accent bg-accent/5'
                 : 'border-border hover:bg-card-hover',
@@ -83,12 +86,9 @@ const SIDEBAR_OPTIONS = [
 export function ThemeStep() {
   const themeSettings = useSetupWizardStore((s) => s.themeSettings)
   const setThemeSetting = useSetupWizardStore((s) => s.setThemeSetting)
-  const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
 
-  // Theme step is always valid
-  useEffect(() => {
-    markStepComplete('theme')
-  }, [markStepComplete])
+  // Theme step is always valid (every option has a sensible default).
+  useStepCompletionSync('theme', true)
 
   return (
     <div className="space-y-section-gap">
@@ -99,7 +99,7 @@ export function ThemeStep() {
         </p>
       </div>
 
-      <div className="grid grid-cols-[45%_1fr] gap-grid-gap max-[1023px]:grid-cols-1">
+      <div className="grid grid-cols-1 gap-grid-gap lg:grid-cols-[45%_1fr]">
         {/* Options (left) */}
         <div className="space-y-section-gap">
           <OptionGroup
@@ -132,8 +132,9 @@ export function ThemeStep() {
           />
         </div>
 
-        {/* Live preview (right) */}
-        <div className="sticky top-8">
+        {/* Live preview (right). Sticky only on desktop; on a stacked
+            mobile layout it sits inline below the options. */}
+        <div className="lg:sticky lg:top-8">
           <h3 className="mb-3 text-sm font-semibold text-foreground">Live Preview</h3>
           <ThemePreview settings={themeSettings} />
         </div>
