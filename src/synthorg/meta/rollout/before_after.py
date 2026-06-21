@@ -23,6 +23,7 @@ from synthorg.meta.protocol import ProposalApplier, RegressionDetector
 from synthorg.meta.rollout._observation import (
     RolloutSnapshotBuilder,
     observe_until_verdict,
+    with_applied_rollback_operations,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
@@ -176,7 +177,7 @@ class BeforeAfterRollout:
             )
 
         try:
-            return await self._observe_window(
+            result = await self._observe_window(
                 proposal=proposal,
                 baseline=baseline,
                 detector=detector,
@@ -188,6 +189,9 @@ class BeforeAfterRollout:
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             return _rollout_failed(proposal=proposal, exc=exc, stage="observation")
+        return with_applied_rollback_operations(
+            result, apply_result.rollback_operations
+        )
 
     async def _observe_window(
         self,

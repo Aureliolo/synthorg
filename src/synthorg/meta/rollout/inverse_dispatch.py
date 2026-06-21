@@ -17,9 +17,11 @@ from synthorg.meta.models import RollbackOperation
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.meta import (
     META_ROLLBACK_ARCHITECTURE_REVERTED,
+    META_ROLLBACK_BRANCH_REVERTED,
     META_ROLLBACK_CODE_REVERTED,
     META_ROLLBACK_CONFIG_REVERTED,
     META_ROLLBACK_OPERATION_FAILED,
+    META_ROLLBACK_PRINCIPLE_REMOVED,
     META_ROLLBACK_PROMPT_REVERTED,
 )
 
@@ -82,6 +84,24 @@ class CodeMutator(Protocol):
 
     async def revert_file(self, *, path: str, content: str) -> None:
         """Write ``content`` to ``path``."""
+        ...
+
+
+@runtime_checkable
+class PrincipleRemovalMutator(Protocol):
+    """Removes an active principle created by a prompt-tuning apply."""
+
+    async def remove(self, *, principle_id: str) -> None:
+        """Delete the active principle at ``principle_id``."""
+        ...
+
+
+@runtime_checkable
+class BranchMutator(Protocol):
+    """Deletes a remote branch created by a code-modification apply."""
+
+    async def delete_branch(self, *, name: str) -> None:
+        """Delete the branch ``name`` (closing its draft PR)."""
         ...
 
 
@@ -273,28 +293,109 @@ class RevertCodeHandler:
         return 1
 
 
+class RemovePrincipleHandler:
+    """Rollback handler for ``remove_principle`` operations."""
+
+    def __init__(self, *, mutator: PrincipleRemovalMutator) -> None:
+        self._mutator = mutator
+
+    async def revert(self, operation: RollbackOperation) -> int:
+        """Delete the active principle the apply created at ``target``.
+
+        Returns:
+            Resulting integer.
+
+        Raises:
+            Exception: Raised on the corresponding failure path.
+        """
+        try:
+            await self._mutator.remove(principle_id=str(operation.target))
+        except Exception as exc:
+            reraise_critical(exc)
+            log_exception_redacted(
+                logger,
+                META_ROLLBACK_OPERATION_FAILED,
+                exc,
+                operation_type="remove_principle",
+                target=str(operation.target),
+            )
+            raise
+        logger.info(
+            META_ROLLBACK_PRINCIPLE_REMOVED,
+            target=str(operation.target),
+        )
+        return 1
+
+
+class RevertBranchHandler:
+    """Rollback handler for ``revert_branch`` operations."""
+
+    def __init__(self, *, mutator: BranchMutator) -> None:
+        self._mutator = mutator
+
+    async def revert(self, operation: RollbackOperation) -> int:
+        """Delete the remote branch the apply created at ``target``.
+
+        Returns:
+            Resulting integer.
+
+        Raises:
+            Exception: Raised on the corresponding failure path.
+        """
+        try:
+            await self._mutator.delete_branch(name=str(operation.target))
+        except Exception as exc:
+            reraise_critical(exc)
+            log_exception_redacted(
+                logger,
+                META_ROLLBACK_OPERATION_FAILED,
+                exc,
+                operation_type="revert_branch",
+                target=str(operation.target),
+            )
+            raise
+        logger.info(
+            META_ROLLBACK_BRANCH_REVERTED,
+            target=str(operation.target),
+        )
+        return 1
+
+
 # -- Factory --------------------------------------------------------------
 
 
-def default_rollback_handlers(
+def default_rollback_handlers(  # noqa: PLR0913
     *,
     config: ConfigMutator,
     prompt: PromptMutator,
     architecture: ArchitectureMutator,
     code: CodeMutator,
+    principle_removal: PrincipleRemovalMutator | None = None,
+    branch: BranchMutator | None = None,
 ) -> Mapping[NotBlankStr, RollbackHandler]:
     """Build the default handler mapping keyed by ``operation_type``.
+
+    The four core handlers are always registered. ``remove_principle``
+    and ``revert_branch`` register only when their mutator is supplied,
+    so a deployment without a memory backend or GitHub credentials still
+    builds an executor that dispatches every operation it can service and
+    fails loudly (``UnknownRollbackOperationError``) on the ones it cannot.
 
     Returns:
         ``Mapping[NotBlankStr, RollbackHandler]`` instance.
     """
-    return MappingProxyType(
-        {
-            NotBlankStr("revert_config"): RevertConfigHandler(mutator=config),
-            NotBlankStr("restore_prompt"): RestorePromptHandler(mutator=prompt),
-            NotBlankStr("revert_architecture"): RevertArchitectureHandler(
-                mutator=architecture,
-            ),
-            NotBlankStr("revert_code"): RevertCodeHandler(mutator=code),
-        }
-    )
+    handlers: dict[NotBlankStr, RollbackHandler] = {
+        NotBlankStr("revert_config"): RevertConfigHandler(mutator=config),
+        NotBlankStr("restore_prompt"): RestorePromptHandler(mutator=prompt),
+        NotBlankStr("revert_architecture"): RevertArchitectureHandler(
+            mutator=architecture,
+        ),
+        NotBlankStr("revert_code"): RevertCodeHandler(mutator=code),
+    }
+    if principle_removal is not None:
+        handlers[NotBlankStr("remove_principle")] = RemovePrincipleHandler(
+            mutator=principle_removal,
+        )
+    if branch is not None:
+        handlers[NotBlankStr("revert_branch")] = RevertBranchHandler(mutator=branch)
+    return MappingProxyType(handlers)

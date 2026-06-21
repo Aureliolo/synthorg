@@ -19,7 +19,10 @@ from synthorg.meta.models import (
     RolloutResult,
 )
 from synthorg.meta.protocol import ProposalApplier, RegressionDetector
-from synthorg.meta.rollout._observation import observe_until_verdict
+from synthorg.meta.rollout._observation import (
+    observe_until_verdict,
+    with_applied_rollback_operations,
+)
 from synthorg.meta.rollout.before_after import (
     RolloutSnapshotBuilder,
     _default_snapshot_builder,
@@ -126,10 +129,13 @@ class CanarySubsetRollout:
                 details=apply_result.error_message,
             )
 
-        return await self._observe_window(
+        result = await self._observe_window(
             proposal=proposal,
             baseline=baseline,
             detector=detector,
+        )
+        return with_applied_rollback_operations(
+            result, apply_result.rollback_operations
         )
 
     async def _observe_window(

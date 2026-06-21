@@ -31,6 +31,7 @@ from synthorg.meta.models import (
     ApplyResult,
     ImprovementProposal,
     ProposalAltitude,
+    RollbackOperation,
 )
 from synthorg.observability import (
     get_logger,
@@ -216,7 +217,20 @@ class ConfigApplier:
             changes=len(applied),
             proposal_id=str(proposal.id),
         )
-        return ApplyResult(success=True, changes_applied=len(applied))
+        rollback_operations = tuple(
+            RollbackOperation(
+                operation_type="revert_config",
+                target=f"{namespace}.{key}",
+                previous_value=old_value,
+                description=f"Revert {namespace}.{key} to its prior value",
+            )
+            for namespace, key, old_value in applied
+        )
+        return ApplyResult(
+            success=True,
+            changes_applied=len(applied),
+            rollback_operations=rollback_operations,
+        )
 
     async def _rollback(
         self,

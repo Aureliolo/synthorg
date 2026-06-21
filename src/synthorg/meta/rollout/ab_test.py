@@ -19,12 +19,15 @@ from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     ImprovementProposal,
     RegressionThresholds,
-    RegressionVerdict,
     RolloutOutcome,
     RolloutResult,
 )
 from synthorg.meta.protocol import ProposalApplier, RegressionDetector
-from synthorg.meta.rollout._observation import validate_window_and_interval
+from synthorg.meta.rollout._ab_mapping import map_verdict, samples_to_metrics
+from synthorg.meta.rollout._observation import (
+    validate_window_and_interval,
+    with_applied_rollback_operations,
+)
 from synthorg.meta.rollout.ab_comparator import ABTestComparator
 from synthorg.meta.rollout.ab_models import (
     ABTestComparison,
@@ -32,7 +35,6 @@ from synthorg.meta.rollout.ab_models import (
     AbTestStatus,
     ABTestVerdict,
     GroupAssignment,
-    GroupMetrics,
 )
 from synthorg.meta.rollout.ab_record import (
     TERMINAL_STATUS,
@@ -258,7 +260,7 @@ class ABTestRollout:
             status=AbTestStatus.RUNNING,
         )
         try:
-            return await self._observe_and_compare(
+            result = await self._observe_and_compare(
                 proposal=proposal,
                 assignment=assignment,
             )
@@ -276,6 +278,9 @@ class ABTestRollout:
                 status=AbTestStatus.FAILED,
             )
             raise
+        return with_applied_rollback_operations(
+            result, apply_result.rollback_operations
+        )
 
     async def _aggregate_tick(
         self,
@@ -310,11 +315,11 @@ class ABTestRollout:
                     until=window_end,
                 ),
             )
-        control_metrics = _samples_to_metrics(
+        control_metrics = samples_to_metrics(
             control_task.result(),
             ABTestGroup.CONTROL,
         )
-        treatment_metrics = _samples_to_metrics(
+        treatment_metrics = samples_to_metrics(
             treatment_task.result(),
             ABTestGroup.TREATMENT,
         )
@@ -336,7 +341,7 @@ class ABTestRollout:
         Returns:
             ``RolloutResult`` instance.
         """
-        outcome, verdict = _map_verdict(comparison.verdict)
+        outcome, verdict = map_verdict(comparison.verdict)
         logger.warning(
             META_ROLLOUT_FAILED,
             strategy="ab_test",
@@ -390,7 +395,7 @@ class ABTestRollout:
                 observation_hours_elapsed=elapsed,
                 details="observation window produced no comparisons",
             )
-        outcome, verdict = _map_verdict(last_comparison.verdict)
+        outcome, verdict = map_verdict(last_comparison.verdict)
         logger.info(
             META_ROLLOUT_COMPLETED,
             strategy="ab_test",
@@ -504,48 +509,3 @@ class ABTestRollout:
             treatment_agent_ids=tuple(treatment),
             control_fraction=control_fraction,
         )
-
-
-def _samples_to_metrics(
-    samples: GroupSamples,
-    group: ABTestGroup,
-) -> GroupMetrics:
-    """Wrap aligned sample tuples in a ``GroupMetrics``.
-
-    ``agent_count`` reflects agents that actually contributed samples
-    (``samples.agent_ids``), not everyone who was assigned to the
-    group. The aggregator drops agents missing metrics, so reporting
-    the assigned count would overstate the effective sample size and
-    let Welch think it had more data than it does.
-
-    Returns:
-        ``GroupMetrics`` instance.
-    """
-    return GroupMetrics(
-        group=group,
-        agent_count=len(samples.agent_ids),
-        quality_samples=samples.quality_samples,
-        success_samples=samples.success_samples,
-        spend_samples=samples.spend_samples,
-    )
-
-
-def _map_verdict(
-    verdict: ABTestVerdict,
-) -> tuple[RolloutOutcome, RegressionVerdict | None]:
-    """Map ABTestVerdict to RolloutOutcome + RegressionVerdict.
-
-    Returns:
-        The configured value when present, ``None`` otherwise.
-    """
-    if verdict == ABTestVerdict.TREATMENT_WINS:
-        return RolloutOutcome.SUCCESS, RegressionVerdict.NO_REGRESSION
-    if verdict in (
-        ABTestVerdict.TREATMENT_REGRESSED,
-        ABTestVerdict.CONTROL_WINS,
-    ):
-        return (
-            RolloutOutcome.REGRESSED,
-            RegressionVerdict.STATISTICAL_REGRESSION,
-        )
-    return RolloutOutcome.INCONCLUSIVE, None

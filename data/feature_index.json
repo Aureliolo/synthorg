@@ -826,7 +826,8 @@
         "ReportsService",
         "OrgInflectionMonitor",
         "build_analytics_collector",
-        "SelfImprovementService"
+        "SelfImprovementService",
+        "build_rollback_executor"
       ],
       "mcp_tool_names": [
         "synthorg_meta_get_config",
@@ -1289,6 +1290,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-21T11:25:57.914303Z",
+  "generated_at": "2026-06-21T13:55:56.060704Z",
   "schema_version": 1
 }

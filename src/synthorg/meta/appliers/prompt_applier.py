@@ -19,6 +19,7 @@ from synthorg.meta.models import (
     ImprovementProposal,
     PromptChange,
     ProposalAltitude,
+    RollbackOperation,
 )
 from synthorg.observability import (
     get_logger,
@@ -245,7 +246,19 @@ class PromptApplier:
             changes=len(applied),
             proposal_id=str(proposal.id),
         )
-        return ApplyResult(success=True, changes_applied=len(applied))
+        rollback_operations = tuple(
+            RollbackOperation(
+                operation_type="remove_principle",
+                target=principle_id,
+                description="Remove the active principle created by this apply",
+            )
+            for principle_id in applied
+        )
+        return ApplyResult(
+            success=True,
+            changes_applied=len(applied),
+            rollback_operations=rollback_operations,
+        )
 
     async def _rollback(
         self,

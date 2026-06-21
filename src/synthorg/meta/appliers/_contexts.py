@@ -37,8 +37,8 @@ from synthorg.engine.workflow.definition import WorkflowDefinition
 from synthorg.engine.workflow.service import WorkflowService
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
-from synthorg.meta.appliers._architecture_validators import ArchitectureUndo
-from synthorg.meta.models import ArchitectureChange, PromptChange
+from synthorg.meta.appliers._architecture_contract import AppliedArchitectureChange
+from synthorg.meta.models import ArchitectureChange, PromptChange, RollbackOperation
 from synthorg.organization.department_record import DepartmentRecord
 from synthorg.organization.enums import DepartmentName
 from synthorg.organization.services import DepartmentService
@@ -240,11 +240,14 @@ class DurableArchitectureApplierContext:
         """
         return self._department_names
 
-    async def apply_change(self, change: ArchitectureChange) -> ArchitectureUndo:
-        """Durably apply one architecture change and return its undo.
+    async def apply_change(
+        self, change: ArchitectureChange
+    ) -> AppliedArchitectureChange:
+        """Durably apply one architecture change.
 
         Returns:
-            A coroutine factory reversing exactly this change.
+            The applied change's in-memory undo closure plus the
+            serialisable inverse operation for later auto-rollback.
 
         Raises:
             MetaArchitectureApplyError: When the change cannot be applied
@@ -284,7 +287,9 @@ class DurableArchitectureApplierContext:
         definitions = await self._workflows.list_definitions()
         return tuple(d.name for d in definitions)
 
-    async def _create_role(self, change: ArchitectureChange) -> ArchitectureUndo:
+    async def _create_role(
+        self, change: ArchitectureChange
+    ) -> AppliedArchitectureChange:
         record = self._build_role_record(change)
         await self._role_repo.save(record)
         name = NotBlankStr(record.role.name)
@@ -292,9 +297,19 @@ class DurableArchitectureApplierContext:
         async def _undo() -> None:
             await self._role_repo.delete(name)
 
-        return _undo
+        return AppliedArchitectureChange(
+            undo=_undo,
+            rollback_operation=RollbackOperation(
+                operation_type="revert_architecture",
+                target=f"role:{name}",
+                previous_value=None,
+                description=f"Delete role {name} created by this apply",
+            ),
+        )
 
-    async def _remove_role(self, change: ArchitectureChange) -> ArchitectureUndo:
+    async def _remove_role(
+        self, change: ArchitectureChange
+    ) -> AppliedArchitectureChange:
         name = NotBlankStr(change.target_name)
         prior = await self._role_repo.get(name)
         if prior is None:
@@ -305,9 +320,19 @@ class DurableArchitectureApplierContext:
         async def _undo() -> None:
             await self._role_repo.save(prior)
 
-        return _undo
+        return AppliedArchitectureChange(
+            undo=_undo,
+            rollback_operation=RollbackOperation(
+                operation_type="revert_architecture",
+                target=f"role:{name}",
+                previous_value=prior.model_dump(mode="json"),
+                description=f"Restore role {name} removed by this apply",
+            ),
+        )
 
-    async def _create_department(self, change: ArchitectureChange) -> ArchitectureUndo:
+    async def _create_department(
+        self, change: ArchitectureChange
+    ) -> AppliedArchitectureChange:
         record = await self._departments.create_department(
             name=NotBlankStr(change.target_name),
             description=NotBlankStr(change.description),
@@ -322,9 +347,21 @@ class DurableArchitectureApplierContext:
                 reason=NotBlankStr("apply rollback"),
             )
 
-        return _undo
+        return AppliedArchitectureChange(
+            undo=_undo,
+            rollback_operation=RollbackOperation(
+                operation_type="revert_architecture",
+                target=f"department:{dept_id}",
+                previous_value=None,
+                description=(
+                    f"Delete department {change.target_name} created by this apply"
+                ),
+            ),
+        )
 
-    async def _remove_department(self, change: ArchitectureChange) -> ArchitectureUndo:
+    async def _remove_department(
+        self, change: ArchitectureChange
+    ) -> AppliedArchitectureChange:
         name = change.target_name
         prior = await self._department_by_name(name)
         if prior is None:
@@ -344,9 +381,23 @@ class DurableArchitectureApplierContext:
                 department_id=prior.id,
             )
 
-        return _undo
+        return AppliedArchitectureChange(
+            undo=_undo,
+            rollback_operation=RollbackOperation(
+                operation_type="revert_architecture",
+                target=f"department:{prior.id}",
+                previous_value={
+                    "name": prior.name,
+                    "description": prior.description or prior.name,
+                    "id": str(prior.id),
+                },
+                description=f"Re-create department {name} removed by this apply",
+            ),
+        )
 
-    async def _modify_workflow(self, change: ArchitectureChange) -> ArchitectureUndo:
+    async def _modify_workflow(
+        self, change: ArchitectureChange
+    ) -> AppliedArchitectureChange:
         service = self._workflows
         current = await self._workflow_by_name(change.target_name)
         if current is None:
@@ -374,7 +425,15 @@ class DurableArchitectureApplierContext:
             )
             await service.update_definition(restored, saved_by="meta-loop")
 
-        return _undo
+        return AppliedArchitectureChange(
+            undo=_undo,
+            rollback_operation=RollbackOperation(
+                operation_type="revert_architecture",
+                target=f"workflow:{current.name}",
+                previous_value=current.model_dump(mode="json"),
+                description=f"Restore workflow {current.name} to its prior definition",
+            ),
+        )
 
     async def _department_by_name(self, name: str) -> DepartmentRecord | None:
         depts, _ = await self._departments.list_departments()
