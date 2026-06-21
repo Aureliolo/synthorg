@@ -866,8 +866,8 @@ def default_models_for(
 MODEL_VERSION_FILTERS: Final[MappingProxyType[str, re.Pattern[str]]] = MappingProxyType(
     {
         # ``4-(?:[5-9]|\d{2,})`` keeps the >=4.5 floor while matching
-        # multi-digit minors (4-10, 4-11, ...); the old ``4-[56789]``
-        # character class silently dropped every model from 4.10 onward.
+        # multi-digit minors (4-10, 4-11, ...); a bare ``4-[5-9]`` class
+        # would cap at 4.9 and exclude every model from 4.10 onward.
         "anthropic": re.compile(r"^claude-(opus|sonnet|haiku)-4-(?:[5-9]|\d{2,})"),
         "openai": re.compile(r"^(gpt-[45]|o[34])"),
         "xai": re.compile(r"^grok-[34]"),

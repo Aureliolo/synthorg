@@ -116,7 +116,7 @@ class TestCreateFromPresetAutoDiscovery:
         )
         with (
             patch(
-                "synthorg.providers.management.service.models_from_litellm",
+                "synthorg.providers.management._preset_creation.models_from_litellm",
                 return_value=(),
             ),
             patch(
@@ -144,7 +144,7 @@ class TestCreateFromPresetAutoDiscovery:
         discovered = (ProviderModelConfig(id="test-model-z"),)
         with (
             patch(
-                "synthorg.providers.management.service.models_from_litellm",
+                "synthorg.providers.management._preset_creation.models_from_litellm",
                 return_value=(),
             ),
             patch(

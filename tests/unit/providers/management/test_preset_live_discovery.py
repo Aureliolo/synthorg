@@ -14,12 +14,14 @@ from pydantic import SecretStr
 
 from synthorg.api.dto_providers import CreateFromPresetRequest
 from synthorg.config.schema import ProviderModelConfig
+from synthorg.providers.enums import AuthType
 from synthorg.providers.management.service import ProviderManagementService
+from synthorg.providers.presets import get_preset
 
 pytestmark = pytest.mark.unit
 
 _DISCOVER_PATH = "synthorg.providers.management.service.discover_models"
-_LITELLM_PATH = "synthorg.providers.management.service.models_from_litellm"
+_LITELLM_PATH = "synthorg.providers.management._preset_creation.models_from_litellm"
 
 
 class TestPreferLiveDiscoveryCreate:
@@ -57,3 +59,53 @@ class TestPreferLiveDiscoveryCreate:
         }
         # The discovered catalogue replaces the curated seed on create.
         assert {m.id for m in config.models} == {"live-model-001", "live-model-002"}
+
+
+class TestLiveDiscoveryGuards:
+    async def test_no_api_key_keeps_seed_and_skips_discovery(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """A live-discovery preset without a key keeps the seed, never probes."""
+        preset = get_preset("ollama-cloud")
+        assert preset is not None
+        seed = (ProviderModelConfig(id="seed-001", alias="seed"),)
+
+        with patch(_DISCOVER_PATH) as discover:
+            result = await service._maybe_discover_preset_models(
+                preset,
+                preset.default_base_url,
+                seed,
+                auth_type=AuthType.API_KEY,
+                api_key=None,
+            )
+
+        discover.assert_not_called()
+        assert result == seed
+
+    async def test_bearer_key_not_sent_to_overridden_base_url(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """An overridden (non-canonical) base URL never receives the key.
+
+        Confused-deputy guard: the Bearer credential is attached only when
+        the base URL still points at the preset's canonical host, so a
+        user-overridden endpoint keeps the seed and is never probed with
+        the key.
+        """
+        preset = get_preset("ollama-cloud")
+        assert preset is not None
+        seed = (ProviderModelConfig(id="seed-001", alias="seed"),)
+
+        with patch(_DISCOVER_PATH) as discover:
+            result = await service._maybe_discover_preset_models(
+                preset,
+                "https://attacker.example.com/v1",
+                seed,
+                auth_type=AuthType.API_KEY,
+                api_key="sk-ollama-key",
+            )
+
+        discover.assert_not_called()
+        assert result == seed

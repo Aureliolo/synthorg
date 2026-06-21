@@ -1,8 +1,8 @@
 """Tests for the ``MODEL_VERSION_FILTERS`` generation allowlists.
 
-The Anthropic filter must keep the >=4.5 floor while matching
-multi-digit minor versions (4.10, 4.11, ...); the old ``4-[56789]``
-character class silently dropped every model from 4.10 onward.
+The Anthropic filter keeps the >=4.5 floor while matching multi-digit
+minor versions (4.10, 4.11, ...): a bare ``4-[5-9]`` character class
+would cap at 4.9 and exclude every model from 4.10 onward.
 """
 
 import pytest

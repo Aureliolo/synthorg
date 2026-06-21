@@ -360,6 +360,7 @@ class ProviderSerializationError(ProviderError):
     status_code: ClassVar[int] = 500
     error_code: ClassVar[ErrorCode] = ErrorCode.INTERNAL_ERROR
     error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    default_message: ClassVar[str] = "Failed to serialise provider configuration"
 
 
 class ProviderPersistenceError(ProviderError):
@@ -374,6 +375,7 @@ class ProviderPersistenceError(ProviderError):
     status_code: ClassVar[int] = 500
     error_code: ClassVar[ErrorCode] = ErrorCode.PERSISTENCE_ERROR
     error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    default_message: ClassVar[str] = "Failed to persist provider configuration"
 
 
 _ERROR_CLASS_MAP: Final[dict[type[BaseException], ProviderErrorLabel]] = {

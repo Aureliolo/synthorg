@@ -9,8 +9,10 @@ import json
 from unittest.mock import AsyncMock
 
 import pytest
+import structlog.testing
 from pydantic import BaseModel, ConfigDict
 
+from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.resolver import ConfigResolver
@@ -20,6 +22,8 @@ from tests.unit.settings.conftest import (
     FakeProviderConfig,
     make_setting_value,
 )
+
+pytestmark = pytest.mark.unit
 
 _make_value = make_setting_value
 
@@ -432,7 +436,7 @@ class TestGetProviderConfigs:
     async def test_wrong_json_shape_falls_back_to_config(
         self, mock_settings: AsyncMock
     ) -> None:
-        """JSON list instead of dict -> fall back."""
+        """JSON list instead of dict -> fall back with a shape WARNING."""
         mock_settings.get.return_value = _make_value(
             '[{"driver": "litellm"}]',
             namespace=SettingNamespace.PROVIDERS,
@@ -445,9 +449,16 @@ class TestGetProviderConfigs:
             settings_service=mock_settings,
             config=config,  # type: ignore[arg-type]
         )
-        result = await resolver.get_provider_configs()
+        with structlog.testing.capture_logs() as logs:
+            result = await resolver.get_provider_configs()
 
         assert "shape-safe" in result
+        reasons = [
+            e["reason"]
+            for e in logs
+            if e.get("event") == SETTINGS_FETCH_FAILED and "reason" in e
+        ]
+        assert "expected_dict_fallback" in reasons
 
     async def test_fallback_returns_immutable_mapping(
         self, mock_settings: AsyncMock

@@ -937,8 +937,26 @@ class TestExceptionHandlers:
         request.accept.best_match.return_value = "application/json"
 
         resp = handle_http_exception(request, exc)
+        assert resp.status_code == 429
         assert resp.headers.get("Retry-After") == "1"
         assert resp.content.error_detail.retry_after == 1  # type: ignore[union-attr]
+
+    def test_http_429_unparseable_reset_yields_no_retry_after(self) -> None:
+        """A non-integer ``RateLimit-Reset`` synthesises no ``Retry-After``."""
+        exc = MagicMock(spec=HTTPException)
+        exc.status_code = 429
+        exc.detail = "Too Many Requests"
+        exc.headers = {"RateLimit-Reset": "soon"}
+
+        request = MagicMock(spec=Request)
+        request.method = "GET"
+        request.url.path = "/test"
+        request.accept.best_match.return_value = "application/json"
+
+        resp = handle_http_exception(request, exc)
+        assert resp.status_code == 429
+        assert resp.headers.get("Retry-After") is None
+        assert resp.content.error_detail.retry_after is None  # type: ignore[union-attr]
 
     def test_http_429_explicit_retry_after_takes_precedence(self) -> None:
         """An explicit upstream ``Retry-After`` wins over the reset header."""

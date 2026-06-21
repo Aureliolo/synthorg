@@ -1,6 +1,7 @@
 """Integration tests for provider controller -- DB override behavior."""
 
 import json
+from collections.abc import AsyncIterator
 
 import pytest
 from litestar import Litestar
@@ -59,19 +60,21 @@ async def _build_app_with_db_providers(
 
 
 @pytest.fixture
-async def fake_persistence() -> FakePersistenceBackend:
-    """In-memory persistence backend."""
+async def fake_persistence() -> AsyncIterator[FakePersistenceBackend]:
+    """In-memory persistence backend, disconnected on teardown."""
     backend = FakePersistenceBackend()
     await backend.connect()
-    return backend
+    yield backend
+    await backend.disconnect()
 
 
 @pytest.fixture
-async def fake_message_bus() -> FakeMessageBus:
-    """In-memory message bus."""
+async def fake_message_bus() -> AsyncIterator[FakeMessageBus]:
+    """In-memory message bus, stopped on teardown."""
     bus = FakeMessageBus()
     await bus.start()
-    return bus
+    yield bus
+    await bus.stop()
 
 
 @pytest.mark.integration

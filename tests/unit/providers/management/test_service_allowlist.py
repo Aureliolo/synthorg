@@ -298,7 +298,7 @@ class TestCreateFromPresetAllowlistTrust:
         """Preset default URL is in the seeded allowlist, so trust_url=True."""
         with (
             patch(
-                "synthorg.providers.management.service.models_from_litellm",
+                "synthorg.providers.management._preset_creation.models_from_litellm",
                 return_value=(),
             ),
             patch(
@@ -323,7 +323,7 @@ class TestCreateFromPresetAllowlistTrust:
         """User-supplied base_url not in allowlist gets trust_url=False."""
         with (
             patch(
-                "synthorg.providers.management.service.models_from_litellm",
+                "synthorg.providers.management._preset_creation.models_from_litellm",
                 return_value=(),
             ),
             patch(

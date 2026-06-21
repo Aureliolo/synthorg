@@ -1,8 +1,8 @@
 """The provider presets endpoint is cursor-paginated.
 
-``GET /providers/presets`` previously returned an unbounded list; it now
-returns a ``PaginatedResponse`` so a growing preset catalogue cannot
-return an unbounded page.
+``GET /providers/presets`` returns a ``PaginatedResponse`` with a bounded
+page and a cursor, so a growing preset catalogue cannot return an
+unbounded page.
 """
 
 import pytest

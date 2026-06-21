@@ -7,7 +7,14 @@ module under the project size limit.
 from collections import Counter
 from typing import ClassVar, Final, Self
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    model_validator,
+)
 
 from synthorg.budget.quota import DegradationConfig, SubscriptionConfig
 from synthorg.config.model_metadata import ModelMetadata
@@ -339,8 +346,6 @@ def unwrap_provider_configs_envelope[T](
     Returns:
         The validated provider map, or *fallback* on any failure.
     """
-    from pydantic import ValidationError  # noqa: PLC0415
-
     if not isinstance(raw, dict):
         logger.warning(
             SETTINGS_FETCH_FAILED,

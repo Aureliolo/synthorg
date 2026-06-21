@@ -278,7 +278,7 @@ class TestCreateFromPreset:
             default_models=(),
         )
         monkeypatch.setattr(
-            "synthorg.providers.management.service.get_preset",
+            "synthorg.providers.management._preset_creation.get_preset",
             lambda name: test_preset if name == "test-provider" else None,
         )
         request = CreateFromPresetRequest(

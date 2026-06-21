@@ -1,10 +1,11 @@
 # module-kind: orchestrator
 """Atomic persistence + hot-reload of provider configurations.
 
-Extracted from :mod:`synthorg.providers.management.service` to keep that
-module under its size budget. Holds the serialise / DB-write / in-memory
-swap sequence and its rollback, each stage owning a distinct failure type
-so the failing stage is unambiguous.
+Owns the serialise / DB-write / in-memory swap sequence and its rollback.
+Each stage raises a distinct failure type so the failing stage is
+unambiguous, and the hot-reload is made atomic with the DB write: a swap
+failure rolls the persisted blob back so storage and the running registry
+never diverge.
 """
 
 from collections.abc import Callable
@@ -79,8 +80,6 @@ async def apply_provider_change(
 
     # Serialise into the versioned envelope (distinct from the DB write so
     # a serialise defect is not mistaken for a storage failure).
-    # ``error=str(exc)`` / ``exc_info`` would risk leaking credential
-    # material via exception text, so we redact and omit the traceback.
     try:
         serialized = serialize_provider_envelope(new_providers)
     except Exception as exc:
@@ -96,10 +95,10 @@ async def apply_provider_change(
 
     # Snapshot the prior persisted state for rollback (parsed configs, plus
     # whether a DB row existed), then write the new blob.
-    # ``providers.configs`` is a sensitive setting, so the raw
-    # ``entry.value`` is ciphertext and not safe to re-set directly; the
-    # parsed snapshot is re-serialised on rollback so the same
-    # validate-then-encrypt write path runs.
+    # ``providers.configs`` is a sensitive setting, so ``get_entry`` returns
+    # a masked placeholder rather than the stored blob; the raw value is
+    # unrecoverable from the entry. The parsed snapshot is re-serialised on
+    # rollback so the same validate-then-encrypt write path runs.
     prior_entry = await settings_service.get_entry("providers", "configs")
     had_db_row = prior_entry.source == SettingSource.DATABASE
     prior_providers = dict(await config_resolver.get_provider_configs())
@@ -116,14 +115,15 @@ async def apply_provider_change(
         )
         raise ProviderPersistenceError(msg) from exc
 
-    # Hot-reload: swap in AppState (both sync, no await gap). On failure the
-    # DB write is rolled back so the persisted blob and the running
-    # registry stay consistent, and an ERROR alert fires.
+    # Hot-reload: swap the registry and router in one atomic field-level
+    # update so a partial swap cannot leave the registry new while the
+    # router is stale. On failure the DB write is rolled back so the
+    # persisted blob and the running registry stay consistent, and an
+    # ERROR alert fires.
     from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
 
     try:
-        app_state.swap_provider_registry(registry)
-        app_state.wire(ProvidersStateSlice, model_router=router)
+        app_state.wire(ProvidersStateSlice, registry=registry, model_router=router)
     except Exception as exc:
         reraise_critical(exc)
         await _rollback_configs(
@@ -175,7 +175,7 @@ async def _rollback_configs(
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.error(
-            PROVIDER_HOT_RELOAD_FAILED,
+            PROVIDER_CONFIG_PERSIST_FAILED,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
             rollback_failed=True,

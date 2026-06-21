@@ -96,8 +96,12 @@ _PROBLEM_JSON: Final[str] = "application/problem+json"
 _MAX_DETAIL_LEN: Final[int] = 512
 
 # Headers safe to forward from HTTPException to the client response.
+# ``retry-after`` is intentionally absent: the handler owns it canonically
+# (parsed into ``retry_after`` and re-emitted as a single ``Retry-After``),
+# so passing the raw upstream header through as well would duplicate it on
+# the wire whenever the upstream used a different header casing.
 _ALLOWED_PASSTHROUGH_HEADERS: Final[frozenset[str]] = frozenset(
-    {"retry-after", "www-authenticate", "allow"},
+    {"www-authenticate", "allow"},
 )
 
 # Litestar's RateLimitMiddleware emits the IETF draft ``RateLimit-Reset``

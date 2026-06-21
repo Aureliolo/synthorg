@@ -125,13 +125,13 @@ def auto_wire_meetings(  # noqa: PLR0913 -- meeting wiring needs the full dep se
     )
 
     if orchestrator_was_auto_wired and missing_dependencies:
-        # One consolidated record for an auto-wired orchestrator left with
-        # an unconfigured caller. ``provider_registry is None`` is the
-        # expected empty-company / pre-setup state (this runs at
-        # construction time, before the provider registry is wired), so it
-        # logs at INFO; any other missing dependency is unexpected and logs
-        # at WARNING. Replaces the former per-site warnings here and in
-        # ``_wire_meeting_orchestrator`` that emitted two records per boot.
+        # A single consolidated record covers an auto-wired orchestrator
+        # left with an unconfigured caller, spanning both this site and the
+        # ``_wire_meeting_orchestrator`` build below. ``provider_registry is
+        # None`` is the expected empty-company / pre-setup state (this runs
+        # at construction time, before the provider registry is wired), so
+        # it logs at INFO; any other missing dependency is unexpected and
+        # logs at WARNING.
         log = logger.info if provider_registry is None else logger.warning
         log(
             API_MEETINGS_WIRING_DEFERRED,
@@ -288,10 +288,10 @@ def _wire_meeting_orchestrator(
             provider_registry=provider_registry,
         )
         if missing:
-            # Built silently: the single consolidated
+            # Build the unconfigured caller without logging here: the single
             # ``API_MEETINGS_WIRING_DEFERRED`` record in ``auto_wire_meetings``
-            # owns operator messaging for the unconfigured-caller state, so a
-            # second warning here would just duplicate it per boot.
+            # owns operator messaging for this state, so a warning here would
+            # duplicate it.
             agent_caller: AgentCaller = build_unconfigured_meeting_agent_caller(
                 missing_dependencies=missing,
             )

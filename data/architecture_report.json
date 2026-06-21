@@ -1196,8 +1196,8 @@
     },
     "src/synthorg/providers/management/service.py": {
       "cap": 1100,
-      "loc": 1099,
-      "ratio": 0.999,
+      "loc": 1059,
+      "ratio": 0.963,
       "tier": "complex_service"
     },
     "src/synthorg/providers/models.py": {
@@ -1383,7 +1383,7 @@
     "synthorg.communication.mcp_errors": 27,
     "synthorg.communication.message": 29,
     "synthorg.communication.state": 23,
-    "synthorg.config.schema": 53,
+    "synthorg.config.schema": 54,
     "synthorg.core.agent": 156,
     "synthorg.core.approval": 36,
     "synthorg.core.auth.models": 32,
@@ -1448,7 +1448,7 @@
     "synthorg.meta.models": 64,
     "synthorg.meta.signal_models": 23,
     "synthorg.notifications.models": 20,
-    "synthorg.observability": 1635,
+    "synthorg.observability": 1636,
     "synthorg.observability.background_tasks": 25,
     "synthorg.observability.events.api": 176,
     "synthorg.observability.events.chief_of_staff": 29,
@@ -1463,7 +1463,7 @@
     "synthorg.observability.events.memory": 55,
     "synthorg.observability.events.meta": 61,
     "synthorg.observability.events.ontology": 21,
-    "synthorg.observability.events.provider": 42,
+    "synthorg.observability.events.provider": 43,
     "synthorg.observability.events.security": 73,
     "synthorg.observability.events.settings": 38,
     "synthorg.observability.events.tool": 24,
@@ -1482,8 +1482,8 @@
     "synthorg.persistence.state": 66,
     "synthorg.project_brain.models": 24,
     "synthorg.providers.cost_recording": 38,
-    "synthorg.providers.enums": 91,
-    "synthorg.providers.errors": 44,
+    "synthorg.providers.enums": 92,
+    "synthorg.providers.errors": 45,
     "synthorg.providers.models": 117,
     "synthorg.providers.protocol": 68,
     "synthorg.providers.registry": 33,
@@ -1656,8 +1656,8 @@
       "loc": 433
     },
     "synthorg.providers.management.service:ProviderManagementService": {
-      "lcom4": 1,
-      "loc": 900
+      "lcom4": 2,
+      "loc": 860
     },
     "synthorg.settings.dispatcher:SettingsChangeDispatcher": {
       "lcom4": 1,

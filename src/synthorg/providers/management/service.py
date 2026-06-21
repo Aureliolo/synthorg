@@ -42,6 +42,7 @@ from synthorg.observability import (
 )
 from synthorg.observability.events.provider import (
     PROVIDER_ALREADY_EXISTS,
+    PROVIDER_CONFIG_PERSIST_FAILED,
     PROVIDER_CONNECTION_TESTED,
     PROVIDER_DISCOVERY_FAILED,
     PROVIDER_DISCOVERY_SELF_CONNECTION_BLOCKED,
@@ -84,9 +85,9 @@ from synthorg.providers.management._helpers import (
     build_discovery_headers,
     build_provider_config,
     infer_preset_hint,
-    models_from_litellm,
 )
 from synthorg.providers.management._persistence import apply_provider_change
+from synthorg.providers.management._preset_creation import create_provider_from_preset
 from synthorg.providers.management.allowlist import DiscoveryAllowlistManager
 from synthorg.providers.management.audit_service import ProviderAuditService
 from synthorg.providers.management.dtos import (
@@ -104,7 +105,6 @@ from synthorg.providers.models import ChatMessage
 from synthorg.providers.presets import (
     CloudPreset,
     LocalPreset,
-    default_models_for,
     get_preset,
 )
 from synthorg.providers.routing.router import ModelRouter
@@ -708,6 +708,10 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
     ) -> ProviderConfig:
         """Create a provider from a preset template.
 
+        Thin delegator to :func:`create_provider_from_preset` (in
+        ``_preset_creation``), which owns the preset resolution and
+        model-seed selection.
+
         Returns:
             The newly created and persisted ``ProviderConfig`` built from
             the preset template and request overrides.
@@ -716,66 +720,7 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             ProviderValidationError: If the preset is unknown.
             ProviderAlreadyExistsError: If the name is taken.
         """
-        preset = get_preset(request.preset_name)
-        if preset is None:
-            msg = f"Unknown preset: {request.preset_name!r}"
-            logger.warning(
-                PROVIDER_VALIDATION_FAILED,
-                preset=request.preset_name,
-                error=msg,
-            )
-            raise ProviderValidationError(msg)
-
-        prefer_live = getattr(preset, "prefer_live_discovery", False)
-        if request.models is not None:
-            models = request.models
-        elif preset.auth_type == AuthType.NONE or prefer_live:
-            # Local providers AND live-discovery gateways skip the static
-            # LiteLLM model_cost table (which would surface the wrong
-            # catalogue for an OpenAI-compatible gateway), seeding from the
-            # curated list and relying on live discovery in
-            # _maybe_discover_preset_models below.
-            models = default_models_for(preset)
-        else:
-            litellm_models = models_from_litellm(preset.litellm_provider)
-            models = litellm_models or default_models_for(preset)
-        base_url = request.base_url or preset.default_base_url
-        if preset.requires_base_url and not base_url:
-            msg = (
-                f"Preset {preset.name!r} requires a base URL -- "
-                "provide one via base_url"
-            )
-            logger.warning(
-                PROVIDER_VALIDATION_FAILED,
-                preset=request.preset_name,
-                error=msg,
-            )
-            raise ProviderValidationError(msg)
-        auth_type = request.auth_type or preset.auth_type
-        models = await self._maybe_discover_preset_models(
-            preset,
-            base_url,
-            models,
-            auth_type=auth_type,
-            api_key=(
-                request.api_key.get_secret_value()
-                if request.api_key is not None
-                else None
-            ),
-        )
-        create_request = CreateProviderRequest(
-            name=request.name,
-            driver=preset.driver,
-            litellm_provider=preset.litellm_provider,
-            auth_type=auth_type,
-            api_key=request.api_key,
-            subscription_token=request.subscription_token,
-            tos_accepted=request.tos_accepted,
-            base_url=base_url,
-            models=models,
-            preset_name=preset.name,
-        )
-        return await self.create_provider(create_request)
+        return await create_provider_from_preset(self, request)
 
     async def _maybe_discover_preset_models(
         self,
@@ -792,10 +737,14 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
 
         - **No-auth local** (``auth_type == NONE``): discover only when no
           seed models were supplied, with no auth headers.
-        - **Live-discovery gateway** (``preset.prefer_live_discovery`` and
-          an API-key ``api_key``): discover even when a curated seed
+        - **Live-discovery gateway** (``preset.prefer_live_discovery``, an
+          API-key ``api_key``, and the base URL still pointing at the
+          preset's canonical host): discover even when a curated seed
           exists, sending the key as a Bearer credential, so the full live
-          catalogue replaces the seed on create.
+          catalogue replaces the seed on create. The Bearer credential is
+          sent only when ``base_url`` matches ``preset.default_base_url``;
+          a user-overridden host keeps the seed and is never handed the
+          key (confused-deputy guard).
 
         Args:
             preset: Resolved preset definition.
@@ -807,13 +756,18 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         Returns:
             Discovered models if any, otherwise the seed models.
         """
-        prefer_live = getattr(preset, "prefer_live_discovery", False)
+        prefer_live = isinstance(preset, CloudPreset) and preset.prefer_live_discovery
         headers: dict[str, str] | None
         if auth_type == AuthType.NONE:
             if models:
                 return models
             headers = None
-        elif prefer_live and auth_type == AuthType.API_KEY and api_key:
+        elif (
+            prefer_live
+            and auth_type == AuthType.API_KEY
+            and api_key
+            and base_url == preset.default_base_url
+        ):
             headers = {"Authorization": f"Bearer {api_key}"}
         else:
             return models
@@ -1044,11 +998,12 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             await self._validate_and_persist(dict(snapshot))
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised below
             reraise_critical(exc)
-            logger.warning(
-                PROVIDER_VALIDATION_FAILED,
+            logger.error(
+                PROVIDER_CONFIG_PERSIST_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
                 provider_count=len(snapshot),
+                rollback_failed=True,
             )
             return False
         return True
