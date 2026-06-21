@@ -155,7 +155,7 @@ func assertComposeExists(safeDir string) error {
 		return nil
 	}
 	if errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("compose.yml not found in %s -- run 'synthorg init' first", safeDir)
+		return fmt.Errorf("compose.yml not found in %s", safeDir)
 	}
 	return fmt.Errorf("checking compose.yml: %w", err)
 }
@@ -561,11 +561,11 @@ func dockerPullWithRetry(
 ) error {
 	var lastErr error
 	for attempt := 1; attempt <= attempts; attempt++ {
-		if err := dockerRunQuiet(ctx, info, "pull", imageRef); err == nil {
+		err := dockerRunQuiet(ctx, info, "pull", imageRef)
+		if err == nil {
 			return nil
-		} else {
-			lastErr = err
 		}
+		lastErr = err
 		if attempt == attempts || ctx.Err() != nil {
 			break
 		}

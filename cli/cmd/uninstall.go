@@ -2,9 +2,7 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -57,14 +55,13 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 	}
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	errUI := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
-	state, loadErr := config.Load(opts.DataDir)
+	// Uninstall is a teardown path: a broken, invalid, or absent on-disk
+	// config must never block the operator from removing whatever IS there.
+	// LoadForTeardown parses what it can (never runs strict Validate) and
+	// returns an advisory-only error.
+	state, loadErr := config.LoadForTeardown(opts.DataDir)
 	if loadErr != nil {
-		// Uninstall is a teardown path: a broken on-disk config must
-		// not block the operator from removing whatever IS there.
-		// Fall back to a sanitised State seeded with --data-dir so
-		// safeStateDir can still resolve a destination directory.
-		errUI.Warn(fmt.Sprintf("Could not load config (%v); continuing teardown with --data-dir only.", loadErr))
-		state = config.State{DataDir: opts.DataDir}
+		errUI.Warn(fmt.Sprintf("Could not fully load config (%v); continuing teardown with what could be read.", loadErr))
 	}
 	safeDir, err := safeStateDir(state)
 	if err != nil {
@@ -78,7 +75,7 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	removeAllShellCompletions(ctx, out, errUI)
-	if err := confirmAndRemoveBinary(cmd, safeDir, autoAccept); err != nil {
+	if err := confirmAndRemoveBinary(cmd, autoAccept); err != nil {
 		return err
 	}
 	out.Blank()
@@ -91,12 +88,11 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 // (optionally) removes the SynthOrg images. Skipped entirely when
 // Docker is not available; warns to errUI in that case.
 func uninstallContainers(cmd *cobra.Command, ctx context.Context, safeDir string, out, errUI *ui.UI, autoAccept bool) error {
-	info, dockerErr := docker.Detect(ctx)
-	if dockerErr != nil {
-		errUI.Warn(fmt.Sprintf("Docker not available, cannot stop containers: %v", dockerErr))
+	info, dockerAvailable := detectDockerForTeardown(ctx, errUI)
+	if !dockerAvailable {
 		return nil
 	}
-	if err := stopAndRemoveVolumes(cmd, info, safeDir, out, autoAccept, uninstallKeepData); err != nil {
+	if err := stopAndRemoveVolumes(cmd, info, safeDir, out, errUI, autoAccept, uninstallKeepData); err != nil {
 		return err
 	}
 	if uninstallKeepImages {
@@ -157,8 +153,21 @@ func removeAllShellCompletions(ctx context.Context, out, errUI *ui.UI) {
 	sp.Success("Shell completions removed")
 }
 
-func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, dataDir string, out *ui.UI, autoAccept bool, keepData bool) error {
+func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, dataDir string, out, errUI *ui.UI, autoAccept bool, keepData bool) error {
 	ctx := cmd.Context()
+	// No compose.yml means an uninitialised install: there is nothing to
+	// stop, so skip `down` and let teardown continue to data/binary removal
+	// rather than hard-failing before it. A non-not-found stat error (e.g.
+	// permission) warns but still skips, keeping teardown best-effort.
+	composePath, statErr := composeFilePath(dataDir)
+	if statErr != nil {
+		errUI.Warn(fmt.Sprintf("Could not check for compose.yml: %v; skipping container teardown.", statErr))
+		return nil
+	}
+	if composePath == "" {
+		out.Step(msgNothingToStop)
+		return nil
+	}
 	removeVolumes, err := shouldRemoveVolumes(keepData, autoAccept)
 	if err != nil {
 		return err
@@ -170,6 +179,13 @@ func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, dataDir string, 
 
 	sp := out.StartSpinner("Stopping containers...")
 	if err := composeRunQuiet(ctx, info, dataDir, downArgs...); err != nil {
+		// A compose file that vanished mid-teardown, or any docker "no
+		// configuration file provided" error, means there was nothing to
+		// stop. Translate the jargon and keep tearing down.
+		if isNotInitialisedErr(err) {
+			sp.Success(msgNothingToStop)
+			return nil
+		}
 		sp.Error("Failed to stop containers")
 		return fmt.Errorf("stopping containers: %w", err)
 	}
@@ -320,38 +336,27 @@ func isUNCShareRoot(dir string) bool {
 	return dir == vol || dir == vol+`\` || dir == vol+"/"
 }
 
-// removeDataDir removes the data directory. On Windows, if the running
-// binary lives inside the directory, it removes everything except the binary.
+// removeDataDir removes the data directory. The installed binary lives
+// under a sibling `bin` tree, never inside the data dir, so a plain
+// RemoveAll is sufficient and never deletes the running CLI.
 func removeDataDir(cmd *cobra.Command, dir string) error {
 	opts := GetGlobalOpts(cmd.Context())
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
-	execPath, execErr := os.Executable()
-	if execErr != nil {
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: cannot resolve executable path: %v\n", execErr)
+	// CodeQL go/path-injection on this sink is accepted by design: dir is the
+	// operator's own --data-dir on a single-user CLI (no privilege boundary),
+	// already format-validated by SecurePath. Containment is impossible because
+	// the contract honours an arbitrary absolute --data-dir verbatim.
+	if err := os.RemoveAll(dir); err != nil {
+		return fmt.Errorf("removing config directory: %w", err)
 	}
-	if execErr == nil {
-		if resolved, err := filepath.EvalSymlinks(execPath); err == nil {
-			execPath = resolved
-		}
-	}
-	if execErr == nil && runtime.GOOS == "windows" && isInsideDir(execPath, dir) {
-		if err := removeAllExcept(dir, execPath); err != nil {
-			return fmt.Errorf("removing config directory: %w", err)
-		}
-		out.Success(fmt.Sprintf("Removed contents of %s (binary skipped -- still running)", dir))
-	} else {
-		if err := os.RemoveAll(dir); err != nil {
-			return fmt.Errorf("removing config directory: %w", err)
-		}
-		out.Success(fmt.Sprintf("Removed %s", dir))
-	}
+	out.Success(fmt.Sprintf("Removed %s", dir))
 	return nil
 }
 
 // confirmAndRemoveBinary asks to remove the CLI binary. On Windows, spawns
 // a detached process that waits for the current process to exit, then
 // deletes the binary and cleans up empty parent directories.
-func confirmAndRemoveBinary(cmd *cobra.Command, dataDir string, autoAccept bool) error {
+func confirmAndRemoveBinary(cmd *cobra.Command, autoAccept bool) error {
 	removeBinary := autoAccept
 	if !autoAccept {
 		form := huh.NewForm(
@@ -383,7 +388,7 @@ func confirmAndRemoveBinary(cmd *cobra.Command, dataDir string, autoAccept bool)
 	if runtime.GOOS != "windows" {
 		return removeUnixBinary(cmd, execPath)
 	}
-	return scheduleWindowsCleanup(cmd, execPath, dataDir)
+	return scheduleWindowsCleanup(cmd, execPath)
 }
 
 func removeUnixBinary(cmd *cobra.Command, execPath string) error {
@@ -402,39 +407,26 @@ func removeUnixBinary(cmd *cobra.Command, execPath string) error {
 // current process to exit, then deletes the binary, empty parent dirs,
 // and the .bat file itself. Uses a temp .bat instead of inline cmd /c
 // because goto/labels don't work in single-line cmd /c commands.
-func scheduleWindowsCleanup(cmd *cobra.Command, execPath, dataDir string) error {
+//
+// It tidies the install tree only: the binary, its `bin` dir, and the
+// app root (the parent of `bin`). The data dir is a sibling removed
+// separately by uninstallData, so this never touches it.
+func scheduleWindowsCleanup(cmd *cobra.Command, execPath string) error {
 	opts := GetGlobalOpts(cmd.Context())
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
-	pid := os.Getpid()
 	binDir := filepath.Dir(execPath)
+	appRoot := filepath.Dir(binDir)
 
-	// Reject paths containing characters that would break .bat quoting:
-	// double-quote (command injection) and percent (cmd.exe variable expansion).
-	if strings.ContainsAny(execPath, `"%`) || strings.ContainsAny(binDir, `"%`) || strings.ContainsAny(dataDir, `"%`) {
-		return fallbackManualCleanup(cmd, execPath, fmt.Errorf("path contains unsafe characters for batch script (double-quote or percent)"))
+	// Reject paths with characters that would break .bat quoting or let an
+	// install path inject cmd.exe syntax: double-quote, percent (variable
+	// expansion), and the metacharacters caret/redirection/pipe/ampersand.
+	for _, p := range []string{execPath, binDir, appRoot} {
+		if strings.ContainsAny(p, "\"%^<>|&") {
+			return fallbackManualCleanup(cmd, execPath, fmt.Errorf("path contains unsafe characters for batch script (one of \"%%^<>|&)"))
+		}
 	}
 
-	// Write cleanup script to a temp .bat file next to the binary
-	// (same filesystem, survives after this process exits).
-	batContent := fmt.Sprintf(
-		"@echo off\r\n"+
-			"for /L %%%%i in (1,1,30) do (\r\n"+
-			"  tasklist /fi \"PID eq %d\" 2>nul | find \"%d\" >nul || goto :cleanup\r\n"+
-			"  timeout /t 1 /nobreak >nul\r\n"+
-			")\r\n"+
-			"goto :done\r\n"+
-			":cleanup\r\n"+
-			"del /f /q \"%s\"\r\n"+
-			"rmdir \"%s\" 2>nul\r\n"+
-			"rmdir \"%s\" 2>nul\r\n"+
-			":done\r\n"+
-			"del /f /q \"%%~f0\"\r\n",
-		pid, pid,
-		execPath,
-		binDir,
-		dataDir,
-	)
-
+	batContent := windowsCleanupBat(execPath, binDir, appRoot)
 	batFile, err := os.CreateTemp(binDir, "synthorg-cleanup-*.bat")
 	if err != nil {
 		return fallbackManualCleanup(cmd, execPath, err)
@@ -466,6 +458,33 @@ func scheduleWindowsCleanup(cmd *cobra.Command, execPath, dataDir string) error 
 	return nil
 }
 
+// windowsCleanupBat builds the cleanup .bat body: it polls for the current
+// process to exit, then deletes the binary and removes the now-empty `bin`
+// dir and app root (both best-effort via 2>nul, no-op if anything else still
+// lives there), and finally self-deletes. Callers MUST validate execPath /
+// binDir / appRoot for cmd.exe metacharacters before passing them in.
+func windowsCleanupBat(execPath, binDir, appRoot string) string {
+	pid := os.Getpid()
+	return fmt.Sprintf(
+		"@echo off\r\n"+
+			"for /L %%%%i in (1,1,30) do (\r\n"+
+			"  tasklist /fi \"PID eq %d\" 2>nul | find \"%d\" >nul || goto :cleanup\r\n"+
+			"  timeout /t 1 /nobreak >nul\r\n"+
+			")\r\n"+
+			"goto :done\r\n"+
+			":cleanup\r\n"+
+			"del /f /q \"%s\"\r\n"+
+			"rmdir \"%s\" 2>nul\r\n"+
+			"rmdir \"%s\" 2>nul\r\n"+
+			":done\r\n"+
+			"del /f /q \"%%~f0\"\r\n",
+		pid, pid,
+		execPath,
+		binDir,
+		appRoot,
+	)
+}
+
 func fallbackManualCleanup(cmd *cobra.Command, execPath string, cause error) error {
 	opts := GetGlobalOpts(cmd.Context())
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
@@ -473,90 +492,4 @@ func fallbackManualCleanup(cmd *cobra.Command, execPath string, cause error) err
 	escaped := strings.ReplaceAll(execPath, "'", "''")
 	out.HintNextStep(fmt.Sprintf("To finish cleanup after exit, run: powershell -Command \"Remove-Item -LiteralPath '%s'\"", escaped))
 	return nil
-}
-
-// isInsideDir reports whether child is inside (or equal to) parent.
-// On Windows, the comparison is case-insensitive (NTFS is case-insensitive).
-// Note: strings.ToLower is correct for ASCII paths; non-ASCII Unicode paths
-// on NTFS could require full Unicode case-folding (golang.org/x/text/cases),
-// but Windows user profile and app-data paths are overwhelmingly ASCII.
-func isInsideDir(child, parent string) bool {
-	child = filepath.Clean(child)
-	parent = filepath.Clean(parent)
-	// Case-fold on Windows so that C:\Foo and C:\foo are treated as equal.
-	if runtime.GOOS == "windows" {
-		child = strings.ToLower(child)
-		parent = strings.ToLower(parent)
-	}
-	rel, err := filepath.Rel(parent, child)
-	if err != nil {
-		return false
-	}
-	return !strings.HasPrefix(rel, "..")
-}
-
-type walkEntry struct {
-	path  string
-	isDir bool
-}
-
-// caseFoldOnWindows lowercases s for case-insensitive comparison on
-// Windows (NTFS is case-insensitive). On other platforms it is the
-// identity function.
-func caseFoldOnWindows(s string) string {
-	if runtime.GOOS == "windows" {
-		return strings.ToLower(s)
-	}
-	return s
-}
-
-// collectRemoveEntries walks root and returns every descendant entry
-// except root itself and the path that equals exceptCmp (case-folded
-// on Windows). The order matches filepath.WalkDir (parents before
-// children), so callers iterate in reverse to remove deepest-first.
-func collectRemoveEntries(root, exceptCmp string) ([]walkEntry, error) {
-	var entries []walkEntry
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		cleanPath := filepath.Clean(path)
-		if cleanPath == root {
-			return nil
-		}
-		if caseFoldOnWindows(cleanPath) == exceptCmp {
-			return nil
-		}
-		entries = append(entries, walkEntry{path: path, isDir: d.IsDir()})
-		return nil
-	})
-	return entries, err
-}
-
-// removeAllExcept removes all files and directories under root except the
-// file at except (and its ancestor directories up to root). The root
-// directory itself is preserved. Entries are removed deepest-first so
-// that empty directories are cleaned up.
-func removeAllExcept(root, except string) error {
-	root = filepath.Clean(root)
-	except = filepath.Clean(except)
-	exceptCmp := caseFoldOnWindows(except)
-	entries, err := collectRemoveEntries(root, exceptCmp)
-	if err != nil {
-		return err
-	}
-
-	// Remove in reverse order (deepest first). Directory removal failures
-	// are expected for ancestors of the excluded file (non-empty); other
-	// errors (files, permission-denied dirs) are collected and reported.
-	var errs []error
-	for i := len(entries) - 1; i >= 0; i-- {
-		if err := os.Remove(entries[i].path); err != nil {
-			if entries[i].isDir && isInsideDir(except, entries[i].path) {
-				continue // expected: ancestor of excluded file is non-empty
-			}
-			errs = append(errs, err)
-		}
-	}
-	return errors.Join(errs...)
 }

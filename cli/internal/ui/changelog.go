@@ -194,7 +194,8 @@ func flattenCommitInline(s string) string {
 }
 
 // RenderFallbackNote returns the dimmed status line shown for versions that
-// have no Highlights block (pre-#1555 releases or No-Highlights opt-out).
+// have no Highlights block (releases predating the AI-highlights feature, or
+// when the operator has opted out of highlights).
 func RenderFallbackNote(opts Options) string {
 	st := newChangelogStyle(opts)
 	const text = "No AI highlights -- showing commit log"

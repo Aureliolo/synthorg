@@ -334,6 +334,63 @@ func LoadAllowMissingMasterKey(dataDir string) (State, error) {
 	return loadWith(dataDir, State.ValidateAllowMissingMasterKey)
 }
 
+// LoadForTeardown reads State on a best-effort basis for destroy paths
+// (`synthorg wipe` / `synthorg uninstall`). Unlike Load it NEVER runs
+// Validate and never refuses on a missing, unreadable, or invalid config:
+// a teardown command exists to delete everything, so it must parse what it
+// can, ignore what it cannot, and still tear down the rest.
+//
+// The returned State is ALWAYS safe to drive teardown with: DataDir is
+// canonicalised to the SecurePath form so safeStateDir can resolve a
+// destination. The returned error is ADVISORY ONLY -- it signals that the
+// on-disk config could not be read or parsed so the caller can warn, but
+// callers MUST proceed with teardown regardless of it.
+func LoadForTeardown(dataDir string) (State, error) {
+	safeDir, err := SecurePath(dataDir)
+	if err != nil {
+		return State{}, err
+	}
+	// Seed with the resolved dir so a corrupt / absent config still leaves
+	// safeStateDir somewhere to operate.
+	seeded := State{DataDir: safeDir}
+	path := StatePath(safeDir)
+	data, readErr := os.ReadFile(path) //nolint:gosec // G304: path is the state file under the SecurePath-cleaned data dir
+	if readErr != nil {
+		if errors.Is(readErr, os.ErrNotExist) {
+			// Uninitialised / orphan data dir: nothing persisted to read.
+			return seeded, nil
+		}
+		return seeded, fmt.Errorf("%w %s: %w", ErrReading, path, readErr)
+	}
+	s := DefaultState()
+	// DefaultState seeds DataDir with the platform default, but for teardown
+	// targeting the persisted value must win and an OMITTED data_dir must fall
+	// back to the caller-supplied dir, not the platform default. Clearing it
+	// before unmarshal lets the absent-field branch below pick safeDir.
+	s.DataDir = ""
+	if err := json.Unmarshal(data, &s); err != nil {
+		return seeded, fmt.Errorf("%w %s: %w", ErrParsing, path, err)
+	}
+	// Deliberately NO Validate: an out-of-range port, a missing master_key,
+	// or any other invariant breach must not stop a destroy command.
+	if s.DataDir != "" {
+		safeLoaded, secErr := SecurePath(s.DataDir)
+		if secErr != nil {
+			rejectedDir := s.DataDir
+			// A persisted data_dir we cannot secure (e.g. traversal) is
+			// dropped in favour of the CLI-supplied dir so teardown still
+			// has a target, but surface it as an advisory so the caller can
+			// warn that the on-disk path was rejected.
+			s.DataDir = safeDir
+			return s, fmt.Errorf("persisted data_dir %q rejected (%w); using %s", rejectedDir, secErr, safeDir)
+		}
+		s.DataDir = safeLoaded
+	} else {
+		s.DataDir = safeDir
+	}
+	return s, nil
+}
+
 // loadWith is the shared body of Load and LoadAllowMissingMasterKey.
 // validate is the per-state validator the caller wants applied to the
 // unmarshalled State; both wrappers pass a method value so the dispatch

@@ -1,23 +1,26 @@
 ---
 title: CLI Config Subcommands
-description: synthorg config get/set/unset/list/path/edit reference, full settable-keys inventory, and tunable value formats.
+description: synthorg config show/get/set/import/unset/list/path/edit reference, full settable-keys inventory, and tunable value formats.
 ---
 
 # CLI Config Subcommands
 
-On-demand reference for `synthorg config` operators. The short summary in `cli/CLAUDE.md` is: `synthorg config <subcommand>` exposes get / set / unset / list / path / edit; compose-affecting keys trigger automatic regeneration.
+On-demand reference for `synthorg config` operators. The short summary in `cli/CLAUDE.md` is: `synthorg config <subcommand>` exposes show / get / set / import / unset / list / path / edit; compose-affecting keys trigger automatic regeneration.
 
 ## Subcommands
 
 | Subcommand | Description |
 |------------|-------------|
 | `show` | Display all current settings (default when no subcommand) |
-| `get <key>` | Get a single config value (42 gettable keys; includes the read-only `memory_backend` and `persistence_backend`) |
-| `set <key> <value>` | Set a config value (40 settable keys; compose-affecting keys trigger regeneration) |
+| `get <key>` | Get a single config value (includes the read-only `memory_backend` and `persistence_backend`) |
+| `set <key> <value> [<key> <value> ...]` | Set one or more config values atomically (compose-affecting keys trigger regeneration) |
+| `import <file>` | Apply many values from a `key=value` file atomically (file-driven batch `set`) |
 | `unset <key>` | Reset a key to its default value |
 | `list` | Show all keys with resolved value and source (env / config / default) |
 | `path` | Print the config file path |
 | `edit` | Open config file in `$VISUAL` / `$EDITOR` |
+
+`set` and `import` apply all pairs atomically: if any key or value is invalid, nothing is written. Both also auto-generate the Fernet `master_key` when `encrypt_secrets` is true and none exists (exactly as `init` does on save), so config can be pre-seeded before `synthorg init`. The `import` file format is one `key=value` per line; blank lines and `#` comments are ignored and surrounding whitespace is trimmed.
 
 ## Settable keys (full inventory)
 

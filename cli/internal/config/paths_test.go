@@ -12,14 +12,19 @@ func TestDataDirNonEmpty(t *testing.T) {
 	if dir == "" {
 		t.Fatal("DataDir returned empty string")
 	}
-	if filepath.Base(dir) != appDirName {
-		t.Errorf("DataDir base = %q, want %q", filepath.Base(dir), appDirName)
+	// The data dir is a `data` subdir under the app tree so the installed
+	// binary (under the sibling `bin` tree) is never inside the wipe target.
+	if filepath.Base(dir) != dataSubDir {
+		t.Errorf("DataDir base = %q, want %q", filepath.Base(dir), dataSubDir)
+	}
+	if filepath.Base(filepath.Dir(dir)) != appDirName {
+		t.Errorf("DataDir parent base = %q, want %q", filepath.Base(filepath.Dir(dir)), appDirName)
 	}
 }
 
 func TestDataDirForOS_Darwin(t *testing.T) {
 	got := dataDirForOS("darwin", "/Users/test", "", "")
-	want := filepath.Join("/Users/test", "Library", "Application Support", appDirName)
+	want := filepath.Join("/Users/test", "Library", "Application Support", appDirName, dataSubDir)
 	if got != want {
 		t.Errorf("darwin: got %q, want %q", got, want)
 	}
@@ -27,7 +32,7 @@ func TestDataDirForOS_Darwin(t *testing.T) {
 
 func TestDataDirForOS_WindowsWithLocalAppData(t *testing.T) {
 	got := dataDirForOS("windows", `C:\Users\test`, `C:\Users\test\AppData\Local`, "")
-	want := filepath.Join(`C:\Users\test\AppData\Local`, appDirName)
+	want := filepath.Join(`C:\Users\test\AppData\Local`, appDirName, dataSubDir)
 	if got != want {
 		t.Errorf("windows (LOCALAPPDATA): got %q, want %q", got, want)
 	}
@@ -35,7 +40,7 @@ func TestDataDirForOS_WindowsWithLocalAppData(t *testing.T) {
 
 func TestDataDirForOS_WindowsFallback(t *testing.T) {
 	got := dataDirForOS("windows", `C:\Users\test`, "", "")
-	want := filepath.Join(`C:\Users\test`, "AppData", "Local", appDirName)
+	want := filepath.Join(`C:\Users\test`, "AppData", "Local", appDirName, dataSubDir)
 	if got != want {
 		t.Errorf("windows (fallback): got %q, want %q", got, want)
 	}
@@ -43,7 +48,7 @@ func TestDataDirForOS_WindowsFallback(t *testing.T) {
 
 func TestDataDirForOS_LinuxWithXDG(t *testing.T) {
 	got := dataDirForOS("linux", "/home/test", "", "/custom/data")
-	want := filepath.Join("/custom/data", appDirName)
+	want := filepath.Join("/custom/data", appDirName, dataSubDir)
 	if got != want {
 		t.Errorf("linux (XDG): got %q, want %q", got, want)
 	}
@@ -51,7 +56,7 @@ func TestDataDirForOS_LinuxWithXDG(t *testing.T) {
 
 func TestDataDirForOS_LinuxFallback(t *testing.T) {
 	got := dataDirForOS("linux", "/home/test", "", "")
-	want := filepath.Join("/home/test", ".local", "share", appDirName)
+	want := filepath.Join("/home/test", ".local", "share", appDirName, dataSubDir)
 	if got != want {
 		t.Errorf("linux (fallback): got %q, want %q", got, want)
 	}
@@ -60,7 +65,7 @@ func TestDataDirForOS_LinuxFallback(t *testing.T) {
 func TestDataDirForOS_FreeBSD(t *testing.T) {
 	// Unknown OS should use the linux/default path.
 	got := dataDirForOS("freebsd", "/home/test", "", "")
-	want := filepath.Join("/home/test", ".local", "share", appDirName)
+	want := filepath.Join("/home/test", ".local", "share", appDirName, dataSubDir)
 	if got != want {
 		t.Errorf("freebsd: got %q, want %q", got, want)
 	}

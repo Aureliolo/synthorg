@@ -601,3 +601,215 @@ func TestConfigSetRejectsUnknownKey(t *testing.T) {
 		t.Fatal("expected error for unknown key")
 	}
 }
+
+// TestConfigSetPreInitAutoGeneratesMasterKey covers #5: setting an
+// unrelated key before `init`, under the encrypt_secrets=true default,
+// must succeed and auto-provision a Fernet master key instead of failing
+// the master-key-required invariant.
+func TestConfigSetPreInitAutoGeneratesMasterKey(t *testing.T) {
+	sandboxRootCmd(t)
+	dir := t.TempDir() // no config saved -> pre-init state
+
+	var buf bytes.Buffer
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(&buf)
+	rootCmd.SetArgs([]string{"config", "set", "auto_pull", "true", "--data-dir", dir})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("pre-init config set should succeed, got: %v", err)
+	}
+
+	// Load runs strict Validate; success here proves the persisted master
+	// key is valid and the unrelated key landed.
+	loaded, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load after pre-init set: %v", err)
+	}
+	if !loaded.AutoPull {
+		t.Error("AutoPull should be true after set")
+	}
+	if !loaded.EncryptSecrets {
+		t.Error("EncryptSecrets should remain true (default)")
+	}
+	if len(loaded.MasterKey) != 44 {
+		t.Errorf("MasterKey length = %d, want 44 (auto-generated Fernet key)", len(loaded.MasterKey))
+	}
+}
+
+// TestConfigSetBatchAppliesAll covers #7: multiple key/value pairs in one
+// invocation are all applied atomically.
+func TestConfigSetBatchAppliesAll(t *testing.T) {
+	sandboxRootCmd(t)
+	dir := t.TempDir()
+
+	var buf bytes.Buffer
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(&buf)
+	rootCmd.SetArgs([]string{
+		"config", "set",
+		"auto_pull", "true",
+		"channel", "dev",
+		"log_level", "debug",
+		"--data-dir", dir,
+	})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("batch config set: %v", err)
+	}
+
+	loaded, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load after batch set: %v", err)
+	}
+	if !loaded.AutoPull || loaded.Channel != "dev" || loaded.LogLevel != "debug" {
+		t.Errorf("batch set incomplete: AutoPull=%v Channel=%q LogLevel=%q",
+			loaded.AutoPull, loaded.Channel, loaded.LogLevel)
+	}
+}
+
+// TestConfigSetBatchInvalidPairPersistsNothing asserts the batch is atomic:
+// an invalid pair anywhere aborts before anything is written.
+func TestConfigSetBatchInvalidPairPersistsNothing(t *testing.T) {
+	sandboxRootCmd(t)
+	dir := t.TempDir()
+	state := config.DefaultState()
+	state.EncryptSecrets = false
+	state.DataDir = dir
+	state.Channel = "stable"
+	if err := config.Save(state); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(&buf)
+	// Second pair is invalid; the whole set must abort.
+	rootCmd.SetArgs([]string{"config", "set", "auto_pull", "true", "channel", "bogus", "--data-dir", dir})
+	if err := rootCmd.Execute(); err == nil {
+		t.Fatal("expected error for an invalid pair")
+	}
+
+	loaded, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load after failed batch: %v", err)
+	}
+	if loaded.AutoPull {
+		t.Error("AutoPull must not be persisted when a later pair fails")
+	}
+	if loaded.Channel != "stable" {
+		t.Errorf("Channel = %q, want stable (unchanged)", loaded.Channel)
+	}
+}
+
+func TestConfigSetOddArgsUsageError(t *testing.T) {
+	sandboxRootCmd(t)
+	dir := t.TempDir()
+
+	var buf bytes.Buffer
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(&buf)
+	rootCmd.SetArgs([]string{"config", "set", "auto_pull", "--data-dir", dir})
+	if err := rootCmd.Execute(); err == nil {
+		t.Fatal("expected a usage error for an odd argument count")
+	}
+}
+
+// TestConfigImportAppliesFile covers #7: a key=value file is applied
+// atomically, equivalent to a batch set.
+func TestConfigImportAppliesFile(t *testing.T) {
+	sandboxRootCmd(t)
+	dir := t.TempDir()
+	file := filepath.Join(dir, "seed.conf")
+	content := "# pre-seed before init\nauto_pull = true\nchannel=dev\n\nlog_level = warn\n"
+	if err := os.WriteFile(file, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(&buf)
+	rootCmd.SetArgs([]string{"config", "import", file, "--data-dir", dir})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("config import: %v", err)
+	}
+
+	loaded, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load after import: %v", err)
+	}
+	if !loaded.AutoPull || loaded.Channel != "dev" || loaded.LogLevel != "warn" {
+		t.Errorf("import incomplete: AutoPull=%v Channel=%q LogLevel=%q",
+			loaded.AutoPull, loaded.Channel, loaded.LogLevel)
+	}
+	if len(loaded.MasterKey) != 44 {
+		t.Errorf("import should also auto-provision a master key, got len %d", len(loaded.MasterKey))
+	}
+}
+
+func TestConfigImportBadLineAborts(t *testing.T) {
+	sandboxRootCmd(t)
+	dir := t.TempDir()
+	file := filepath.Join(dir, "bad.conf")
+	if err := os.WriteFile(file, []byte("auto_pull = true\nthis-line-has-no-equals\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(&buf)
+	rootCmd.SetArgs([]string{"config", "import", file, "--data-dir", dir})
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected an error for a malformed line")
+	}
+	if !strings.Contains(err.Error(), ":2:") {
+		t.Errorf("error should name the offending line (2), got: %v", err)
+	}
+}
+
+func TestParseConfigImportFile(t *testing.T) {
+	dir := t.TempDir()
+
+	t.Run("parses pairs, skips comments and blanks", func(t *testing.T) {
+		file := filepath.Join(dir, "ok.conf")
+		body := "# comment\n\nauto_pull = true\n  channel=dev  \nlog_level=info\n"
+		if err := os.WriteFile(file, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		pairs, err := parseConfigImportFile(file)
+		if err != nil {
+			t.Fatalf("parseConfigImportFile: %v", err)
+		}
+		want := []configPair{
+			{key: "auto_pull", value: "true"},
+			{key: "channel", value: "dev"},
+			{key: "log_level", value: "info"},
+		}
+		if len(pairs) != len(want) {
+			t.Fatalf("got %d pairs, want %d: %+v", len(pairs), len(want), pairs)
+		}
+		for i, p := range pairs {
+			if p != want[i] {
+				t.Errorf("pair %d = %+v, want %+v", i, p, want[i])
+			}
+		}
+	})
+
+	t.Run("rejects line without equals", func(t *testing.T) {
+		file := filepath.Join(dir, "noeq.conf")
+		if err := os.WriteFile(file, []byte("nokeyvalue\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := parseConfigImportFile(file); err == nil {
+			t.Error("expected error for a line without '='")
+		}
+	})
+
+	t.Run("rejects empty key", func(t *testing.T) {
+		file := filepath.Join(dir, "emptykey.conf")
+		if err := os.WriteFile(file, []byte("=value\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := parseConfigImportFile(file); err == nil {
+			t.Error("expected error for an empty key")
+		}
+	})
+}
