@@ -371,12 +371,13 @@ func LoadForTeardown(dataDir string) (State, error) {
 	if s.DataDir != "" {
 		safeLoaded, secErr := SecurePath(s.DataDir)
 		if secErr != nil {
+			rejectedDir := s.DataDir
 			// A persisted data_dir we cannot secure (e.g. traversal) is
 			// dropped in favour of the CLI-supplied dir so teardown still
 			// has a target, but surface it as an advisory so the caller can
 			// warn that the on-disk path was rejected.
 			s.DataDir = safeDir
-			return s, fmt.Errorf("persisted data_dir %q rejected (%w); using %s", path, secErr, safeDir)
+			return s, fmt.Errorf("persisted data_dir %q rejected (%w); using %s", rejectedDir, secErr, safeDir)
 		}
 		s.DataDir = safeLoaded
 	} else {

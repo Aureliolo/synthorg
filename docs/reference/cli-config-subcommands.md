@@ -12,8 +12,8 @@ On-demand reference for `synthorg config` operators. The short summary in `cli/C
 | Subcommand | Description |
 |------------|-------------|
 | `show` | Display all current settings (default when no subcommand) |
-| `get <key>` | Get a single config value (42 gettable keys; includes the read-only `memory_backend` and `persistence_backend`) |
-| `set <key> <value> [<key> <value> ...]` | Set one or more config values atomically (40 settable keys; compose-affecting keys trigger regeneration) |
+| `get <key>` | Get a single config value (includes the read-only `memory_backend` and `persistence_backend`) |
+| `set <key> <value> [<key> <value> ...]` | Set one or more config values atomically (compose-affecting keys trigger regeneration) |
 | `import <file>` | Apply many values from a `key=value` file atomically (file-driven batch `set`) |
 | `unset <key>` | Reset a key to its default value |
 | `list` | Show all keys with resolved value and source (env / config / default) |

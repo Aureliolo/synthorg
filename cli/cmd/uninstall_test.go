@@ -54,7 +54,7 @@ func TestStopAndRemoveVolumes_NoCompose(t *testing.T) {
 	dataDir := t.TempDir() // no compose.yml
 	cmd := newTeardownTestCmd()
 	// A zero docker.Info is never used: the no-compose guard returns first.
-	if err := stopAndRemoveVolumes(cmd, docker.Info{}, dataDir, discardUI(), true, false); err != nil {
+	if err := stopAndRemoveVolumes(cmd, docker.Info{}, dataDir, discardUI(), discardUI(), true, false); err != nil {
 		t.Errorf("stopAndRemoveVolumes (no compose) = %v, want nil", err)
 	}
 }

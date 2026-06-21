@@ -45,6 +45,11 @@ func isNotInitialisedErr(err error) bool {
 // clean), so the os.Stat below operates on an already-sanitised path.
 func composeFilePath(safeDir string) (string, error) {
 	composePath := filepath.Join(safeDir, "compose.yml")
+	// CodeQL go/path-injection on this sink is accepted by design: safeDir is
+	// the operator's own --data-dir on a single-user CLI (no privilege
+	// boundary), already format-validated by SecurePath. Containment is
+	// impossible because the contract honours an arbitrary absolute
+	// --data-dir verbatim.
 	if _, err := os.Stat(composePath); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return "", nil

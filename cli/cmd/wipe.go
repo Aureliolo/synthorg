@@ -288,6 +288,11 @@ func (wc *wipeContext) removeDataDirectory() error {
 		return fmt.Errorf("refusing to remove suspicious path: %s", wc.safeDir)
 	}
 	sp := wc.out.StartSpinner("Removing data directory...")
+	// CodeQL go/path-injection on this sink is accepted by design: safeDir
+	// is the operator's own --data-dir on a single-user CLI (no privilege
+	// boundary), already format-validated by SecurePath and guarded above
+	// against traversal and root/volume targets. Containment is impossible
+	// because the contract honours an arbitrary absolute --data-dir verbatim.
 	if rmErr := os.RemoveAll(wc.safeDir); rmErr != nil {
 		// A partial wipe is not success. Surface the error so the CLI
 		// exits with a non-zero status and the user sees a loud failure

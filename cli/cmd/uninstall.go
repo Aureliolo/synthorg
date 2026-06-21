@@ -92,7 +92,7 @@ func uninstallContainers(cmd *cobra.Command, ctx context.Context, safeDir string
 	if !dockerAvailable {
 		return nil
 	}
-	if err := stopAndRemoveVolumes(cmd, info, safeDir, out, autoAccept, uninstallKeepData); err != nil {
+	if err := stopAndRemoveVolumes(cmd, info, safeDir, out, errUI, autoAccept, uninstallKeepData); err != nil {
 		return err
 	}
 	if uninstallKeepImages {
@@ -153,7 +153,7 @@ func removeAllShellCompletions(ctx context.Context, out, errUI *ui.UI) {
 	sp.Success("Shell completions removed")
 }
 
-func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, dataDir string, out *ui.UI, autoAccept bool, keepData bool) error {
+func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, dataDir string, out, errUI *ui.UI, autoAccept bool, keepData bool) error {
 	ctx := cmd.Context()
 	// No compose.yml means an uninitialised install: there is nothing to
 	// stop, so skip `down` and let teardown continue to data/binary removal
@@ -161,7 +161,7 @@ func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, dataDir string, 
 	// permission) warns but still skips, keeping teardown best-effort.
 	composePath, statErr := composeFilePath(dataDir)
 	if statErr != nil {
-		out.Warn(fmt.Sprintf("Could not check for compose.yml: %v; skipping container teardown.", statErr))
+		errUI.Warn(fmt.Sprintf("Could not check for compose.yml: %v; skipping container teardown.", statErr))
 		return nil
 	}
 	if composePath == "" {
@@ -342,6 +342,10 @@ func isUNCShareRoot(dir string) bool {
 func removeDataDir(cmd *cobra.Command, dir string) error {
 	opts := GetGlobalOpts(cmd.Context())
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+	// CodeQL go/path-injection on this sink is accepted by design: dir is the
+	// operator's own --data-dir on a single-user CLI (no privilege boundary),
+	// already format-validated by SecurePath. Containment is impossible because
+	// the contract honours an arbitrary absolute --data-dir verbatim.
 	if err := os.RemoveAll(dir); err != nil {
 		return fmt.Errorf("removing config directory: %w", err)
 	}
