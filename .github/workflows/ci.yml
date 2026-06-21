@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # The required `CI Pass` context must report on the merge-queue ref so a
+  # dropped pull_request dispatch on a PR head can never permanently block a
+  # merge: with a merge queue the gate is evaluated on the `merge_group` event
+  # at merge time, under GitHub's control, not on the fragile one-shot
+  # per-head dispatch. See docs/reference/claude-reference.md (Merge queue).
+  merge_group:
   workflow_dispatch:
 
 permissions: {}
@@ -53,6 +59,15 @@ jobs:
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
         id: filter
         with:
+          # On `merge_group` the event is neither push nor pull_request, so
+          # paths-filter cannot infer what to diff: tell it explicitly. Both
+          # expressions are empty (falsy) on push / pull_request, where the
+          # action keeps its existing default detection; they are populated
+          # only inside the merge queue. The merge-group head is main-tip +
+          # queued commits, so base_sha is an ancestor of head_sha and the
+          # fetch-depth: 0 checkout above has the history to diff them.
+          base: ${{ github.event.merge_group.base_sha }}
+          ref: ${{ github.event.merge_group.head_sha }}
           # Only the `dashboard` filter survives: every correctness job is
           # de-conditioned (cardinal rule), so the python / docker / doc_claims
           # / runtime_stats filters had no consumer left. `dashboard` still
@@ -1384,6 +1399,10 @@ jobs:
     # BUILD/PERF job (cardinal-rule exemption): production bundle + size
     # budget; skipping it on non-dashboard PRs cannot hide a correctness
     # defect. Allowlisted in check_local_ci_parity.py.
+    # On merge_group the `dashboard` flag is computed correctly (paths-filter
+    # base/ref), so it is the right gate in the queue. Do NOT add a
+    # `github.event_name == 'merge_group'` bypass here: it would run the build
+    # on dashboard-irrelevant queue entries.
     if: (needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -1458,6 +1477,8 @@ jobs:
     # BUILD job (cardinal-rule exemption): Storybook static build; skipping
     # it on non-dashboard PRs cannot hide a correctness defect. Allowlisted
     # in check_local_ci_parity.py.
+    # See dashboard-build: the `dashboard` flag is the correct merge_group
+    # gate; do NOT add a `merge_group` event bypass here.
     if: (needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -1502,6 +1523,8 @@ jobs:
     # dashboard bundle through a headless browser. A non-dashboard PR
     # cannot regress the UI flows, so skipping it there cannot hide a
     # correctness defect. Allowlisted in check_local_ci_parity.py.
+    # See dashboard-build: the `dashboard` flag is the correct merge_group
+    # gate; do NOT add a `merge_group` event bypass here.
     if: (needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20

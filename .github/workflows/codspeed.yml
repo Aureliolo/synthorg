@@ -40,6 +40,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # The required `CodSpeed Python Pass` / `CodSpeed Web Pass` contexts must
+  # report on the merge-queue ref so a dropped pull_request dispatch on a PR
+  # head can never permanently block a merge. See ci.yml and
+  # docs/reference/claude-reference.md (Merge queue).
+  merge_group:
   # workflow_dispatch lets CodSpeed back-test historical commits to seed
   # the dashboard with baseline data after first install.
   workflow_dispatch:
@@ -73,6 +78,11 @@ jobs:
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
         id: filter
         with:
+          # base/ref make the diff correct on `merge_group` (empty/falsy on
+          # push / pull_request, so default detection is preserved there). See
+          # ci.yml Detect Changes for the full rationale.
+          base: ${{ github.event.merge_group.base_sha }}
+          ref: ${{ github.event.merge_group.head_sha }}
           filters: |
             python:
               - 'src/synthorg/**'
