@@ -730,7 +730,7 @@ _WALL_CLOCK_GUARD_EXEMPT_FRAGMENTS: Final = (
     "unit/api/controllers/test_departments.py",
     "unit/api/controllers/test_departments_health.py",
     "unit/api/controllers/test_provider_health.py",
-    "unit/api/controllers/test_meetings.py",
+    "unit/api/controllers/test_meetings.py::test_auto_wired_meetings_returns_200",
     "unit/api/controllers/test_learning.py",
 )
 _FUZZ_PROFILE_ACTIVE = os.environ.get("HYPOTHESIS_PROFILE") in ("fuzz", "extreme")
