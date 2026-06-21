@@ -1,6 +1,9 @@
 package docker
 
-import "testing"
+import (
+	"testing"
+	"unicode/utf8"
+)
 
 func TestParseDockerBytes(t *testing.T) {
 	t.Parallel()
@@ -22,9 +25,12 @@ func TestParseDockerBytes(t *testing.T) {
 		{"-5MB", 0},
 	}
 	for _, c := range cases {
-		if got := parseDockerBytes(c.token); got != c.want {
-			t.Errorf("parseDockerBytes(%q) = %d, want %d", c.token, got, c.want)
-		}
+		t.Run(c.token, func(t *testing.T) {
+			t.Parallel()
+			if got := parseDockerBytes(c.token); got != c.want {
+				t.Errorf("parseDockerBytes(%q) = %d, want %d", c.token, got, c.want)
+			}
+		})
 	}
 }
 
@@ -138,4 +144,39 @@ func TestPullProgressObserveChangeSignal(t *testing.T) {
 	if !p.Observe(" abc123abc123 Download complete 0B") {
 		t.Error("state transition should report a change")
 	}
+}
+
+// FuzzParseDockerBytes asserts the byte parser never panics on arbitrary
+// input and never returns a negative count.
+func FuzzParseDockerBytes(f *testing.F) {
+	for _, seed := range []string{"0B", "2.097MB", "1.5GB", "512kB", "3.2TB", "garbage", "", "-5MB", "..B", "9e999GB"} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, token string) {
+		if got := parseDockerBytes(token); got < 0 {
+			t.Errorf("parseDockerBytes(%q) returned negative %d", token, got)
+		}
+	})
+}
+
+// FuzzParsePullLine feeds arbitrary lines through the accumulator and asserts
+// Observe and Render never panic and Render stays valid UTF-8.
+func FuzzParsePullLine(f *testing.F) {
+	for _, seed := range []string{
+		" bae41854fae8 Downloading 2.097MB",
+		"44cf07d57ee4: Pull complete",
+		" Image python:3.13-slim Pulling ",
+		"Digest: sha256:abc",
+		"",
+		"random noise",
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, line string) {
+		var p PullProgress
+		p.Observe(line)
+		if got := p.Render(); !utf8.ValidString(got) {
+			t.Errorf("Render() returned invalid UTF-8 for input %q: %q", line, got)
+		}
+	})
 }

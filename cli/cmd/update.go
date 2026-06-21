@@ -291,9 +291,9 @@ func isDevChannelMismatch(channel, ver string) bool {
 
 // downloadAndApplyCLI downloads, verifies, and replaces the current binary
 // with the new version. Returns errReexec on success so the caller can
-// re-exec the updated binary. The "New version available" notice is now
-// printed by runChangelogWalk (or its offline fallback) before this is
-// called, so we go straight to the install confirm prompt.
+// re-exec the updated binary. runChangelogWalk (or its offline fallback)
+// prints the "New version available" notice before this is called, so this
+// function goes straight to the install confirm prompt.
 func downloadAndApplyCLI(ctx context.Context, out *ui.UI, result selfupdate.CheckResult, autoAccept bool) error {
 	// Surface a permission error in the install directory before the
 	// confirmation prompt; otherwise we ask the user to confirm an

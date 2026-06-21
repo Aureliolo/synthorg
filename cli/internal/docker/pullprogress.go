@@ -86,7 +86,8 @@ func (p *PullProgress) Render() string {
 	if total == 0 {
 		return ""
 	}
-	var completed, downloaded int64
+	completed := 0
+	var downloaded int64
 	phase := phasePulling
 	for _, id := range p.order {
 		layer := p.layers[id]
@@ -171,8 +172,10 @@ func parseDockerBytes(token string) int64 {
 		unit, token = 1e9, strings.TrimSuffix(token, "GB")
 	case strings.HasSuffix(token, "MB"):
 		unit, token = 1e6, strings.TrimSuffix(token, "MB")
-	case strings.HasSuffix(token, "kB"), strings.HasSuffix(token, "KB"):
-		unit, token = 1e3, token[:len(token)-2]
+	case strings.HasSuffix(token, "kB"):
+		unit, token = 1e3, strings.TrimSuffix(token, "kB")
+	case strings.HasSuffix(token, "KB"):
+		unit, token = 1e3, strings.TrimSuffix(token, "KB")
 	case strings.HasSuffix(token, "B"):
 		unit, token = 1, strings.TrimSuffix(token, "B")
 	default:

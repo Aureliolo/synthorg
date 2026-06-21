@@ -72,12 +72,13 @@ func (u *UI) buildLiveBox(title string, labels []string, statusSample string, sh
 		lines[i] = liveBoxLine{label: stripControlStrict(l)}
 	}
 
-	maxLabelW, innerW := liveBoxDims(lines, statusSample, title)
-	titleW := lipgloss.Width(stripControlStrict(title))
+	safeTitle := stripControlStrict(title)
+	titleW := lipgloss.Width(safeTitle)
+	maxLabelW, innerW := liveBoxDims(lines, statusSample, titleW)
 
 	lb := &LiveBox{
 		ui:           u,
-		title:        stripControlStrict(title),
+		title:        safeTitle,
 		lines:        lines,
 		labelW:       maxLabelW,
 		innerW:       innerW,
@@ -119,8 +120,9 @@ func (u *UI) buildLiveBox(title string, labels []string, statusSample string, sh
 
 // liveBoxDims computes the max label width and the box inner width. The inner
 // width is sized from the widest label plus the caller-supplied status sample
-// so the border stays put as live status text updates in place.
-func liveBoxDims(lines []liveBoxLine, statusSample, title string) (labelW, innerW int) {
+// so the border stays put as live status text updates in place. titleW is the
+// already-measured width of the control-stripped title.
+func liveBoxDims(lines []liveBoxLine, statusSample string, titleW int) (labelW, innerW int) {
 	for _, line := range lines {
 		if w := lipgloss.Width(line.label); w > labelW {
 			labelW = w
@@ -132,7 +134,6 @@ func liveBoxDims(lines []liveBoxLine, statusSample, title string) (labelW, inner
 			maxContentW = w
 		}
 	}
-	titleW := lipgloss.Width(stripControlStrict(title))
 	return labelW, max(maxContentW, titleW+2, 18)
 }
 
@@ -310,6 +311,11 @@ func (lb *LiveBox) progressStatus(line liveBoxLine, frame int) string {
 	status := strings.Join(parts, "  ")
 	// 2 leading spaces + label + 1 separating space precede the status.
 	maxStatusW := lb.innerW - lb.labelW - 3
+	if maxStatusW <= 0 {
+		// Degenerate box (label as wide as the whole inner width): no room
+		// for any status, so drop it rather than overflow the border.
+		return ""
+	}
 	return truncateToWidth(status, maxStatusW)
 }
 

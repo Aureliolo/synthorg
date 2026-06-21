@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -23,9 +24,12 @@ func TestFormatElapsed(t *testing.T) {
 		{-5 * time.Second, "0m00s"},
 	}
 	for _, c := range cases {
-		if got := formatElapsed(c.d); got != c.want {
-			t.Errorf("formatElapsed(%v) = %q, want %q", c.d, got, c.want)
-		}
+		t.Run(c.d.String(), func(t *testing.T) {
+			t.Parallel()
+			if got := formatElapsed(c.d); got != c.want {
+				t.Errorf("formatElapsed(%v) = %q, want %q", c.d, got, c.want)
+			}
+		})
 	}
 }
 
@@ -44,9 +48,12 @@ func TestTruncateToWidth(t *testing.T) {
 		{"abcdef", -1, "abcdef"},
 	}
 	for _, c := range cases {
-		if got := truncateToWidth(c.s, c.w); got != c.want {
-			t.Errorf("truncateToWidth(%q, %d) = %q, want %q", c.s, c.w, got, c.want)
-		}
+		t.Run(fmt.Sprintf("%s_%d", c.s, c.w), func(t *testing.T) {
+			t.Parallel()
+			if got := truncateToWidth(c.s, c.w); got != c.want {
+				t.Errorf("truncateToWidth(%q, %d) = %q, want %q", c.s, c.w, got, c.want)
+			}
+		})
 	}
 }
 
