@@ -249,13 +249,16 @@ function PresetSwitcher({ ctrl }: { ctrl: ProviderFormController }) {
 }
 
 function ProviderFormBody({ ctrl }: { ctrl: ProviderFormController }) {
-  const { presetsError, mode, fields, submitError, handleSubmit } = ctrl
+  const { presetsError, mode, fields, submitError, handleSubmit, canSubmit } = ctrl
   return (
     <form
       className="flex-1 overflow-y-auto p-card"
       aria-labelledby={PROVIDER_FORM_TITLE_ID}
       onSubmit={(e) => {
         e.preventDefault()
+        // Enter-to-submit must honour the same gate as the disabled submit
+        // button, so a keyboard submit can't bypass validation / double-fire.
+        if (!canSubmit || fields.submitting) return
         void handleSubmit()
       }}
     >

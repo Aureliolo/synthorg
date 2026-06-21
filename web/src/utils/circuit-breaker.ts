@@ -33,6 +33,12 @@ interface EndpointState {
   failures: number
   /** Wall-clock ms when the breaker opened; `null` while closed. */
   openedAt: number | null
+  /**
+   * True while a single half-open probe has been admitted but not yet
+   * resolved by recordSuccess / recordFailure. Blocks every other caller
+   * so the cooldown releases exactly ONE probe, not a concurrent burst.
+   */
+  halfOpenProbeInFlight: boolean
 }
 
 const states = new Map<string, EndpointState>()
@@ -40,7 +46,7 @@ const states = new Map<string, EndpointState>()
 function stateFor(key: string): EndpointState {
   const existing = states.get(key)
   if (existing) return existing
-  const fresh: EndpointState = { failures: 0, openedAt: null }
+  const fresh: EndpointState = { failures: 0, openedAt: null, halfOpenProbeInFlight: false }
   states.set(key, fresh)
   return fresh
 }
@@ -48,15 +54,18 @@ function stateFor(key: string): EndpointState {
 /**
  * Whether the breaker for *key* is currently open (requests should
  * short-circuit). Once the cooldown elapses the breaker transitions to
- * half-open: this read clears the open state and returns `false`, letting
- * a single probe through. A fresh `recordFailure` re-opens it.
+ * half-open: the FIRST read clears the open flag, admits a single probe
+ * (returns `false`), and blocks every concurrent caller (returns `true`)
+ * until that probe resolves. A failed probe re-opens the breaker at once;
+ * a successful one closes it.
  */
 export function isCircuitOpen(key: string): boolean {
   const state = states.get(key)
-  if (!state || state.openedAt === null) return false
+  if (!state || state.openedAt === null) return state?.halfOpenProbeInFlight ?? false
   if (Date.now() - state.openedAt >= OPEN_COOLDOWN_MS) {
+    if (state.halfOpenProbeInFlight) return true
     state.openedAt = null
-    state.failures = 0
+    state.halfOpenProbeInFlight = true
     return false
   }
   return true
@@ -65,6 +74,15 @@ export function isCircuitOpen(key: string): boolean {
 /** Record a terminal failure (exhausted 429) for *key*; may open the breaker. */
 export function recordFailure(key: string): void {
   const state = stateFor(key)
+  if (state.halfOpenProbeInFlight) {
+    // A failed half-open probe re-trips the breaker immediately, without
+    // waiting for another full FAILURE_THRESHOLD run.
+    state.halfOpenProbeInFlight = false
+    state.failures = FAILURE_THRESHOLD
+    state.openedAt = Date.now()
+    log.warn('circuit_opened', { endpoint: sanitizeForLog(key) })
+    return
+  }
   state.failures += 1
   if (state.failures >= FAILURE_THRESHOLD && state.openedAt === null) {
     state.openedAt = Date.now()
@@ -78,6 +96,7 @@ export function recordSuccess(key: string): void {
   if (!state) return
   state.failures = 0
   state.openedAt = null
+  state.halfOpenProbeInFlight = false
 }
 
 /**

@@ -171,6 +171,70 @@ describe('computeProviderValidation', () => {
     expect(result.fieldErrors.name).not.toBeNull()
     expect(result.canSubmit).toBe(false)
   })
+
+  it('blocks a custom_header create with a missing name or value', () => {
+    const blocked = computeProviderValidation({
+      mode: 'create',
+      values: values({ authType: 'custom_header', customHeaderName: '', customHeaderValue: '' }),
+      preset: undefined,
+      submitting: false,
+    })
+    expect(blocked.canSubmit).toBe(false)
+    const ok = computeProviderValidation({
+      mode: 'create',
+      values: values({ authType: 'custom_header', customHeaderName: 'X-Key', customHeaderValue: 'v' }),
+      preset: undefined,
+      submitting: false,
+    })
+    expect(ok.canSubmit).toBe(true)
+  })
+
+  it('blocks an oauth create missing token URL, client id, or secret', () => {
+    const blocked = computeProviderValidation({
+      mode: 'create',
+      values: values({ authType: 'oauth', oauthTokenUrl: '', oauthClientId: '', oauthClientSecret: '' }),
+      preset: undefined,
+      submitting: false,
+    })
+    expect(blocked.canSubmit).toBe(false)
+    const ok = computeProviderValidation({
+      mode: 'create',
+      values: values({
+        authType: 'oauth',
+        oauthTokenUrl: 'https://auth.example.com/token',
+        oauthClientId: 'cid',
+        oauthClientSecret: 'csecret',
+      }),
+      preset: undefined,
+      submitting: false,
+    })
+    expect(ok.canSubmit).toBe(true)
+  })
+
+  it('allows an oauth edit with a blank secret (keeps the stored secret)', () => {
+    const result = computeProviderValidation({
+      mode: 'edit',
+      values: values({
+        authType: 'oauth',
+        oauthTokenUrl: 'https://auth.example.com/token',
+        oauthClientId: 'cid',
+        oauthClientSecret: '',
+      }),
+      preset: undefined,
+      submitting: false,
+    })
+    expect(result.canSubmit).toBe(true)
+  })
+
+  it('blocks a subscription create with a blank token (once ToS accepted)', () => {
+    const result = computeProviderValidation({
+      mode: 'create',
+      values: values({ authType: 'subscription', subscriptionToken: '', tosAccepted: true }),
+      preset: undefined,
+      submitting: false,
+    })
+    expect(result.canSubmit).toBe(false)
+  })
 })
 
 describe('computeAvailableAuthTypes', () => {

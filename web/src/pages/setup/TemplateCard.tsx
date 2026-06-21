@@ -1,4 +1,4 @@
-import { cn, FOCUS_RING } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { StatPill } from '@/components/ui/stat-pill'
 import { PostureBadge } from './PostureBadge'
@@ -74,30 +74,22 @@ function TemplateCardTags({ tags }: { tags: readonly string[] }) {
 function TemplateCardBody({
   template,
   category,
-  selected,
   recommended,
   onSelect,
 }: {
   template: TemplateInfoResponse
   category: string
-  selected: boolean
   recommended?: boolean | undefined
   onSelect: () => void
 }) {
   return (
+    // Click-to-select is a mouse convenience only; keyboard + assistive-tech
+    // users select via the explicit <Button> below. Making this body a
+    // role="button" would nest interactive controls (PostureBadge is itself
+    // role="button"), which violates WAI-ARIA and breaks focus/announcement.
     <div
-      role="button"
-      tabIndex={0}
-      aria-pressed={selected}
-      aria-label={`Select ${template.display_name}`}
       onClick={onSelect}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          onSelect()
-        }
-      }}
-      className={cn('flex flex-1 cursor-pointer flex-col gap-grid-gap rounded-md text-left', FOCUS_RING)}
+      className="flex flex-1 cursor-pointer flex-col gap-grid-gap rounded-md text-left"
     >
       <div className="space-y-1">
         <div className="flex items-center gap-2">
@@ -174,7 +166,6 @@ export function TemplateCard({
       <TemplateCardBody
         template={template}
         category={category}
-        selected={selected}
         recommended={recommended}
         onSelect={onSelect}
       />

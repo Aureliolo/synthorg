@@ -70,4 +70,25 @@ describe('WizardModeStep', () => {
     expect(useSetupWizardStore.getState().wizardMode).toBe('quick')
     expect(router.state.location.pathname).toBe('/setup/providers')
   })
+
+  it('moves focus between options with arrow keys (radiogroup contract)', () => {
+    renderWithRouter(<WizardModeStep />, { initialEntries: ['/setup/mode'] })
+
+    const guidedOption = screen.getByRole('radio', { name: /Guided Setup/i })
+    const quickOption = screen.getByRole('radio', { name: /Quick Setup/i })
+    guidedOption.focus()
+
+    fireEvent.keyDown(guidedOption, { key: 'ArrowRight' })
+    expect(quickOption).toHaveFocus()
+
+    // Wraps back to the first option.
+    fireEvent.keyDown(quickOption, { key: 'ArrowRight' })
+    expect(guidedOption).toHaveFocus()
+
+    fireEvent.keyDown(guidedOption, { key: 'ArrowLeft' })
+    expect(quickOption).toHaveFocus()
+
+    // Arrow navigation moves focus only; it does not commit a selection.
+    expect(useSetupWizardStore.getState().stepsCompleted.mode).toBe(false)
+  })
 })

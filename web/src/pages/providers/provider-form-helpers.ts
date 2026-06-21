@@ -153,6 +153,46 @@ function providerApiKeyMissing(args: ProviderValidationArgs): boolean {
   )
 }
 
+// Required-credential gates for the non-api_key auth types. Secret fields
+// (subscription token, custom-header value, OAuth client secret) are required
+// only in create mode; edit keeps the stored secret when blank. Non-secret
+// identifiers (header name, OAuth token URL + client id) are required in both
+// modes since they are always sent on the wire.
+
+function subscriptionCredentialMissing(args: ProviderValidationArgs): boolean {
+  return args.mode === 'create' && args.values.subscriptionToken.trim() === ''
+}
+
+function customHeaderCredentialMissing(args: ProviderValidationArgs): boolean {
+  const { mode, values } = args
+  return (
+    values.customHeaderName.trim() === '' ||
+    (mode === 'create' && values.customHeaderValue.trim() === '')
+  )
+}
+
+function oauthCredentialMissing(args: ProviderValidationArgs): boolean {
+  const { mode, values } = args
+  return (
+    values.oauthTokenUrl.trim() === '' ||
+    values.oauthClientId.trim() === '' ||
+    (mode === 'create' && values.oauthClientSecret.trim() === '')
+  )
+}
+
+/** Per-auth-type required-credential gate; auth types absent here have none. */
+const CREDENTIAL_CHECKS: Partial<
+  Record<AuthType, (args: ProviderValidationArgs) => boolean>
+> = {
+  subscription: subscriptionCredentialMissing,
+  custom_header: customHeaderCredentialMissing,
+  oauth: oauthCredentialMissing,
+}
+
+function nonApiKeyCredentialMissing(args: ProviderValidationArgs): boolean {
+  return CREDENTIAL_CHECKS[args.values.authType]?.(args) ?? false
+}
+
 /** Validate the provider form into inline errors + a submit gate. */
 export function computeProviderValidation(args: ProviderValidationArgs): ProviderValidation {
   const { values, preset, submitting } = args
@@ -164,6 +204,7 @@ export function computeProviderValidation(args: ProviderValidationArgs): Provide
     submitting,
     validateProviderName(values.name) !== null,
     apiKeyMissing,
+    nonApiKeyCredentialMissing(args),
     fieldErrors.baseUrl !== null,
     fieldErrors.oauthTokenUrl !== null,
     tosMissing,

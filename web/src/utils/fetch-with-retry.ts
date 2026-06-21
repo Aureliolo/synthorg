@@ -135,6 +135,27 @@ function _resolveSignal(
 }
 
 /**
+ * Pre-loop short-circuit. An already-aborted request surfaces the
+ * cancellation (raw fetch, so the caller sees AbortError) rather than being
+ * masked as a synthetic 429; a retriable request to a tripped endpoint
+ * returns the same terminal 429 the budget-exhausted loop would. Returns
+ * `null` when the full retry loop should run.
+ */
+function _preflightShortCircuit(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  opts: FetchWithRetryOptions | undefined,
+  signal: AbortSignal | undefined,
+  fetchImpl: typeof fetch,
+): Promise<Response> | null {
+  if (signal?.aborted) return fetchImpl(input, init)
+  if (isRetriable(input, init, opts) && isCircuitOpen(circuitKeyFromUrl(urlOf(input)))) {
+    return Promise.resolve(new Response(null, { status: HTTP_TOO_MANY_REQUESTS }))
+  }
+  return null
+}
+
+/**
  * `window.fetch`-compatible wrapper that retries 429s up to
  * {@link MAX_RATE_LIMIT_RETRIES} times, honouring `Retry-After`.
  *
@@ -161,13 +182,8 @@ export async function fetchWithRetryAfter(
   const signal = _resolveSignal(input, init)
   const sleep = opts?.sleep ?? ((ms: number) => defaultSleep(ms, signal))
   const circuitKey = circuitKeyFromUrl(urlOf(input))
-  // An endpoint that has been terminally rate-limiting short-circuits to a
-  // synthetic 429 (the same terminal value the budget-exhausted loop
-  // returns) so callers' back-pressure handling fires without another
-  // doomed round-trip.
-  if (isRetriable(input, init, opts) && isCircuitOpen(circuitKey)) {
-    return new Response(null, { status: HTTP_TOO_MANY_REQUESTS })
-  }
+  const shortCircuit = _preflightShortCircuit(input, init, opts, signal, fetchImpl)
+  if (shortCircuit) return shortCircuit
   const response = await retryAfterLoop<Response>({
     first: await fetchImpl(input, init),
     send: () => fetchImpl(input, init),

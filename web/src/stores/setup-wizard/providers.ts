@@ -266,7 +266,10 @@ async function testProviderConnectionImpl(
       title: `Could not test connection to '${name}'`,
       description: msg,
     })
-    throw err
+    // The store owns the error UX (state + toast); callers must not wrap
+    // mutations in try/catch, so return the failure sentinel instead of
+    // rethrowing and leaking error ownership / unhandled rejections.
+    return { success: false, error: msg, latency_ms: null, model_tested: null }
   }
 }
 
