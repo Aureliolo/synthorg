@@ -1,136 +1,56 @@
 """Tests for QualityController."""
 
-from collections.abc import AsyncGenerator, Iterator
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from litestar import Litestar
 
-from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.auth.service import AuthService
-from synthorg.core.auth.config import AuthConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import QualityOverride
 from synthorg.hr.performance.quality_override_store import (
     QualityOverrideStore,
 )
 from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.hr.state import HrStateSlice
 from tests._shared import LoopAsyncClient
-from tests._shared import build_test_app as create_app
-from tests.unit.api.conftest import _seed_test_users, make_auth_headers
-from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
+from tests.unit.api.conftest import make_auth_headers
 
 NOW = datetime(2026, 3, 15, 12, 0, 0, tzinfo=UTC)
 
-_TEST_JWT_SECRET = "test-secret-that-is-at-least-32-characters-long"
 
-
-@pytest.fixture(scope="module")
+@pytest.fixture
 def quality_override_store() -> QualityOverrideStore:
     return QualityOverrideStore()
 
 
-@pytest.fixture(scope="module")
-def perf_tracker(
+@pytest.fixture
+def quality_client(
+    async_test_client: LoopAsyncClient,
     quality_override_store: QualityOverrideStore,
-) -> PerformanceTracker:
-    return PerformanceTracker(quality_override_store=quality_override_store)
+) -> LoopAsyncClient:
+    """Shared app client with a per-test quality-override-backed tracker.
 
-
-@pytest.fixture(scope="module")
-def quality_app(
-    perf_tracker: PerformanceTracker,
-) -> Litestar:
-    """Build the quality-wired app ONCE per module.
-
-    ``create_app`` is the heaviest single call in the suite; rebuilding
-    it per test function pushed setup+call+teardown past the conftest's
-    6s wall-clock guard under ``-n 8`` CPU contention. Mirroring the
-    session-scoped ``_shared_app`` pattern (build once,
-    ``_skip_lifecycle_shutdown=True`` so a per-test client re-entry does
-    not stop shared services), with a function-scoped client and an
-    autouse store reset, keeps each test isolated without the rebuild.
+    Wires a fresh ``PerformanceTracker`` onto ``HrStateSlice`` for the test;
+    the conftest ``_restore_app_state`` step reverts the slice afterwards, so
+    the session-scoped tracker is never mutated.
     """
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.config.schema import RootConfig
-    from synthorg.engine.task_engine import TaskEngine
-
-    fake_persistence = FakePersistenceBackend()
-    fake_persistence.mark_connected()
-    fake_bus = FakeMessageBus()
-    fake_bus._running = True
-
-    auth_service = AuthService(AuthConfig(jwt_secret=_TEST_JWT_SECRET))
-    _seed_test_users(fake_persistence, auth_service)
-
-    return create_app(
-        config=RootConfig(company_name="test-company"),
-        persistence=fake_persistence,
-        message_bus=fake_bus,
-        cost_tracker=CostTracker(),
-        approval_store=ApprovalStore(),
-        auth_service=auth_service,
-        task_engine=TaskEngine(persistence=fake_persistence),
-        performance_tracker=perf_tracker,
-        _skip_lifecycle_shutdown=True,
+    app_state = async_test_client.app.state.app_state
+    app_state.wire(
+        HrStateSlice,
+        performance_tracker=PerformanceTracker(
+            quality_override_store=quality_override_store
+        ),
     )
-
-
-@pytest.fixture(autouse=True)
-def _reset_quality_store(
-    quality_override_store: QualityOverrideStore,
-) -> Iterator[None]:
-    """Clear the module-scoped override store between tests."""
-    quality_override_store.clear()
-    yield
-    quality_override_store.clear()
+    return async_test_client
 
 
 @pytest.fixture
-async def quality_client(
-    quality_app: Litestar,
-) -> AsyncGenerator[LoopAsyncClient]:
-    """Function-scoped client over the shared quality-wired app."""
-    async with LoopAsyncClient(quality_app) as client:
-        client.headers.update(make_auth_headers("ceo"))
-        yield client
-
-
-@pytest.fixture(scope="module")
-def no_store_app() -> Litestar:
-    """App built ONCE per module with a tracker but no override store."""
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.config.schema import RootConfig
-
-    fake_persistence = FakePersistenceBackend()
-    fake_persistence.mark_connected()
-    fake_bus = FakeMessageBus()
-    fake_bus._running = True
-
-    tracker = PerformanceTracker()  # No quality_override_store
-    auth_service = AuthService(AuthConfig(jwt_secret=_TEST_JWT_SECRET))
-    _seed_test_users(fake_persistence, auth_service)
-
-    return create_app(
-        config=RootConfig(company_name="test-company"),
-        persistence=fake_persistence,
-        message_bus=fake_bus,
-        cost_tracker=CostTracker(),
-        approval_store=ApprovalStore(),
-        auth_service=auth_service,
-        performance_tracker=tracker,
-        _skip_lifecycle_shutdown=True,
-    )
-
-
-@pytest.fixture
-async def no_store_client(
-    no_store_app: Litestar,
-) -> AsyncGenerator[LoopAsyncClient]:
-    """Function-scoped client over the shared no-store app."""
-    async with LoopAsyncClient(no_store_app) as client:
-        client.headers.update(make_auth_headers("ceo"))
-        yield client
+def no_store_client(
+    async_test_client: LoopAsyncClient,
+) -> LoopAsyncClient:
+    """Shared app client whose tracker has no quality override store."""
+    app_state = async_test_client.app.state.app_state
+    app_state.wire(HrStateSlice, performance_tracker=PerformanceTracker())
+    return async_test_client
 
 
 @pytest.mark.unit

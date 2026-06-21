@@ -1,27 +1,20 @@
 """Tests for CollaborationController."""
 
-from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.auth.service import AuthService
-from synthorg.core.auth.config import AuthConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.collaboration_override_store import (
     CollaborationOverrideStore,
 )
 from synthorg.hr.performance.models import CollaborationOverride
 from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.hr.state import HrStateSlice
 from tests._shared import LoopAsyncClient
-from tests._shared import build_test_app as create_app
-from tests.unit.api.conftest import _seed_test_users, make_auth_headers
-from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
+from tests.unit.api.conftest import make_auth_headers
 
 NOW = datetime(2026, 3, 15, 12, 0, 0, tzinfo=UTC)
-
-_TEST_JWT_SECRET = "test-secret-that-is-at-least-32-characters-long"
 
 
 @pytest.fixture
@@ -30,55 +23,22 @@ def override_store() -> CollaborationOverrideStore:
 
 
 @pytest.fixture
-def perf_tracker(
+def collab_client(
+    async_test_client: LoopAsyncClient,
     override_store: CollaborationOverrideStore,
-) -> PerformanceTracker:
-    return PerformanceTracker(override_store=override_store)
+) -> LoopAsyncClient:
+    """Shared app client with a per-test override-store-backed tracker wired in.
 
-
-@pytest.fixture
-async def _fake_persistence() -> AsyncGenerator[FakePersistenceBackend]:
-    backend = FakePersistenceBackend()
-    await backend.connect()
-    yield backend
-    await backend.disconnect()
-
-
-@pytest.fixture
-async def _fake_message_bus() -> AsyncGenerator[FakeMessageBus]:
-    bus = FakeMessageBus()
-    await bus.start()
-    yield bus
-    await bus.stop()
-
-
-@pytest.fixture
-async def collab_client(
-    _fake_persistence: FakePersistenceBackend,
-    _fake_message_bus: FakeMessageBus,
-    perf_tracker: PerformanceTracker,
-) -> AsyncGenerator[LoopAsyncClient]:
-    """Test client with performance_tracker wired in."""
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.config.schema import RootConfig
-    from synthorg.engine.task_engine import TaskEngine
-
-    auth_service = AuthService(AuthConfig(jwt_secret=_TEST_JWT_SECRET))
-    _seed_test_users(_fake_persistence, auth_service)
-
-    app = create_app(
-        config=RootConfig(company_name="test-company"),
-        persistence=_fake_persistence,
-        message_bus=_fake_message_bus,
-        cost_tracker=CostTracker(),
-        approval_store=ApprovalStore(),
-        auth_service=auth_service,
-        task_engine=TaskEngine(persistence=_fake_persistence),
-        performance_tracker=perf_tracker,
+    Wires a fresh ``PerformanceTracker`` onto ``HrStateSlice`` for the test;
+    the conftest ``_restore_app_state`` step reverts the slice afterwards, so
+    the session-scoped tracker is never mutated.
+    """
+    app_state = async_test_client.app.state.app_state
+    app_state.wire(
+        HrStateSlice,
+        performance_tracker=PerformanceTracker(override_store=override_store),
     )
-    async with LoopAsyncClient(app) as client:
-        client.headers.update(make_auth_headers("ceo"))
-        yield client
+    return async_test_client
 
 
 @pytest.mark.unit
@@ -275,41 +235,14 @@ class TestOverrideStoreNotConfigured:
     """Override endpoints return 503 when store is not configured."""
 
     @pytest.fixture
-    async def no_store_client(
+    def no_store_client(
         self,
-    ) -> AsyncGenerator[LoopAsyncClient]:
-        """Test client with performance_tracker but no override store."""
-        from synthorg.budget.tracker import CostTracker
-        from synthorg.config.schema import RootConfig
-
-        fake_persistence = FakePersistenceBackend()
-        await fake_persistence.connect()
-        fake_bus = FakeMessageBus()
-        await fake_bus.start()
-
-        # Guard from the moment both fakes are live: if create_app() or any
-        # app-setup step below raises, the finally still stops the bus and
-        # disconnects persistence so neither leaks tasks/state across tests.
-        try:
-            tracker = PerformanceTracker()  # No override_store
-            auth_service = AuthService(AuthConfig(jwt_secret=_TEST_JWT_SECRET))
-            _seed_test_users(fake_persistence, auth_service)
-
-            app = create_app(
-                config=RootConfig(company_name="test-company"),
-                persistence=fake_persistence,
-                message_bus=fake_bus,
-                cost_tracker=CostTracker(),
-                approval_store=ApprovalStore(),
-                auth_service=auth_service,
-                performance_tracker=tracker,
-            )
-            async with LoopAsyncClient(app) as client:
-                client.headers.update(make_auth_headers("ceo"))
-                yield client
-        finally:
-            await fake_bus.stop()
-            await fake_persistence.disconnect()
+        async_test_client: LoopAsyncClient,
+    ) -> LoopAsyncClient:
+        """Shared app client whose tracker has no override store configured."""
+        app_state = async_test_client.app.state.app_state
+        app_state.wire(HrStateSlice, performance_tracker=PerformanceTracker())
+        return async_test_client
 
     @pytest.mark.parametrize(
         ("method", "json_body"),
@@ -355,7 +288,6 @@ class TestGetCalibration:
     async def test_returns_calibration_when_sampler_configured(
         self,
         collab_client: LoopAsyncClient,
-        perf_tracker: PerformanceTracker,
     ) -> None:
         """Sampler with records -> returns calibration data."""
         from unittest.mock import MagicMock
@@ -369,7 +301,10 @@ class TestGetCalibration:
         )
         mock_sampler.get_calibration_records.return_value = (cal_rec,)
         mock_sampler.get_drift_summary.return_value = 2.0
-        perf_tracker._sampler = mock_sampler
+        # Patch the per-test wired tracker (reverted by _restore_app_state),
+        # never the session-scoped one.
+        app_state = collab_client.app.state.app_state
+        app_state.slice(HrStateSlice).performance_tracker._sampler = mock_sampler
 
         resp = await collab_client.get(
             "/api/v1/agents/agent-001/collaboration/calibration",

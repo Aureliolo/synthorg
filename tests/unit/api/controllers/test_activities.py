@@ -5,7 +5,6 @@ from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
-from litestar import Litestar
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker import CostTracker
@@ -13,7 +12,6 @@ from synthorg.communication.delegation.models import DelegationRecord
 from synthorg.communication.delegation.record_store import (
     DelegationRecordStore,
 )
-from synthorg.config.schema import RootConfig
 from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.hr.enums import ActivityEventType, LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
@@ -85,49 +83,6 @@ def _make_task_metric(
         turns_used=2,
         tokens_used=150,
         complexity=Complexity.SIMPLE,
-    )
-
-
-async def _make_app_with_broken_tracker(
-    fake_persistence: FakePersistenceBackend,
-) -> Litestar:
-    """Build an app whose performance tracker always raises."""
-    from synthorg.api.auth.service import AuthService
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.settings.registry import get_registry
-    from synthorg.settings.service import SettingsService
-    from tests._shared import build_test_app as create_app
-    from tests.unit.api.conftest import (
-        FakeMessageBus,
-        _make_test_auth_service,
-        _seed_test_users,
-    )
-
-    tracker = PerformanceTracker()
-
-    def _raise(**_kwargs: object) -> None:
-        msg = "simulated failure"
-        raise RuntimeError(msg)
-
-    tracker.get_task_metrics = _raise  # type: ignore[assignment]
-
-    config = RootConfig(company_name="test")
-    auth_service: AuthService = _make_test_auth_service()
-    bus = FakeMessageBus()
-    await bus.start()
-    _seed_test_users(fake_persistence, auth_service)
-    settings_service = SettingsService(
-        repository=fake_persistence.settings,
-        registry=get_registry(),
-    )
-    return create_app(
-        config=config,
-        persistence=fake_persistence,
-        message_bus=bus,
-        cost_tracker=CostTracker(),
-        auth_service=auth_service,
-        settings_service=settings_service,
-        performance_tracker=tracker,
     )
 
 
@@ -297,19 +252,24 @@ class TestActivityFeed:
 
     async def test_graceful_degradation_no_performance_tracker(
         self,
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
+        performance_tracker: PerformanceTracker,
     ) -> None:
         """Endpoint still returns lifecycle events when perf tracker fails."""
         await fake_persistence.lifecycle_events.save(
             _make_lifecycle_event(timestamp=_NOW - timedelta(hours=1)),
         )
-        app = await _make_app_with_broken_tracker(fake_persistence)
-        async with LoopAsyncClient(app) as client:
-            resp = await client.get(
-                "/api/v1/activities",
-                headers=make_auth_headers("ceo"),
-            )
-            assert resp.status_code == 200
+
+        def _raise(**_kwargs: object) -> None:
+            msg = "simulated failure"
+            raise RuntimeError(msg)
+
+        # Instance-level patch, undone by the conftest's
+        # _restore_instance_patches in the per-test reset pipeline.
+        performance_tracker.get_task_metrics = _raise  # type: ignore[assignment]
+        resp = await async_test_client.get("/api/v1/activities")
+        assert resp.status_code == 200
 
     async def test_feed_with_cost_records(
         self,
@@ -611,20 +571,25 @@ class TestDegradedSources:
 
     async def test_degraded_performance_tracker(
         self,
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
+        performance_tracker: PerformanceTracker,
     ) -> None:
         """Performance tracker failure is reported in degraded_sources."""
         await fake_persistence.lifecycle_events.save(
             _make_lifecycle_event(timestamp=_NOW - timedelta(hours=1)),
         )
-        app = await _make_app_with_broken_tracker(fake_persistence)
-        async with LoopAsyncClient(app) as client:
-            resp = await client.get(
-                "/api/v1/activities",
-                headers=make_auth_headers("ceo"),
-            )
-            assert resp.status_code == 200
-            assert "performance_tracker" in resp.json()["degraded_sources"]
+
+        def _raise(**_kwargs: object) -> None:
+            msg = "simulated failure"
+            raise RuntimeError(msg)
+
+        # Instance-level patch, undone by the conftest's
+        # _restore_instance_patches in the per-test reset pipeline.
+        performance_tracker.get_task_metrics = _raise  # type: ignore[assignment]
+        resp = await async_test_client.get("/api/v1/activities")
+        assert resp.status_code == 200
+        assert "performance_tracker" in resp.json()["degraded_sources"]
 
     async def test_degraded_tool_tracker(
         self,

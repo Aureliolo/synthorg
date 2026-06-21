@@ -698,6 +698,20 @@ _UNIT_TEST_WALL_CLOCK_LIMIT = 6.0  # seconds
 #    lands on whichever assert runs first and is inherently near the budget
 #    under ``--dist=loadfile`` contention -- the full build is the test's
 #    whole point, not a fixture leak.
+#  - The api files below each build a fresh or config-variant app via
+#    ``create_app`` because that is precisely what they assert on: the
+#    construction / auto-wire phase (``test_app.py``), boot-guard refusal and
+#    route assembly (``test_app_boot_no_kwarg_ambiguity.py``), readiness with
+#    absent or variant persistence (``test_health.py``), or a controller
+#    served from a ``RootConfig`` whose agents / providers / departments /
+#    DB-override differ from the shared app (``test_agents``, ``test_analytics``,
+#    ``test_departments``, ``test_departments_health``, ``test_provider_health``,
+#    ``test_meetings`` auto-wire, ``test_learning`` scorecard-history-dir). The
+#    config or service absence is baked at construction and cannot be expressed
+#    via ``app_state.wire(...)`` on the session-shared app, so the full build is
+#    the test's whole point, not a fixture leak. Tests that only need a custom
+#    collaborator (a per-test ``PerformanceTracker`` / coordinator / meeting
+#    services) were migrated onto the shared ``async_test_client`` instead.
 # pytest nodeids always use ``/`` separators on every platform, so these
 # fragments match on Windows too.
 _WALL_CLOCK_GUARD_EXEMPT_FRAGMENTS: Final = (
@@ -705,6 +719,16 @@ _WALL_CLOCK_GUARD_EXEMPT_FRAGMENTS: Final = (
     "unit/test_cold_import.py",
     "unit/scripts/test_check_completion_config_temperature.py",
     "unit/api/test_construction_wiring.py",
+    "unit/api/test_app.py",
+    "unit/api/test_health.py",
+    "unit/api/test_app_boot_no_kwarg_ambiguity.py",
+    "unit/api/controllers/test_agents.py",
+    "unit/api/controllers/test_analytics.py",
+    "unit/api/controllers/test_departments.py",
+    "unit/api/controllers/test_departments_health.py",
+    "unit/api/controllers/test_provider_health.py",
+    "unit/api/controllers/test_meetings.py",
+    "unit/api/controllers/test_learning.py",
 )
 _FUZZ_PROFILE_ACTIVE = os.environ.get("HYPOTHESIS_PROFILE") in ("fuzz", "extreme")
 # pytest-repeat's ``--count`` flag is used exclusively by
