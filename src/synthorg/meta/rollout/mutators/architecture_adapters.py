@@ -84,6 +84,9 @@ def build_architecture_adapters(
             msg = "department restore requires a mapping previous_value"
             raise RollbackMutationDeniedError(msg)
         payload = _DepartmentRestorePayload.model_validate(previous_value)
+        if str(payload.id) != target_tail:
+            msg = "department restore previous_value id must match the operation target"
+            raise RollbackMutationDeniedError(msg)
         await department_service.create_department(
             name=payload.name,
             description=payload.description,

@@ -118,6 +118,22 @@ class TestDepartmentAdapter:
             await adapters["department"]("x", "not-a-mapping")
         dept.create_department.assert_not_awaited()
 
+    async def test_payload_id_target_mismatch_rejected(self) -> None:
+        adapters, m = _build()
+        dept = m.dept
+        other_id = as_uuid("dept-other")
+
+        with pytest.raises(RollbackMutationDeniedError, match="match the operation"):
+            await adapters["department"](
+                "department-target-tail",
+                {
+                    "name": "Platform",
+                    "description": "Platform team",
+                    "id": str(other_id),
+                },
+            )
+        dept.create_department.assert_not_awaited()
+
 
 class TestWorkflowAdapter:
     async def test_restore_bumps_revision_past_current(self) -> None:
