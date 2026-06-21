@@ -157,7 +157,9 @@ describe('ProviderFormModal: presets fetch storm guard (P0)', () => {
       />,
     )
 
-    expect(onFetchPresets).toHaveBeenCalledTimes(1)
+    // Let any pending effect microtasks flush so a broken guard that queues
+    // a second async fetch after the rerender would be caught.
+    await waitFor(() => expect(onFetchPresets).toHaveBeenCalledTimes(1))
   })
 })
 

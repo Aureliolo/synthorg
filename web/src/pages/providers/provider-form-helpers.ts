@@ -20,6 +20,19 @@ const AUTH_OPTIONS: { value: AuthType; label: string }[] = [
 /** Provider name policy: lowercase letters, digits, and hyphens only. */
 const PROVIDER_NAME_PATTERN = /^[a-z0-9-]+$/
 
+/**
+ * Auth types the create-from-preset request can actually carry.
+ * `CreateFromPresetRequest` has no oauth / custom_header credential fields,
+ * so offering those for a preset would silently drop the entered
+ * credentials. Custom endpoints (no preset) still allow every auth type via
+ * `CreateProviderRequest`, which does carry them.
+ */
+const PRESET_CREATE_AUTH_TYPES: ReadonlySet<AuthType> = new Set([
+  'api_key',
+  'subscription',
+  'none',
+])
+
 const AUTH_TYPE_VALUES: ReadonlySet<AuthType> = new Set([
   'api_key',
   'oauth',
@@ -288,7 +301,11 @@ export function computeAvailableAuthTypes(
   preset: ProviderPreset | undefined,
 ): { value: AuthType; label: string }[] {
   if (cloudPreset) {
-    return AUTH_OPTIONS.filter((opt) => cloudPreset.supported_auth_types.includes(opt.value))
+    return AUTH_OPTIONS.filter(
+      (opt) =>
+        cloudPreset.supported_auth_types.includes(opt.value) &&
+        PRESET_CREATE_AUTH_TYPES.has(opt.value),
+    )
   }
   if (preset?.kind === 'local') {
     return AUTH_OPTIONS.filter((opt) => opt.value === 'none')

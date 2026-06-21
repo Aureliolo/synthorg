@@ -148,6 +148,7 @@ function ProviderEndpointFields({ ctrl }: { ctrl: ProviderFormController }) {
         placeholder="my-provider"
         hint="Lowercase, alphanumeric + hyphens"
         error={fieldErrors.name}
+        autoComplete="off"
         disabled={mode === 'edit'}
       />
 
@@ -159,6 +160,7 @@ function ProviderEndpointFields({ ctrl }: { ctrl: ProviderFormController }) {
           placeholder={preset?.default_base_url ?? 'https://api.example.com/v1'}
           hint={baseUrlHint}
           error={fieldErrors.baseUrl}
+          autoComplete="off"
         />
       )}
 
@@ -177,6 +179,11 @@ function ProviderEndpointFields({ ctrl }: { ctrl: ProviderFormController }) {
 
 function ProviderFormFooter({ ctrl }: { ctrl: ProviderFormController }) {
   const { fields, mode, canSubmit } = ctrl
+  const submitLabel = fields.submitting
+    ? 'Saving...'
+    : mode === 'create'
+      ? 'Create Provider'
+      : 'Save Changes'
   return (
     <div className="flex justify-end gap-3 pt-2">
       <Dialog.Close
@@ -188,7 +195,7 @@ function ProviderFormFooter({ ctrl }: { ctrl: ProviderFormController }) {
       />
       <Button type="submit" className="gap-2" disabled={!canSubmit}>
         {fields.submitting && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
-        {fields.submitting ? 'Saving...' : mode === 'create' ? 'Create Provider' : 'Save Changes'}
+        {submitLabel}
       </Button>
     </div>
   )
@@ -287,12 +294,12 @@ export function ProviderFormModal(props: ProviderFormModalProps) {
     <>
       <Dialog.Root open={ctrl.open} onOpenChange={ctrl.handleOpenChange}>
         <Dialog.Portal>
-          <Dialog.Backdrop className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity duration-200 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
+          <Dialog.Backdrop className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity duration-[var(--so-transition-default)] ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
           <Dialog.Popup
             className={cn(
               'fixed top-1/2 left-1/2 z-50 w-[calc(100vw-2rem)] max-w-3xl -translate-x-1/2 -translate-y-1/2',
               'rounded-xl border border-border bg-card shadow-[var(--so-shadow-card-hover)]',
-              'transition-[opacity,translate,scale] duration-200 ease-out',
+              'transition-[opacity,translate,scale] duration-[var(--so-transition-default)] ease-out',
               'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
               'data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95',
               'flex max-h-[85vh] flex-col sm:max-h-[80vh]',

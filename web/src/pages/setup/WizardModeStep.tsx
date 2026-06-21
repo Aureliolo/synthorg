@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useId } from 'react'
 import { useNavigate } from 'react-router'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import type { WizardMode } from '@/stores/setup-wizard'
@@ -15,12 +15,15 @@ interface ModeOptionProps {
 }
 
 function ModeOption({ icon: Icon, title, description, recommended, selected, onClick }: ModeOptionProps) {
+  const titleId = useId()
+  const descId = useId()
   return (
     <button
       type="button"
       role="radio"
       aria-checked={selected}
-      aria-label={title}
+      aria-labelledby={titleId}
+      aria-describedby={descId}
       onClick={onClick}
       className={cn(
         'flex flex-col items-center gap-grid-gap rounded-lg border p-card text-center transition-colors',
@@ -39,14 +42,14 @@ function ModeOption({ icon: Icon, title, description, recommended, selected, onC
 
       <div className="space-y-1">
         <div className="flex items-center justify-center gap-2">
-          <h3 className="text-base font-semibold text-foreground">{title}</h3>
+          <h3 id={titleId} className="text-base font-semibold text-foreground">{title}</h3>
           {recommended && (
             <span className="rounded-full bg-accent/10 px-2 py-0.5 text-compact font-medium text-accent">
               Recommended
             </span>
           )}
         </div>
-        <p className="text-sm text-muted-foreground">{description}</p>
+        <p id={descId} className="text-sm text-muted-foreground">{description}</p>
       </div>
     </button>
   )

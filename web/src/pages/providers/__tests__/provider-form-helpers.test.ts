@@ -5,15 +5,34 @@
  * vendor-neutral copy contract.
  */
 import { describe, expect, it } from 'vitest'
+import type { CloudPreset } from '@/api/types/providers'
 import {
   buildCreateProviderRequest,
   buildUpdateProviderRequest,
+  computeAvailableAuthTypes,
   computeProviderValidation,
   subscriptionTokenHint,
   validateOptionalUrl,
   validateProviderName,
   type ProviderFormValues,
 } from '../provider-form-helpers'
+
+function cloudPreset(authTypes: CloudPreset['supported_auth_types']): CloudPreset {
+  return {
+    kind: 'cloud',
+    name: 'example-provider',
+    display_name: 'Example Provider',
+    description: '',
+    driver: 'litellm',
+    litellm_provider: 'example-provider',
+    auth_type: 'api_key',
+    supported_auth_types: authTypes,
+    default_base_url: null,
+    requires_base_url: false,
+    is_featured: true,
+    default_models: [],
+  }
+}
 
 function values(overrides: Partial<ProviderFormValues> = {}): ProviderFormValues {
   return {
@@ -154,15 +173,42 @@ describe('computeProviderValidation', () => {
   })
 })
 
+describe('computeAvailableAuthTypes', () => {
+  it('drops oauth / custom_header for a cloud preset (the preset-create request cannot carry them)', () => {
+    const options = computeAvailableAuthTypes(
+      cloudPreset(['api_key', 'subscription', 'oauth', 'custom_header']),
+      undefined,
+    )
+    const values = options.map((o) => o.value)
+    expect(values).toContain('api_key')
+    expect(values).toContain('subscription')
+    expect(values).not.toContain('oauth')
+    expect(values).not.toContain('custom_header')
+  })
+
+  it('offers every auth type for a custom endpoint (no preset)', () => {
+    const values = computeAvailableAuthTypes(null, undefined).map((o) => o.value)
+    expect(values).toContain('oauth')
+    expect(values).toContain('custom_header')
+  })
+})
+
 describe('subscriptionTokenHint (vendor-neutral copy)', () => {
-  it('names the provider via display_name without a vendor CLI reference', () => {
+  const BANNED_VENDOR_NAMES = ['claude', 'anthropic', 'openai', 'gpt']
+
+  it('names the provider via display_name without a vendor reference', () => {
     const hint = subscriptionTokenHint('Example Provider')
     expect(hint).toContain('Example Provider')
-    expect(hint.toLowerCase()).not.toContain('claude')
     expect(hint).not.toContain('setup-token')
+    for (const vendor of BANNED_VENDOR_NAMES) {
+      expect(hint.toLowerCase()).not.toContain(vendor)
+    }
   })
 
   it('falls back to a generic phrase with no display name', () => {
-    expect(subscriptionTokenHint(undefined).toLowerCase()).not.toContain('claude')
+    const hint = subscriptionTokenHint(undefined).toLowerCase()
+    for (const vendor of BANNED_VENDOR_NAMES) {
+      expect(hint).not.toContain(vendor)
+    }
   })
 })

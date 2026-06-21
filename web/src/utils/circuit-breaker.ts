@@ -2,11 +2,11 @@
  * Per-endpoint circuit breaker for the transparent 429 retry transports.
  *
  * When the same endpoint terminally rate-limits repeatedly, continuing to
- * fire requests at it only deepens the back-pressure (the storm that
- * motivated #2438 fired 4,006 GETs at a single 429-ing endpoint). After a
- * run of consecutive failures the breaker OPENS for a cooldown window;
- * while open, callers short-circuit instead of issuing another doomed
- * request. A success closes it.
+ * fire requests at it only deepens the back-pressure: an unguarded retry
+ * loop can issue thousands of requests against a single 429-ing endpoint.
+ * After a run of consecutive failures the breaker OPENS for a cooldown
+ * window; while open, callers short-circuit instead of issuing another
+ * doomed request. A success closes it.
  *
  * State is timestamp-based (NO timers), so the breaker never holds the
  * event loop open and stays invisible to the active-handle gate. The
@@ -86,6 +86,13 @@ export function recordSuccess(key: string): void {
  */
 export function resetCircuitBreaker(): void {
   states.clear()
+}
+
+// Reset on Vite HMR so a breaker tripped by a dev-time 429 burst doesn't
+// persist (phantom "open") across an edit-reload and silently short-circuit
+// real requests. No-op in production (import.meta.hot is undefined).
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => states.clear())
 }
 
 /**

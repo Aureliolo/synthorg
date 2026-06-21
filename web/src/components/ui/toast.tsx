@@ -36,7 +36,7 @@ export function Toast({ toast, onDismiss }: ToastProps) {
       role={toast.variant === 'error' ? 'alert' : 'status'}
       aria-live={ariaLive}
       className={cn(
-        'pointer-events-auto flex w-80 items-start gap-3 rounded-lg border border-border-bright bg-surface p-3 shadow-lg',
+        'pointer-events-auto flex w-80 items-start gap-3 rounded-lg border border-border-bright bg-surface p-card shadow-lg',
         'border-l-4',
         config.borderClass,
       )}

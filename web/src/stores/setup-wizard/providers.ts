@@ -44,8 +44,7 @@ interface ProbeOutcome {
 async function runProbeLocal(label: string): Promise<ProbeOutcome | null> {
   try {
     const response = await probeLocal()
-    const results = Object.fromEntries(Object.entries(response.results))
-    const errors = Object.fromEntries(Object.entries(response.errors))
+    const { results, errors } = response
     if (Object.keys(errors).length > 0) {
       log.warn('runProbeLocal reported per-preset errors', {
         label,

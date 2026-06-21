@@ -25,7 +25,7 @@ export function WizardSkeleton() {
         </div>
 
         {/* Navigation skeleton */}
-        <div className="flex justify-between border-t border-border pt-4">
+        <div className="flex justify-between border-t border-border pt-card">
           <Skeleton className="h-9 w-20" />
           <Skeleton className="h-9 w-20" />
         </div>

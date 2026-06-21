@@ -56,13 +56,14 @@ interface StepView {
 
 /** Accessible step name exposing position + status, not just the digit. */
 function stepAriaLabel(view: StepView): string {
-  const status = view.isActive
-    ? ', current step'
-    : view.showWarning
-      ? ', needs revalidation'
-      : view.isComplete
-        ? ', completed'
-        : ''
+  let status = ''
+  if (view.isActive) {
+    status = ', current step'
+  } else if (view.showWarning) {
+    status = ', needs revalidation'
+  } else if (view.isComplete) {
+    status = ', completed'
+  }
   return `Step ${view.index + 1} of ${view.total}: ${view.label}${status}`
 }
 

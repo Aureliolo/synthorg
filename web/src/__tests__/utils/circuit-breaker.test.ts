@@ -15,8 +15,9 @@ import {
 const FAILURE_THRESHOLD = 5
 const OPEN_COOLDOWN_MS = 10_000
 
+// The global afterEach in test-setup.tsx already calls resetCircuitBreaker();
+// this hook exists only to restore real timers for the fake-timer test below.
 afterEach(() => {
-  resetCircuitBreaker()
   vi.useRealTimers()
 })
 
