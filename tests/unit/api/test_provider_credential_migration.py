@@ -261,3 +261,48 @@ class TestMigrateTopLevel:
         stored = json.loads((await settings_service.get("providers", "configs")).value)
         assert stored["schema_version"] == 1
         assert "example-provider" in stored["providers"]
+
+    async def test_future_schema_version_is_left_untouched(
+        self,
+        app_state: AppState,
+        settings_service: SettingsService,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A newer-than-current envelope is skipped, not downgraded.
+
+        Unwrapping a future ``schema_version`` and rewriting it with the
+        current version would silently downgrade a newer on-disk format, so
+        the hook leaves the blob untouched and logs a warning instead.
+        """
+
+        async def _store(_app: object, name: str, _key: str) -> str:
+            return f"provider-{name}"
+
+        monkeypatch.setattr(_STORE_PATH, _store)
+        future_blob = json.dumps(
+            {
+                "schema_version": 999,
+                "providers": {
+                    "example-provider": {
+                        "auth_type": "api_key",
+                        "api_key": _SECRET,
+                    },
+                },
+            },
+        )
+        await settings_service.set("providers", "configs", future_blob)
+
+        with structlog.testing.capture_logs() as logs:
+            await migration.migrate_embedded_provider_keys(app_state)
+
+        # The blob is unchanged: still version 999 with the embedded key
+        # intact (no migration, no version downgrade).
+        stored = json.loads((await settings_service.get("providers", "configs")).value)
+        assert stored["schema_version"] == 999
+        assert stored["providers"]["example-provider"]["api_key"] == _SECRET
+        phases = [
+            e.get("phase")
+            for e in logs
+            if e.get("event") == migration.PROVIDER_CREDENTIAL_MIGRATION_FAILED
+        ]
+        assert "unsupported_schema_version" in phases

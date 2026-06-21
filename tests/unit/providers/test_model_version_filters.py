@@ -34,6 +34,8 @@ class TestAnthropicVersionFilter:
             "claude-haiku-4-0",
             "claude-opus-3-5",
             "claude-sonnet-3-7",
+            "claude-opus-4-04",
+            "claude-sonnet-4-01",
         ],
     )
     def test_rejects_below_floor(self, model_id: str) -> None:

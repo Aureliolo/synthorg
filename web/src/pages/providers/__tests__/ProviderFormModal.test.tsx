@@ -21,6 +21,7 @@ const exampleProvider: CloudPreset = {
   default_base_url: null,
   requires_base_url: false,
   is_featured: true,
+  prefer_live_discovery: false,
   default_models: [],
 }
 
@@ -36,6 +37,7 @@ const cloudApiKeyOnly: CloudPreset = {
   default_base_url: null,
   requires_base_url: false,
   is_featured: true,
+  prefer_live_discovery: false,
   default_models: [],
 }
 

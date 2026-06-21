@@ -458,7 +458,10 @@ class TestGetProviderConfigs:
             for e in logs
             if e.get("event") == SETTINGS_FETCH_FAILED and "reason" in e
         ]
-        assert "expected_dict_fallback" in reasons
+        assert any(
+            isinstance(reason, str) and "expected_dict_fallback" in reason
+            for reason in reasons
+        )
 
     async def test_fallback_returns_immutable_mapping(
         self, mock_settings: AsyncMock

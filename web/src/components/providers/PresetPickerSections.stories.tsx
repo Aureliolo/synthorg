@@ -24,6 +24,7 @@ const cloud: CloudPreset[] = [
     default_base_url: null,
     requires_base_url: false,
     is_featured: true,
+    prefer_live_discovery: false,
     default_models: [],
   },
   // Variant: standard API-key cloud preset.
@@ -39,6 +40,7 @@ const cloud: CloudPreset[] = [
     default_base_url: null,
     requires_base_url: false,
     is_featured: true,
+    prefer_live_discovery: false,
     default_models: [],
   },
   // Variant: managed-cloud counterpart of a self-hosted server.
@@ -54,6 +56,7 @@ const cloud: CloudPreset[] = [
     default_base_url: 'https://managed.example.test',
     requires_base_url: false,
     is_featured: true,
+    prefer_live_discovery: false,
     default_models: [],
   },
   // Auto-derived soft preset: surfaces the collapsible "More
@@ -70,6 +73,7 @@ const cloud: CloudPreset[] = [
     default_base_url: null,
     requires_base_url: false,
     is_featured: false,
+    prefer_live_discovery: false,
     default_models: [],
   },
 ]

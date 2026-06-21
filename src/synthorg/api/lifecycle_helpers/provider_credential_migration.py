@@ -91,9 +91,21 @@ async def migrate_embedded_provider_keys(app_state: AppState) -> None:
     if loaded is None or not isinstance(loaded, dict):
         return
     # Unwrap the versioned envelope; tolerate a pre-envelope bare provider
-    # dict so an upgrade boot still finds embedded keys.
+    # dict so an upgrade boot still finds embedded keys. A future/unknown
+    # ``schema_version`` is left untouched: unwrapping it and rewriting with
+    # the current version would silently downgrade a newer on-disk format.
     was_envelope = "schema_version" in loaded and "providers" in loaded
-    configs = loaded["providers"] if was_envelope else loaded
+    if was_envelope:
+        if loaded.get("schema_version") != PROVIDERS_CONFIG_SCHEMA_VERSION:
+            logger.warning(
+                PROVIDER_CREDENTIAL_MIGRATION_FAILED,
+                phase="unsupported_schema_version",
+                schema_version=loaded.get("schema_version"),
+            )
+            return
+        configs = loaded["providers"]
+    else:
+        configs = loaded
     if not isinstance(configs, dict):
         return
 

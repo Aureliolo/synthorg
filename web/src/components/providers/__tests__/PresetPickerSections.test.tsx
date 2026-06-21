@@ -19,6 +19,7 @@ const cloud: CloudPreset = {
   default_base_url: null,
   requires_base_url: false,
   is_featured: true,
+  prefer_live_discovery: false,
   default_models: [],
 }
 
@@ -192,6 +193,7 @@ describe('PresetPickerSections "More providers" expansion', () => {
       default_base_url: null,
       requires_base_url: false,
       is_featured: false,
+      prefer_live_discovery: false,
       default_models: [],
     }
     render(

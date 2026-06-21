@@ -515,7 +515,9 @@ class ConfigResolver:
 
         Falls back to ``RootConfig.providers`` if the setting value
         is ``None``, contains invalid JSON, or fails schema validation.
-        An explicit empty dict ``{}`` is a valid override.
+        An explicit empty envelope (``{"schema_version": N,
+        "providers": {}}``) is a valid "no providers" override; a bare
+        ``{}`` is not a valid envelope and falls back to defaults.
 
         The returned mapping is wrapped in :class:`types.MappingProxyType`
         to prevent callers from mutating the resolver's view of provider

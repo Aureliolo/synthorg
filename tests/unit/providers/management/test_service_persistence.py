@@ -243,4 +243,12 @@ class TestHotReloadRollback:
             and e.get("rollback_failed") is True
         ]
         assert rollback_alerts
+
+        # The hot-reload alert reports the true restore state: the rollback
+        # write failed, so ``rolled_back`` must be False, not a hardcoded True.
+        hot_reload_alerts = [
+            e for e in logs if e.get("event") == PROVIDER_HOT_RELOAD_FAILED
+        ]
+        assert hot_reload_alerts
+        assert hot_reload_alerts[0].get("rolled_back") is False
         assert rollback_alerts[0]["log_level"] == "error"
