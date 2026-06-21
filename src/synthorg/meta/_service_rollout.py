@@ -11,6 +11,7 @@ from collections.abc import Mapping
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.models import (
+    ApplyResult,
     ImprovementProposal,
     OrgSignalSnapshot,
     ProposalAltitude,
@@ -21,11 +22,13 @@ from synthorg.meta.models import (
     RolloutResult,
 )
 from synthorg.meta.protocol import ProposalApplier, RolloutStrategy
+from synthorg.meta.rollout.inverse_dispatch import UnknownRollbackOperationError
 from synthorg.meta.rollout.regression.composite import TieredRegressionDetector
 from synthorg.meta.rollout.rollback import RollbackExecutor
 from synthorg.meta.telemetry.protocol import AnalyticsEmitter
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
+    META_ROLLBACK_COMPLETED,
     META_ROLLBACK_FAILED,
     META_ROLLBACK_STARTED,
     META_ROLLOUT_PRECONDITION_FAILED,
@@ -136,6 +139,8 @@ class SelfImprovementRolloutMixin:
                 META_ROLLBACK_FAILED,
                 proposal_id=str(proposal.id),
                 reason="no_materialised_rollback_operations",
+                altitude=proposal.altitude.value,
+                strategy=proposal.rollout_strategy.value,
             )
             return result
         logger.info(
@@ -149,23 +154,92 @@ class SelfImprovementRolloutMixin:
                 operations,
                 proposal_id=proposal.id,
             )
+        except UnknownRollbackOperationError as exc:
+            return self._auto_rollback_config_error(result, proposal, base_details, exc)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
+            return self._auto_rollback_errored(result, proposal, base_details, exc)
+        return self._auto_rollback_finished(
+            result, proposal, base_details, rollback_result
+        )
+
+    def _auto_rollback_config_error(
+        self,
+        result: RolloutResult,
+        proposal: ImprovementProposal,
+        base_details: str,
+        exc: UnknownRollbackOperationError,
+    ) -> RolloutResult:
+        """Handle a missing-handler config gap at ERROR (not a transient error).
+
+        Returns:
+            The rollout result with the config-gap surfaced in ``details``.
+        """
+        logger.error(
+            META_ROLLBACK_FAILED,
+            proposal_id=str(proposal.id),
+            reason="unregistered_operation_type",
+            altitude=proposal.altitude.value,
+            strategy=proposal.rollout_strategy.value,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return result.model_copy(
+            update={
+                "details": (
+                    f"{base_details}; auto-rollback misconfigured "
+                    f"(no handler for a materialised operation type)"
+                ),
+            },
+        )
+
+    def _auto_rollback_errored(
+        self,
+        result: RolloutResult,
+        proposal: ImprovementProposal,
+        base_details: str,
+        exc: Exception,
+    ) -> RolloutResult:
+        """Surface an unexpected rollback error and keep the REGRESSED outcome.
+
+        Returns:
+            The rollout result with the error surfaced in ``details``.
+        """
+        logger.warning(
+            META_ROLLBACK_FAILED,
+            proposal_id=str(proposal.id),
+            reason="auto_rollback_errored",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return result.model_copy(
+            update={
+                "details": (
+                    f"{base_details}; auto-rollback errored ({type(exc).__name__})"
+                ),
+            },
+        )
+
+    def _auto_rollback_finished(
+        self,
+        result: RolloutResult,
+        proposal: ImprovementProposal,
+        base_details: str,
+        rollback_result: ApplyResult,
+    ) -> RolloutResult:
+        """Flip to ROLLED_BACK on success, else keep REGRESSED with detail.
+
+        Returns:
+            The outcome-flipped rollout result.
+        """
+        if not rollback_result.success:
             logger.warning(
                 META_ROLLBACK_FAILED,
                 proposal_id=str(proposal.id),
-                reason="auto_rollback_errored",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                reason="rollback_returned_failure",
+                error=rollback_result.error_message,
+                changes_applied=rollback_result.changes_applied,
             )
-            return result.model_copy(
-                update={
-                    "details": (
-                        f"{base_details}; auto-rollback errored ({type(exc).__name__})"
-                    ),
-                },
-            )
-        if not rollback_result.success:
             return result.model_copy(
                 update={
                     "details": (
@@ -174,6 +248,11 @@ class SelfImprovementRolloutMixin:
                     ),
                 },
             )
+        logger.info(
+            META_ROLLBACK_COMPLETED,
+            proposal_id=str(proposal.id),
+            changes_applied=rollback_result.changes_applied,
+        )
         return result.model_copy(
             update={
                 "outcome": RolloutOutcome.ROLLED_BACK,
@@ -272,5 +351,10 @@ class SelfImprovementRolloutMixin:
                     f"Regression detected: {regression.verdict.value}"
                     f" on {regression.breached_metric or 'unknown'}"
                 ),
+                # Carry the applier-materialised inverse operations explicitly.
+                # ``model_copy`` already preserves omitted fields, but the
+                # auto-rollback dispatch below depends on them surviving this
+                # REGRESSED flip, so the load-bearing handoff is made visible.
+                "applied_rollback_operations": result.applied_rollback_operations,
             },
         )

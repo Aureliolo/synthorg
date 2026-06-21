@@ -10,6 +10,7 @@ import hashlib
 from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     ImprovementProposal,
@@ -28,15 +29,47 @@ from synthorg.meta.rollout.before_after import (
     _default_snapshot_builder,
 )
 from synthorg.meta.rollout.roster import NoOpOrgRoster, OrgRoster
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_ROLLOUT_FAILED,
     META_ROLLOUT_STARTED,
 )
+from synthorg.providers.errors import ProviderError
 
 logger = get_logger(__name__)
 _DEFAULT_CANARY_FRACTION: Final[float] = 0.2
 _DEFAULT_CHECK_INTERVAL_HOURS: Final[float] = 4.0
+
+
+def _canary_failed(
+    *,
+    proposal: ImprovementProposal,
+    exc: Exception,
+    stage: str,
+) -> RolloutResult:
+    """Log a non-provider canary failure and build the FAILED result.
+
+    Mirrors ``before_after._rollout_failed`` so a snapshot-builder or
+    observation error surfaces as a FAILED rollout (with the redacted
+    error) instead of propagating raw out of ``execute``.
+
+    Returns:
+        ``RolloutResult`` with ``outcome=FAILED`` and the redacted error.
+    """
+    logger.warning(
+        META_ROLLOUT_FAILED,
+        strategy="canary",
+        proposal_id=str(proposal.id),
+        stage=stage,
+        error=type(exc).__name__,
+        details=safe_error_description(exc),
+    )
+    return RolloutResult(
+        proposal_id=proposal.id,
+        outcome=RolloutOutcome.FAILED,
+        observation_hours_elapsed=0.0,
+        details=safe_error_description(exc),
+    )
 
 
 class CanarySubsetRollout:
@@ -96,6 +129,11 @@ class CanarySubsetRollout:
 
         Returns:
             ``RolloutResult`` instance.
+
+        Raises:
+            ProviderError: Propagated when the snapshot builder exhausts
+                provider retries, so the engine can fall back rather than
+                masking it as a generic rollout failure.
         """
         agent_ids = await self._roster.list_agent_ids()
         canary_ids = _select_canary(
@@ -113,7 +151,17 @@ class CanarySubsetRollout:
             observation_hours=proposal.observation_window_hours,
         )
 
-        baseline = await self._snapshot_builder()
+        try:
+            baseline = await self._snapshot_builder()
+        except ProviderError:
+            # Provider exhaustion is the engine layer's signal to act on
+            # (fallback chains); it must not be flattened into a generic
+            # rollout FAILED that hides which subsystem broke.
+            raise
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            return _canary_failed(proposal=proposal, exc=exc, stage="baseline_capture")
+
         apply_result = await applier.apply(proposal)
         if not apply_result.success:
             logger.warning(
@@ -129,11 +177,19 @@ class CanarySubsetRollout:
                 details=apply_result.error_message,
             )
 
-        result = await self._observe_window(
-            proposal=proposal,
-            baseline=baseline,
-            detector=detector,
-        )
+        try:
+            result = await self._observe_window(
+                proposal=proposal,
+                baseline=baseline,
+                detector=detector,
+            )
+        except ProviderError:
+            # See baseline_capture: provider exhaustion propagates so the
+            # engine can fall back rather than seeing an opaque rollout FAILED.
+            raise
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            return _canary_failed(proposal=proposal, exc=exc, stage="observation")
         return with_applied_rollback_operations(
             result, apply_result.rollback_operations
         )

@@ -9,15 +9,20 @@ from synthorg.meta.models import (
     ApplyResult,
     ConfigChange,
     ImprovementProposal,
+    OrgSignalSnapshot,
     ProposalAltitude,
     ProposalRationale,
+    ProposalStatus,
+    RegressionResult,
     RegressionVerdict,
     RollbackOperation,
     RollbackPlan,
     RolloutOutcome,
     RolloutResult,
 )
+from synthorg.meta.protocol import ProposalApplier, RolloutStrategy
 from synthorg.meta.rollout.inverse_dispatch import UnknownRollbackOperationError
+from synthorg.meta.rollout.regression.composite import TieredRegressionDetector
 from synthorg.meta.rollout.rollback import RollbackExecutor
 from synthorg.meta.service import SelfImprovementService
 from tests._shared import FakeClock, as_uuid, mock_of
@@ -119,11 +124,24 @@ class TestAutoRollbackDispatch:
         assert result.outcome is RolloutOutcome.REGRESSED
         assert "auto-rollback failed" in (result.details or "")
 
-    async def test_errored_rollback_stays_regressed(self) -> None:
+    async def test_config_gap_stays_regressed_as_misconfigured(self) -> None:
+        # A missing handler is a config gap, not a transient error: it logs
+        # ERROR and surfaces a distinct "misconfigured" detail.
         executor = mock_of[RollbackExecutor](
             execute_operations=AsyncMock(
                 side_effect=UnknownRollbackOperationError("no handler"),
             ),
+        )
+        svc = _service(executor)
+
+        result = await svc._dispatch_auto_rollback(_regressed_result(), _proposal())
+
+        assert result.outcome is RolloutOutcome.REGRESSED
+        assert "misconfigured" in (result.details or "")
+
+    async def test_unexpected_error_stays_regressed_as_errored(self) -> None:
+        executor = mock_of[RollbackExecutor](
+            execute_operations=AsyncMock(side_effect=RuntimeError("store exploded")),
         )
         svc = _service(executor)
 
@@ -165,3 +183,60 @@ class TestAutoRollbackDispatch:
 
         assert result.outcome is RolloutOutcome.REGRESSED
         executor.execute_operations.assert_not_awaited()
+
+    async def test_execute_rollout_chain_dispatches_materialised_ops(self) -> None:
+        # Drive the full execute_rollout chain: a SUCCESS rollout carrying
+        # applier-materialised ops, flipped to REGRESSED by the detector, must
+        # still reach the executor with those ops (proves the ops survive the
+        # regression-check model_copy and the auto-rollback dispatch fires).
+        ops = (
+            RollbackOperation(
+                operation_type="revert_config",
+                target="performance.quality_weight_ci",
+                previous_value=0.5,
+                description="revert to 0.5",
+            ),
+        )
+        success = RolloutResult(
+            proposal_id=as_uuid("prop"),
+            outcome=RolloutOutcome.SUCCESS,
+            observation_hours_elapsed=4.0,
+            applied_rollback_operations=ops,
+        )
+        executor = mock_of[RollbackExecutor](
+            execute_operations=AsyncMock(
+                return_value=ApplyResult(success=True, changes_applied=1),
+            ),
+        )
+        svc = _service(executor)
+        svc._rollout_strategies = {
+            "before_after": mock_of[RolloutStrategy](
+                execute=AsyncMock(return_value=success),
+            ),
+        }
+        svc._appliers = {ProposalAltitude.CONFIG_TUNING: mock_of[ProposalApplier]()}
+        svc._detector = mock_of[TieredRegressionDetector](
+            check=AsyncMock(
+                return_value=RegressionResult(
+                    verdict=RegressionVerdict.THRESHOLD_BREACH,
+                    breached_metric="quality",
+                    baseline_value=8.0,
+                    current_value=5.0,
+                ),
+            ),
+        )
+        svc._analytics_emitter = None
+        approved = _proposal().model_copy(
+            update={"status": ProposalStatus.APPROVED},
+        )
+
+        result = await svc.execute_rollout(
+            approved,
+            baseline=mock_of[OrgSignalSnapshot](),
+            current=mock_of[OrgSignalSnapshot](),
+        )
+
+        assert result.outcome is RolloutOutcome.ROLLED_BACK
+        assert result.regression_verdict is RegressionVerdict.THRESHOLD_BREACH
+        executor.execute_operations.assert_awaited_once()
+        assert executor.execute_operations.call_args.args[0] == ops

@@ -860,8 +860,8 @@
     },
     "src/synthorg/meta/rollout/ab_test.py": {
       "cap": 500,
-      "loc": 466,
-      "ratio": 0.932,
+      "loc": 477,
+      "ratio": 0.954,
       "tier": "code"
     },
     "src/synthorg/meta/rules/builtin.py": {
@@ -1391,7 +1391,7 @@
     "synthorg.core.autonomy_enums": 36,
     "synthorg.core.boundary": 37,
     "synthorg.core.clock": 181,
-    "synthorg.core.critical_errors": 546,
+    "synthorg.core.critical_errors": 547,
     "synthorg.core.domain_errors": 220,
     "synthorg.core.effective_autonomy": 22,
     "synthorg.core.error_taxonomy": 61,
@@ -1483,7 +1483,7 @@
     "synthorg.project_brain.models": 24,
     "synthorg.providers.cost_recording": 38,
     "synthorg.providers.enums": 91,
-    "synthorg.providers.errors": 42,
+    "synthorg.providers.errors": 43,
     "synthorg.providers.models": 117,
     "synthorg.providers.protocol": 68,
     "synthorg.providers.registry": 33,

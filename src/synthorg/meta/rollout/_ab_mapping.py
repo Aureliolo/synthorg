@@ -38,10 +38,13 @@ def samples_to_metrics(
 def map_verdict(
     verdict: ABTestVerdict,
 ) -> tuple[RolloutOutcome, RegressionVerdict | None]:
-    """Map ABTestVerdict to RolloutOutcome + RegressionVerdict.
+    """Map an ``ABTestVerdict`` to a rollout outcome and regression verdict.
 
     Returns:
-        The configured value when present, ``None`` otherwise.
+        A ``(RolloutOutcome, RegressionVerdict | None)`` pair: SUCCESS +
+        NO_REGRESSION when the treatment wins, REGRESSED +
+        STATISTICAL_REGRESSION when it regresses or the control wins, and
+        INCONCLUSIVE + ``None`` otherwise.
     """
     if verdict == ABTestVerdict.TREATMENT_WINS:
         return RolloutOutcome.SUCCESS, RegressionVerdict.NO_REGRESSION

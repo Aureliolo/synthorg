@@ -99,8 +99,10 @@ src/synthorg/meta/
     ab_models.py       -- GroupAssignment, ABTestVerdict, GroupMetrics (sample-backed)
     roster.py          -- OrgRoster protocol + CallableOrgRoster / NoOpOrgRoster
     group_aggregator.py -- GroupSignalAggregator protocol + TrackerGroupAggregator
-    inverse_dispatch.py -- RollbackHandler protocol + 4 mutator protocols + default handlers
+    inverse_dispatch.py -- RollbackHandler protocol + 6 mutator protocols + default handlers
     rollback.py        -- RollbackExecutor (dispatches by operation_type)
+    mutators/          -- Concrete mutators (config / prompt / architecture / code /
+                          principle-removal / branch) + build_architecture_adapters
     regression/        -- Tiered detection
       threshold.py     -- Layer 1: instant circuit-breaker
       statistical.py   -- Layer 2: StatisticalDetector (Welch-backed)
@@ -282,7 +284,7 @@ The cycle only ever **proposes**: every authored-tool proposal still flows throu
 5. **Human approval**: Proposals queue in `ApprovalStore` for mandatory review
 6. **Rollout**: Before/after comparison, canary subset, or A/B test (per proposal)
 7. **Regression detection**: Tiered (threshold circuit-breaker + statistical significance)
-8. **Auto-rollback**: On regression, `RollbackExecutor` applies the rollback plan
+8. **Auto-rollback**: On regression, `RollbackExecutor` dispatches the applier-materialised inverse operations (the concrete `previous_value` / created-id captures the appliers record at apply time, not the proposal's static plan)
 
 ## Configuration
 
@@ -416,7 +418,7 @@ Each branch returns `True` once it owns the decision, suppressing fall-through. 
 - **Guard chain**: 4 sequential guards must all pass before approval routing.
 - **Rollback plans**: Every proposal must carry a concrete, validated rollback plan.
 - **Tiered regression detection**: Instant circuit-breaker + delayed statistical test.
-- **Auto-rollback**: On regression, the rollback plan executes automatically.
+- **Auto-rollback**: On regression, the executor dispatches the applier-materialised inverse operations automatically (the proposal's static rollback plan remains human-readable intent; the dispatched operations carry the apply-time-captured prior state).
 - **Rate limiting**: Configurable proposal submission limits prevent flood.
 - **Scope enforcement**: Proposals outside enabled altitudes are rejected.
 - **Disabled by default**: The entire system is opt-in.

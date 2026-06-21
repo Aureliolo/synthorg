@@ -15,9 +15,10 @@ from typing import Protocol, runtime_checkable
 from synthorg.meta.models import ArchitectureChange, RollbackOperation
 
 #: Undo closure returned alongside an applied architecture change. Calling it
-#: reverses exactly the one change it was produced for (delete a created role /
-#: re-save a removed department / restore a prior workflow definition), so the
-#: applier can roll back a partially-applied proposal in reverse order.
+#: reverses exactly the one change it was produced for (delete a created role or
+#: department / re-save a removed role / re-create a removed department / restore
+#: a prior workflow definition), so the applier can roll back a partially-applied
+#: proposal in reverse order.
 ArchitectureUndo = Callable[[], Awaitable[None]]
 
 

@@ -111,6 +111,7 @@ async def test_restore_prompt_writes_override_and_overlays(
     )
 
     assert result.success
+    assert result.changes_applied == 1
     # The override row is durably written, keyed by the pack principle id.
     stored = await override_repo.get(NotBlankStr(target_id))
     assert stored is not None
@@ -175,6 +176,7 @@ async def test_remove_principle_deletes_active_and_drops_from_build(
     )
 
     assert result.success
+    assert result.changes_applied == 1
     assert await repo.get(NotBlankStr(str(principle.id))) is None
     # The refresh hook fired, so the build snapshot no longer surfaces it.
     assert active_provider.snapshot() == ()

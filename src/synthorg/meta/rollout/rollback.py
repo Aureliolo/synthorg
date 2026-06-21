@@ -108,55 +108,17 @@ class RollbackExecutor:
         """
         total_changes = 0
         for operation in operations:
-            handler = self._handlers.get(operation.operation_type)
-            if handler is None:
-                logger.warning(
-                    META_ROLLBACK_OPERATION_FAILED,
-                    proposal_id=str(proposal_id),
-                    operation_type=operation.operation_type,
-                    reason="unknown_operation_type",
-                )
-                msg = (
-                    f"no handler registered for "
-                    f"operation_type={operation.operation_type!r}"
-                )
-                raise UnknownRollbackOperationError(msg)
             try:
-                changes = await handler.revert(operation)
-            except (MemoryError, RecursionError) as exc:
-                log_exception_redacted(
-                    logger,
-                    META_ROLLBACK_OPERATION_FAILED,
-                    exc,
-                    proposal_id=str(proposal_id),
-                    operation_type=operation.operation_type,
-                    target=operation.target,
-                    reason="catastrophic_error",
-                )
+                total_changes += await self._revert_one(operation, proposal_id)
+            except MemoryError, RecursionError, UnknownRollbackOperationError:
                 raise
-            except Exception as exc:  # noqa: BLE001 -- best-effort revert: log and fail
-                log_exception_redacted(
-                    logger,
-                    META_ROLLBACK_OPERATION_FAILED,
-                    exc,
-                    proposal_id=str(proposal_id),
-                    operation_type=operation.operation_type,
-                    target=operation.target,
-                )
+            except Exception as exc:  # noqa: BLE001 -- best-effort: convert to failure
                 return _fail(
                     proposal_id,
                     safe_error_description(exc),
                     total_changes,
                     error_type=type(exc).__name__,
                 )
-            total_changes += changes
-            logger.info(
-                META_ROLLBACK_OPERATION_APPLIED,
-                proposal_id=str(proposal_id),
-                operation_type=operation.operation_type,
-                target=operation.target,
-                changes=changes,
-            )
         logger.info(
             META_ROLLBACK_COMPLETED,
             proposal_id=str(proposal_id),
@@ -165,6 +127,66 @@ class RollbackExecutor:
             validation=validation_check,
         )
         return ApplyResult(success=True, changes_applied=total_changes)
+
+    async def _revert_one(
+        self,
+        operation: RollbackOperation,
+        proposal_id: UUID,
+    ) -> int:
+        """Dispatch one operation to its handler and log the outcome.
+
+        Returns:
+            The number of changes the handler reverted.
+
+        Raises:
+            UnknownRollbackOperationError: No handler is registered for
+                ``operation.operation_type``.
+            MemoryError: Re-raised after a redacted log (catastrophic).
+            RecursionError: Re-raised after a redacted log (catastrophic).
+        """
+        handler = self._handlers.get(operation.operation_type)
+        if handler is None:
+            logger.warning(
+                META_ROLLBACK_OPERATION_FAILED,
+                proposal_id=str(proposal_id),
+                operation_type=operation.operation_type,
+                reason="unknown_operation_type",
+            )
+            msg = (
+                f"no handler registered for operation_type={operation.operation_type!r}"
+            )
+            raise UnknownRollbackOperationError(msg)
+        try:
+            changes = await handler.revert(operation)
+        except (MemoryError, RecursionError) as exc:
+            log_exception_redacted(
+                logger,
+                META_ROLLBACK_OPERATION_FAILED,
+                exc,
+                proposal_id=str(proposal_id),
+                operation_type=operation.operation_type,
+                target=operation.target,
+                reason="catastrophic_error",
+            )
+            raise
+        except Exception as exc:
+            log_exception_redacted(
+                logger,
+                META_ROLLBACK_OPERATION_FAILED,
+                exc,
+                proposal_id=str(proposal_id),
+                operation_type=operation.operation_type,
+                target=operation.target,
+            )
+            raise
+        logger.info(
+            META_ROLLBACK_OPERATION_APPLIED,
+            proposal_id=str(proposal_id),
+            operation_type=operation.operation_type,
+            target=operation.target,
+            changes=changes,
+        )
+        return changes
 
 
 def _fail(

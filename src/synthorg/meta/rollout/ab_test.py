@@ -46,7 +46,7 @@ from synthorg.meta.rollout.group_aggregator import (
     GroupSignalAggregator,
 )
 from synthorg.meta.rollout.roster import NoOpOrgRoster, OrgRoster
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_ABTEST_GROUPS_ASSIGNED,
     META_ABTEST_OBSERVATION_STARTED,
@@ -268,15 +268,29 @@ class ABTestRollout:
             # An aggregation/comparator/runtime failure must not leave the
             # durable RUNNING record stranded, or ``/meta/ab-tests`` shows the
             # rollout as permanently running. Stamp a terminal FAILED record,
-            # then re-raise to preserve the existing failure semantics.
+            # then re-raise the ORIGINAL error to preserve failure semantics.
+            # The terminal stamp is best-effort: a persistence failure here
+            # must not mask the original exception, so it is caught and logged
+            # rather than allowed to propagate over the bare ``raise``.
             # ``CancelledError`` is a ``BaseException``, so cooperative
             # cancellation bypasses this handler untouched.
             reraise_critical(exc)
-            await self._persist_record(
-                proposal=proposal,
-                assignment=assignment,
-                status=AbTestStatus.FAILED,
-            )
+            try:
+                await self._persist_record(
+                    proposal=proposal,
+                    assignment=assignment,
+                    status=AbTestStatus.FAILED,
+                )
+            except Exception as persist_exc:  # noqa: BLE001 -- best-effort stamp
+                reraise_critical(persist_exc)
+                logger.warning(
+                    META_ROLLOUT_FAILED,
+                    strategy="ab_test",
+                    proposal_id=str(proposal.id),
+                    reason="terminal_record_persist_failed",
+                    error_type=type(persist_exc).__name__,
+                    error=safe_error_description(persist_exc),
+                )
             raise
         return with_applied_rollback_operations(
             result, apply_result.rollback_operations
