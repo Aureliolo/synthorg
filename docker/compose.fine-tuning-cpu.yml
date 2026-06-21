@@ -52,7 +52,10 @@ services:
       # them a writable /tmp so training does not fail on the locked rootfs.
       # No noexec: torch-inductor JIT caches and dlopens compiled kernels
       # from /tmp (default /tmp/torchinductor_*), so /tmp must allow exec.
-      - /tmp:nosuid,nodev,size=1g
+      # mode=1777: a bare tmpfs defaults to 0755 root-owned, which a
+      # non-root training user cannot write to; pin the sticky
+      # world-writable mode a real /tmp uses so scratch writes succeed.
+      - /tmp:nosuid,nodev,size=1g,mode=1777
     deploy:
       resources:
         limits:
