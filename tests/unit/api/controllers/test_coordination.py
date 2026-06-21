@@ -1,6 +1,5 @@
 """Tests for coordination controller."""
 
-from collections.abc import AsyncGenerator
 from datetime import date
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -8,9 +7,6 @@ from uuid import uuid4
 
 import pytest
 
-from synthorg.api.auth.service import AuthService
-from synthorg.budget.tracker import CostTracker
-from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task_enums import CoordinationTopology
 from synthorg.engine.coordination.attribution import (
@@ -25,17 +21,14 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
+from synthorg.hr.state import HrStateSlice
+from synthorg.workers.state import RuntimeStateSlice
 from tests._shared import (
     LoopAsyncClient,
     make_app_state,
 )
-from tests._shared import (
-    build_test_app as create_app,
-)
 from tests.unit.api.conftest import (
-    FakeMessageBus,
     FakePersistenceBackend,
-    make_auth_headers,
 )
 
 _TEST_TASK_ID = "test-coord-task"
@@ -114,79 +107,29 @@ def local_agent_registry() -> AgentRegistryService:
 
 
 @pytest.fixture
-async def coordination_ctx(
-    fake_persistence: FakePersistenceBackend,
-    fake_message_bus: FakeMessageBus,
-    auth_service: AuthService,
+def coordination_ctx(
+    async_test_client: LoopAsyncClient,
+    fake_task_engine: TaskEngine,
     mock_coordinator: AsyncMock,
     local_agent_registry: AgentRegistryService,
-) -> AsyncGenerator[SimpleNamespace]:
-    """Test client + the bound task engine for coordinator tests.
+) -> SimpleNamespace:
+    """Shared app client + the bound task engine for coordinator tests.
 
-    Returns a ``SimpleNamespace(client, task_engine)``: the client is
-    used for HTTP, the task engine for pre-creating coordinatable
-    tasks. The public ``POST /tasks`` is a 202 board handoff that
-    creates the task via the work pipeline spine, not the engine
-    directly, so coordinator tests bypass it via ``_insert_task``.
+    Wires a mock coordinator and a per-test agent registry onto the
+    shared app (reverted by the conftest ``_restore_app_state`` step).
+    Returns ``SimpleNamespace(client, task_engine)``: the client is used
+    for HTTP, the session task engine for pre-creating coordinatable
+    tasks via ``_insert_task`` (the public ``POST /tasks`` is a 202 board
+    handoff that materialises the task asynchronously, so coordinator
+    tests bypass it). The session task engine reads from the same
+    ``fake_persistence`` the shared app serves, so a directly-inserted
+    task is visible to ``_get_task``. The shared app already carries a
+    scripted provider, so ``has_active_provider`` stays satisfied.
     """
-    from tests.unit.api.conftest import _seed_test_users
-
-    _seed_test_users(fake_persistence, auth_service)
-
-    from synthorg.engine.task_engine_config import (
-        TaskEngineConfig,
-    )
-    from tests.unit.engine.task_engine_helpers import (
-        FakeMessageBus as EngineMessageBus,
-    )
-    from tests.unit.engine.task_engine_helpers import (
-        FakePersistence,
-    )
-
-    task_engine = TaskEngine(
-        config=TaskEngineConfig(),
-        persistence=FakePersistence(),  # type: ignore[arg-type]
-        message_bus=EngineMessageBus(),  # type: ignore[arg-type]
-    )
-
-    import synthorg.settings.definitions  # noqa: F401 -- trigger registration
-    from synthorg.settings.registry import get_registry
-    from synthorg.settings.service import SettingsService
-
-    root_config = RootConfig(company_name="test")
-    settings_service = SettingsService(
-        repository=fake_persistence.settings,
-        registry=get_registry(),
-    )
-
-    # A scripted provider keeps ``has_active_provider`` true so runtime
-    # checks remain satisfied; these tests seed tasks via
-    # ``_insert_task`` rather than the public ``POST /tasks`` board
-    # handoff.
-    from synthorg.config.provider_schema import ProviderConfig
-    from synthorg.providers.registry import ProviderRegistry
-
-    app = create_app(
-        config=root_config,
-        persistence=fake_persistence,
-        message_bus=fake_message_bus,
-        cost_tracker=CostTracker(),
-        auth_service=auth_service,
-        task_engine=task_engine,
-        coordinator=mock_coordinator,
-        agent_registry=local_agent_registry,
-        settings_service=settings_service,
-        provider_registry=ProviderRegistry.from_config(
-            {
-                "test-provider": ProviderConfig(
-                    driver="scripted", connection_name="conn-scripted"
-                )
-            },
-        ),
-    )
-    async with LoopAsyncClient(app) as client:
-        client.headers.update(make_auth_headers("ceo"))
-        yield SimpleNamespace(client=client, task_engine=task_engine)
+    app_state = async_test_client.app.state.app_state
+    app_state.wire(RuntimeStateSlice, coordinator=mock_coordinator)
+    app_state.wire(HrStateSlice, agent_registry=local_agent_registry)
+    return SimpleNamespace(client=async_test_client, task_engine=fake_task_engine)
 
 
 @pytest.mark.unit

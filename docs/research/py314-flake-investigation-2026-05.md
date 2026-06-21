@@ -47,7 +47,7 @@ prior PRs:
 
 The pyproject `addopts` already pin `-n 8 --dist=loadfile` so a Windows + 3.14
 ProactorEventLoop teardown leak cannot escape into other test modules.
-`tests/conftest.py` already enforces a per-unit-test wall-clock budget of 8 s
+`tests/conftest.py` already enforces a per-unit-test wall-clock budget of 6 s
 which surfaces real regressions deterministically rather than as flakes.
 
 ## Why no further work is queued

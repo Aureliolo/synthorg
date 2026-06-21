@@ -1,6 +1,5 @@
 """Tests for meeting controller."""
 
-from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
@@ -19,6 +18,7 @@ from synthorg.communication.meeting.models import (
     MeetingRecord,
 )
 from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
+from synthorg.communication.meetings.service import MeetingService
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.settings.resolver import ConfigResolver
 
@@ -28,50 +28,13 @@ from tests._shared import (
     make_app_state,
     mock_of,
 )
-from tests._shared import (
-    build_test_app as create_app,
-)
+from tests._shared import build_test_app as create_app
 from tests.unit.api.conftest import (
     FakeMessageBus,
     FakePersistenceBackend,
+    _seed_test_users,
     make_auth_headers,
 )
-
-
-def _create_meeting_test_app(
-    *,
-    meeting_orchestrator: MagicMock,
-    meeting_scheduler: MagicMock | None,
-) -> Litestar:
-    """Build a Litestar test app with the given meeting services."""
-    from synthorg.api.approval_store import ApprovalStore
-    from synthorg.api.auth.service import AuthService
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.config.schema import RootConfig
-    from synthorg.core.auth.config import AuthConfig
-
-    persistence = FakePersistenceBackend()
-    bus = FakeMessageBus()
-    auth_service = AuthService(
-        AuthConfig(
-            jwt_secret="test-secret-that-is-at-least-32-characters-long",
-        ),
-    )
-
-    from tests.unit.api.conftest import _seed_test_users
-
-    _seed_test_users(persistence, auth_service)
-
-    return create_app(
-        config=RootConfig(company_name="test-company"),
-        persistence=persistence,
-        message_bus=bus,
-        cost_tracker=CostTracker(),
-        approval_store=ApprovalStore(),
-        auth_service=auth_service,
-        meeting_orchestrator=meeting_orchestrator,
-        meeting_scheduler=meeting_scheduler,
-    )
 
 
 def _make_minutes(
@@ -202,18 +165,26 @@ def mock_scheduler() -> MagicMock:
 
 
 @pytest.fixture
-async def meeting_client(
+def meeting_client(
+    async_test_client: LoopAsyncClient,
     mock_orchestrator: MagicMock,
     mock_scheduler: MagicMock,
-) -> AsyncGenerator[LoopAsyncClient]:
-    """Test client with meeting orchestrator and scheduler configured."""
-    app = _create_meeting_test_app(
+) -> LoopAsyncClient:
+    """Shared app client with the meeting orchestrator, scheduler, and a
+    ``MeetingService`` facade (wrapping the same mock orchestrator, used by the
+    delete endpoint) wired onto ``CommunicationStateSlice``.
+
+    The conftest ``_restore_app_state`` step reverts the slice afterwards,
+    so the session-scoped communication services are never mutated.
+    """
+    app_state = async_test_client.app.state.app_state
+    app_state.wire(
+        CommunicationStateSlice,
         meeting_orchestrator=mock_orchestrator,
         meeting_scheduler=mock_scheduler,
+        meeting_service=MeetingService(orchestrator=mock_orchestrator),
     )
-    async with LoopAsyncClient(app) as client:
-        client.headers.update(make_auth_headers("ceo"))
-        yield client
+    return async_test_client
 
 
 @pytest.mark.unit
@@ -326,8 +297,7 @@ class TestMeetingController:
 
     async def test_trigger_returns_503_when_scheduler_not_configured(
         self,
-        mock_orchestrator: MagicMock,
-        mock_scheduler: MagicMock,
+        meeting_client: LoopAsyncClient,
     ) -> None:
         """Degraded mode (``meeting_scheduler=None``) yields 503, not 500.
 
@@ -335,25 +305,20 @@ class TestMeetingController:
         ``auto_wire_meetings`` leaves ``meeting_scheduler`` as ``None``
         and ``app_state.meeting_scheduler`` raises
         ``ServiceUnavailableError`` on access.  Simulating the
-        post-wire state here (by clearing the stored scheduler after
-        construction) verifies that the controller returns a clean
-        503 instead of the PR regressing to an ``AttributeError``
-        that would surface as a 500.
+        post-wire state here (by clearing the stored scheduler) verifies
+        that the controller returns a clean 503 instead of regressing to
+        an ``AttributeError`` that would surface as a 500.
         """
-        app = _create_meeting_test_app(
-            meeting_orchestrator=mock_orchestrator,
-            meeting_scheduler=mock_scheduler,
+        meeting_client.app.state.app_state.wire(
+            CommunicationStateSlice, meeting_scheduler=None
         )
-        app.state.app_state.wire(CommunicationStateSlice, meeting_scheduler=None)
-        async with LoopAsyncClient(app) as client:
-            client.headers.update(make_auth_headers("ceo"))
-            resp = await client.post(
-                "/api/v1/meetings/trigger",
-                json={"event_name": "deploy_complete"},
-            )
-            assert resp.status_code == 503
-            body = resp.json()
-            assert body["success"] is False
+        resp = await meeting_client.post(
+            "/api/v1/meetings/trigger",
+            json={"event_name": "deploy_complete"},
+        )
+        assert resp.status_code == 503
+        body = resp.json()
+        assert body["success"] is False
 
     async def test_trigger_response_includes_analytics(
         self,
@@ -476,18 +441,26 @@ class TestMeetingController:
 
 
 @pytest.fixture
-async def analytics_client(
+def analytics_client(
+    async_test_client: LoopAsyncClient,
     mock_orchestrator_with_contributions: MagicMock,
     mock_scheduler: MagicMock,
-) -> AsyncGenerator[LoopAsyncClient]:
-    """Test client with meeting records that include contributions."""
-    app = _create_meeting_test_app(
+) -> LoopAsyncClient:
+    """Shared app client with the orchestrator, scheduler, and a
+    ``MeetingService`` facade wired for contribution-analytics tests.
+
+    The conftest ``_restore_app_state`` step reverts the slice afterwards.
+    """
+    app_state = async_test_client.app.state.app_state
+    app_state.wire(
+        CommunicationStateSlice,
         meeting_orchestrator=mock_orchestrator_with_contributions,
         meeting_scheduler=mock_scheduler,
+        meeting_service=MeetingService(
+            orchestrator=mock_orchestrator_with_contributions
+        ),
     )
-    async with LoopAsyncClient(app) as client:
-        client.headers.update(make_auth_headers("ceo"))
-        yield client
+    return async_test_client
 
 
 @pytest.mark.unit
@@ -773,8 +746,6 @@ def _create_app_without_explicit_meetings() -> Litestar:
             jwt_secret="test-secret-that-is-at-least-32-characters-long",
         ),
     )
-
-    from tests.unit.api.conftest import _seed_test_users
 
     _seed_test_users(persistence, auth_service)
 
