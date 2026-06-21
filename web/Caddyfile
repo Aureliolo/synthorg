@@ -1,12 +1,12 @@
 # SynthOrg web dashboard -- served by Caddy from a pure-apko Wolfi image.
 # Installed at /etc/synthorg/Caddyfile by docker/web/melange.yaml.
 #
-# Replicates every behavior of the previous web/nginx.conf:
+# Behaviour summary:
 #   - :8080 unprivileged listen
-#   - precompressed br gzip (Caddy's file_server directive replaces gzip_static)
+#   - precompressed br gzip via the file_server directive
 #   - per-request CSP nonce via the templates directive +
-#     {{placeholder "http.request.uuid"}} (replaces nginx sub_filter + $request_id)
-#   - SPA fallback to /index.html (replaces try_files)
+#     {{placeholder "http.request.uuid"}}
+#   - SPA fallback to /index.html via try_files
 #   - /assets/* immutable year-long cache, no CSP
 #   - /docs/* static CSP, 1h revalidation
 #   - /api/v1/ws WebSocket proxy to backend:3001 (3600s read timeout)

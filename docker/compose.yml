@@ -82,8 +82,8 @@ services:
       dockerfile: docker/backend/Dockerfile
       # BASE_IMAGE must come from the caller's environment (the
       # backend Dockerfile has no default and a blank value is a
-      # hard error -- see docker/backend/Dockerfile and PR #1465 for
-      # the Pinned-Dependencies rationale). CI release builds set
+      # hard error -- see docker/backend/Dockerfile for the
+      # Pinned-Dependencies rationale). CI release builds set
       # this to a digest-pinned `synthorg-backend-base@sha256:...`;
       # the DAST workflow and local dev set it to a tag like
       # `ghcr.io/aureliolo/synthorg-backend-base:main`.

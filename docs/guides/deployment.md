@@ -72,7 +72,7 @@ All environment variables are configured in `docker/.env` (copy from `docker/.en
 |----------|---------|-------------|
 | `SYNTHORG_DB_PATH` | `/data/synthorg.db` | SQLite database path (inside container) |
 | `SYNTHORG_MEMORY_DIR` | `/data/memory` | Agent memory storage directory |
-| `SYNTHORG_PERSISTENCE_BACKEND` | `sqlite` | Compose-template selector only; the Python process does not read it. The backend is chosen by `SYNTHORG_DATABASE_URL` (Postgres) vs `SYNTHORG_DB_PATH` (SQLite). |
+| `SYNTHORG_PERSISTENCE_BACKEND` | `postgres` | Compose-template selector only; the Python process does not read it. The backend is chosen by `SYNTHORG_DATABASE_URL` (Postgres) vs `SYNTHORG_DB_PATH` (SQLite). The bundled `docker/compose.yml` ships Postgres. |
 | `SYNTHORG_MEMORY_BACKEND` | `mem0` | Compose-template selector only; the Python process does not read it. The memory backend is set in the company template under `memory.backend`. |
 | `SYNTHORG_LOG_DIR` | `/data/logs` | Log file directory |
 | `SYNTHORG_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warning`, `error`, `critical` |
