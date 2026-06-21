@@ -87,7 +87,10 @@ export function ToastContainer({ maxVisible = 3 }: ToastContainerProps) {
 
   return (
     <div
-      className="pointer-events-none fixed bottom-6 right-6 z-50 flex flex-col-reverse gap-2"
+      // z-[60] keeps toasts above modal backdrop / popup / confirm-dialog
+      // (all z-50) so a save-failure toast is never hidden behind an open
+      // dialog.
+      className="pointer-events-none fixed bottom-6 right-6 z-[60] flex flex-col-reverse gap-2"
       aria-label="Notifications"
     >
       <AnimatePresence mode="popLayout">

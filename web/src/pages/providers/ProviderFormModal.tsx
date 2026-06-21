@@ -1,5 +1,5 @@
 import { Dialog } from '@base-ui/react/dialog'
-import { X } from 'lucide-react'
+import { Loader2, X } from 'lucide-react'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { Button } from '@/components/ui/button'
@@ -18,61 +18,110 @@ function SubscriptionBillingHint({ cloudPreset }: { cloudPreset: CloudPreset | n
       title="Counts against your subscription credits"
       description={`API calls made through ${
         cloudPreset?.display_name ?? 'this provider'
-      } using subscription auth consume your monthly Pro/Max plan credits, not your API billing budget.`}
-      action={
-        <a
-          href="https://www.anthropic.com/pricing"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs font-medium text-accent underline-offset-2 hover:underline"
-        >
-          View pricing
-        </a>
-      }
+      } using subscription auth consume your plan credits, not your API billing budget.`}
     />
   )
 }
 
 function ApiKeyField({ ctrl }: { ctrl: ProviderFormController }) {
   const { fields, mode, provider } = ctrl
+  const editUnchanged = mode === 'edit' && provider?.has_api_key
   return (
     <InputField
       label="API Key"
       type="password"
+      autoComplete="off"
       value={fields.apiKey}
       onChange={(e) => fields.setApiKey(e.target.value)}
-      placeholder={mode === 'edit' && provider?.has_api_key ? '(unchanged)' : 'sk-...'}
+      placeholder={editUnchanged ? '(unchanged)' : 'Paste your API key'}
       hint={mode === 'edit' ? 'Leave empty to keep existing key' : undefined}
     />
   )
 }
 
 function SubscriptionFields({ ctrl }: { ctrl: ProviderFormController }) {
-  const { fields } = ctrl
+  const { fields, subscriptionHint } = ctrl
   if (!fields.tosAccepted) {
     return (
-      <div className="rounded-md border border-warning/30 bg-warning/5 p-card text-xs text-text-secondary">
-        You must accept the Terms of Service warning before using subscription auth.
-        <Button
-          variant="outline"
-          size="sm"
-          className="ml-2"
-          onClick={() => fields.setShowTosDialog(true)}
-        >
-          Review & Accept
-        </Button>
-      </div>
+      <ErrorBanner
+        variant="inline"
+        severity="warning"
+        title="Accept the Terms of Service warning to use subscription auth"
+        action={{ label: 'Review & Accept', onClick: () => fields.setShowTosDialog(true) }}
+      />
     )
   }
   return (
     <InputField
       label="Subscription Token"
       type="password"
+      autoComplete="off"
       value={fields.subscriptionToken}
       onChange={(e) => fields.setSubscriptionToken(e.target.value)}
-      placeholder="sub-token-..."
-      hint="Run 'claude setup-token' in your terminal to get this token"
+      placeholder="Paste your subscription token"
+      hint={subscriptionHint}
     />
+  )
+}
+
+function CustomHeaderFields({ ctrl }: { ctrl: ProviderFormController }) {
+  const { fields, mode } = ctrl
+  return (
+    <>
+      <InputField
+        label="Header Name"
+        value={fields.customHeaderName}
+        onChange={(e) => fields.setCustomHeaderName(e.target.value)}
+        placeholder="X-Api-Key"
+        hint="The HTTP header the provider expects the credential in."
+      />
+      <InputField
+        label="Header Value"
+        type="password"
+        autoComplete="off"
+        value={fields.customHeaderValue}
+        onChange={(e) => fields.setCustomHeaderValue(e.target.value)}
+        placeholder={mode === 'edit' ? '(unchanged)' : 'Paste the header value'}
+        hint={mode === 'edit' ? 'Leave empty to keep the existing value' : undefined}
+      />
+    </>
+  )
+}
+
+function OAuthFields({ ctrl }: { ctrl: ProviderFormController }) {
+  const { fields, mode, fieldErrors } = ctrl
+  return (
+    <>
+      <InputField
+        label="Token URL"
+        value={fields.oauthTokenUrl}
+        onChange={(e) => fields.setOauthTokenUrl(e.target.value)}
+        placeholder="https://auth.example.com/oauth/token"
+        error={fieldErrors.oauthTokenUrl}
+      />
+      <InputField
+        label="Client ID"
+        value={fields.oauthClientId}
+        onChange={(e) => fields.setOauthClientId(e.target.value)}
+        placeholder="your-client-id"
+      />
+      <InputField
+        label="Client Secret"
+        type="password"
+        autoComplete="off"
+        value={fields.oauthClientSecret}
+        onChange={(e) => fields.setOauthClientSecret(e.target.value)}
+        placeholder={mode === 'edit' ? '(unchanged)' : 'Paste the client secret'}
+        hint={mode === 'edit' ? 'Leave empty to keep the existing secret' : undefined}
+      />
+      <InputField
+        label="Scope"
+        value={fields.oauthScope}
+        onChange={(e) => fields.setOauthScope(e.target.value)}
+        placeholder="optional, space-separated"
+        hint="Optional. Space-separated OAuth scopes."
+      />
+    </>
   )
 }
 
@@ -82,12 +131,14 @@ function ProviderCredentialFields({ ctrl }: { ctrl: ProviderFormController }) {
     <>
       {fields.authType === 'api_key' && <ApiKeyField ctrl={ctrl} />}
       {fields.authType === 'subscription' && <SubscriptionFields ctrl={ctrl} />}
+      {fields.authType === 'custom_header' && <CustomHeaderFields ctrl={ctrl} />}
+      {fields.authType === 'oauth' && <OAuthFields ctrl={ctrl} />}
     </>
   )
 }
 
 function ProviderEndpointFields({ ctrl }: { ctrl: ProviderFormController }) {
-  const { fields, mode, preset, isCustom, baseUrlHint } = ctrl
+  const { fields, mode, preset, isCustom, baseUrlHint, fieldErrors } = ctrl
   return (
     <>
       <InputField
@@ -96,6 +147,7 @@ function ProviderEndpointFields({ ctrl }: { ctrl: ProviderFormController }) {
         onChange={(e) => fields.setName(e.target.value)}
         placeholder="my-provider"
         hint="Lowercase, alphanumeric + hyphens"
+        error={fieldErrors.name}
         disabled={mode === 'edit'}
       />
 
@@ -106,6 +158,7 @@ function ProviderEndpointFields({ ctrl }: { ctrl: ProviderFormController }) {
           onChange={(e) => fields.setBaseUrl(e.target.value)}
           placeholder={preset?.default_base_url ?? 'https://api.example.com/v1'}
           hint={baseUrlHint}
+          error={fieldErrors.baseUrl}
         />
       )}
 
@@ -122,25 +175,19 @@ function ProviderEndpointFields({ ctrl }: { ctrl: ProviderFormController }) {
   )
 }
 
-function isSubmitDisabled(ctrl: ProviderFormController): boolean {
-  const { fields, preset } = ctrl
-  if (fields.submitting || !fields.name.trim()) return true
-  if (fields.authType === 'subscription' && !fields.tosAccepted) return true
-  return Boolean(preset?.requires_base_url) && !fields.baseUrl.trim()
-}
-
 function ProviderFormFooter({ ctrl }: { ctrl: ProviderFormController }) {
-  const { fields, mode, handleSubmit } = ctrl
+  const { fields, mode, canSubmit } = ctrl
   return (
     <div className="flex justify-end gap-3 pt-2">
       <Dialog.Close
         render={
-          <Button variant="outline" disabled={fields.submitting}>
+          <Button type="button" variant="outline" disabled={fields.submitting}>
             Cancel
           </Button>
         }
       />
-      <Button onClick={handleSubmit} disabled={isSubmitDisabled(ctrl)}>
+      <Button type="submit" className="gap-2" disabled={!canSubmit}>
+        {fields.submitting && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
         {fields.submitting ? 'Saving...' : mode === 'create' ? 'Create Provider' : 'Save Changes'}
       </Button>
     </div>
@@ -173,11 +220,48 @@ function ProviderConfigForm({ ctrl }: { ctrl: ProviderFormController }) {
   )
 }
 
-function ProviderFormBody({ ctrl }: { ctrl: ProviderFormController }) {
-  const { presetsError, presetsLoading, presetOptions, isCustom, mode, fields } = ctrl
+const PROVIDER_FORM_TITLE_ID = 'provider-form-title'
+
+/**
+ * Optional preset switcher: only visible in custom create mode so users
+ * opening "Configure manually" can still adopt a preset without going back
+ * to the picker.
+ */
+function PresetSwitcher({ ctrl }: { ctrl: ProviderFormController }) {
+  const { presetsLoading, presetOptions, isCustom, mode, fields } = ctrl
+  if (!(mode === 'create' && isCustom && !presetsLoading)) return null
   return (
-    <div className="flex-1 overflow-y-auto p-card">
+    <SelectField
+      label="Or pick a preset"
+      options={presetOptions}
+      value={fields.selectedPreset ?? '__custom__'}
+      onChange={(v) => fields.setSelectedPreset(v)}
+      hint="Switch to a preset to autofill the LiteLLM routing key, base URL, and auth type."
+    />
+  )
+}
+
+function ProviderFormBody({ ctrl }: { ctrl: ProviderFormController }) {
+  const { presetsError, mode, fields, submitError, handleSubmit } = ctrl
+  return (
+    <form
+      className="flex-1 overflow-y-auto p-card"
+      aria-labelledby={PROVIDER_FORM_TITLE_ID}
+      onSubmit={(e) => {
+        e.preventDefault()
+        void handleSubmit()
+      }}
+    >
       <div className="flex flex-col gap-section-gap">
+        {submitError !== null && (
+          <ErrorBanner
+            variant="inline"
+            severity="error"
+            title="Could not save provider"
+            description={submitError}
+          />
+        )}
+
         {presetsError && (
           <ErrorBanner
             variant="inline"
@@ -187,22 +271,11 @@ function ProviderFormBody({ ctrl }: { ctrl: ProviderFormController }) {
           />
         )}
 
-        {/* Optional preset switcher -- only visible in custom mode so
-            users opening "Configure manually" can still adopt a preset
-            without going back to the picker. */}
-        {mode === 'create' && isCustom && !presetsLoading && (
-          <SelectField
-            label="Or pick a preset"
-            options={presetOptions}
-            value={fields.selectedPreset ?? '__custom__'}
-            onChange={(v) => fields.setSelectedPreset(v)}
-            hint="Switch to a preset to autofill the LiteLLM routing key, base URL, and auth type."
-          />
-        )}
+        <PresetSwitcher ctrl={ctrl} />
 
         {(fields.selectedPreset !== null || mode === 'edit') && <ProviderConfigForm ctrl={ctrl} />}
       </div>
-    </div>
+    </form>
   )
 }
 
@@ -227,7 +300,10 @@ export function ProviderFormModal(props: ProviderFormModalProps) {
           >
             {/* Header */}
             <div className="flex items-center justify-between border-b border-border p-card">
-              <Dialog.Title className="text-base font-semibold text-foreground">
+              <Dialog.Title
+                id={PROVIDER_FORM_TITLE_ID}
+                className="text-base font-semibold text-foreground"
+              >
                 {ctrl.dialogTitle}
               </Dialog.Title>
               <Dialog.Description className="sr-only">
