@@ -1,5 +1,56 @@
 # Changelog
 
+## [0.9.1](https://github.com/Aureliolo/synthorg/compare/v0.9.0...v0.9.1) (2026-06-21)
+
+
+### Features
+
+* meta-loop apply paths -- durable backing + real apply() ([#2427](https://github.com/Aureliolo/synthorg/issues/2427)) ([b2fb4f7](https://github.com/Aureliolo/synthorg/commit/b2fb4f77532fe1118a892638b21cbc3d664d46cd)), closes [#2422](https://github.com/Aureliolo/synthorg/issues/2422)
+* surfaces follow-up — drop embedded provider api_key + CLI/eval/e2e housekeeping ([#2423](https://github.com/Aureliolo/synthorg/issues/2423)) ([8cbad3e](https://github.com/Aureliolo/synthorg/commit/8cbad3e58850e5a5ca7bbe33d7b5b99187ddf8bf))
+
+
+### Bug Fixes
+
+* harden CLI teardown & pre-init config UX ([#2432](https://github.com/Aureliolo/synthorg/issues/2432)) ([a14c675](https://github.com/Aureliolo/synthorg/commit/a14c675ac157ee7037c827684ac61e1914f0b766)), closes [#2428](https://github.com/Aureliolo/synthorg/issues/2428)
+* harden onboarding backend (registry logs, provider persistence, retry-after, presets) ([#2446](https://github.com/Aureliolo/synthorg/issues/2446)) ([1b4960d](https://github.com/Aureliolo/synthorg/commit/1b4960dd0e2eafb656c76452b546c100f58224ad))
+* onboarding-infra Caddy volume perms + compose hygiene ([#2443](https://github.com/Aureliolo/synthorg/issues/2443)) ([c5b1872](https://github.com/Aureliolo/synthorg/commit/c5b1872133b70151288faf423439db8911733d20)), closes [#2441](https://github.com/Aureliolo/synthorg/issues/2441)
+* surface fine-tune size warning and stream pull progress in CLI ([#2444](https://github.com/Aureliolo/synthorg/issues/2444)) ([457fbba](https://github.com/Aureliolo/synthorg/commit/457fbba580f100c289f6c72ad809008f669d9478))
+* **web:** onboarding audit — kill provider presets request storm + wizard/provider-form hardening ([#2445](https://github.com/Aureliolo/synthorg/issues/2445)) ([4273551](https://github.com/Aureliolo/synthorg/commit/4273551635f427f58bc3bd9adc3ec5bc128fb5d6)), closes [#2438](https://github.com/Aureliolo/synthorg/issues/2438)
+* wire rollback-executor into boot with auto-rollback on regression ([#2442](https://github.com/Aureliolo/synthorg/issues/2442)) ([1c3c301](https://github.com/Aureliolo/synthorg/commit/1c3c3010c524fc177546fa1e54e6f80f805bc355)), closes [#2436](https://github.com/Aureliolo/synthorg/issues/2436)
+
+
+### Refactoring
+
+* architecture, persistence, and security hardening (audit-2404) ([#2415](https://github.com/Aureliolo/synthorg/issues/2415)) ([ed84a6e](https://github.com/Aureliolo/synthorg/commit/ed84a6eab306b65c4c4dfecf840d8d6e5af8b51e))
+* backend runtime correctness + observability ([#2402](https://github.com/Aureliolo/synthorg/issues/2402)) ([#2410](https://github.com/Aureliolo/synthorg/issues/2410)) ([58cb69b](https://github.com/Aureliolo/synthorg/commit/58cb69b6bb06abc05966790e19dde49b431e34a6))
+* backend-runtime remainder — idempotency, lifecycle-locks, controller-to-service, shutdown drains ([#2418](https://github.com/Aureliolo/synthorg/issues/2418)) ([68c5f00](https://github.com/Aureliolo/synthorg/commit/68c5f0047512e4fffeff4a9b9a4460356f8394f7))
+* conventions, dedup and async PR2 carryover ([#2416](https://github.com/Aureliolo/synthorg/issues/2416)) ([484f612](https://github.com/Aureliolo/synthorg/commit/484f6125774c983b02fb0ff0c232ec1568086e5e))
+* Gate 11 overflow — test comment-rot + suppression consolidation ([#2417](https://github.com/Aureliolo/synthorg/issues/2417)) ([01dec40](https://github.com/Aureliolo/synthorg/commit/01dec40ef99316f4ed06729f5bdff6e579fa1a8e))
+* **persistence:** squash migration revisions into a single baseline ([#2434](https://github.com/Aureliolo/synthorg/issues/2434)) ([a3f6474](https://github.com/Aureliolo/synthorg/commit/a3f6474579bee6b64c98f5ed1d9cb11408edcf5e))
+
+
+### Tests
+
+* migrate per-test app builds onto the shared app, exempt essential builds ([#2435](https://github.com/Aureliolo/synthorg/issues/2435)) ([cd9966d](https://github.com/Aureliolo/synthorg/commit/cd9966d8faddd2ed02d512b854d45cfc2c5f58c3))
+
+
+### CI/CD
+
+* adopt merge queue to fix required-check deadlock ([#2431](https://github.com/Aureliolo/synthorg/issues/2431)) ([88f1113](https://github.com/Aureliolo/synthorg/commit/88f11135daec5160f0b229f1b82994ceec673420)), closes [#2429](https://github.com/Aureliolo/synthorg/issues/2429)
+* drop unavailable merge_queue rule from branch-protection spec ([#2433](https://github.com/Aureliolo/synthorg/issues/2433)) ([3b78f93](https://github.com/Aureliolo/synthorg/commit/3b78f93acac81cad3e9e941f7b64b84311baf55f))
+
+
+### Maintenance
+
+* adopt deferred Playwright and CodSpeed capabilities ([#2425](https://github.com/Aureliolo/synthorg/issues/2425)) ([4d3995b](https://github.com/Aureliolo/synthorg/commit/4d3995b8946914af4da1e60c16802dfceeb98080))
+* Lock file maintenance Lock file maintenance ([#2430](https://github.com/Aureliolo/synthorg/issues/2430)) ([0c4bb79](https://github.com/Aureliolo/synthorg/commit/0c4bb7949fdbc22432a8aea500dcfe92074aa9a2))
+* pin undici/esbuild overrides in site, cap undici renovate at 7.x ([#2426](https://github.com/Aureliolo/synthorg/issues/2426)) ([e93b8b6](https://github.com/Aureliolo/synthorg/commit/e93b8b6bdebb7301a588d4ba87a0d30c9288f3fb))
+* surfaces audit — docs, frontend and housekeeping ([#2405](https://github.com/Aureliolo/synthorg/issues/2405)) ([#2412](https://github.com/Aureliolo/synthorg/issues/2412)) ([4abad2c](https://github.com/Aureliolo/synthorg/commit/4abad2cd430047a006ac72280598d4f36dc88866))
+* Update Infrastructure dependencies ([#2420](https://github.com/Aureliolo/synthorg/issues/2420)) ([3df9163](https://github.com/Aureliolo/synthorg/commit/3df9163197ca0cb010190b63ccb4ad0e7569f1e1))
+* Update Python dependencies ([#2419](https://github.com/Aureliolo/synthorg/issues/2419)) ([725e81b](https://github.com/Aureliolo/synthorg/commit/725e81b1a5f31f6fa5249175ef172ab8ce47f338))
+* Update Python dependencies ([#2437](https://github.com/Aureliolo/synthorg/issues/2437)) ([9d78d8e](https://github.com/Aureliolo/synthorg/commit/9d78d8e10098f41cc193f22dc25078dae4d7846f))
+* Update Web dependencies ([#2421](https://github.com/Aureliolo/synthorg/issues/2421)) ([4c1fbe5](https://github.com/Aureliolo/synthorg/commit/4c1fbe532c7760d4e532abd8f34cc377b74f7762))
+
 ## [0.9.0](https://github.com/Aureliolo/synthorg/compare/v0.8.9...v0.9.0) (2026-06-18)
 
 
