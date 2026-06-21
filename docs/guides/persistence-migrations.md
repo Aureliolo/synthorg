@@ -196,8 +196,9 @@ standard immutability rule (the hook has no per-file special-casing).
 
 The baseline is a fresh-install seed: it reproduces the final schema,
 not the historical sequence. Any data-migration DML the collapsed
-revisions carried (backfills, SQLite table-rebuild `INSERT ... SELECT`
-copies) is intentionally absent -- a fresh database never needs it.
+revisions carried (one-off data fixes, SQLite table-rebuild
+`INSERT ... SELECT` copies) is intentionally absent -- a fresh database
+never needs it.
 SynthOrg is pre-alpha with no deployed databases, so only the
 fresh-install path matters; see `docs/design/persistence.md` for the
 upgrade-path stance.
