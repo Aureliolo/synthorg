@@ -27,12 +27,20 @@ from synthorg.engine.strategy.active_principle_provider import (
     CachedActivePrincipleProvider,
     set_active_principle_provider,
 )
+from synthorg.engine.strategy.principle_override_provider import (
+    CachedPrincipleOverrideProvider,
+    PrincipleOverrideLoader,
+    set_principle_override_provider,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.observability.events.role import ROLE_REGISTRY_SEEDED
 from synthorg.organization.services import DepartmentService
 from synthorg.persistence.active_principle_protocol import ActivePrincipleRepository
 from synthorg.persistence.department_protocol import DepartmentRepository
+from synthorg.persistence.principle_override_protocol import (
+    PrincipleOverrideRepository,
+)
 from synthorg.persistence.role_registry_protocol import RoleRegistryRepository
 
 logger = get_logger(__name__)
@@ -97,6 +105,13 @@ async def _wire(app_state: AppState) -> None:
     await provider.refresh()
     set_active_principle_provider(provider)
 
+    override_repo = _build_principle_override_repo(app_state)
+    override_provider = CachedPrincipleOverrideProvider(
+        loader=_principle_override_loader(override_repo)
+    )
+    await override_provider.refresh()
+    set_principle_override_provider(override_provider)
+
     department_service = await _wire_department_service(app_state, department_repo)
     architecture_context = DurableArchitectureApplierContext(
         role_repo=role_repo,
@@ -141,6 +156,26 @@ def _principle_loader(repo: ActivePrincipleRepository) -> ActivePrincipleLoader:
         return await collect_all(
             lambda limit, offset: repo.list_items(limit=limit, offset=offset)
         )
+
+    return _load
+
+
+def _build_principle_override_repo(
+    app_state: AppState,
+) -> PrincipleOverrideRepository:
+    from synthorg.persistence.state import persistence_of  # noqa: PLC0415
+
+    return persistence_of(app_state).principle_overrides
+
+
+def _principle_override_loader(
+    repo: PrincipleOverrideRepository,
+) -> PrincipleOverrideLoader:
+    async def _load() -> dict[str, str]:
+        rows = await collect_all(
+            lambda limit, offset: repo.list_items(limit=limit, offset=offset)
+        )
+        return {row.scope: row.text for row in rows}
 
     return _load
 

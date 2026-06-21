@@ -82,3 +82,47 @@ class TestPrincipleOverridePromptMutator:
                 scope="planning.scope",
                 text="text",
             )
+
+    async def test_refresh_hook_invoked_after_successful_save(self) -> None:
+        repo, save_mock = _make_repo()
+        calls: list[int] = []
+
+        async def _hook() -> None:
+            calls.append(1)
+
+        mutator = PrincipleOverridePromptMutator(
+            override_repo=repo, on_override_written=_hook
+        )
+        await mutator.restore_principle(scope="planning.scope", text="text")
+
+        save_mock.assert_awaited_once()
+        assert calls == [1]
+
+    async def test_refresh_hook_failure_does_not_fail_restore(self) -> None:
+        repo, _save_mock = _make_repo()
+
+        async def _hook() -> None:
+            msg = "refresh boom"
+            raise RuntimeError(msg)
+
+        mutator = PrincipleOverridePromptMutator(
+            override_repo=repo, on_override_written=_hook
+        )
+        # The durable write already succeeded, so a refresh failure is
+        # swallowed: restore_principle must not raise.
+        await mutator.restore_principle(scope="planning.scope", text="text")
+
+    async def test_refresh_hook_not_invoked_when_save_fails(self) -> None:
+        repo, save_mock = _make_repo()
+        save_mock.side_effect = RuntimeError("disk full")
+        calls: list[int] = []
+
+        async def _hook() -> None:
+            calls.append(1)
+
+        mutator = PrincipleOverridePromptMutator(
+            override_repo=repo, on_override_written=_hook
+        )
+        with pytest.raises(RollbackMutationDeniedError):
+            await mutator.restore_principle(scope="planning.scope", text="text")
+        assert calls == []

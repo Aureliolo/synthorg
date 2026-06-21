@@ -434,12 +434,16 @@ async def _run_shutdown(  # noqa: PLR0913
     from synthorg.engine.strategy.active_principle_provider import (  # noqa: PLC0415
         set_active_principle_provider,
     )
+    from synthorg.engine.strategy.principle_override_provider import (  # noqa: PLC0415
+        set_principle_override_provider,
+    )
     from synthorg.engine.strategy.strategic_context_provider import (  # noqa: PLC0415
         set_strategic_context_provider,
     )
 
     set_strategic_context_provider(None)
     set_active_principle_provider(None)
+    set_principle_override_provider(None)
     if tasks.auto_wired_dispatcher is not None:
         await _try_stop(
             tasks.auto_wired_dispatcher.stop(),

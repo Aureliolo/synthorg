@@ -1,12 +1,16 @@
 """PromptMutator backed by :class:`PrincipleOverrideRepository`.
 
-Persists a restored principle as an override row keyed by ``scope``.
-``synthorg.engine.strategy.principles.load_pack`` consults the same
-repository on principle resolution, so subsequent reads see the
-override without rewriting the YAML packs.
+Persists a restored principle as an override row keyed by ``scope`` (the
+principle id from the YAML packs). The prompt-build path
+(``load_and_merge`` -> ``inject_strategy_context``) overlays these overrides
+onto matching principles via the cached ``PrincipleOverrideProvider``, so
+subsequent reads see the restored text without rewriting the YAML packs. The
+optional ``on_override_written`` hook refreshes that snapshot after a write so
+the next build picks up the change without a restart.
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 from synthorg.core.types import NotBlankStr
@@ -28,8 +32,10 @@ class PrincipleOverridePromptMutator:
         self,
         *,
         override_repo: PrincipleOverrideRepository,
+        on_override_written: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         self._repo = override_repo
+        self._on_override_written = on_override_written
 
     async def restore_principle(
         self,
@@ -98,3 +104,21 @@ class PrincipleOverridePromptMutator:
             )
             msg = f"restore_principle rejected: override save failed for {scope!r}"
             raise RollbackMutationDeniedError(msg) from exc
+
+        # Refresh the cached override snapshot so the next prompt build overlays
+        # the restored text without a restart. Best-effort: a refresh failure
+        # must not undo the durable write, so it is logged and swallowed.
+        if self._on_override_written is not None:
+            try:
+                await self._on_override_written()
+            except MemoryError, RecursionError, asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 -- best-effort refresh, write already durable
+                logger.warning(
+                    META_ROLLBACK_OPERATION_FAILED,
+                    operation_type="restore_prompt",
+                    target=scope,
+                    reason="override_snapshot_refresh_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )

@@ -12,6 +12,10 @@ from synthorg.engine.strategy.active_principle_provider import (
     current_active_principle_provider,
 )
 from synthorg.engine.strategy.models import ConstitutionalPrinciple, StrategyConfig
+from synthorg.engine.strategy.principle_override_provider import (
+    PrincipleOverrideProvider,
+    current_principle_override_provider,
+)
 from synthorg.engine.strategy.principles import (
     StrategyPackNotFoundError,
     StrategyPackValidationError,
@@ -45,6 +49,7 @@ def inject_strategy_context(
     strategy_config: StrategyConfig | None,
     *,
     active_principles: ActivePrincipleProvider | None = None,
+    principle_overrides: PrincipleOverrideProvider | None = None,
 ) -> None:
     """Inject strategic analysis sections into template context.
 
@@ -56,7 +61,8 @@ def inject_strategy_context(
     When an ``active_principles`` provider is wired, durable constitutional
     principles applied by the self-improvement meta-loop are layered onto the
     pack + custom principles, filtered to those in scope for this agent's role
-    and department.
+    and department. When a ``principle_overrides`` provider is wired, durable
+    restored-principle text is overlaid onto matching principles by id.
     """
     if not should_inject_strategy(agent, strategy_config):
         context.update(_NULL_SECTIONS)
@@ -72,6 +78,11 @@ def inject_strategy_context(
         if active_principles is not None
         else current_active_principle_provider()
     )
+    override_provider = (
+        principle_overrides
+        if principle_overrides is not None
+        else current_principle_override_provider()
+    )
 
     # Load principles if configured.
     principles: tuple[ConstitutionalPrinciple, ...] = ()
@@ -79,6 +90,7 @@ def inject_strategy_context(
         principles = load_and_merge(
             strategy_config.constitutional_principles,
             active_principles=provider,
+            principle_overrides=override_provider,
             role=agent.role,
             department=agent.department,
         )
