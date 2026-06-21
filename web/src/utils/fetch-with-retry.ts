@@ -26,6 +26,22 @@ import {
   parseRetryAfterMs,
   retryAfterLoop,
 } from './retry-after'
+import {
+  circuitKeyFromUrl,
+  isCircuitOpen,
+  recordFailure,
+  recordSuccess,
+} from './circuit-breaker'
+
+/** HTTP status the retry layer treats as rate-limited. */
+const HTTP_TOO_MANY_REQUESTS = 429
+
+/** URL string of a fetch target, for the circuit-breaker key. */
+function urlOf(input: RequestInfo | URL): string {
+  if (typeof input === 'string') return input
+  if (input instanceof URL) return input.href
+  return input.url
+}
 
 export interface FetchWithRetryOptions {
   /**
@@ -144,13 +160,27 @@ export async function fetchWithRetryAfter(
   const fetchImpl = opts?.fetchImpl ?? fetch
   const signal = _resolveSignal(input, init)
   const sleep = opts?.sleep ?? ((ms: number) => defaultSleep(ms, signal))
-  return retryAfterLoop<Response>({
+  const circuitKey = circuitKeyFromUrl(urlOf(input))
+  // An endpoint that has been terminally rate-limiting short-circuits to a
+  // synthetic 429 (the same terminal value the budget-exhausted loop
+  // returns) so callers' back-pressure handling fires without another
+  // doomed round-trip.
+  if (isRetriable(input, init, opts) && isCircuitOpen(circuitKey)) {
+    return new Response(null, { status: HTTP_TOO_MANY_REQUESTS })
+  }
+  const response = await retryAfterLoop<Response>({
     first: await fetchImpl(input, init),
     send: () => fetchImpl(input, init),
-    getRetryAfterMs: (response) =>
-      parseRetryAfterMs(response.headers.get('Retry-After') ?? undefined, null),
+    getRetryAfterMs: (r) =>
+      parseRetryAfterMs(r.headers.get('Retry-After') ?? undefined, null),
     retriable: isRetriable(input, init, opts),
     sleep,
     isAborted: () => signal?.aborted ?? false,
   })
+  if (response.status === HTTP_TOO_MANY_REQUESTS) {
+    recordFailure(circuitKey)
+  } else {
+    recordSuccess(circuitKey)
+  }
+  return response
 }

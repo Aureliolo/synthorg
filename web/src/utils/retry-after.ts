@@ -20,6 +20,15 @@ export const MAX_RATE_LIMIT_RETRIES = 2
 /** Upper bound on Retry-After wait per retry so a hostile backend can't hang the UI. */
 const MAX_RETRY_AFTER_MS = 5_000
 
+/**
+ * Floor applied to every retry wait. A missing / malformed / `0` Retry-After
+ * parses to `0` ("retry now"); without a floor the loop re-issues at
+ * server-response speed, which is exactly what drove the observed
+ * ~100 req/s storm. Flooring at 100 ms keeps transparent retries snappy
+ * while preventing a tight loop.
+ */
+export const MIN_RETRY_BACKOFF_MS = 100
+
 /** Sentinel returned by {@link parseRetryAfterMs} when we must NOT auto-retry. */
 export const DO_NOT_RETRY = -1
 
@@ -178,9 +187,10 @@ export async function retryAfterLoop<R extends RetryableResponse>(
   while (_canRetry(response, retriable, attempt)) {
     const waitMs = getRetryAfterMs(response)
     if (waitMs === DO_NOT_RETRY || aborted()) return response
+    const effectiveWait = Math.max(waitMs, MIN_RETRY_BACKOFF_MS)
     attempt += 1
-    beforeRetry(attempt, waitMs)
-    await sleep(waitMs)
+    beforeRetry(attempt, effectiveWait)
+    await sleep(effectiveWait)
     if (aborted()) return response
     response = await send(attempt)
   }

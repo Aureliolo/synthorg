@@ -36,6 +36,10 @@ import { defaultHandlers } from '@/mocks/handlers'
 import { cookieJar, installCookieShim } from '@/cookie-shim'
 import { installStorageShim } from '@/storage-shim'
 import { cancelOrgChartPrefsPersist } from '@/stores/org-chart-prefs-teardown'
+// Pure helper: clears the per-endpoint 429 breaker so a tripped breaker in
+// one test cannot leak into the next. The module imports only the logger
+// (no `@/api/client` side effects), so it is safe in this global setup.
+import { resetCircuitBreaker } from '@/utils/circuit-breaker'
 
 // jsdom's `document.cookie` is backed by `tough-cookie`'s Promise-based
 // `CookieJar`, which schedules a `createPromiseCallback` for every
@@ -99,6 +103,7 @@ afterEach(() => {
     Reflect.deleteProperty(cookieJar, name)
   }
   cookieJar['csrf_token'] = CSRF_SEED_VALUE
+  resetCircuitBreaker()
 })
 
 afterAll(() => {

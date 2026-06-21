@@ -17,6 +17,12 @@ import {
   parseRetryAfterMs,
   retryAfterLoop,
 } from '@/utils/retry-after'
+import {
+  circuitKeyFromUrl,
+  isCircuitOpen,
+  recordFailure,
+  recordSuccess,
+} from '@/utils/circuit-breaker'
 import { isObject } from '@/utils/type-guards'
 import { notifyUnauthorized } from './unauthorized-handler'
 import type { ErrorDetail } from './types/errors'
@@ -171,6 +177,14 @@ async function _retryRateLimit(
   firstResponse: AxiosResponse,
 ): Promise<AxiosResponse> {
   const method = (config.method ?? '').toLowerCase()
+  const circuitKey = circuitKeyFromUrl(config.url)
+  // If this endpoint has been terminally rate-limiting, stop feeding it:
+  // surface the 429 to the caller's back-pressure UI without burning the
+  // retry budget on a request that is almost certain to 429 again.
+  if (isCircuitOpen(circuitKey)) {
+    log.warn('http.rate_limited.circuit_open', { method })
+    throw error
+  }
   let lastError: ApiAxiosError = error
   const final = await retryAfterLoop<AxiosResponse>({
     first: firstResponse,
@@ -207,7 +221,11 @@ async function _retryRateLimit(
       })
     },
   })
-  if (final.status !== HTTP_TOO_MANY_REQUESTS) return final
+  if (final.status !== HTTP_TOO_MANY_REQUESTS) {
+    recordSuccess(circuitKey)
+    return final
+  }
+  recordFailure(circuitKey)
   throw lastError
 }
 

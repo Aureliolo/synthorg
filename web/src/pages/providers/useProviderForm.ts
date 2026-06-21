@@ -12,17 +12,20 @@ import { useProvidersStore } from '@/stores/providers'
 import type { AuthType, CloudPreset, ProviderPreset } from '@/api/types/providers'
 import type { ProviderWithName } from '@/utils/providers'
 import {
-  buildCreateFromPresetRequest,
-  buildCreateProviderRequest,
-  buildUpdateProviderRequest,
+  cloudPresetOf,
   computeAvailableAuthTypes,
   computeBaseUrlHint,
+  computeProviderValidation,
   computeShowBillingHint,
   isAuthType,
+  providerDialogTitle,
+  subscriptionTokenHint,
+  type ProviderFieldErrors,
   type ProviderFormModalProps,
   type ProviderFormOverrides,
   type ProviderFormValues,
 } from './provider-form-helpers'
+import { useProviderSubmit } from './useProviderSubmit'
 
 const log = createLogger('providers')
 
@@ -39,6 +42,18 @@ export interface ProviderFields {
   setApiKey: Dispatch<SetStateAction<string>>
   subscriptionToken: string
   setSubscriptionToken: Dispatch<SetStateAction<string>>
+  customHeaderName: string
+  setCustomHeaderName: Dispatch<SetStateAction<string>>
+  customHeaderValue: string
+  setCustomHeaderValue: Dispatch<SetStateAction<string>>
+  oauthTokenUrl: string
+  setOauthTokenUrl: Dispatch<SetStateAction<string>>
+  oauthClientId: string
+  setOauthClientId: Dispatch<SetStateAction<string>>
+  oauthClientSecret: string
+  setOauthClientSecret: Dispatch<SetStateAction<string>>
+  oauthScope: string
+  setOauthScope: Dispatch<SetStateAction<string>>
   baseUrl: string
   setBaseUrl: Dispatch<SetStateAction<string>>
   litellmProvider: string
@@ -57,6 +72,12 @@ function useProviderFields(): ProviderFields {
   const [authType, setAuthType] = useState<AuthType>('api_key')
   const [apiKey, setApiKey] = useState('')
   const [subscriptionToken, setSubscriptionToken] = useState('')
+  const [customHeaderName, setCustomHeaderName] = useState('')
+  const [customHeaderValue, setCustomHeaderValue] = useState('')
+  const [oauthTokenUrl, setOauthTokenUrl] = useState('')
+  const [oauthClientId, setOauthClientId] = useState('')
+  const [oauthClientSecret, setOauthClientSecret] = useState('')
+  const [oauthScope, setOauthScope] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
   const [litellmProvider, setLitellmProvider] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -68,21 +89,40 @@ function useProviderFields(): ProviderFields {
   return useMemo(
     () => ({
       selectedPreset, setSelectedPreset, name, setName, authType, setAuthType,
-      apiKey, setApiKey, subscriptionToken, setSubscriptionToken, baseUrl, setBaseUrl,
+      apiKey, setApiKey, subscriptionToken, setSubscriptionToken,
+      customHeaderName, setCustomHeaderName, customHeaderValue, setCustomHeaderValue,
+      oauthTokenUrl, setOauthTokenUrl, oauthClientId, setOauthClientId,
+      oauthClientSecret, setOauthClientSecret, oauthScope, setOauthScope,
+      baseUrl, setBaseUrl,
       litellmProvider, setLitellmProvider, submitting, setSubmitting,
       showTosDialog, setShowTosDialog, tosAccepted, setTosAccepted,
     }),
     [
-      selectedPreset, name, authType, apiKey, subscriptionToken, baseUrl,
+      selectedPreset, name, authType, apiKey, subscriptionToken,
+      customHeaderName, customHeaderValue, oauthTokenUrl, oauthClientId,
+      oauthClientSecret, oauthScope, baseUrl,
       litellmProvider, submitting, showTosDialog, tosAccepted,
     ],
   )
 }
 
-function applyEditModeReset(fields: ProviderFields): void {
-  fields.setSelectedPreset(null)
+// Clear every secret / credential input. Secrets are never prefilled (the
+// API never returns them); edit mode shows a "leave empty to keep" hint and
+// only sends a credential the user re-types.
+function clearCredentialFields(fields: ProviderFields): void {
   fields.setApiKey('')
   fields.setSubscriptionToken('')
+  fields.setCustomHeaderName('')
+  fields.setCustomHeaderValue('')
+  fields.setOauthTokenUrl('')
+  fields.setOauthClientId('')
+  fields.setOauthClientSecret('')
+  fields.setOauthScope('')
+}
+
+function applyEditModeReset(fields: ProviderFields): void {
+  fields.setSelectedPreset(null)
+  clearCredentialFields(fields)
 }
 
 function applyEditPrefill(fields: ProviderFields, provider: ProviderWithName): void {
@@ -91,16 +131,22 @@ function applyEditPrefill(fields: ProviderFields, provider: ProviderWithName): v
   fields.setBaseUrl(provider.base_url ?? '')
   fields.setLitellmProvider(provider.litellm_provider ?? '')
   fields.setTosAccepted(provider.tos_accepted_at !== null)
+  // Non-secret credential fields are prefilled so editing an oauth /
+  // custom_header provider no longer silently drops them; secrets stay
+  // blank (cleared above) and are only re-sent when re-typed.
+  fields.setOauthTokenUrl(provider.oauth_token_url ?? '')
+  fields.setOauthClientId(provider.oauth_client_id ?? '')
+  fields.setOauthScope(provider.oauth_scope ?? '')
+  fields.setCustomHeaderName(provider.custom_header_name ?? '')
 }
 
 function applyCustomPresetSync(fields: ProviderFields): void {
   fields.setName('')
   fields.setAuthType('api_key')
-  fields.setApiKey('')
-  fields.setSubscriptionToken('')
   fields.setBaseUrl('')
   fields.setLitellmProvider('')
   fields.setTosAccepted(false)
+  clearCredentialFields(fields)
 }
 
 function applyPresetSync(fields: ProviderFields, preset: ProviderPreset): void {
@@ -109,8 +155,7 @@ function applyPresetSync(fields: ProviderFields, preset: ProviderPreset): void {
   fields.setBaseUrl(preset.default_base_url ?? '')
   fields.setLitellmProvider(preset.litellm_provider)
   fields.setTosAccepted(false)
-  fields.setSubscriptionToken('')
-  fields.setApiKey('')
+  clearCredentialFields(fields)
 }
 
 interface SyncArgs {
@@ -201,52 +246,6 @@ function useProviderPresets(overrides?: ProviderFormOverrides): ProviderPresetsR
   }
 }
 
-interface SubmitArgs {
-  mode: 'create' | 'edit'
-  provider: ProviderWithName | null | undefined
-  preset: ProviderPreset | undefined
-  selectedPreset: string | null
-  overrides?: ProviderFormOverrides | undefined
-}
-
-function useProviderSubmit(args: SubmitArgs): (values: ProviderFormValues) => Promise<boolean> {
-  const { mode, provider, preset, selectedPreset, overrides } = args
-
-  const submitCreate = useCallback(
-    async (values: ProviderFormValues): Promise<boolean> => {
-      if (preset && selectedPreset !== '__custom__') {
-        const data = buildCreateFromPresetRequest(preset.name, values)
-        const result = overrides
-          ? await overrides.onCreateFromPreset(data)
-          : await useProvidersStore.getState().createFromPreset(data)
-        return result !== null
-      }
-      const data = buildCreateProviderRequest(values)
-      const createFn = overrides?.onCreateProvider ?? useProvidersStore.getState().createProvider
-      const result = await createFn(data)
-      return result !== null
-    },
-    [preset, selectedPreset, overrides],
-  )
-
-  const submitEdit = useCallback(
-    async (values: ProviderFormValues): Promise<boolean> => {
-      if (!provider) return false
-      const data = buildUpdateProviderRequest(values)
-      const updateFn = overrides?.onUpdateProvider ?? useProvidersStore.getState().updateProvider
-      const result = await updateFn(provider.name, data)
-      return result !== null
-    },
-    [provider, overrides],
-  )
-
-  return useCallback(
-    (values: ProviderFormValues): Promise<boolean> =>
-      mode === 'create' ? submitCreate(values) : submitEdit(values),
-    [mode, submitCreate, submitEdit],
-  )
-}
-
 export interface ProviderFormController {
   fields: ProviderFields
   presetsLoading: boolean
@@ -258,6 +257,11 @@ export interface ProviderFormController {
   showSubscriptionBillingHint: boolean
   availableAuthTypes: { value: AuthType; label: string }[]
   baseUrlHint: string | undefined
+  subscriptionHint: string
+  fieldErrors: ProviderFieldErrors
+  apiKeyMissing: boolean
+  canSubmit: boolean
+  submitError: string | null
   dialogTitle: string
   open: boolean
   mode: 'create' | 'edit'
@@ -273,41 +277,29 @@ function valuesOf(fields: ProviderFields): ProviderFormValues {
     authType: fields.authType,
     apiKey: fields.apiKey,
     subscriptionToken: fields.subscriptionToken,
+    customHeaderName: fields.customHeaderName,
+    customHeaderValue: fields.customHeaderValue,
+    oauthTokenUrl: fields.oauthTokenUrl,
+    oauthClientId: fields.oauthClientId,
+    oauthClientSecret: fields.oauthClientSecret,
+    oauthScope: fields.oauthScope,
     baseUrl: fields.baseUrl,
     litellmProvider: fields.litellmProvider,
     tosAccepted: fields.tosAccepted,
   }
 }
 
-export function useProviderFormController(
-  props: ProviderFormModalProps,
-): ProviderFormController {
-  const { open, onClose, mode, provider, initialPreset = null, overrides } = props
-  const { presets, presetsLoading, presetsError, fetchPresetsFn } = useProviderPresets(overrides)
-  const fields = useProviderFields()
+interface ProviderFormHandlers {
+  handleAuthTypeChange: (value: string) => void
+  handleSubmit: () => Promise<void>
+  handleOpenChange: (nextOpen: boolean) => void
+}
 
-  const preset = presets.find((p) => p.name === fields.selectedPreset)
-  const isCustom = fields.selectedPreset === '__custom__'
-  const cloudPreset = preset?.kind === 'cloud' ? (preset) : null
-
-  const presetOptions = useMemo(
-    () => [
-      { value: '__custom__', label: 'Custom endpoint' },
-      ...presets.map((p) => ({ value: p.name, label: p.display_name })),
-    ],
-    [presets],
-  )
-
-  useEffect(() => {
-    if (open && mode === 'create') fetchPresetsFn()
-  }, [open, mode, fetchPresetsFn])
-
-  useRenderPhaseSync({ open, mode, provider, initialPreset, preset, fields })
-
-  const runSubmit = useProviderSubmit({
-    mode, provider, preset, selectedPreset: fields.selectedPreset, overrides,
-  })
-
+function useProviderFormHandlers(
+  fields: ProviderFields,
+  runSubmit: (values: ProviderFormValues) => Promise<boolean>,
+  onClose: () => void,
+): ProviderFormHandlers {
   const handleAuthTypeChange = useCallback(
     (value: string) => {
       if (!isAuthType(value)) {
@@ -344,6 +336,68 @@ export function useProviderFormController(
     [handleClose, fields.submitting],
   )
 
+  return { handleAuthTypeChange, handleSubmit, handleOpenChange }
+}
+
+/** Fire the modal presets fetch at most once per open (storm guard). */
+function useModalPresetsFetch(
+  open: boolean,
+  mode: 'create' | 'edit',
+  presetsLoading: boolean,
+  presetCount: number,
+  fetchPresetsFn: () => void,
+): void {
+  // Hold the (volatile-identity) fetch fn in a ref so a fresh callback
+  // identity from the parent no longer re-fires this effect. The guard plus
+  // the store-level idempotency early-return mean the presets endpoint is
+  // hit at most once per open, killing the self-feeding request storm.
+  const fetchPresetsRef = useRef(fetchPresetsFn)
+  fetchPresetsRef.current = fetchPresetsFn
+  useEffect(() => {
+    if (open && mode === 'create' && !presetsLoading && presetCount === 0) {
+      fetchPresetsRef.current()
+    }
+  }, [open, mode, presetsLoading, presetCount])
+}
+
+export function useProviderFormController(
+  props: ProviderFormModalProps,
+): ProviderFormController {
+  const { open, onClose, mode, provider, initialPreset = null, overrides } = props
+  const { presets, presetsLoading, presetsError, fetchPresetsFn } = useProviderPresets(overrides)
+  const fields = useProviderFields()
+
+  const preset = presets.find((p) => p.name === fields.selectedPreset)
+  const isCustom = fields.selectedPreset === '__custom__'
+  const cloudPreset = cloudPresetOf(preset)
+
+  const presetOptions = useMemo(
+    () => [
+      { value: '__custom__', label: 'Custom endpoint' },
+      ...presets.map((p) => ({ value: p.name, label: p.display_name })),
+    ],
+    [presets],
+  )
+
+  useModalPresetsFetch(open, mode, presetsLoading, presets.length, fetchPresetsFn)
+  useRenderPhaseSync({ open, mode, provider, initialPreset, preset, fields })
+
+  const runSubmit = useProviderSubmit({
+    mode, provider, preset, selectedPreset: fields.selectedPreset, overrides,
+  })
+  const { handleAuthTypeChange, handleSubmit, handleOpenChange } = useProviderFormHandlers(
+    fields,
+    runSubmit,
+    onClose,
+  )
+
+  const validation = computeProviderValidation({
+    mode,
+    values: valuesOf(fields),
+    preset,
+    submitting: fields.submitting,
+  })
+
   return {
     fields,
     presetsLoading,
@@ -355,7 +409,12 @@ export function useProviderFormController(
     showSubscriptionBillingHint: computeShowBillingHint(cloudPreset, fields.authType),
     availableAuthTypes: computeAvailableAuthTypes(cloudPreset, preset),
     baseUrlHint: computeBaseUrlHint(isCustom, mode, preset),
-    dialogTitle: mode === 'create' ? 'Add Provider' : `Edit ${provider?.name ?? 'Provider'}`,
+    subscriptionHint: subscriptionTokenHint(preset?.display_name),
+    fieldErrors: validation.fieldErrors,
+    apiKeyMissing: validation.apiKeyMissing,
+    canSubmit: validation.canSubmit,
+    submitError: overrides?.submitError ?? null,
+    dialogTitle: providerDialogTitle(mode, provider?.name),
     open,
     mode,
     provider,
