@@ -81,6 +81,16 @@ func validateUpdateFlags() error {
 	if updateCheck && updateDryRun {
 		return fmt.Errorf("--check and --dry-run are mutually exclusive")
 	}
+	if err := validateUpdateTimeoutFlags(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateUpdateTimeoutFlags parses and range-checks the --timeout and
+// --verify-timeout duration flags. Kept separate from validateUpdateFlags so
+// the latter stays under the gocyclo ceiling.
+func validateUpdateTimeoutFlags() error {
 	d, err := time.ParseDuration(updateTimeout)
 	if err != nil {
 		return fmt.Errorf("invalid --timeout %q: %w", updateTimeout, err)
@@ -88,20 +98,21 @@ func validateUpdateFlags() error {
 	if d <= 0 {
 		return fmt.Errorf("invalid --timeout %q: must be positive", updateTimeout)
 	}
-	if updateVerifyTimeout != "" {
-		vd, err := time.ParseDuration(updateVerifyTimeout)
-		if err != nil {
-			return fmt.Errorf("invalid --verify-timeout %q: %w", updateVerifyTimeout, err)
-		}
-		if vd <= 0 {
-			return fmt.Errorf("invalid --verify-timeout %q: must be positive", updateVerifyTimeout)
-		}
-		if vd < config.MinImageVerifyTimeout {
-			return fmt.Errorf(
-				"invalid --verify-timeout %q: %v is below the %v minimum floor; a shorter timeout would bypass cosign/SLSA verification by silently timing out",
-				updateVerifyTimeout, vd, config.MinImageVerifyTimeout,
-			)
-		}
+	if updateVerifyTimeout == "" {
+		return nil
+	}
+	vd, err := time.ParseDuration(updateVerifyTimeout)
+	if err != nil {
+		return fmt.Errorf("invalid --verify-timeout %q: %w", updateVerifyTimeout, err)
+	}
+	if vd <= 0 {
+		return fmt.Errorf("invalid --verify-timeout %q: must be positive", updateVerifyTimeout)
+	}
+	if vd < config.MinImageVerifyTimeout {
+		return fmt.Errorf(
+			"invalid --verify-timeout %q: %v is below the %v minimum floor; a shorter timeout would bypass cosign/SLSA verification by silently timing out",
+			updateVerifyTimeout, vd, config.MinImageVerifyTimeout,
+		)
 	}
 	return nil
 }
