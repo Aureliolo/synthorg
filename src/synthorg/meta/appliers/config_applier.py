@@ -224,7 +224,7 @@ class ConfigApplier:
                 previous_value=old_value,
                 description=f"Revert {namespace}.{key} to its prior value",
             )
-            for namespace, key, old_value in applied
+            for namespace, key, old_value in reversed(applied)
         )
         return ApplyResult(
             success=True,

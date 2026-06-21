@@ -702,11 +702,22 @@ class _FakeArchContext:
         async def _undo() -> None:
             self.undone.append(target)
 
+        prefix_by_op = {
+            "create_role": "role",
+            "remove_role": "role",
+            "create_department": "department",
+            "remove_department": "department",
+            "create_workflow": "workflow",
+            "modify_workflow": "workflow",
+            "remove_workflow": "workflow",
+        }
+        prefix = prefix_by_op.get(change.operation, "role")
+
         return AppliedArchitectureChange(
             undo=_undo,
             rollback_operation=RollbackOperation(
                 operation_type="revert_architecture",
-                target=f"role:{target}",
+                target=f"{prefix}:{target}",
                 description=f"revert {target}",
             ),
         )
@@ -765,7 +776,7 @@ class TestArchitectureApplier:
         # The applier carries the materialised revert_architecture inverse ops.
         assert {str(op.target) for op in result.rollback_operations} == {
             "role:new-role",
-            "role:new-dept",
+            "department:new-dept",
         }
         assert all(
             op.operation_type == "revert_architecture"

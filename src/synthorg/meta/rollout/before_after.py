@@ -77,8 +77,8 @@ def _rollout_failed(
         strategy="before_after",
         proposal_id=str(proposal.id),
         stage=stage,
-        error=type(exc).__name__,
-        details=safe_error_description(exc),
+        error_type=type(exc).__name__,
+        error=safe_error_description(exc),
     )
     return RolloutResult(
         proposal_id=proposal.id,

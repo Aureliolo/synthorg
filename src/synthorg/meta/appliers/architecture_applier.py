@@ -168,7 +168,9 @@ class ArchitectureApplier:
                 ),
                 changes_applied=0,
             )
-        rollback_operations = tuple(item.rollback_operation for item in applied)
+        rollback_operations = tuple(
+            item.rollback_operation for item in reversed(applied)
+        )
         try:
             await context.refresh_snapshot()
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised

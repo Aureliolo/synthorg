@@ -31,6 +31,7 @@ from synthorg.observability.events.meta import (
     META_ROLLBACK_COMPLETED,
     META_ROLLBACK_FAILED,
     META_ROLLBACK_STARTED,
+    META_ROLLOUT_FAILED,
     META_ROLLOUT_PRECONDITION_FAILED,
     META_ROLLOUT_REGRESSION_DETECTED,
 )
@@ -104,10 +105,20 @@ class SelfImprovementRolloutMixin:
         )
         result = await self._dispatch_auto_rollback(result, proposal)
         if self._analytics_emitter is not None:
-            await self._analytics_emitter.emit_rollout(
-                result,
-                proposal=proposal,
-            )
+            try:
+                await self._analytics_emitter.emit_rollout(
+                    result,
+                    proposal=proposal,
+                )
+            except Exception as exc:  # noqa: BLE001 -- telemetry is best-effort
+                reraise_critical(exc)
+                logger.warning(
+                    META_ROLLOUT_FAILED,
+                    proposal_id=str(proposal.id),
+                    reason="analytics_emit_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
         return result
 
     async def _dispatch_auto_rollback(

@@ -238,6 +238,7 @@ def _build_rollback_executor(  # noqa: PLR0913
                 base_branch=str(code_cfg.base_branch),
                 timeout=code_cfg.api_timeout_seconds,
             ),
+            branch_prefix=str(code_cfg.branch_prefix),
         )
         if code_cfg.github_token is not None and code_cfg.github_repo is not None
         else None

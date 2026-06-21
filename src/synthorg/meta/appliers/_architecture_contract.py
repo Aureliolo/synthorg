@@ -1,11 +1,9 @@
-"""Contract + result types for the architecture applier.
+"""Architecture applier contract and result types.
 
-Factored out of ``_architecture_validators`` so the validators module holds
-only the validation logic while the ``ArchitectureApplierContext`` protocol,
-the undo closure type, and the applied-change carrier live in one small leaf.
-The applier and the durable context both import from here, and the validators
-import the protocol back as a parameter type without taking a back-edge into
-the applier.
+This leaf module keeps validators, appliers, and durable contexts decoupled:
+validators type against the ``ArchitectureApplierContext`` protocol without
+importing the concrete applier, while apply paths share the undo closure and
+the serialisable rollback carrier.
 """
 
 from collections.abc import Awaitable, Callable

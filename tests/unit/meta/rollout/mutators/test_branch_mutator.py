@@ -15,7 +15,9 @@ pytestmark = pytest.mark.unit
 class TestBranchRevertMutator:
     async def test_delete_branch_calls_client(self) -> None:
         client = mock_of[GitHubAPI](delete_branch=AsyncMock())
-        mutator = BranchRevertMutator(github_client=client)
+        mutator = BranchRevertMutator(
+            github_client=client, branch_prefix="meta/code-mod"
+        )
 
         await mutator.delete_branch(name="meta/code-mod/abc12345")
 
@@ -23,17 +25,33 @@ class TestBranchRevertMutator:
 
     async def test_blank_name_rejected(self) -> None:
         client = mock_of[GitHubAPI](delete_branch=AsyncMock())
-        mutator = BranchRevertMutator(github_client=client)
+        mutator = BranchRevertMutator(
+            github_client=client, branch_prefix="meta/code-mod"
+        )
 
         with pytest.raises(RollbackMutationDeniedError, match="non-blank"):
             await mutator.delete_branch(name="   ")
+        client.delete_branch.assert_not_awaited()
+
+    async def test_branch_outside_namespace_rejected(self) -> None:
+        client = mock_of[GitHubAPI](delete_branch=AsyncMock())
+        mutator = BranchRevertMutator(
+            github_client=client, branch_prefix="meta/code-mod"
+        )
+
+        with pytest.raises(
+            RollbackMutationDeniedError, match="code-modification branch"
+        ):
+            await mutator.delete_branch(name="main")
         client.delete_branch.assert_not_awaited()
 
     async def test_client_failure_surfaces_as_denied(self) -> None:
         client = mock_of[GitHubAPI](
             delete_branch=AsyncMock(side_effect=RuntimeError("403 forbidden"))
         )
-        mutator = BranchRevertMutator(github_client=client)
+        mutator = BranchRevertMutator(
+            github_client=client, branch_prefix="meta/code-mod"
+        )
 
         with pytest.raises(RollbackMutationDeniedError, match="branch delete failed"):
             await mutator.delete_branch(name="meta/code-mod/abc12345")

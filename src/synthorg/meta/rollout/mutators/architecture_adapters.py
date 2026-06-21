@@ -17,6 +17,7 @@ each applier captured its inverse:
   required. ``None`` is a malformed operation and is rejected.
 """
 
+from collections.abc import Mapping
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -79,7 +80,7 @@ def build_architecture_adapters(
                 reason=NotBlankStr("rollback"),
             )
             return
-        if not isinstance(previous_value, dict):
+        if not isinstance(previous_value, Mapping):
             msg = "department restore requires a mapping previous_value"
             raise RollbackMutationDeniedError(msg)
         payload = _DepartmentRestorePayload.model_validate(previous_value)
