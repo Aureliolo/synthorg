@@ -363,6 +363,11 @@ func LoadForTeardown(dataDir string) (State, error) {
 		return seeded, fmt.Errorf("%w %s: %w", ErrReading, path, readErr)
 	}
 	s := DefaultState()
+	// DefaultState seeds DataDir with the platform default, but for teardown
+	// targeting the persisted value must win and an OMITTED data_dir must fall
+	// back to the caller-supplied dir, not the platform default. Clearing it
+	// before unmarshal lets the absent-field branch below pick safeDir.
+	s.DataDir = ""
 	if err := json.Unmarshal(data, &s); err != nil {
 		return seeded, fmt.Errorf("%w %s: %w", ErrParsing, path, err)
 	}

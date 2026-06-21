@@ -167,6 +167,31 @@ func TestLoadForTeardown(t *testing.T) {
 			t.Errorf("parsed fields should survive: BackendPort = %d, want 999999", s.BackendPort)
 		}
 	})
+
+	t.Run("config omitting data_dir falls back to the CLI-supplied dir", func(t *testing.T) {
+		tmp := t.TempDir()
+		// A persisted config with NO data_dir field must not let DefaultState's
+		// platform default leak through: teardown targeting must use the
+		// caller-supplied dir, never drift to the platform default.
+		raw, err := json.Marshal(map[string]any{
+			"backend_port":        3001,
+			"persistence_backend": "sqlite",
+			"memory_backend":      "mem0",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(StatePath(tmp), raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		s, err := LoadForTeardown(tmp)
+		if err != nil {
+			t.Fatalf("LoadForTeardown with omitted data_dir: unexpected err %v", err)
+		}
+		if s.DataDir != filepath.Clean(tmp) {
+			t.Errorf("DataDir = %q, want %q (caller-supplied dir)", s.DataDir, filepath.Clean(tmp))
+		}
+	})
 }
 
 // TestValidateFernetKey covers the MasterKey format check that gates

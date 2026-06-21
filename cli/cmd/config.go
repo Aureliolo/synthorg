@@ -570,7 +570,7 @@ func runConfigImport(cmd *cobra.Command, args []string) error {
 		out.Success(fmt.Sprintf("Set %s = %s", p.key, p.value))
 		hintAfterConfigSet(out, p.key, p.value, state.DataDir)
 	}
-	out.HintNextStep(fmt.Sprintf("Imported %d config key(s) from %s.", len(pairs), args[0]))
+	out.Success(fmt.Sprintf("Imported %d config key(s) from %s.", len(pairs), args[0]))
 	return nil
 }
 
