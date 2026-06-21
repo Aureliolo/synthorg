@@ -3,8 +3,9 @@
 -- This file defines the desired database state for Postgres.  The drift
 -- gate (`scripts/check_schema_drift_revisions.py --backend postgres`)
 -- diffs this against the accumulated revisions in `revisions/` and
--- fails CI on mismatch.  Do NOT execute this file directly -- runtime
--- schema is applied by yoyo from the `revisions/` directory.
+-- fails CI on mismatch.  The runtime applies the schema through yoyo;
+-- the `revisions/00000000000000_baseline.sql` seed is a verbatim copy
+-- of this declared schema.
 --
 -- This is the Postgres-native sibling of src/synthorg/persistence/sqlite/schema.sql.
 -- Both schemas describe the same logical data model but use each engine's

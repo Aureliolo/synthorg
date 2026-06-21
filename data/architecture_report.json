@@ -794,8 +794,8 @@
     },
     "src/synthorg/meta/appliers/_architecture_validators.py": {
       "cap": 500,
-      "loc": 495,
-      "ratio": 0.99,
+      "loc": 500,
+      "ratio": 1.0,
       "tier": "code"
     },
     "src/synthorg/meta/appliers/code_applier.py": {
@@ -932,8 +932,8 @@
     },
     "src/synthorg/organization/services.py": {
       "cap": 600,
-      "loc": 490,
-      "ratio": 0.817,
+      "loc": 492,
+      "ratio": 0.82,
       "tier": "service"
     },
     "src/synthorg/persistence/migrations.py": {
@@ -1442,7 +1442,7 @@
     "synthorg.meta.models": 62,
     "synthorg.meta.signal_models": 23,
     "synthorg.notifications.models": 20,
-    "synthorg.observability": 1631,
+    "synthorg.observability": 1632,
     "synthorg.observability.background_tasks": 25,
     "synthorg.observability.events.api": 176,
     "synthorg.observability.events.chief_of_staff": 29,

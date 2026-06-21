@@ -1,5 +1,8 @@
 """Unit tests for constitutional principle pack loading."""
 
+from collections.abc import Mapping
+from types import MappingProxyType
+
 import pytest
 
 from synthorg.engine.strategy.models import ConstitutionalPrincipleConfig
@@ -10,6 +13,16 @@ from synthorg.engine.strategy.principles import (
     load_and_merge,
     load_pack,
 )
+
+
+class _FixedOverrideProvider:
+    """Minimal :class:`PrincipleOverrideProvider` returning a fixed map."""
+
+    def __init__(self, overrides: dict[str, str]) -> None:
+        self._overrides: Mapping[str, str] = MappingProxyType(dict(overrides))
+
+    def overrides(self) -> Mapping[str, str]:
+        return self._overrides
 
 
 class TestLoadPack:
@@ -96,6 +109,35 @@ class TestLoadAndMerge:
         )
         principles = load_and_merge(config)
         assert len(principles) == 7  # No duplicate added
+
+    @pytest.mark.unit
+    def test_override_replaces_principle_text_by_id(self) -> None:
+        pack = load_pack("default")
+        target_id = pack.principles[0].id
+        config = ConstitutionalPrincipleConfig(pack="default")
+        provider = _FixedOverrideProvider({target_id: "OVERRIDDEN TEXT"})
+        principles = load_and_merge(config, principle_overrides=provider)
+        overridden = next(p for p in principles if p.id == target_id)
+        assert overridden.text == "OVERRIDDEN TEXT"
+        # An overlay replaces text in place; it never adds a principle.
+        assert len(principles) == 7
+
+    @pytest.mark.unit
+    def test_override_with_no_matching_principle_is_ignored(self) -> None:
+        config = ConstitutionalPrincipleConfig(pack="default")
+        provider = _FixedOverrideProvider({"does_not_exist": "X"})
+        principles = load_and_merge(config, principle_overrides=provider)
+        assert len(principles) == 7
+        assert all(p.text != "X" for p in principles)
+
+    @pytest.mark.unit
+    def test_no_override_provider_leaves_pack_unchanged(self) -> None:
+        config = ConstitutionalPrincipleConfig(pack="default")
+        baseline = load_and_merge(config)
+        with_empty = load_and_merge(
+            config, principle_overrides=_FixedOverrideProvider({})
+        )
+        assert tuple(p.text for p in baseline) == tuple(p.text for p in with_empty)
 
 
 class TestListBuiltinPacks:

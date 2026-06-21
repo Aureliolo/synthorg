@@ -49,16 +49,16 @@ This ADR also closes two stale findings from the same audit run:
 
 ### #61: SQLite migration `idx_wfe_definition_revision`
 
-The audit reported SQLite was missing the `20260424185325_add_idx_wfe_definition_revision.sql` migration that exists in `src/synthorg/persistence/postgres/revisions/`.
+The audit reported SQLite was missing the `20260424185325_add_idx_wfe_definition_revision.sql` migration that, at the time, existed in `src/synthorg/persistence/postgres/revisions/` (since collapsed into the baseline).
 
-**Verified false positive**: SQLite's baseline migration (`src/synthorg/persistence/sqlite/revisions/00000000000000_baseline.sql`) already contains the index at lines 498-499:
+**Verified false positive**: SQLite's baseline migration (`src/synthorg/persistence/sqlite/revisions/00000000000000_baseline.sql`) already contains the index:
 
 ```sql
 CREATE INDEX `idx_wfe_definition_revision`
     ON `workflow_executions` (`definition_id`, `definition_revision`);
 ```
 
-The same index also lives at `src/synthorg/persistence/sqlite/schema.sql:543`.  Both backend revision histories have since been squashed into a single seed file derived from `schema.sql` (per `docs/guides/persistence-migrations.md` §"Squash Procedure"); the two backends are at schema parity.  `scripts/check_schema_drift_revisions.py --backend sqlite` and `--backend postgres` confirm parity.  **No new SQL needed.**
+The same index also lives in `src/synthorg/persistence/sqlite/schema.sql`.  Both backend revision histories have since been squashed into a single seed file derived from `schema.sql` (per `docs/guides/persistence-migrations.md` §"Squash Procedure"); the two backends are at schema parity.  `scripts/check_schema_drift_revisions.py --backend sqlite` and `--backend postgres` confirm parity.  **No new SQL needed.**
 
 ### #127: Lifecycle lock false positives
 

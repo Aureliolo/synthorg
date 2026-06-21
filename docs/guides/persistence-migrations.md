@@ -189,9 +189,25 @@ single-revision-per-PR hook accepts the squash:
 SYNTHORG_MIGRATION_SQUASH=1 git commit -m "refactor(persistence): squash revisions"
 ```
 
-After squashing, `check-no-modify-migration` treats
-`00000000000000_baseline.sql` as the one protected file going
-forward.
+The CI mirror of this gate (`schema-validate` job) reads the same
+`SYNTHORG_MIGRATION_SQUASH=1` bypass only when the PR carries the
+`migration-squash` label, so add that label to the squash PR. The
+label is the visible, auditable CI equivalent of the deliberately-set
+local env var; every unlabelled PR keeps the gate fully active.
+
+After squashing, `00000000000000_baseline.sql` is the only file in the
+revisions directories that exists on `origin/main`, so
+`check-no-modify-migration` blocks any in-branch edit to it under the
+standard immutability rule (the hook has no per-file special-casing).
+
+The baseline is a fresh-install seed: it reproduces the final schema,
+not the historical sequence. Any data-migration DML the collapsed
+revisions carried (one-off data fixes, SQLite table-rebuild
+`INSERT ... SELECT` copies) is intentionally absent -- a fresh database
+never needs it.
+SynthOrg is pre-alpha with no deployed databases, so only the
+fresh-install path matters; see `docs/design/persistence.md` for the
+upgrade-path stance.
 
 ## Troubleshooting
 

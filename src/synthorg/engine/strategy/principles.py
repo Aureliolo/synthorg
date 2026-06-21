@@ -23,6 +23,9 @@ from synthorg.engine.strategy.models import (
     ConstitutionalPrincipleConfig,
     PrinciplePack,
 )
+from synthorg.engine.strategy.principle_override_provider import (
+    PrincipleOverrideProvider,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.strategy import (
     STRATEGY_PACK_INVALID,
@@ -279,6 +282,7 @@ def load_and_merge(
     config: ConstitutionalPrincipleConfig,
     *,
     active_principles: ActivePrincipleProvider | None = None,
+    principle_overrides: PrincipleOverrideProvider | None = None,
     role: str | None = None,
     department: str | None = None,
 ) -> tuple[ConstitutionalPrinciple, ...]:
@@ -290,18 +294,26 @@ def load_and_merge(
     ``department`` (plus every organisation-wide principle), so a role- or
     department-scoped principle only reaches the agents it targets.
 
+    Finally, durable principle overrides (restored principle text persisted by
+    the rollback executor's ``PromptMutator``) are overlaid by id: an override
+    whose ``scope`` equals a merged principle's id replaces that principle's
+    text. An override scope with no matching principle is ignored.
+
     Args:
         config: Principle configuration with pack name and custom
             principles.
         active_principles: Optional durable active-principle read seam. When
             ``None`` (no durable store wired) only pack + custom load, exactly
             as before.
+        principle_overrides: Optional durable principle-override read seam.
+            When ``None`` (no durable store wired) no overrides are overlaid.
         role: The agent's role name, for ``ScopeKind.ROLE`` filtering.
         department: The agent's department name, for ``ScopeKind.DEPARTMENT``
             filtering.
 
     Returns:
-        Tuple of all principles (pack + custom + active), deduplicated by ID.
+        Tuple of all principles (pack + custom + active, with overrides
+        overlaid), deduplicated by ID.
 
     Raises:
         StrategyPackValidationError: When a custom principle is
@@ -340,6 +352,20 @@ def load_and_merge(
             if principle.id not in existing_ids:
                 principles.append(principle)
                 existing_ids.add(principle.id)
+
+    # Overlay durable principle overrides by id: an override whose scope equals
+    # a merged principle's id replaces that principle's text. A scope with no
+    # matching principle is ignored (the principle left the pack, and an
+    # override carries only text -- not enough to reconstruct a full principle).
+    if principle_overrides is not None:
+        override_map = principle_overrides.overrides()
+        if override_map:
+            principles = [
+                principle.model_copy(update={"text": override_map[principle.id]})
+                if principle.id in override_map
+                else principle
+                for principle in principles
+            ]
 
     return tuple(principles)
 

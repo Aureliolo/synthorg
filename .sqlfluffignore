@@ -1,11 +1,12 @@
-# Frozen historical migration revisions: exempt from sqlfluff.
+# Frozen migration baseline seeds: exempt from sqlfluff.
 #
-# These 38 files (19 per dialect) are immutable once committed:
-# scripts/check_no_edit_migration.sh blocks edits, and yoyo's
-# content-hash check refuses to re-apply an edited revision (migrations
-# would break at runtime). Their cosmetic full-ruleset violations
-# (layout, capitalisation) therefore cannot be remediated, so they are
-# exempted here rather than suppressed by narrowing the ruleset.
+# After the per-revision history was collapsed into a single baseline
+# per dialect, only these two seed files remain. Each is a verbatim
+# copy of the linted schema.sql (see docs/guides/persistence-migrations.md
+# "Squash Procedure"), so re-linting it here would be redundant;
+# scripts/check_no_edit_migration.sh blocks edits and yoyo's
+# content-hash check refuses to re-apply an edited revision, so any
+# cosmetic full-ruleset violations could not be remediated anyway.
 #
 # NEW revisions are deliberately NOT listed: a fresh 14-digit-timestamp
 # filename will not match any entry below, so new migrations are held to
@@ -15,44 +16,8 @@
 # Paths are gitignore-style, relative to this file (repo root). The
 # canonical schema.sql files are intentionally absent: they ARE linted.
 
-# SQLite revisions
+# SQLite baseline
 src/synthorg/persistence/sqlite/revisions/00000000000000_baseline.sql
-src/synthorg/persistence/sqlite/revisions/20260513000001_seen_claims.sql
-src/synthorg/persistence/sqlite/revisions/20260513000002_principle_overrides.sql
-src/synthorg/persistence/sqlite/revisions/20260515000001_ceremony_scheduler_state.sql
-src/synthorg/persistence/sqlite/revisions/20260517000001_oauth_state_nonce.sql
-src/synthorg/persistence/sqlite/revisions/20260517000001_wp3_query_indices.sql
-src/synthorg/persistence/sqlite/revisions/20260518000001_approval_source.sql
-src/synthorg/persistence/sqlite/revisions/20260519000001_conversational_intake.sql
-src/synthorg/persistence/sqlite/revisions/20260519000001_project_workspaces.sql
-src/synthorg/persistence/sqlite/revisions/20260520000001_cost_forecasts.sql
-src/synthorg/persistence/sqlite/revisions/20260520000001_project_docs.sql
-src/synthorg/persistence/sqlite/revisions/20260521000001_external_api_governed_access.sql
-src/synthorg/persistence/sqlite/revisions/20260521000002_project_environments.sql
-src/synthorg/persistence/sqlite/revisions/20260522000001_dynamic_tools.sql
-src/synthorg/persistence/sqlite/revisions/20260522000001_knowledge_substrate.sql
-src/synthorg/persistence/sqlite/revisions/20260522000002_flight_recorder.sql
-src/synthorg/persistence/sqlite/revisions/20260522000002_project_charters.sql
-src/synthorg/persistence/sqlite/revisions/20260522000002_research_runs.sql
-src/synthorg/persistence/sqlite/revisions/20260522000003_codebase_structure_map.sql
 
-# Postgres revisions
+# Postgres baseline
 src/synthorg/persistence/postgres/revisions/00000000000000_baseline.sql
-src/synthorg/persistence/postgres/revisions/20260513000001_seen_claims.sql
-src/synthorg/persistence/postgres/revisions/20260513000002_principle_overrides.sql
-src/synthorg/persistence/postgres/revisions/20260515000001_ceremony_scheduler_state.sql
-src/synthorg/persistence/postgres/revisions/20260517000001_oauth_state_nonce.sql
-src/synthorg/persistence/postgres/revisions/20260517000001_wp3_query_indices.sql
-src/synthorg/persistence/postgres/revisions/20260518000001_approval_source.sql
-src/synthorg/persistence/postgres/revisions/20260519000001_conversational_intake.sql
-src/synthorg/persistence/postgres/revisions/20260519000001_project_workspaces.sql
-src/synthorg/persistence/postgres/revisions/20260520000001_cost_forecasts.sql
-src/synthorg/persistence/postgres/revisions/20260520000001_project_docs.sql
-src/synthorg/persistence/postgres/revisions/20260521000001_external_api_governed_access.sql
-src/synthorg/persistence/postgres/revisions/20260521000002_project_environments.sql
-src/synthorg/persistence/postgres/revisions/20260522000001_dynamic_tools.sql
-src/synthorg/persistence/postgres/revisions/20260522000001_knowledge_substrate.sql
-src/synthorg/persistence/postgres/revisions/20260522000002_flight_recorder.sql
-src/synthorg/persistence/postgres/revisions/20260522000002_project_charters.sql
-src/synthorg/persistence/postgres/revisions/20260522000002_research_runs.sql
-src/synthorg/persistence/postgres/revisions/20260522000003_codebase_structure_map.sql
