@@ -81,12 +81,20 @@ func validateUpdateFlags() error {
 	if updateCheck && updateDryRun {
 		return fmt.Errorf("--check and --dry-run are mutually exclusive")
 	}
-	if _, err := time.ParseDuration(updateTimeout); err != nil {
+	d, err := time.ParseDuration(updateTimeout)
+	if err != nil {
 		return fmt.Errorf("invalid --timeout %q: %w", updateTimeout, err)
 	}
+	if d <= 0 {
+		return fmt.Errorf("invalid --timeout %q: must be positive", updateTimeout)
+	}
 	if updateVerifyTimeout != "" {
-		if _, err := time.ParseDuration(updateVerifyTimeout); err != nil {
+		vd, err := time.ParseDuration(updateVerifyTimeout)
+		if err != nil {
 			return fmt.Errorf("invalid --verify-timeout %q: %w", updateVerifyTimeout, err)
+		}
+		if vd <= 0 {
+			return fmt.Errorf("invalid --verify-timeout %q: must be positive", updateVerifyTimeout)
 		}
 	}
 	return nil

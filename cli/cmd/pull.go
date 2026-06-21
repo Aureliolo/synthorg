@@ -273,10 +273,14 @@ const maxPullLineBytes = 4096
 // retaining the last maxPullTailLines for error context. It is safe to use
 // as both Stdout and Stderr of a single command: writes are serialised
 // under mu so interleaved stdout/stderr chunks never corrupt a line mid-way.
-// onLine is invoked OUTSIDE the lock so a slow callback cannot stall the
-// child's pipe (which would block until Write returns).
+// onLine is invoked OUTSIDE mu (so a slow callback cannot stall the child's
+// pipe, which would block until Write returns) but UNDER callMu, so onLine is
+// serialised even if a caller wires this splitter to two independently-copied
+// streams: the callback target (e.g. a docker.PullProgress parser) need not be
+// thread-safe.
 type lineSplitter struct {
 	mu     sync.Mutex
+	callMu sync.Mutex
 	buf    []byte
 	onLine func(string)
 	tail   []string
@@ -294,6 +298,14 @@ func (l *lineSplitter) appendAndSplit(p []byte) []string {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.buf = append(l.buf, p...)
+	// Bound the partial (newline-free) buffer: output that never emits a
+	// newline (e.g. an untrusted override registry streaming one giant line)
+	// would otherwise grow l.buf without limit and OOM the CLI. We only ever
+	// retain capped lines for progress/error context, so dropping the
+	// overflow past maxPullLineBytes is harmless.
+	if bytes.IndexByte(l.buf, '\n') < 0 && len(l.buf) > maxPullLineBytes {
+		l.buf = l.buf[:maxPullLineBytes]
+	}
 	var lines []string
 	for {
 		i := bytes.IndexByte(l.buf, '\n')
@@ -328,6 +340,8 @@ func (l *lineSplitter) forward(lines []string) {
 	if l.onLine == nil {
 		return
 	}
+	l.callMu.Lock()
+	defer l.callMu.Unlock()
 	for _, line := range lines {
 		if line != "" {
 			l.onLine(line)
