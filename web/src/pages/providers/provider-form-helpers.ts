@@ -200,6 +200,13 @@ export function computeProviderValidation(args: ProviderValidationArgs): Provide
   const apiKeyMissing = providerApiKeyMissing(args)
   const tosMissing = values.authType === 'subscription' && !values.tosAccepted
   const baseUrlMissing = Boolean(preset?.requires_base_url) && values.baseUrl.trim() === ''
+  // A selected preset routes through buildCreateFromPresetRequest, which can
+  // only serialize PRESET_CREATE_AUTH_TYPES. computeAvailableAuthTypes hides
+  // oauth/custom_header for presets, but state can still hold one (e.g. picked
+  // in custom mode, then switched to a preset); block submit so the request
+  // never silently drops those credential fields.
+  const unsupportedPresetAuth =
+    preset !== undefined && !PRESET_CREATE_AUTH_TYPES.has(values.authType)
   const blockers = [
     submitting,
     validateProviderName(values.name) !== null,
@@ -209,6 +216,7 @@ export function computeProviderValidation(args: ProviderValidationArgs): Provide
     fieldErrors.oauthTokenUrl !== null,
     tosMissing,
     baseUrlMissing,
+    unsupportedPresetAuth,
   ]
   return { fieldErrors, apiKeyMissing, canSubmit: !blockers.includes(true) }
 }

@@ -4,8 +4,7 @@ import { createLogger } from '@/lib/logger'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { useToastStore } from '@/stores/toast'
-import type { ProviderConfig } from '@/api/types/providers'
-import type { CreateFromPresetRequest } from '@/api/types'
+import type { CreateFromPresetRequest, ProviderConfig } from '@/api/types/providers'
 import type { SetupWizardState } from './types'
 
 const log = createLogger('setup-wizard:providers')

@@ -206,13 +206,23 @@ function useRenderPhaseSync(args: SyncArgs): void {
   const prevModeRef = useRef<'create' | 'edit' | undefined>(undefined)
   const prevProviderRef = useRef<ProviderWithName | null | undefined>(undefined)
   const prevSelectedPresetRef = useRef<string | null | undefined>(undefined)
+  const prevPresetNameRef = useRef<string | undefined>(undefined)
 
   const openChanged = open !== prevOpenRef.current
   const transition =
     openChanged || mode !== prevModeRef.current || provider !== prevProviderRef.current
+  const presetName = preset?.name
 
   applyTransitionSync(args, openChanged, transition)
-  if (fields.selectedPreset !== prevSelectedPresetRef.current) {
+  // Resync when the preset OBJECT arrives, not just when selectedPreset
+  // changes: with async presets, initialPreset can set selectedPreset while
+  // `preset` is still undefined; once presets load, selectedPreset is
+  // unchanged, so without the presetName check applyPresetSync would never
+  // pre-fill name/auth/baseURL for the deep-linked preset.
+  if (
+    fields.selectedPreset !== prevSelectedPresetRef.current ||
+    presetName !== prevPresetNameRef.current
+  ) {
     syncSelectedPreset(fields, preset)
   }
 
@@ -220,6 +230,7 @@ function useRenderPhaseSync(args: SyncArgs): void {
   prevProviderRef.current = provider
   prevOpenRef.current = open
   prevSelectedPresetRef.current = fields.selectedPreset
+  prevPresetNameRef.current = presetName
 }
 
 interface ProviderPresetsResult {
@@ -352,9 +363,19 @@ function useModalPresetsFetch(
   // the store-level idempotency early-return mean the presets endpoint is
   // hit at most once per open, killing the self-feeding request storm.
   const fetchPresetsRef = useRef(fetchPresetsFn)
+  // Fire at most once per open: after a FAILED load, presetsLoading flips
+  // false with presetCount still 0, which would otherwise re-satisfy the
+  // condition and re-fire the fetch on every render, recreating the very
+  // storm this guard exists to stop. Reset on close so the next open retries.
+  const attemptedRef = useRef(false)
   fetchPresetsRef.current = fetchPresetsFn
   useEffect(() => {
-    if (open && mode === 'create' && !presetsLoading && presetCount === 0) {
+    if (!open || mode !== 'create') {
+      attemptedRef.current = false
+      return
+    }
+    if (!attemptedRef.current && !presetsLoading && presetCount === 0) {
+      attemptedRef.current = true
       fetchPresetsRef.current()
     }
   }, [open, mode, presetsLoading, presetCount])

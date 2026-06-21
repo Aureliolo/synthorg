@@ -235,6 +235,29 @@ describe('computeProviderValidation', () => {
     })
     expect(result.canSubmit).toBe(false)
   })
+
+  it('blocks a preset submit whose auth type the preset-create payload cannot carry', () => {
+    // oauth fields are all present, so only the preset-auth gate can block.
+    const blocked = computeProviderValidation({
+      mode: 'create',
+      values: values({
+        authType: 'oauth',
+        oauthTokenUrl: 'https://auth.example.com/token',
+        oauthClientId: 'cid',
+        oauthClientSecret: 'csecret',
+      }),
+      preset: cloudPreset(['api_key', 'subscription']),
+      submitting: false,
+    })
+    expect(blocked.canSubmit).toBe(false)
+    const ok = computeProviderValidation({
+      mode: 'create',
+      values: values({ authType: 'api_key', apiKey: 'sk-test' }),
+      preset: cloudPreset(['api_key', 'subscription']),
+      submitting: false,
+    })
+    expect(ok.canSubmit).toBe(true)
+  })
 })
 
 describe('computeAvailableAuthTypes', () => {

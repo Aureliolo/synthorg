@@ -65,6 +65,10 @@ async function fetchProvidersImpl(
   set: WizSet,
   get: WizGet,
 ): Promise<void> {
+  // Idempotent, mirroring fetchPresetsImpl: a second call once providers
+  // are loaded (or a load is in flight) returns immediately, so a re-fired
+  // fetch effect cannot self-feed a request storm.
+  if (get().providersFetched || get().providersLoading) return
   set({ providersLoading: true, providersError: null })
   try {
     const providers = await listProviders()
