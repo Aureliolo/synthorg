@@ -32,7 +32,7 @@ from tests._shared.postgres_proxy import from_testcontainer as _proxy_from_testc
 from tests._shared.postgres_template import (
     clone_from_template,
     drop_test_database,
-    ensure_pg_template,
+    run_pg_template_build,
     xdist_shared_dir,
 )
 
@@ -139,10 +139,10 @@ def _ensure_template_blocking(proxy: PostgresContainerProxy, shared_dir: Path) -
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-        asyncio.run(ensure_pg_template(proxy, shared_dir))
+        run_pg_template_build(proxy, shared_dir)
         return
     with ThreadPoolExecutor(max_workers=1) as pool:
-        pool.submit(lambda: asyncio.run(ensure_pg_template(proxy, shared_dir))).result()
+        pool.submit(lambda: run_pg_template_build(proxy, shared_dir)).result()
 
 
 @pytest.fixture(scope="session")

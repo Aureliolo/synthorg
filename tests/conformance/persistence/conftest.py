@@ -48,7 +48,7 @@ from tests._shared.postgres_proxy import from_env as _proxy_from_env
 from tests._shared.postgres_template import (
     clone_from_template,
     drop_test_database,
-    ensure_pg_template,
+    run_pg_template_build,
     xdist_shared_dir,
 )
 
@@ -309,7 +309,7 @@ def _pre_acquire_postgres_container_state(session: pytest.Session) -> None:
         # Build the migrated template once on the shared CI server here
         # (sessionstart, NOT covered by pytest-timeout) so per-test
         # setup clones it instead of replaying the migration chain.
-        asyncio.run(ensure_pg_template(env_proxy, _xdist_shared_dir(session)))
+        run_pg_template_build(env_proxy, _xdist_shared_dir(session))
         _POSTGRES_CONTAINER_STATE["mode"] = "env"
         return
 
@@ -354,7 +354,7 @@ def _pre_acquire_postgres_container_state(session: pytest.Session) -> None:
         password=data["password"],
         dbname=data["dbname"],
     )
-    asyncio.run(ensure_pg_template(container_proxy, shared_dir))
+    run_pg_template_build(container_proxy, shared_dir)
 
 
 @pytest.fixture(scope="session")

@@ -23,6 +23,7 @@ accessed by other users".
 import asyncio
 import contextlib
 import os
+import sys
 from pathlib import Path
 from typing import Final
 
@@ -218,6 +219,23 @@ async def ensure_pg_template(proxy: PostgresContainerProxy, shared_dir: Path) ->
     finally:
         await asyncio.to_thread(lock.release)
     return TEMPLATE_DB_NAME
+
+
+def run_pg_template_build(proxy: PostgresContainerProxy, shared_dir: Path) -> str:
+    """Build the template synchronously under a Selector-pinned loop.
+
+    Session-scope hooks invoke the template build from a bare synchronous
+    context. A plain ``asyncio.run`` there constructs Windows' default
+    ``ProactorEventLoop``, which psycopg 3's async mode cannot drive -- it
+    needs the ``add_reader`` / ``add_writer`` socket polling only a
+    select-style loop provides. The pytest-asyncio
+    ``pytest_asyncio_loop_factories`` hook pins ``SelectorEventLoop`` for
+    test-managed loops, but it does not reach these bare session-hook
+    runs, so the loop is pinned explicitly here. Off Windows the default
+    loop already polls via select, so ``loop_factory`` stays ``None``.
+    """
+    loop_factory = asyncio.SelectorEventLoop if sys.platform == "win32" else None
+    return asyncio.run(ensure_pg_template(proxy, shared_dir), loop_factory=loop_factory)
 
 
 async def clone_from_template(
