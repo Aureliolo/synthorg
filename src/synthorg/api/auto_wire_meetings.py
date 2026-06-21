@@ -127,12 +127,14 @@ def auto_wire_meetings(  # noqa: PLR0913 -- meeting wiring needs the full dep se
     if orchestrator_was_auto_wired and missing_dependencies:
         # A single consolidated record covers an auto-wired orchestrator
         # left with an unconfigured caller, spanning both this site and the
-        # ``_wire_meeting_orchestrator`` build below. ``provider_registry is
-        # None`` is the expected empty-company / pre-setup state (this runs
-        # at construction time, before the provider registry is wired), so
-        # it logs at INFO; any other missing dependency is unexpected and
-        # logs at WARNING.
-        log = logger.info if provider_registry is None else logger.warning
+        # ``_wire_meeting_orchestrator`` build below. A missing
+        # ``provider_registry`` ALONE is the expected empty-company /
+        # pre-setup state (this runs at construction time, before the
+        # provider registry is wired), so it logs at INFO; any other shape
+        # -- including a missing ``agent_registry`` or both missing -- is an
+        # unexpected wiring fault and logs at WARNING.
+        expected_pre_setup = missing_dependencies == ("provider_registry",)
+        log = logger.info if expected_pre_setup else logger.warning
         log(
             API_MEETINGS_WIRING_DEFERRED,
             missing_dependencies=missing_dependencies,

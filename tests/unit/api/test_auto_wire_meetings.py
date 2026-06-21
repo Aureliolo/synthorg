@@ -358,6 +358,37 @@ class TestAutoWireMeetings:
         assert deferred[0]["log_level"] == "warning"
         assert deferred[0]["missing_dependencies"] == ("agent_registry",)
 
+    def test_both_registries_missing_is_warning(self) -> None:
+        """Both registries missing is a fault, not the pre-setup case.
+
+        Only a lone missing ``provider_registry`` is the expected
+        empty-company / pre-setup state. When ``agent_registry`` is also
+        missing, the deferred event must escalate to WARNING so a real
+        ``agent_registry`` wiring fault is not suppressed as INFO.
+        """
+        from synthorg.api.auto_wire_meetings import auto_wire_meetings
+        from synthorg.observability.events.api import API_MEETINGS_WIRING_DEFERRED
+
+        config = _default_config()
+        with structlog.testing.capture_logs() as captured:
+            auto_wire_meetings(
+                effective_config=config,
+                meeting_orchestrator=None,
+                meeting_scheduler=None,
+                agent_registry=None,
+                provider_registry=None,
+            )
+
+        deferred = [
+            e for e in captured if e.get("event") == API_MEETINGS_WIRING_DEFERRED
+        ]
+        assert len(deferred) == 1
+        assert deferred[0]["log_level"] == "warning"
+        assert deferred[0]["missing_dependencies"] == (
+            "agent_registry",
+            "provider_registry",
+        )
+
     def test_logs_auto_wire_events(self) -> None:
         from synthorg.api.auto_wire_meetings import auto_wire_meetings
 
