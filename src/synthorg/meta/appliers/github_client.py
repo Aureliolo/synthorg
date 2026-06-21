@@ -344,6 +344,9 @@ _TOKEN_PATTERNS = re.compile(
     r"Bearer\s+[^\s\"]+|"
     r"ghp_[a-zA-Z0-9]+|"
     r"gho_[a-zA-Z0-9]+|"
+    r"ghu_[a-zA-Z0-9]+|"
+    r"ghs_[a-zA-Z0-9]+|"
+    r"ghr_[a-zA-Z0-9]+|"
     r"github_pat_[a-zA-Z0-9_]+|"
     r"Authorization:\s*[^\n]+|"
     r"token\s+[^\s\"]+",

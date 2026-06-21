@@ -9,9 +9,11 @@ validators live in ``_architecture_validators``.
 """
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.meta.appliers._architecture_validators import (
+from synthorg.meta.appliers._architecture_contract import (
+    AppliedArchitectureChange,
     ArchitectureApplierContext,
-    ArchitectureUndo,
+)
+from synthorg.meta.appliers._architecture_validators import (
     _PendingChanges,
     _validate_change,
 )
@@ -134,21 +136,21 @@ class ArchitectureApplier:
             proposal_id=str(proposal.id),
             changes=len(proposal.architecture_changes),
         )
-        undos: list[ArchitectureUndo] = []
+        applied: list[AppliedArchitectureChange] = []
         try:
             for change in proposal.architecture_changes:
-                undo = await context.apply_change(change)
-                undos.append(undo)
+                item = await context.apply_change(change)
+                applied.append(item)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            failures = await self._rollback(undos, proposal=proposal)
+            failures = await self._rollback(applied, proposal=proposal)
             log_exception_redacted(
                 logger,
                 META_APPLY_FAILED,
                 exc,
                 altitude="architecture",
                 proposal_id=str(proposal.id),
-                applied=len(undos),
+                applied=len(applied),
                 rollback_failures=failures,
             )
             rollback_note = (
@@ -166,6 +168,9 @@ class ArchitectureApplier:
                 ),
                 changes_applied=0,
             )
+        rollback_operations = tuple(
+            item.rollback_operation for item in reversed(applied)
+        )
         try:
             await context.refresh_snapshot()
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
@@ -179,21 +184,25 @@ class ArchitectureApplier:
                 META_APPLY_REFRESH_FAILED,
                 altitude="architecture",
                 proposal_id=str(proposal.id),
-                changes=len(undos),
+                changes=len(applied),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
         logger.info(
             META_APPLY_COMPLETED,
             altitude="architecture",
-            changes=len(undos),
+            changes=len(applied),
             proposal_id=str(proposal.id),
         )
-        return ApplyResult(success=True, changes_applied=len(undos))
+        return ApplyResult(
+            success=True,
+            changes_applied=len(applied),
+            rollback_operations=rollback_operations,
+        )
 
     async def _rollback(
         self,
-        undos: list[ArchitectureUndo],
+        applied: list[AppliedArchitectureChange],
         *,
         proposal: ImprovementProposal,
     ) -> int:
@@ -207,9 +216,9 @@ class ArchitectureApplier:
             registries were fully restored.
         """
         failures = 0
-        for undo in reversed(undos):
+        for item in reversed(applied):
             try:
-                await undo()
+                await item.undo()
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 failures += 1

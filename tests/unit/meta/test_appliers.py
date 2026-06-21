@@ -1,10 +1,9 @@
 """Unit tests for meta-loop proposal appliers (apply + dry_run)."""
 
-from collections.abc import Awaitable, Callable
-
 import pytest
 
 from synthorg.config.schema import RootConfig
+from synthorg.meta.appliers._architecture_contract import AppliedArchitectureChange
 from synthorg.meta.appliers.architecture_applier import (
     ArchitectureApplier,
     ArchitectureApplierContext,
@@ -170,6 +169,11 @@ class TestConfigApplier:
         assert result.changes_applied == 2
         assert writer.store[("a", "b")] == "2"
         assert writer.store[("c", "d")] == "4"
+        # The applier materialises canonical revert_config inverse ops.
+        assert {str(op.target) for op in result.rollback_operations} == {"a.b", "c.d"}
+        assert all(
+            op.operation_type == "revert_config" for op in result.rollback_operations
+        )
 
     async def test_apply_rolls_back_on_failure(self) -> None:
         writer = _FakeSettingsWriter(fail_on=("c", "d"))
@@ -414,6 +418,13 @@ class TestPromptApplier:
         assert len(context.created) == 2
         assert context.deleted == []
         assert context.refreshed == 1
+        # The inverse of a prompt ADD is removing the created principle.
+        assert {str(op.target) for op in result.rollback_operations} == set(
+            context.created
+        )
+        assert all(
+            op.operation_type == "remove_principle" for op in result.rollback_operations
+        )
 
     async def test_apply_rolls_back_on_failure(self) -> None:
         context = _FakePromptContext(fail_after=1)
@@ -681,7 +692,7 @@ class _FakeArchContext:
 
     async def apply_change(
         self, change: ArchitectureChange
-    ) -> Callable[[], Awaitable[None]]:
+    ) -> AppliedArchitectureChange:
         if self._fail_after is not None and len(self.applied) >= self._fail_after:
             msg = "apply_change boom"
             raise ValueError(msg)
@@ -691,7 +702,25 @@ class _FakeArchContext:
         async def _undo() -> None:
             self.undone.append(target)
 
-        return _undo
+        prefix_by_op = {
+            "create_role": "role",
+            "remove_role": "role",
+            "create_department": "department",
+            "remove_department": "department",
+            "create_workflow": "workflow",
+            "modify_workflow": "workflow",
+            "remove_workflow": "workflow",
+        }
+        prefix = prefix_by_op.get(change.operation, "role")
+
+        return AppliedArchitectureChange(
+            undo=_undo,
+            rollback_operation=RollbackOperation(
+                operation_type="revert_architecture",
+                target=f"{prefix}:{target}",
+                description=f"revert {target}",
+            ),
+        )
 
     async def refresh_snapshot(self) -> None:
         if self._fail_refresh:
@@ -744,6 +773,15 @@ class TestArchitectureApplier:
         assert context.applied == ["new-role", "new-dept"]
         assert context.undone == []
         assert context.refreshed == 1
+        # The applier carries the materialised revert_architecture inverse ops.
+        assert {str(op.target) for op in result.rollback_operations} == {
+            "role:new-role",
+            "department:new-dept",
+        }
+        assert all(
+            op.operation_type == "revert_architecture"
+            for op in result.rollback_operations
+        )
 
     async def test_apply_succeeds_when_post_commit_refresh_fails(self) -> None:
         # Changes are already durably committed; a failed read-snapshot refresh
@@ -1421,10 +1459,17 @@ class TestArchitectureApplier:
 
             async def apply_change(
                 self, change: ArchitectureChange
-            ) -> Callable[[], Awaitable[None]]:
+            ) -> AppliedArchitectureChange:
                 async def _undo() -> None: ...
 
-                return _undo
+                return AppliedArchitectureChange(
+                    undo=_undo,
+                    rollback_operation=RollbackOperation(
+                        operation_type="revert_architecture",
+                        target=f"role:{change.target_name}",
+                        description="revert",
+                    ),
+                )
 
             async def refresh_snapshot(self) -> None: ...
 

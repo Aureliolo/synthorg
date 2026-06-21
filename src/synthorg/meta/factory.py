@@ -48,8 +48,10 @@ from synthorg.meta.rollout.canary import CanarySubsetRollout
 from synthorg.meta.rollout.group_aggregator import GroupSignalAggregator
 from synthorg.meta.rollout.inverse_dispatch import (
     ArchitectureMutator,
+    BranchMutator,
     CodeMutator,
     ConfigMutator,
+    PrincipleRemovalMutator,
     PromptMutator,
     RollbackHandler,
     default_rollback_handlers,
@@ -379,27 +381,34 @@ def build_rollout_strategies(  # noqa: PLR0913
     return MappingProxyType(strategies)
 
 
-def build_rollback_executor(
+def build_rollback_executor(  # noqa: PLR0913
     *,
     config_mutator: ConfigMutator,
     prompt_mutator: PromptMutator,
     architecture_mutator: ArchitectureMutator,
     code_mutator: CodeMutator,
+    principle_removal_mutator: PrincipleRemovalMutator | None = None,
+    branch_mutator: BranchMutator | None = None,
     extra_handlers: Mapping[str, RollbackHandler] | None = None,
 ) -> RollbackExecutor:
     """Assemble a RollbackExecutor with the default handler mapping.
 
     Args:
         config_mutator: Writes config leaves at dotted paths.
-        prompt_mutator: Restores org-wide prompt principles.
+        prompt_mutator: Restores org-wide prompt principle text (overlay).
         architecture_mutator: Restores structural entities.
         code_mutator: Reverts source files to previous contents.
+        principle_removal_mutator: Removes an active principle created by a
+            prompt apply (the inverse of an ADD). When omitted the
+            ``remove_principle`` operation has no handler.
+        branch_mutator: Deletes a remote branch created by a code apply.
+            When omitted the ``revert_branch`` operation has no handler.
         extra_handlers: Additional handlers keyed by operation type,
             merged on top of the defaults (later keys win).
 
     Returns:
-        A RollbackExecutor ready to dispatch the four built-in
-        operation types plus any extras.
+        A RollbackExecutor ready to dispatch the built-in operation types
+        plus any extras.
     """
     handlers: dict[NotBlankStr, RollbackHandler] = dict(
         default_rollback_handlers(
@@ -407,6 +416,8 @@ def build_rollback_executor(
             prompt=prompt_mutator,
             architecture=architecture_mutator,
             code=code_mutator,
+            principle_removal=principle_removal_mutator,
+            branch=branch_mutator,
         )
     )
     if extra_handlers:

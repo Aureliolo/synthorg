@@ -263,6 +263,8 @@ Tables sort by recommendation (REMOVE first, then REVIEW, then KEEP). `rc` is `1
 | meta/rollout/inverse_dispatch.py | 64 | `PromptMutator` | 1 | 0 | 2 | KEEP | Plug-in `Mutator`. |
 | meta/rollout/inverse_dispatch.py | 73 | `ArchitectureMutator` | 1 | 0 | 2 | KEEP | Plug-in `Mutator`. |
 | meta/rollout/inverse_dispatch.py | 82 | `CodeMutator` | 1 | 0 | 2 | KEEP | Plug-in `Mutator`. |
+| meta/rollout/inverse_dispatch.py | 91 | `PrincipleRemovalMutator` | 1 | 0 | 2 | KEEP | Plug-in `Mutator`. |
+| meta/rollout/inverse_dispatch.py | 100 | `BranchMutator` | 1 | 0 | 2 | KEEP | Plug-in `Mutator`. |
 | meta/rollout/regression/statistical.py | 61 | `StatisticalSampleSource` | 1 | 0 | 3 | KEEP | Plug-in `Source`. |
 | meta/rollout/roster.py | 21 | `OrgRoster` | 1 | 0 | 5 | KEEP | Plug-in `Roster`. |
 | meta/signals/protocol.py | 26 | `SignalAggregator` | 1 | 0 | 4 | REVIEW | Duplicates the name in `meta/protocol.py:38`; one of the two should fold. |

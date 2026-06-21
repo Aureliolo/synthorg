@@ -140,9 +140,8 @@ class ArchitectureProposalStrategy:
             rollback_plan=RollbackPlan(
                 operations=(
                     RollbackOperation(
-                        operation_type="revert_workflow",
-                        target="default_review_pipeline",
-                        previous_value="original_config",
+                        operation_type="revert_architecture",
+                        target="workflow:default_review_pipeline",
                         description=("Revert review pipeline to original"),
                     ),
                 ),
@@ -190,8 +189,8 @@ class ArchitectureProposalStrategy:
             rollback_plan=RollbackPlan(
                 operations=(
                     RollbackOperation(
-                        operation_type="delete_role",
-                        target="bottleneck_specialist",
+                        operation_type="revert_architecture",
+                        target="role:bottleneck_specialist",
                         description="Remove specialist role",
                     ),
                 ),

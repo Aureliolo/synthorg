@@ -4,8 +4,9 @@ import json
 from unittest.mock import AsyncMock
 
 import pytest
-from pydantic import JsonValue
+from pydantic import JsonValue, ValidationError
 
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.config import CodeModificationConfig, SelfImprovementConfig
 from synthorg.meta.models import (
     OrgBudgetSummary,
@@ -106,6 +107,24 @@ def _mock_provider(response_content: str | None = None) -> AsyncMock:
     mock_response.content = response_content
     provider.complete = AsyncMock(return_value=mock_response)
     return provider
+
+
+class TestCodeModificationConfigValidation:
+    """github_api_url scheme validation (token rides the Authorization header)."""
+
+    def test_https_api_url_accepted(self) -> None:
+        cfg = CodeModificationConfig(
+            github_api_url=NotBlankStr("https://api.github.example/v3"),
+        )
+        assert str(cfg.github_api_url).startswith("https://")
+
+    @pytest.mark.parametrize(
+        "url",
+        ["http://api.github.com", "ftp://api.github.com", "api.github.com"],
+    )
+    def test_non_https_api_url_rejected(self, url: str) -> None:
+        with pytest.raises(ValidationError, match="https"):
+            CodeModificationConfig(github_api_url=NotBlankStr(url))
 
 
 class TestCodeModificationStrategy:

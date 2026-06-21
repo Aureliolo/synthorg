@@ -49,20 +49,22 @@ Each subsystem still owns its config discriminator; the registries replace only 
 
 - `meta/rollout/roster.py`: `OrgRoster`.
 - `meta/rollout/group_aggregator.py`: `GroupSignalAggregator`.
-- `meta/rollout/inverse_dispatch.py`: `RollbackHandler` + 4 mutator protocols.
+- `meta/rollout/inverse_dispatch.py`: `RollbackHandler` + 6 mutator protocols.
 - `meta/factory.py::build_rollout_strategies()` + `build_rollback_executor()`.
 - All plumbed through frozen `SelfImprovementConfig`, with safe defaults (`SystemClock` from `synthorg.core.clock`, `NoOpOrgRoster`, null aggregator) so the behaviour is opt-in.
 
 ### Rollback mutators
 
-Concrete implementations of the four mutator protocols live under `meta/rollout/mutators/`:
+Concrete implementations of the six mutator protocols live under `meta/rollout/mutators/`:
 
 - `SettingsServiceConfigMutator` (`mutators/config_mutator.py`): backs `ConfigMutator` with `SettingsService.set`. Dotted target (`"<namespace>.<key>"`); `read_only_post_init` settings surface as `RollbackMutationDeniedError`.
 - `PrincipleOverridePromptMutator` (`mutators/prompt_mutator.py`): backs `PromptMutator` with `PrincipleOverrideRepository`. Persists override rows that the prompt-build path overlays onto matching principles by id via the cached `PrincipleOverrideProvider` (`engine/strategy/principles.py::load_and_merge`, wired at boot in `meta_apply_wiring.py`). Schema: the `principle_overrides` table in `persistence/sqlite/schema.sql` (and Postgres twin).
-- `RoutedArchitectureMutator` (`mutators/architecture_mutator.py`): backs `ArchitectureMutator` with a per-target-type adapter registry. Target format `"<type>:<id>"` (or `"<type>:<id>:<sub_id>"`); operators register adapters per type (`role`, `department`, `workflow`, etc.) without touching the executor. Unknown prefixes raise `UnknownArchitectureTargetError`.
+- `RoutedArchitectureMutator` (`mutators/architecture_mutator.py`): backs `ArchitectureMutator` with a per-target-type adapter registry. Target format `"<type>:<id>"` (or `"<type>:<id>:<sub_id>"`); operators register adapters per type (`role`, `department`, `workflow`, etc.) without touching the executor. Unknown prefixes raise `UnknownArchitectureTargetError`. `mutators/architecture_adapters.py::build_architecture_adapters(role_repo=..., department_service=..., workflow_service=..., clock=...)` assembles the boot `role` / `department` / `workflow` adapters that route a `revert_architecture` operation's apply-time-captured `previous_value` back to the matching durable store.
 - `WorkspaceCodeMutator` (`mutators/code_mutator.py`): backs `CodeMutator` with atomic filesystem writes (`tempfile.mkstemp` + `Path.replace`) inside a workspace bounded by `PathValidator` so `revert_code` cannot escape via traversal.
+- `ActivePrincipleRemovalMutator` (`mutators/principle_removal_mutator.py`): backs `PrincipleRemovalMutator` with `ActivePrincipleRepository.delete` plus an `on_principle_removed` provider-refresh hook. Reverses a prompt-ADD apply by deleting the created active-principle row (the correct inverse of an add, which an override overlay cannot express).
+- `BranchRevertMutator` (`mutators/branch_mutator.py`): backs `BranchMutator` with `HttpGitHubClient.delete_branch`. Reverses a code apply by deleting the generated feature branch; only wired when the code-modification GitHub token + repo are configured.
 
-Domain errors live at `meta/errors.py::RollbackMutationDeniedError` (409) and `UnknownArchitectureTargetError`. Wire-up assembles via `meta/factory.py::build_rollback_executor(config_mutator=..., prompt_mutator=..., architecture_mutator=..., code_mutator=...)` and stays opt-in: operators construct the executor in their own startup path when they want the self-improvement loop active.
+Domain errors live at `meta/errors.py::RollbackMutationDeniedError` (409) and `UnknownArchitectureTargetError`. Wire-up assembles via `meta/factory.py::build_rollback_executor(config_mutator=..., prompt_mutator=..., architecture_mutator=..., code_mutator=..., principle_removal_mutator=..., branch_mutator=...)`. The executor is boot-wired (off by default with the self-improvement feature): `api/lifecycle_helpers/meta_apply_wiring.py::_wire` builds every mutator and threads the executor into `SelfImprovementService`, which dispatches the applier-materialised inverse operations automatically on a post-rollout regression.
 
 ### API rate limits
 

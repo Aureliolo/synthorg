@@ -45,6 +45,7 @@ from synthorg.meta.protocol import ImprovementStrategy
 from synthorg.meta.rollout.ab_record import AbTestRecordSink
 from synthorg.meta.rollout.before_after import RolloutSnapshotBuilder
 from synthorg.meta.rollout.group_aggregator import GroupSignalAggregator
+from synthorg.meta.rollout.rollback import RollbackExecutor
 from synthorg.meta.rollout.roster import OrgRoster
 from synthorg.meta.rules.builtin import default_rules
 from synthorg.meta.telemetry.factory import build_analytics_emitter
@@ -148,6 +149,7 @@ class SelfImprovementService(
         approval_store: ApprovalStoreProtocol | None = None,
         config_resolver: ConfigResolver | None = None,
         ab_test_record_sink: AbTestRecordSink | None = None,
+        rollback_executor: RollbackExecutor | None = None,
     ) -> None:
         if config.enabled and approval_store is None:
             # Fail-fast so callers notice at construction time rather
@@ -182,6 +184,7 @@ class SelfImprovementService(
             architecture_context=architecture_context,
         )
         self._detector = build_regression_detector()
+        self._rollback_executor = rollback_executor
         self._rollout_strategies = build_rollout_strategies(
             config,
             clock=clock,

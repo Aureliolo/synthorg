@@ -6,13 +6,15 @@ operation types fail loudly; per-operation failures stop the loop
 immediately rather than silently partial-applying.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from types import MappingProxyType
+from uuid import UUID
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     ApplyResult,
     ImprovementProposal,
+    RollbackOperation,
 )
 from synthorg.meta.rollout.inverse_dispatch import (
     RollbackHandler,
@@ -64,12 +66,7 @@ class RollbackExecutor:
         self,
         proposal: ImprovementProposal,
     ) -> ApplyResult:
-        """Execute the rollback plan for ``proposal``.
-
-        Dispatches each ``RollbackOperation`` to the handler keyed by
-        ``operation_type``. Stops immediately on the first failure
-        and returns a failure ``ApplyResult`` so the caller never
-        sees a silently partial rollback.
+        """Execute the rollback plan declared on ``proposal``.
 
         Returns:
             ``ApplyResult`` instance.
@@ -80,69 +77,120 @@ class RollbackExecutor:
             RecursionError: Raised on the corresponding failure path.
         """
         plan = proposal.rollback_plan
+        return await self.execute_operations(
+            plan.operations,
+            proposal_id=proposal.id,
+            validation_check=plan.validation_check,
+        )
+
+    async def execute_operations(
+        self,
+        operations: Sequence[RollbackOperation],
+        *,
+        proposal_id: UUID,
+        validation_check: str | None = None,
+    ) -> ApplyResult:
+        """Dispatch each ``RollbackOperation`` to its registered handler.
+
+        Stops immediately on the first failure and returns a failure
+        ``ApplyResult`` so the caller never sees a silently partial
+        rollback. Used directly by the meta-loop auto-rollback, which
+        dispatches the applier-materialised inverse operations rather
+        than a proposal's static plan.
+
+        Returns:
+            ``ApplyResult`` instance.
+
+        Raises:
+            UnknownRollbackOperationError: Raised on the corresponding failure path.
+            MemoryError: Raised on the corresponding failure path.
+            RecursionError: Raised on the corresponding failure path.
+        """
         total_changes = 0
-        for operation in plan.operations:
-            handler = self._handlers.get(operation.operation_type)
-            if handler is None:
-                logger.warning(
-                    META_ROLLBACK_OPERATION_FAILED,
-                    proposal_id=str(proposal.id),
-                    operation_type=operation.operation_type,
-                    reason="unknown_operation_type",
-                )
-                msg = (
-                    f"no handler registered for "
-                    f"operation_type={operation.operation_type!r}"
-                )
-                raise UnknownRollbackOperationError(msg)
+        for operation in operations:
             try:
-                changes = await handler.revert(operation)
-            except (MemoryError, RecursionError) as exc:
-                log_exception_redacted(
-                    logger,
-                    META_ROLLBACK_OPERATION_FAILED,
-                    exc,
-                    proposal_id=str(proposal.id),
-                    operation_type=operation.operation_type,
-                    target=operation.target,
-                    reason="catastrophic_error",
-                )
+                total_changes += await self._revert_one(operation, proposal_id)
+            except MemoryError, RecursionError, UnknownRollbackOperationError:
                 raise
-            except Exception as exc:  # noqa: BLE001 -- best-effort revert: log and fail
-                log_exception_redacted(
-                    logger,
-                    META_ROLLBACK_OPERATION_FAILED,
-                    exc,
-                    proposal_id=str(proposal.id),
-                    operation_type=operation.operation_type,
-                    target=operation.target,
-                )
+            except Exception as exc:  # noqa: BLE001 -- best-effort: convert to failure
                 return _fail(
-                    proposal,
+                    proposal_id,
                     safe_error_description(exc),
                     total_changes,
                     error_type=type(exc).__name__,
                 )
-            total_changes += changes
-            logger.info(
-                META_ROLLBACK_OPERATION_APPLIED,
-                proposal_id=str(proposal.id),
-                operation_type=operation.operation_type,
-                target=operation.target,
-                changes=changes,
-            )
         logger.info(
             META_ROLLBACK_COMPLETED,
-            proposal_id=str(proposal.id),
-            operations=len(plan.operations),
+            proposal_id=str(proposal_id),
+            operations=len(operations),
             changes_applied=total_changes,
-            validation=plan.validation_check,
+            validation=validation_check,
         )
         return ApplyResult(success=True, changes_applied=total_changes)
 
+    async def _revert_one(
+        self,
+        operation: RollbackOperation,
+        proposal_id: UUID,
+    ) -> int:
+        """Dispatch one operation to its handler and log the outcome.
+
+        Returns:
+            The number of changes the handler reverted.
+
+        Raises:
+            UnknownRollbackOperationError: No handler is registered for
+                ``operation.operation_type``.
+            MemoryError: Re-raised after a redacted log (catastrophic).
+            RecursionError: Re-raised after a redacted log (catastrophic).
+        """
+        handler = self._handlers.get(operation.operation_type)
+        if handler is None:
+            logger.warning(
+                META_ROLLBACK_OPERATION_FAILED,
+                proposal_id=str(proposal_id),
+                operation_type=operation.operation_type,
+                reason="unknown_operation_type",
+            )
+            msg = (
+                f"no handler registered for operation_type={operation.operation_type!r}"
+            )
+            raise UnknownRollbackOperationError(msg)
+        try:
+            changes = await handler.revert(operation)
+        except (MemoryError, RecursionError) as exc:
+            log_exception_redacted(
+                logger,
+                META_ROLLBACK_OPERATION_FAILED,
+                exc,
+                proposal_id=str(proposal_id),
+                operation_type=operation.operation_type,
+                target=operation.target,
+                reason="catastrophic_error",
+            )
+            raise
+        except Exception as exc:
+            log_exception_redacted(
+                logger,
+                META_ROLLBACK_OPERATION_FAILED,
+                exc,
+                proposal_id=str(proposal_id),
+                operation_type=operation.operation_type,
+                target=operation.target,
+            )
+            raise
+        logger.info(
+            META_ROLLBACK_OPERATION_APPLIED,
+            proposal_id=str(proposal_id),
+            operation_type=operation.operation_type,
+            target=operation.target,
+            changes=changes,
+        )
+        return changes
+
 
 def _fail(
-    proposal: ImprovementProposal,
+    proposal_id: UUID,
     error_message: str,
     changes_applied: int,
     *,
@@ -159,7 +207,7 @@ def _fail(
         ``ApplyResult`` instance.
     """
     log_kwargs: dict[str, object] = {
-        "proposal_id": str(proposal.id),
+        "proposal_id": str(proposal_id),
         "error": error_message,
         "changes_applied": changes_applied,
     }

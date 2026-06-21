@@ -21,6 +21,7 @@ from pydantic import (
 )
 
 from synthorg.core.types import NotBlankStr
+from synthorg.meta._change_models import RollbackOperation
 from synthorg.meta._model_enums import (
     GuardVerdict,
     ProposalAltitude,
@@ -99,6 +100,11 @@ class RolloutResult(BaseModel):
         regression_verdict: Regression detection result (if checked).
         observation_hours_elapsed: How long the observation ran.
         details: Additional context about the rollout.
+        applied_rollback_operations: The concrete inverse operations the
+            applier materialised for this rollout, carried back from the
+            rollout strategy so the meta-loop can auto-roll-back on a
+            regression without re-deriving them. Empty when the rollout
+            applied nothing.
         completed_at: When the rollout finished.
     """
 
@@ -109,6 +115,7 @@ class RolloutResult(BaseModel):
     regression_verdict: RegressionVerdict | None = None
     observation_hours_elapsed: float = Field(ge=0.0)
     details: NotBlankStr | None = None
+    applied_rollback_operations: tuple[RollbackOperation, ...] = ()
     completed_at: AwareDatetime = Field(
         default_factory=lambda: datetime.now(UTC),
     )
@@ -192,6 +199,13 @@ class ApplyResult(BaseModel):
         success: Whether the apply succeeded.
         error_message: Error description on failure.
         changes_applied: Number of individual changes applied.
+        rollback_operations: Concrete inverse operations the applier
+            performed, materialised from apply-time state (the created
+            principle id, the prior workflow definition, captured config
+            values). The rollback executor dispatches these on an
+            auto-rollback; they carry the canonical operation_type
+            vocabulary the inverse-dispatch handlers understand, which a
+            statically-authored proposal plan cannot know in advance.
         applied_at: When the apply completed.
     """
 
@@ -200,6 +214,7 @@ class ApplyResult(BaseModel):
     success: bool
     error_message: NotBlankStr | None = None
     changes_applied: int = Field(ge=0)
+    rollback_operations: tuple[RollbackOperation, ...] = ()
     applied_at: AwareDatetime = Field(
         default_factory=lambda: datetime.now(UTC),
     )

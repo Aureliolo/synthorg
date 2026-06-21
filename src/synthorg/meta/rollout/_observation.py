@@ -17,6 +17,7 @@ from synthorg.meta.models import (
     RegressionResult,
     RegressionThresholds,
     RegressionVerdict,
+    RollbackOperation,
     RolloutOutcome,
     RolloutResult,
 )
@@ -39,6 +40,25 @@ type RolloutSnapshotBuilder = Callable[[], Awaitable[OrgSignalSnapshot]]
 logger = get_logger(__name__)
 
 _SECONDS_PER_HOUR: Final[float] = 3600.0
+
+
+def with_applied_rollback_operations(
+    result: RolloutResult,
+    operations: tuple[RollbackOperation, ...],
+) -> RolloutResult:
+    """Carry the applier's materialised inverse ops back on a rollout result.
+
+    Each strategy calls this on its success-path return so the meta-loop can
+    auto-roll-back on a regression using the apply-time inverse operations
+    rather than the proposal's static (handler-less) stub plan.
+
+    Returns:
+        The result with ``applied_rollback_operations`` set, or the result
+        unchanged when there are no operations to carry.
+    """
+    if not operations:
+        return result
+    return result.model_copy(update={"applied_rollback_operations": operations})
 
 
 def validate_window_and_interval(

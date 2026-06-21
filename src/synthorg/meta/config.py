@@ -7,7 +7,7 @@ thresholds.
 
 from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -245,6 +245,26 @@ class CodeModificationConfig(BaseModel):
             " ``integrations.github_api_url`` registry setting."
         ),
     )
+
+    @field_validator("github_api_url")
+    @classmethod
+    def _require_https_api_url(cls, value: NotBlankStr) -> NotBlankStr:
+        """Reject a non-``https`` GitHub API base URL.
+
+        The token travels in the ``Authorization`` header of every request
+        to this base URL; an ``http`` (or other-scheme) override would expose
+        it in cleartext or redirect it to an attacker-controlled host.
+
+        Returns:
+            The validated ``https`` URL.
+
+        Raises:
+            ValueError: When the URL does not use the ``https`` scheme.
+        """
+        if not value.lower().startswith("https://"):
+            msg = "github_api_url must use the https scheme"
+            raise ValueError(msg)
+        return value
 
 
 class SelfImprovementConfig(BaseModel):

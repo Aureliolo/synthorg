@@ -161,6 +161,12 @@ class TestCodeApplier:
         # Local file was reverted after push.
         written = strategies_dir / "new.py"
         assert not written.exists()
+        # The applier materialises a revert_branch inverse targeting the
+        # generated feature branch so an auto-rollback can delete it.
+        assert len(result.rollback_operations) == 1
+        op = result.rollback_operations[0]
+        assert op.operation_type == "revert_branch"
+        assert str(op.target).startswith("meta/code-mod/")
 
     async def test_apply_ci_failure_reverts_local(
         self,

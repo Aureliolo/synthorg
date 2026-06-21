@@ -32,6 +32,8 @@ from synthorg.engine.strategy.principle_override_provider import (
     PrincipleOverrideLoader,
     set_principle_override_provider,
 )
+from synthorg.meta.config import SelfImprovementConfig
+from synthorg.meta.rollout.rollback import RollbackExecutor
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.observability.events.role import ROLE_REGISTRY_SEEDED
@@ -135,6 +137,16 @@ async def _wire(app_state: AppState) -> None:
     )
 
     config = await self_improvement_config_of(app_state)
+    rollback_executor = _build_rollback_executor(
+        app_state=app_state,
+        config=config,
+        active_principle_repo=principle_repo,
+        active_principle_provider=provider,
+        override_repo=override_repo,
+        override_provider=override_provider,
+        role_repo=role_repo,
+        department_service=department_service,
+    )
     service = SelfImprovementService(
         config=config,
         prompt_context=prompt_context,
@@ -144,10 +156,100 @@ async def _wire(app_state: AppState) -> None:
         config_resolver=config_resolver_of(app_state),
         ab_test_record_sink=app_state.slice(MetaStateSlice).ab_test_repo,
         clock=app_state.clock,
+        rollback_executor=rollback_executor,
     )
     app_state.wire(MetaStateSlice, self_improvement_service=service)
     logger.info(
         API_APP_STARTUP, service="self_improvement", note="wired (durable apply)"
+    )
+
+
+def _build_rollback_executor(  # noqa: PLR0913
+    *,
+    app_state: AppState,
+    config: SelfImprovementConfig,
+    active_principle_repo: ActivePrincipleRepository,
+    active_principle_provider: CachedActivePrincipleProvider,
+    override_repo: PrincipleOverrideRepository,
+    override_provider: CachedPrincipleOverrideProvider,
+    role_repo: RoleRegistryRepository,
+    department_service: DepartmentService,
+) -> RollbackExecutor:
+    """Assemble the rollback executor from the durable stores at boot.
+
+    The config / prompt-restore / principle-removal / architecture / code
+    mutators wire unconditionally. The branch mutator (and thus the
+    ``revert_branch`` handler) wires only when code-modification GitHub
+    credentials are configured, so a deployment without them still gets an
+    executor servicing every other operation and failing loudly on
+    ``revert_branch`` rather than silently dropping it.
+
+    Returns:
+        The assembled :class:`RollbackExecutor`.
+    """
+    from synthorg.engine.state import workflow_service_of  # noqa: PLC0415
+    from synthorg.engine.workspace.state import (  # noqa: PLC0415
+        agent_workspace_root_of,
+    )
+    from synthorg.meta.appliers.github_client import HttpGitHubClient  # noqa: PLC0415
+    from synthorg.meta.factory import build_rollback_executor  # noqa: PLC0415
+    from synthorg.meta.rollout.mutators import (  # noqa: PLC0415
+        ActivePrincipleRemovalMutator,
+        BranchRevertMutator,
+        PrincipleOverridePromptMutator,
+        RoutedArchitectureMutator,
+        SettingsServiceConfigMutator,
+        WorkspaceCodeMutator,
+        build_architecture_adapters,
+    )
+    from synthorg.settings.state import settings_service_of  # noqa: PLC0415
+
+    config_mutator = SettingsServiceConfigMutator(
+        settings_service=settings_service_of(app_state),
+    )
+    prompt_mutator = PrincipleOverridePromptMutator(
+        override_repo=override_repo,
+        on_override_written=override_provider.refresh,
+    )
+    principle_removal_mutator = ActivePrincipleRemovalMutator(
+        repo=active_principle_repo,
+        on_principle_removed=active_principle_provider.refresh,
+    )
+    architecture_mutator = RoutedArchitectureMutator(
+        build_architecture_adapters(
+            role_repo=role_repo,
+            department_service=department_service,
+            workflow_service=workflow_service_of(app_state),
+            clock=app_state.clock,
+        ),
+    )
+    code_mutator = WorkspaceCodeMutator(
+        workspace_root=agent_workspace_root_of(app_state),
+    )
+    # The branch mutator (and thus the ``revert_branch`` handler) wires only
+    # when code-modification GitHub credentials are configured.
+    code_cfg = config.code_modification
+    branch_mutator = (
+        BranchRevertMutator(
+            github_client=HttpGitHubClient(
+                token=str(code_cfg.github_token),
+                repo=str(code_cfg.github_repo),
+                api_base_url=str(code_cfg.github_api_url),
+                base_branch=str(code_cfg.base_branch),
+                timeout=code_cfg.api_timeout_seconds,
+            ),
+            branch_prefix=str(code_cfg.branch_prefix),
+        )
+        if code_cfg.github_token is not None and code_cfg.github_repo is not None
+        else None
+    )
+    return build_rollback_executor(
+        config_mutator=config_mutator,
+        prompt_mutator=prompt_mutator,
+        architecture_mutator=architecture_mutator,
+        code_mutator=code_mutator,
+        principle_removal_mutator=principle_removal_mutator,
+        branch_mutator=branch_mutator,
     )
 
 

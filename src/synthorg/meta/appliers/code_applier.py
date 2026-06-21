@@ -33,6 +33,7 @@ from synthorg.meta.models import (
     CodeOperation,
     ImprovementProposal,
     ProposalAltitude,
+    RollbackOperation,
 )
 from synthorg.meta.protocol import CIValidator, GitHubAPI
 from synthorg.observability import (
@@ -326,7 +327,20 @@ class CodeApplier:
             branch=branch,
             pr_url=pr_url,
         )
-        return ApplyResult(success=True, changes_applied=count)
+        # The only durable artifact of a successful code apply is the
+        # remote branch + draft PR (local writes are reverted after CI),
+        # so the inverse is deleting that branch, which also closes the PR.
+        return ApplyResult(
+            success=True,
+            changes_applied=count,
+            rollback_operations=(
+                RollbackOperation(
+                    operation_type="revert_branch",
+                    target=branch,
+                    description=f"Delete branch {branch} and close its draft PR",
+                ),
+            ),
+        )
 
     async def _run_ci(
         self,
