@@ -23,12 +23,13 @@ import (
 )
 
 var (
-	updateDryRun     bool
-	updateNoRestart  bool
-	updateTimeout    string
-	updateCLIOnly    bool
-	updateImagesOnly bool
-	updateCheck      bool
+	updateDryRun        bool
+	updateNoRestart     bool
+	updateTimeout       string
+	updateVerifyTimeout string
+	updateCLIOnly       bool
+	updateImagesOnly    bool
+	updateCheck         bool
 )
 
 var updateCmd = &cobra.Command{
@@ -64,7 +65,8 @@ func init() {
 	}
 	updateCmd.Flags().BoolVar(&updateDryRun, "dry-run", false, "show what would happen without executing")
 	updateCmd.Flags().BoolVar(&updateNoRestart, "no-restart", false, "pull images but do not restart running containers")
-	updateCmd.Flags().StringVar(&updateTimeout, "timeout", "90s", "health check and verification timeout")
+	updateCmd.Flags().StringVar(&updateTimeout, "timeout", "90s", "post-restart health check timeout (e.g. 90s, 2m)")
+	updateCmd.Flags().StringVar(&updateVerifyTimeout, "verify-timeout", "", "image signature/SLSA verification deadline (default: image_verify_timeout, 120s)")
 	updateCmd.Flags().BoolVar(&updateCLIOnly, "cli-only", false, "only update the CLI binary")
 	updateCmd.Flags().BoolVar(&updateImagesOnly, "images-only", false, "only update container images (skip CLI)")
 	updateCmd.Flags().BoolVar(&updateCheck, "check", false, "check for updates and exit (0=current, 10=available)")
@@ -81,6 +83,11 @@ func validateUpdateFlags() error {
 	}
 	if _, err := time.ParseDuration(updateTimeout); err != nil {
 		return fmt.Errorf("invalid --timeout %q: %w", updateTimeout, err)
+	}
+	if updateVerifyTimeout != "" {
+		if _, err := time.ParseDuration(updateVerifyTimeout); err != nil {
+			return fmt.Errorf("invalid --verify-timeout %q: %w", updateVerifyTimeout, err)
+		}
 	}
 	return nil
 }
@@ -255,8 +262,11 @@ func runUpdateDryRun(cmd *cobra.Command, state config.State) {
 // handleDeclinedCompose warns the user that new images may not work with
 // their current compose configuration and offers to update images anyway.
 func handleDeclinedCompose(cmd *cobra.Command, state config.State, recovered bool) error {
-	_, _ = fmt.Fprintln(cmd.OutOrStdout(),
-		"Warning: new images may not work correctly with your current compose configuration.")
+	opts := GetGlobalOpts(cmd.Context())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
+
+	errOut.Warn("New images may not work correctly with your current compose configuration.")
 	ok, err := confirmUpdateWithDefault(cmd.Context(),
 		"Still update container images? (Only image references in compose.yml will be updated, template changes will not be applied.)",
 		false, false,
@@ -265,7 +275,8 @@ func handleDeclinedCompose(cmd *cobra.Command, state config.State, recovered boo
 		return fmt.Errorf("confirming compose apply: %w", err)
 	}
 	if !ok {
-		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Image update skipped. Run 'synthorg init' then 'synthorg update' when ready.")
+		out.Step("Image update skipped.")
+		out.HintNextStep("Run 'synthorg init' then 'synthorg update' when ready.")
 		return nil
 	}
 	return updateContainerImages(cmd, state, true, recovered)
@@ -303,11 +314,13 @@ func downloadAndApplyCLI(ctx context.Context, out *ui.UI, result selfupdate.Chec
 		return nil
 	}
 
-	out.Step("Downloading...")
+	sp := out.StartSpinner("Downloading CLI update...")
 	binary, err := selfupdate.Download(ctx, result.AssetURL, result.ChecksumURL, result.SigstoreBundURL)
 	if err != nil {
+		sp.Error("Download failed")
 		return fmt.Errorf("downloading update: %w", err)
 	}
+	sp.Success("Download complete")
 
 	if err := selfupdate.Replace(binary); err != nil {
 		return fmt.Errorf("replacing binary: %w", err)
@@ -472,6 +485,9 @@ func buildReexecArgs(cmd *cobra.Command, recovered bool) []string {
 	})
 	if cmd.Flags().Changed("timeout") {
 		reArgs = append(reArgs, "--timeout", updateTimeout)
+	}
+	if cmd.Flags().Changed("verify-timeout") {
+		reArgs = append(reArgs, "--verify-timeout", updateVerifyTimeout)
 	}
 	return reArgs
 }
@@ -723,10 +739,14 @@ func mergeVerifiedDigests(existing, fresh map[string]string) map[string]string {
 // The compose file is always (re)written -- update's job is to point the
 // running stack at the new tag, even when verification was a cache hit.
 //
-// Precedence on the verification deadline: --timeout flag wins when set
-// (operator-level intent for this invocation), otherwise the resolved
-// Tunables.ImageVerifyTimeout applies. The tunable is validated at
-// PersistentPreRunE so an unparseable override fails fast upstream.
+// Precedence on the verification deadline: the --verify-timeout flag wins
+// when set (operator intent for this invocation), otherwise the resolved
+// Tunables.ImageVerifyTimeout applies. This is kept SEPARATE from --timeout,
+// which governs only the post-restart health check: the two budgets have
+// different defaults (verification 120s vs health 90s) and conflating them
+// silently shortened the verification deadline to the health value. The
+// tunable is validated at PersistentPreRunE so an unparseable override fails
+// fast upstream; --verify-timeout is validated in validateUpdateFlags.
 func verifyAndPinForUpdate(ctx context.Context, info docker.Info, state config.State, tag, safeDir string, preserveCompose bool, out *ui.UI, errOut *ui.UI) (map[string]string, error) {
 	updatedState := state
 	updatedState.ImageTag = tag
@@ -739,9 +759,11 @@ func verifyAndPinForUpdate(ctx context.Context, info docker.Info, state config.S
 		return nil, nil
 	}
 
-	verifyTimeout, _ := time.ParseDuration(updateTimeout)
-	if verifyTimeout <= 0 {
-		verifyTimeout = GetGlobalOpts(ctx).Tunables.ImageVerifyTimeout
+	verifyTimeout := GetGlobalOpts(ctx).Tunables.ImageVerifyTimeout
+	if updateVerifyTimeout != "" {
+		if d, err := time.ParseDuration(updateVerifyTimeout); err == nil && d > 0 {
+			verifyTimeout = d
+		}
 	}
 	verifyCtx, cancel := context.WithTimeout(ctx, verifyTimeout)
 	defer cancel()
@@ -782,6 +804,9 @@ func restartIfRunning(cmd *cobra.Command, info docker.Info, safeDir string, stat
 		return false, nil
 	}
 	if psOut == "" {
+		// Images were pulled but nothing is running to restart; point the
+		// operator at the command that launches the freshly-pulled stack.
+		uiOut.HintNextStep("Run 'synthorg start' to launch the updated stack.")
 		return false, nil
 	}
 
@@ -863,7 +888,17 @@ func performRestart(ctx context.Context, out io.Writer, info docker.Info, safeDi
 		return false, nil
 	}
 	sp.Success("Backend healthy")
-	uiOut.KeyValue("Dashboard", fmt.Sprintf("http://localhost:%d", state.WebPort))
+	uiOut.Blank()
+	// Mirror the "Ready" banner that `start` prints so a post-update restart
+	// surfaces the same dashboard + API endpoints. localhost is correct: the
+	// restarted stack publishes these ports on the operator's own host.
+	readyLines := []string{
+		fmt.Sprintf("%-16s%s", "Dashboard", fmt.Sprintf("http://localhost:%d", state.WebPort)),
+		fmt.Sprintf("%-16s%s", "API", fmt.Sprintf("http://localhost:%d", state.BackendPort)),
+	}
+	uiOut.Box("Ready", readyLines)
+	uiOut.Blank()
+	uiOut.Section(fmt.Sprintf("Open http://localhost:%d", state.WebPort))
 	return true, nil
 }
 

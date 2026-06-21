@@ -36,7 +36,8 @@ The "Used by" column distinguishes three relationships to the CLI:
 | `SYNTHORG_DEFAULT_NATS_STREAM_PREFIX` | CLI | Override `synthorg worker start --stream-prefix` default |
 | `SYNTHORG_BACKUP_CREATE_TIMEOUT` | CLI | Override `synthorg backup create --timeout` default (duration, e.g. `60s`) |
 | `SYNTHORG_BACKUP_RESTORE_TIMEOUT` | CLI | Override `synthorg backup restore --timeout` default |
-| `SYNTHORG_HEALTH_CHECK_TIMEOUT` | CLI | HTTP timeout for health endpoint probes (duration) |
+| `SYNTHORG_HEALTH_CHECK_TIMEOUT` | CLI | Per-request HTTP timeout for health endpoint probes (duration, default `5s`) |
+| `SYNTHORG_HEALTH_WAIT_TIMEOUT` | CLI | Total readiness-wait budget; default for `start --timeout` and the `wipe` reinit health wait (duration, default `90s`) |
 | `SYNTHORG_SELF_UPDATE_HTTP_TIMEOUT` | CLI | HTTP timeout for CLI binary download (duration) |
 | `SYNTHORG_SELF_UPDATE_API_TIMEOUT` | CLI | HTTP timeout for GitHub API metadata fetches (duration) |
 | `SYNTHORG_TUF_FETCH_TIMEOUT` | CLI | HTTP timeout for Sigstore TUF trusted root fetch (duration) |

@@ -65,7 +65,7 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	if err := validateStartFlags(cmd); err != nil {
 		return err
 	}
-	healthTimeout, err := parseStartTimeout()
+	healthTimeout, err := parseStartTimeout(cmd)
 	if err != nil {
 		return err
 	}
@@ -90,7 +90,18 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	return startContainers(ctx, cmd, state, safeDir, out, errOut, healthTimeout)
 }
 
-func parseStartTimeout() (time.Duration, error) {
+// parseStartTimeout resolves the health-check budget for `start`. Precedence:
+// an explicit --timeout flag wins; otherwise the resolved health_wait_timeout
+// tunable (env SYNTHORG_HEALTH_WAIT_TIMEOUT, default 90s) applies. This keeps
+// the readiness-wait budget in one place across start and the wipe reinit path.
+func parseStartTimeout(cmd *cobra.Command) (time.Duration, error) {
+	if !cmd.Flags().Changed("timeout") {
+		d := GetGlobalOpts(cmd.Context()).Tunables.HealthWaitTimeout
+		if d <= 0 {
+			d = config.DefaultHealthWaitTimeout
+		}
+		return d, nil
+	}
 	d, err := time.ParseDuration(startTimeout)
 	if err != nil {
 		return 0, fmt.Errorf("invalid --timeout %q: %w", startTimeout, err)
@@ -454,30 +465,40 @@ func warnRegistryOverridesDisableVerification(cmd *cobra.Command) {
 // BEFORE the pull box renders so they understand why their terminal is
 // about to pause. Emitting it after (the old behaviour) was a logic
 // error: by the time the warning appeared, the wait had already
-// completed. The per-variant size matches the post-split image layout.
+// completed.
+//
+// Uses HintNextStep (not HintGuidance): in the default "auto" hints mode
+// HintGuidance is suppressed entirely, so the warning that explains a
+// 10-to-30-minute stall was invisible to exactly the operators who needed
+// it. The GPU figures distinguish download size from the larger on-disk
+// footprint and give an honest duration: the GPU image bundles ~2.5 GB of
+// CUDA wheels inside the torch wheel, so a first pull realistically takes
+// far longer than "a few minutes".
 func emitFineTuneSizeHint(state config.State, out *ui.UI) {
 	if !state.FineTuning {
 		return
 	}
-	sizeHint := "up to ~4 GB"
+	sizeHint := "~4 GB download (~7 GB on disk); first pull commonly takes 10-30 minutes"
 	if state.FineTuneVariantOrDefault() == config.FineTuneVariantCPU {
-		sizeHint = "~1.7 GB"
+		sizeHint = "~1.7 GB; first pull usually takes a few minutes"
 	}
-	out.HintGuidance(fmt.Sprintf(
-		"Fine-tune image is %s -- first pull can take a few minutes on typical connections.",
+	out.HintNextStep(fmt.Sprintf(
+		"Fine-tune image is %s on typical connections.",
 		sizeHint,
 	))
 }
 
 // runPullBatch fans out a pull goroutine per item and renders progress
-// in a single LiveBox. Returns the joined error covering every failed
-// pull (nil when every pull succeeds).
+// in a single LiveBox. Each line shows live pull progress (downloaded bytes
+// and layer counts where Docker emits them, plus elapsed time) instead of a
+// static spinner, so a multi-minute image pull shows activity. Returns the
+// joined error covering every failed pull (nil when every pull succeeds).
 func runPullBatch(ctx context.Context, info docker.Info, safeDir string, items []pullItem, out *ui.UI) error {
 	labels := make([]string, len(items))
 	for i, item := range items {
 		labels[i] = item.name
 	}
-	lb := out.NewLiveBox("Pull Images", labels)
+	lb := out.NewLiveBoxWithProgress("Pull Images", labels)
 	defer lb.Finish()
 
 	var (
@@ -489,7 +510,15 @@ func runPullBatch(ctx context.Context, info docker.Info, safeDir string, items [
 		wg.Add(1)
 		go func(idx int, it pullItem) {
 			defer wg.Done()
-			err := pullOneItem(ctx, info, safeDir, it)
+			// Each goroutine owns its parser; the LiveBox line updates only
+			// when the parsed state advances, avoiding redundant redraws.
+			pp := &docker.PullProgress{}
+			onLine := func(line string) {
+				if pp.Observe(line) {
+					lb.UpdateProgress(idx, pp.Render())
+				}
+			}
+			err := pullOneItem(ctx, info, safeDir, it, onLine)
 			if err != nil {
 				lb.UpdateLine(idx, ui.IconError)
 				mu.Lock()
@@ -507,13 +536,14 @@ func runPullBatch(ctx context.Context, info docker.Info, safeDir string, items [
 // pullOneItem dispatches to the right puller for the item kind: compose
 // services go through docker-compose's own pull (so it picks up the
 // image override from compose.yml); standalone images use the retrying
-// dockerPullWithRetry.
-func pullOneItem(ctx context.Context, info docker.Info, safeDir string, it pullItem) error {
+// dockerPullWithRetry. onLine receives each line of pull output for live
+// progress rendering.
+func pullOneItem(ctx context.Context, info docker.Info, safeDir string, it pullItem, onLine func(string)) error {
 	if it.compose {
-		return composeRunQuiet(ctx, info, safeDir, "pull", it.name)
+		return composeRunStreaming(ctx, info, safeDir, onLine, "pull", it.name)
 	}
 	tun := GetGlobalOpts(ctx).Tunables
-	return dockerPullWithRetry(ctx, info, it.ref, tun.ImagePullAttempts, tun.ImagePullRetryDelay)
+	return dockerPullWithRetry(ctx, info, it.ref, tun.ImagePullAttempts, tun.ImagePullRetryDelay, onLine)
 }
 
 // maxPullBackoff caps the exponential-backoff delay between image-pull
@@ -534,18 +564,17 @@ const maxPullBackoff = 5 * time.Minute
 //   - healthInitialDelay (5s): a typical compose-up cold start needs
 //     a few seconds before /readyz is even bound; polling sooner just
 //     burns connection refusals.
-//   - pullStartHealthTimeout (90s): fallback total budget for the
-//     pullStartAndWait path (which has no --timeout flag because it is
-//     called from `synthorg wipe` after a destructive reset, not from
-//     the user-facing `start` flow).
 //   - dhiVerifyTimeout (120s): caps DHI cosign + SLSA verification per
 //     batch; verification stalls past two minutes indicate a network or
 //     transparency-log outage rather than a slow CDN.
+//
+// The total readiness-wait budget for the pullStartAndWait path (called from
+// `synthorg wipe` after a destructive reset, which has no --timeout flag) is
+// the resolved health_wait_timeout tunable, not a hardcoded constant.
 const (
-	healthPollInterval     = 2 * time.Second
-	healthInitialDelay     = 5 * time.Second
-	pullStartHealthTimeout = 90 * time.Second
-	dhiVerifyTimeout       = 120 * time.Second
+	healthPollInterval = 2 * time.Second
+	healthInitialDelay = 5 * time.Second
+	dhiVerifyTimeout   = 120 * time.Second
 )
 
 // dockerPullWithRetry pulls an image with retries for transient failures.
@@ -558,10 +587,11 @@ func dockerPullWithRetry(
 	imageRef string,
 	attempts int,
 	baseDelay time.Duration,
+	onLine func(string),
 ) error {
 	var lastErr error
 	for attempt := 1; attempt <= attempts; attempt++ {
-		err := dockerRunQuiet(ctx, info, "pull", imageRef)
+		err := dockerRunStreaming(ctx, info, onLine, "pull", imageRef)
 		if err == nil {
 			return nil
 		}
@@ -621,7 +651,11 @@ func pullStartAndWait(ctx context.Context, cmd *cobra.Command, info docker.Info,
 
 	sp = out.StartSpinner("Waiting for backend to become healthy...")
 	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", state.BackendPort)
-	if err := health.WaitForHealthy(ctx, healthURL, pullStartHealthTimeout, healthPollInterval, healthInitialDelay); err != nil {
+	healthTimeout := GetGlobalOpts(ctx).Tunables.HealthWaitTimeout
+	if healthTimeout <= 0 {
+		healthTimeout = config.DefaultHealthWaitTimeout
+	}
+	if err := health.WaitForHealthy(ctx, healthURL, healthTimeout, healthPollInterval, healthInitialDelay); err != nil {
 		sp.Error("Health check failed")
 		errOut.HintError("Run 'synthorg doctor' for diagnostics.")
 		return fmt.Errorf("health check did not pass: %w", err)
@@ -740,7 +774,7 @@ func renderCachedDHIBox(out *ui.UI, state config.State) {
 // verifyDHIImages verifies cosign signatures and SLSA provenance on
 // third-party DHI images using Docker's embedded public key. Called
 // BEFORE pulling to prevent MITM.
-func verifyDHIImages(ctx context.Context, _ docker.Info, state config.State, out, _ *ui.UI) ([]verify.DHIVerifyResult, error) {
+func verifyDHIImages(ctx context.Context, _ docker.Info, state config.State, out, errOut *ui.UI) ([]verify.DHIVerifyResult, error) {
 	var dhiRefs []string
 	var labels []string
 	for _, tp := range thirdPartyImages(state) {
@@ -771,6 +805,17 @@ func verifyDHIImages(ctx context.Context, _ docker.Info, state config.State, out
 			lb.UpdateLine(i, fmt.Sprintf("sig %s  slsa %s", ui.IconSuccess, slsaIcon))
 		} else {
 			lb.UpdateLine(i, ui.IconError)
+		}
+	}
+
+	if err != nil {
+		// A short result set leaves trailing lines unfinished; mark them as
+		// errored so the box shows a cross, not a dangling "...". Surface the
+		// air-gapped recovery hint on a transport failure, mirroring the
+		// SynthOrg verification path.
+		lb.ErrorRemaining()
+		if isTransportError(err) {
+			errOut.HintError("Use --skip-verify for air-gapped environments")
 		}
 	}
 
@@ -866,6 +911,119 @@ func composeRunQuiet(ctx context.Context, info docker.Info, dir string, args ...
 		return err
 	}
 	return nil
+}
+
+// maxPullTailLines bounds the rolling buffer of recent output lines kept
+// for the error message of a failed streaming pull, so a verbose failure
+// does not balloon the wrapped error.
+const maxPullTailLines = 20
+
+// lineSplitter is an io.Writer that reassembles newline-delimited output
+// from a child process, forwarding each complete line to onLine and
+// retaining the last maxPullTailLines for error context. It is safe to use
+// as both Stdout and Stderr of a single command: writes are serialised
+// under mu so interleaved stdout/stderr chunks never corrupt a line mid-way.
+type lineSplitter struct {
+	mu     sync.Mutex
+	buf    []byte
+	onLine func(string)
+	tail   []string
+}
+
+func (l *lineSplitter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.buf = append(l.buf, p...)
+	for {
+		i := bytes.IndexByte(l.buf, '\n')
+		if i < 0 {
+			break
+		}
+		line := string(l.buf[:i])
+		l.buf = l.buf[i+1:]
+		l.handleLocked(line)
+	}
+	return len(p), nil
+}
+
+// handleLocked forwards one complete line and folds it into the tail
+// buffer. Must be called with l.mu held.
+func (l *lineSplitter) handleLocked(line string) {
+	line = strings.TrimRight(line, "\r")
+	if l.onLine != nil && line != "" {
+		l.onLine(line)
+	}
+	l.tail = append(l.tail, line)
+	if len(l.tail) > maxPullTailLines {
+		l.tail = l.tail[len(l.tail)-maxPullTailLines:]
+	}
+}
+
+// flush emits any trailing partial line the process wrote without a final
+// newline (Docker's last status line sometimes lacks one).
+func (l *lineSplitter) flush() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.buf) > 0 {
+		l.handleLocked(string(l.buf))
+		l.buf = nil
+	}
+}
+
+// tailString returns the sanitized recent output for an error message.
+func (l *lineSplitter) tailString() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return sanitizeCLIOutput(strings.Join(l.tail, "\n"))
+}
+
+// composeRunStreaming runs a docker compose command, forwarding each line of
+// combined output to onLine for live progress rendering. It is the streaming
+// counterpart of composeRunQuiet: on error the recent output is folded into
+// the error message, but the verbose progress never reaches the terminal
+// directly (the LiveBox owns the display).
+func composeRunStreaming(ctx context.Context, info docker.Info, dir string, onLine func(string), args ...string) error {
+	fullArgs := make([]string, 0, len(info.ComposeCmd)-1+len(args))
+	fullArgs = append(fullArgs, info.ComposeCmd[1:]...)
+	fullArgs = append(fullArgs, args...)
+
+	split := &lineSplitter{onLine: onLine}
+	c := exec.CommandContext(ctx, info.ComposeCmd[0], fullArgs...) //nolint:gosec // G204: compose binary is CLI-detected (info.ComposeCmd), args internally assembled, never attacker-controlled
+	c.Dir = dir
+	c.Stdout = split
+	c.Stderr = split
+	err := c.Run()
+	split.flush()
+	return streamingError(err, split)
+}
+
+// dockerRunStreaming runs a docker command, forwarding each line of combined
+// output to onLine for live progress rendering. Streaming counterpart of
+// dockerRunQuiet.
+func dockerRunStreaming(ctx context.Context, info docker.Info, onLine func(string), args ...string) error {
+	dockerBin := info.DockerPath
+	if dockerBin == "" {
+		dockerBin = "docker"
+	}
+	split := &lineSplitter{onLine: onLine}
+	c := exec.CommandContext(ctx, dockerBin, args...) //nolint:gosec // G204: dockerBin is the resolved docker binary (info.DockerPath), args internally assembled, never attacker-controlled
+	c.Stdout = split
+	c.Stderr = split
+	err := c.Run()
+	split.flush()
+	return streamingError(err, split)
+}
+
+// streamingError wraps a streaming command's exit error with its recent
+// sanitized output, mirroring the error shape of the *Quiet helpers.
+func streamingError(err error, split *lineSplitter) error {
+	if err == nil {
+		return nil
+	}
+	if output := split.tailString(); output != "" {
+		return fmt.Errorf("%w: %s", err, output)
+	}
+	return err
 }
 
 // sanitizeCLIOutput strips control characters from external CLI output

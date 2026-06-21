@@ -234,7 +234,7 @@ Two image variants ship from GHCR, both amd64-only:
 
 | Image | Torch | Size | When to pick |
 |-------|-------|------|--------------|
-| `ghcr.io/aureliolo/synthorg-fine-tune-gpu` | bundled CUDA (`torch==2.11.0`) | ~4 GB | Host has an NVIDIA GPU + compatible driver; practical training speed |
+| `ghcr.io/aureliolo/synthorg-fine-tune-gpu` | bundled CUDA (`torch==2.11.0`) | ~4 GB download (~7 GB on disk) | Host has an NVIDIA GPU + compatible driver; practical training speed |
 | `ghcr.io/aureliolo/synthorg-fine-tune-cpu` | CPU-only (`torch==2.11.0+cpu` via `download.pytorch.org/whl/cpu`) | ~1.7 GB | Host has no GPU; correctness-first, training is slower |
 
 Fine-tuning also requires the sandbox to be enabled (`sandbox=true`). The backend launches each pipeline stage in a one-shot container using the Docker API.

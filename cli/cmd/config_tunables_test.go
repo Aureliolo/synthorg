@@ -23,6 +23,7 @@ var tunableKeys = []struct {
 	{"backup_create_timeout", "90s"},
 	{"backup_restore_timeout", "45s"},
 	{"health_check_timeout", "2s"},
+	{"health_wait_timeout", "120s"},
 	{"self_update_http_timeout", "10m"},
 	{"self_update_api_timeout", "20s"},
 	{"tuf_fetch_timeout", "15s"},

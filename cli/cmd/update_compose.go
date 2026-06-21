@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -13,6 +12,7 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/compose"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/images"
+	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -23,7 +23,7 @@ import (
 // Returns true if compose is up to date or changes were applied; false if
 // the user declined.
 func refreshCompose(cmd *cobra.Command, state config.State, force bool) (bool, error) {
-	out := cmd.OutOrStdout()
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), GetGlobalOpts(cmd.Context()).UIOptions())
 
 	safeDir, err := safeStateDir(state)
 	if err != nil {
@@ -50,7 +50,7 @@ func refreshCompose(cmd *cobra.Command, state config.State, force bool) (bool, e
 		if err := compose.WriteNATSConfig(state.BusBackend, safeDir); err != nil {
 			return false, err
 		}
-		_, _ = fmt.Fprintln(out, "Compose configuration is up to date.")
+		out.Success("Compose configuration is up to date.")
 		return true, nil
 	}
 
@@ -61,7 +61,7 @@ func refreshCompose(cmd *cobra.Command, state config.State, force bool) (bool, e
 		if err := compose.WriteComposeAndNATS("compose.yml", fresh, state.BusBackend, safeDir); err != nil {
 			return false, fmt.Errorf("writing updated compose: %w", err)
 		}
-		_, _ = fmt.Fprintln(out, "Compose configuration is up to date.")
+		out.Success("Compose configuration is up to date.")
 		return true, nil
 	}
 
@@ -74,7 +74,7 @@ func refreshCompose(cmd *cobra.Command, state config.State, force bool) (bool, e
 
 // recoverMissingCompose generates compose.yml from the template during
 // recovery mode when the file is absent.
-func recoverMissingCompose(out io.Writer, _ string, state config.State, safeDir string) (bool, error) {
+func recoverMissingCompose(out *ui.UI, _ string, state config.State, safeDir string) (bool, error) {
 	params, err := compose.ParamsFromState(state)
 	if err != nil {
 		return false, fmt.Errorf("building compose params during recovery: %w", err)
@@ -89,7 +89,7 @@ func recoverMissingCompose(out io.Writer, _ string, state config.State, safeDir 
 	if wErr := compose.WriteComposeAndNATS("compose.yml", generated, state.BusBackend, safeDir); wErr != nil {
 		return false, fmt.Errorf("writing compose files during recovery: %w", wErr)
 	}
-	_, _ = fmt.Fprintln(out, "Generated compose.yml from template.")
+	out.Success("Generated compose.yml from template.")
 	return true, nil
 }
 
@@ -205,25 +205,28 @@ func loadAndGenerate(composePath string, state config.State) ([]byte, []byte, er
 // required nats.conf side-file) atomically if approved.
 // Returns true if applied, false if declined.
 func applyComposeDiff(cmd *cobra.Command, _ string, existing, fresh []byte, safeDir string, state config.State, autoApply bool) (bool, error) {
-	out := cmd.OutOrStdout()
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), GetGlobalOpts(cmd.Context()).UIOptions())
 
-	diff := lineDiff(string(existing), string(fresh))
-	_, _ = fmt.Fprintln(out, "Compose template has changed:")
-	_, _ = fmt.Fprintln(out, diff)
+	out.Step("Compose template has changed:")
+	// The diff is multi-line verbatim content; print it through the UI's
+	// passthrough so it still respects quiet mode.
+	if !out.IsQuiet() {
+		out.Plain(lineDiff(string(existing), string(fresh)))
+	}
 
 	ok, err := confirmUpdate(cmd.Context(), "Apply compose configuration changes?", autoApply)
 	if err != nil {
 		return false, err
 	}
 	if !ok {
-		_, _ = fmt.Fprintln(out, "Compose changes skipped.")
+		out.Step("Compose changes skipped.")
 		return false, nil
 	}
 
 	if err := compose.WriteComposeAndNATS("compose.yml", fresh, state.BusBackend, safeDir); err != nil {
 		return false, fmt.Errorf("writing updated compose: %w", err)
 	}
-	_, _ = fmt.Fprintln(out, "Compose configuration updated.")
+	out.Success("Compose configuration updated.")
 	return true, nil
 }
 

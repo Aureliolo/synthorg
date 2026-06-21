@@ -155,6 +155,12 @@ func verifySynthOrgGroup(ctx context.Context, state config.State, out, errOut *u
 			lb.UpdateLine(i, fmt.Sprintf("sig %s  slsa %s", ui.IconSuccess, slsaIcon))
 		},
 	})
+	if err != nil {
+		// VerifyImages stops at the first failure, leaving later lines without
+		// an OnResult callback; mark them errored so the box shows a cross
+		// instead of a dangling "...".
+		lb.ErrorRemaining()
+	}
 	lb.Finish()
 
 	if err != nil {

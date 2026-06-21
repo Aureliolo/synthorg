@@ -21,6 +21,7 @@ const (
 	EnvBackupCreateTimeout    = "SYNTHORG_BACKUP_CREATE_TIMEOUT"
 	EnvBackupRestoreTimeout   = "SYNTHORG_BACKUP_RESTORE_TIMEOUT"
 	EnvHealthCheckTimeout     = "SYNTHORG_HEALTH_CHECK_TIMEOUT"
+	EnvHealthWaitTimeout      = "SYNTHORG_HEALTH_WAIT_TIMEOUT"
 	EnvSelfUpdateHTTPTimeout  = "SYNTHORG_SELF_UPDATE_HTTP_TIMEOUT"
 	EnvSelfUpdateAPITimeout   = "SYNTHORG_SELF_UPDATE_API_TIMEOUT"
 	EnvTUFFetchTimeout        = "SYNTHORG_TUF_FETCH_TIMEOUT"
@@ -48,6 +49,7 @@ type Tunables struct {
 	BackupCreateTimeout    time.Duration
 	BackupRestoreTimeout   time.Duration
 	HealthCheckTimeout     time.Duration
+	HealthWaitTimeout      time.Duration
 	SelfUpdateHTTPTimeout  time.Duration
 	SelfUpdateAPITimeout   time.Duration
 	TUFFetchTimeout        time.Duration
@@ -81,6 +83,7 @@ func DefaultTunables() Tunables {
 		BackupCreateTimeout:     DefaultBackupCreateTimeout,
 		BackupRestoreTimeout:    DefaultBackupRestoreTimeout,
 		HealthCheckTimeout:      DefaultHealthCheckTimeout,
+		HealthWaitTimeout:       DefaultHealthWaitTimeout,
 		SelfUpdateHTTPTimeout:   DefaultSelfUpdateHTTPTimeout,
 		SelfUpdateAPITimeout:    DefaultSelfUpdateAPITimeout,
 		TUFFetchTimeout:         DefaultTUFFetchTimeout,
@@ -199,6 +202,9 @@ func resolveDurationTunables(t Tunables, s State) (Tunables, error) {
 		return t, err
 	}
 	if t.HealthCheckTimeout, err = resolveDurationField("health_check_timeout", EnvHealthCheckTimeout, s.HealthCheckTimeout, t.HealthCheckTimeout); err != nil {
+		return t, err
+	}
+	if t.HealthWaitTimeout, err = resolveDurationField("health_wait_timeout", EnvHealthWaitTimeout, s.HealthWaitTimeout, t.HealthWaitTimeout); err != nil {
 		return t, err
 	}
 	t, err = resolveSelfUpdateAndTUFTimeouts(t, s)

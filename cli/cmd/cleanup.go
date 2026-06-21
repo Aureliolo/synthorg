@@ -241,7 +241,7 @@ func emitCleanupSummary(out *ui.UI, old []oldImage, removed int, freedB float64)
 		out.HintError(fmt.Sprintf("%d image(s) skipped (stop containers first to remove)", skipped))
 	}
 	if removed > 0 {
-		out.HintGuidance("Use --keep N to preserve N recent previous versions.")
+		out.HintNextStep("Use --keep N to preserve N recent previous versions.")
 	}
 }
 

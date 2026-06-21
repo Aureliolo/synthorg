@@ -29,7 +29,7 @@ var supportedConfigKeys = []string{
 	"default_nats_stream_prefix",
 	"dhi_registry", "docker_sock",
 	"fine_tuning", "fine_tuning_variant",
-	"health_check_timeout",
+	"health_check_timeout", "health_wait_timeout",
 	"hints", "image_pull_attempts", "image_pull_retry_delay",
 	"image_repo_prefix", "image_tag", "image_verify_timeout", "log_level",
 	"max_api_response_bytes", "max_archive_entry_bytes", "max_binary_bytes",
@@ -144,13 +144,13 @@ Supported keys:
   timestamps             Timestamp format: "relative" or "iso8601"
   web_port               Web dashboard port: 1-65535
 
-Plus 19 runtime tunables (registry_host, image_repo_prefix, dhi_registry,
+Plus 20 runtime tunables (registry_host, image_repo_prefix, dhi_registry,
 postgres_image_tag, nats_image_tag,
 default_nats_stream_prefix, backup_create_timeout, backup_restore_timeout,
-health_check_timeout, self_update_http_timeout, self_update_api_timeout,
-tuf_fetch_timeout, attestation_http_timeout, image_verify_timeout,
-image_pull_attempts, image_pull_retry_delay, max_api_response_bytes,
-max_binary_bytes, max_archive_entry_bytes). Run 'synthorg config list'
+health_check_timeout, health_wait_timeout, self_update_http_timeout,
+self_update_api_timeout, tuf_fetch_timeout, attestation_http_timeout,
+image_verify_timeout, image_pull_attempts, image_pull_retry_delay,
+max_api_response_bytes, max_binary_bytes, max_archive_entry_bytes). Run 'synthorg config list'
 for the full key set with current values; durations accept Go duration
 strings ("30s", "5m"); byte sizes accept "4MiB", "256MB", etc.
 
@@ -358,7 +358,7 @@ var gettableConfigKeys = []string{
 	"default_nats_stream_prefix",
 	"dhi_registry", "docker_sock",
 	"fine_tuning", "fine_tuning_variant",
-	"health_check_timeout",
+	"health_check_timeout", "health_wait_timeout",
 	"hints", "image_pull_attempts", "image_pull_retry_delay",
 	"image_repo_prefix", "image_tag", "image_verify_timeout", "log_level",
 	"max_api_response_bytes", "max_archive_entry_bytes", "max_binary_bytes",

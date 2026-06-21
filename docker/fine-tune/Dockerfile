@@ -7,7 +7,7 @@
 # Stage 2 (runtime): apko-composed Wolfi base with BLAS/math libs.
 #
 # Two variants controlled by FINE_TUNE_EXTRA build-arg:
-#   - fine-tune-gpu   (GPU, default): torch with bundled CUDA runtime, ~4 GB
+#   - fine-tune-gpu   (GPU, default): torch with bundled CUDA runtime, ~4 GB download / ~7 GB on disk
 #   - fine-tune-cpu   (CPU-only, pinned via [tool.uv.sources]):     ~1.7 GB
 #
 # Only rebuilt when docker/fine-tune/** or

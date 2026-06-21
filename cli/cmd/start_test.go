@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -9,8 +10,63 @@ import (
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
+	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/Aureliolo/synthorg/cli/internal/verify"
 )
+
+func TestEmitFineTuneSizeHint(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name        string
+		state       config.State
+		wantContain []string
+		wantAbsent  []string
+	}{
+		{
+			name:        "disabled emits nothing",
+			state:       config.State{FineTuning: false},
+			wantAbsent:  []string{"Fine-tune"},
+			wantContain: nil,
+		},
+		{
+			name:        "gpu default variant warns about size and duration",
+			state:       config.State{FineTuning: true},
+			wantContain: []string{"Fine-tune image", "4 GB", "on disk", "10-30 minutes"},
+		},
+		{
+			name:        "cpu variant uses the smaller figure",
+			state:       config.State{FineTuning: true, FineTuningVariant: config.FineTuneVariantCPU},
+			wantContain: []string{"Fine-tune image", "1.7 GB"},
+			wantAbsent:  []string{"10-30 minutes"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var buf bytes.Buffer
+			// Hints: "auto" (the default mode): the hint must reach ordinary
+			// users, so it has to be a HintNextStep, not a HintGuidance that
+			// auto would suppress.
+			out := ui.NewUIWithOptions(&buf, ui.Options{NoColor: true, Hints: "auto"})
+
+			emitFineTuneSizeHint(tc.state, out)
+
+			got := buf.String()
+			for _, want := range tc.wantContain {
+				if !strings.Contains(got, want) {
+					t.Errorf("hint missing %q\n--- got ---\n%s", want, got)
+				}
+			}
+			for _, absent := range tc.wantAbsent {
+				if strings.Contains(got, absent) {
+					t.Errorf("hint unexpectedly contains %q\n--- got ---\n%s", absent, got)
+				}
+			}
+		})
+	}
+}
 
 func TestSandboxImageRef(t *testing.T) {
 	t.Parallel()
@@ -152,7 +208,7 @@ func TestDockerPullWithRetryBackoff(t *testing.T) {
 	start := time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	err := dockerPullWithRetry(ctx, info, "fake-image:latest", testAttempts, testBaseDelay)
+	err := dockerPullWithRetry(ctx, info, "fake-image:latest", testAttempts, testBaseDelay, nil)
 	elapsed := time.Since(start)
 
 	if err == nil {

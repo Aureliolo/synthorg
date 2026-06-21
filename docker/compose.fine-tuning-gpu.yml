@@ -1,7 +1,7 @@
 # Overlay for the embedding fine-tuning sidecar, GPU variant.
 #
 # Merge this on top of docker/compose.yml to add the fine-tune
-# service backed by the ~4 GB CUDA-bundled image. Requires an
+# service backed by the CUDA-bundled image (~4 GB download / ~7 GB on disk). Requires an
 # NVIDIA GPU + driver on the host:
 #
 #   docker compose \
