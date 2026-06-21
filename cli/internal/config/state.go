@@ -334,6 +334,52 @@ func LoadAllowMissingMasterKey(dataDir string) (State, error) {
 	return loadWith(dataDir, State.ValidateAllowMissingMasterKey)
 }
 
+// LoadForTeardown reads State on a best-effort basis for destroy paths
+// (`synthorg wipe` / `synthorg uninstall`). Unlike Load it NEVER runs
+// Validate and never refuses on a missing, unreadable, or invalid config:
+// a teardown command exists to delete everything, so it must parse what it
+// can, ignore what it cannot, and still tear down the rest.
+//
+// The returned State is ALWAYS safe to drive teardown with: DataDir is
+// canonicalised to the SecurePath form so safeStateDir can resolve a
+// destination. The returned error is ADVISORY ONLY -- it signals that the
+// on-disk config could not be read or parsed so the caller can warn, but
+// callers MUST proceed with teardown regardless of it.
+func LoadForTeardown(dataDir string) (State, error) {
+	safeDir, err := SecurePath(dataDir)
+	if err != nil {
+		return State{}, err
+	}
+	// Seed with the resolved dir so a corrupt / absent config still leaves
+	// safeStateDir somewhere to operate.
+	seeded := State{DataDir: safeDir}
+	path := StatePath(safeDir)
+	data, readErr := os.ReadFile(path) //nolint:gosec // G304: path is the state file under the SecurePath-cleaned data dir
+	if readErr != nil {
+		if errors.Is(readErr, os.ErrNotExist) {
+			// Uninitialised / orphan data dir: nothing persisted to read.
+			return seeded, nil
+		}
+		return seeded, fmt.Errorf("%w %s: %w", ErrReading, path, readErr)
+	}
+	s := DefaultState()
+	if err := json.Unmarshal(data, &s); err != nil {
+		return seeded, fmt.Errorf("%w %s: %w", ErrParsing, path, err)
+	}
+	// Deliberately NO Validate: an out-of-range port, a missing master_key,
+	// or any other invariant breach must not stop a destroy command.
+	if s.DataDir != "" {
+		if safeLoaded, secErr := SecurePath(s.DataDir); secErr == nil {
+			s.DataDir = safeLoaded
+		} else {
+			s.DataDir = safeDir
+		}
+	} else {
+		s.DataDir = safeDir
+	}
+	return s, nil
+}
+
 // loadWith is the shared body of Load and LoadAllowMissingMasterKey.
 // validate is the per-state validator the caller wants applied to the
 // unmarshalled State; both wrappers pass a method value so the dispatch

@@ -57,6 +57,10 @@ All commands accept these persistent flags (precedence: flag > env var > config 
 
 Config-driven overrides (set via `synthorg config set`): `color never` implies `--no-color`, `color always` forces colour on non-TTYs, `output json` implies `--json`, `hints` mode is config-only (always/auto/never).
 
+## Teardown & data layout
+
+The default data dir is a `data` subdirectory under the per-platform app tree (`%LOCALAPPDATA%\synthorg\data`, `~/Library/Application Support/synthorg/data`, `~/.local/share/synthorg/data`); the binary installs to a sibling tree (`%LOCALAPPDATA%\synthorg\bin` on Windows, `/usr/local/bin` on Unix) and must NEVER live inside the data dir, so `wipe`/`uninstall` clear it with a plain `os.RemoveAll` (no skip-self machinery). Teardown is best-effort by contract: `wipe` and `uninstall` load via `config.LoadForTeardown` (never strict `Validate`), tolerate a missing `compose.yml`/Docker (treated as "nothing to stop"), and never refuse on an invalid/missing config. Add new teardown code to that pattern: load best-effort, translate docker's `no configuration file provided` via `isNotInitialisedErr`/`msgNothingToStop` (`teardown_shared.go`), and never gate a destroy on state validity.
+
 ## Hint Tiers
 
 The CLI uses four hint tiers with different visibility rules per `hints` mode. When adding hints, choose the tier that matches the intent:
@@ -94,7 +98,7 @@ See [docs/reference/cli-env-vars.md](../docs/reference/cli-env-vars.md) for the 
 
 ## Config Subcommands
 
-`synthorg config <subcommand>` exposes `show` / `get <key>` / `set <key> <value>` / `unset <key>` / `list` / `path` / `edit`. There are 40 settable keys (e.g. `backend_port`, `web_port`, `sandbox`, `image_tag`, `log_level`, `fine_tuning`, `telemetry_opt_in`, `channel`, plus all the tunables listed above). Compose-affecting keys trigger automatic `compose.yml` regeneration; toggling `fine_tuning` on requires `sandbox=true` and amd64.
+`synthorg config <subcommand>` exposes `show` / `get <key>` / `set <key> <value> [<key> <value> ...]` / `import <file>` / `unset <key>` / `list` / `path` / `edit`. There are 40 settable keys (e.g. `backend_port`, `web_port`, `sandbox`, `image_tag`, `log_level`, `fine_tuning`, `telemetry_opt_in`, `channel`, plus all the tunables listed above). `set` accepts multiple key/value pairs in one invocation and `import` reads a `key=value` file; both apply atomically (any invalid pair writes nothing) and, like `init`, auto-generate the Fernet `master_key` when `encrypt_secrets` is true and none exists, so config can be pre-seeded before `init`. Compose-affecting keys trigger automatic `compose.yml` regeneration; toggling `fine_tuning` on requires `sandbox=true` and amd64.
 
 Overriding any of `registry_host`, `image_repo_prefix`, `dhi_registry`, `postgres_image_tag`, or `nats_image_tag` disables image signature + SLSA verification **for that invocation only** and writes a stderr warning on every invocation (not suppressed by `--quiet` or `--json`).
 

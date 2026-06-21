@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -23,21 +23,6 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
-
-// normalizePathForCompare returns a canonical form of p suitable for
-// filepath.Rel comparison. On Windows the filesystem is case-insensitive
-// by default, so two paths differing only in drive-letter case
-// (C:\Users vs c:\users) can make filepath.Rel emit a `..` prefix that
-// wrongly reports an in-tree binary as out-of-tree. Lowercasing both
-// sides before the compare fixes that without changing semantics on
-// case-sensitive Unix filesystems (where this helper is a no-op).
-func normalizePathForCompare(p string) string {
-	p = filepath.Clean(p)
-	if runtime.GOOS == "windows" {
-		return strings.ToLower(p)
-	}
-	return p
-}
 
 // errWipeCancelled is a sentinel error used to signal that the user cancelled
 // the wipe operation. Callers convert this to a clean (nil) exit.
@@ -53,6 +38,10 @@ type wipeContext struct {
 	safeDir string
 	out     *ui.UI
 	errOut  *ui.UI
+	// dockerAvailable is false when Docker could not be detected. Teardown
+	// stays best-effort: a missing Docker skips backup + container teardown
+	// but still clears the data dir.
+	dockerAvailable bool
 }
 
 var (
@@ -98,26 +87,28 @@ func runWipe(cmd *cobra.Command, _ []string) error {
 	}
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
-	// Dry-run path tolerates a half-installed state (missing compose.yml,
-	// unreadable config). loadWipeStateForPreview returns whatever it
-	// could resolve so the operator can still inspect what wipe WOULD
-	// do without first having to run init. The mandatory full-load
-	// runs only when the operator is about to commit a wipe.
+
+	// Teardown loads best-effort: a missing compose.yml, an unreadable or
+	// invalid config (out-of-range port, missing master_key, corrupt JSON)
+	// must never stop a factory-reset. Parse what we can, clear the rest.
+	state, loadErr := config.LoadForTeardown(opts.DataDir)
+	if loadErr != nil {
+		errOut.Warn(fmt.Sprintf("Could not fully load config (%v); continuing wipe with what could be read.", loadErr))
+	}
+	safeDir, err := safeStateDir(state)
+	if err != nil {
+		return err
+	}
+
 	if wipeDryRun {
-		state, safeDir, composePath := loadWipeStateForPreview(opts.DataDir)
-		_ = state
-		return wipeDryRunPreview(out, safeDir, composePath)
+		return wipeDryRunPreview(out, safeDir, composeFilePath(safeDir))
 	}
-	state, safeDir, composePath, err := loadWipeState(opts.DataDir)
-	if err != nil {
-		return err
-	}
-	_ = composePath
-	info, err := docker.Detect(cmd.Context())
-	if err != nil {
-		return err
-	}
+
+	// Docker detection is non-fatal: an unreachable daemon skips the backup
+	// and container teardown but still clears the data dir.
+	info, dockerAvailable := detectDockerForTeardown(cmd.Context(), errOut)
 	wc := newWipeContext(cmd.Context(), cmd, state, info, safeDir, out, errOut)
+	wc.dockerAvailable = dockerAvailable
 	proceed, err := wc.runOptionalBackup()
 	if err != nil {
 		return err
@@ -126,50 +117,6 @@ func runWipe(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 	return wc.confirmAndWipe()
-}
-
-// loadWipeState loads the persisted state, resolves the safe data
-// directory, and asserts the compose file exists. Returns the three
-// values together so runWipe can stay flat.
-func loadWipeState(dataDir string) (config.State, string, string, error) {
-	state, err := config.Load(dataDir)
-	if err != nil {
-		return config.State{}, "", "", fmt.Errorf("loading config: %w", err)
-	}
-	safeDir, err := safeStateDir(state)
-	if err != nil {
-		return config.State{}, "", "", err
-	}
-	composePath, err := requireComposeFile(safeDir)
-	if err != nil {
-		return config.State{}, "", "", err
-	}
-	return state, safeDir, composePath, nil
-}
-
-// loadWipeStateForPreview is the dry-run variant of loadWipeState. It
-// silently tolerates a missing compose.yml AND an unreadable config so
-// the operator can preview what wipe would do on a half-installed
-// state. Returns empty strings for any piece it could not resolve;
-// wipeDryRunPreview formats those as "(unavailable)" in the output.
-func loadWipeStateForPreview(dataDir string) (config.State, string, string) {
-	state, loadErr := config.Load(dataDir)
-	if loadErr != nil {
-		// Seed with --data-dir so safeStateDir still has somewhere to
-		// resolve; everything else stays zero.
-		state = config.State{DataDir: dataDir}
-	}
-	safeDir, err := safeStateDir(state)
-	if err != nil {
-		return state, "", ""
-	}
-	composePath, err := requireComposeFile(safeDir)
-	if err != nil {
-		// Half-installed: no compose.yml on disk. Return safeDir so
-		// the preview can still show where wipe would operate.
-		return state, safeDir, ""
-	}
-	return state, safeDir, composePath
 }
 
 func newWipeContext(ctx context.Context, cmd *cobra.Command, state config.State, info docker.Info, safeDir string, out, errOut *ui.UI) *wipeContext {
@@ -191,6 +138,12 @@ func (wc *wipeContext) runOptionalBackup() (proceed bool, err error) {
 	if wipeNoBackup {
 		return true, nil
 	}
+	if !wc.dockerAvailable {
+		// A backup needs a running stack; without Docker there is nothing
+		// to back up. Proceed straight to the data wipe.
+		wc.errOut.Warn("Skipping backup: Docker is not available.")
+		return true, nil
+	}
 	if err := wc.offerBackup(); err != nil {
 		if errors.Is(err, errWipeCancelled) {
 			return false, nil
@@ -198,27 +151,6 @@ func (wc *wipeContext) runOptionalBackup() (proceed bool, err error) {
 		return false, err
 	}
 	return true, nil
-}
-
-// requireComposeFile asserts the compose.yml under safeDir exists and
-// returns its path. A missing file produces the canonical "run init
-// first" hint; any other stat error is surfaced as-is.
-//
-// safeDir is the output of safeStateDir -> config.SecurePath, which
-// canonicalises and validates the operator-supplied --data-dir before
-// it reaches this helper, so the os.Stat below operates on an
-// already-sanitised path. A static path-injection tracer may flag it
-// because it cannot follow the sanitiser across the helper boundary;
-// the upstream validation is the guarantee.
-func requireComposeFile(safeDir string) (string, error) {
-	composePath := filepath.Join(safeDir, "compose.yml")
-	if _, err := os.Stat(composePath); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return "", fmt.Errorf("compose.yml not found in %s -- run 'synthorg init' first", safeDir)
-		}
-		return "", fmt.Errorf("cannot access compose.yml in %s: %w", safeDir, err)
-	}
-	return composePath, nil
 }
 
 // wipeDryRunPreview shows what a wipe would do without executing.
@@ -273,14 +205,27 @@ func (wc *wipeContext) confirmAndWipe() error {
 }
 
 // stopAndPrune runs `compose down -v` (plus --rmi all when images are
-// not preserved) and renders the per-mode success message.
+// not preserved) and renders the per-mode success message. On an
+// uninitialised state (no Docker, or no compose.yml) it is a no-op: there
+// is nothing to stop, so it reports that and lets the data wipe proceed.
 func (wc *wipeContext) stopAndPrune() error {
+	if !wc.dockerAvailable || composeFilePath(wc.safeDir) == "" {
+		wc.out.Step(msgNothingToStop)
+		return nil
+	}
 	downArgs := []string{"down", "-v"}
 	if !wipeKeepImages {
 		downArgs = append(downArgs, "--rmi", "all")
 	}
 	sp := wc.out.StartSpinner("Stopping containers and removing volumes...")
 	if err := composeRunQuiet(wc.ctx, wc.info, wc.safeDir, downArgs...); err != nil {
+		// A compose file that vanished between the stat and the down call,
+		// or any docker "no configuration file provided" error, means there
+		// was nothing to stop. Translate the jargon and keep tearing down.
+		if isNotInitialisedErr(err) {
+			sp.Success(msgNothingToStop)
+			return nil
+		}
 		sp.Error("Failed to stop containers")
 		return fmt.Errorf("stopping containers: %w", err)
 	}
@@ -300,19 +245,16 @@ func (wc *wipeContext) stopAndPrune() error {
 // separators so the same check works on Windows.
 func pathContainsTraversal(path string) bool {
 	cleaned := filepath.Clean(path)
-	for _, part := range strings.FieldsFunc(cleaned, func(r rune) bool {
+	parts := strings.FieldsFunc(cleaned, func(r rune) bool {
 		return r == '/' || r == '\\'
-	}) {
-		if part == ".." {
-			return true
-		}
-	}
-	return false
+	})
+	return slices.Contains(parts, "..")
 }
 
 // removeDataDirectory deletes the safeDir contents after checking the
-// path looks safe. On Windows the running CLI binary is preserved when
-// it lives inside the dir (we cannot remove a running executable).
+// path looks safe. The installed binary lives under a sibling `bin`
+// tree, never inside the data dir, so a plain RemoveAll is sufficient
+// and never deletes the running CLI.
 func (wc *wipeContext) removeDataDirectory() error {
 	// Guard: safeDir was validated by safeStateDir -> config.SecurePath
 	// (absolute + clean). Reject anything that looks like a traversal
@@ -322,8 +264,8 @@ func (wc *wipeContext) removeDataDirectory() error {
 	// "/var/lib/synthorg..bak" would otherwise be rejected. The bare
 	// volume-name check (no trailing separator) catches UNC roots such
 	// as "\\\\server\\share" which filepath.Clean normalises by
-	// stripping the trailing separator; without it
-	// removeDataDirExceptSelf could recurse over an entire share.
+	// stripping the trailing separator; without it a RemoveAll could
+	// recurse over an entire share.
 	volume := filepath.VolumeName(wc.safeDir)
 	if pathContainsTraversal(wc.safeDir) ||
 		wc.safeDir == "/" ||
@@ -332,7 +274,7 @@ func (wc *wipeContext) removeDataDirectory() error {
 		return fmt.Errorf("refusing to remove suspicious path: %s", wc.safeDir)
 	}
 	sp := wc.out.StartSpinner("Removing data directory...")
-	if rmErr := removeDataDirExceptSelf(wc.safeDir); rmErr != nil {
+	if rmErr := os.RemoveAll(wc.safeDir); rmErr != nil {
 		// A partial wipe is not success. Surface the error so the CLI
 		// exits with a non-zero status and the user sees a loud failure
 		// instead of "Wipe complete" printed over a half-cleaned dir.
@@ -340,105 +282,8 @@ func (wc *wipeContext) removeDataDirectory() error {
 		wc.errOut.HintError(fmt.Sprintf("Manually delete %s to complete the wipe.", wc.safeDir))
 		return fmt.Errorf("removing data directory: %w", rmErr)
 	}
-	if selfPathInside(wc.safeDir) {
-		// Expected on Windows when the running CLI lives inside the
-		// data dir: wipe should leave config and state gone, not nuke
-		// the tool the user just invoked.
-		sp.Success("Data directory cleared (CLI binary kept in place)")
-		wc.out.HintNextStep("Run 'synthorg uninstall' to remove the binary too.")
-		return nil
-	}
 	sp.Success("Data directory removed")
 	return nil
-}
-
-// selfPathInside reports whether the running CLI binary lives under
-// dataDir. Used after wipe to decide between "everything gone" and
-// "everything except the binary" success messages. Resolves symlinks
-// (macOS /var -> /private/var) and case-folds paths on Windows so the
-// comparison is stable on both platforms.
-func selfPathInside(dataDir string) bool {
-	selfPath, err := os.Executable()
-	if err != nil {
-		return false
-	}
-	if resolved, rErr := filepath.EvalSymlinks(selfPath); rErr == nil {
-		selfPath = resolved
-	}
-	dataDirClean := filepath.Clean(dataDir)
-	if resolved, rErr := filepath.EvalSymlinks(dataDirClean); rErr == nil {
-		dataDirClean = resolved
-	}
-	rel, relErr := filepath.Rel(normalizePathForCompare(dataDirClean), normalizePathForCompare(selfPath))
-	if relErr != nil {
-		return false
-	}
-	return !strings.HasPrefix(rel, "..")
-}
-
-// removeDataDirExceptSelf removes everything inside dataDir except for
-// the currently-running CLI binary if it lives under dataDir. Windows
-// holds an open handle on the running .exe so a flat
-// `os.RemoveAll(dataDir)` fails on the first encounter with the locked
-// file, leaving the rest of the directory half-cleaned. Reusing the
-// same skip-self primitive that uninstall already uses keeps the two
-// destructive flows consistent and lets the unlocked entries actually
-// go away.
-//
-// On Unix the OS allows deleting an open binary, so this code path
-// produces the same observable outcome as a plain RemoveAll while
-// keeping a single, platform-agnostic implementation.
-func removeDataDirExceptSelf(dataDir string) error {
-	selfPath, err := os.Executable()
-	if err != nil {
-		return os.RemoveAll(filepath.Clean(dataDir))
-	}
-	return removeDataDirExceptBinary(dataDir, selfPath)
-}
-
-// removeDataDirExceptBinary is the testable core of
-// removeDataDirExceptSelf: given the path to the binary-to-preserve,
-// wipe everything under dataDir except that binary (and its ancestor
-// dirs). Split out so tests can exercise the inside-data-dir branch
-// without needing to forge os.Executable's return value.
-func removeDataDirExceptBinary(dataDir, selfPath string) error {
-	// Separate two concerns:
-	//  - The PATH WE DELETE is the original dataDir (the user-approved
-	//    wipe target; confirmAndWipe has already validated it).
-	//  - The PATH WE COMPARE WITH (to decide whether selfPath lives
-	//    inside the tree) is the symlink-resolved form, since macOS's
-	//    /var -> /private/var and similar shims would otherwise flip
-	//    the comparison. On Windows the filesystem is case-insensitive
-	//    by default so C:\Users vs c:\users would trip filepath.Rel
-	//    into emitting a stray `..`; normalizePathForCompare lowercases
-	//    on Windows only.
-	//
-	// If we instead resolved dataDir in place and then deleted the
-	// resolved path, a symlinked data dir could silently redirect the
-	// wipe to an unintended target -- confirmAndWipe only validated
-	// the pre-resolution form.
-	dataDirClean := filepath.Clean(dataDir)
-	dataDirForCompare := dataDirClean
-	if resolved, rErr := filepath.EvalSymlinks(dataDirClean); rErr == nil {
-		dataDirForCompare = resolved
-	}
-
-	if resolved, rErr := filepath.EvalSymlinks(selfPath); rErr == nil {
-		selfPath = resolved
-	}
-	selfPath = filepath.Clean(selfPath)
-
-	if rel, relErr := filepath.Rel(normalizePathForCompare(dataDirForCompare), normalizePathForCompare(selfPath)); relErr != nil || strings.HasPrefix(rel, "..") {
-		// Binary lives outside dataDir; safe to nuke the whole tree
-		// (at the user-approved path, not the resolved path).
-		return os.RemoveAll(dataDirClean)
-	}
-
-	// Binary is inside dataDir: clear everything else, leave the
-	// binary (and its ancestor dirs) in place. Walk from the
-	// resolved form so removeAllExcept can correctly skip the
-	// selfPath ancestors regardless of symlink shims on either side.
-	return removeAllExcept(dataDirForCompare, selfPath)
 }
 
 // runForm configures a huh form with the wipe context's I/O streams and runs it.

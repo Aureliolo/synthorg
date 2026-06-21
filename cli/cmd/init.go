@@ -767,7 +767,9 @@ func generateInitSecrets() (jwtSecret, settingsKey, masterKey, cursorSecret stri
 	if err != nil {
 		return "", "", "", "", fmt.Errorf("generating settings encryption key: %w", err)
 	}
-	masterKey, err = generateSecret(32)
+	// Route the master key through the shared generator so init, config
+	// set, and config import all produce the same Fernet key format.
+	masterKey, err = config.GenerateMasterKey()
 	if err != nil {
 		return "", "", "", "", fmt.Errorf("generating secret master key: %w", err)
 	}

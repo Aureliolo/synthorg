@@ -107,6 +107,67 @@ func TestSaveAndLoad(t *testing.T) {
 	}
 }
 
+// TestLoadForTeardown covers the best-effort teardown loader: it must
+// never run Validate and never fail on a missing, unreadable, or invalid
+// config, so wipe / uninstall can always parse what they can and still
+// tear down the rest.
+func TestLoadForTeardown(t *testing.T) {
+	t.Run("missing file returns seeded state, no error", func(t *testing.T) {
+		tmp := t.TempDir()
+		s, err := LoadForTeardown(tmp)
+		if err != nil {
+			t.Fatalf("LoadForTeardown on missing file: unexpected err %v", err)
+		}
+		if s.DataDir != filepath.Clean(tmp) {
+			t.Errorf("DataDir = %q, want %q", s.DataDir, filepath.Clean(tmp))
+		}
+	})
+
+	t.Run("corrupt JSON returns seeded state plus advisory error", func(t *testing.T) {
+		tmp := t.TempDir()
+		if err := os.WriteFile(StatePath(tmp), []byte("{not json"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		s, err := LoadForTeardown(tmp)
+		if err == nil {
+			t.Error("expected an advisory parse error for corrupt JSON")
+		}
+		if s.DataDir != filepath.Clean(tmp) {
+			t.Errorf("DataDir = %q, want %q (seeded fallback)", s.DataDir, filepath.Clean(tmp))
+		}
+	})
+
+	t.Run("config that fails strict Validate still loads", func(t *testing.T) {
+		tmp := t.TempDir()
+		// encrypt_secrets=true with an empty master_key AND an out-of-range
+		// port both fail strict Validate; teardown must tolerate them.
+		raw, err := json.Marshal(map[string]any{
+			"data_dir":            tmp,
+			"encrypt_secrets":     true,
+			"backend_port":        999999,
+			"persistence_backend": "sqlite",
+			"memory_backend":      "mem0",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(StatePath(tmp), raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		// Sanity: strict Load rejects it.
+		if _, err := Load(tmp); err == nil {
+			t.Fatal("expected strict Load to reject the invalid config")
+		}
+		s, err := LoadForTeardown(tmp)
+		if err != nil {
+			t.Fatalf("LoadForTeardown must tolerate an invalid config, got %v", err)
+		}
+		if s.BackendPort != 999999 {
+			t.Errorf("parsed fields should survive: BackendPort = %d, want 999999", s.BackendPort)
+		}
+	})
+}
+
 // TestValidateFernetKey covers the MasterKey format check that gates
 // invalid keys before they can be injected as SYNTHORG_MASTER_KEY at
 // container start time.

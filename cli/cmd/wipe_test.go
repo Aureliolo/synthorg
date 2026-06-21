@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -11,7 +12,16 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Aureliolo/synthorg/cli/internal/ui"
+	"github.com/spf13/cobra"
 )
+
+// discardUI returns a UI that writes nowhere, for driving teardown
+// helpers in tests without polluting test output.
+func discardUI() *ui.UI {
+	return ui.NewUIWithOptions(io.Discard, (&GlobalOpts{Hints: "auto", Yes: true}).UIOptions())
+}
 
 func TestIsEmptyPS(t *testing.T) {
 	t.Parallel()
@@ -269,111 +279,81 @@ func TestTarDirectory_RestrictedPermissions(t *testing.T) {
 	}
 }
 
-// TestRemoveDataDirExceptSelf covers the wipe primitive that powers
-// `synthorg wipe` on Windows, where the running .exe is locked and
-// cannot be deleted. The function must (a) wipe normally when the
-// binary lives outside the data dir, and (b) preserve the binary
-// (and its ancestor dirs) while clearing everything else when the
-// binary lives inside.
-//
-// We synthesize "the running binary" with a real file so the path
-// rewrite via os.Executable still resolves something valid -- the test
-// can't directly stub os.Executable, but we don't need to: we ensure
-// behaviour against a directory tree whose contents all live alongside
-// (or under) os.Executable's actual return value.
-func TestRemoveDataDirExceptSelf_BinaryOutsideDataDir(t *testing.T) {
+// TestStopAndPrune_NothingToStop asserts the wipe stop step is a no-op
+// (returns nil, never an error) when there is nothing to stop: Docker
+// unavailable, or no compose.yml on disk.
+func TestStopAndPrune_NothingToStop(t *testing.T) {
+	safeDir := t.TempDir() // no compose.yml
+
+	t.Run("docker unavailable", func(t *testing.T) {
+		wc := &wipeContext{
+			ctx: context.Background(), safeDir: safeDir,
+			out: discardUI(), errOut: discardUI(), dockerAvailable: false,
+		}
+		if err := wc.stopAndPrune(); err != nil {
+			t.Errorf("stopAndPrune (no docker) = %v, want nil", err)
+		}
+	})
+
+	t.Run("docker available but no compose", func(t *testing.T) {
+		wc := &wipeContext{
+			ctx: context.Background(), safeDir: safeDir,
+			out: discardUI(), errOut: discardUI(), dockerAvailable: true,
+		}
+		if err := wc.stopAndPrune(); err != nil {
+			t.Errorf("stopAndPrune (no compose) = %v, want nil", err)
+		}
+	})
+}
+
+// TestRunWipe_UninitialisedClearsOrphanData drives the full wipe on an
+// uninitialised state (no compose.yml, no config.json): it must succeed
+// and clear the orphan data dir rather than erroring with a "run init"
+// message.
+func TestRunWipe_UninitialisedClearsOrphanData(t *testing.T) {
 	dataDir := t.TempDir()
-	// Create some files; binary path lives in another tempdir entirely
-	// so the function should remove the whole data dir.
-	if err := os.WriteFile(filepath.Join(dataDir, "config.json"), []byte("{}"), 0o600); err != nil {
-		t.Fatalf("seed config: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(dataDir, "logs"), 0o700); err != nil {
-		t.Fatalf("seed logs: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dataDir, "logs", "app.log"), []byte("x"), 0o600); err != nil {
-		t.Fatalf("seed log: %v", err)
+	if err := os.WriteFile(filepath.Join(dataDir, "stray.db"), []byte("orphan"), 0o600); err != nil {
+		t.Fatal(err)
 	}
 
-	if err := removeDataDirExceptSelf(dataDir); err != nil {
-		t.Fatalf("removeDataDirExceptSelf: %v", err)
+	// Save + restore the command-flag globals so this test does not leak
+	// into siblings; --no-backup avoids the Docker-dependent backup path.
+	savedDryRun, savedNoBackup, savedKeepImages := wipeDryRun, wipeNoBackup, wipeKeepImages
+	wipeDryRun, wipeNoBackup, wipeKeepImages = false, true, false
+	t.Cleanup(func() { wipeDryRun, wipeNoBackup, wipeKeepImages = savedDryRun, savedNoBackup, savedKeepImages })
+
+	cmd := &cobra.Command{}
+	cmd.SetContext(SetGlobalOpts(context.Background(), &GlobalOpts{DataDir: dataDir, Yes: true, Hints: "auto"}))
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+
+	if err := runWipe(cmd, nil); err != nil {
+		t.Fatalf("runWipe on uninitialised state: %v", err)
 	}
 	if _, err := os.Stat(dataDir); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("data dir should be gone, got err=%v", err)
+		t.Errorf("orphan data dir should be removed, got err=%v", err)
 	}
 }
 
-func TestRemoveDataDirExceptSelf_BinaryInsideDataDir(t *testing.T) {
-	// Drive the full removeDataDirExceptSelf code path via its testable
-	// inner helper (removeDataDirExceptBinary), so the os.Executable
-	// ->EvalSymlinks->filepath.Rel branch selection is actually
-	// exercised instead of stubbed by calling removeAllExcept directly.
-	dataDir := t.TempDir()
-	keep := filepath.Join(dataDir, "bin", "synthorg-fake.exe")
-	if err := os.MkdirAll(filepath.Dir(keep), 0o700); err != nil {
-		t.Fatalf("mkdir bin: %v", err)
-	}
-	if err := os.WriteFile(keep, []byte("fake-binary"), 0o755); err != nil {
-		t.Fatalf("seed binary: %v", err)
-	}
-	other := filepath.Join(dataDir, "config.json")
-	if err := os.WriteFile(other, []byte("{}"), 0o600); err != nil {
-		t.Fatalf("seed config: %v", err)
-	}
-	logsFile := filepath.Join(dataDir, "logs", "app.log")
-	if err := os.MkdirAll(filepath.Dir(logsFile), 0o700); err != nil {
-		t.Fatalf("mkdir logs: %v", err)
-	}
-	if err := os.WriteFile(logsFile, []byte("log"), 0o600); err != nil {
-		t.Fatalf("seed log: %v", err)
-	}
-
-	if err := removeDataDirExceptBinary(dataDir, keep); err != nil {
-		t.Fatalf("removeDataDirExceptBinary: %v", err)
-	}
-	if _, err := os.Stat(keep); err != nil {
-		t.Errorf("kept binary should still exist: %v", err)
-	}
-	if _, err := os.Stat(other); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("config.json should be removed, got err=%v", err)
-	}
-	if _, err := os.Stat(logsFile); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("logs file should be removed, got err=%v", err)
-	}
-}
-
-func TestRemoveDataDirExceptBinary_BinaryOutsideDataDir(t *testing.T) {
-	// When the binary path is NOT under dataDir, removeDataDirExceptBinary
-	// must behave identically to os.RemoveAll(dataDir).
-	dataDir := t.TempDir()
-	otherDir := t.TempDir()
-	selfPath := filepath.Join(otherDir, "synthorg-fake.exe")
-	if err := os.WriteFile(selfPath, []byte("binary"), 0o755); err != nil {
-		t.Fatalf("seed binary: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dataDir, "config.json"), []byte("{}"), 0o600); err != nil {
-		t.Fatalf("seed config: %v", err)
-	}
-
-	if err := removeDataDirExceptBinary(dataDir, selfPath); err != nil {
-		t.Fatalf("removeDataDirExceptBinary: %v", err)
-	}
-	if _, err := os.Stat(dataDir); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("data dir should be gone, got err=%v", err)
-	}
-	if _, err := os.Stat(selfPath); err != nil {
-		t.Errorf("binary outside data dir should still exist: %v", err)
-	}
-}
-
-func TestSelfPathInside(t *testing.T) {
+func TestPathContainsTraversal(t *testing.T) {
+	root := "/"
 	if runtime.GOOS == "windows" {
-		t.Skip("symlink resolution behaves differently on Windows; covered indirectly by binary-outside-dir test")
+		root = `C:\`
 	}
-	otherDir := t.TempDir()
-	// Binary path is os.Executable() which is the test runner; it lives
-	// outside our temp dir, so selfPathInside should report false.
-	if selfPathInside(otherDir) {
-		t.Errorf("selfPathInside(%q) = true, want false (test runner is not inside this tmp dir)", otherDir)
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{"clean absolute", filepath.Join(root, "Users", "x", "synthorg", "data"), false},
+		{"name with dots is not traversal", filepath.Join(root, "var", "lib", "synthorg..bak"), false},
+		{"relative parent component survives clean", filepath.Join("..", "etc", "passwd"), true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := pathContainsTraversal(tt.path); got != tt.want {
+				t.Errorf("pathContainsTraversal(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+		})
 	}
 }

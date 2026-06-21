@@ -155,7 +155,7 @@ func assertComposeExists(safeDir string) error {
 		return nil
 	}
 	if errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("compose.yml not found in %s -- run 'synthorg init' first", safeDir)
+		return fmt.Errorf("compose.yml not found in %s", safeDir)
 	}
 	return fmt.Errorf("checking compose.yml: %w", err)
 }

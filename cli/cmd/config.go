@@ -113,9 +113,13 @@ settable key with its current value.`,
 }
 
 var configSetCmd = &cobra.Command{
-	Use:   "set <key> <value>",
-	Short: "Set a configuration value",
-	Long: `Set a configuration value.
+	Use:   "set <key> <value> [<key> <value> ...]",
+	Short: "Set one or more configuration values",
+	Long: `Set one or more configuration values.
+
+Pass a single key/value pair, or several pairs in one invocation to
+pre-seed config before 'synthorg init'. All pairs are applied atomically:
+if any pair is invalid, nothing is written.
 
 Supported keys:
   auto_apply_compose     Auto-apply compose changes: "true" or "false"
@@ -155,10 +159,39 @@ the registry/NATS tunables) trigger automatic compose.yml regeneration.`,
 	Example: `  synthorg config set backend_port 3001
   synthorg config set channel dev
   synthorg config set hints always
-  synthorg config set telemetry_opt_in true`,
-	Args:              cobra.ExactArgs(2),
+  synthorg config set auto_pull true channel dev log_level debug`,
+	Args:              evenKeyValueArgs,
 	RunE:              runConfigSet,
 	ValidArgsFunction: completeConfigSetKeys,
+}
+
+var configImportCmd = &cobra.Command{
+	Use:   "import <file>",
+	Short: "Apply many configuration values from a key=value file",
+	Long: `Apply configuration values read from a key=value file.
+
+One assignment per line; blank lines and lines beginning with '#' are
+ignored; the first '=' splits key from value and surrounding whitespace is
+trimmed. All entries are applied atomically: if any key or value is
+invalid, nothing is written.
+
+This is the file-driven equivalent of a batch 'config set' -- handy for
+pre-seeding config before 'synthorg init'.`,
+	Example: `  synthorg config import ./synthorg.conf`,
+	Args:    cobra.ExactArgs(1),
+	RunE:    runConfigImport,
+}
+
+// evenKeyValueArgs requires a non-empty, even-length argument list so
+// `config set` accepts one or more key/value pairs.
+func evenKeyValueArgs(_ *cobra.Command, args []string) error {
+	if len(args) == 0 || len(args)%2 != 0 {
+		return fmt.Errorf(
+			"requires key/value pairs (got %d argument(s)); usage: config set <key> <value> [<key> <value> ...]",
+			len(args),
+		)
+	}
+	return nil
 }
 
 var configUnsetCmd = &cobra.Command{
@@ -225,6 +258,7 @@ func init() {
 	configCmd.AddCommand(configShowCmd)
 	configCmd.AddCommand(configGetCmd)
 	configCmd.AddCommand(configSetCmd)
+	configCmd.AddCommand(configImportCmd)
 	configCmd.AddCommand(configUnsetCmd)
 	configCmd.AddCommand(configListCmd)
 	configCmd.AddCommand(configPathCmd)
@@ -340,7 +374,10 @@ func completeConfigGetKeys(_ *cobra.Command, _ []string, _ string) ([]string, co
 }
 
 func completeConfigSetKeys(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
-	if len(args) == 0 {
+	// `set` takes alternating key/value pairs: an even number of existing
+	// args means the next token is a key (offer the key list); an odd number
+	// means the next token is a value (no completion).
+	if len(args)%2 == 0 {
 		return supportedConfigKeys, cobra.ShellCompDirectiveNoFileComp
 	}
 	return nil, cobra.ShellCompDirectiveNoFileComp
@@ -405,22 +442,77 @@ func isKnownGettableKey(key string) bool {
 	return slices.Contains(gettableConfigKeys, key)
 }
 
+// configPair is a single key/value assignment from `config set` or
+// `config import`.
+type configPair struct {
+	key   string
+	value string
+}
+
 func runConfigSet(cmd *cobra.Command, args []string) error {
-	key, value := args[0], args[1]
 	opts := GetGlobalOpts(cmd.Context())
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+
+	pairs := make([]configPair, 0, len(args)/2)
+	for i := 0; i+1 < len(args); i += 2 {
+		pairs = append(pairs, configPair{key: args[i], value: args[i+1]})
+	}
 
 	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
+	if err := applyConfigPairs(&state, pairs); err != nil {
+		return err
+	}
+	if err := config.Save(state); err != nil {
+		return fmt.Errorf("saving config: %w", err)
+	}
 
-	if err := applyConfigValue(&state, key, value); err != nil {
-		return fmt.Errorf("applying config value: %w", err)
+	for _, p := range pairs {
+		msg := fmt.Sprintf("Set %s = %s", p.key, p.value)
+		if composeAffectingKeys[p.key] {
+			msg += " (compose regenerated)"
+		}
+		out.Success(msg)
+		hintAfterConfigSet(out, p.key, p.value, state.DataDir)
+	}
+	return nil
+}
+
+// applyConfigPairs applies every key/value pair to state in memory, then
+// auto-provisions a master key (when secret encryption is on but no key is
+// set yet, exactly as init does on save), validates the whole state ONCE,
+// and regenerates compose.yml ONCE if any mutated key affects compose.
+//
+// It is atomic at the call site: nothing is persisted until the caller
+// Saves, so any failure here leaves the on-disk config untouched. The
+// master-key auto-provision is what lets a pre-init `config set` of an
+// unrelated key succeed under the encrypt_secrets=true default.
+func applyConfigPairs(state *config.State, pairs []configPair) error {
+	composeChanged := false
+	invalidateDigests := false
+	for _, p := range pairs {
+		if err := applyConfigValue(state, p.key, p.value); err != nil {
+			return fmt.Errorf("applying config value %s: %w", p.key, err)
+		}
+		if composeAffectingKeys[p.key] {
+			composeChanged = true
+		}
+		if invalidatesVerifiedDigests(p.key) {
+			invalidateDigests = true
+		}
+	}
+
+	// Provision the Fernet master key the same way init does on save, so a
+	// pre-init state (encrypt_secrets=true, no master_key) does not trip the
+	// master-key-required invariant when setting an unrelated key.
+	if _, err := config.EnsureMasterKey(state); err != nil {
+		return fmt.Errorf("provisioning master key: %w", err)
 	}
 
 	// Cross-field invariant guard (e.g. fine_tuning=true requires sandbox=true,
-	// variant enum). applyConfigValue only validates the single mutated field;
+	// variant enum). applyConfigValue only validates each single mutated field;
 	// toggling an unrelated key like `sandbox false` on a config that already
 	// has `fine_tuning true` would otherwise persist an invalid state whose
 	// next Load() fails. regenerateCompose also validates via ParamsFromState,
@@ -430,28 +522,79 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("config set would leave state invalid: %w", err)
 	}
 
-	if invalidatesVerifiedDigests(key) {
+	if invalidateDigests {
 		// Old pins are bound to the previous registry/prefix/tags; the
 		// sentinel that proves they are current must drop with them.
 		state.VerifiedDigests = nil
 		state.VerifiedImageTag = ""
 	}
-	if composeAffectingKeys[key] {
-		if err := regenerateCompose(state); err != nil {
+	if composeChanged {
+		if err := regenerateCompose(*state); err != nil {
 			return fmt.Errorf("regenerating compose after set: %w", err)
 		}
 	}
+	return nil
+}
 
+func runConfigImport(cmd *cobra.Command, args []string) error {
+	opts := GetGlobalOpts(cmd.Context())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+
+	pairs, err := parseConfigImportFile(args[0])
+	if err != nil {
+		return err
+	}
+	if len(pairs) == 0 {
+		return fmt.Errorf("no key=value entries found in %s", args[0])
+	}
+
+	state, err := config.Load(opts.DataDir)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+	if err := applyConfigPairs(&state, pairs); err != nil {
+		return err
+	}
 	if err := config.Save(state); err != nil {
 		return fmt.Errorf("saving config: %w", err)
 	}
-	msg := fmt.Sprintf("Set %s = %s", key, value)
-	if composeAffectingKeys[key] {
-		msg += " (compose regenerated)"
+
+	for _, p := range pairs {
+		out.Success(fmt.Sprintf("Set %s = %s", p.key, p.value))
 	}
-	out.Success(msg)
-	hintAfterConfigSet(out, key, value, state.DataDir)
+	out.HintNextStep(fmt.Sprintf("Imported %d config key(s) from %s.", len(pairs), args[0]))
 	return nil
+}
+
+// parseConfigImportFile reads a key=value file into ordered config pairs.
+// One assignment per line; blank lines and lines beginning with '#' are
+// ignored; the first '=' splits key from value; surrounding whitespace is
+// trimmed. Errors name the offending line so the operator can fix it.
+func parseConfigImportFile(path string) ([]configPair, error) {
+	clean := filepath.Clean(path)
+	// G304: the import file is operator-supplied on a local single-user CLI
+	// with no privilege boundary; the user is reading their own file.
+	data, err := os.ReadFile(clean) //nolint:gosec
+	if err != nil {
+		return nil, fmt.Errorf("reading config import file: %w", err)
+	}
+	var pairs []configPair
+	for i, raw := range strings.Split(string(data), "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		keyPart, valPart, ok := strings.Cut(line, "=")
+		if !ok {
+			return nil, fmt.Errorf("%s:%d: not a key=value line: %q", clean, i+1, line)
+		}
+		key := strings.TrimSpace(keyPart)
+		if key == "" {
+			return nil, fmt.Errorf("%s:%d: empty key", clean, i+1)
+		}
+		pairs = append(pairs, configPair{key: key, value: strings.TrimSpace(valPart)})
+	}
+	return pairs, nil
 }
 
 // hintAfterConfigSet emits contextual guidance after a config set
