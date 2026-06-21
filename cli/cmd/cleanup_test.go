@@ -121,9 +121,11 @@ func TestEmitCleanupSummary(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			var buf bytes.Buffer
-			// Hints: "always" so the HintGuidance --keep line renders;
-			// NoColor strips ANSI so substring assertions are stable.
-			out := ui.NewUIWithOptions(&buf, ui.Options{NoColor: true, Hints: "always"})
+			// Hints: "auto" (the default mode) so the test asserts the
+			// --keep tip is visible to ordinary users: it is a HintNextStep,
+			// which renders in auto, not a HintGuidance, which auto would
+			// suppress. NoColor strips ANSI so substring assertions are stable.
+			out := ui.NewUIWithOptions(&buf, ui.Options{NoColor: true, Hints: "auto"})
 
 			emitCleanupSummary(out, tt.old, tt.removed, tt.freedB)
 

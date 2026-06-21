@@ -37,6 +37,61 @@ func TestValidateUpdateFlags(t *testing.T) {
 		}
 	})
 
+	t.Run("non-positive timeout rejected", func(t *testing.T) {
+		old := updateTimeout
+		defer func() { updateTimeout = old }()
+		for _, v := range []string{"0s", "-5s"} {
+			updateTimeout = v
+			if err := validateUpdateFlags(); err == nil {
+				t.Errorf("expected error for --timeout %q (parses but is ignored downstream)", v)
+			}
+		}
+	})
+
+	t.Run("non-positive verify-timeout rejected", func(t *testing.T) {
+		oldT, oldV := updateTimeout, updateVerifyTimeout
+		defer func() { updateTimeout, updateVerifyTimeout = oldT, oldV }()
+		updateTimeout = "90s"
+		for _, v := range []string{"0s", "-5s"} {
+			updateVerifyTimeout = v
+			if err := validateUpdateFlags(); err == nil {
+				t.Errorf("expected error for --verify-timeout %q (parses but is ignored downstream)", v)
+			}
+		}
+	})
+
+	t.Run("invalid verify-timeout rejected", func(t *testing.T) {
+		oldT, oldV := updateTimeout, updateVerifyTimeout
+		defer func() { updateTimeout, updateVerifyTimeout = oldT, oldV }()
+		updateTimeout = "90s"
+		updateVerifyTimeout = "notaduration"
+		if err := validateUpdateFlags(); err == nil {
+			t.Error("expected error for invalid --verify-timeout")
+		}
+	})
+
+	t.Run("verify-timeout below floor rejected", func(t *testing.T) {
+		oldT, oldV := updateTimeout, updateVerifyTimeout
+		defer func() { updateTimeout, updateVerifyTimeout = oldT, oldV }()
+		updateTimeout = "90s"
+		// Positive but below MinImageVerifyTimeout (1s) would silently
+		// bypass cosign/SLSA verification by timing out early.
+		updateVerifyTimeout = "500ms"
+		if err := validateUpdateFlags(); err == nil {
+			t.Error("expected error for --verify-timeout below the 1s minimum floor")
+		}
+	})
+
+	t.Run("valid verify-timeout accepted", func(t *testing.T) {
+		oldT, oldV := updateTimeout, updateVerifyTimeout
+		defer func() { updateTimeout, updateVerifyTimeout = oldT, oldV }()
+		updateTimeout = "90s"
+		updateVerifyTimeout = "120s"
+		if err := validateUpdateFlags(); err != nil {
+			t.Errorf("unexpected error for valid --verify-timeout: %v", err)
+		}
+	})
+
 	t.Run("valid flags", func(t *testing.T) {
 		old1, old2, old3 := updateCLIOnly, updateImagesOnly, updateTimeout
 		defer func() {

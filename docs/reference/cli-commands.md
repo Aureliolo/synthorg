@@ -33,7 +33,8 @@ Defaults shown below are compiled into the binary; tunable defaults are also rea
 | `stop` | `--volumes` | `false` | Remove named volumes (destructive) |
 | `update` | `--dry-run` | `false` | Show what would happen without executing |
 | `update` | `--no-restart` | `false` | Pull images but do not restart containers |
-| `update` | `--timeout` | `90s` | Health-check and verification timeout |
+| `update` | `--timeout` | `90s` | Post-restart health-check timeout (Go duration, e.g. `90s`, `2m`) |
+| `update` | `--verify-timeout` | (unset) | Image signature/SLSA verification deadline (Go duration); when unset the CLI uses the `image_verify_timeout` tunable (`120s`) |
 | `update` | `--cli-only` | `false` | Only update the CLI binary |
 | `update` | `--images-only` | `false` | Only update container images (skip CLI) |
 | `update` | `--check` | `false` | Check for updates and exit (`0`=current, `10`=available) |

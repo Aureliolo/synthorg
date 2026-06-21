@@ -369,7 +369,8 @@ func helpFineTuning(enabled bool) []string {
 			"retrieval quality.",
 			"",
 			"Pick GPU or CPU below:",
-			"GPU ~4 GB, fast training.",
+			"GPU ~4 GB download (~7 GB",
+			"on disk), fast training.",
 			"CPU ~1.7 GB, slow but",
 			"works anywhere.",
 		}
@@ -399,7 +400,9 @@ func helpFineTuneVariant(cpu bool) []string {
 	}
 	return []string{
 		"GPU torch with bundled CUDA",
-		"runtime (~4 GB image).",
+		"runtime: ~4 GB download,",
+		"~7 GB on disk. First pull",
+		"often takes 10-30 min.",
 		"Requires an NVIDIA GPU with",
 		"a compatible host driver.",
 		"Much faster training -- the",
@@ -853,8 +856,9 @@ func (m setupTUI) fineTuningToggle(w int) string {
 }
 
 // fineTuneVariantToggle renders the GPU/CPU choice for the fine-tune
-// sidecar. Position 0 = GPU (default, ~4 GB, requires NVIDIA host + driver);
-// position 1 = CPU (~1.7 GB, runs anywhere). Default-first rendering so
+// sidecar. Position 0 = GPU (default, ~4 GB download / ~7 GB on disk,
+// requires NVIDIA host + driver); position 1 = CPU (~1.7 GB, runs anywhere).
+// Default-first rendering so
 // GPU appears on the left as "the normal choice".
 func (m setupTUI) fineTuneVariantToggle(w int) string {
 	return toggle2("  Variant", m.focus == fFineTuneVariant, m.fineTuneVariant == 0, "gpu", "cpu", false, w)

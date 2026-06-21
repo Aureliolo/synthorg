@@ -70,6 +70,7 @@ var tunableSpecs = map[string]tunableSpec{
 	"backup_create_timeout":    durationTunable("backup_create_timeout", config.DefaultBackupCreateTimeout, EnvBackupCreateTimeout, func(s *config.State) *string { return &s.BackupCreateTimeout }),
 	"backup_restore_timeout":   durationTunable("backup_restore_timeout", config.DefaultBackupRestoreTimeout, EnvBackupRestoreTimeout, func(s *config.State) *string { return &s.BackupRestoreTimeout }),
 	"health_check_timeout":     durationTunable("health_check_timeout", config.DefaultHealthCheckTimeout, EnvHealthCheckTimeout, func(s *config.State) *string { return &s.HealthCheckTimeout }),
+	"health_wait_timeout":      durationTunable("health_wait_timeout", config.DefaultHealthWaitTimeout, EnvHealthWaitTimeout, func(s *config.State) *string { return &s.HealthWaitTimeout }),
 	"self_update_http_timeout": durationTunable("self_update_http_timeout", config.DefaultSelfUpdateHTTPTimeout, EnvSelfUpdateHTTPTimeout, func(s *config.State) *string { return &s.SelfUpdateHTTPTimeout }),
 	"self_update_api_timeout":  durationTunable("self_update_api_timeout", config.DefaultSelfUpdateAPITimeout, EnvSelfUpdateAPITimeout, func(s *config.State) *string { return &s.SelfUpdateAPITimeout }),
 	"tuf_fetch_timeout":        durationTunable("tuf_fetch_timeout", config.DefaultTUFFetchTimeout, EnvTUFFetchTimeout, func(s *config.State) *string { return &s.TUFFetchTimeout }),

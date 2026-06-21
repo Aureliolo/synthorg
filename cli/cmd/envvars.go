@@ -39,6 +39,7 @@ const (
 	EnvBackupCreateTimeout    = config.EnvBackupCreateTimeout
 	EnvBackupRestoreTimeout   = config.EnvBackupRestoreTimeout
 	EnvHealthCheckTimeout     = config.EnvHealthCheckTimeout
+	EnvHealthWaitTimeout      = config.EnvHealthWaitTimeout
 	EnvSelfUpdateHTTPTimeout  = config.EnvSelfUpdateHTTPTimeout
 	EnvSelfUpdateAPITimeout   = config.EnvSelfUpdateAPITimeout
 	EnvTUFFetchTimeout        = config.EnvTUFFetchTimeout

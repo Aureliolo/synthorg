@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/Aureliolo/synthorg/cli/internal/compose"
@@ -65,7 +64,7 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	if err := validateStartFlags(cmd); err != nil {
 		return err
 	}
-	healthTimeout, err := parseStartTimeout()
+	healthTimeout, err := parseStartTimeout(cmd)
 	if err != nil {
 		return err
 	}
@@ -90,7 +89,18 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	return startContainers(ctx, cmd, state, safeDir, out, errOut, healthTimeout)
 }
 
-func parseStartTimeout() (time.Duration, error) {
+// parseStartTimeout resolves the health-check budget for `start`. Precedence:
+// an explicit --timeout flag wins; otherwise the resolved health_wait_timeout
+// tunable (env SYNTHORG_HEALTH_WAIT_TIMEOUT, default 90s) applies. This keeps
+// the readiness-wait budget in one place across start and the wipe reinit path.
+func parseStartTimeout(cmd *cobra.Command) (time.Duration, error) {
+	if !cmd.Flags().Changed("timeout") {
+		d := GetGlobalOpts(cmd.Context()).Tunables.HealthWaitTimeout
+		if d <= 0 {
+			d = config.DefaultHealthWaitTimeout
+		}
+		return d, nil
+	}
 	d, err := time.ParseDuration(startTimeout)
 	if err != nil {
 		return 0, fmt.Errorf("invalid --timeout %q: %w", startTimeout, err)
@@ -325,78 +335,6 @@ func startDetached(ctx context.Context, info docker.Info, safeDir string, state 
 	return nil
 }
 
-// pullAllImages pulls all enabled images in a single unified LiveBox:
-// compose services (backend, web, postgres, nats) plus standalone images
-// (sandbox, sidecar, fine-tune) depending on configuration. Only enabled
-// services are pulled.
-//
-// Callers MUST pass a state whose ImageTag and VerifiedDigests reflect the
-// images to be pulled. During an update, disk config still holds the old
-// tag/digests until after the pull completes; reloading here would cause
-// standalone image pulls to use stale refs while compose-driven pulls use
-// the new refs written into compose.yml, leaving the install inconsistent.
-func pullAllImages(ctx context.Context, cmd *cobra.Command, info docker.Info, safeDir string, state config.State, out *ui.UI) (config.State, error) {
-	if stateHasRegistryOverrides(state) {
-		warnRegistryOverridesDisableVerification(cmd)
-	}
-	items := buildPullItems(state)
-	emitFineTuneSizeHint(state, out)
-	return state, runPullBatch(ctx, info, safeDir, items, out)
-}
-
-// pullItem describes one image to pull. compose=true uses
-// `docker compose pull <name>`; compose=false uses `docker pull <ref>`
-// with retry/backoff.
-type pullItem struct {
-	name    string
-	compose bool
-	ref     string
-}
-
-// buildPullItems enumerates every image the start path must pull: the
-// enabled compose services plus the standalone (sandbox / sidecar /
-// fine-tune) images that compose does not own.
-//
-// When the operator has overridden any of the registry / image-tag
-// tunables (registry_host, image_repo_prefix, dhi_registry,
-// postgres_image_tag, nats_image_tag), state.VerifiedDigests is bound
-// to the DEFAULT-registry images and would pin the standalone pulls
-// to stale digests that do not exist on the override registry. Drop
-// the digest in that case so the pull resolves the tag on the
-// override registry instead of failing on a stale @sha256 reference.
-func buildPullItems(state config.State) []pullItem {
-	var items []pullItem
-	for _, svc := range composeServiceNames(state) {
-		items = append(items, pullItem{name: svc, compose: true})
-	}
-	useDigests := !stateHasRegistryOverrides(state)
-	pickDigest := func(name string) string {
-		if !useDigests {
-			return ""
-		}
-		return state.VerifiedDigests[name]
-	}
-	if state.Sandbox {
-		items = append(items, pullItem{
-			name: "sandbox",
-			ref:  verify.FormatImageRef("sandbox", state.ImageTag, pickDigest("sandbox")),
-		})
-		items = append(items, pullItem{
-			name: "sidecar",
-			ref:  verify.FormatImageRef("sidecar", state.ImageTag, pickDigest("sidecar")),
-		})
-	}
-	if state.FineTuning {
-		variant := state.FineTuneVariantOrDefault()
-		svc := verify.FineTuneServiceName(variant)
-		items = append(items, pullItem{
-			name: svc,
-			ref:  verify.FormatImageRef(svc, state.ImageTag, pickDigest(svc)),
-		})
-	}
-	return items
-}
-
 // registryOverrideEnvVars lists every env var that, if set, overrides
 // a registry / image-tag tunable for the current invocation. Mirrors
 // the env precedence inputs ResolveTunables uses; checking these
@@ -450,81 +388,6 @@ func warnRegistryOverridesDisableVerification(cmd *cobra.Command) {
 	)
 }
 
-// emitFineTuneSizeHint warns the user about the fine-tune image size
-// BEFORE the pull box renders so they understand why their terminal is
-// about to pause. Emitting it after (the old behaviour) was a logic
-// error: by the time the warning appeared, the wait had already
-// completed. The per-variant size matches the post-split image layout.
-func emitFineTuneSizeHint(state config.State, out *ui.UI) {
-	if !state.FineTuning {
-		return
-	}
-	sizeHint := "up to ~4 GB"
-	if state.FineTuneVariantOrDefault() == config.FineTuneVariantCPU {
-		sizeHint = "~1.7 GB"
-	}
-	out.HintGuidance(fmt.Sprintf(
-		"Fine-tune image is %s -- first pull can take a few minutes on typical connections.",
-		sizeHint,
-	))
-}
-
-// runPullBatch fans out a pull goroutine per item and renders progress
-// in a single LiveBox. Returns the joined error covering every failed
-// pull (nil when every pull succeeds).
-func runPullBatch(ctx context.Context, info docker.Info, safeDir string, items []pullItem, out *ui.UI) error {
-	labels := make([]string, len(items))
-	for i, item := range items {
-		labels[i] = item.name
-	}
-	lb := out.NewLiveBox("Pull Images", labels)
-	defer lb.Finish()
-
-	var (
-		mu      sync.Mutex
-		pullErr error
-		wg      sync.WaitGroup
-	)
-	for i, item := range items {
-		wg.Add(1)
-		go func(idx int, it pullItem) {
-			defer wg.Done()
-			err := pullOneItem(ctx, info, safeDir, it)
-			if err != nil {
-				lb.UpdateLine(idx, ui.IconError)
-				mu.Lock()
-				pullErr = errors.Join(pullErr, fmt.Errorf("pulling %s: %w", it.name, err))
-				mu.Unlock()
-				return
-			}
-			lb.UpdateLine(idx, ui.IconSuccess)
-		}(i, item)
-	}
-	wg.Wait()
-	return pullErr
-}
-
-// pullOneItem dispatches to the right puller for the item kind: compose
-// services go through docker-compose's own pull (so it picks up the
-// image override from compose.yml); standalone images use the retrying
-// dockerPullWithRetry.
-func pullOneItem(ctx context.Context, info docker.Info, safeDir string, it pullItem) error {
-	if it.compose {
-		return composeRunQuiet(ctx, info, safeDir, "pull", it.name)
-	}
-	tun := GetGlobalOpts(ctx).Tunables
-	return dockerPullWithRetry(ctx, info, it.ref, tun.ImagePullAttempts, tun.ImagePullRetryDelay)
-}
-
-// maxPullBackoff caps the exponential-backoff delay between image-pull
-// retries.  Guards against int64 overflow when operators set
-// ImagePullAttempts to a high value: “baseDelay << (attempt - 1)“
-// with a 2-second base and >=62 attempts would overflow time.Duration
-// (int64 nanoseconds) and yield a negative delay that time.After
-// resolves immediately, effectively disabling the backoff.  Saturating
-// at 5 minutes keeps the retry schedule bounded and predictable.
-const maxPullBackoff = 5 * time.Minute
-
 // Health-check polling cadence shared by both start paths
 // (startDetached and pullStartAndWait).
 //
@@ -534,77 +397,18 @@ const maxPullBackoff = 5 * time.Minute
 //   - healthInitialDelay (5s): a typical compose-up cold start needs
 //     a few seconds before /readyz is even bound; polling sooner just
 //     burns connection refusals.
-//   - pullStartHealthTimeout (90s): fallback total budget for the
-//     pullStartAndWait path (which has no --timeout flag because it is
-//     called from `synthorg wipe` after a destructive reset, not from
-//     the user-facing `start` flow).
 //   - dhiVerifyTimeout (120s): caps DHI cosign + SLSA verification per
 //     batch; verification stalls past two minutes indicate a network or
 //     transparency-log outage rather than a slow CDN.
+//
+// The total readiness-wait budget for the pullStartAndWait path (called from
+// `synthorg wipe` after a destructive reset, which has no --timeout flag) is
+// the resolved health_wait_timeout tunable, not a hardcoded constant.
 const (
-	healthPollInterval     = 2 * time.Second
-	healthInitialDelay     = 5 * time.Second
-	pullStartHealthTimeout = 90 * time.Second
-	dhiVerifyTimeout       = 120 * time.Second
+	healthPollInterval = 2 * time.Second
+	healthInitialDelay = 5 * time.Second
+	dhiVerifyTimeout   = 120 * time.Second
 )
-
-// dockerPullWithRetry pulls an image with retries for transient failures.
-// The caller supplies attempts (> 0) and baseDelay (exponential backoff
-// seed) so the values flow from the resolved
-// config.Tunables rather than being pinned by package-level constants.
-func dockerPullWithRetry(
-	ctx context.Context,
-	info docker.Info,
-	imageRef string,
-	attempts int,
-	baseDelay time.Duration,
-) error {
-	var lastErr error
-	for attempt := 1; attempt <= attempts; attempt++ {
-		err := dockerRunQuiet(ctx, info, "pull", imageRef)
-		if err == nil {
-			return nil
-		}
-		lastErr = err
-		if attempt == attempts || ctx.Err() != nil {
-			break
-		}
-		backoff := computePullBackoff(baseDelay, attempt)
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(backoff):
-		}
-	}
-	return lastErr
-}
-
-// computePullBackoff returns “baseDelay << (attempt - 1)“ saturated
-// at maxPullBackoff and guarded against int64 overflow.  Attempt is
-// 1-indexed.
-func computePullBackoff(baseDelay time.Duration, attempt int) time.Duration {
-	// Any baseDelay <= 0 from a misconfigured caller collapses to the
-	// ceiling immediately -- better than a zero-wait tight retry loop.
-	if baseDelay <= 0 {
-		return maxPullBackoff
-	}
-	// Compute the shift amount that would exceed the ceiling so we
-	// can bail out before int64 overflow.  The ceiling is checked
-	// against every candidate backoff.
-	shift := max(attempt-1, 0)
-	// math.MaxInt64 / baseDelay gives the largest multiplier that
-	// stays in range; log2 of that caps the safe shift.
-	for range shift {
-		if baseDelay > maxPullBackoff/2 {
-			return maxPullBackoff
-		}
-		baseDelay *= 2
-	}
-	if baseDelay > maxPullBackoff {
-		return maxPullBackoff
-	}
-	return baseDelay
-}
 
 // pullStartAndWait pulls images, starts containers, and waits for health.
 func pullStartAndWait(ctx context.Context, cmd *cobra.Command, info docker.Info, safeDir string, state config.State, out, errOut *ui.UI) error {
@@ -621,7 +425,11 @@ func pullStartAndWait(ctx context.Context, cmd *cobra.Command, info docker.Info,
 
 	sp = out.StartSpinner("Waiting for backend to become healthy...")
 	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", state.BackendPort)
-	if err := health.WaitForHealthy(ctx, healthURL, pullStartHealthTimeout, healthPollInterval, healthInitialDelay); err != nil {
+	healthTimeout := GetGlobalOpts(ctx).Tunables.HealthWaitTimeout
+	if healthTimeout <= 0 {
+		healthTimeout = config.DefaultHealthWaitTimeout
+	}
+	if err := health.WaitForHealthy(ctx, healthURL, healthTimeout, healthPollInterval, healthInitialDelay); err != nil {
 		sp.Error("Health check failed")
 		errOut.HintError("Run 'synthorg doctor' for diagnostics.")
 		return fmt.Errorf("health check did not pass: %w", err)
@@ -740,7 +548,7 @@ func renderCachedDHIBox(out *ui.UI, state config.State) {
 // verifyDHIImages verifies cosign signatures and SLSA provenance on
 // third-party DHI images using Docker's embedded public key. Called
 // BEFORE pulling to prevent MITM.
-func verifyDHIImages(ctx context.Context, _ docker.Info, state config.State, out, _ *ui.UI) ([]verify.DHIVerifyResult, error) {
+func verifyDHIImages(ctx context.Context, _ docker.Info, state config.State, out, errOut *ui.UI) ([]verify.DHIVerifyResult, error) {
 	var dhiRefs []string
 	var labels []string
 	for _, tp := range thirdPartyImages(state) {
@@ -771,6 +579,17 @@ func verifyDHIImages(ctx context.Context, _ docker.Info, state config.State, out
 			lb.UpdateLine(i, fmt.Sprintf("sig %s  slsa %s", ui.IconSuccess, slsaIcon))
 		} else {
 			lb.UpdateLine(i, ui.IconError)
+		}
+	}
+
+	if err != nil {
+		// A short result set leaves trailing lines unfinished; mark them as
+		// errored so the box shows a cross, not a dangling "...". Surface the
+		// air-gapped recovery hint on a transport failure, mirroring the
+		// SynthOrg verification path.
+		lb.ErrorRemaining()
+		if isTransportError(err) {
+			errOut.HintError("Use --skip-verify for air-gapped environments")
 		}
 	}
 

@@ -133,6 +133,7 @@ type State struct {
 	BackupCreateTimeout    string `json:"backup_create_timeout,omitempty"`
 	BackupRestoreTimeout   string `json:"backup_restore_timeout,omitempty"`
 	HealthCheckTimeout     string `json:"health_check_timeout,omitempty"`
+	HealthWaitTimeout      string `json:"health_wait_timeout,omitempty"`
 	SelfUpdateHTTPTimeout  string `json:"self_update_http_timeout,omitempty"`
 	SelfUpdateAPITimeout   string `json:"self_update_api_timeout,omitempty"`
 	TUFFetchTimeout        string `json:"tuf_fetch_timeout,omitempty"`
@@ -169,6 +170,7 @@ const (
 	DefaultBackupRestoreTimeout   = 30 * time.Second
 	DefaultBackupListTimeout      = 10 * time.Second
 	DefaultHealthCheckTimeout     = 5 * time.Second
+	DefaultHealthWaitTimeout      = 90 * time.Second
 	DefaultSelfUpdateHTTPTimeout  = 5 * time.Minute
 	DefaultSelfUpdateAPITimeout   = 30 * time.Second
 	DefaultTUFFetchTimeout        = 30 * time.Second

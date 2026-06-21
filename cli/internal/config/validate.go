@@ -199,31 +199,24 @@ func validateRegistryFields(s State) error {
 // (MinImageVerifyTimeout) because shorter values silently bypass
 // cosign/SLSA verification.
 func validateDurationFields(s State) error {
-	if err := validateOneDuration("backup_create_timeout", s.BackupCreateTimeout); err != nil {
-		return err
+	fields := []struct{ name, value string }{
+		{"backup_create_timeout", s.BackupCreateTimeout},
+		{"backup_restore_timeout", s.BackupRestoreTimeout},
+		{"health_check_timeout", s.HealthCheckTimeout},
+		{"health_wait_timeout", s.HealthWaitTimeout},
+		{"self_update_http_timeout", s.SelfUpdateHTTPTimeout},
+		{"self_update_api_timeout", s.SelfUpdateAPITimeout},
+		{"tuf_fetch_timeout", s.TUFFetchTimeout},
+		{"attestation_http_timeout", s.AttestationHTTPTimeout},
+		{"image_verify_timeout", s.ImageVerifyTimeout},
+		{"image_pull_retry_delay", s.ImagePullRetryDelay},
 	}
-	if err := validateOneDuration("backup_restore_timeout", s.BackupRestoreTimeout); err != nil {
-		return err
+	for _, f := range fields {
+		if err := validateOneDuration(f.name, f.value); err != nil {
+			return err
+		}
 	}
-	if err := validateOneDuration("health_check_timeout", s.HealthCheckTimeout); err != nil {
-		return err
-	}
-	if err := validateOneDuration("self_update_http_timeout", s.SelfUpdateHTTPTimeout); err != nil {
-		return err
-	}
-	if err := validateOneDuration("self_update_api_timeout", s.SelfUpdateAPITimeout); err != nil {
-		return err
-	}
-	if err := validateOneDuration("tuf_fetch_timeout", s.TUFFetchTimeout); err != nil {
-		return err
-	}
-	if err := validateOneDuration("attestation_http_timeout", s.AttestationHTTPTimeout); err != nil {
-		return err
-	}
-	if err := validateOneDuration("image_verify_timeout", s.ImageVerifyTimeout); err != nil {
-		return err
-	}
-	return validateOneDuration("image_pull_retry_delay", s.ImagePullRetryDelay)
+	return nil
 }
 
 func validateOneDuration(name, value string) error {
