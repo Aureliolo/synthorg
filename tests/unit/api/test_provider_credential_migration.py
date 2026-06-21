@@ -19,6 +19,9 @@ import synthorg.api.lifecycle_helpers.provider_credential_migration as migration
 import synthorg.settings.definitions  # noqa: F401 -- trigger registration
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
+from synthorg.observability.events.provider import (
+    PROVIDER_CREDENTIAL_MIGRATION_FAILED,
+)
 from synthorg.providers.errors import ProviderValidationError
 from synthorg.settings.encryption import SettingsEncryptor
 from synthorg.settings.registry import get_registry
@@ -303,6 +306,6 @@ class TestMigrateTopLevel:
         phases = [
             e.get("phase")
             for e in logs
-            if e.get("event") == migration.PROVIDER_CREDENTIAL_MIGRATION_FAILED
+            if e.get("event") == PROVIDER_CREDENTIAL_MIGRATION_FAILED
         ]
         assert "unsupported_schema_version" in phases
