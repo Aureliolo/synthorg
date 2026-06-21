@@ -9,10 +9,10 @@
  */
 
 /** localStorage key carrying the first-run flag. */
-export const FIRST_RUN_STORAGE_KEY = 'synthorg.firstRun'
+const FIRST_RUN_STORAGE_KEY = 'synthorg.firstRun'
 
 /** Sentinel value written when setup finishes; any other value reads false. */
-export const FIRST_RUN_FLAG_VALUE = '1'
+const FIRST_RUN_FLAG_VALUE = '1'
 
 /** Mark setup as just-completed so the dashboard shows the guidance card. */
 export function markFirstRunPending(): void {
