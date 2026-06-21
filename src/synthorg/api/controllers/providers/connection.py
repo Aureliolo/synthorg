@@ -176,7 +176,7 @@ class ProviderConnectionController(Controller):
                 resource="provider",
                 name=name,
             )
-            raise NotFoundError(str(exc)) from exc
+            raise NotFoundError(safe_error_description(exc)) from exc
         return ApiResponse(
             data=DiscoverModelsResponse(
                 discovered_models=discovered,
@@ -222,5 +222,5 @@ class ProviderConnectionController(Controller):
                 resource="provider",
                 name=name,
             )
-            raise NotFoundError(str(exc)) from exc
+            raise NotFoundError(safe_error_description(exc)) from exc
         return ApiResponse(data=result)

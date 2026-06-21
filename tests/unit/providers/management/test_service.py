@@ -59,7 +59,8 @@ class TestCreateProvider:
 
         result = await settings_service.get("providers", "configs")
         data = json.loads(result.value)
-        assert "test-provider" in data
+        assert data["schema_version"] == 1
+        assert "test-provider" in data["providers"]
 
     async def test_create_provider_rebuilds_registry(
         self,
@@ -277,7 +278,7 @@ class TestCreateFromPreset:
             default_models=(),
         )
         monkeypatch.setattr(
-            "synthorg.providers.management.service.get_preset",
+            "synthorg.providers.management._preset_creation.get_preset",
             lambda name: test_preset if name == "test-provider" else None,
         )
         request = CreateFromPresetRequest(
@@ -585,7 +586,7 @@ class TestValidateAndPersistFailure:
         request = make_create_request()
         with (
             patch(
-                "synthorg.providers.management.service.ProviderRegistry.from_config",
+                "synthorg.providers.management._persistence.ProviderRegistry.from_config",
                 side_effect=RuntimeError("boom"),
             ),
             pytest.raises(
@@ -677,10 +678,11 @@ class TestSerializeRoundTrip:
         # otherwise pass every other assertion below).
         assert "sk-round-trip" not in setting.value
         serialized = json.loads(setting.value)
-        assert "test-provider" in serialized
+        assert serialized["schema_version"] == 1
+        assert "test-provider" in serialized["providers"]
 
         # Deserialize back to ProviderConfig
-        raw = serialized["test-provider"]
+        raw = serialized["providers"]["test-provider"]
         restored = ProviderConfig.model_validate(raw)
         assert restored.driver == "litellm"
         assert restored.auth_type == AuthType.API_KEY

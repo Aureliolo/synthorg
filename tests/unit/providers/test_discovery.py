@@ -189,27 +189,25 @@ class TestDiscoverOllama:
         assert result[0].id == "test-model-001"
         assert result[1].id == "test-model-002"
 
-    async def test_ollama_cloud_routes_through_api_tags(self) -> None:
-        """``ollama-cloud`` must hit ``/api/tags`` (not ``/models``).
+    async def test_ollama_cloud_routes_through_openai_models(self) -> None:
+        """``ollama-cloud`` lists via the OpenAI-compatible ``/v1/models``.
 
-        Pre-fix, the cloud variant fell through to ``_discover_standard_api``
-        which fetched ``GET {base}/models``; Ollama returns 404 there,
-        the response was treated as an empty model list, and
-        ``replace_existing=True`` then deleted every persisted model
-        on the first sync click.
+        Ollama Cloud is reached through its OpenAI-compatible endpoint
+        (``https://ollama.com/v1``), so discovery hits ``GET {base}/models``
+        (the standard path) rather than the native local ``/api/tags``.
         """
-        response = _mock_response({"models": [{"name": "cloud-model-001"}]})
+        response = _mock_response({"data": [{"id": "cloud-model-001"}]})
         with patch("synthorg.providers.discovery.httpx.AsyncClient") as mock_cls:
             client = _mock_client(response)
             mock_cls.return_value = client
 
             result = await discover_models(
-                "http://localhost:11434",
+                "http://localhost:11434/v1",
                 "ollama-cloud",
             )
 
             client.get.assert_called_once_with(
-                "http://127.0.0.1:11434/api/tags",
+                "http://127.0.0.1:11434/v1/models",
                 headers={"Host": "localhost"},
             )
         assert len(result) == 1

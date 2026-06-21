@@ -42,6 +42,7 @@ export function buildCloudPreset(
     default_base_url: null,
     requires_base_url: false,
     is_featured: true,
+    prefer_live_discovery: false,
     default_models: [],
     ...overrides,
   }

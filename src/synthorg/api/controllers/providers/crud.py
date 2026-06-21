@@ -1,12 +1,17 @@
 # module-kind: controller
 """Provider CRUD + read endpoints."""
 
+import asyncio
+
 from litestar import Controller, delete, get, post, put
 from litestar.datastructures import State
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg._core.features import require_service
-from synthorg.api.controllers._provider_helpers import enrich_with_usage
+from synthorg.api.controllers._provider_helpers import (
+    apply_usage,
+    fetch_provider_usage_24h,
+)
 from synthorg.api.dto import (
     DEFAULT_LIMIT,
     ApiResponse,
@@ -67,18 +72,30 @@ class ProviderCrudController(Controller):
     )
     async def get_presets(
         self,
-        state: State,  # noqa: ARG002
-    ) -> ApiResponse[tuple[ProviderPreset, ...]]:
-        """List all available provider presets.
+        state: State,
+        cursor: CursorParam = None,
+        limit: CursorLimit = DEFAULT_LIMIT,
+    ) -> PaginatedResponse[ProviderPreset]:
+        """List available provider presets, paginated by name.
 
         Returns the discriminated-union type alias so Litestar/Pydantic
         emit the ``kind`` discriminator on the wire and frontend
-        consumers receive properly tagged objects.
+        consumers receive properly tagged objects. The list is bounded by
+        cursor pagination so a growing preset catalogue cannot return an
+        unbounded page.
 
         Returns:
-            ``ApiResponse[tuple[ProviderPreset, ...]]`` instance.
+            ``PaginatedResponse[ProviderPreset]`` instance.
         """
-        return ApiResponse(data=list_presets())
+        app_state: AppState = state.app_state
+        ordered = tuple(sorted(list_presets(), key=lambda preset: preset.name))
+        page, meta = paginate_cursor(
+            ordered,
+            limit=limit,
+            cursor=cursor,
+            secret=cursor_secret_of(app_state),
+        )
+        return PaginatedResponse[ProviderPreset](data=page, pagination=meta)
 
     @get(
         "/",
@@ -142,13 +159,10 @@ class ProviderCrudController(Controller):
             operation="read",
             extra_log_kwargs={"name": name},
         )
-        # ``name=None`` keeps the list-only ``ProviderResponse.name``
-        # field out of the wire envelope on single-resource responses
-        # (the URL already identifies the provider).  Setting ``name``
-        # here would silently expand the non-paginated schema to carry
-        # the field, breaking the dict-by-name contract on the
-        # frontend that distinguishes list vs single-resource shape.
-        return ApiResponse(data=to_provider_response(provider, name=None))
+        # Every provider response advertises its canonical ``name`` so
+        # clients can confirm the stored identity on single-resource reads
+        # as well as in list pages.
+        return ApiResponse(data=to_provider_response(provider, name=name))
 
     @get(
         "/{name:str}/health",
@@ -177,8 +191,12 @@ class ProviderCrudController(Controller):
             app_state.slice(ProvidersStateSlice).health_tracker,
             "Provider Health Tracker",
         )
-        summary = await health_tracker.get_summary(name)
-        summary = await enrich_with_usage(summary, app_state, name)
+        # The summary fetch and the 24h usage fetch both depend only on
+        # ``name``, so run them concurrently and merge.
+        async with asyncio.TaskGroup() as tg:
+            summary_task = tg.create_task(health_tracker.get_summary(name))
+            usage_task = tg.create_task(fetch_provider_usage_24h(app_state, name))
+        summary = apply_usage(summary_task.result(), usage_task.result())
         logger.debug(
             API_PROVIDER_HEALTH_QUERIED,
             provider=name,
@@ -236,7 +254,7 @@ class ProviderCrudController(Controller):
                 error=safe_error_description(exc),
             )
             raise ValidationError(safe_error_description(exc)) from exc
-        return ApiResponse(data=to_provider_response(config, name=None))
+        return ApiResponse(data=to_provider_response(config, name=data.name))
 
     @post(
         "/from-preset",
@@ -287,7 +305,7 @@ class ProviderCrudController(Controller):
                 error=safe_error_description(exc),
             )
             raise ValidationError(safe_error_description(exc)) from exc
-        return ApiResponse(data=to_provider_response(config, name=None))
+        return ApiResponse(data=to_provider_response(config, name=data.name))
 
     @put(
         "/{name:str}",
@@ -328,7 +346,7 @@ class ProviderCrudController(Controller):
                 resource="provider",
                 name=name,
             )
-            raise NotFoundError(str(exc)) from exc
+            raise NotFoundError(safe_error_description(exc)) from exc
         except ProviderValidationError as exc:
             logger.warning(
                 API_VALIDATION_FAILED,
@@ -337,7 +355,7 @@ class ProviderCrudController(Controller):
                 error=safe_error_description(exc),
             )
             raise ValidationError(safe_error_description(exc)) from exc
-        return ApiResponse(data=to_provider_response(config, name=None))
+        return ApiResponse(data=to_provider_response(config, name=name))
 
     @delete(
         "/{name:str}",
@@ -370,4 +388,4 @@ class ProviderCrudController(Controller):
                 resource="provider",
                 name=name,
             )
-            raise NotFoundError(str(exc)) from exc
+            raise NotFoundError(safe_error_description(exc)) from exc

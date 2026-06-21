@@ -217,14 +217,11 @@ async def discover_models(
     Returns:
         Tuple of discovered model configs, or empty tuple on failure.
     """
-    # ``ollama`` (local) and ``ollama-cloud`` (hosted) both speak the
-    # native Ollama listing protocol (``GET /api/tags``); the hosted
-    # variant only differs by base URL with the same payload shape.
-    # ``_discover_standard_api`` calls ``GET {base}/models``, which
-    # Ollama does not expose; routing the cloud preset there would
-    # treat the 404 as an empty model list, and an empty list paired
-    # with ``replace_existing=true`` deletes every persisted model.
-    if preset_name in {"ollama", "ollama-cloud"}:
+    # Local ``ollama`` speaks the native listing protocol
+    # (``GET /api/tags``). ``ollama-cloud`` is reached through Ollama's
+    # OpenAI-compatible endpoint (``https://ollama.com/v1``), so it lists
+    # via the standard ``GET {base}/models`` path below, NOT ``/api/tags``.
+    if preset_name == "ollama":
         return await _discover_ollama(
             base_url,
             headers=headers,

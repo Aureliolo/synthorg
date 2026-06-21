@@ -68,6 +68,14 @@ class CloudPreset(_BasePreset):
         default_models: Pre-configured model definitions used as a
             fallback when the LiteLLM model_cost database returns no
             entries for ``litellm_provider``.
+        prefer_live_discovery: When ``True``, ``create_from_preset`` seeds
+            from ``default_models`` instead of the static
+            ``litellm.model_cost`` table (which would surface the wrong
+            catalogue for an OpenAI-compatible gateway) and runs an
+            authenticated live model discovery against the provider's
+            endpoint so the full live catalogue is populated on create.
+            Used by gateways like Ollama Cloud whose live ``/v1/models``
+            is the source of truth.
     """
 
     kind: Literal["cloud"] = "cloud"
@@ -76,6 +84,7 @@ class CloudPreset(_BasePreset):
         min_length=1,
     )
     default_models: tuple[ProviderModelConfig, ...] = ()
+    prefer_live_discovery: bool = False
 
     @model_validator(mode="after")
     def _validate_auth_type_in_supported(self) -> Self:
@@ -98,6 +107,38 @@ class CloudPreset(_BasePreset):
                 preset_name=self.name,
                 auth_type=self.auth_type.value,
                 supported_auth_types=[t.value for t in self.supported_auth_types],
+                error=msg,
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_live_discovery_requires_api_key(self) -> Self:
+        """Ensure a live-discovery preset defaults to API-key auth.
+
+        ``prefer_live_discovery`` is honoured only on the API-key Bearer
+        path in ``_maybe_discover_preset_models``; a preset that prefers
+        live discovery but defaults to another auth type would silently
+        fall back to its static seed, making the flag a no-op.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``prefer_live_discovery`` is set without
+                ``auth_type == AuthType.API_KEY``.
+        """
+        if self.prefer_live_discovery and self.auth_type != AuthType.API_KEY:
+            msg = (
+                f"Preset {self.name!r} sets prefer_live_discovery=True but "
+                f"auth_type={self.auth_type!r}; live discovery requires "
+                "AuthType.API_KEY."
+            )
+            logger.error(
+                CONFIG_VALIDATION_FAILED,
+                model="CloudPreset",
+                preset_name=self.name,
+                auth_type=self.auth_type.value,
                 error=msg,
             )
             raise ValueError(msg)

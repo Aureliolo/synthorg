@@ -346,6 +346,38 @@ class ProviderValidationError(ProviderError):
     error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
 
 
+class ProviderSerializationError(ProviderError):
+    """Serialising the provider config blob for persistence failed.
+
+    500 Internal: a serialise failure is an internal defect (the config
+    validated but could not be turned into a storable JSON value), not a
+    client input error nor a 502 upstream failure.  Kept distinct from
+    :class:`ProviderPersistenceError` so the failure stage is
+    unambiguous in logs and to callers.
+    """
+
+    is_retryable = False
+    status_code: ClassVar[int] = 500
+    error_code: ClassVar[ErrorCode] = ErrorCode.INTERNAL_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    default_message: ClassVar[str] = "Failed to serialise provider configuration"
+
+
+class ProviderPersistenceError(ProviderError):
+    """Persisting the provider config blob (or its hot-reload) failed.
+
+    500 Internal: a DB-write or in-memory hot-reload failure.  On a
+    hot-reload failure the prior persisted blob is rolled back first so
+    the database and the running registry never diverge.
+    """
+
+    is_retryable = False
+    status_code: ClassVar[int] = 500
+    error_code: ClassVar[ErrorCode] = ErrorCode.PERSISTENCE_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    default_message: ClassVar[str] = "Failed to persist provider configuration"
+
+
 _ERROR_CLASS_MAP: Final[dict[type[BaseException], ProviderErrorLabel]] = {
     RateLimitError: "rate_limit",
     ProviderTimeoutError: "timeout",

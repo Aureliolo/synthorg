@@ -460,32 +460,6 @@ class ConfigResolver:
             fallback=fallback,
         )
 
-    async def _resolve_dict_setting[ModelT: BaseModel](
-        self,
-        namespace: str,
-        key: str,
-        model_cls: type[ModelT],
-        fallback: dict[str, ModelT],
-    ) -> dict[str, ModelT]:
-        """Resolve a JSON dict setting to a dict of validated models.
-
-        Returns:
-            A dict mapping names to validated model instances parsed
-            from the JSON dict, or *fallback* on any parse or
-            schema-validation failure.
-        """
-        return await self._resolve_json_setting(
-            namespace,
-            key,
-            expected_type=dict,
-            expected_reason="expected_dict_fallback",
-            build=lambda raw: {
-                name: model_cls.model_validate(conf)
-                for name, conf in cast("dict[str, object]", raw).items()
-            },
-            fallback=fallback,
-        )
-
     async def get_agents(self) -> tuple[AgentConfig, ...]:
         """Resolve agent configurations from settings.
 
@@ -541,7 +515,9 @@ class ConfigResolver:
 
         Falls back to ``RootConfig.providers`` if the setting value
         is ``None``, contains invalid JSON, or fails schema validation.
-        An explicit empty dict ``{}`` is a valid override.
+        An explicit empty envelope (``{"schema_version": N,
+        "providers": {}}``) is a valid "no providers" override; a bare
+        ``{}`` is not a valid envelope and falls back to defaults.
 
         The returned mapping is wrapped in :class:`types.MappingProxyType`
         to prevent callers from mutating the resolver's view of provider
@@ -553,6 +529,12 @@ class ConfigResolver:
         comprehension or unpacking (e.g.  ``{**providers, name:
         config}``) if a mutable copy is needed.
 
+        The blob is a versioned :class:`ProvidersConfigEnvelope`
+        (``{"schema_version": N, "providers": {...}}``). A blob whose
+        ``schema_version`` is unknown, whose envelope shape fails
+        validation, or which is not valid JSON falls back to defaults
+        with a structured WARNING rather than mis-parsing it.
+
         Returns:
             An immutable ``MappingProxyType`` mapping provider names to
             ``ProviderConfig`` instances, falling back to
@@ -563,15 +545,24 @@ class ConfigResolver:
                 in the registry.
             SettingsEncryptionError: If decryption fails.
         """
-        from synthorg.config.provider_schema import ProviderConfig  # noqa: PLC0415
-
-        configs = await self._resolve_dict_setting(
-            "providers",
-            "configs",
-            ProviderConfig,
-            dict(self._config.providers),
+        from synthorg.config.provider_schema import (  # noqa: PLC0415
+            unwrap_provider_configs_envelope,
         )
-        return MappingProxyType(configs)
+
+        fallback = dict(self._config.providers)
+        try:
+            raw = await self.get_json("providers", "configs")
+        except ValueError:
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace="providers",
+                key="configs",
+                reason="invalid_json_fallback",
+            )
+            return MappingProxyType(fallback)
+        if raw is None:
+            return MappingProxyType(fallback)
+        return MappingProxyType(unwrap_provider_configs_envelope(raw, fallback))
 
     async def get_budget_config(self) -> BudgetConfig:
         """Assemble a ``BudgetConfig`` from individually resolved settings.

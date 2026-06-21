@@ -18,7 +18,6 @@ core.
 """
 
 import asyncio
-import json
 from collections.abc import AsyncIterator, Mapping
 
 from pydantic import JsonValue
@@ -43,6 +42,7 @@ from synthorg.observability import (
 )
 from synthorg.observability.events.provider import (
     PROVIDER_ALREADY_EXISTS,
+    PROVIDER_CONFIG_PERSIST_FAILED,
     PROVIDER_CONNECTION_TESTED,
     PROVIDER_DISCOVERY_FAILED,
     PROVIDER_DISCOVERY_SELF_CONNECTION_BLOCKED,
@@ -85,9 +85,9 @@ from synthorg.providers.management._helpers import (
     build_discovery_headers,
     build_provider_config,
     infer_preset_hint,
-    models_from_litellm,
-    serialize_providers,
 )
+from synthorg.providers.management._persistence import apply_provider_change
+from synthorg.providers.management._preset_creation import create_provider_from_preset
 from synthorg.providers.management.allowlist import DiscoveryAllowlistManager
 from synthorg.providers.management.audit_service import ProviderAuditService
 from synthorg.providers.management.dtos import (
@@ -105,10 +105,8 @@ from synthorg.providers.models import ChatMessage
 from synthorg.providers.presets import (
     CloudPreset,
     LocalPreset,
-    default_models_for,
     get_preset,
 )
-from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.routing.router import ModelRouter
 from synthorg.providers.routing.selector import ModelCandidateSelector
 from synthorg.providers.url_utils import is_self_url, redact_url
@@ -710,6 +708,10 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
     ) -> ProviderConfig:
         """Create a provider from a preset template.
 
+        Thin delegator to :func:`create_provider_from_preset` (in
+        ``_preset_creation``), which owns the preset resolution and
+        model-seed selection.
+
         Returns:
             The newly created and persisted ``ProviderConfig`` built from
             the preset template and request overrides.
@@ -718,57 +720,7 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             ProviderValidationError: If the preset is unknown.
             ProviderAlreadyExistsError: If the name is taken.
         """
-        preset = get_preset(request.preset_name)
-        if preset is None:
-            msg = f"Unknown preset: {request.preset_name!r}"
-            logger.warning(
-                PROVIDER_VALIDATION_FAILED,
-                preset=request.preset_name,
-                error=msg,
-            )
-            raise ProviderValidationError(msg)
-
-        if request.models is not None:
-            models = request.models
-        elif preset.auth_type == AuthType.NONE:
-            # Local providers: skip static LiteLLM DB, rely on live
-            # discovery in _maybe_discover_preset_models below.
-            models = default_models_for(preset)
-        else:
-            litellm_models = models_from_litellm(preset.litellm_provider)
-            models = litellm_models or default_models_for(preset)
-        base_url = request.base_url or preset.default_base_url
-        if preset.requires_base_url and not base_url:
-            msg = (
-                f"Preset {preset.name!r} requires a base URL -- "
-                "provide one via base_url"
-            )
-            logger.warning(
-                PROVIDER_VALIDATION_FAILED,
-                preset=request.preset_name,
-                error=msg,
-            )
-            raise ProviderValidationError(msg)
-        auth_type = request.auth_type or preset.auth_type
-        models = await self._maybe_discover_preset_models(
-            preset,
-            base_url,
-            models,
-            auth_type=auth_type,
-        )
-        create_request = CreateProviderRequest(
-            name=request.name,
-            driver=preset.driver,
-            litellm_provider=preset.litellm_provider,
-            auth_type=auth_type,
-            api_key=request.api_key,
-            subscription_token=request.subscription_token,
-            tos_accepted=request.tos_accepted,
-            base_url=base_url,
-            models=models,
-            preset_name=preset.name,
-        )
-        return await self.create_provider(create_request)
+        return await create_provider_from_preset(self, request)
 
     async def _maybe_discover_preset_models(
         self,
@@ -777,27 +729,56 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         models: tuple[ProviderModelConfig, ...],
         *,
         auth_type: AuthType,
+        api_key: str | None = None,
     ) -> tuple[ProviderModelConfig, ...]:
-        """Auto-discover models for no-auth presets when none given.
+        """Auto-discover models for no-auth or live-discovery presets.
+
+        Two discovery modes:
+
+        - **No-auth local** (``auth_type == NONE``): discover only when no
+          seed models were supplied, with no auth headers.
+        - **Live-discovery gateway** (``preset.prefer_live_discovery``, an
+          API-key ``api_key``, and the base URL still pointing at the
+          preset's canonical host): discover even when a curated seed
+          exists, sending the key as a Bearer credential, so the full live
+          catalogue replaces the seed on create. The Bearer credential is
+          sent only when ``base_url`` matches ``preset.default_base_url``;
+          a user-overridden host keeps the seed and is never handed the
+          key (confused-deputy guard).
 
         Args:
             preset: Resolved preset definition.
             base_url: Provider base URL (may be user-overridden).
-            models: Explicitly provided models (may be empty).
+            models: Seed models (may be empty).
             auth_type: Effective auth type.
+            api_key: Plaintext API key for authenticated discovery.
 
         Returns:
-            Discovered models if any, otherwise the original models.
+            Discovered models if any, otherwise the seed models.
         """
-        if models or auth_type != AuthType.NONE or not base_url:
+        prefer_live = isinstance(preset, CloudPreset) and preset.prefer_live_discovery
+        headers: dict[str, str] | None
+        if auth_type == AuthType.NONE:
+            if models:
+                return models
+            headers = None
+        elif (
+            prefer_live
+            and auth_type == AuthType.API_KEY
+            and api_key
+            and base_url == preset.default_base_url
+        ):
+            headers = {"Authorization": f"Bearer {api_key}"}
+        else:
             return models
-        if self._is_self_connection(base_url):
+        if not base_url or self._is_self_connection(base_url):
             return models
         policy = await self._allowlist.load()
         trust = is_url_allowed(base_url, policy)
         discovered = await discover_models(
             base_url,
             preset.name,
+            headers=headers,
             trust_url=trust,
         )
         return discovered or models
@@ -1017,11 +998,12 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             await self._validate_and_persist(dict(snapshot))
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised below
             reraise_critical(exc)
-            logger.warning(
-                PROVIDER_VALIDATION_FAILED,
+            logger.error(
+                PROVIDER_CONFIG_PERSIST_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
                 provider_count=len(snapshot),
+                rollback_failed=True,
             )
             return False
         return True
@@ -1030,63 +1012,27 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         self,
         new_providers: dict[str, ProviderConfig],
     ) -> None:
-        """Validate, persist, and hot-reload providers.
+        """Validate, persist, and atomically hot-reload providers.
+
+        Thin delegator to :func:`apply_provider_change` (in
+        ``_persistence``), which owns the staged failure types and the
+        rollback-on-swap-failure contract.
 
         Args:
             new_providers: Complete new provider dict.
 
         Raises:
-            ProviderValidationError: If build or persist fails.
+            ProviderValidationError: If the registry/router build fails.
+            ProviderSerializationError: If envelope serialisation fails.
+            ProviderPersistenceError: If the DB write or hot-reload fails.
         """
-        # 1. Validate: build registry + router before any I/O
-        try:
-            registry = ProviderRegistry.from_config(new_providers)
-            router = self._build_router(new_providers)
-        except Exception as exc:
-            reraise_critical(exc)
-            msg = f"Provider configuration validation failed: {type(exc).__name__}"
-            logger.warning(
-                PROVIDER_VALIDATION_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                provider_count=len(new_providers),
-            )
-            raise ProviderValidationError(msg) from exc
-
-        # 2. Persist to settings
-        try:
-            serialized = serialize_providers(new_providers)
-            await self._settings_service.set(
-                "providers",
-                "configs",
-                json.dumps(serialized),
-            )
-        except Exception as exc:
-            reraise_critical(exc)
-            msg = f"Failed to persist provider configuration: {type(exc).__name__}"
-            # ``error=str(exc)`` would leak credential material via
-            # exception text, so we redact via
-            # ``safe_error_description``. ``exc_info=True`` would
-            # re-introduce the leak path -- tracebacks attach the
-            # exception args (which can include credentials when the
-            # raise originated in a credential-bearing call) -- so we
-            # deliberately omit it. The redacted error text plus
-            # ``error_type`` is enough to triage; the full trace lives
-            # only in the in-process exception object that
-            # ``ProviderValidationError`` wraps via ``from exc``.
-            logger.warning(
-                PROVIDER_VALIDATION_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                provider_count=len(new_providers),
-            )
-            raise ProviderValidationError(msg) from exc
-
-        # 3. Hot-reload: swap in AppState (both sync, no await gap)
-        from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
-
-        self._app_state.swap_provider_registry(registry)
-        self._app_state.wire(ProvidersStateSlice, model_router=router)
+        await apply_provider_change(
+            app_state=self._app_state,
+            settings_service=self._settings_service,
+            config_resolver=self._config_resolver,
+            new_providers=new_providers,
+            build_router=self._build_router,
+        )
 
     # ── Local model management ───────────────────────────────
 

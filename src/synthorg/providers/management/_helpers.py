@@ -9,6 +9,10 @@ from urllib.parse import urlparse
 
 from pydantic import JsonValue, SecretStr
 
+from synthorg.config.provider_schema import (
+    PROVIDERS_CONFIG_SCHEMA_VERSION,
+    ProvidersConfigEnvelope,
+)
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
@@ -246,18 +250,27 @@ def _apply_credential_updates(
         updates["tos_accepted_at"] = None
 
 
-def serialize_providers(
+def serialize_provider_envelope(
     providers: dict[str, ProviderConfig],
-) -> dict[str, JsonValue]:
-    """Serialize provider dict for JSON persistence.
+) -> str:
+    """Serialize providers into a versioned JSON envelope for persistence.
+
+    Wraps the provider dict in a :class:`ProvidersConfigEnvelope` stamped
+    with the current schema version and dumps it to a JSON string. The
+    reader (``ConfigResolver.get_provider_configs``) validates the version
+    and falls back to code defaults on a mismatch or a corrupt blob.
 
     Args:
-        providers: Provider configurations.
+        providers: Provider configurations keyed by name.
 
     Returns:
-        JSON-safe dict of serialized provider configs.
+        The JSON-encoded versioned envelope.
     """
-    return {name: config.model_dump(mode="json") for name, config in providers.items()}
+    envelope = ProvidersConfigEnvelope(
+        schema_version=PROVIDERS_CONFIG_SCHEMA_VERSION,
+        providers=providers,
+    )
+    return envelope.model_dump_json()
 
 
 PORT_TO_PRESET: Final[MappingProxyType[int, str]] = MappingProxyType(

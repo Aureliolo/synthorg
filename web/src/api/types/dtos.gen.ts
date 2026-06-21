@@ -389,6 +389,7 @@ export type ActiveAgentSummaryPage = components['schemas']['PaginatedResponse_Ac
 export type ActivityEventPage = components['schemas']['PaginatedResponse_ActivityEvent_']
 export type AgentConfigPage = components['schemas']['PaginatedResponse_AgentConfig_']
 export type AggregatedPatternPage = components['schemas']['PaginatedResponse_AggregatedPattern_']
+export type Annotated_Union_CloudPreset_LocalPreset_FieldInfo_annotation_NoneType_required_True_discriminator_kindPage = components['schemas']['PaginatedResponse_Annotated_Union_CloudPreset_LocalPreset_FieldInfo_annotation_NoneType_required_True_discriminator_kind_']
 export type ApprovalResponsePage = components['schemas']['PaginatedResponse_ApprovalResponse_']
 export type ArtifactPage = components['schemas']['PaginatedResponse_Artifact_']
 export type AuditEntryPage = components['schemas']['PaginatedResponse_AuditEntry_']

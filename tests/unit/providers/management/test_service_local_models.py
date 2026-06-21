@@ -179,7 +179,7 @@ class TestCreateFromPresetLocalSkipsLitellm:
         """Local presets skip models_from_litellm entirely."""
         with (
             patch(
-                "synthorg.providers.management.service.models_from_litellm",
+                "synthorg.providers.management._preset_creation.models_from_litellm",
             ) as mock_litellm,
             patch(
                 "synthorg.providers.management.service.discover_models",
@@ -206,7 +206,7 @@ class TestCreateFromPresetLocalSkipsLitellm:
             ProviderModelConfig(id="cloud-model-b"),
         )
         with patch(
-            "synthorg.providers.management.service.models_from_litellm",
+            "synthorg.providers.management._preset_creation.models_from_litellm",
             return_value=litellm_models,
         ) as mock_litellm:
             request = CreateFromPresetRequest(
@@ -227,7 +227,7 @@ class TestCreateFromPresetLocalSkipsLitellm:
         user_models = (ProviderModelConfig(id="user-model"),)
         with (
             patch(
-                "synthorg.providers.management.service.models_from_litellm",
+                "synthorg.providers.management._preset_creation.models_from_litellm",
             ) as mock_litellm,
             patch(
                 "synthorg.providers.management.service.discover_models",

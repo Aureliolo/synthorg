@@ -296,6 +296,99 @@ class TestAutoWireMeetings:
         assert result.meeting_orchestrator is explicit_orch
         assert result.meeting_scheduler is explicit_sched
 
+    def test_pre_setup_emits_single_info_deferred_event(self) -> None:
+        """Pre-setup deferral (provider_registry None) is one INFO, no WARNING.
+
+        On a clean pre-setup boot the provider registry is not yet wired;
+        the deferred meeting stack must produce exactly one INFO
+        ``API_MEETINGS_WIRING_DEFERRED`` record rather than the former
+        two WARNINGs.
+        """
+        from synthorg.api.auto_wire_meetings import auto_wire_meetings
+        from synthorg.observability.events.api import API_MEETINGS_WIRING_DEFERRED
+
+        config = _default_config()
+        with structlog.testing.capture_logs() as captured:
+            auto_wire_meetings(
+                effective_config=config,
+                meeting_orchestrator=None,
+                meeting_scheduler=None,
+                agent_registry=MagicMock(spec=AgentRegistryService),
+                provider_registry=None,
+            )
+
+        deferred = [
+            e for e in captured if e.get("event") == API_MEETINGS_WIRING_DEFERRED
+        ]
+        assert len(deferred) == 1
+        assert deferred[0]["log_level"] == "info"
+        assert deferred[0]["missing_dependencies"] == ("provider_registry",)
+        assert deferred[0]["schedulers_deferred"] is True
+        # No WARNING carrying missing_dependencies survives the consolidation.
+        warns = [
+            e
+            for e in captured
+            if e.get("log_level") == "warning" and "missing_dependencies" in e
+        ]
+        assert warns == []
+
+    def test_post_setup_missing_dependency_is_warning(self) -> None:
+        """A missing dep while provider_registry is present is a WARNING.
+
+        Post-setup the provider registry is wired; a still-missing
+        dependency is unexpected and surfaces at WARNING, not INFO.
+        """
+        from synthorg.api.auto_wire_meetings import auto_wire_meetings
+        from synthorg.observability.events.api import API_MEETINGS_WIRING_DEFERRED
+
+        config = _default_config()
+        with structlog.testing.capture_logs() as captured:
+            auto_wire_meetings(
+                effective_config=config,
+                meeting_orchestrator=None,
+                meeting_scheduler=None,
+                agent_registry=None,
+                provider_registry=MagicMock(spec=ProviderRegistry),
+            )
+
+        deferred = [
+            e for e in captured if e.get("event") == API_MEETINGS_WIRING_DEFERRED
+        ]
+        assert len(deferred) == 1
+        assert deferred[0]["log_level"] == "warning"
+        assert deferred[0]["missing_dependencies"] == ("agent_registry",)
+
+    def test_both_registries_missing_is_warning(self) -> None:
+        """Both registries missing is a fault, not the pre-setup case.
+
+        Only a lone missing ``provider_registry`` is the expected
+        empty-company / pre-setup state. When ``agent_registry`` is also
+        missing, the deferred event must escalate to WARNING so a real
+        ``agent_registry`` wiring fault is not suppressed as INFO.
+        """
+        from synthorg.api.auto_wire_meetings import auto_wire_meetings
+        from synthorg.observability.events.api import API_MEETINGS_WIRING_DEFERRED
+
+        config = _default_config()
+        with structlog.testing.capture_logs() as captured:
+            auto_wire_meetings(
+                effective_config=config,
+                meeting_orchestrator=None,
+                meeting_scheduler=None,
+                agent_registry=None,
+                provider_registry=None,
+            )
+
+        deferred = [
+            e for e in captured if e.get("event") == API_MEETINGS_WIRING_DEFERRED
+        ]
+        assert len(deferred) == 1
+        assert deferred[0]["log_level"] == "warning"
+        assert deferred[0]["missing_dependencies"] == (
+            "agent_registry",
+            "provider_registry",
+        )
+
     def test_logs_auto_wire_events(self) -> None:
         from synthorg.api.auto_wire_meetings import auto_wire_meetings
 

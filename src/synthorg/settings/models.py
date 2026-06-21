@@ -6,10 +6,7 @@ import re
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.registry import (
-    StrategyFactoryNotFoundError,
-    StrategyRegistry,
-)
+from synthorg.core.registry import StrategyRegistry
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import safe_error_description
 from synthorg.settings.enums import (
@@ -209,23 +206,27 @@ def _validate_default_type(
 ) -> None:
     """Check that *default* is parseable as *setting_type*.
 
-    Parse checks dispatch through ``_DEFAULT_TYPE_CHECK_REGISTRY``
-    (ADR-0002). STRING has no parse check; ENUM is a membership check
-    that needs ``defn.enum_values``, so both fall through the
-    registry-miss branch rather than being registered.
+    STRING needs no parse check; ENUM is a membership check against
+    ``defn.enum_values``. Both are resolved inline so they never reach
+    ``_DEFAULT_TYPE_CHECK_REGISTRY.get`` (a registry miss logs
+    ``REGISTRY_FACTORY_NOT_FOUND`` at ERROR before raising, which at
+    boot fired once per STRING/ENUM-with-default definition). Scalar
+    parse checks for INTEGER/FLOAT/BOOLEAN/JSON dispatch through the
+    registry, which always hits.
 
     Raises:
         ValueError: If ``default`` is not a member of ``enum_values``
             for an ENUM type, or is not parseable as the declared
             scalar type.
     """
-    try:
-        check = _DEFAULT_TYPE_CHECK_REGISTRY.get(setting_type)
-    except StrategyFactoryNotFoundError:
-        if setting_type == SettingType.ENUM and default not in defn.enum_values:
-            msg = f"default {default!r} not in enum_values"
-            raise ValueError(msg) from None
+    if setting_type == SettingType.STRING:
         return
+    if setting_type == SettingType.ENUM:
+        if default not in defn.enum_values:
+            msg = f"default {default!r} not in enum_values"
+            raise ValueError(msg)
+        return
+    check = _DEFAULT_TYPE_CHECK_REGISTRY.get(setting_type)
     check(default)
 
 

@@ -25,6 +25,7 @@ from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
+    API_MEETINGS_WIRING_DEFERRED,
     API_SERVICE_AUTO_WIRED,
 )
 from synthorg.persistence.protocol import PersistenceBackend
@@ -123,18 +124,29 @@ def auto_wire_meetings(  # noqa: PLR0913 -- meeting wiring needs the full dep se
         and meeting_scheduler is None
     )
 
-    if skip_scheduler_wiring:
-        logger.warning(
-            API_APP_STARTUP,
-            note=(
-                "Skipping MeetingScheduler and CeremonyScheduler wiring "
-                "because meeting agent caller is unconfigured -- "
-                "scheduled meetings would invoke a caller guaranteed "
-                "to raise MeetingAgentCallerNotConfiguredError. Provide "
-                "the missing dependencies to wire the full meeting stack"
-            ),
+    if orchestrator_was_auto_wired and missing_dependencies:
+        # A single consolidated record covers an auto-wired orchestrator
+        # left with an unconfigured caller, spanning both this site and the
+        # ``_wire_meeting_orchestrator`` build below. A missing
+        # ``provider_registry`` ALONE is the expected empty-company /
+        # pre-setup state (this runs at construction time, before the
+        # provider registry is wired), so it logs at INFO; any other shape
+        # -- including a missing ``agent_registry`` or both missing -- is an
+        # unexpected wiring fault and logs at WARNING.
+        expected_pre_setup = missing_dependencies == ("provider_registry",)
+        log = logger.info if expected_pre_setup else logger.warning
+        log(
+            API_MEETINGS_WIRING_DEFERRED,
             missing_dependencies=missing_dependencies,
+            schedulers_deferred=skip_scheduler_wiring,
+            note=(
+                "Meeting stack wired with an unconfigured agent caller; "
+                "agent invocation and scheduled meetings stay deferred "
+                "until the missing dependencies are provided"
+            ),
         )
+
+    if skip_scheduler_wiring:
         return MeetingWireResult(
             meeting_orchestrator=meeting_orchestrator,
             meeting_scheduler=None,
@@ -278,15 +290,10 @@ def _wire_meeting_orchestrator(
             provider_registry=provider_registry,
         )
         if missing:
-            logger.warning(
-                API_APP_STARTUP,
-                note=(
-                    "MeetingOrchestrator wired with an unconfigured agent "
-                    "caller; agent invocation will fail at call time until "
-                    "the missing dependencies are provided"
-                ),
-                missing_dependencies=missing,
-            )
+            # Build the unconfigured caller without logging here: the single
+            # ``API_MEETINGS_WIRING_DEFERRED`` record in ``auto_wire_meetings``
+            # owns operator messaging for this state, so a warning here would
+            # duplicate it.
             agent_caller: AgentCaller = build_unconfigured_meeting_agent_caller(
                 missing_dependencies=missing,
             )

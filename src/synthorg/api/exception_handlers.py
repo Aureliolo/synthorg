@@ -25,6 +25,7 @@ frame-locals out of the sink.
 """
 
 import math
+from collections.abc import Mapping
 from http import HTTPStatus
 from types import MappingProxyType
 from typing import Final
@@ -95,9 +96,21 @@ _PROBLEM_JSON: Final[str] = "application/problem+json"
 _MAX_DETAIL_LEN: Final[int] = 512
 
 # Headers safe to forward from HTTPException to the client response.
+# ``retry-after`` is intentionally absent: the handler owns it canonically
+# (parsed into ``retry_after`` and re-emitted as a single ``Retry-After``),
+# so passing the raw upstream header through as well would duplicate it on
+# the wire whenever the upstream used a different header casing.
 _ALLOWED_PASSTHROUGH_HEADERS: Final[frozenset[str]] = frozenset(
-    {"retry-after", "www-authenticate", "allow"},
+    {"www-authenticate", "allow"},
 )
+
+# Litestar's RateLimitMiddleware emits the IETF draft ``RateLimit-Reset``
+# header (integer seconds until the window resets) on its 429s but no
+# ``Retry-After``; the HTTP handler synthesises one from it so clients
+# back off instead of hot-looping with a 0 ms retry.
+_TOO_MANY_REQUESTS_STATUS: Final[int] = 429
+_RATE_LIMIT_RESET_HEADER: Final[str] = "ratelimit-reset"
+_MIN_RETRY_AFTER_SECONDS: Final[int] = 1
 
 
 def _get_instance_id() -> str:
@@ -962,6 +975,27 @@ def handle_not_found(
     )
 
 
+def _retry_after_from_reset(headers: Mapping[str, str]) -> int | None:
+    """Derive a ``Retry-After`` (seconds) from a ``RateLimit-Reset`` header.
+
+    Litestar's rate-limit middleware sets ``RateLimit-Reset`` to the
+    integer seconds remaining in the current window. Returns that value
+    floored at ``_MIN_RETRY_AFTER_SECONDS`` so a sub-second / zero reset
+    still tells the client to wait at least one second; ``None`` when the
+    header is absent or unparseable.
+
+    Returns:
+        The derived ``Retry-After`` seconds, or ``None``.
+    """
+    for key, value in headers.items():
+        if key.lower() == _RATE_LIMIT_RESET_HEADER:
+            try:
+                return max(_MIN_RETRY_AFTER_SECONDS, int(value))
+            except TypeError, ValueError:
+                return None
+    return None
+
+
 def handle_http_exception(
     request: Request[object, object, State],
     exc: HTTPException,
@@ -1009,6 +1043,19 @@ def handle_http_exception(
                 raw_retry_after=raw_retry,
                 path=str(request.url.path),
             )
+    if retry_after is None and status == _TOO_MANY_REQUESTS_STATUS:
+        # Litestar's global rate-limit 429 carries only the IETF
+        # ``RateLimit-Reset`` draft header (seconds-to-reset), never
+        # ``Retry-After``; derive one so clients back off rather than
+        # retry with a 0 ms delay.
+        retry_after = _retry_after_from_reset(raw_headers)
+    response_headers = {
+        k: v
+        for k, v in raw_headers.items()
+        if k.lower() in _ALLOWED_PASSTHROUGH_HEADERS
+    }
+    if retry_after is not None:
+        response_headers["Retry-After"] = str(retry_after)
     return _build_response(
         request,
         detail=msg,
@@ -1017,12 +1064,7 @@ def handle_http_exception(
         retryable=retryable,
         retry_after=retry_after,
         status_code=status,
-        headers={
-            k: v
-            for k, v in raw_headers.items()
-            if k.lower() in _ALLOWED_PASSTHROUGH_HEADERS
-        }
-        or None,
+        headers=response_headers or None,
     )
 
 

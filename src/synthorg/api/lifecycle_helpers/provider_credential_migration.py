@@ -16,6 +16,12 @@ and persists the migrated setting. It is idempotent: a config already on
 ``connection_name`` (or with no embedded key) is skipped, and a clean install
 with nothing to migrate writes nothing back.
 
+The persisted blob is a versioned ``ProvidersConfigEnvelope``
+(``{"schema_version": N, "providers": {...}}``). This hook unwraps the envelope
+to migrate the inner provider map and always writes the migrated result back in
+envelope form so the resolver accepts it; a pre-envelope bare dict is upgraded
+to the envelope on the same pass.
+
 The API key value is never logged: only the provider name and a migrated count
 are emitted, and the mint helper itself redacts.
 """
@@ -23,6 +29,7 @@ are emitted, and the mint helper itself redacts.
 import json
 
 from synthorg.api.state import AppState
+from synthorg.config.provider_schema import PROVIDERS_CONFIG_SCHEMA_VERSION
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
@@ -35,6 +42,21 @@ logger = get_logger(__name__)
 
 _NAMESPACE = "providers"
 _KEY = "configs"
+
+
+def _wrap_envelope(configs: dict[str, object]) -> str:
+    """Wrap a raw provider map in the versioned envelope JSON.
+
+    Kept at the raw-dict level (not :func:`serialize_provider_envelope`,
+    which requires strict ``ProviderConfig`` models) so a partially
+    migrated map still serialises.
+
+    Returns:
+        The JSON-encoded envelope string.
+    """
+    return json.dumps(
+        {"schema_version": PROVIDERS_CONFIG_SCHEMA_VERSION, "providers": configs},
+    )
 
 
 async def migrate_embedded_provider_keys(app_state: AppState) -> None:
@@ -54,7 +76,7 @@ async def migrate_embedded_provider_keys(app_state: AppState) -> None:
     try:
         settings = settings_service_of(app_state)
         raw = (await settings.get(_NAMESPACE, _KEY)).value
-        configs = json.loads(raw) if raw else {}
+        loaded = json.loads(raw) if raw else None
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
@@ -66,6 +88,24 @@ async def migrate_embedded_provider_keys(app_state: AppState) -> None:
             error=safe_error_description(exc),
         )
         return
+    if loaded is None or not isinstance(loaded, dict):
+        return
+    # Unwrap the versioned envelope; tolerate a pre-envelope bare provider
+    # dict so an upgrade boot still finds embedded keys. A future/unknown
+    # ``schema_version`` is left untouched: unwrapping it and rewriting with
+    # the current version would silently downgrade a newer on-disk format.
+    was_envelope = "schema_version" in loaded and "providers" in loaded
+    if was_envelope:
+        if loaded.get("schema_version") != PROVIDERS_CONFIG_SCHEMA_VERSION:
+            logger.warning(
+                PROVIDER_CREDENTIAL_MIGRATION_FAILED,
+                phase="unsupported_schema_version",
+                schema_version=loaded.get("schema_version"),
+            )
+            return
+        configs = loaded["providers"]
+    else:
+        configs = loaded
     if not isinstance(configs, dict):
         return
 
@@ -82,12 +122,12 @@ async def migrate_embedded_provider_keys(app_state: AppState) -> None:
             failed=failed,
         )
         return
-    if not changed:
-        # Nothing minted AND nothing scrubbed: the stored configs are already
-        # clean, so there is no rewrite to persist.
+    # Write when something was migrated/scrubbed, or to upgrade a pre-envelope
+    # bare dict into envelope form (the resolver only accepts the envelope).
+    if not changed and was_envelope:
         return
     try:
-        await settings.set(_NAMESPACE, _KEY, json.dumps(configs))
+        await settings.set(_NAMESPACE, _KEY, _wrap_envelope(configs))
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(

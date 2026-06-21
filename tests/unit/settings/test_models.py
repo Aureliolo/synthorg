@@ -1,8 +1,13 @@
 """Unit tests for settings domain models."""
 
-import pytest
-from pydantic import ValidationError
+from collections.abc import Sequence
 
+import pytest
+import structlog.testing
+from pydantic import ValidationError
+from structlog.typing import EventDict
+
+from synthorg.observability.events.registry import REGISTRY_FACTORY_NOT_FOUND
 from synthorg.settings.enums import (
     SettingLevel,
     SettingNamespace,
@@ -12,6 +17,75 @@ from synthorg.settings.enums import (
 from synthorg.settings.models import SettingDefinition, SettingEntry, SettingValue
 
 pytestmark = pytest.mark.unit
+
+
+class TestDefaultTypeValidationIsQuiet:
+    """STRING/ENUM default checks must not emit registry ERROR noise.
+
+    ``_validate_default_type`` historically dispatched every type
+    (including STRING/ENUM) through ``_DEFAULT_TYPE_CHECK_REGISTRY.get``;
+    a miss logged ``registry.factory.not_found`` at ERROR before raising,
+    producing one spurious ERROR per STRING/ENUM-with-default definition
+    at every boot. STRING/ENUM are now branched before the lookup.
+    """
+
+    def test_string_default_emits_no_registry_error(self) -> None:
+        with structlog.testing.capture_logs() as logs:
+            SettingDefinition(
+                namespace=SettingNamespace.OBSERVABILITY,
+                key="log_directory",
+                type=SettingType.STRING,
+                default="/var/log/synthorg",
+                description="Log output directory",
+                group="Logging",
+            )
+        assert not _registry_misses(logs)
+
+    def test_enum_default_emits_no_registry_error(self) -> None:
+        with structlog.testing.capture_logs() as logs:
+            SettingDefinition(
+                namespace=SettingNamespace.OBSERVABILITY,
+                key="root_log_level",
+                type=SettingType.ENUM,
+                default="info",
+                description="Root logger level",
+                group="Logging",
+                enum_values=("debug", "info", "warning", "error"),
+            )
+        assert not _registry_misses(logs)
+
+    def test_enum_non_member_default_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="enum_values"):
+            SettingDefinition(
+                namespace=SettingNamespace.OBSERVABILITY,
+                key="root_log_level",
+                type=SettingType.ENUM,
+                default="trace",
+                description="Root logger level",
+                group="Logging",
+                enum_values=("debug", "info", "warning", "error"),
+            )
+
+    def test_integer_default_still_validated(self) -> None:
+        with pytest.raises(ValidationError):
+            SettingDefinition(
+                namespace=SettingNamespace.BUDGET,
+                key="total_monthly",
+                type=SettingType.INTEGER,
+                default="not-an-int",
+                description="Monthly budget",
+                group="Limits",
+            )
+
+
+def _registry_misses(logs: Sequence[EventDict]) -> list[EventDict]:
+    """Return captured ``registry.factory.not_found`` ERROR records."""
+    return [
+        record
+        for record in logs
+        if record.get("event") == REGISTRY_FACTORY_NOT_FOUND
+        and record.get("log_level") == "error"
+    ]
 
 
 class TestSettingDefinition:

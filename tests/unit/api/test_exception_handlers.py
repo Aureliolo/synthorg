@@ -900,6 +900,96 @@ class TestExceptionHandlers:
         assert len(parse_warnings) == 1
         assert parse_warnings[0]["raw_retry_after"] == "soon"
 
+    def test_http_429_retry_after_synthesised_from_ratelimit_reset(self) -> None:
+        """Global rate-limit 429s carry only ``RateLimit-Reset``.
+
+        Litestar's ``RateLimitMiddleware`` emits the IETF draft
+        ``RateLimit-Reset`` header (seconds-to-reset) but no
+        ``Retry-After``. The handler synthesises ``Retry-After`` (header
+        and body) so clients back off instead of hot-looping.
+        """
+        exc = MagicMock(spec=HTTPException)
+        exc.status_code = 429
+        exc.detail = "Too Many Requests"
+        exc.headers = {"RateLimit-Reset": "37", "RateLimit-Limit": "20"}
+
+        request = MagicMock(spec=Request)
+        request.method = "GET"
+        request.url.path = "/test"
+        request.accept.best_match.return_value = "application/json"
+
+        resp = handle_http_exception(request, exc)
+        assert resp.status_code == 429
+        assert resp.headers.get("Retry-After") == "37"
+        assert resp.content.error_detail is not None  # type: ignore[union-attr]
+        assert resp.content.error_detail.retry_after == 37  # type: ignore[union-attr]
+
+    def test_http_429_zero_reset_floors_retry_after_to_one(self) -> None:
+        """A sub-second / zero reset still tells the client to wait >= 1s."""
+        exc = MagicMock(spec=HTTPException)
+        exc.status_code = 429
+        exc.detail = "Too Many Requests"
+        exc.headers = {"RateLimit-Reset": "0"}
+
+        request = MagicMock(spec=Request)
+        request.method = "GET"
+        request.url.path = "/test"
+        request.accept.best_match.return_value = "application/json"
+
+        resp = handle_http_exception(request, exc)
+        assert resp.status_code == 429
+        assert resp.headers.get("Retry-After") == "1"
+        assert resp.content.error_detail.retry_after == 1  # type: ignore[union-attr]
+
+    def test_http_429_unparseable_reset_yields_no_retry_after(self) -> None:
+        """A non-integer ``RateLimit-Reset`` synthesises no ``Retry-After``."""
+        exc = MagicMock(spec=HTTPException)
+        exc.status_code = 429
+        exc.detail = "Too Many Requests"
+        exc.headers = {"RateLimit-Reset": "soon"}
+
+        request = MagicMock(spec=Request)
+        request.method = "GET"
+        request.url.path = "/test"
+        request.accept.best_match.return_value = "application/json"
+
+        resp = handle_http_exception(request, exc)
+        assert resp.status_code == 429
+        assert resp.headers.get("Retry-After") is None
+        assert resp.content.error_detail.retry_after is None  # type: ignore[union-attr]
+
+    def test_http_429_explicit_retry_after_takes_precedence(self) -> None:
+        """An explicit upstream ``Retry-After`` wins over the reset header."""
+        exc = MagicMock(spec=HTTPException)
+        exc.status_code = 429
+        exc.detail = "Too Many Requests"
+        exc.headers = {"Retry-After": "60", "RateLimit-Reset": "5"}
+
+        request = MagicMock(spec=Request)
+        request.method = "GET"
+        request.url.path = "/test"
+        request.accept.best_match.return_value = "application/json"
+
+        resp = handle_http_exception(request, exc)
+        assert resp.headers.get("Retry-After") == "60"
+        assert resp.content.error_detail.retry_after == 60  # type: ignore[union-attr]
+
+    def test_non_429_does_not_synthesise_retry_after(self) -> None:
+        """A non-429 status with a stray reset header gets no Retry-After."""
+        exc = MagicMock(spec=HTTPException)
+        exc.status_code = 503
+        exc.detail = "Service Unavailable"
+        exc.headers = {"RateLimit-Reset": "30"}
+
+        request = MagicMock(spec=Request)
+        request.method = "GET"
+        request.url.path = "/test"
+        request.accept.best_match.return_value = "application/json"
+
+        resp = handle_http_exception(request, exc)
+        assert resp.headers.get("Retry-After") is None
+        assert resp.content.error_detail.retry_after is None  # type: ignore[union-attr]
+
     def test_http_exception_non_string_detail_is_coerced(self) -> None:
         """``exc.detail`` set to bytes (or any non-string) is coerced to str.
 

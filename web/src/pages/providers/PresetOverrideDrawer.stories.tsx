@@ -19,6 +19,7 @@ const cloudPreset: CloudPresetType = {
   requires_base_url: false,
   default_models: [],
   is_featured: false,
+  prefer_live_discovery: false,
 }
 
 const localPreset: LocalPresetType = {
