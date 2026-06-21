@@ -67,6 +67,11 @@ PROVIDER_CONNECTION_TESTED: Final[str] = "provider.management.connection_tested"
 PROVIDER_NOT_FOUND: Final[str] = "provider.management.not_found"
 PROVIDER_ALREADY_EXISTS: Final[str] = "provider.management.already_exists"
 PROVIDER_VALIDATION_FAILED: Final[str] = "provider.management.validation_failed"
+PROVIDER_CONFIG_SERIALIZE_FAILED: Final[str] = (
+    "provider.management.config_serialize_failed"
+)
+PROVIDER_CONFIG_PERSIST_FAILED: Final[str] = "provider.management.config_persist_failed"
+PROVIDER_HOT_RELOAD_FAILED: Final[str] = "provider.management.hot_reload_failed"
 PROVIDER_AUDIT_WRITE_FAILED: Final[str] = "provider.audit.write_failed"
 PROVIDER_MODEL_ADDED: Final[str] = "provider.management.model_added"
 PROVIDER_MODELS_SYNCED: Final[str] = "provider.management.models_synced"

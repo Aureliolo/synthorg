@@ -171,19 +171,20 @@ class TestProviderPresets:
         assert preset is not None
         assert preset.requires_base_url is True
 
-    def test_ollama_cloud_prefills_canonical_base_url(self) -> None:
-        """Ollama Cloud prefills the canonical hosted endpoint.
+    def test_ollama_cloud_prefills_openai_compatible_base_url(self) -> None:
+        """Ollama Cloud prefills its OpenAI-compatible ``/v1`` endpoint.
 
-        ``ollama.com`` is the canonical host LiteLLM's ``ollama``
-        provider targets when a base URL is supplied; the field is
-        optional so users with a private deployment can override but
-        the form is submit-ready after entering an API key alone.
+        Ollama Cloud is reached through ``https://ollama.com/v1`` with a
+        Bearer API key (the documented, auth-working cloud path); the
+        field is optional so a private deployment can override, but the
+        form is submit-ready after entering an API key alone.
         """
         preset = get_preset("ollama-cloud")
         assert preset is not None
         assert isinstance(preset, CloudPreset)
         assert preset.requires_base_url is False
-        assert preset.default_base_url == "https://ollama.com"
+        assert preset.default_base_url == "https://ollama.com/v1"
+        assert preset.prefer_live_discovery is True
 
     @pytest.mark.parametrize("name", ["ollama", "lm-studio", "vllm"])
     def test_local_preset_requires_base_url(self, name: str) -> None:
@@ -323,12 +324,17 @@ class TestProviderPresets:
         assert "lm-studio" in names
         assert len(probable) == 2
 
-    def test_ollama_cloud_routes_via_litellm_ollama(self) -> None:
-        """Ollama Cloud reuses LiteLLM's ollama routing string."""
+    def test_ollama_cloud_routes_via_openai_compatible(self) -> None:
+        """Ollama Cloud routes through LiteLLM's OpenAI-compatible path.
+
+        The native ``ollama`` driver is local-first and does not reliably
+        forward a Bearer API key, so the cloud preset uses ``openai``
+        routing against ``https://ollama.com/v1`` instead.
+        """
         preset = get_preset("ollama-cloud")
         assert preset is not None
         assert isinstance(preset, CloudPreset)
-        assert preset.litellm_provider == "ollama"
+        assert preset.litellm_provider == "openai"
 
     def test_cloud_preset_deserialises_via_kind_discriminator(self) -> None:
         """JSON with ``kind='cloud'`` round-trips into a ``CloudPreset``.

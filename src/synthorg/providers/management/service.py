@@ -18,7 +18,6 @@ core.
 """
 
 import asyncio
-import json
 from collections.abc import AsyncIterator, Mapping
 
 from pydantic import JsonValue
@@ -86,8 +85,8 @@ from synthorg.providers.management._helpers import (
     build_provider_config,
     infer_preset_hint,
     models_from_litellm,
-    serialize_providers,
 )
+from synthorg.providers.management._persistence import apply_provider_change
 from synthorg.providers.management.allowlist import DiscoveryAllowlistManager
 from synthorg.providers.management.audit_service import ProviderAuditService
 from synthorg.providers.management.dtos import (
@@ -108,7 +107,6 @@ from synthorg.providers.presets import (
     default_models_for,
     get_preset,
 )
-from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.routing.router import ModelRouter
 from synthorg.providers.routing.selector import ModelCandidateSelector
 from synthorg.providers.url_utils import is_self_url, redact_url
@@ -728,11 +726,15 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             )
             raise ProviderValidationError(msg)
 
+        prefer_live = getattr(preset, "prefer_live_discovery", False)
         if request.models is not None:
             models = request.models
-        elif preset.auth_type == AuthType.NONE:
-            # Local providers: skip static LiteLLM DB, rely on live
-            # discovery in _maybe_discover_preset_models below.
+        elif preset.auth_type == AuthType.NONE or prefer_live:
+            # Local providers AND live-discovery gateways skip the static
+            # LiteLLM model_cost table (which would surface the wrong
+            # catalogue for an OpenAI-compatible gateway), seeding from the
+            # curated list and relying on live discovery in
+            # _maybe_discover_preset_models below.
             models = default_models_for(preset)
         else:
             litellm_models = models_from_litellm(preset.litellm_provider)
@@ -755,6 +757,11 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             base_url,
             models,
             auth_type=auth_type,
+            api_key=(
+                request.api_key.get_secret_value()
+                if request.api_key is not None
+                else None
+            ),
         )
         create_request = CreateProviderRequest(
             name=request.name,
@@ -777,27 +784,47 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         models: tuple[ProviderModelConfig, ...],
         *,
         auth_type: AuthType,
+        api_key: str | None = None,
     ) -> tuple[ProviderModelConfig, ...]:
-        """Auto-discover models for no-auth presets when none given.
+        """Auto-discover models for no-auth or live-discovery presets.
+
+        Two discovery modes:
+
+        - **No-auth local** (``auth_type == NONE``): discover only when no
+          seed models were supplied, with no auth headers.
+        - **Live-discovery gateway** (``preset.prefer_live_discovery`` and
+          an API-key ``api_key``): discover even when a curated seed
+          exists, sending the key as a Bearer credential, so the full live
+          catalogue replaces the seed on create.
 
         Args:
             preset: Resolved preset definition.
             base_url: Provider base URL (may be user-overridden).
-            models: Explicitly provided models (may be empty).
+            models: Seed models (may be empty).
             auth_type: Effective auth type.
+            api_key: Plaintext API key for authenticated discovery.
 
         Returns:
-            Discovered models if any, otherwise the original models.
+            Discovered models if any, otherwise the seed models.
         """
-        if models or auth_type != AuthType.NONE or not base_url:
+        prefer_live = getattr(preset, "prefer_live_discovery", False)
+        headers: dict[str, str] | None
+        if auth_type == AuthType.NONE:
+            if models:
+                return models
+            headers = None
+        elif prefer_live and auth_type == AuthType.API_KEY and api_key:
+            headers = {"Authorization": f"Bearer {api_key}"}
+        else:
             return models
-        if self._is_self_connection(base_url):
+        if not base_url or self._is_self_connection(base_url):
             return models
         policy = await self._allowlist.load()
         trust = is_url_allowed(base_url, policy)
         discovered = await discover_models(
             base_url,
             preset.name,
+            headers=headers,
             trust_url=trust,
         )
         return discovered or models
@@ -1030,63 +1057,27 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         self,
         new_providers: dict[str, ProviderConfig],
     ) -> None:
-        """Validate, persist, and hot-reload providers.
+        """Validate, persist, and atomically hot-reload providers.
+
+        Thin delegator to :func:`apply_provider_change` (in
+        ``_persistence``), which owns the staged failure types and the
+        rollback-on-swap-failure contract.
 
         Args:
             new_providers: Complete new provider dict.
 
         Raises:
-            ProviderValidationError: If build or persist fails.
+            ProviderValidationError: If the registry/router build fails.
+            ProviderSerializationError: If envelope serialisation fails.
+            ProviderPersistenceError: If the DB write or hot-reload fails.
         """
-        # 1. Validate: build registry + router before any I/O
-        try:
-            registry = ProviderRegistry.from_config(new_providers)
-            router = self._build_router(new_providers)
-        except Exception as exc:
-            reraise_critical(exc)
-            msg = f"Provider configuration validation failed: {type(exc).__name__}"
-            logger.warning(
-                PROVIDER_VALIDATION_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                provider_count=len(new_providers),
-            )
-            raise ProviderValidationError(msg) from exc
-
-        # 2. Persist to settings
-        try:
-            serialized = serialize_providers(new_providers)
-            await self._settings_service.set(
-                "providers",
-                "configs",
-                json.dumps(serialized),
-            )
-        except Exception as exc:
-            reraise_critical(exc)
-            msg = f"Failed to persist provider configuration: {type(exc).__name__}"
-            # ``error=str(exc)`` would leak credential material via
-            # exception text, so we redact via
-            # ``safe_error_description``. ``exc_info=True`` would
-            # re-introduce the leak path -- tracebacks attach the
-            # exception args (which can include credentials when the
-            # raise originated in a credential-bearing call) -- so we
-            # deliberately omit it. The redacted error text plus
-            # ``error_type`` is enough to triage; the full trace lives
-            # only in the in-process exception object that
-            # ``ProviderValidationError`` wraps via ``from exc``.
-            logger.warning(
-                PROVIDER_VALIDATION_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                provider_count=len(new_providers),
-            )
-            raise ProviderValidationError(msg) from exc
-
-        # 3. Hot-reload: swap in AppState (both sync, no await gap)
-        from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
-
-        self._app_state.swap_provider_registry(registry)
-        self._app_state.wire(ProvidersStateSlice, model_router=router)
+        await apply_provider_change(
+            app_state=self._app_state,
+            settings_service=self._settings_service,
+            config_resolver=self._config_resolver,
+            new_providers=new_providers,
+            build_router=self._build_router,
+        )
 
     # ── Local model management ───────────────────────────────
 

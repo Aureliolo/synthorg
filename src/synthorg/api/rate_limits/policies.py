@@ -208,6 +208,7 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "providers.delete_model": (20, 60),
     "providers.delete_preset_override": (10, 60),
     "providers.discover_models": (5, 60),
+    "providers.list_models": (60, 60),
     "providers.model_refresh_decide": (20, 60),
     "providers.model_refresh_trigger": (2, 300),
     "providers.probe_local": (20, 60),

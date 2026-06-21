@@ -7507,19 +7507,6 @@ export type components = {
              */
             readonly success: boolean;
         };
-        /** ApiResponse[tuple[Annotated[Union[CloudPreset, LocalPreset], FieldInfo(annotation=NoneType, required=True, discriminator='kind')], ...]] */
-        readonly "ApiResponse_tuple_Annotated_Union_CloudPreset_LocalPreset_FieldInfo_annotation_NoneType_required_True_discriminator_kind_..._": {
-            readonly data: readonly (components["schemas"]["CloudPreset"] | components["schemas"]["LocalPreset"])[] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
-            readonly success: boolean;
-        };
         /** ApiResponse[tuple[BlueprintInfoResponse, ...]] */
         readonly "ApiResponse_tuple_BlueprintInfoResponse_..._": {
             readonly data: readonly components["schemas"]["BlueprintInfoResponse"][] | null;
@@ -9076,6 +9063,8 @@ export type components = {
             readonly kind: "cloud";
             readonly litellm_provider: string;
             readonly name: string;
+            /** @default false */
+            readonly prefer_live_discovery: boolean;
             /** @default false */
             readonly requires_base_url: boolean;
             /**
@@ -12600,6 +12589,26 @@ export type components = {
         readonly PaginatedResponse_AggregatedPattern_: {
             /** @default [] */
             readonly data: readonly components["schemas"]["AggregatedPattern"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** PaginatedResponse[Annotated[Union[CloudPreset, LocalPreset], FieldInfo(annotation=NoneType, required=True, discriminator='kind')]] */
+        readonly PaginatedResponse_Annotated_Union_CloudPreset_LocalPreset_FieldInfo_annotation_NoneType_required_True_discriminator_kind_: {
+            /** @default [] */
+            readonly data: readonly (components["schemas"]["CloudPreset"] | components["schemas"]["LocalPreset"])[];
             /**
              * @description Data sources that failed gracefully (partial data)
              * @default []
@@ -26746,7 +26755,12 @@ export interface operations {
     };
     readonly ApiV1ProvidersPresetsGetPresets: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
+            };
             readonly header?: never;
             readonly path?: never;
             readonly cookie?: never;
@@ -26759,9 +26773,10 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_tuple_Annotated_Union_CloudPreset_LocalPreset_FieldInfo_annotation_NoneType_required_True_discriminator_kind_..._"];
+                    readonly "application/json": components["schemas"]["PaginatedResponse_Annotated_Union_CloudPreset_LocalPreset_FieldInfo_annotation_NoneType_required_True_discriminator_kind_"];
                 };
             };
+            readonly 400: components["responses"]["BadRequest"];
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 429: components["responses"]["TooManyRequests"];

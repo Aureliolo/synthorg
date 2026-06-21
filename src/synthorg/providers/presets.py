@@ -103,6 +103,7 @@ _ANTHROPIC = CloudPreset(
             metadata=ModelMetadata(
                 supports_tools=True,
                 supports_vision=True,
+                supports_reasoning=True,
                 max_output_tokens=32_000,
                 family="claude-haiku",
                 generation=4.5,
@@ -221,6 +222,9 @@ _MISTRAL = CloudPreset(
     litellm_provider="mistral",
     auth_type=AuthType.API_KEY,
     supported_auth_types=(AuthType.API_KEY,),
+    # Generations are per-family and intentionally differ: Mistral Large 2
+    # (``-2411``) is generation 2, Mistral Small 3 (``-2503``) is
+    # generation 3, matching Mistral's own model naming.
     default_models=(
         ProviderModelConfig(
             id="mistral-large-2411",
@@ -302,6 +306,10 @@ _NVIDIA_NIM = CloudPreset(
     litellm_provider="nvidia_nim",
     auth_type=AuthType.API_KEY,
     supported_auth_types=(AuthType.API_KEY,),
+    # No curated seed: the NIM catalogue spans many third-party families
+    # (Llama, Qwen, Mistral, ...) that churn frequently, so create seeds
+    # from ``litellm.model_cost`` and the operator refreshes via the
+    # explicit /discover-models endpoint rather than a hand-maintained list.
     default_models=(),
 )
 
@@ -439,18 +447,26 @@ _COHERE = CloudPreset(
 _OLLAMA_CLOUD = CloudPreset(
     name="ollama-cloud",
     display_name="Ollama Cloud",
-    description="Hosted Ollama models (managed inference) at ollama.com.",
+    description="Hosted Ollama models (managed inference) at ollama.com",
     driver="litellm",
-    litellm_provider="ollama",
+    # Ollama Cloud is reached through its OpenAI-compatible endpoint
+    # (https://ollama.com/v1) with a Bearer API key -- the documented,
+    # auth-working cloud path. The native ``ollama`` LiteLLM driver is
+    # local-first and does not reliably forward the API key, so it is NOT
+    # used here. ``prefer_live_discovery`` makes create seed from the
+    # curated list below and then pull the full live catalogue from
+    # ``/v1/models`` rather than the static ``litellm.model_cost`` table
+    # (which under ``litellm_provider="openai"`` would surface OpenAI's
+    # catalogue, not Ollama's).
+    litellm_provider="openai",
     auth_type=AuthType.API_KEY,
     supported_auth_types=(AuthType.API_KEY,),
-    # ollama.com is the canonical hosted Ollama endpoint that LiteLLM's
-    # ``ollama`` provider targets when a base URL is supplied. Users
-    # with a private deployment may override the field; the default
-    # matches the public service so the form is submit-ready after
-    # entering an API key alone.
-    default_base_url="https://ollama.com",
+    default_base_url="https://ollama.com/v1",
     requires_base_url=False,
+    prefer_live_discovery=True,
+    # Cost stays 0.0: Ollama Cloud bills via a flat subscription, not
+    # per-token, so there is no per-1k price to attribute. Live discovery
+    # refreshes the catalogue; this curated list is the create-time seed.
     default_models=(
         ProviderModelConfig(
             id="gpt-oss:120b",
@@ -568,7 +584,7 @@ _OPENROUTER = CloudPreset(
     default_base_url="https://openrouter.ai/api/v1",
     default_models=(
         ProviderModelConfig(
-            id="anthropic/claude-sonnet-4.5",
+            id="anthropic/claude-sonnet-4.6",
             alias="or-sonnet",
             cost_per_1k_input=0.003,
             cost_per_1k_output=0.015,
@@ -579,7 +595,7 @@ _OPENROUTER = CloudPreset(
                 supports_reasoning=True,
                 max_output_tokens=64_000,
                 family="claude-sonnet",
-                generation=4.5,
+                generation=4.6,
                 metadata_source="preset",
             ),
         ),
@@ -849,7 +865,10 @@ def default_models_for(
 
 MODEL_VERSION_FILTERS: Final[MappingProxyType[str, re.Pattern[str]]] = MappingProxyType(
     {
-        "anthropic": re.compile(r"^claude-(opus|sonnet|haiku)-4-[56789]"),
+        # ``4-(?:[5-9]|\d{2,})`` keeps the >=4.5 floor while matching
+        # multi-digit minors (4-10, 4-11, ...); the old ``4-[56789]``
+        # character class silently dropped every model from 4.10 onward.
+        "anthropic": re.compile(r"^claude-(opus|sonnet|haiku)-4-(?:[5-9]|\d{2,})"),
         "openai": re.compile(r"^(gpt-[45]|o[34])"),
         "xai": re.compile(r"^grok-[34]"),
     }

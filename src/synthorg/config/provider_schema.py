@@ -5,7 +5,7 @@ module under the project size limit.
 """
 
 from collections import Counter
-from typing import ClassVar, Self
+from typing import ClassVar, Final, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
@@ -14,8 +14,9 @@ from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.model_staleness import ModelStaleness
 from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
+from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
 from synthorg.providers.defaults_config import ProviderModelDefaults
 from synthorg.providers.enums import AuthType
 
@@ -290,3 +291,85 @@ class ProviderConfig(BaseModel):
             )
             raise ValueError(msg)
         return self
+
+
+PROVIDERS_CONFIG_SCHEMA_VERSION: Final[int] = 1
+
+
+class ProvidersConfigEnvelope(BaseModel):
+    """Versioned wrapper for the persisted ``providers.configs`` blob.
+
+    The ``providers.configs`` setting stores the full provider dict as a
+    JSON value. Wrapping it in a versioned envelope lets the reader reject
+    a blob written by an incompatible schema (or a corrupt write) and fall
+    back to code defaults rather than silently mis-parsing it. The
+    ``providers`` map is keyed by provider name; values are full
+    ``ProviderConfig`` models, so a round-trip is lossless.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    schema_version: int = Field(
+        description="Schema version of the persisted provider-config blob",
+    )
+    providers: dict[NotBlankStr, ProviderConfig] = Field(
+        default_factory=dict,
+        description="Provider configurations keyed by provider name",
+    )
+
+
+def unwrap_provider_configs_envelope[T](
+    raw: object,
+    fallback: dict[str, T],
+) -> dict[str, ProviderConfig] | dict[str, T]:
+    """Validate a persisted ``providers.configs`` value into a provider map.
+
+    Validates *raw* (the JSON-decoded setting value) as a
+    :class:`ProvidersConfigEnvelope` stamped with the current schema
+    version, returning its provider map. Falls back to *fallback* (with a
+    structured WARNING) on a wrong container type, an envelope-validation
+    failure, or an unknown ``schema_version`` rather than mis-parsing the
+    blob. *fallback* is generic so callers (and tests) may supply any
+    provider-config stand-in; it is returned verbatim.
+
+    Args:
+        raw: The JSON-decoded ``providers.configs`` value.
+        fallback: Provider map returned verbatim on any validation failure.
+
+    Returns:
+        The validated provider map, or *fallback* on any failure.
+    """
+    from pydantic import ValidationError  # noqa: PLC0415
+
+    if not isinstance(raw, dict):
+        logger.warning(
+            SETTINGS_FETCH_FAILED,
+            namespace="providers",
+            key="configs",
+            reason="expected_dict_fallback",
+            value_type=type(raw).__name__,
+        )
+        return fallback
+    try:
+        envelope = ProvidersConfigEnvelope.model_validate(raw)
+    except ValidationError as exc:
+        logger.warning(
+            SETTINGS_FETCH_FAILED,
+            namespace="providers",
+            key="configs",
+            reason="invalid_schema_fallback",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return fallback
+    if envelope.schema_version != PROVIDERS_CONFIG_SCHEMA_VERSION:
+        logger.warning(
+            SETTINGS_FETCH_FAILED,
+            namespace="providers",
+            key="configs",
+            reason="unknown_schema_version",
+            found_version=envelope.schema_version,
+            expected_version=PROVIDERS_CONFIG_SCHEMA_VERSION,
+        )
+        return fallback
+    return dict(envelope.providers)

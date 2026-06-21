@@ -69,7 +69,10 @@ class ProviderModelsController(Controller):
 
     @get(
         "/{name:str}/models",
-        guards=[require_read_access],
+        guards=[
+            require_read_access,
+            per_op_rate_limit_from_policy("providers.list_models", key="user"),
+        ],
     )
     async def list_models(
         self,

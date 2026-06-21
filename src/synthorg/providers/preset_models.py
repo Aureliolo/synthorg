@@ -68,6 +68,14 @@ class CloudPreset(_BasePreset):
         default_models: Pre-configured model definitions used as a
             fallback when the LiteLLM model_cost database returns no
             entries for ``litellm_provider``.
+        prefer_live_discovery: When ``True``, ``create_from_preset`` seeds
+            from ``default_models`` instead of the static
+            ``litellm.model_cost`` table (which would surface the wrong
+            catalogue for an OpenAI-compatible gateway) and runs an
+            authenticated live model discovery against the provider's
+            endpoint so the full live catalogue is populated on create.
+            Used by gateways like Ollama Cloud whose live ``/v1/models``
+            is the source of truth.
     """
 
     kind: Literal["cloud"] = "cloud"
@@ -76,6 +84,7 @@ class CloudPreset(_BasePreset):
         min_length=1,
     )
     default_models: tuple[ProviderModelConfig, ...] = ()
+    prefer_live_discovery: bool = False
 
     @model_validator(mode="after")
     def _validate_auth_type_in_supported(self) -> Self:

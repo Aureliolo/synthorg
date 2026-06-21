@@ -55,6 +55,7 @@ API_WS_SEND_FAILED: Final[str] = "api.ws.send_failed"
 API_SERVICE_UNAVAILABLE: Final[str] = "api.service.unavailable"
 API_SERVICE_AUTO_WIRED: Final[str] = "api.service.auto_wired"
 API_SERVICE_AUTO_WIRE_FAILED: Final[str] = "api.service.auto_wire_failed"
+API_MEETINGS_WIRING_DEFERRED: Final[str] = "api.meetings.wiring_deferred"
 # auth.failed / token_issued / setup_complete / password_changed are
 # audit-chained security decisions and live in events.security as
 # SECURITY_AUTH_*. A *successful* per-request authentication is NOT a

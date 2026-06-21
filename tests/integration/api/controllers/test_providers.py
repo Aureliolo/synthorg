@@ -36,7 +36,18 @@ async def _build_app_with_db_providers(
         registry=get_registry(),
         encryptor=encryptor,
     )
-    await settings_service.set("providers", "configs", json.dumps(db_providers))
+    from synthorg.config.provider_schema import PROVIDERS_CONFIG_SCHEMA_VERSION
+
+    await settings_service.set(
+        "providers",
+        "configs",
+        json.dumps(
+            {
+                "schema_version": PROVIDERS_CONFIG_SCHEMA_VERSION,
+                "providers": db_providers,
+            },
+        ),
+    )
     return create_app(
         config=config,
         persistence=fake_persistence,
@@ -99,3 +110,5 @@ class TestProviderControllerDbOverride:
             detail = detail_resp.json()
             assert detail["data"]["driver"] == "litellm"
             assert "api_key" not in detail["data"]
+            # Single-resource reads now advertise the canonical name too.
+            assert detail["data"]["name"] == "test-provider"

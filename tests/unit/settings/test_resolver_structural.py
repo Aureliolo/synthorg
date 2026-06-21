@@ -338,7 +338,13 @@ class TestGetProviderConfigs:
         from synthorg.config.schema import ProviderConfig
 
         prov_data = {
-            "test-provider": {"driver": "litellm", "connection_name": "conn-test"},
+            "schema_version": 1,
+            "providers": {
+                "test-provider": {
+                    "driver": "litellm",
+                    "connection_name": "conn-test",
+                },
+            },
         }
         mock_settings.get.return_value = _make_value(
             json.dumps(prov_data),
@@ -358,9 +364,9 @@ class TestGetProviderConfigs:
         assert result["test-provider"].connection_name == "conn-test"
 
     async def test_empty_dict_is_valid_override(self, mock_settings: AsyncMock) -> None:
-        """Empty JSON dict is a valid override returning empty dict."""
+        """An envelope with an empty providers map is a valid empty override."""
         mock_settings.get.return_value = _make_value(
-            "{}",
+            json.dumps({"schema_version": 1, "providers": {}}),
             namespace=SettingNamespace.PROVIDERS,
             key="configs",
         )
