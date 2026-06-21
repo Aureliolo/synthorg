@@ -3,6 +3,7 @@ package config
 import "testing"
 
 func TestGenerateMasterKey(t *testing.T) {
+	t.Parallel()
 	k1, err := GenerateMasterKey()
 	if err != nil {
 		t.Fatalf("GenerateMasterKey: %v", err)
@@ -20,6 +21,7 @@ func TestGenerateMasterKey(t *testing.T) {
 }
 
 func TestEnsureMasterKey(t *testing.T) {
+	t.Parallel()
 	t.Run("generates when encrypt on and key empty", func(t *testing.T) {
 		s := State{EncryptSecrets: true}
 		generated, err := EnsureMasterKey(&s)

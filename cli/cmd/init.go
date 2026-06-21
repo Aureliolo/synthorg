@@ -641,68 +641,97 @@ func setupPostgresConfig(a setupAnswers, backendPort, webPort int) (int, string,
 	return port, pw, nil
 }
 
-func buildState(a setupAnswers) (config.State, error) {
+// resolvedInitInputs bundles the validated and derived values buildState
+// needs to assemble the persisted State. Extracting it keeps both the
+// resolution step and the assembly step within the function-size budget.
+type resolvedInitInputs struct {
+	dir              string
+	backendPort      int
+	webPort          int
+	dockerSock       string
+	dockerSockGID    int
+	jwtSecret        string
+	settingsKey      string
+	masterKey        string
+	cursorSecret     string
+	imageTag         string
+	channel          string
+	busBackend       string
+	postgresPort     int
+	postgresPassword string
+}
+
+// resolveInitInputs validates and derives every value buildState assembles
+// into the persisted State (ports, secrets, docker socket, postgres, and the
+// channel/bus/image-tag defaults).
+func resolveInitInputs(a setupAnswers) (resolvedInitInputs, error) {
 	dir := strings.TrimSpace(a.dir)
 	if !filepath.IsAbs(dir) {
-		return config.State{}, fmt.Errorf("data directory must be an absolute path, got %q", dir)
+		return resolvedInitInputs{}, fmt.Errorf("data directory must be an absolute path, got %q", dir)
 	}
-
 	backendPort, err := parsePort(a.backendPortStr, "backend")
 	if err != nil {
-		return config.State{}, err
+		return resolvedInitInputs{}, err
 	}
 	webPort, err := parsePort(a.webPortStr, "web")
 	if err != nil {
-		return config.State{}, err
+		return resolvedInitInputs{}, err
 	}
-
 	dockerSock, dockerSockGID, err := setupDockerSockConfig(a.sandbox, a.dockerSock)
 	if err != nil {
-		return config.State{}, err
+		return resolvedInitInputs{}, err
 	}
-
 	jwtSecret, settingsKey, masterKey, cursorSecret, err := generateInitSecrets()
 	if err != nil {
-		return config.State{}, err
+		return resolvedInitInputs{}, err
 	}
-
-	imageTag := resolveImageTag(a.imageTag)
 	channel := "stable"
 	if a.channel != "" {
 		channel = a.channel
 	}
-
 	busBackend := a.busBackend
 	if busBackend == "" {
 		busBackend = "internal"
 	}
-
 	postgresPort, postgresPassword, err := setupPostgresConfig(a, backendPort, webPort)
+	if err != nil {
+		return resolvedInitInputs{}, err
+	}
+	return resolvedInitInputs{
+		dir: dir, backendPort: backendPort, webPort: webPort,
+		dockerSock: dockerSock, dockerSockGID: dockerSockGID,
+		jwtSecret: jwtSecret, settingsKey: settingsKey, masterKey: masterKey, cursorSecret: cursorSecret,
+		imageTag: resolveImageTag(a.imageTag), channel: channel, busBackend: busBackend,
+		postgresPort: postgresPort, postgresPassword: postgresPassword,
+	}, nil
+}
+
+func buildState(a setupAnswers) (config.State, error) {
+	r, err := resolveInitInputs(a)
 	if err != nil {
 		return config.State{}, err
 	}
-
 	return config.State{
-		DataDir:            dir,
-		ImageTag:           imageTag,
-		Channel:            channel,
-		BackendPort:        backendPort,
-		WebPort:            webPort,
+		DataDir:            r.dir,
+		ImageTag:           r.imageTag,
+		Channel:            r.channel,
+		BackendPort:        r.backendPort,
+		WebPort:            r.webPort,
 		Sandbox:            a.sandbox,
-		DockerSock:         dockerSock,
-		DockerSockGID:      dockerSockGID,
+		DockerSock:         r.dockerSock,
+		DockerSockGID:      r.dockerSockGID,
 		LogLevel:           a.logLevel,
-		JWTSecret:          jwtSecret,
-		SettingsKey:        settingsKey,
-		MasterKey:          masterKey,
-		CursorSecret:       cursorSecret,
+		JWTSecret:          r.jwtSecret,
+		SettingsKey:        r.settingsKey,
+		MasterKey:          r.masterKey,
+		CursorSecret:       r.cursorSecret,
 		EncryptSecrets:     a.encryptSecrets,
 		PersistenceBackend: a.persistenceBackend,
 		MemoryBackend:      a.memoryBackend,
-		BusBackend:         busBackend,
+		BusBackend:         r.busBackend,
 		NatsClientPort:     config.DefaultState().NatsClientPort,
-		PostgresPort:       postgresPort,
-		PostgresPassword:   postgresPassword,
+		PostgresPort:       r.postgresPort,
+		PostgresPassword:   r.postgresPassword,
 		TelemetryOptIn:     a.telemetryOptIn,
 		FineTuning:         a.fineTuning,
 		FineTuningVariant:  a.fineTuneVariant,

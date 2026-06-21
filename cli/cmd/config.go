@@ -144,11 +144,12 @@ Supported keys:
   timestamps             Timestamp format: "relative" or "iso8601"
   web_port               Web dashboard port: 1-65535
 
-Plus 16 runtime tunables (registry_host, image_repo_prefix, dhi_registry,
+Plus 19 runtime tunables (registry_host, image_repo_prefix, dhi_registry,
 postgres_image_tag, nats_image_tag,
 default_nats_stream_prefix, backup_create_timeout, backup_restore_timeout,
 health_check_timeout, self_update_http_timeout, self_update_api_timeout,
-tuf_fetch_timeout, attestation_http_timeout, max_api_response_bytes,
+tuf_fetch_timeout, attestation_http_timeout, image_verify_timeout,
+image_pull_attempts, image_pull_retry_delay, max_api_response_bytes,
 max_binary_bytes, max_archive_entry_bytes). Run 'synthorg config list'
 for the full key set with current values; durations accept Go duration
 strings ("30s", "5m"); byte sizes accept "4MiB", "256MB", etc.
@@ -458,6 +459,11 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		pairs = append(pairs, configPair{key: args[i], value: args[i+1]})
 	}
 
+	// On a pre-init state (no config file) Load returns DefaultState, so a
+	// fresh `config set` works; applyConfigPairs then provisions the master
+	// key before the final Validate. An existing-but-invalid config is
+	// already rejected earlier by the PersistentPreRunE tunables load
+	// (deliberate fail-fast), so a lenient load here would be dead code.
 	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
@@ -548,6 +554,7 @@ func runConfigImport(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no key=value entries found in %s", args[0])
 	}
 
+	// Same load semantics as `config set` (see runConfigSet).
 	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
@@ -561,6 +568,7 @@ func runConfigImport(cmd *cobra.Command, args []string) error {
 
 	for _, p := range pairs {
 		out.Success(fmt.Sprintf("Set %s = %s", p.key, p.value))
+		hintAfterConfigSet(out, p.key, p.value, state.DataDir)
 	}
 	out.HintNextStep(fmt.Sprintf("Imported %d config key(s) from %s.", len(pairs), args[0]))
 	return nil

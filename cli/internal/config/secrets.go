@@ -16,6 +16,12 @@ const masterKeyBytes = 32
 // bytes encoded as URL-safe base64 (44 characters). It is the single source
 // of master-key material shared by `init` and `config set` / `config
 // import`, so the key format stays consistent across every write path.
+//
+// base64.URLEncoding (padded, 44 chars) is deliberate, not RawURLEncoding
+// (unpadded, 43 chars): validateFernetKey requires exactly 44 characters and
+// the other init secrets use the same padded form, while Python's
+// cryptography.fernet.Fernet accepts the padding. RawURLEncoding would fail
+// the validator and diverge from the established key format.
 func GenerateMasterKey() (string, error) {
 	b := make([]byte, masterKeyBytes)
 	if _, err := rand.Read(b); err != nil {

@@ -369,11 +369,16 @@ func LoadForTeardown(dataDir string) (State, error) {
 	// Deliberately NO Validate: an out-of-range port, a missing master_key,
 	// or any other invariant breach must not stop a destroy command.
 	if s.DataDir != "" {
-		if safeLoaded, secErr := SecurePath(s.DataDir); secErr == nil {
-			s.DataDir = safeLoaded
-		} else {
+		safeLoaded, secErr := SecurePath(s.DataDir)
+		if secErr != nil {
+			// A persisted data_dir we cannot secure (e.g. traversal) is
+			// dropped in favour of the CLI-supplied dir so teardown still
+			// has a target, but surface it as an advisory so the caller can
+			// warn that the on-disk path was rejected.
 			s.DataDir = safeDir
+			return s, fmt.Errorf("persisted data_dir %q rejected (%w); using %s", path, secErr, safeDir)
 		}
+		s.DataDir = safeLoaded
 	} else {
 		s.DataDir = safeDir
 	}

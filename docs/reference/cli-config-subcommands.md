@@ -1,11 +1,11 @@
 ---
 title: CLI Config Subcommands
-description: synthorg config get/set/unset/list/path/edit reference, full settable-keys inventory, and tunable value formats.
+description: synthorg config show/get/set/import/unset/list/path/edit reference, full settable-keys inventory, and tunable value formats.
 ---
 
 # CLI Config Subcommands
 
-On-demand reference for `synthorg config` operators. The short summary in `cli/CLAUDE.md` is: `synthorg config <subcommand>` exposes get / set / import / unset / list / path / edit; compose-affecting keys trigger automatic regeneration.
+On-demand reference for `synthorg config` operators. The short summary in `cli/CLAUDE.md` is: `synthorg config <subcommand>` exposes show / get / set / import / unset / list / path / edit; compose-affecting keys trigger automatic regeneration.
 
 ## Subcommands
 

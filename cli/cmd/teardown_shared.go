@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -35,17 +36,22 @@ func isNotInitialisedErr(err error) bool {
 }
 
 // composeFilePath returns the path to compose.yml under safeDir when it
-// exists, or "" when it does not. Teardown treats a missing compose file
-// as "nothing to stop" rather than an error.
+// exists. It returns ("", nil) when the file is absent (teardown treats that
+// as "nothing to stop") and ("", err) for any other stat failure (e.g. a
+// permission error) so the caller can warn rather than silently skip the
+// container teardown while a stack may still be running.
 //
 // safeDir is the output of safeStateDir -> config.SecurePath (absolute +
 // clean), so the os.Stat below operates on an already-sanitised path.
-func composeFilePath(safeDir string) string {
+func composeFilePath(safeDir string) (string, error) {
 	composePath := filepath.Join(safeDir, "compose.yml")
 	if _, err := os.Stat(composePath); err != nil {
-		return ""
+		if errors.Is(err, os.ErrNotExist) {
+			return "", nil
+		}
+		return "", fmt.Errorf("checking compose.yml in %s: %w", safeDir, err)
 	}
-	return composePath
+	return composePath, nil
 }
 
 // detectDockerForTeardown detects Docker without ever failing the teardown.

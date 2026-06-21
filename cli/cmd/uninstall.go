@@ -157,8 +157,14 @@ func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, dataDir string, 
 	ctx := cmd.Context()
 	// No compose.yml means an uninitialised install: there is nothing to
 	// stop, so skip `down` and let teardown continue to data/binary removal
-	// rather than hard-failing before it.
-	if composeFilePath(dataDir) == "" {
+	// rather than hard-failing before it. A non-not-found stat error (e.g.
+	// permission) warns but still skips, keeping teardown best-effort.
+	composePath, statErr := composeFilePath(dataDir)
+	if statErr != nil {
+		out.Warn(fmt.Sprintf("Could not check for compose.yml: %v; skipping container teardown.", statErr))
+		return nil
+	}
+	if composePath == "" {
 		out.Step(msgNothingToStop)
 		return nil
 	}
@@ -404,39 +410,19 @@ func removeUnixBinary(cmd *cobra.Command, execPath string) error {
 func scheduleWindowsCleanup(cmd *cobra.Command, execPath string) error {
 	opts := GetGlobalOpts(cmd.Context())
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
-	pid := os.Getpid()
 	binDir := filepath.Dir(execPath)
 	appRoot := filepath.Dir(binDir)
 
-	// Reject paths containing characters that would break .bat quoting:
-	// double-quote (command injection) and percent (cmd.exe variable expansion).
-	if strings.ContainsAny(execPath, `"%`) || strings.ContainsAny(binDir, `"%`) || strings.ContainsAny(appRoot, `"%`) {
-		return fallbackManualCleanup(cmd, execPath, fmt.Errorf("path contains unsafe characters for batch script (double-quote or percent)"))
+	// Reject paths with characters that would break .bat quoting or let an
+	// install path inject cmd.exe syntax: double-quote, percent (variable
+	// expansion), and the metacharacters caret/redirection/pipe/ampersand.
+	for _, p := range []string{execPath, binDir, appRoot} {
+		if strings.ContainsAny(p, "\"%^<>|&") {
+			return fallbackManualCleanup(cmd, execPath, fmt.Errorf("path contains unsafe characters for batch script (one of \"%%^<>|&)"))
+		}
 	}
 
-	// Write cleanup script to a temp .bat file next to the binary
-	// (same filesystem, survives after this process exits). The two
-	// rmdir lines remove the now-empty `bin` dir and the app root; both
-	// are best-effort (2>nul) and no-op if anything else still lives there.
-	batContent := fmt.Sprintf(
-		"@echo off\r\n"+
-			"for /L %%%%i in (1,1,30) do (\r\n"+
-			"  tasklist /fi \"PID eq %d\" 2>nul | find \"%d\" >nul || goto :cleanup\r\n"+
-			"  timeout /t 1 /nobreak >nul\r\n"+
-			")\r\n"+
-			"goto :done\r\n"+
-			":cleanup\r\n"+
-			"del /f /q \"%s\"\r\n"+
-			"rmdir \"%s\" 2>nul\r\n"+
-			"rmdir \"%s\" 2>nul\r\n"+
-			":done\r\n"+
-			"del /f /q \"%%~f0\"\r\n",
-		pid, pid,
-		execPath,
-		binDir,
-		appRoot,
-	)
-
+	batContent := windowsCleanupBat(execPath, binDir, appRoot)
 	batFile, err := os.CreateTemp(binDir, "synthorg-cleanup-*.bat")
 	if err != nil {
 		return fallbackManualCleanup(cmd, execPath, err)
@@ -466,6 +452,33 @@ func scheduleWindowsCleanup(cmd *cobra.Command, execPath string) error {
 
 	out.Success("CLI binary will be removed automatically after exit")
 	return nil
+}
+
+// windowsCleanupBat builds the cleanup .bat body: it polls for the current
+// process to exit, then deletes the binary and removes the now-empty `bin`
+// dir and app root (both best-effort via 2>nul, no-op if anything else still
+// lives there), and finally self-deletes. Callers MUST validate execPath /
+// binDir / appRoot for cmd.exe metacharacters before passing them in.
+func windowsCleanupBat(execPath, binDir, appRoot string) string {
+	pid := os.Getpid()
+	return fmt.Sprintf(
+		"@echo off\r\n"+
+			"for /L %%%%i in (1,1,30) do (\r\n"+
+			"  tasklist /fi \"PID eq %d\" 2>nul | find \"%d\" >nul || goto :cleanup\r\n"+
+			"  timeout /t 1 /nobreak >nul\r\n"+
+			")\r\n"+
+			"goto :done\r\n"+
+			":cleanup\r\n"+
+			"del /f /q \"%s\"\r\n"+
+			"rmdir \"%s\" 2>nul\r\n"+
+			"rmdir \"%s\" 2>nul\r\n"+
+			":done\r\n"+
+			"del /f /q \"%%~f0\"\r\n",
+		pid, pid,
+		execPath,
+		binDir,
+		appRoot,
+	)
 }
 
 func fallbackManualCleanup(cmd *cobra.Command, execPath string, cause error) error {

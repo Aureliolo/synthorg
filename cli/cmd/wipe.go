@@ -101,14 +101,16 @@ func runWipe(cmd *cobra.Command, _ []string) error {
 	}
 
 	if wipeDryRun {
-		return wipeDryRunPreview(out, safeDir, composeFilePath(safeDir))
+		// Preview is best-effort: a stat error on compose.yml renders as
+		// "(unavailable)" rather than aborting the dry run.
+		composePath, _ := composeFilePath(safeDir)
+		return wipeDryRunPreview(out, safeDir, composePath)
 	}
 
 	// Docker detection is non-fatal: an unreachable daemon skips the backup
 	// and container teardown but still clears the data dir.
 	info, dockerAvailable := detectDockerForTeardown(cmd.Context(), errOut)
-	wc := newWipeContext(cmd.Context(), cmd, state, info, safeDir, out, errOut)
-	wc.dockerAvailable = dockerAvailable
+	wc := newWipeContext(cmd.Context(), cmd, state, info, safeDir, dockerAvailable, out, errOut)
 	proceed, err := wc.runOptionalBackup()
 	if err != nil {
 		return err
@@ -119,15 +121,16 @@ func runWipe(cmd *cobra.Command, _ []string) error {
 	return wc.confirmAndWipe()
 }
 
-func newWipeContext(ctx context.Context, cmd *cobra.Command, state config.State, info docker.Info, safeDir string, out, errOut *ui.UI) *wipeContext {
+func newWipeContext(ctx context.Context, cmd *cobra.Command, state config.State, info docker.Info, safeDir string, dockerAvailable bool, out, errOut *ui.UI) *wipeContext {
 	return &wipeContext{
-		ctx:     ctx,
-		cmd:     cmd,
-		state:   state,
-		info:    info,
-		safeDir: safeDir,
-		out:     out,
-		errOut:  errOut,
+		ctx:             ctx,
+		cmd:             cmd,
+		state:           state,
+		info:            info,
+		safeDir:         safeDir,
+		dockerAvailable: dockerAvailable,
+		out:             out,
+		errOut:          errOut,
 	}
 }
 
@@ -209,7 +212,18 @@ func (wc *wipeContext) confirmAndWipe() error {
 // uninitialised state (no Docker, or no compose.yml) it is a no-op: there
 // is nothing to stop, so it reports that and lets the data wipe proceed.
 func (wc *wipeContext) stopAndPrune() error {
-	if !wc.dockerAvailable || composeFilePath(wc.safeDir) == "" {
+	if !wc.dockerAvailable {
+		wc.out.Step(msgNothingToStop)
+		return nil
+	}
+	composePath, statErr := composeFilePath(wc.safeDir)
+	if statErr != nil {
+		// A permission (or other non-not-found) error: warn but stay
+		// best-effort and proceed to the data wipe rather than aborting.
+		wc.errOut.Warn(fmt.Sprintf("Could not check for compose.yml: %v; skipping container teardown.", statErr))
+		return nil
+	}
+	if composePath == "" {
 		wc.out.Step(msgNothingToStop)
 		return nil
 	}

@@ -112,6 +112,7 @@ func TestSaveAndLoad(t *testing.T) {
 // config, so wipe / uninstall can always parse what they can and still
 // tear down the rest.
 func TestLoadForTeardown(t *testing.T) {
+	t.Parallel()
 	t.Run("missing file returns seeded state, no error", func(t *testing.T) {
 		tmp := t.TempDir()
 		s, err := LoadForTeardown(tmp)

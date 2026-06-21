@@ -336,6 +336,7 @@ func TestRunWipe_UninitialisedClearsOrphanData(t *testing.T) {
 }
 
 func TestPathContainsTraversal(t *testing.T) {
+	t.Parallel()
 	root := "/"
 	if runtime.GOOS == "windows" {
 		root = `C:\`

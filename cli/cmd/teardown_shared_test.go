@@ -9,6 +9,7 @@ import (
 )
 
 func TestIsNotInitialisedErr(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		err  error
@@ -30,15 +31,24 @@ func TestIsNotInitialisedErr(t *testing.T) {
 }
 
 func TestComposeFilePath(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
-	if got := composeFilePath(dir); got != "" {
+	got, err := composeFilePath(dir)
+	if err != nil {
+		t.Fatalf("composeFilePath with no compose.yml: unexpected err %v", err)
+	}
+	if got != "" {
 		t.Errorf("composeFilePath with no compose.yml = %q, want \"\"", got)
 	}
 	compose := filepath.Join(dir, "compose.yml")
 	if err := os.WriteFile(compose, []byte("services: {}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got := composeFilePath(dir); got != compose {
+	got, err = composeFilePath(dir)
+	if err != nil {
+		t.Fatalf("composeFilePath: unexpected err %v", err)
+	}
+	if got != compose {
 		t.Errorf("composeFilePath = %q, want %q", got, compose)
 	}
 }

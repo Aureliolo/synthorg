@@ -561,11 +561,11 @@ func dockerPullWithRetry(
 ) error {
 	var lastErr error
 	for attempt := 1; attempt <= attempts; attempt++ {
-		if err := dockerRunQuiet(ctx, info, "pull", imageRef); err == nil {
+		err := dockerRunQuiet(ctx, info, "pull", imageRef)
+		if err == nil {
 			return nil
-		} else {
-			lastErr = err
 		}
+		lastErr = err
 		if attempt == attempts || ctx.Err() != nil {
 			break
 		}
