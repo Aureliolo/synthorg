@@ -17,6 +17,12 @@ name: Lighthouse CI
 #   aggregates so the required context always reports.
 
 on:
+  # Push to main collects a `main`-branch Lighthouse baseline in LHCI
+  # (PR and merge_group runs only score their own synthetic refs, so without
+  # this the dashboard has no main trend line). Only `lighthouse-dashboard`
+  # runs on push: `lighthouse-site` needs a per-PR Cloudflare preview URL.
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
   # The required `Lighthouse Pass` context must report on the merge-queue ref
@@ -114,16 +120,18 @@ jobs:
     # workflow-level fork gate below is the actual control: same-repo
     # PRs (and manual dispatch) only, so a fork PR cannot exfiltrate
     # the token. Same pattern as ``cloudflare-preview``.
-    # merge_group is added to the trigger-OR group: the dashboard audit is
-    # self-contained (local build + vite preview, no fork-token exposure and
-    # no PR-preview URL dependency), so it runs in the merge queue. The
-    # `lighthouse` environment carries no branch policy, so a merge-group ref
-    # can read LHCI_GITHUB_APP_TOKEN.
+    # merge_group and push are added to the trigger-OR group: the dashboard
+    # audit is self-contained (local build + vite preview, no fork-token
+    # exposure and no PR-preview URL dependency), so it runs in the merge
+    # queue AND on push to main (the LHCI main-branch baseline). The
+    # `lighthouse` environment carries no branch policy, so a merge-group or
+    # main ref can read LHCI_GITHUB_APP_TOKEN.
     if: >-
       needs.changes.outputs.dashboard == 'true' &&
       (github.event.pull_request.head.repo.full_name == github.repository ||
        github.event_name == 'workflow_dispatch' ||
-       github.event_name == 'merge_group')
+       github.event_name == 'merge_group' ||
+       github.event_name == 'push')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: lighthouse

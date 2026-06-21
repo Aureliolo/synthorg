@@ -70,11 +70,20 @@ rulesets:
         parameters:
           strict_required_status_checks_policy: true
           do_not_enforce_on_create: false
+          # integration_id pins each context to the GitHub Actions app
+          # (id 15368, slug github-actions) that legitimately posts these
+          # sentinel jobs, so no other app holding checks:write can satisfy a
+          # required context by reusing its name. The live ruleset must carry
+          # the same integration_id or audit_branch_protection.sh reports drift.
           required_status_checks:
             - context: "CI Pass"
+              integration_id: 15368
             - context: "CodSpeed Python Pass"
+              integration_id: 15368
             - context: "CodSpeed Web Pass"
+              integration_id: 15368
             - context: "Lighthouse Pass"
+              integration_id: 15368
 
   - name: protect-main-reviews
     target: branch

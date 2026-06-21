@@ -1399,6 +1399,10 @@ jobs:
     # BUILD/PERF job (cardinal-rule exemption): production bundle + size
     # budget; skipping it on non-dashboard PRs cannot hide a correctness
     # defect. Allowlisted in check_local_ci_parity.py.
+    # On merge_group the `dashboard` flag is computed correctly (paths-filter
+    # base/ref), so it is the right gate in the queue. Do NOT add a
+    # `github.event_name == 'merge_group'` bypass here: it would run the build
+    # on dashboard-irrelevant queue entries.
     if: (needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -1473,6 +1477,8 @@ jobs:
     # BUILD job (cardinal-rule exemption): Storybook static build; skipping
     # it on non-dashboard PRs cannot hide a correctness defect. Allowlisted
     # in check_local_ci_parity.py.
+    # See dashboard-build: the `dashboard` flag is the correct merge_group
+    # gate; do NOT add a `merge_group` event bypass here.
     if: (needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -1517,6 +1523,8 @@ jobs:
     # dashboard bundle through a headless browser. A non-dashboard PR
     # cannot regress the UI flows, so skipping it there cannot hide a
     # correctness defect. Allowlisted in check_local_ci_parity.py.
+    # See dashboard-build: the `dashboard` flag is the correct merge_group
+    # gate; do NOT add a `merge_group` event bypass here.
     if: (needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20

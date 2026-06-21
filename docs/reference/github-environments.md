@@ -42,21 +42,30 @@ would either:
 - block every PR preview (if set to `main`), or
 - admit everything (if set to `*`), providing no real protection.
 
-`lighthouse` is the same case: `lighthouse.yml`'s dashboard + site
-jobs run only on `pull_request`, hold `LHCI_GITHUB_APP_TOKEN`, and a
-`main` policy would block every web/site PR (the `Lighthouse Pass`
-aggregate is a REQUIRED check, so a permanently-pending sub-job would
-wedge merges). It therefore carries no branch policy either.
+`lighthouse` is the same case. `lighthouse.yml` triggers on
+`pull_request`, `merge_group`, and `push` to `main`;
+`lighthouse-dashboard` runs on all three and holds
+`LHCI_GITHUB_APP_TOKEN`, while `lighthouse-site` runs on `pull_request`
+only (it audits a per-PR Cloudflare preview URL that has no merge-group
+or push equivalent). A `main` branch policy cannot match the
+`pull_request` ref (`refs/pull/<N>/merge`) or the `merge_group` ref
+(`refs/heads/gh-readonly-queue/...`), and would block every web/site PR
+(the `Lighthouse Pass` aggregate is a REQUIRED check, so a
+permanently-pending sub-job would wedge merges). It therefore carries
+no branch policy either.
 
 The workflow-level gate is the actual control:
 
 - `pages-preview.yml:deploy-preview` / `cleanup-preview`: gated on
   `same_repo == 'true'` so fork PRs cannot access Cloudflare secrets.
-- `lighthouse.yml:lighthouse-dashboard` / `lighthouse-site`: gated on
+- `lighthouse.yml:lighthouse-site`: gated on
   `github.event.pull_request.head.repo.full_name == github.repository`
   (or `workflow_dispatch`) so a fork PR cannot reach
-  `LHCI_GITHUB_APP_TOKEN`; the `lighthouse-pass` aggregator treats the
-  resulting skipped sub-jobs as a pass.
+  `LHCI_GITHUB_APP_TOKEN`. `lighthouse-dashboard` carries the same fork
+  gate plus `merge_group` and `push` (both always upstream-owned refs,
+  never a fork), so it also runs in the merge queue and on push to
+  `main`. The `lighthouse-pass` aggregator treats the skipped sub-jobs
+  (e.g. `lighthouse-site` on `merge_group` / `push`) as a pass.
 
 If GitHub ever extends deployment branch policies to cover PR refs, revisit
 this entry in `scripts/configure_environments.sh`.
