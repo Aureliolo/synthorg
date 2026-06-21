@@ -41,6 +41,11 @@ services:
     cap_drop:
       - ALL
     read_only: true
+    tmpfs:
+      # read_only rootfs + /data mounted :ro leaves nowhere for the stdlib
+      # tempfile / library scratch writes the training stages make. Give
+      # them a writable /tmp so training does not fail on the locked rootfs.
+      - /tmp:noexec,nosuid,nodev,size=1g
     deploy:
       resources:
         limits:

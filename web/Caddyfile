@@ -31,6 +31,9 @@
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "geolocation=(), camera=(), microphone=(), payment=(), usb=(), serial=(), bluetooth=(), screen-wake-lock=(), display-capture=()"
+		# HSTS is a no-op on this plain-HTTP :8080 listener (browsers ignore
+		# Strict-Transport-Security over HTTP). It is emitted so the policy is
+		# already correct once a TLS-terminating proxy fronts the container.
 		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
 		-Server
 		defer
