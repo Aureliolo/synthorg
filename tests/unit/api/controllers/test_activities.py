@@ -86,6 +86,12 @@ def _make_task_metric(
     )
 
 
+def _raise_runtime_error(**_kwargs: object) -> None:
+    """Synchronous fetcher stand-in that always fails, to drive degradation."""
+    msg = "simulated failure"
+    raise RuntimeError(msg)
+
+
 class TestActivityFeed:
     async def test_empty_feed(self, async_test_client: LoopAsyncClient) -> None:
         resp = await async_test_client.get("/api/v1/activities")
@@ -261,15 +267,14 @@ class TestActivityFeed:
             _make_lifecycle_event(timestamp=_NOW - timedelta(hours=1)),
         )
 
-        def _raise(**_kwargs: object) -> None:
-            msg = "simulated failure"
-            raise RuntimeError(msg)
-
-        # Instance-level patch, undone by the conftest's
-        # _restore_instance_patches in the per-test reset pipeline.
-        performance_tracker.get_task_metrics = _raise  # type: ignore[assignment]
+        # Instance-level patch on the session-scoped tracker; the next test's
+        # reset (_reset_service_state -> _restore_instance_patches) deletes the
+        # shadow before any other test observes it.
+        performance_tracker.get_task_metrics = _raise_runtime_error  # type: ignore[assignment]
         resp = await async_test_client.get("/api/v1/activities")
         assert resp.status_code == 200
+        # The seeded lifecycle event is still surfaced despite the tracker fail.
+        assert any(d["event_type"] == "hired" for d in resp.json()["data"])
 
     async def test_feed_with_cost_records(
         self,
@@ -580,16 +585,16 @@ class TestDegradedSources:
             _make_lifecycle_event(timestamp=_NOW - timedelta(hours=1)),
         )
 
-        def _raise(**_kwargs: object) -> None:
-            msg = "simulated failure"
-            raise RuntimeError(msg)
-
-        # Instance-level patch, undone by the conftest's
-        # _restore_instance_patches in the per-test reset pipeline.
-        performance_tracker.get_task_metrics = _raise  # type: ignore[assignment]
+        # Instance-level patch on the session-scoped tracker; the next test's
+        # reset (_reset_service_state -> _restore_instance_patches) deletes the
+        # shadow before any other test observes it.
+        performance_tracker.get_task_metrics = _raise_runtime_error  # type: ignore[assignment]
         resp = await async_test_client.get("/api/v1/activities")
         assert resp.status_code == 200
-        assert "performance_tracker" in resp.json()["degraded_sources"]
+        body = resp.json()
+        assert "performance_tracker" in body["degraded_sources"]
+        # Degradation does not drop the other sources' data.
+        assert any(d["event_type"] == "hired" for d in body["data"])
 
     async def test_degraded_tool_tracker(
         self,

@@ -28,12 +28,11 @@ from tests._shared import (
     make_app_state,
     mock_of,
 )
-from tests._shared import (
-    build_test_app as create_app,
-)
+from tests._shared import build_test_app as create_app
 from tests.unit.api.conftest import (
     FakeMessageBus,
     FakePersistenceBackend,
+    _seed_test_users,
     make_auth_headers,
 )
 
@@ -171,7 +170,9 @@ def meeting_client(
     mock_orchestrator: MagicMock,
     mock_scheduler: MagicMock,
 ) -> LoopAsyncClient:
-    """Shared app client with meeting orchestrator and scheduler wired in.
+    """Shared app client with the meeting orchestrator, scheduler, and a
+    ``MeetingService`` facade (wrapping the same mock orchestrator, used by the
+    delete endpoint) wired onto ``CommunicationStateSlice``.
 
     The conftest ``_restore_app_state`` step reverts the slice afterwards,
     so the session-scoped communication services are never mutated.
@@ -445,7 +446,11 @@ def analytics_client(
     mock_orchestrator_with_contributions: MagicMock,
     mock_scheduler: MagicMock,
 ) -> LoopAsyncClient:
-    """Shared app client with meeting records that include contributions."""
+    """Shared app client with the orchestrator, scheduler, and a
+    ``MeetingService`` facade wired for contribution-analytics tests.
+
+    The conftest ``_restore_app_state`` step reverts the slice afterwards.
+    """
     app_state = async_test_client.app.state.app_state
     app_state.wire(
         CommunicationStateSlice,
@@ -741,8 +746,6 @@ def _create_app_without_explicit_meetings() -> Litestar:
             jwt_secret="test-secret-that-is-at-least-32-characters-long",
         ),
     )
-
-    from tests.unit.api.conftest import _seed_test_users
 
     _seed_test_users(persistence, auth_service)
 

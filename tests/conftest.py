@@ -709,9 +709,12 @@ _UNIT_TEST_WALL_CLOCK_LIMIT = 6.0  # seconds
 #    ``test_meetings`` auto-wire, ``test_learning`` scorecard-history-dir). The
 #    config or service absence is baked at construction and cannot be expressed
 #    via ``app_state.wire(...)`` on the session-shared app, so the full build is
-#    the test's whole point, not a fixture leak. Tests that only need a custom
+#    the test's whole point, not a fixture leak. A test that only needs a custom
 #    collaborator (a per-test ``PerformanceTracker`` / coordinator / meeting
-#    services) were migrated onto the shared ``async_test_client`` instead.
+#    services) uses the shared ``async_test_client`` and wires it instead, so it
+#    stays off this list. ``test_meetings.py`` is listed for the single
+#    ``test_auto_wired_meetings_returns_200`` build; its other tests use the
+#    shared client.
 # pytest nodeids always use ``/`` separators on every platform, so these
 # fragments match on Windows too.
 _WALL_CLOCK_GUARD_EXEMPT_FRAGMENTS: Final = (

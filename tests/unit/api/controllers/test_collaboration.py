@@ -8,10 +8,11 @@ from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.collaboration_override_store import (
     CollaborationOverrideStore,
 )
+from synthorg.hr.performance.llm_calibration_sampler import LlmCalibrationSampler
 from synthorg.hr.performance.models import CollaborationOverride
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.state import HrStateSlice
-from tests._shared import LoopAsyncClient
+from tests._shared import LoopAsyncClient, mock_of
 from tests.unit.api.conftest import make_auth_headers
 
 NOW = datetime(2026, 3, 15, 12, 0, 0, tzinfo=UTC)
@@ -29,9 +30,10 @@ def collab_client(
 ) -> LoopAsyncClient:
     """Shared app client with a per-test override-store-backed tracker wired in.
 
-    Wires a fresh ``PerformanceTracker`` onto ``HrStateSlice`` for the test;
-    the conftest ``_restore_app_state`` step reverts the slice afterwards, so
-    the session-scoped tracker is never mutated.
+    Wires a fresh ``PerformanceTracker`` onto ``HrStateSlice`` for the test.
+    The conftest ``_restore_app_state`` step restores the pre-test slice
+    snapshot afterwards, discarding this fresh tracker, so the session-scoped
+    tracker is the live instance again for the next test.
     """
     app_state = async_test_client.app.state.app_state
     app_state.wire(
@@ -294,13 +296,14 @@ class TestGetCalibration:
 
         from tests.unit.hr.performance.conftest import make_calibration_record
 
-        mock_sampler = MagicMock()
         cal_rec = make_calibration_record(
             llm_score=8.0,
             behavioral_score=6.0,
         )
-        mock_sampler.get_calibration_records.return_value = (cal_rec,)
-        mock_sampler.get_drift_summary.return_value = 2.0
+        mock_sampler = mock_of[LlmCalibrationSampler](
+            get_calibration_records=MagicMock(return_value=(cal_rec,)),
+            get_drift_summary=MagicMock(return_value=2.0),
+        )
         # Patch the per-test wired tracker (reverted by _restore_app_state),
         # never the session-scoped one.
         app_state = collab_client.app.state.app_state
