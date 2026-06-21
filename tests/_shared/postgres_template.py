@@ -1,18 +1,14 @@
 """Session-shared migrated Postgres template for fast per-test DB cloning.
 
-Per-test Postgres fixtures historically ran ``CREATE DATABASE`` +
-``connect()`` + ``migrate()`` -- a full yoyo migration-chain replay
-costing 7-10s of *setup* per test, across hundreds of ``[postgres]``
-tests. That setup dominated the integration job's wall-clock (adding
-more xdist workers made it worse, because they contend on the one
-shared server replaying migrations concurrently).
-
 This module migrates the schema ONCE per Postgres server (keyed by
 ``host:port``, coordinated across xdist workers via a ``FileLock``)
 into a template database, then per test does ``CREATE DATABASE ...
 TEMPLATE <template>`` -- a near-instant file-level copy that preserves
-full per-test isolation. It mirrors the SQLite arm's ``_get_template_db``
-migrated-file template in ``tests/conftest.py``.
+full per-test isolation. Cloning a pre-migrated template keeps per-test
+setup time constant regardless of schema size, instead of replaying the
+full yoyo migration chain (several seconds) on every ``[postgres]``
+test; it mirrors the SQLite arm's ``_get_template_db`` migrated-file
+template in ``tests/conftest.py``.
 
 The template is marked ``IS_TEMPLATE true`` + ``ALLOW_CONNECTIONS
 false`` after the build so concurrent ``CREATE DATABASE ... TEMPLATE``
@@ -34,9 +30,12 @@ from filelock import FileLock
 from psycopg import sql
 from pydantic import SecretStr
 
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.persistence.config import PostgresConfig
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
 from tests._shared.postgres_proxy import PostgresContainerProxy
+
+logger = get_logger(__name__)
 
 
 def xdist_shared_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
@@ -90,9 +89,9 @@ def _admin_conninfo(proxy: PostgresContainerProxy) -> str:
 def _config_for(proxy: PostgresContainerProxy, db_name: str) -> PostgresConfig:
     """Backend config bound to *db_name* on the proxy's server.
 
-    Mirrors the pool/timeout settings the per-test fixtures used before
-    this template path existed, so backend behaviour under test is
-    unchanged -- only the schema-creation route differs.
+    Uses the same pool/timeout settings as the production-shaped
+    per-test backends so backend behaviour under test stays
+    representative.
     """
     return PostgresConfig(
         host=_ipv4(proxy.get_container_host_ip()),
@@ -233,6 +232,11 @@ def run_pg_template_build(proxy: PostgresContainerProxy, shared_dir: Path) -> st
     test-managed loops, but it does not reach these bare session-hook
     runs, so the loop is pinned explicitly here. Off Windows the default
     loop already polls via select, so ``loop_factory`` stays ``None``.
+
+    The integration suite also calls this from a ``ThreadPoolExecutor``
+    worker (when the calling thread already has a running loop). That
+    worker thread owns no loop, so the inner ``asyncio.run`` is valid and
+    inherits the same Windows pin.
     """
     loop_factory = asyncio.SelectorEventLoop if sys.platform == "win32" else None
     return asyncio.run(ensure_pg_template(proxy, shared_dir), loop_factory=loop_factory)
@@ -243,11 +247,11 @@ async def clone_from_template(
 ) -> PostgresPersistenceBackend:
     """Create *db_name* from the migrated template and return a connected backend.
 
-    Replaces the per-test ``CREATE DATABASE`` + ``connect()`` +
-    ``migrate()`` sequence: the clone copies the already-migrated
-    template's files (near-instant) so no migration chain is replayed.
-    The caller owns teardown (``drop_test_database``). On a failed
-    connect the half-created database is dropped before re-raising.
+    Cloning the migrated template is a near-instant file-level copy, so
+    no per-test migration chain runs and setup time stays constant
+    regardless of schema size. The caller owns teardown
+    (``drop_test_database``). On a failed connect the half-created
+    database is dropped before re-raising.
     """
     async with await psycopg.AsyncConnection.connect(
         _admin_conninfo(proxy), autocommit=True
@@ -269,9 +273,18 @@ async def clone_from_template(
 
         # Shield the best-effort teardown so a cancellation of the calling
         # task cannot interrupt it mid-way and leak the half-created DB,
-        # and suppress everything (including CancelledError) so the
-        # original connect failure is the exception that propagates.
-        with contextlib.suppress(BaseException):
+        # and swallow everything (including CancelledError) so the
+        # original connect failure is the exception that propagates. The
+        # swallowed teardown error is logged at DEBUG so a leaked
+        # ``test_<uuid>`` database is diagnosable rather than invisible.
+        try:
             await asyncio.shield(_cleanup())
+        except BaseException as cleanup_exc:  # best-effort teardown: swallow + log
+            logger.debug(
+                "postgres_template.clone_cleanup_failed",
+                db_name=db_name,
+                error_type=type(cleanup_exc).__name__,
+                error=safe_error_description(cleanup_exc),
+            )
         raise
     return backend

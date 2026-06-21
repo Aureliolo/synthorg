@@ -23,19 +23,33 @@ import aiosqlite  # lint-allow: persistence-boundary -- test-only SQLite helper
 from synthorg.persistence.sqlite._shared import WriteContext
 from synthorg.persistence.sqlite.seen_claims_repo import SQLiteSeenClaimsRepository
 
-_SEEN_CLAIMS_DDL: str = (
+_SQLITE_SCHEMA_PATH: Path = (
     Path(__file__).resolve().parents[2]
     / "src"
     / "synthorg"
     / "persistence"
     / "sqlite"
-    / "revisions"
-    / "20260513000001_seen_claims.sql"
-).read_text(encoding="utf-8")
-"""Canonical ``seen_claims`` DDL, read once at import so the unit
-double exercises the exact production schema (CHECK constraints +
-index) rather than a hand-copied table that could silently drift.
-Read at module load (sync) to keep the async helper free of blocking
+    / "schema.sql"
+)
+if not _SQLITE_SCHEMA_PATH.is_file():
+    _MISSING_SCHEMA_MSG = (
+        f"SQLite declared schema not found at {_SQLITE_SCHEMA_PATH}. "
+        "tests/_shared/persistence.py builds its in-memory seen_claims "
+        "double from the full schema at import time; a missing file points "
+        "at a broken checkout or a non-editable install rather than a test "
+        "failure."
+    )
+    raise FileNotFoundError(_MISSING_SCHEMA_MSG)
+_SQLITE_SCHEMA_DDL: str = _SQLITE_SCHEMA_PATH.read_text(encoding="utf-8")
+"""Full declared SQLite schema, read once at import so the unit double
+exercises the exact production ``seen_claims`` table (CHECK constraints
++ index) rather than a hand-copied definition that could silently
+drift. The per-table revision files were collapsed into a single
+baseline, so ``schema.sql`` is the canonical standalone source. The
+whole schema is loaded (not just the ``seen_claims`` DDL) to avoid
+maintaining a separate extract that could drift; the extra tables are
+created in the in-memory DB but go unused by this fixture. Read at
+module load (sync) to keep the async helper free of blocking
 filesystem I/O."""
 
 
@@ -73,7 +87,7 @@ async def make_sqlite_seen_claims() -> AsyncIterator[SQLiteSeenClaimsRepository]
     """
     db = await aiosqlite.connect(":memory:")
     try:
-        await db.executescript(_SEEN_CLAIMS_DDL)
+        await db.executescript(_SQLITE_SCHEMA_DDL)
         await db.commit()
         repo = SQLiteSeenClaimsRepository(
             db,

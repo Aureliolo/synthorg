@@ -88,7 +88,12 @@ def _docker_available() -> bool:
     try:
         client = docker_any.from_env()
         client.ping()
-    except Exception:
+    except Exception as exc:  # daemon probe: any failure means unavailable
+        logger.debug(
+            "postgres_container.docker_probe_failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         return False
     return True
 
@@ -254,6 +259,50 @@ def _xdist_shared_dir(session: pytest.Session) -> Path:
     return xdist_shared_dir(session.config._tmp_path_factory)  # type: ignore[attr-defined]
 
 
+def _acquire_container_mode_state(session: pytest.Session) -> None:
+    """Local-dev path: take the FileLock, start/attach the container, build template.
+
+    Caller has already ruled out the env-var and no-Docker short-circuits.
+    Records the connection info + lock metadata on the module-level state
+    cache, or sets ``mode == "skip"`` if the container start failed.
+    """
+    shared_dir = _xdist_shared_dir(session)
+    state_file = shared_dir / "postgres_container_state.json"
+    lock_path = str(shared_dir / "postgres_container.lock")
+    # Catastrophe ceiling, aligned with ``tests/conftest.py``'s
+    # ``_FILE_LOCK_TIMEOUT_SECONDS``. Refcount semantics here require
+    # every worker to acquire the lock to bump the refcount, so we
+    # cannot poll-and-skip the way ``_get_template_db`` does. Followers
+    # genuinely block for the leader's container start + readiness
+    # poll; cold-cache image pulls on slow CI runners can take several
+    # minutes, so 600s is the correct catastrophe ceiling for this
+    # coordination point.
+    lock_timeout: Final[int] = 600
+    with FileLock(lock_path, timeout=lock_timeout):
+        try:
+            data = _acquire_shared_postgres(state_file)
+        except pytest.skip.Exception as exc:  # pragma: no cover -- skip path
+            _POSTGRES_CONTAINER_STATE["mode"] = "skip"
+            _POSTGRES_CONTAINER_STATE["skip_reason"] = str(exc)
+            return
+    _POSTGRES_CONTAINER_STATE["mode"] = "container"
+    _POSTGRES_CONTAINER_STATE["data"] = data
+    _POSTGRES_CONTAINER_STATE["state_file"] = state_file
+    _POSTGRES_CONTAINER_STATE["lock_path"] = lock_path
+    _POSTGRES_CONTAINER_STATE["lock_timeout"] = lock_timeout
+    # Build the migrated template on the now-running container (outside
+    # the container FileLock; ensure_pg_template holds its own) so the
+    # per-test backend fixture clones it instead of re-migrating.
+    container_proxy = PostgresContainerProxy(
+        host=data["host"],
+        port=int(data["port"]),
+        username=data["username"],
+        password=data["password"],
+        dbname=data["dbname"],
+    )
+    run_pg_template_build(container_proxy, shared_dir)
+
+
 def _pre_acquire_postgres_container_state(session: pytest.Session) -> None:
     """Pre-acquire the shared Postgres container BEFORE any per-test timer.
 
@@ -265,9 +314,9 @@ def _pre_acquire_postgres_container_state(session: pytest.Session) -> None:
     ``pytest-timeout``. Workers queued behind the container starter
     spend their wait in the FileLock poll loop; if total wait exceeds
     the per-test 30s budget the worker dies with no useful diagnostic
-    (observed previously on the sibling ``migrated_db`` template build,
-    where moving the coordination into an autouse session fixture
-    killed every test on a queued worker at exactly t+30s).
+    (a ``session``-scoped autouse fixture runs its setup inside
+    ``pytest_runtest_setup``, which IS covered by ``pytest-timeout``, so
+    the queued workers exhaust the 30s budget in the FileLock poll loop).
 
     ``pytest_sessionstart`` runs before any test, is NOT covered by
     ``pytest-timeout``, and runs once per xdist worker subprocess.
@@ -275,7 +324,7 @@ def _pre_acquire_postgres_container_state(session: pytest.Session) -> None:
     the ``postgres_container`` fixture below just reads the cached
     state and yields a proxy.
 
-    Layered short-circuits (preserved from the previous fixture):
+    Layered short-circuits:
 
     1. CI sets ``SYNTHORG_TEST_POSTGRES_*`` env vars to point at the
        ``services: postgres`` instance -- no FileLock, no Docker.
@@ -320,41 +369,7 @@ def _pre_acquire_postgres_container_state(session: pytest.Session) -> None:
         )
         return
 
-    shared_dir = _xdist_shared_dir(session)
-    state_file = shared_dir / "postgres_container_state.json"
-    lock_path = str(shared_dir / "postgres_container.lock")
-    # Catastrophe ceiling, aligned with ``tests/conftest.py``'s
-    # ``_FILE_LOCK_TIMEOUT_SECONDS``. Refcount semantics here require
-    # every worker to acquire the lock to bump the refcount, so we
-    # cannot poll-and-skip the way ``_get_template_db`` does. Followers
-    # genuinely block for the leader's container start + readiness
-    # poll; cold-cache image pulls on slow CI runners can take several
-    # minutes, so the previous 180s was tight enough to trip when the
-    # leader hit the long tail.
-    lock_timeout: Final[int] = 600
-    with FileLock(lock_path, timeout=lock_timeout):
-        try:
-            data = _acquire_shared_postgres(state_file)
-        except pytest.skip.Exception as exc:  # pragma: no cover -- skip path
-            _POSTGRES_CONTAINER_STATE["mode"] = "skip"
-            _POSTGRES_CONTAINER_STATE["skip_reason"] = str(exc)
-            return
-    _POSTGRES_CONTAINER_STATE["mode"] = "container"
-    _POSTGRES_CONTAINER_STATE["data"] = data
-    _POSTGRES_CONTAINER_STATE["state_file"] = state_file
-    _POSTGRES_CONTAINER_STATE["lock_path"] = lock_path
-    _POSTGRES_CONTAINER_STATE["lock_timeout"] = lock_timeout
-    # Build the migrated template on the now-running container (outside
-    # the container FileLock; ensure_pg_template holds its own) so the
-    # per-test backend fixture clones it instead of re-migrating.
-    container_proxy = PostgresContainerProxy(
-        host=data["host"],
-        port=int(data["port"]),
-        username=data["username"],
-        password=data["password"],
-        dbname=data["dbname"],
-    )
-    run_pg_template_build(container_proxy, shared_dir)
+    _acquire_container_mode_state(session)
 
 
 @pytest.fixture(scope="session")

@@ -139,8 +139,19 @@ def _ensure_template_blocking(proxy: PostgresContainerProxy, shared_dir: Path) -
     try:
         asyncio.get_running_loop()
     except RuntimeError:
+        loop_running = False
+    else:
+        loop_running = True
+    if not loop_running:
+        # No running loop on this thread: drive asyncio.run directly.
         run_pg_template_build(proxy, shared_dir)
         return
+    # A loop is already running (the fixture was resolved during an async
+    # test's setup): run the build on a dedicated worker thread that owns
+    # its own loop, so the inner asyncio.run never collides with the live
+    # one. Keeping the build out of the ``except`` block means a failure
+    # from ``run_pg_template_build`` propagates instead of being mistaken
+    # for the "no running loop" signal.
     with ThreadPoolExecutor(max_workers=1) as pool:
         pool.submit(lambda: run_pg_template_build(proxy, shared_dir)).result()
 
