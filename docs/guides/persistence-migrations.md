@@ -189,6 +189,12 @@ single-revision-per-PR hook accepts the squash:
 SYNTHORG_MIGRATION_SQUASH=1 git commit -m "refactor(persistence): squash revisions"
 ```
 
+The CI mirror of this gate (`schema-validate` job) reads the same
+`SYNTHORG_MIGRATION_SQUASH=1` bypass only when the PR carries the
+`migration-squash` label, so add that label to the squash PR. The
+label is the visible, auditable CI equivalent of the deliberately-set
+local env var; every unlabelled PR keeps the gate fully active.
+
 After squashing, `00000000000000_baseline.sql` is the only file in the
 revisions directories that exists on `origin/main`, so
 `check-no-modify-migration` blocks any in-branch edit to it under the

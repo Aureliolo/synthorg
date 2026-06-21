@@ -495,3 +495,12 @@ Squash commits delete old revision files, which the pre-commit hook
 ```bash
 SYNTHORG_MIGRATION_SQUASH=1 git commit -m "refactor(persistence): squash revisions"
 ```
+
+The CI mirror of the same gate (`schema-validate` job, *Block
+modification of committed migrations*) needs the equivalent
+authorisation. Apply the `migration-squash` label to the squash PR:
+CI reads `SYNTHORG_MIGRATION_SQUASH=1` only when that label is
+present, so the gate steps aside for the labelled squash while staying
+fully active on every other PR. The schema-drift detection that runs
+straight after still proves the rewritten baseline reproduces
+`schema.sql`, so the squash remains independently verified.

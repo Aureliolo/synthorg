@@ -19,6 +19,7 @@ import sqlite3
 import sys
 from collections.abc import Callable, Coroutine
 from pathlib import Path
+from typing import Final
 
 import pytest
 
@@ -31,7 +32,7 @@ pytestmark = pytest.mark.unit
 # A floor, not the exact count: the full schema defines dozens of tables,
 # so any value comfortably above a handful guards against truncation
 # without churning every time a table is added.
-_MIN_EXPECTED_TABLES = 30
+_MIN_EXPECTED_TABLES: Final[int] = 30
 
 _LoopFactory = Callable[[], asyncio.AbstractEventLoop] | None
 

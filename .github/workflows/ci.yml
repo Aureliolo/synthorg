@@ -289,7 +289,19 @@ jobs:
         # edits (comments, reformatting, semantically-equal SQL). Runs here (not
         # in the all-files Gates job) because it needs origin/main, which only
         # this fetch-depth:0 job has.
+        #
+        # A sanctioned revision squash legitimately rewrites the baseline and
+        # deletes the prior chain, which this gate would otherwise block. The
+        # local workflow sets SYNTHORG_MIGRATION_SQUASH=1 deliberately at commit
+        # time; the CI equivalent of that deliberate human authorisation is the
+        # ``migration-squash`` PR label -- visible and auditable in the PR UI,
+        # removable, and absent on every ordinary PR so the gate stays fully
+        # active for them. Drift detection below still proves the rewritten
+        # baseline reproduces schema.sql, so the squash remains independently
+        # verified even when this content-hash gate steps aside.
         if: github.event_name == 'pull_request'
+        env:
+          SYNTHORG_MIGRATION_SQUASH: ${{ contains(github.event.pull_request.labels.*.name, 'migration-squash') && '1' || '0' }}
         run: |
           git fetch origin main
           bash scripts/check_no_modify_migration.sh
