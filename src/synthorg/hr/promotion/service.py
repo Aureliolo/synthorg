@@ -25,6 +25,7 @@ from synthorg.hr.errors import (
 )
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.promotion._approval_ops import create_approval, verify_approval
+from synthorg.hr.promotion._identity_guard import checked_identity
 from synthorg.hr.promotion._levels import next_level, prev_level
 from synthorg.hr.promotion.approval_protocol import PromotionApprovalStrategy
 from synthorg.hr.promotion.config import PromotionConfig
@@ -117,45 +118,6 @@ class PromotionService:
         # atomic per agent; a different agent never contends.
         self._apply_locks = RefcountedLockMap[str]()
 
-    def _checked_identity(
-        self,
-        *,
-        agent_id: NotBlankStr,
-        identity: AgentIdentity | None,
-        event: str,
-    ) -> AgentIdentity | None:
-        """Reject a preloaded identity that does not belong to ``agent_id``.
-
-        A caller may thread a batch-read identity to skip the per-agent
-        ``registry.get`` round-trip. Accepting it blindly lets a mismatched
-        ``(identity, agent_id)`` pair record evaluations/requests against the
-        wrong agent and corrupt the audit trail, so a non-matching pair is a
-        hard error rather than a silent substitution. ``None`` passes through
-        so the caller falls back to an authoritative registry fetch.
-
-        Returns:
-            The validated identity, or ``None`` when none was supplied.
-
-        Raises:
-            PromotionError: If the preloaded identity does not belong to
-                ``agent_id``.
-        """
-        if identity is None:
-            return None
-        if str(identity.id) != str(agent_id):
-            msg = (
-                f"Preloaded identity {identity.id!r} does not match "
-                f"agent_id {agent_id!r}"
-            )
-            logger.warning(
-                event,
-                agent_id=agent_id,
-                identity_id=str(identity.id),
-                error=msg,
-            )
-            raise PromotionError(msg)
-        return identity
-
     async def evaluate_promotion(
         self,
         agent_id: NotBlankStr,
@@ -177,7 +139,7 @@ class PromotionService:
             PromotionError: If the agent cannot be promoted, or a preloaded
                 identity does not match ``agent_id``.
         """
-        identity = self._checked_identity(
+        identity = checked_identity(
             agent_id=agent_id, identity=identity, event=PROMOTION_EVALUATE_FAILED
         )
         if identity is None:
@@ -245,7 +207,7 @@ class PromotionService:
             PromotionError: If the agent cannot be demoted, or a preloaded
                 identity does not match ``agent_id``.
         """
-        identity = self._checked_identity(
+        identity = checked_identity(
             agent_id=agent_id, identity=identity, event=PROMOTION_EVALUATE_FAILED
         )
         if identity is None:
@@ -315,7 +277,7 @@ class PromotionService:
             PromotionError: If agent not found, or a preloaded identity does
                 not match ``agent_id``.
         """
-        identity = self._checked_identity(
+        identity = checked_identity(
             agent_id=agent_id, identity=identity, event=PROMOTION_REQUESTED
         )
         if not evaluation.eligible:

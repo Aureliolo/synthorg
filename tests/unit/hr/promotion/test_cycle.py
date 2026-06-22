@@ -155,11 +155,12 @@ async def test_cycle_does_not_refetch_identity_per_evaluation(
     registry: AgentRegistryService,
     tracker: PerformanceTracker,
 ) -> None:
-    """The sweep threads the ``list_active`` identity into evaluate/request.
+    """The sweep threads the ``list_active`` identity into the evaluation.
 
-    Only the authoritative under-lock read in ``_apply_level_change`` should
-    hit ``registry.get`` (once for the applied agent); the evaluation and
-    request steps must reuse the pre-loaded identity rather than re-fetching.
+    The read-only evaluation step reuses the pre-loaded identity rather than
+    re-fetching per agent. The request and apply steps each perform their own
+    authoritative ``registry.get`` by design (they persist/mutate state, so
+    they must not act on a possibly-stale snapshot).
     """
     identity = make_agent_identity(name="promotable", level=SeniorityLevel.JUNIOR)
     await registry.register(identity)
@@ -181,6 +182,6 @@ async def test_cycle_does_not_refetch_identity_per_evaluation(
         registry.get = original_get  # type: ignore[method-assign]
 
     assert len(applied) == 1
-    # Pre-fix this was 3 (evaluate + request + apply); now only the
-    # under-lock apply read remains.
-    assert get_calls == 1
+    # The evaluation reuses the pre-loaded snapshot (no refetch); the
+    # request and the under-lock apply each re-read authoritatively.
+    assert get_calls == 2
