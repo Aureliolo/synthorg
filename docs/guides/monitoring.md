@@ -23,9 +23,9 @@ The endpoint is unauthenticated by default; put it behind your normal scrape-ACL
 
 ## Metric inventory
 
-The **Dashboard** column maps each metric to a row in the default Grafana overview dashboard (`monitoring/grafana/synthorg-overview.json`). Rows are collapsible; the only row expanded by default is `Health & SLO`. The dashboard exposes four filter variables (`$agent_id`, `$agent`, `$workflow_definition_id`, `$department`) that drill panels down per-entity; the two agent-named variables exist because `synthorg_tasks_total` uses `agent` while the per-agent cost metrics use `agent_id`. Default queries aggregate across the full set so the unfiltered view is always meaningful.
+The **Dashboard** column maps each metric to a row in the default Grafana overview dashboard (`monitoring/grafana/synthorg-overview.json`). Rows are collapsible; the only row expanded by default is `Health & SLO`. The dashboard exposes two filter variables (`$workflow_definition_id`, `$department`) that drill panels down per-entity. No per-agent label is exposed: an unbounded `agent_id` / `agent` label is a cardinality bomb, so per-agent cost and task breakdowns live in the structured logs and the REST cost / task APIs rather than in metrics. Default queries aggregate across the full set so the unfiltered view is always meaningful.
 
-Bounded-label values are enforced at record time in `src/synthorg/observability/prometheus_labels.py`; PromQL filters that reference values outside those allowlists will never match data. The five registry-bound push-time labels (`agent_id`, `agent`, `department`, `workflow_definition_id`, `tool_name` on the metrics noted below) are validated against a registry-bound snapshot rebuilt on every Prometheus scrape; unknown values drop that one sample with a `metrics.scrape.failed` WARN log per unknown label per scrape. The log repeats on the next scrape if the value is still unknown.
+Bounded-label values are enforced at record time in `src/synthorg/observability/prometheus_labels.py`; PromQL filters that reference values outside those allowlists will never match data. The three registry-bound push-time labels (`department`, `workflow_definition_id`, `tool_name` on the metrics noted below) are validated against a registry-bound snapshot rebuilt on every Prometheus scrape; unknown values drop that one sample with a `metrics.scrape.failed` WARN log per unknown label per scrape. The log repeats on the next scrape if the value is still unknown. The `agent_id` carried on `synthorg_agent_identity_version_changes_total` is an OpenMetrics exemplar (validated against the same snapshot), not a label, so per-agent attribution survives without per-agent series.
 
 ### Info
 
@@ -48,16 +48,14 @@ Bounded-label values are enforced at record time in `src/synthorg/observability/
 | `synthorg_budget_used_percent` | Gauge | - | Monthly budget utilisation. | `Health & SLO` |
 | `synthorg_budget_monthly_cost` | Gauge | - | Monthly budget in configured currency. | `Cost & Budget` |
 | `synthorg_budget_daily_used_percent` | Gauge | - | Daily utilisation (prorated). | `Cost & Budget` |
-| `synthorg_agent_cost_total` | Gauge | `agent_id` (registry-bound) | Per-agent accumulated cost. | `Cost & Budget` |
-| `synthorg_agent_budget_used_percent` | Gauge | `agent_id` (registry-bound) | Per-agent daily utilisation. | `Cost & Budget` |
 | `synthorg_budget_query_duration_seconds` | Histogram | `query_type` | Budget read-path query duration (`query_type` bounded to `balance` / `available_spend` / `burn_rate` / `daily_spend` / `cost_summary` / `total_cost` / `agent_cost` / `project_cost`; buckets 1ms-1s). | `Audit & Performance` |
 
 ### Agents & tasks
 
 | Metric | Type | Labels | Description | Dashboard |
 |--------|------|--------|-------------|-----------|
-| `synthorg_active_agents_total` | Gauge | `status`, `trust_level` | Active agent count by status. | `Health & SLO` |
-| `synthorg_tasks_total` | Gauge | `status`, `agent` (registry-bound) | Task count per status per agent. | `Tasks` |
+| `synthorg_active_agents_total` | Gauge | `status`, `trust_level` | Active agent count by status and trust level (both bounded to their enums; an out-of-vocabulary value folds to `other`). | `Health & SLO` |
+| `synthorg_tasks_total` | Gauge | `status` | Task count per status (no per-agent label; per-agent breakdowns are served by the REST task API). | `Tasks` |
 | `synthorg_task_runs_total` | Counter | `outcome` | Emitted task outcomes by bounded `outcome` (`succeeded` / `failed` / `cancelled` / `rejected`). One increment per terminal-status hop on a task; a task that transitions through `failed` and is later retried therefore counts as one `failed` *and* one `succeeded` (or another terminal value) -- the counter records emitted outcomes, not unique task ids. | `Tasks` |
 | `synthorg_task_duration_seconds` | Histogram | `outcome` | Task execution duration in seconds, partitioned by the same `outcome` values as `synthorg_task_runs_total` (buckets 0.1s-600s). Observed only when the engine has a recorded creation timestamp; transitions where the timestamp is unavailable (e.g. a task created before a process restart) skip the histogram and emit `task_engine.timing_fallback` WARN with `synthorg_task_runs_total` still incremented so the count and histogram percentages remain comparable. | `Tasks` |
 
@@ -148,7 +146,7 @@ Bounded-label values are enforced at record time in `src/synthorg/observability/
 | Metric | Type | Labels | Description | Dashboard |
 |--------|------|--------|-------------|-----------|
 | `synthorg_escalation_queue_depth` | Gauge | `department` (registry-bound) | Pending escalations awaiting decision. | `Health & SLO` |
-| `synthorg_agent_identity_version_changes_total` | Counter | `agent_id` (registry-bound), `change_type` | Identity-version lifecycle events (`change_type` bounded to `created` / `updated` / `rolled_back` / `archived`). | `Audit & Security` |
+| `synthorg_agent_identity_version_changes_total` | Counter | `change_type` | Identity-version lifecycle events (`change_type` bounded to `created` / `updated` / `rolled_back` / `archived`). The `agent_id` rides as an OpenMetrics exemplar (registry-bound), not a label. | `Audit & Security` |
 | `synthorg_workflow_execution_seconds` | Histogram | `workflow_definition_id` (registry-bound), `status` | Workflow execution duration (`status` bounded to `completed` / `failed` / `cancelled` / `timeout`; buckets 0.5s-3600s). | `Workflows` |
 
 ### Decisions
@@ -186,8 +184,8 @@ histogram_quantile(0.95, sum by (le) (rate(synthorg_workflow_execution_seconds_b
 # Burned 80% of the monthly budget
 synthorg_budget_used_percent > 80
 
-# Per-agent cost top 5 (most expensive right now)
-topk(5, synthorg_agent_cost_total)
+# Total accumulated cost (per-agent breakdown lives in the REST cost API / logs)
+synthorg_cost_total
 ```
 
 ### Coordination health
@@ -369,18 +367,18 @@ sum(rate(synthorg_client_disconnects_total{reason="transport_error"}[5m]))
 
 ## Grafana dashboard
 
-Import `monitoring/grafana/synthorg-overview.json` into any Grafana v10+ instance. The file is Grafana v10-compatible dashboard JSON (authored against the v11 editor, which emits a schema readable by v10) with a single `${DS_PROMETHEUS}` template variable bound to your Prometheus data source plus four filter variables: `$agent_id` (sourced from `synthorg_agent_cost_total`'s `agent_id` label, used by Cost & Budget + Audit & Security panels), `$agent` (sourced from `synthorg_tasks_total`'s `agent` label, used by the Tasks row's per-agent panel), `$workflow_definition_id`, and `$department`. The two agent-named variables exist because `synthorg_tasks_total` and `synthorg_agent_cost_total` use different label names (`agent` vs `agent_id`); panels filter on whichever variable matches their underlying metric.
+Import `monitoring/grafana/synthorg-overview.json` into any Grafana v10+ instance. The file is Grafana v10-compatible dashboard JSON (authored against the v11 editor, which emits a schema readable by v10) with a single `${DS_PROMETHEUS}` template variable bound to your Prometheus data source plus two filter variables: `$workflow_definition_id` and `$department`. There are no per-agent filter variables: per-agent metrics labels were removed for cardinality safety, so per-agent cost / task drill-downs come from the REST APIs and structured logs instead. The `$department` variable is sourced from `synthorg_escalation_queue_depth`'s `department` label and is empty until the first escalation is recorded; the department-scoped panel shows "No data" until then.
 
 The dashboard organises over fifty panels into thirteen rows. Only `Health & SLO` is expanded by default; expand the others as needed to keep the unfiltered view scannable.
 
 | Row | Default | Panels |
 |-----|---------|--------|
 | `Health & SLO` | expanded | Coordination efficiency, coordination overhead, budget utilisation, active agents, escalation queue depth |
-| `Tasks` | collapsed | Task completion rate, task duration p50/p95, tasks-by-status, task-runs-by-outcome, tasks per agent |
+| `Tasks` | collapsed | Task completion rate, task duration p50/p95, tasks-by-status, task-runs-by-outcome |
 | `Workflows` | collapsed | Workflow duration p50/p95, workflow execution rate by status, top-N workflow definitions |
 | `Tools & Providers` | collapsed | Tool invocation rate, tool duration p95 by `tool_name`, provider tokens, provider cost, provider errors by class, provider call latency p95 (`synthorg_provider_call_duration_seconds`) |
-| `Cost & Budget` | collapsed | `synthorg_cost_total`, monthly cost, daily used %, top-25 per-agent cost, agent budget used % |
-| `Audit & Security` | collapsed | Audit chain append rate, depth, last-append age, audit-log fill-ratio gauge, security verdicts, agent identity version changes, API error categories |
+| `Cost & Budget` | collapsed | `synthorg_cost_total`, monthly cost, daily used % |
+| `Audit & Security` | collapsed | Audit chain append rate, depth, last-append age, audit-log fill-ratio gauge, security verdicts, agent identity version changes, active agents by trust level, API error categories |
 | `Client Health` | collapsed | Client disconnects by transport+reason, API request rate by status class, OTLP export batches, OTLP dropped records, cache hit rate, app info |
 | `Decisions` | collapsed | Approval decisions/sec (`synthorg_approval_decisions_total`), escalation outcomes/sec (`synthorg_escalation_outcomes_total`), blueprint instantiations/sec (`synthorg_blueprint_instantiations_total`), autonomy promotion decisions/sec (`synthorg_autonomy_promotion_decisions_total`) |
 | `Configuration & MCP` | collapsed | Settings mutations/sec by namespace (`synthorg_settings_mutations_total`), MCP handler success rate (`synthorg_mcp_handler_outcomes_total`), MCP handler p95 latency by tool (`synthorg_mcp_handler_duration_seconds`) |
