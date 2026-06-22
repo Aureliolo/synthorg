@@ -9,6 +9,8 @@ import hashlib
 import json
 from typing import Final
 
+from pydantic import BaseModel, ConfigDict, ValidationError
+
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -31,6 +33,21 @@ from synthorg.providers.models import ChatMessage, CompletionConfig
 # remain stable. Temperature=0.0 also minimises the chance of the
 # LLM returning a malformed ranking array that forces a fallback.
 _RERANK_COMPLETION_CONFIG = CompletionConfig(temperature=0.0)
+
+
+class RankingLLMResponse(BaseModel):
+    """Typed view of the re-ranker LLM's ``{"ranking": [...]}`` reply.
+
+    Routing the raw JSON through this model rejects a non-integer ranking
+    array (which would otherwise raise ``TypeError`` from ``sorted()``) and,
+    via ``extra="forbid"``, a hallucinated response carrying unexpected
+    keys; both degrade gracefully to the original ordering.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    ranking: tuple[int, ...]
+
 
 # ``CostTracker``, ``CompletionProvider``, ``RerankerCache``,
 # ``RetrievalQuery`` and ``RetrievalCandidate`` are part of
@@ -272,7 +289,16 @@ class LLMQuerySpecificReranker:
             return candidates
 
         parsed = json.loads(response.content)
-        ranking: list[int] = parsed.get("ranking", [])
+        try:
+            ranking = RankingLLMResponse.model_validate(parsed).ranking
+        except ValidationError as exc:
+            logger.debug(
+                MEMORY_RERANK_FAILED,
+                error="Invalid ranking response shape from LLM",
+                error_type=type(exc).__name__,
+                candidate_count=len(candidates),
+            )
+            return candidates
 
         # Validate ranking indices
         n = len(candidates)

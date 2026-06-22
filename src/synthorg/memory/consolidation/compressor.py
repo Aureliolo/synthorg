@@ -12,6 +12,8 @@ from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 from uuid import uuid4
 
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
 from synthorg.budget.call_category import LLMCallCategory
 
 # ``CostTracker``, ``ExperienceCompressorConfig`` and
@@ -113,6 +115,23 @@ Each context should describe when the lesson applies.
 )
 
 _COMPRESSOR_VERSION = "llm-v1"
+
+
+class CompressionLLMResponse(BaseModel):
+    """Typed view of the experience-compressor LLM JSON reply.
+
+    Routing the parsed JSON through this model replaces the manual
+    list-of-non-blank-strings checks: ``NotBlankStr`` rejects blank
+    entries and ``extra="forbid"`` rejects a hallucinated response with
+    keys beyond the two the prompt requests. Both fields default to empty
+    so a missing key still surfaces as the explicit "no strategic
+    decisions" guard downstream rather than a validation error.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    strategic_decisions: tuple[NotBlankStr, ...] = Field(default=())
+    applicable_contexts: tuple[NotBlankStr, ...] = Field(default=())
 
 
 class LLMExperienceCompressor:
@@ -284,29 +303,19 @@ class LLMExperienceCompressor:
             )
             msg = f"malformed compression output: {safe_error_description(exc)}"
             raise ValueError(msg) from exc
-        if not isinstance(parsed, dict):
-            msg = f"LLM returned non-dict: {type(parsed).__name__}"
+        try:
+            response_model = CompressionLLMResponse.model_validate(parsed)
+        except ValidationError as exc:
+            msg = "compression output failed validation"
             logger.warning(
                 EXPERIENCE_COMPRESSION_FAILED,
                 error=msg,
+                error_type=type(exc).__name__,
+                error_detail=safe_error_description(exc),
             )
-            raise TypeError(msg)
-        raw_decisions = parsed.get("strategic_decisions", [])
-        raw_contexts = parsed.get("applicable_contexts", [])
-        if not isinstance(raw_decisions, list) or not all(
-            isinstance(d, str) and d.strip() for d in raw_decisions
-        ):
-            msg = "strategic_decisions must be a list of non-blank strings"
-            logger.warning(EXPERIENCE_COMPRESSION_FAILED, error=msg)
-            raise ValueError(msg)
-        if not isinstance(raw_contexts, list) or not all(
-            isinstance(c, str) and c.strip() for c in raw_contexts
-        ):
-            msg = "applicable_contexts must be a list of non-blank strings"
-            logger.warning(EXPERIENCE_COMPRESSION_FAILED, error=msg)
-            raise ValueError(msg)
-        decisions = tuple(raw_decisions)
-        contexts = tuple(raw_contexts)
+            raise ValueError(msg) from exc
+        decisions = response_model.strategic_decisions
+        contexts = response_model.applicable_contexts
 
         if not decisions:
             msg = "LLM produced no strategic decisions"

@@ -517,6 +517,18 @@ class TestLifecycleHooks:
             "milestone_assign",
             {"task_id": "task-0"},
         )
+        # Blank field (rejected by the NotBlankStr model field)
+        await strategy.on_external_event(
+            sprint,
+            "milestone_assign",
+            {"task_id": "  ", "milestone": "alpha"},
+        )
+        # Unexpected extra key (rejected by extra="forbid")
+        await strategy.on_external_event(
+            sprint,
+            "milestone_assign",
+            {"task_id": "task-0", "milestone": "alpha", "rogue": "x"},
+        )
         # Empty milestone_tasks
         assert strategy._milestone_tasks == {}
 

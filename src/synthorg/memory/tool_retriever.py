@@ -11,7 +11,7 @@ import copy
 from types import MappingProxyType
 from typing import Final
 
-from pydantic import JsonValue
+from pydantic import JsonValue, ValidationError
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
@@ -297,6 +297,13 @@ class ToolBasedInjectionStrategy(ToolBasedReformulationMixin):
         Returns:
             Result of type ``str``.
         """
+        # ``SearchMemoryArgs`` is the tool's declared contract and is
+        # enforced at the invoker boundary (see ``SearchMemoryTool``). The
+        # strategy stays deliberately LENIENT here rather than re-validating
+        # strictly: it clamps ``limit`` and collects invalid ``categories``
+        # into ``rejected_categories`` so the search still runs and the
+        # invalid values are surfaced back to the LLM for self-correction,
+        # instead of hard-failing the whole call on a single bad field.
         query_text, limit, categories, rejected_categories = _parse_search_args(
             arguments,
             self._config.max_memories,
@@ -408,18 +415,23 @@ class ToolBasedInjectionStrategy(ToolBasedReformulationMixin):
             RecursionError: If the related operation fails.
             CancelledError: If the related operation fails.
         """
-        memory_id_raw = arguments.get("memory_id", "")
-        # Reject non-string shapes up-front rather than calling
-        # ``str(...)`` on arbitrary objects -- an LLM-hallucinated
-        # ``{"memory_id": 42}`` should fail validation cleanly rather
-        # than letting downstream code process a stringified integer.
-        if not isinstance(memory_id_raw, str):
+        # Route through the tool's declared ``RecallMemoryArgs`` model
+        # (``NotBlankStr`` + ``max_length``) rather than re-extracting the
+        # raw dict, so an LLM-hallucinated shape (``{"memory_id": 42}``),
+        # a blank id, or an over-length id all fail validation cleanly and
+        # surface a friendly message for self-correction. Imported here, not
+        # at module level: ``memory.tools.__init__`` back-imports
+        # ``ERROR_PREFIX`` from this module, so a top-level import closes a
+        # cold-import cycle.
+        from synthorg.memory.tools._args import RecallMemoryArgs  # noqa: PLC0415
+
+        try:
+            parsed = RecallMemoryArgs.model_validate(arguments)
+        except ValidationError:
             return f"{ERROR_PREFIX} memory_id is required."
-        memory_id = memory_id_raw.strip()
+        memory_id = parsed.memory_id.strip()
         if not memory_id:
             return f"{ERROR_PREFIX} memory_id is required."
-        if len(memory_id) > _MAX_MEMORY_ID_LEN:
-            return f"{ERROR_PREFIX} memory_id exceeds maximum allowed length."
 
         logger.info(
             MEMORY_RETRIEVAL_START,

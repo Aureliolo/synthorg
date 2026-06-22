@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Final
 from uuid import uuid4
 
+from pydantic import ValidationError
+
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.currency import format_cost
 from synthorg.budget.tracker import CostTracker
@@ -25,7 +27,6 @@ from synthorg.engine.prompt_safety import (
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.models import (
     CodeChange,
-    CodeOperation,
     ImprovementProposal,
     OrgSignalSnapshot,
     ProposalAltitude,
@@ -477,16 +478,13 @@ def _parse_items(
             )
             continue
         try:
-            change = CodeChange(
-                file_path=item.get("file_path", ""),
-                operation=CodeOperation(item.get("operation", "")),
-                old_content=item.get("old_content", ""),
-                new_content=item.get("new_content", ""),
-                description=item.get("description", ""),
-                reasoning=item.get("reasoning", ""),
-            )
+            # ``model_validate`` (not per-field ``.get()``) so the model's
+            # ``extra="forbid"`` rejects hallucinated keys and the
+            # operation-content cross-field validator runs at construction
+            # time rather than relying on downstream callers.
+            change = CodeChange.model_validate(item)
             changes.append(change)
-        except (ValueError, TypeError) as exc:
+        except (ValidationError, ValueError, TypeError) as exc:
             logger.warning(
                 META_CODE_GEN_PARSE_FAILED,
                 rule=rule_name,
