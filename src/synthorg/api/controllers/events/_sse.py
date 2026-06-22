@@ -477,6 +477,7 @@ async def _sse_event_stream(
     *,
     app_state: AppState | None = None,
     user: AuthenticatedUser | None = None,
+    after_id: str | None = None,
 ) -> AsyncIterator[dict[str, str]]:
     """Yield SSE events from the hub for the given session.
 
@@ -508,10 +509,11 @@ async def _sse_event_stream(
         # subscriber attached to the hub: ``finally`` always runs
         # ``hub.unsubscribe`` and tolerates ``queue is None`` when the
         # subscribe itself raised.
-        subscription = await hub.subscribe(session_id)
+        subscription = await hub.subscribe(session_id, after_id=after_id)
         logger.info(
             EVENT_STREAM_CLIENT_CONNECTED,
             session_id=session_id,
+            replay_after_id=after_id,
         )
         revalidation_armed = app_state is not None and user is not None
         keepalive_seconds = await _resolve_sse_keepalive_seconds(app_state)

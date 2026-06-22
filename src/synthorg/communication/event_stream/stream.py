@@ -18,7 +18,7 @@ the legacy synchronous behaviour.
 
 import asyncio
 import contextlib
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from datetime import UTC, datetime
 from typing import ClassVar, Final
 from uuid import uuid4
@@ -53,6 +53,12 @@ _DEFAULT_DEDUP_MAX_ENTRIES_PER_SESSION: Final[int] = 1024
 _DEFAULT_SUBSCRIBER_IDLE_TTL_SECONDS: Final[float] = 86400.0
 _DEFAULT_JANITOR_INTERVAL_SECONDS: Final[float] = 300.0
 _DEFAULT_JANITOR_STOP_TIMEOUT_SECONDS: Final[float] = 10.0
+# Bounded per-session SSE replay history. Recent events are retained so a
+# reconnecting client that sends ``Last-Event-ID`` can be replayed the gap
+# it missed while disconnected. Capped per session (ring buffer) and across
+# sessions (FIFO) so the buffer cannot grow without bound.
+_DEFAULT_HISTORY_PER_SESSION: Final[int] = 256
+_DEFAULT_HISTORY_MAX_SESSIONS: Final[int] = 1024
 
 
 class EventStreamHubUnrestartableError(ConflictError):
@@ -158,6 +164,9 @@ class EventStreamHub:
         "_clock",
         "_dedup_max_entries_per_session",
         "_dedup_ttl_seconds",
+        "_history",
+        "_history_max_sessions",
+        "_history_per_session",
         "_janitor_task",
         "_lifecycle_lock",
         "_lifecycle_lock_loop",
@@ -170,12 +179,14 @@ class EventStreamHub:
         "_subscribers",
     )
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 -- tunable bounds for queue / dedup / history
         self,
         max_queue_size: int = _DEFAULT_MAX_QUEUE_SIZE,
         *,
         dedup_ttl_seconds: float = _DEFAULT_DEDUP_TTL_SECONDS,
         dedup_max_entries_per_session: int = _DEFAULT_DEDUP_MAX_ENTRIES_PER_SESSION,
+        history_per_session: int = _DEFAULT_HISTORY_PER_SESSION,
+        history_max_sessions: int = _DEFAULT_HISTORY_MAX_SESSIONS,
         clock: Clock | None = None,
     ) -> None:
         # Fail-fast on bad inputs; otherwise the trim loop in
@@ -196,11 +207,23 @@ class EventStreamHub:
                 f"{dedup_max_entries_per_session}"
             )
             raise ValueError(msg)
+        if history_per_session < 1:
+            msg = f"history_per_session must be >= 1, got {history_per_session}"
+            raise ValueError(msg)
+        if history_max_sessions < 1:
+            msg = f"history_max_sessions must be >= 1, got {history_max_sessions}"
+            raise ValueError(msg)
         self._max_queue_size = max_queue_size
         self._dedup_ttl_seconds = dedup_ttl_seconds
         self._dedup_max_entries_per_session = dedup_max_entries_per_session
+        self._history_per_session = history_per_session
+        self._history_max_sessions = history_max_sessions
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._subscribers: dict[str, list[_Subscriber]] = {}
+        # Per-session ring buffer of recently-published events for SSE
+        # ``Last-Event-ID`` replay. Insertion-ordered (LRU) so the FIFO
+        # session-cap eviction drops the least-recently-published session.
+        self._history: OrderedDict[str, deque[StreamEvent]] = OrderedDict()
         # Per-session insertion-ordered map of ``event.id`` ->
         # ``monotonic_seen_at``. Bounded per session and TTL-evicted on
         # publish so a long-lived session cannot grow the dedup window
@@ -408,11 +431,20 @@ class EventStreamHub:
     async def subscribe(
         self,
         session_id: str,
+        *,
+        after_id: str | None = None,
     ) -> EventStreamSubscription:
         """Subscribe to events for a session.
 
         Args:
             session_id: Session to subscribe to.
+            after_id: When set (an SSE ``Last-Event-ID``), the retained
+                history events published strictly after that id are
+                replayed into the new subscriber's queue before any live
+                event is forwarded, so a reconnecting client recovers the
+                gap it missed. An unknown / evicted id replays the whole
+                retained buffer. The replay runs under the publish lock so
+                a concurrent publish cannot interleave ahead of the gap.
 
         Returns:
             An :class:`EventStreamSubscription` handle that delivers
@@ -425,7 +457,73 @@ class EventStreamHub:
         subscriber = _Subscriber(queue=queue, last_active=self._clock.monotonic())
         async with self._lock_for_current_loop():
             self._subscribers.setdefault(session_id, []).append(subscriber)
+            if after_id is not None:
+                self._replay_history_locked(session_id, after_id, queue)
         return EventStreamSubscription(session_id, queue)
+
+    def _record_history_locked(self, event: StreamEvent) -> None:
+        """Append *event* to its session's replay ring buffer.
+
+        Caller must hold ``self._lock``. Bounds memory two ways: each
+        session's ``deque`` has a fixed ``maxlen`` (oldest event evicted),
+        and the number of tracked sessions is FIFO-capped (least-recently-
+        published session evicted). An immediate-retry of the same id (the
+        publisher caught a transient failure and re-published) is skipped
+        so the buffer does not carry adjacent duplicates.
+        """
+        hist = self._history.get(event.session_id)
+        if hist is None:
+            while len(self._history) >= self._history_max_sessions:
+                self._history.popitem(last=False)
+            hist = deque(maxlen=self._history_per_session)
+            self._history[event.session_id] = hist
+        else:
+            self._history.move_to_end(event.session_id)
+            if hist and hist[-1].id == event.id:
+                return
+        hist.append(event)
+
+    def _replay_history_locked(
+        self,
+        session_id: str,
+        after_id: str,
+        queue: asyncio.Queue[StreamEvent],
+    ) -> int:
+        """Drain retained events published after *after_id* into *queue*.
+
+        Caller must hold ``self._lock``. Replays every retained event
+        strictly after the one matching ``after_id``; when ``after_id`` is
+        not in the buffer (too old / unknown) the full retained buffer is
+        replayed so the client is not silently left with a gap. Stops on
+        ``QueueFull`` so a history larger than the subscriber queue cannot
+        block the subscribe call.
+
+        Returns:
+            The number of events replayed into the queue.
+        """
+        hist = self._history.get(session_id)
+        if not hist:
+            return 0
+        events = list(hist)
+        start = 0
+        for index, recorded in enumerate(events):
+            if recorded.id == after_id:
+                start = index + 1
+                break
+        replayed = 0
+        for recorded in events[start:]:
+            try:
+                queue.put_nowait(recorded)
+            except asyncio.QueueFull:
+                logger.warning(
+                    EVENT_STREAM_HUB_PUBLISH_FAILED,
+                    session_id=session_id,
+                    event_id=recorded.id,
+                    note="Replay queue full; remaining history dropped",
+                )
+                break
+            replayed += 1
+        return replayed
 
     async def unsubscribe(
         self,
@@ -483,6 +581,10 @@ class EventStreamHub:
         """
         now = self._clock.monotonic()
         async with self._lock_for_current_loop():
+            # Record into the replay buffer before the no-subscriber
+            # early-return so events published during a client's
+            # reconnect gap are still replayable on resubscribe.
+            self._record_history_locked(event)
             subs_snapshot = list(self._subscribers.get(event.session_id, ()))
             # If no subscribers, the event would be dropped anyway.
             # Don't record it in the dedup window: a later retry that

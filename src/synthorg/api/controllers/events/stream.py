@@ -91,11 +91,16 @@ class EventStreamController(Controller):
             msg = "Session not found"
             raise NotFoundError(msg)
         await assert_sse_session_access(app_state, session_id, user)
+        # SSE reconnect: the browser resends the last event id it saw via
+        # the ``Last-Event-ID`` header so the hub can replay the gap it
+        # missed while disconnected.
+        after_id = request.headers.get("last-event-id") or None
         return ServerSentEvent(
             content=_sse_event_stream(
                 hub,
                 session_id,
                 app_state=app_state,
                 user=user,
+                after_id=after_id,
             ),
         )
