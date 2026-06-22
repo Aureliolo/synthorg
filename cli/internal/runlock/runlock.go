@@ -53,7 +53,7 @@ const defaultRetryInterval = 200 * time.Millisecond
 // "another operation is in progress" message rather than proceeding into a
 // split-brain compose-up.
 var ErrLocked = errors.New(
-	"another synthorg lifecycle operation (start/stop/update/wipe) is in progress",
+	"another synthorg lifecycle operation (start/stop/update/wipe/uninstall) is in progress",
 )
 
 // config holds the per-acquire tunables. It is set from Option values so the
