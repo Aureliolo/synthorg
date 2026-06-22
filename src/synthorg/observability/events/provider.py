@@ -172,6 +172,7 @@ PROVIDER_CASSETTE_REPLAYED: Final[str] = "provider.cassette.replayed"
 PROVIDER_CASSETTE_MISS: Final[str] = "provider.cassette.miss"
 PROVIDER_CASSETTE_EXHAUSTED: Final[str] = "provider.cassette.exhausted"
 PROVIDER_CASSETTE_FORMAT_ERROR: Final[str] = "provider.cassette.format_error"
+PROVIDER_CASSETTE_INTERNAL_ERROR: Final[str] = "provider.cassette.internal_error"
 PROVIDER_CASSETTE_SESSION_FLUSHED: Final[str] = "provider.cassette.session_flushed"
 
 # ── Local model management ──────────────────────────────────

@@ -1,7 +1,12 @@
 """Unit tests for ``InMemoryRedTeamReportRepository``."""
 
 import pytest
+from structlog.testing import capture_logs
 
+from synthorg.observability.events.red_team import (
+    RED_TEAM_REPORT_QUERY_FAILED,
+    RED_TEAM_REPORT_SAVE_FAILED,
+)
 from synthorg.security.redteam.errors import (
     RedTeamReportAlreadyExistsError,
     RedTeamReportNotFoundError,
@@ -36,6 +41,21 @@ class TestPutGet:
         with pytest.raises(RedTeamReportNotFoundError) as exc_info:
             await repo.get(execution_id="nope")
         assert exc_info.value.execution_id == "nope"
+
+    @pytest.mark.asyncio
+    async def test_get_missing_logs_before_raising(self) -> None:
+        repo = InMemoryRedTeamReportRepository()
+        with capture_logs() as logs, pytest.raises(RedTeamReportNotFoundError):
+            await repo.get(execution_id="nope")
+        assert any(e["event"] == RED_TEAM_REPORT_QUERY_FAILED for e in logs)
+
+    @pytest.mark.asyncio
+    async def test_duplicate_put_logs_before_raising(self) -> None:
+        repo = InMemoryRedTeamReportRepository()
+        await repo.put(execution_id="exec-1", report=_report())
+        with capture_logs() as logs, pytest.raises(RedTeamReportAlreadyExistsError):
+            await repo.put(execution_id="exec-1", report=_report())
+        assert any(e["event"] == RED_TEAM_REPORT_SAVE_FAILED for e in logs)
 
 
 @pytest.mark.unit

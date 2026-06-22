@@ -964,6 +964,11 @@ class BrowserTool(BaseTool):
                 str(message),
                 operation,
             )
+            logger.warning(
+                BROWSER_EXECUTOR_FAILED,
+                operation=operation,
+                error_type=err_type,
+            )
             raise mapped_error
 
         return cast("_ExecutorResult", decoded)
@@ -1053,11 +1058,17 @@ class BrowserTool(BaseTool):
         """
         ss_payload: _ScreenshotPayload = payload.get("screenshot") or {}
         if not ss_payload:
+            logger.warning(BROWSER_SCREENSHOT_FAILED, reason="no_screenshot_payload")
             raise BrowserScreenshotError(
                 "Executor returned no screenshot payload",
             )
         sha = str(ss_payload.get("sha256", ""))
         if len(sha) != SHA256_HEX_LENGTH or _SHA256_HEX_PATTERN.match(sha) is None:
+            logger.warning(
+                BROWSER_SCREENSHOT_FAILED,
+                reason="invalid_sha256",
+                sha256_length=len(sha),
+            )
             raise BrowserScreenshotError(
                 "Executor returned an invalid sha256",
                 context={"sha256_length": len(sha)},

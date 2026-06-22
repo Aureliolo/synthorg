@@ -197,6 +197,10 @@ class ApprovalTimeoutScheduler:
                     "ApprovalTimeoutScheduler is unrestartable after a "
                     "timed-out stop; construct a fresh instance."
                 )
+                logger.error(
+                    TIMEOUT_SCHEDULER_ERROR,
+                    reason="start_rejected_unrestartable",
+                )
                 raise RuntimeError(msg)
             if self.is_running:
                 return
@@ -321,6 +325,10 @@ class ApprovalTimeoutScheduler:
         wake_event = self._wake_event
         if wake_event is None:  # defensive; start() guarantees non-None
             msg = "_run_loop invoked without an initialised wake event"
+            logger.error(
+                TIMEOUT_SCHEDULER_ERROR,
+                reason="run_loop_without_wake_event",
+            )
             raise RuntimeError(msg)
         # lint-allow: long-running-loop-kill-switch -- stop()/cancel drives shutdown.
         while True:
