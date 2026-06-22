@@ -1,7 +1,10 @@
+import { Scale } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
+import { ROUTES } from '@/router/routes'
 import { useScalingData } from '@/hooks/useScalingData'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
@@ -89,13 +92,47 @@ export default function ScalingPage() {
         />
       )}
 
+      <ScalingSections
+        strategies={strategies}
+        decisions={decisions}
+        signals={signals}
+        error={error}
+      />
+
+      {/* Cluster-wide promotion cycle */}
+      <ErrorBoundary level="section">
+        <PromotionCycleSection />
+      </ErrorBoundary>
+    </div>
+  )
+}
+
+interface ScalingSectionsProps {
+  strategies: ReturnType<typeof useScalingData>['strategies']
+  decisions: ReturnType<typeof useScalingData>['decisions']
+  signals: ReturnType<typeof useScalingData>['signals']
+  error: string | null
+}
+
+function ScalingSections({ strategies, decisions, signals, error }: ScalingSectionsProps) {
+  if (!error && strategies.length === 0) {
+    return (
+      <EmptyState
+        icon={Scale}
+        title="No scaling strategies configured"
+        description="Configure a scaling strategy to let the org grow or shrink its agent roster automatically."
+        learnMore={{
+          href: ROUTES.SETTINGS_NAMESPACE.replace(':namespace', 'coordination'),
+          label: 'Open coordination settings',
+        }}
+      />
+    )
+  }
+  return (
+    <>
       {/* Top metrics */}
       <ErrorBoundary level="section">
-        <ScalingMetrics
-          strategies={strategies}
-          decisions={decisions}
-          signals={signals}
-        />
+        <ScalingMetrics strategies={strategies} decisions={decisions} signals={signals} />
       </ErrorBoundary>
 
       {/* Signal gauges and strategy controls side by side */}
@@ -112,11 +149,6 @@ export default function ScalingPage() {
       <ErrorBoundary level="section">
         <DecisionHistory decisions={decisions} />
       </ErrorBoundary>
-
-      {/* Cluster-wide promotion cycle */}
-      <ErrorBoundary level="section">
-        <PromotionCycleSection />
-      </ErrorBoundary>
-    </div>
+    </>
   )
 }

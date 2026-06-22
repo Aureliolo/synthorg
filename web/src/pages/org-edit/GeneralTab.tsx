@@ -4,6 +4,7 @@ import type { AutonomyLevel } from '@/api/types/enums'
 import type { CompanyConfig, UpdateCompanyRequest } from '@/api/types/org'
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { Button } from '@/components/ui/button'
@@ -16,24 +17,35 @@ import { CompanyProfileSection } from './CompanyProfileSection'
 
 const log = createLogger('GeneralTab')
 
+interface BudgetCurrency {
+  currency: string
+  /** Set when the currency fetch failed; the displayed code is a fallback. */
+  error: string | null
+}
+
 /** Resolve the configured display currency code (``budget/currency``). */
-function useBudgetCurrency(): string {
+function useBudgetCurrency(): BudgetCurrency {
   const [currency, setCurrency] = useState<string>(DEFAULT_CURRENCY)
+  const [error, setError] = useState<string | null>(null)
   useEffect(() => {
     void Promise.resolve().then(() =>
       getNamespaceSettings('budget')
         .then((entries) => {
           const value = entries.find((e) => e.definition.key === 'currency')?.value
           if (value != null && value.trim() !== '') setCurrency(value)
+          setError(null)
         })
         .catch((err: unknown) => {
           log.error('load budget currency failed', {
             error: sanitizeForLog(getErrorMessage(err)),
           })
+          // Surface the failure so the operator knows the currency label is a
+          // fallback rather than the configured value.
+          setError(getErrorMessage(err))
         }),
     )
   }, [])
-  return currency
+  return { currency, error }
 }
 
 export interface GeneralTabProps {
@@ -107,6 +119,7 @@ interface CompanySettingsFieldsProps {
   saving: boolean
   dirty: boolean
   currencyCode: string
+  currencyError: string | null
   onSave: () => void
 }
 
@@ -116,10 +129,19 @@ function CompanySettingsFields({
   saving,
   dirty,
   currencyCode,
+  currencyError,
   onSave,
 }: CompanySettingsFieldsProps) {
   return (
     <div className="space-y-5 max-w-xl">
+      {currencyError !== null && (
+        <ErrorBanner
+          variant="section"
+          severity="warning"
+          title="Using the default currency"
+          description={`The configured budget currency could not be loaded, so amounts show in ${currencyCode}. ${currencyError}`}
+        />
+      )}
       <InputField
         label="Company Name"
         value={form.company_name}
@@ -176,7 +198,7 @@ function CompanySettingsFields({
 }
 
 export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
-  const currencyCode = useBudgetCurrency()
+  const { currency: currencyCode, error: currencyError } = useBudgetCurrency()
   const [form, setForm] = useState<FormState>({
     company_name: '',
     autonomy_level: 'semi',
@@ -235,6 +257,7 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
           saving={saving}
           dirty={dirty}
           currencyCode={currencyCode}
+          currencyError={currencyError}
           onSave={handleSave}
         />
       </SectionCard>

@@ -17,7 +17,7 @@ import {
 } from '@/api/endpoints/custom-rules'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('custom-rules')
@@ -109,7 +109,7 @@ async function createRuleImpl(
     log.error('Create custom rule failed:', sanitizeForLog(err))
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to create rule',
+      ...getCrudErrorTitle(err, 'Failed to create rule'),
       description: getErrorMessage(err),
     })
     set({ submitting: false })
@@ -138,7 +138,7 @@ async function updateRuleImpl(
     log.error('Update custom rule failed:', sanitizeForLog(err))
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to update rule',
+      ...getCrudErrorTitle(err, 'Failed to update rule'),
       description: getErrorMessage(err),
     })
     set({ submitting: false })

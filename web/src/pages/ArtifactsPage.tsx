@@ -79,14 +79,17 @@ export default function ArtifactsPage() {
       <SearchFilterSort filters={<ArtifactFilters />} />
       <ErrorBoundary level="section">
         <ArtifactGridView artifacts={pagedArtifacts} />
-        <Pagination
-          page={page}
-          pageSize={pageSize}
-          total={totalItems}
-          onPageChange={setPage}
-          onPageSizeChange={setPageSize}
-        />
       </ErrorBoundary>
+      {/* Pagination receives only primitive props and cannot trigger a fetch,
+          so it sits outside the grid's boundary: a pagination render error must
+          not blank the artifacts that already loaded. */}
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={totalItems}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+      />
 
       <ArtifactCreateDialog
         open={createOpen}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { getParetoFrontier } from '@/api/endpoints/budget'
 import type { ParetoFrontier } from '@/api/types'
 import { createLogger } from '@/lib/logger'
+import { getErrorMessage } from '@/utils/errors'
 import { useBudgetData } from '@/hooks/useBudgetData'
 import {
   computeAgentSpending,
@@ -22,22 +23,33 @@ export type CurrentForecast = ReturnType<typeof useBudgetForecastStore.getState>
 export interface ParetoFrontierState {
   paretoFrontier: ParetoFrontier | null
   paretoLoading: boolean
+  /**
+   * Set when the frontier request failed, so the page can distinguish
+   * "not configured" (null + no error) from "fetch failed" and render a
+   * failure banner instead of a silent empty section.
+   */
+  paretoError: string | null
 }
 
 export function useParetoFrontier(): ParetoFrontierState {
   const [paretoFrontier, setParetoFrontier] = useState<ParetoFrontier | null>(null)
   const [paretoLoading, setParetoLoading] = useState<boolean>(true)
+  const [paretoError, setParetoError] = useState<string | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
     void getParetoFrontier(controller.signal)
       .then((frontier) => {
-        if (!controller.signal.aborted) setParetoFrontier(frontier)
+        if (!controller.signal.aborted) {
+          setParetoFrontier(frontier)
+          setParetoError(null)
+        }
       })
       .catch((err: unknown) => {
         if (controller.signal.aborted) return
         log.warn('failed to load pareto frontier', err)
         setParetoFrontier(null)
+        setParetoError(getErrorMessage(err))
       })
       .finally(() => {
         if (!controller.signal.aborted) setParetoLoading(false)
@@ -47,7 +59,7 @@ export function useParetoFrontier(): ParetoFrontierState {
     }
   }, [])
 
-  return { paretoFrontier, paretoLoading }
+  return { paretoFrontier, paretoLoading, paretoError }
 }
 
 export interface BudgetDerived {

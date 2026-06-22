@@ -1,12 +1,14 @@
 import { lazy, Suspense, useState } from 'react'
 import { DndContext, DragOverlay, closestCorners } from '@dnd-kit/core'
 import { AnimatePresence } from 'motion/react'
-import { Target } from 'lucide-react'
+import { KanbanSquare, Target } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
 import { ToggleField } from '@/components/ui/toggle-field'
+import { useEmptyStateProps } from '@/hooks/use-empty-state-props'
 import { formatNumber } from '@/utils/format'
 import { KANBAN_COLUMNS, type TaskBoardFilters } from '@/utils/tasks'
 import { TaskBoardSkeleton } from './tasks/TaskBoardSkeleton'
@@ -187,11 +189,35 @@ function BoardToggles({
   )
 }
 
+function TaskBoardKanbanEmptyState({ ctrl }: TaskBoardCtrlProps) {
+  // TaskListView renders its own empty state; the Kanban path did not, so an
+  // empty board rendered bare columns with no explanation. Distinguish "no
+  // tasks at all" from "filters narrowed to zero".
+  const props = useEmptyStateProps({
+    filteredCount: ctrl.filteredTasks.length,
+    totalCount: ctrl.data.tasks.length,
+    filterActive: ctrl.data.tasks.length > 0,
+    icon: KanbanSquare,
+    empty: {
+      title: 'No tasks yet',
+      description: 'Create a task or let the org generate work to populate the board.',
+    },
+    filtered: {
+      title: 'No tasks match your filters',
+      description: 'Adjust or clear the filters to see more of the board.',
+    },
+  })
+  return props !== null ? <EmptyState {...props} /> : null
+}
+
 function TaskBoardContent({ ctrl }: TaskBoardCtrlProps) {
   if (ctrl.viewMode === 'list') {
     return (
-      <TaskListView tasks={[...ctrl.filteredTasks]} onSelectTask={ctrl.handleSelectTask} />
+      <TaskListView tasks={ctrl.filteredTasks} onSelectTask={ctrl.handleSelectTask} />
     )
+  }
+  if (ctrl.filteredTasks.length === 0) {
+    return <TaskBoardKanbanEmptyState ctrl={ctrl} />
   }
   const visibleColumns = ctrl.showTerminal
     ? KANBAN_COLUMNS

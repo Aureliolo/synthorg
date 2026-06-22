@@ -15,7 +15,10 @@ type SortKey = 'status' | 'title' | 'assignee' | 'priority' | 'type' | 'deadline
 type SortDirection = 'asc' | 'desc'
 
 export interface TaskListViewProps {
-  tasks: DashboardTask[]
+  // Accept readonly so callers pass the store array directly (it is spread
+  // internally for sorting); a defensive copy at the call site would defeat the
+  // component's React.memo on every parent render.
+  tasks: readonly DashboardTask[]
   onSelectTask: (taskId: string) => void
 }
 
