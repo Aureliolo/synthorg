@@ -82,7 +82,7 @@ test.describe('Settings management critical flow', () => {
         json: { success: true, data: [definition], error: null, error_detail: null },
       }),
     )
-    await page.route('**/api/v1/settings?**', (route) =>
+    await page.route(/\/api\/v1\/settings\?.*/, (route) =>
       route.fulfill({
         json: {
           success: true,

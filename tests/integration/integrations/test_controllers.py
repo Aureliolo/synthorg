@@ -140,8 +140,9 @@ class TestConnectionsController:
 
     async def test_reveal_secret_returns_field(self) -> None:
         from synthorg.api.controllers.connections import ConnectionsController
+        from synthorg.integrations.connections.catalog import ConnectionCatalog
 
-        catalog = MagicMock()
+        catalog = MagicMock(spec=ConnectionCatalog)
         catalog.get_credentials = AsyncMock(
             return_value={"client_secret": "real-secret-value"},
         )
@@ -161,8 +162,9 @@ class TestConnectionsController:
 
     async def test_reveal_secret_missing_field_raises(self) -> None:
         from synthorg.api.controllers.connections import ConnectionsController
+        from synthorg.integrations.connections.catalog import ConnectionCatalog
 
-        catalog = MagicMock()
+        catalog = MagicMock(spec=ConnectionCatalog)
         catalog.get_credentials = AsyncMock(return_value={"other": "x"})
         state = State({"app_state": make_app_state(connection_catalog=catalog)})
 

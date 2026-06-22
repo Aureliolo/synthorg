@@ -29,7 +29,7 @@ test.describe('Memory recall critical flow', () => {
           data: [makeOntologyEntity()],
           error: null,
           error_detail: null,
-          pagination: { total: 1, offset: 0, limit: 50 },
+          pagination: { total: 1, offset: 0, limit: 50, next_cursor: null, has_more: false },
         },
       }),
     )
@@ -85,7 +85,7 @@ test.describe('Memory recall critical flow', () => {
           ],
           error: null,
           error_detail: null,
-          pagination: { total: 2, offset: 0, limit: 50 },
+          pagination: { total: 2, offset: 0, limit: 50, next_cursor: null, has_more: false },
         },
       }),
     )

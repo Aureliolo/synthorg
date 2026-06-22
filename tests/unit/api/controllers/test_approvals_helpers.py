@@ -28,6 +28,7 @@ from synthorg.core.domain_errors import (
     ServiceUnavailableError,
     UnauthorizedError,
 )
+from synthorg.core.task import Task
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.errors import (
     SelfReviewError,
@@ -518,8 +519,9 @@ class TestPreflightReviewGate:
 
     async def test_passes_through_when_authorized(self) -> None:
         """Happy path: preflight returns without raising."""
-        review_gate = mock_of[ReviewGateService]()
-        review_gate.check_can_decide = AsyncMock(return_value=MagicMock())
+        review_gate = mock_of[ReviewGateService](
+            check_can_decide=AsyncMock(return_value=mock_of[Task]()),
+        )
 
         await preflight_review_gate(
             review_gate,
@@ -534,9 +536,10 @@ class TestPreflightReviewGate:
 
     async def test_self_review_raises_forbidden(self) -> None:
         """SelfReviewError maps to ForbiddenError with a generic message."""
-        review_gate = mock_of[ReviewGateService]()
-        review_gate.check_can_decide = AsyncMock(
-            side_effect=SelfReviewError(task_id="task-1", agent_id="alice"),
+        review_gate = mock_of[ReviewGateService](
+            check_can_decide=AsyncMock(
+                side_effect=SelfReviewError(task_id="task-1", agent_id="alice"),
+            ),
         )
 
         with pytest.raises(ForbiddenError) as exc_info:
@@ -554,9 +557,10 @@ class TestPreflightReviewGate:
 
     async def test_task_not_found_raises_404(self) -> None:
         """TaskNotFoundError maps to NotFoundError with a generic message."""
-        review_gate = mock_of[ReviewGateService]()
-        review_gate.check_can_decide = AsyncMock(
-            side_effect=TaskNotFoundError("Task 'task-xyz' not found"),
+        review_gate = mock_of[ReviewGateService](
+            check_can_decide=AsyncMock(
+                side_effect=TaskNotFoundError("Task 'task-xyz' not found"),
+            ),
         )
 
         with pytest.raises(NotFoundError) as exc_info:
@@ -571,9 +575,10 @@ class TestPreflightReviewGate:
 
     async def test_task_internal_error_raises_503(self) -> None:
         """TaskInternalError maps to ServiceUnavailableError (503)."""
-        review_gate = mock_of[ReviewGateService]()
-        review_gate.check_can_decide = AsyncMock(
-            side_effect=TaskInternalError("Persistence backend offline"),
+        review_gate = mock_of[ReviewGateService](
+            check_can_decide=AsyncMock(
+                side_effect=TaskInternalError("Persistence backend offline"),
+            ),
         )
 
         with pytest.raises(ServiceUnavailableError):
