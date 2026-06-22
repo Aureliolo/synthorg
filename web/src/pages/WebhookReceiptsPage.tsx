@@ -174,9 +174,9 @@ function useWebhookActivity(selected: string, selection: WebhookSelection): Webh
       return requestId !== requestSeqRef.current || latestSelectedRef.current !== requestedFor
     }
     try {
-      const rows = await listWebhookActivity(requestedFor)
+      const page = await listWebhookActivity(requestedFor)
       if (isStale()) return
-      setEntries(rows)
+      setEntries(page.data)
     } catch (err) {
       if (isStale()) return
       const message = getErrorMessage(err)

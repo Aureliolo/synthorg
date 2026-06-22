@@ -43,13 +43,14 @@ export async function getProjectBrainEntry(
 export async function getProjectBrainHistory(
   projectId: string,
   entryId: string,
+  params?: { cursor?: string | null; limit?: number },
   signal?: AbortSignal,
-): Promise<readonly BrainEntryVersion[]> {
-  const response = await apiClient.get<ApiResponse<readonly BrainEntryVersion[]>>(
+): Promise<PaginatedResult<BrainEntryVersion>> {
+  const response = await apiClient.get<PaginatedResponse<BrainEntryVersion>>(
     `/projects/${encodeURIComponent(projectId)}/brain/${encodeURIComponent(entryId)}/history`,
-    withSignal(signal),
+    withSignal(signal, { params }),
   )
-  return unwrap(response)
+  return unwrapPaginated<BrainEntryVersion>(response)
 }
 
 export async function searchProjectBrain(

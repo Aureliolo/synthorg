@@ -175,6 +175,20 @@ class TestProjectBrainController:
         assert resp.status_code == 200
         assert resp.json()["data"][0]["commit_hash"] == "a" * 40
 
+    async def test_history_rejects_tampered_cursor(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """A forged cursor fails the HMAC check and 422s, never trusting
+
+        the attacker-supplied offset that backs the git ``--skip`` window.
+        """
+        with _with_brain_service(async_test_client, _FakeBrainService()):
+            resp = await async_test_client.get(
+                "/api/v1/projects/proj-1/brain/dec-1/history",
+                params={"cursor": "not-a-real-cursor"},
+            )
+        assert resp.status_code == 400
+
     async def test_pagination_reaches_second_page(
         self, async_test_client: LoopAsyncClient
     ) -> None:

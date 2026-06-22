@@ -60,7 +60,7 @@ export const projectBrainHandlers = [
   ),
   http.get('/api/v1/projects/:projectId/brain/:entryId/history', () =>
     HttpResponse.json(
-      successFor<typeof getProjectBrainHistory>([] as readonly BrainEntryVersion[]),
+      paginatedFor<typeof getProjectBrainHistory>(emptyPage<BrainEntryVersion>()),
     ),
   ),
 ]

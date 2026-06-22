@@ -2,10 +2,10 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter } from 'react-router'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { apiError, buildConnection, successFor } from '@/mocks/handlers'
+import { apiError, buildConnection, emptyPage, paginatedFor, successFor } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import type { Connection } from '@/api/types/integrations'
-import type { listWebhookActivity } from '@/api/endpoints/webhooks'
+import type { listWebhookActivity, WebhookReceipt } from '@/api/endpoints/webhooks'
 import { retryWebhookReceipt } from '@/api/endpoints/webhooks'
 
 let connections: readonly Connection[]
@@ -58,7 +58,9 @@ describe('WebhookReceiptsPage', () => {
     connections = [makeConnection('slack-app')]
     server.use(
       http.get('/api/v1/webhooks/:connectionName/activity', () =>
-        HttpResponse.json(successFor<typeof listWebhookActivity>([])),
+        HttpResponse.json(
+          paginatedFor<typeof listWebhookActivity>(emptyPage<WebhookReceipt>()),
+        ),
       ),
     )
     renderPage()
@@ -74,7 +76,7 @@ describe('WebhookReceiptsPage', () => {
           successFor<typeof retryWebhookReceipt>({
             status: 'accepted',
             event_type: 'workflow.executed',
-            receipt_id: 'whr-000000000002',
+            receipt_id: '00000000-0000-0000-0000-000000000002',
           }),
         )
       }),
@@ -82,11 +84,11 @@ describe('WebhookReceiptsPage', () => {
     connections = [makeConnection('slack-app')]
     renderPage()
     // The default activity handler returns one failed (retryable) receipt.
-    const checkbox = await screen.findByLabelText('Select receipt whr-000000000002')
+    const checkbox = await screen.findByLabelText('Select receipt 00000000-0000-0000-0000-000000000002')
     fireEvent.click(checkbox)
     fireEvent.click(await screen.findByRole('button', { name: /Retry selected/ }))
     await waitFor(() => {
-      expect(retriedId).toBe('whr-000000000002')
+      expect(retriedId).toBe('00000000-0000-0000-0000-000000000002')
     })
   })
 

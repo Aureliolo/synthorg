@@ -121,6 +121,23 @@ async def test_history_reflects_applied_change() -> None:
     )
     assert after.data is not None
     assert len(after.data) == 1
+    # Single record is the terminal page: no further cursor, has_more False.
+    assert after.pagination.has_more is False
+    assert after.pagination.next_cursor is None
+
+
+async def test_history_rejects_tampered_cursor() -> None:
+    """A forged cursor fails the HMAC check before any offset is trusted."""
+    from synthorg.api.cursor import InvalidCursorError
+
+    service, agent_id = await _seeded_service()
+    with pytest.raises(InvalidCursorError):
+        await PromotionController.history.fn(
+            _controller(),
+            state=_state_with(service),
+            agent_id=agent_id,
+            cursor="not-a-real-cursor",
+        )
 
 
 async def test_trigger_cycle_applies_changes() -> None:

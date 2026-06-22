@@ -63,7 +63,7 @@ export const projectDocsHandlers = [
   ),
   http.get('/api/v1/projects/:projectId/docs/:slug/history', () =>
     HttpResponse.json(
-      successFor<typeof getProjectDocHistory>([] as readonly DocVersion[]),
+      paginatedFor<typeof getProjectDocHistory>(emptyPage<DocVersion>()),
     ),
   ),
 ]
