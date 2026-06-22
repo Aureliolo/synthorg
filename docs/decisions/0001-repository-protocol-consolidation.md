@@ -123,7 +123,7 @@ name): rename callsites to `query(TaskFilterSpec(...))` instead.
 The following comprehensive table captures every protocol class in
 `src/synthorg/persistence/`, `src/synthorg/communication/`, and `src/synthorg/hr/`
 (50+ classes across 40+ files). Each row shows which generic categories the protocol
-inherits and which D7-compliant bespoke methods are kept. Four protocols do not
+inherits and which D7-compliant bespoke methods are kept. Five protocols do not
 compose any generic category and are documented at the end as "bespoke per D7".
 
 ### Per-Entity Composition and Bespoke Methods
@@ -182,7 +182,7 @@ compose any generic category and are documented at the end as "bespoke per D7".
 
 ### Bespoke-Only Protocols (No Generic Composition)
 
-The following four protocols do not inherit from any of the six generic categories.
+The following five protocols do not inherit from any of the six generic categories.
 They remain fully bespoke per D7 because their operation semantics are fundamentally
 distinct from CRUD and cannot be expressed as compositions of the generics.
 
@@ -192,6 +192,7 @@ distinct from CRUD and cannot be expressed as compositions of the generics.
 | **IdempotencyRepository** | `src/synthorg/persistence/idempotency_protocol.py` | Atomic claim-and-lease with token-guarded CAS; claim/complete/fail form a state machine independent of entity shape and do not expose list/query/delete semantics |
 | **ProjectCostAggregateRepository** | `src/synthorg/persistence/project_cost_aggregate_protocol.py` | Only get + atomic increment with mixed-currency rejection; no save/delete/list/query semantics at all |
 | **SeenClaimsRepository** | `src/synthorg/persistence/seen_claims_protocol.py` | Dedup with TTL pruning + atomic mark_seen; no entity model, only idempotency-key existence checks and mark-seen CAS |
+| **OrgFactRepository** | `src/synthorg/persistence/memory_protocol.py` | Standalone MVCC-style log: composite key + author tracking on `retract`, and `snapshot_at()` returns an `OperationLogSnapshot` that does not fit the `MVCCRepository[T, ...]` signature |
 
 ## Migration mechanics
 

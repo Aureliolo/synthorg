@@ -106,7 +106,7 @@ LLM providers are configured under the `providers` key. Each entry is a named pr
 | `litellm_provider` | string | `null` | LiteLLM routing key override |
 | `family` | string | `null` | Provider family for grouping |
 | `auth_type` | AuthType | `"api_key"` | Authentication method |
-| `connection_name` | string | `null` | Reference to a `ConnectionCatalog` entry; credentials resolve from the catalog at runtime. Required for `api_key` and `custom_header` auth (there is no embedded credential field). |
+| `connection_name` | string | `null` | Reference to a `ConnectionCatalog` entry; credentials resolve from the catalog at runtime. Required for `api_key` auth (which has no embedded credential field). `custom_header` auth instead requires the embedded `custom_header_name` / `custom_header_value` fields. |
 | `subscription_token` | string | `null` | Subscription token |
 | `base_url` | string | `null` | Custom API base URL |
 | `models` | list | `[]` | Available models |

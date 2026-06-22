@@ -106,7 +106,7 @@ a bidirectional reference for the gateway translation layer.
 
 | SynthOrg Verdict | A2A State | Direction | Notes |
 |------------------|-----------|-----------|-------|
-| Approval gate `ESCALATED` | `auth-required` | SynthOrg -> A2A | The `ESCALATED` verdict is what parks the task in the `AUTH_REQUIRED` state above; both surface to A2A as `auth-required` (one is the task state, this row is the verdict that produces it). External client must provide additional credentials |
+| Verdict `ESCALATED` | `auth-required` | SynthOrg -> A2A | The `ESCALATED` verdict is what parks the task in the `AUTH_REQUIRED` state above; both surface to A2A as `auth-required` (one is the task state, this row is the verdict that produces it). External client must provide additional credentials |
 
 ### Identity Mapping
 

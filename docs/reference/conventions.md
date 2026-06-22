@@ -782,11 +782,14 @@ search-as-a-shape stays consistent (`workflow_versions_list`, not
 
 ### Route access guards
 
-Every controller route declares an access guard. Read-only routes (`@get`,
-`@head`) use `guards=[require_read_access]`; every mutating route (`@post`,
-`@patch`, `@put`, `@delete`) uses `guards=[require_write_access]`. Both import
-from `synthorg.api.guards`. There are no unguarded routes; an endpoint that
-mutates state without `require_write_access` is a defect.
+Controller routes are access-guarded by their effect: read-only routes
+(`@get`, `@head`) use `require_read_access`; mutating routes (`@post`,
+`@patch`, `@put`, `@delete`) use `require_write_access`. Declare the guard
+either per route (`guards=[...]`) or once at the controller class level
+(`guards = [...]`, which covers every route on that controller); both import
+from `synthorg.api.guards`. This is a review-enforced convention rather than a
+gated one: apply the matching guard to any route that exposes or mutates
+tenant-scoped state.
 
 ## 29. Request / Response / Snapshot suffix taxonomy
 

@@ -71,19 +71,29 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 // failed verify/pull never leaves a half-applied compose.yml behind.
 func composeRollback(cmd *cobra.Command, composePath string) func() {
 	backup, backupErr := os.ReadFile(composePath) //nolint:gosec // G304: composePath is <data-dir>/compose.yml under the SecurePath-cleaned data dir
-	backupExists := backupErr == nil
 
 	return func() {
-		if backupExists {
+		switch {
+		case backupErr == nil:
+			// A prior compose.yml was read successfully: restore it.
 			if wErr := os.WriteFile(composePath, backup, 0o600); wErr != nil { //nolint:gosec // G304: composePath is <data-dir>/compose.yml under the SecurePath-cleaned data dir
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
 					"Warning: failed to restore compose.yml backup: %v\n", wErr)
 			}
-		} else {
+		case errors.Is(backupErr, os.ErrNotExist):
+			// No prior compose.yml existed, so remove the one we wrote.
 			if rErr := os.Remove(composePath); rErr != nil && !errors.Is(rErr, os.ErrNotExist) {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
 					"Warning: failed to clean up compose.yml: %v\n", rErr)
 			}
+		default:
+			// The pre-existing compose.yml could not be read (e.g. a permission
+			// or transient I/O error). It may still exist, so do NOT remove it:
+			// a destructive cleanup here could delete a file we merely failed to
+			// back up. Leave the current file in place.
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+				"Warning: could not read compose.yml for backup (%v); "+
+					"leaving the current file in place on rollback\n", backupErr)
 		}
 	}
 }

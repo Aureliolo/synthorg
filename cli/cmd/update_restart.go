@@ -35,6 +35,17 @@ func performRestart(ctx context.Context, out io.Writer, info docker.Info, safeDi
 		}
 	}()
 
+	// Re-check under the lock. The caller's running-state check happened before
+	// this lock was held, so a concurrent stop/wipe (which holds the same lock)
+	// could have brought the stack down while we were prompting. Restarting now
+	// would resurrect a stack another command intentionally stopped, so honour
+	// that and skip. A query error fails open to the restart (prior behaviour).
+	psOut, psErr := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "-q")
+	if psErr == nil && strings.TrimSpace(psOut) == "" {
+		uiOut.Step("Containers already stopped; skipping restart.")
+		return false, nil
+	}
+
 	if err := stopAndVerifyDown(ctx, uiOut, info, safeDir); err != nil {
 		return false, err
 	}

@@ -103,7 +103,14 @@ def _url_path_prefix(config: dict[str, object]) -> str:
 
 
 def _doc_to_url(doc_path: str, prefix: str) -> str:
-    """Map an mkdocs source path (``a/b.md``) to its directory URL (``/prefix/a/b/``)."""
+    """Map an mkdocs source path (``a/b.md``) to its directory URL (``/prefix/a/b/``).
+
+    An absolute redirect target (``http://`` / ``https://``) is returned
+    unchanged: the redirects plugin permits external URLs (the scheme is
+    validated by ``_safe_target``), and slug rewriting would corrupt them.
+    """
+    if doc_path.startswith(("http://", "https://")):
+        return doc_path
     slug = doc_path.removesuffix(".md")
     if slug == "index":
         return f"{prefix}/"

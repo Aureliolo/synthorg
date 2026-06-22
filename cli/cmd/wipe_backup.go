@@ -94,6 +94,11 @@ func tarDirectory(srcDir, dstPath string) error {
 	}
 
 	dstPath = filepath.Clean(dstPath)
+	// CodeQL go/path-injection on this sink (and the os.Remove cleanups below)
+	// is accepted by design: dstPath is the operator's own backup destination
+	// (the --output flag) on a single-user CLI, already lexically cleaned above.
+	// Containment is impossible because the contract honours an arbitrary
+	// absolute output path verbatim.
 	f, err := os.OpenFile(dstPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return fmt.Errorf("creating archive: %w", err)
@@ -146,6 +151,13 @@ func writeTarEntry(tw *tar.Writer, path, rel string, d fs.DirEntry) error {
 	fi, err := d.Info()
 	if err != nil {
 		return fmt.Errorf("stat %s: %w", rel, err)
+	}
+
+	// Only directories and regular files are archivable. Skip special files
+	// (FIFOs, devices, sockets) before writing any header: os.Open on them can
+	// block indefinitely (createTarGz already skips symlinks upstream).
+	if !d.IsDir() && !fi.Mode().IsRegular() {
+		return nil
 	}
 
 	header, err := tar.FileInfoHeader(fi, "")

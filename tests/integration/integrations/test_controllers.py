@@ -182,9 +182,10 @@ class TestConnectionsController:
 
     async def test_reveal_secret_connection_not_found_hidden(self) -> None:
         from synthorg.api.controllers.connections import ConnectionsController
+        from synthorg.integrations.connections.catalog import ConnectionCatalog
         from synthorg.integrations.errors import ConnectionNotFoundError
 
-        catalog = MagicMock()
+        catalog = MagicMock(spec=ConnectionCatalog)
         catalog.get_credentials = AsyncMock(
             side_effect=ConnectionNotFoundError("Connection 'gh' not found"),
         )
@@ -203,9 +204,10 @@ class TestConnectionsController:
 
     async def test_reveal_secret_backend_error_hidden(self) -> None:
         from synthorg.api.controllers.connections import ConnectionsController
+        from synthorg.integrations.connections.catalog import ConnectionCatalog
         from synthorg.integrations.errors import SecretRetrievalError
 
-        catalog = MagicMock()
+        catalog = MagicMock(spec=ConnectionCatalog)
         catalog.get_credentials = AsyncMock(
             side_effect=SecretRetrievalError("vault timeout"),
         )

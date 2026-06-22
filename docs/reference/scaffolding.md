@@ -106,8 +106,15 @@ the same PR.
 
 ## Feature package structure
 
-Every business-domain package under `src/synthorg/` ships a three-file
-structural triple alongside its service / repository / controller modules:
+Every business-domain package under `src/synthorg/` ships a `feature.py`
+manifest. Packages that own a state slice additionally ship `state.py` and
+`_construction.py`, together forming a three-file structural triple alongside
+the service / repository / controller modules; a slice-less package (for
+example `deliverable_receipts` or `providers/management`) ships only
+`feature.py`. The triple is an architectural requirement, not scaffolder
+output: `synthorg new <kind>` generates the four scaffold kinds (`service` /
+`persistence` / `tool` / `controller`) described earlier, while these files are
+hand-maintained per package.
 
 - **`feature.py`** declares a module-level `FEATURE: FeatureModule =
   FeatureManifest(...)` constant describing the package's full surface:
@@ -116,13 +123,14 @@ structural triple alongside its service / repository / controller modules:
   `ghost_wired_symbols` lists boot-constructed class names that are wired
   during `_construction.py` but not directly referenced by the manifest's
   `state_slice` (so the unwired-symbol gates do not flag them).
-- **`state.py`** defines the `<Name>StateSlice(BaseFeatureStateSlice)` frozen
-  Pydantic model and its `<name>_of(app_state)` accessor (see conventions
-  §32).
-- **`_construction.py`** exports
+- **`state.py`** (slice-bearing packages only) defines the
+  `<Name>StateSlice(BaseFeatureStateSlice)` frozen Pydantic model and its
+  `<name>_of(app_state)` accessor (see conventions §32).
+- **`_construction.py`** (slice-bearing packages only) exports
   `def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:`
   with that exact signature; the composition root calls it during the
   construction phase.
 
 Representative example: `src/synthorg/budget/{feature,state,_construction}.py`.
-A new domain package must ship all three.
+A new slice-bearing package must ship all three; a slice-less one ships only
+`feature.py`.

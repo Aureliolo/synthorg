@@ -1,7 +1,7 @@
 # module-kind: complex_service
 """Memory admin service layer for fine-tuning checkpoints and runs.
 
-Encapsulates persistence access for the ``/memory/fine-tune/*``
+Encapsulates persistence access for the ``/admin/memory/fine-tune/*``
 endpoints so the controller stays thin (parse / shape / return) and
 the raw ``app_state.persistence.get_db()`` handle stays inside the
 persistence package where it belongs.

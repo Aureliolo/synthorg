@@ -400,7 +400,7 @@ agent_metrics:
 
 ## Evaluation Loop
 
-The closed-loop evaluation framework continuously measures agent performance and identifies improvement opportunities, built on top of the five-pillar evaluation, performance tracking, and trajectory scoring described below. It captures traces, tags behaviour, enriches each turn with five-pillar evaluation, and proposes targeted fixes validated on the next run. The framework has its own design page: [Evaluation Loop](evaluation-loop.md).
+The closed-loop evaluation framework continuously measures agent performance and identifies improvement opportunities, built on top of the five-pillar evaluation, performance tracking, and trajectory scoring described elsewhere on this page. It captures traces, tags behaviour, enriches each turn with five-pillar evaluation, and proposes targeted fixes validated on the next run. The framework has its own design page: [Evaluation Loop](evaluation-loop.md).
 
 ---
 

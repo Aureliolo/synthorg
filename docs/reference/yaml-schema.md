@@ -28,7 +28,7 @@ ontology:
   ...
 ```
 
-Every top-level key is optional except `company_name`. Missing sections fall back to the Pydantic-defined defaults.
+Every top-level key is optional except `company_name`. Missing sections fall back to the Pydantic-defined defaults. One cross-section dependency applies: defining `agents` makes `departments` required, since every agent's `department` is mandatory and must name a declared department (see [Validation](#validation)).
 
 ## `company_name` / `company_type`
 
