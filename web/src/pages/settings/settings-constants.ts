@@ -121,7 +121,7 @@ export const SENSITIVE_VALUE_PLACEHOLDER = '••••••••'
  * Settings that carry elevated security risk when misconfigured.
  * The GUI shows an additional warning for these keys.
  */
-const SECURITY_SENSITIVE_KEYS = ['api/auth_exclude_paths'] as const
+const SECURITY_SENSITIVE_KEYS = ['api/auth_exclude_paths', 'providers/configs'] as const
 export const SECURITY_SENSITIVE_SETTINGS: ReadonlySet<string> = new Set(SECURITY_SENSITIVE_KEYS)
 
 /** Settings that are simple string arrays and should render as chip inputs in GUI mode. */

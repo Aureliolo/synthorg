@@ -28,6 +28,7 @@ export interface SsrfViolationsController {
   loading: boolean
   loadingMore: boolean
   error: string | null
+  loadMoreError: string | null
   hasMore: boolean
   canManage: boolean
   statusFilter: StatusFilterValue
@@ -50,6 +51,7 @@ export function useSsrfViolations(): SsrfViolationsController {
   const loading = useSsrfViolationsStore((s) => s.loading)
   const loadingMore = useSsrfViolationsStore((s) => s.loadingMore)
   const error = useSsrfViolationsStore((s) => s.error)
+  const loadMoreError = useSsrfViolationsStore((s) => s.loadMoreError)
   const hasMore = useSsrfViolationsStore((s) => s.hasMore)
   const storeStatus = useSsrfViolationsStore((s) => s.statusFilter)
   const resolvingId = useSsrfViolationsStore((s) => s.resolvingId)
@@ -96,6 +98,7 @@ export function useSsrfViolations(): SsrfViolationsController {
     loading,
     loadingMore,
     error,
+    loadMoreError,
     hasMore,
     canManage,
     statusFilter,

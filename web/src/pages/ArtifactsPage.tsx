@@ -80,16 +80,18 @@ export default function ArtifactsPage() {
       <ErrorBoundary level="section">
         <ArtifactGridView artifacts={pagedArtifacts} />
       </ErrorBoundary>
-      {/* Pagination receives only primitive props and cannot trigger a fetch,
-          so it sits outside the grid's boundary: a pagination render error must
-          not blank the artifacts that already loaded. */}
-      <Pagination
-        page={page}
-        pageSize={pageSize}
-        total={totalItems}
-        onPageChange={setPage}
-        onPageSizeChange={setPageSize}
-      />
+      {/* Pagination sits outside the grid's boundary (a pagination render error
+          must not blank the loaded artifacts) and carries its own boundary so a
+          fault in it is isolated rather than bubbling up to crash the route. */}
+      <ErrorBoundary level="section">
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          total={totalItems}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+        />
+      </ErrorBoundary>
 
       <ArtifactCreateDialog
         open={createOpen}

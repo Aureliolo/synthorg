@@ -13,6 +13,7 @@ import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import { getErrorMessage } from '@/utils/errors'
+import { createCancellationToken } from '@/utils/cancellation'
 import { CompanyProfileSection } from './CompanyProfileSection'
 
 const log = createLogger('GeneralTab')
@@ -28,14 +29,17 @@ function useBudgetCurrency(): BudgetCurrency {
   const [currency, setCurrency] = useState<string>(DEFAULT_CURRENCY)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
+    const token = createCancellationToken()
     void Promise.resolve().then(() =>
       getNamespaceSettings('budget')
         .then((entries) => {
+          if (token.cancelled()) return
           const value = entries.find((e) => e.definition.key === 'currency')?.value
           if (value != null && value.trim() !== '') setCurrency(value)
           setError(null)
         })
         .catch((err: unknown) => {
+          if (token.cancelled()) return
           log.error('load budget currency failed', {
             error: sanitizeForLog(getErrorMessage(err)),
           })
@@ -44,6 +48,7 @@ function useBudgetCurrency(): BudgetCurrency {
           setError(getErrorMessage(err))
         }),
     )
+    return () => token.cancel()
   }, [])
   return { currency, error }
 }

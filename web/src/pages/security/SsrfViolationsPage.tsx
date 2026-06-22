@@ -223,9 +223,14 @@ export default function SsrfViolationsPage() {
       <ViolationsBody ctrl={ctrl} />
 
       {ctrl.hasMore && (
-        <Button variant="secondary" onClick={ctrl.loadMore} disabled={ctrl.loadingMore}>
-          {ctrl.loadingMore ? 'Loading...' : 'Load more'}
-        </Button>
+        <div className="flex flex-col items-start gap-2">
+          <Button variant="secondary" onClick={ctrl.loadMore} disabled={ctrl.loadingMore}>
+            {ctrl.loadingMore ? 'Loading...' : 'Load more'}
+          </Button>
+          {ctrl.loadMoreError !== null && (
+            <p className="text-sm text-danger">{ctrl.loadMoreError}</p>
+          )}
+        </div>
       )}
 
       <ResolveConfirmDialog ctrl={ctrl} />

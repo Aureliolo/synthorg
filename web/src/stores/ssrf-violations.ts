@@ -29,6 +29,13 @@ interface SsrfViolationsState {
   loading: boolean
   loadingMore: boolean
   error: string | null
+  /**
+   * Failure of a "load more" page fetch. Tracked separately from ``error`` so a
+   * pagination failure stays observable to state-driven consumers (the list-read
+   * contract) WITHOUT the page-level ``error`` banner hiding the already-loaded
+   * violations. Surfaced inline next to the Load-more control.
+   */
+  loadMoreError: string | null
   statusFilter: SsrfViolationStatus | null
   /** Id of the violation whose resolve is in flight. */
   resolvingId: string | null
@@ -64,6 +71,7 @@ async function fetchViolationsImpl(set: Set, get: Get): Promise<void> {
     loading: true,
     loadingMore: false,
     error: null,
+    loadMoreError: null,
   })
   try {
     const page = await apiListViolations(buildFilters(get))
@@ -86,7 +94,7 @@ async function fetchMoreViolationsImpl(set: Set, get: Get): Promise<void> {
   const state = get()
   if (!state.hasMore || !state.nextCursor || state.loading || state.loadingMore) return
   const token = listRequestToken
-  set({ loadingMore: true })
+  set({ loadingMore: true, loadMoreError: null })
   try {
     const page = await apiListViolations({ ...buildFilters(get), cursor: state.nextCursor })
     if (token !== listRequestToken) return
@@ -99,14 +107,15 @@ async function fetchMoreViolationsImpl(set: Set, get: Get): Promise<void> {
   } catch (err) {
     log.warn('Failed to fetch more SSRF violations', sanitizeForLog(getErrorMessage(err)))
     if (token !== listRequestToken) return
-    // Unlike the primary fetch, a load-more failure must NOT set the page-level
-    // ``error``: that field hides the already-loaded list and shows a full
-    // banner. Surface it as a toast so the loaded violations stay visible.
-    set({ loadingMore: false })
+    const message = getErrorMessage(err)
+    // Record the failure in a dedicated field (not the page-level ``error``,
+    // which would hide the already-loaded list) so it stays observable to
+    // state-driven consumers per the list-read contract, then also toast it.
+    set({ loadingMore: false, loadMoreError: message })
     useToastStore.getState().add({
       variant: 'error',
       ...getCrudErrorTitle(err, 'Failed to load more violations'),
-      description: getErrorMessage(err),
+      description: message,
     })
   }
 }
@@ -149,6 +158,7 @@ export const useSsrfViolationsStore = create<SsrfViolationsState>()((set, get) =
   loading: false,
   loadingMore: false,
   error: null,
+  loadMoreError: null,
   statusFilter: 'pending',
   resolvingId: null,
 

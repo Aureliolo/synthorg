@@ -88,17 +88,21 @@ export function useMetaActState(): MetaActState {
   // ``runAction`` owns its error UX (catches internally, returns ``null`` on
   // failure), so voiding the promise is safe -- there is no rejection to leak.
   const triggerSend = useCallback(() => {
+    // Mirror sendInstruction's preconditions before clearing the input, so a
+    // send blocked by an in-flight action or a missing agent selection does not
+    // discard the operator's composed text.
+    if (loading || !selectedAgentId) return
     const instruction = input.trim()
     if (!instruction) return
     setInput('')
     void sendInstruction(instruction)
-  }, [input, sendInstruction])
+  }, [loading, selectedAgentId, input, sendInstruction])
 
   // Retry the human instruction that precedes the clicked error bubble (see
   // ``resolveScopedRetryContent``); an unscoped retry would replay the
   // transcript tail rather than the instruction the operator clicked on.
   const retryLast = useCallback((beforeMsgId?: number) => {
-    const content = resolveScopedRetryContent(messages, beforeMsgId)
+    const content = resolveScopedRetryContent(messages, beforeMsgId, (m) => m.kind === 'human')
     if (content !== null) void sendInstruction(content)
   }, [messages, sendInstruction])
 

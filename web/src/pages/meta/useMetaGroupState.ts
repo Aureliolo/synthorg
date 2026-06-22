@@ -178,17 +178,21 @@ export function useMetaGroupState(): MetaGroupState {
   )
 
   const triggerSend = useCallback(() => {
+    // Mirror sendMessage's preconditions before clearing the input, so a send
+    // blocked by an in-flight turn or an unstartable conversation does not
+    // discard the operator's composed text.
+    const canStart = conversationIdRef.current !== undefined || selectedIds.length > 0
     const message = input.trim()
-    if (!message) return
+    if (loading || !canStart || !message) return
     setInput('')
     void sendMessage(message)
-  }, [input, sendMessage])
+  }, [loading, selectedIds, input, sendMessage])
 
   // Retry the human message that precedes the clicked error bubble (see
   // ``resolveScopedRetryContent``); an unscoped retry would resend the wrong
   // turn when multiple failures exist.
   const retryLast = useCallback((beforeMsgId?: number) => {
-    const content = resolveScopedRetryContent(messages, beforeMsgId)
+    const content = resolveScopedRetryContent(messages, beforeMsgId, (m) => m.kind === 'human')
     if (content !== null) void sendMessage(content)
   }, [messages, sendMessage])
 

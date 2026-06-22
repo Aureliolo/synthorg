@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 
 import { useMetaStore } from '@/stores/meta'
+import { resolveScopedRetryContent } from './scoped-retry'
 
 export interface MetaChatMessage {
   id: number
@@ -19,8 +20,8 @@ export interface MetaChatState {
   scrollRef: React.RefObject<HTMLDivElement | null>
   setInput: (value: string) => void
   triggerSend: () => void
-  /** Re-send the last user message (used by the error notice's Try again). */
-  retryLast: () => void
+  /** Re-send the user message before the clicked error bubble's id. */
+  retryLast: (beforeMsgId?: number) => void
 }
 
 export function useMetaChatState(): MetaChatState {
@@ -57,9 +58,12 @@ export function useMetaChatState(): MetaChatState {
     void sendMessage(question)
   }, [chatLoading, input, sendMessage])
 
-  const retryLast = useCallback(() => {
-    const lastUser = [...messages].reverse().find((m) => m.role === 'user')
-    if (lastUser) void sendMessage(lastUser.content)
+  // Retry the user message that precedes the clicked error bubble (see
+  // ``resolveScopedRetryContent``); an unscoped retry would resend the wrong
+  // turn when multiple failures exist.
+  const retryLast = useCallback((beforeMsgId?: number) => {
+    const content = resolveScopedRetryContent(messages, beforeMsgId, (m) => m.role === 'user')
+    if (content !== null) void sendMessage(content)
   }, [messages, sendMessage])
 
   return { messages, input, chatLoading, scrollRef, setInput, triggerSend, retryLast }

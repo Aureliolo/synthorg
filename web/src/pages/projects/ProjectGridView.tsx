@@ -7,13 +7,13 @@ import type { Project } from '@/api/types/projects'
 
 interface ProjectGridViewProps {
   projects: readonly Project[]
-  onToggleSelect?: (id: string) => void
-  selectedIds?: ReadonlySet<string>
+  onToggleSelect?: ((id: string) => void) | undefined
+  selectedIds?: ReadonlySet<string> | undefined
   /**
    * Case-appropriate empty state from the page (genuinely-empty vs
    * filtered-to-empty). Falls back to a generic message when omitted.
    */
-  emptyNode?: ReactNode
+  emptyNode?: ReactNode | undefined
 }
 
 export function ProjectGridView({ projects, onToggleSelect, selectedIds, emptyNode }: ProjectGridViewProps) {

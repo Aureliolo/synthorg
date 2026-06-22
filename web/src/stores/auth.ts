@@ -87,19 +87,19 @@ async function performAuthFlow(
     } catch (fetchErr) {
       if (get().authStatus === 'unauthenticated') {
         throw new Error(
-          'Your session expired during sign-in. Please try again.',
+          'Your session expired before your account details could load. Please try again.',
           { cause: fetchErr },
         )
       }
       throw new Error(
-        'Sign-in succeeded but your account details could not be loaded. Check your connection and try again.',
+        'Authentication succeeded but your account details could not be loaded. Check your connection and try again.',
         { cause: fetchErr },
       )
     }
     if (!get().user) {
       get().handleUnauthorized()
       throw new Error(
-        'Sign-in succeeded but your account details could not be loaded. Please try again.',
+        'Authentication succeeded but your account details could not be loaded. Please try again.',
       )
     }
   } finally {

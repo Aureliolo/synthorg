@@ -6,9 +6,9 @@ import type { HumanRole } from '@/api/types/enum-values.gen'
  * UI-gating only; the server is the real authority. Kept as one constant so a
  * future role addition cannot be missed at one of the call sites.
  */
-const PRIVILEGED_MUTATION_ROLES = ['ceo', 'manager'] as const
+const PRIVILEGED_MUTATION_ROLES: readonly HumanRole[] = ['ceo', 'manager']
 
 /** True when the current role may perform privileged mutations. */
 export function hasPrivilegedRole(userRole: HumanRole | null): boolean {
-  return userRole !== null && (PRIVILEGED_MUTATION_ROLES as readonly HumanRole[]).includes(userRole)
+  return userRole !== null && PRIVILEGED_MUTATION_ROLES.includes(userRole)
 }

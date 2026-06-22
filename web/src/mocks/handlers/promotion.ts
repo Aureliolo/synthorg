@@ -53,9 +53,11 @@ export function buildPromotionEvaluation(
 }
 
 export const promotionHandlers = [
-  http.get(`${BASE}/:agentId/evaluate`, () =>
+  http.get(`${BASE}/:agentId/evaluate`, ({ params }) =>
     HttpResponse.json(
-      successFor<typeof evaluatePromotion>(buildPromotionEvaluation()),
+      successFor<typeof evaluatePromotion>(
+        buildPromotionEvaluation({ agent_id: String(params['agentId']) }),
+      ),
     ),
   ),
   http.get(`${BASE}/:agentId/history`, ({ params }) =>
