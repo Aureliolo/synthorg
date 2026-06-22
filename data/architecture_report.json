@@ -530,8 +530,8 @@
     },
     "src/synthorg/engine/task_engine_apply.py": {
       "cap": 500,
-      "loc": 481,
-      "ratio": 0.962,
+      "loc": 500,
+      "ratio": 1.0,
       "tier": "code"
     },
     "src/synthorg/engine/workflow/ceremony_scheduler.py": {
@@ -956,8 +956,8 @@
     },
     "src/synthorg/persistence/postgres/charter_repo.py": {
       "cap": 500,
-      "loc": 403,
-      "ratio": 0.806,
+      "loc": 409,
+      "ratio": 0.818,
       "tier": "repository"
     },
     "src/synthorg/persistence/postgres/conversation_repo.py": {
@@ -1214,8 +1214,8 @@
     },
     "src/synthorg/providers/registry.py": {
       "cap": 500,
-      "loc": 416,
-      "ratio": 0.832,
+      "loc": 425,
+      "ratio": 0.85,
       "tier": "code"
     },
     "src/synthorg/research/models.py": {
@@ -1402,7 +1402,7 @@
     "synthorg.core.auth.roles": 29,
     "synthorg.core.autonomy_enums": 36,
     "synthorg.core.boundary": 37,
-    "synthorg.core.clock": 184,
+    "synthorg.core.clock": 188,
     "synthorg.core.critical_errors": 548,
     "synthorg.core.domain_errors": 220,
     "synthorg.core.effective_autonomy": 22,
@@ -1416,7 +1416,7 @@
     "synthorg.core.registry": 27,
     "synthorg.core.role": 20,
     "synthorg.core.task": 96,
-    "synthorg.core.task_enums": 89,
+    "synthorg.core.task_enums": 90,
     "synthorg.core.types": 1155,
     "synthorg.engine.context": 39,
     "synthorg.engine.decomposition.models": 28,
@@ -1441,7 +1441,7 @@
     "synthorg.integrations.connections.catalog": 26,
     "synthorg.integrations.connections.models": 60,
     "synthorg.integrations.errors": 41,
-    "synthorg.integrations.state": 30,
+    "synthorg.integrations.state": 31,
     "synthorg.knowledge.models": 24,
     "synthorg.memory.errors": 25,
     "synthorg.memory.models": 73,
@@ -1506,7 +1506,7 @@
     "synthorg.security.autonomy.enums": 73,
     "synthorg.security.models": 28,
     "synthorg.settings.enums": 117,
-    "synthorg.settings.errors": 24,
+    "synthorg.settings.errors": 25,
     "synthorg.settings.mirrors": 23,
     "synthorg.settings.models": 36,
     "synthorg.settings.registry": 37,
@@ -1579,7 +1579,7 @@
     },
     "synthorg.engine.task_engine:TaskEngine": {
       "lcom4": 3,
-      "loc": 689
+      "loc": 691
     },
     "synthorg.engine.workflow.ceremony_scheduler:CeremonyScheduler": {
       "lcom4": 1,
