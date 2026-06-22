@@ -1695,8 +1695,7 @@ jobs:
           # that outlasts a single retry; the 15-minute job timeout above gives
           # the accumulated backoff room so it cannot be killed mid-ladder.
           # Sustained degradation past the budget still defers via exit 75 (the
-          # audit's designed re-audit-next-push path)
-          # instead of being killed mid-ladder.
+          # audit's designed re-audit-next-push path).
           GH_RETRY_ATTEMPTS: 4
         run: bash scripts/audit_branch_protection.sh
 

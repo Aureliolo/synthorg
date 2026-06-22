@@ -51,7 +51,10 @@ from synthorg.engine.state import EngineStateSlice
 
 scheduler = app_state.slice(EngineStateSlice).ceremony_scheduler
 await scheduler.deactivate_sprint()
-await scheduler.activate_sprint(sprint)  # re-reads the updated ceremony policy
+# activate_sprint requires the sprint plus its SprintConfig and the
+# CeremonySchedulingStrategy; re-pass the same values the sprint was originally
+# activated with so it re-reads the updated ceremony policy.
+await scheduler.activate_sprint(sprint, config, strategy)
 ```
 
 ## Swap to a different strategy

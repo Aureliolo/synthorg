@@ -79,12 +79,14 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	if err := assertComposeExists(safeDir); err != nil {
-		return err
-	}
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 	if startDryRun {
+		// Dry run only previews; validate compose existence for an accurate
+		// preview but take no lock (it mutates nothing, so there is no race).
+		if err := assertComposeExists(safeDir); err != nil {
+			return err
+		}
 		printStartDryRun(out, state, opts)
 		return nil
 	}
@@ -99,6 +101,13 @@ func runStart(cmd *cobra.Command, _ []string) error {
 			errOut.Warn(fmt.Sprintf("could not release lifecycle lock: %v", rerr))
 		}
 	}()
+	// Validate compose existence AFTER acquiring the lock so the check and the
+	// subsequent `compose up` happen atomically inside the critical section: a
+	// concurrent wipe/uninstall cannot delete compose.yml between the check and
+	// the up (it would block on this same lock until the start completes).
+	if err := assertComposeExists(safeDir); err != nil {
+		return err
+	}
 	return startContainers(ctx, cmd, state, safeDir, out, errOut, healthTimeout)
 }
 

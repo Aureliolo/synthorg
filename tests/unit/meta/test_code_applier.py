@@ -1,6 +1,7 @@
 """Unit tests for code modification applier."""
 
 from pathlib import Path
+from typing import cast
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -104,11 +105,13 @@ def _mock_ci_validator(
     result: CIValidationResult | None = None,
 ) -> CIValidator:
     # Spec against the CIValidator protocol so a rename of its keyword-only
-    # ``validate(*, project_root, changed_files)`` signature is caught here
-    # rather than silently passing against a bare AsyncMock.
-    validator: CIValidator = mock_of[CIValidator](
-        validate=AsyncMock(return_value=result or _ci_pass()),
-    )
+    # ``validate(*, changed_files)`` signature is caught here rather than
+    # silently passing against a bare AsyncMock. Configure the return value on
+    # the autospec'd method instead of overriding it via a mock_of keyword, so
+    # the keyword-only signature stays enforced (a bare AsyncMock override would
+    # replace the autospec and let positional calls slip through).
+    validator: CIValidator = mock_of[CIValidator]()
+    cast("AsyncMock", validator.validate).return_value = result or _ci_pass()
     return validator
 
 

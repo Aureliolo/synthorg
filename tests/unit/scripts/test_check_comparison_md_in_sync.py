@@ -107,4 +107,11 @@ def test_generator_error_returns_one(
         patch.object(check, "_load_generator", _broken_loader),
     ):
         assert check.main() == 1
-    assert "could not generate expected comparison page" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "could not generate expected comparison page" in err
+    # The whole point is a friendly one-liner, NOT a crash dump: assert the
+    # multi-line Python traceback never leaks to stderr so a future regression
+    # that drops the handler is caught here. The handler intentionally names the
+    # exception type in its one-liner ("...: AttributeError: ..."), so only the
+    # traceback header (which a real stack dump always carries) is asserted absent.
+    assert "Traceback (most recent call last)" not in err
