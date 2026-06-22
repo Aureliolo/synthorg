@@ -258,6 +258,47 @@ async def test_llm_span_output_tokens_callback_none_skips_attribute(
     assert "gen_ai.usage.output_tokens" not in attrs
 
 
+async def test_llm_span_callback_failure_is_swallowed(
+    in_memory_tracer: InMemorySpanExporter,
+) -> None:
+    """A raising output-tokens callback must not escape the finally block:
+    instrumentation never alters the request outcome. The failure is recorded
+    on the span instead of propagating."""
+
+    def _boom() -> int:
+        msg = "drain failed"
+        raise ValueError(msg)
+
+    async with llm_span(
+        provider="TestProvider",
+        model="example-large-001",
+        output_tokens_callback=_boom,
+    ):
+        pass
+    spans = in_memory_tracer.get_finished_spans()
+    attrs = dict(spans[0].attributes or {})
+    assert "gen_ai.usage.output_tokens" not in attrs
+    assert attrs["exception.type"] == "ValueError"
+
+
+async def test_llm_span_callback_failure_preserves_inflight_exception() -> None:
+    """A raising callback in the finally block must not mask the original
+    in-flight exception raised inside the context body."""
+
+    def _boom() -> int:
+        msg = "drain failed"
+        raise ValueError(msg)
+
+    error_msg = "body exploded"
+    with pytest.raises(RuntimeError, match="body exploded"):
+        async with llm_span(
+            provider="TestProvider",
+            model="example-large-001",
+            output_tokens_callback=_boom,
+        ):
+            raise RuntimeError(error_msg)
+
+
 async def test_llm_span_exception_sets_error_status(
     in_memory_tracer: InMemorySpanExporter,
 ) -> None:
