@@ -601,8 +601,12 @@ sync_vale_packages() {
     if ( cd "${repo_root}" && "${vale_bin}" sync ); then
       return 0
     fi
-    echo "warning: vale sync failed (attempt ${sync_attempt}/3); retrying in 10s..." >&2
-    sleep 10
+    # Only back off BETWEEN attempts; after the 3rd (final) failure fall
+    # straight through to the error below instead of sleeping pointlessly.
+    if [ "${sync_attempt}" -lt 3 ]; then
+      echo "warning: vale sync failed (attempt ${sync_attempt}/3); retrying in 10s..." >&2
+      sleep 10
+    fi
   done
   echo "error: vale sync failed after 3 attempts" >&2
   return 1

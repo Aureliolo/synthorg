@@ -103,11 +103,14 @@ against an empty default and never sees the env override.
 
 ### Validator method naming
 
-Every `@model_validator` and `@field_validator` method is named
+`@model_validator` and `@field_validator` methods are named
 `_validate_<constraint>` (leading underscore, verb `validate`, snake-case
 description of the invariant), e.g. `_validate_temporal_order`,
 `_validate_weights_sum`. The one sanctioned exception is `_apply_mirrors`,
 reserved for the settings-mirror `mode="before"` validators described above.
+This is a review-enforced convention rather than a gated one: there is no
+`check_*` script asserting the pattern, so new validators are kept consistent
+in code review (like the route-access-guard placement convention above).
 
 ## 5. Event constant module imports
 

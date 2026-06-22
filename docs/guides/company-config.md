@@ -416,20 +416,20 @@ Valid strategies: `manual`, `role_based`, `load_balanced`, `cost_optimized`, `hi
 departments:
   - name: "engineering"
     budget_percent: 60
-    head: "CTO"
+    head_role: "CTO"
     reporting_lines:
       - subordinate: "Full-Stack Developer"
         supervisor: "CTO"
   - name: "product"
     budget_percent: 40
-    head: "Product Manager"
+    head_role: "Product Manager"
 ```
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `name` | string | *(required)* | Department name (must be unique) |
 | `budget_percent` | int | `0` | Percentage of company budget |
-| `head` | string | `null` | Department head role name (or agent identifier) |
+| `head_role` | string | `null` | Department head role name. Use the companion `head_merge_id` to disambiguate when several agents share the role |
 | `reporting_lines` | list | `[]` | Subordinate-supervisor relationships |
 
 ### Workflow Handoffs
@@ -495,19 +495,19 @@ SynthOrg enforces the following cross-field validation rules at load time:
     departments:
       - name: "executive"
         budget_percent: 20
-        head: "CEO"
+        head_role: "CEO"
         reporting_lines:
           - subordinate: "CTO"
             supervisor: "CEO"
       - name: "engineering"
         budget_percent: 60
-        head: "CTO"
+        head_role: "CTO"
         reporting_lines:
           - subordinate: "Full-Stack Developer"
             supervisor: "CTO"
       - name: "product"
         budget_percent: 20
-        head: "Product Manager"
+        head_role: "Product Manager"
 
     agents:
       - role: "CEO"

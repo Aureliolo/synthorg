@@ -126,7 +126,7 @@ func TestReleaseIsNilAndDoubleSafe(t *testing.T) {
 	}
 }
 
-func TestLockFileLivesInDataDir(t *testing.T) {
+func TestLockFileIsSiblingOfDataDir(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	lock, err := Acquire(context.Background(), dir, shortWaitOpts()...)
@@ -135,7 +135,17 @@ func TestLockFileLivesInDataDir(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = lock.Release() })
 
-	if got := lock.fl.Path(); got != filepath.Join(dir, lockFileName) {
-		t.Fatalf("lock path = %q, want %q", got, filepath.Join(dir, lockFileName))
+	want := lockPath(dir)
+	if got := lock.fl.Path(); got != want {
+		t.Fatalf("lock path = %q, want %q", got, want)
+	}
+	// The lock must live OUTSIDE the data dir (as a sibling) so the teardown
+	// commands can hold it across os.RemoveAll(dir) without Windows blocking on
+	// the open handle.
+	if filepath.Dir(want) != filepath.Dir(dir) {
+		t.Fatalf("lock %q is not a sibling of data dir %q", want, dir)
+	}
+	if filepath.Dir(want) == dir {
+		t.Fatalf("lock %q lives inside data dir %q", want, dir)
 	}
 }

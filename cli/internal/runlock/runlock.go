@@ -20,10 +20,24 @@ import (
 	"github.com/gofrs/flock"
 )
 
-// lockFileName is the advisory lock file created in the data directory. It is
-// distinct from compose.yml / config.json so a corrupt lock file never harms
-// real state and can be deleted safely.
-const lockFileName = "synthorg.lock"
+// lockFileSuffix is appended to the data directory's path to form the advisory
+// lock file path. The lock lives as a SIBLING of the data directory
+// (“<dataDir>.lock“ in the parent), never inside it: the teardown commands
+// (`wipe` / `uninstall`) hold the lock across `os.RemoveAll(dataDir)`, and a
+// lock file inside the directory being removed would block RemoveAll on Windows
+// (the open handle pins the file), forcing an early release that reopens a
+// start-races-teardown window. A sibling path is removed independently of the
+// destructive RemoveAll while staying unique per data directory. The file is
+// distinct from compose.yml / config.json so a corrupt lock never harms real
+// state and can be deleted safely.
+const lockFileSuffix = ".lock"
+
+// lockPath returns the advisory lock file path for safeDir: a sibling file
+// “<safeDir>.lock“ in the parent directory. filepath.Clean strips any
+// trailing separator first so the suffix can never land inside safeDir.
+func lockPath(safeDir string) string {
+	return filepath.Clean(safeDir) + lockFileSuffix
+}
 
 // defaultWaitTimeout bounds how long Acquire waits for a competing holder to
 // release before returning ErrLocked. It is intentionally short: a lifecycle
@@ -71,17 +85,19 @@ type Lock struct {
 	fl *flock.Flock
 }
 
-// Acquire takes the exclusive lifecycle lock under safeDir, waiting up to the
+// Acquire takes the exclusive lifecycle lock for safeDir, waiting up to the
 // configured wait timeout for a competing holder before returning ErrLocked.
-// safeDir must already exist; callers pass the validated state directory (the
-// output of config.SecurePath), whose parent is created by `init`.
+// The lock file is a SIBLING of safeDir (see lockPath), so safeDir's PARENT
+// must exist; callers pass the validated state directory (the output of
+// config.SecurePath), whose parent is created by `init`. Teardown callers that
+// may run against an already-absent install acquire best-effort.
 func Acquire(ctx context.Context, safeDir string, opts ...Option) (*Lock, error) {
 	cfg := config{waitTimeout: defaultWaitTimeout, retryInterval: defaultRetryInterval}
 	for _, opt := range opts {
 		opt(&cfg)
 	}
 
-	fl := flock.New(filepath.Join(safeDir, lockFileName))
+	fl := flock.New(lockPath(safeDir))
 
 	lockCtx, cancel := context.WithTimeout(ctx, cfg.waitTimeout)
 	defer cancel()
@@ -113,10 +129,12 @@ func (l *Lock) Release() error {
 	if l == nil || l.fl == nil {
 		return nil
 	}
-	fl := l.fl
-	l.fl = nil
-	if err := fl.Unlock(); err != nil {
-		return fmt.Errorf("releasing lifecycle lock %s: %w", fl.Path(), err)
+	// Clear l.fl only AFTER a successful Unlock. Clearing it first would lose the
+	// handle on an Unlock error, making the failure unrecoverable: a subsequent
+	// Release would see a nil l.fl and no-op while the lock is still held.
+	if err := l.fl.Unlock(); err != nil {
+		return fmt.Errorf("releasing lifecycle lock %s: %w", l.fl.Path(), err)
 	}
+	l.fl = nil
 	return nil
 }

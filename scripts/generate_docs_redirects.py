@@ -107,9 +107,14 @@ def _doc_to_url(doc_path: str, prefix: str) -> str:
 
     An absolute redirect target (``http://`` / ``https://``) is returned
     unchanged: the redirects plugin permits external URLs (the scheme is
-    validated by ``_safe_target``), and slug rewriting would corrupt them.
+    validated by ``_safe_target``), and slug rewriting would corrupt them. A
+    root-relative target (``/already/resolved/``) is likewise returned as-is:
+    it is already a site-absolute path, so prepending ``prefix`` and a slug
+    suffix would only double the separators and append a stray trailing slash.
     """
     if doc_path.startswith(("http://", "https://")):
+        return doc_path
+    if doc_path.startswith("/"):
         return doc_path
     slug = doc_path.removesuffix(".md")
     if slug == "index":

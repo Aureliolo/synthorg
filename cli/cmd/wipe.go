@@ -15,7 +15,6 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
 	"github.com/Aureliolo/synthorg/cli/internal/health"
-	"github.com/Aureliolo/synthorg/cli/internal/runlock"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -188,6 +187,20 @@ func (wc *wipeContext) confirmAndWipe() error {
 		wc.out.HintNextStep("Wipe cancelled.")
 		return nil
 	}
+	// Hold the lifecycle lock across BOTH the container teardown and the data
+	// directory removal so a concurrent `synthorg start`/`update` cannot bring
+	// the stack back up (or recreate state) mid-wipe. The lock file is a sibling
+	// of the data dir, so holding it across removeDataDirectory does not block
+	// RemoveAll on Windows.
+	lock, lerr := acquireTeardownLock(wc.ctx, wc.safeDir, wc.errOut)
+	if lerr != nil {
+		return lerr
+	}
+	defer func() {
+		if rerr := lock.Release(); rerr != nil {
+			wc.errOut.Warn(fmt.Sprintf("could not release lifecycle lock: %v", rerr))
+		}
+	}()
 	if err := wc.stopAndPrune(); err != nil {
 		return err
 	}
@@ -223,21 +236,9 @@ func (wc *wipeContext) stopAndPrune() error {
 		wc.out.Step(msgNothingToStop)
 		return nil
 	}
-	// Serialise the destructive `compose down -v` against a concurrent
-	// `synthorg start`/`update`: without the lock a start racing this teardown
-	// could bring the stack back up while its volumes are being deleted. The
-	// lock is released before removeDataDirectory because the lock file
-	// (`synthorg.lock`) lives inside the data dir; holding it across the
-	// directory removal would block RemoveAll on Windows (open file).
-	lock, lerr := runlock.Acquire(wc.ctx, wc.safeDir)
-	if lerr != nil {
-		return lerr
-	}
-	defer func() {
-		if rerr := lock.Release(); rerr != nil {
-			wc.errOut.Warn(fmt.Sprintf("could not release lifecycle lock: %v", rerr))
-		}
-	}()
+	// The lifecycle lock that serialises this destructive `compose down -v`
+	// against a concurrent `synthorg start`/`update` is held by the caller
+	// (confirmAndWipe) across the whole wipe, not just this step.
 	downArgs := []string{"down", "-v"}
 	if !wipeKeepImages {
 		downArgs = append(downArgs, "--rmi", "all")

@@ -129,7 +129,7 @@ Departments group agents and define budget allocation and reporting structure:
 departments:
   - name: "engineering"
     budget_percent: 60
-    head: "CTO"
+    head_role: "CTO"
     reporting_lines:
       - subordinate: "Full-Stack Developer"
         subordinate_id: "fullstack-senior"
@@ -139,10 +139,10 @@ departments:
         supervisor: "CTO"
   - name: "product"
     budget_percent: 20
-    head: "Product Manager"
+    head_role: "Product Manager"
   - name: "executive"
     budget_percent: 20
-    head: "CEO"
+    head_role: "CEO"
     reporting_lines:
       - subordinate: "CTO"
         supervisor: "CEO"
@@ -172,7 +172,7 @@ graph TD
 |-------|------|---------|-------------|
 | `name` | string | *(required)* | Unique department name |
 | `budget_percent` | int | `0` | Percentage of company budget allocated |
-| `head` | string | `null` | Role name (or agent identifier) of the department head |
+| `head_role` | string | `null` | Role name of the department head. Use the companion `head_merge_id` to disambiguate when several agents share the role |
 | `reporting_lines` | list | `[]` | Subordinate-supervisor pairs |
 
 Use `subordinate_id` in reporting lines when you have multiple agents with the same role (matches the agent's `merge_id` when using templates).

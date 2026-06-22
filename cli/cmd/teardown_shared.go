@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
+	"github.com/Aureliolo/synthorg/cli/internal/runlock"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 )
 
@@ -57,6 +58,31 @@ func composeFilePath(safeDir string) (string, error) {
 		return "", fmt.Errorf("checking compose.yml in %s: %w", safeDir, err)
 	}
 	return composePath, nil
+}
+
+// acquireTeardownLock takes the lifecycle lock for a teardown (`wipe` /
+// `uninstall`) so the caller can hold it across the WHOLE operation -- the
+// `compose down` AND the subsequent os.RemoveAll of the data directory. The
+// lock file is a sibling of the data dir (see runlock.lockPath), so holding it
+// across the removal does not block RemoveAll on Windows.
+//
+// Acquisition is best-effort to preserve the teardown contract (never refuse a
+// destroy on missing / invalid state): a genuine ErrLocked -- another lifecycle
+// operation is in flight -- aborts the teardown, but any other acquisition
+// failure (for example a missing parent directory on an already-absent install)
+// warns and proceeds WITHOUT the lock rather than blocking the operator from
+// removing whatever is there. The returned *runlock.Lock is nil-safe to
+// Release, so callers defer Release unconditionally.
+func acquireTeardownLock(ctx context.Context, safeDir string, errOut *ui.UI) (*runlock.Lock, error) {
+	lock, err := runlock.Acquire(ctx, safeDir)
+	if err == nil {
+		return lock, nil
+	}
+	if errors.Is(err, runlock.ErrLocked) {
+		return nil, err
+	}
+	errOut.Warn(fmt.Sprintf("Could not acquire lifecycle lock (%v); continuing teardown without it.", err))
+	return nil, nil
 }
 
 // detectDockerForTeardown detects Docker without ever failing the teardown.
