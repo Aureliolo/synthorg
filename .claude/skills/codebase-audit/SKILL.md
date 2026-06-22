@@ -125,21 +125,53 @@ Every agent MUST write its output file using this exact format:
 
 ### [critical|high|medium|low|info] path/to/file.py:LINE
 
-Description of the issue.
+**Cited code** (MANDATORY -- paste, in a fenced block, the actual 1-3 lines you Read at that line):
+~~~
+path/to/file.py:LINE
+<the real offending line(s), verbatim>
+~~~
 
+Description of the ONE issue at this line.
+
+**Impact if unfixed**: [one line; required for high+ -- name the concrete blast radius]
 **Suggestion**: How to fix it.
 
 ---
+
+## Verified clean (NOT findings)
+
+[Optional. Things you checked and confirmed are correct/intentional go HERE as plain
+prose, never as severity-tagged `###` entries. Do not inflate the finding count with
+"no drift detected" / "no change required" notes.]
 ```
 
-Severity definitions:
-- **critical**: Security hole, data loss risk, silent corruption
-- **high**: Logic error, broken feature, missing safety check
-- **medium**: Dead code, missing wiring, inconsistency, hardcoded value that should be configurable
-- **low**: Code quality, convention violation, missing docs
+**Severity tags are lowercase only** (`[high]`, never `[HIGH]`) -- the aggregator greps
+case-sensitively. Severity definitions:
+- **critical**: active security hole, data loss/corruption, boot failure (NOT a syntax claim -- see PEP-758 HARD STOP)
+- **high**: logic error, broken feature, missing safety check (must carry an "Impact if unfixed" line)
+- **medium**: dead code, missing wiring, inconsistency, hardcoded value that should be configurable
+- **low**: code quality, convention violation, missing docs
 - **info**: TODO/deferred work, improvement opportunity
 
-If zero findings, still create the file with `**Findings**: 0` and a brief note on what was checked.
+**Three HARD format rules (a finding that breaks any of these is inadmissible):**
+1. **Emit-time code quote is mandatory.** Every `###` finding MUST paste the actual code you
+   Read at the cited line. No quote = you did not open the file = delete the finding. (This is
+   R-G applied at emit time, not just validation. It is the single biggest FP-killer: an agent
+   forced to quote `except ValueError, TypeError:` and assert it "crashes" will see that it does
+   not.) Syntax-error claims additionally require the compile-check in R-H below.
+2. **One finding = one claim = one site.** Never bundle a real issue with a side-claim in one
+   `###` entry, and never pack many `file:line` sites under a single group header. If a pattern
+   recurs at 17 sites, emit 17 findings (or, if truly identical, one finding with a machine-readable
+   `**Sites**:` list the validator can verdict per-line) -- never a prose blob of mixed sites.
+   Compound and grouped findings force partial-FP judgement calls and break per-site FP/INTENTIONAL
+   tagging (observed 2026-06-21 with agents 136 and 141).
+3. **No hedge-word findings.** If your finding text contains `may`, `requires verification`,
+   `speculative`, `warrants review`, `possibly`, `no change required`, or `no drift detected`,
+   it is not a finding -- either confirm it concretely (with a quote) or move it to the
+   "Verified clean" section. Never emit a severity-tagged entry you have not actually confirmed.
+
+If zero findings, create the file with `**Findings**: 0` and a one-paragraph "Verified clean"
+note on what was checked. Do NOT manufacture `###` entries for things that turned out fine.
 
 ### Agent Prompt Template
 
@@ -168,10 +200,18 @@ Description.
 
 Rules:
 - Be thorough -- check EVERY relevant file in scope
-- Only report REAL issues with file:line references
+- Only report REAL issues with file:line references, each with the MANDATORY emit-time code quote
+- One finding = one claim; no hedge-word findings; "verified clean" goes in its own section (see format)
 - If zero issues, still create the file and note what you checked
 - Do NOT fix anything -- audit only
+- **Do ALL work yourself. You MUST NOT use the Agent/Task tool to spawn sub-agents.** A fan-out of
+  audit agents that each spawn their own helpers triggers server-side rate-limiting and stalls the
+  whole run (observed 2026-06-21: agents with Agent-tool access self-spawned and the pool got
+  throttled). Use only Read/Grep/Glob/Bash(read-only)/Write yourself.
 - Do NOT use Bash to write files -- use the Write tool
+- **Bash is READ-ONLY: no `>` / `>>` / `2>` / `&>` redirects** -- the project PreToolUse hook
+  (`scripts/check_bash_no_write.sh`) blocks all of them unconditionally. Chain with `&&` and let
+  stderr surface; never `2>/dev/null`.
 - **DO NOT write helper / analysis Python or Bash scripts to disk anywhere** (no `*.py` or `*.sh` in
   the project root, in `scripts/`, in `c:\tmp\`, in `/tmp`, in `C:\Users\<name>\tmp\`,
   in `C:\Users\<name>\.claude\`, anywhere on the filesystem outside
@@ -346,15 +386,43 @@ verdicts entirely and emit 3 PEP-758 findings as "critical" -- so
 validators must also write their verdicts in a format the synthesizer
 can mechanically parse (the existing `### file:line -- VERDICT` heading
 template).
+
+### R-H: Syntax / parse-error claims must be machine-checked
+
+(Applies at BOTH emit time and validation.) Any finding asserting a syntax
+error, parse error, "Python 2 syntax", "missing parentheses", "will crash the
+interpreter", or any claim that a file does not compile MUST include the output
+of an actual compile/lint check on that file:
+- Python: `uv run python -m py_compile <file>` or `uv run ruff check <file>` (read-only, no redirects). Use `uv run` so the check runs under the project's Python 3.14+ venv -- a bare `python` may be an older interpreter that itself mis-parses PEP 758, manufacturing the very false positive this rule prevents.
+- TypeScript / Go: cite the actual tsc / go vet diagnostic.
+
+If the file compiles clean, the syntax finding is AUTO-VOID -- delete it before
+writing the output file. This exists because agent 18 has emitted the PEP-758
+`except A, B:` false positives as CRITICAL across multiple runs (2026-05-15 AND
+2026-06-21) despite the prose HARD STOP. Prose is not enough; a compile check is.
+Real syntax errors are already caught by CI/ruff and the interpreter, so an audit
+claiming them with no compile evidence is, by default, manufacturing a false
+positive. When in doubt, do not emit the syntax finding at all.
 ```
 
 ### Streaming Pool Execution
 
-Maintain a **rolling pool of 10 active agents** at all times. Do not wait for whole batches; as soon as one agent completes, immediately launch the next one in agent-id order to refill the slot. Initial fill: send agents 01-10 in a single message (10 parallel `run_in_background: true` calls). Then for each completion notification, launch the next pending agent. Continue until all 159 active agents (slots 01-159) have completed.
+Maintain a **rolling pool of 5-8 active agents** at all times (default 6). Do not wait for whole batches; as soon as one agent completes, immediately launch the next one in agent-id order to refill the slot. Initial fill: send `min(6, agents-in-scope)` agents in a single message (parallel `run_in_background: true` calls) -- a scoped run with fewer than 6 agents launches only what the scope contains, never nonexistent slots. Then for each completion notification, launch the next pending agent. Continue until all agents in scope have completed (159 for `full`).
 
 This pipelines I/O and end-to-end runtime: a slow Wave 1 agent never blocks Wave 2-31 from starting, and the model spends notification cycles dispatching new work instead of idling. Skill agents are independent (each writes its own file), so order-of-completion does not matter -- only that the pool stays saturated until the queue drains.
 
-**Pool size rationale**: 10 active agents matches what one main-loop cycle can usefully dispatch and track without notification fatigue. Going wider (20+) increases context spent on notification handling; going narrower (5) under-utilizes the agent runtime.
+**Pool size rationale (2026-06-21 lesson, LOAD-BEARING)**: keep concurrency at 5-8. A 50-wide
+burst -- combined with audit agents that can themselves spawn sub-agents -- triggered server-side
+"Server is temporarily limiting requests" rate-limiting that killed ~40 agents on launch and forced
+a full restart at 5-wide. Two independent failure modes were seen: (a) self-inflicted rate-limiting
+from too-wide concurrency + sub-agent fan-out, and (b) broad Anthropic 529 capacity events
+(server-side, unrelated to pool size -- ride these out with a scheduled-resume backoff, relaunching
+only agents whose finding file is still missing). The `general-purpose` agent type HAS Agent-tool
+access, so **every agent prompt MUST carry the "do ALL work yourself; never spawn sub-agents" rule**
+(see the agent prompt Rules block). A trickle of 5-6 survives reliably; wider does not.
+
+**Never relaunch an agent whose finding file already exists** (idempotent refill): on resume after
+a throttle/capacity event, inventory `_audit/latest/findings/NN-*.md` and only launch missing slots.
 
 **Order**: agents 01 → 159 in numeric order (159 launches total). Skipping forward when a later agent is "more interesting" wastes the streaming property -- the pool drains itself naturally.
 
@@ -781,6 +849,16 @@ File: `_audit/latest/findings/18-not-implemented.md`
 Grep src/synthorg/ and cli/ for: NotImplementedError, pass-only function
 bodies (def/async def with only pass), and Ellipsis (...) as sole function
 body. Severity: info for abstract methods, medium for concrete stubs.
+
+DO NOT report syntax errors. This agent has emitted the PEP-758 `except A, B:`
+false positives as CRITICAL across multiple runs (2026-05-15 AND 2026-06-21) --
+that syntax is VALID Python 3.14 and DOES NOT crash the interpreter. Syntax
+errors are out of scope for this agent entirely; CI/ruff already catch real
+ones. If you believe you found a syntax error, you MUST first run
+`uv run python -m py_compile <file>` (read-only, no redirects -- `uv run` so it
+uses the project's Python 3.14+ venv, not an older host interpreter) and paste
+the output; if it compiles clean, the finding is void -- do not write it. NotImplementedError /
+pass-only / ellipsis stubs are the ONLY thing this agent reports.
 
 ```
 
@@ -3798,22 +3876,34 @@ After all launched audit agents complete, launch validation agents to verify fin
 
 ### Batching strategy (concrete)
 
-Run this Bash to produce a sorted list of (count, filename):
+**Generate the batch plan programmatically -- never hand-pick file lists.** The 2026-06-21 run hand-wrote the batch plan and silently skipped 35 of 158 finding files, including agent 18 whose 5 bogus "CRITICAL syntax errors" nearly survived to INDEX.md. The plan MUST be derived from the on-disk file list so no file can be omitted.
+
+Run this Bash to produce a sorted list of (count, filename). Note the **case-insensitive** severity match (`-i`): agents emit both `[high]` and `[HIGH]`, and a case-sensitive grep undercounts and can mis-bin files:
 
 ```bash
-for f in _audit/latest/findings/*.md; do count=$(grep -cE "^### (critical|high|medium|low|info)" "$f"); echo "$count $(basename "$f")"; done | sort -rn
+for f in _audit/latest/findings/[0-9]*-*.md; do count=$(grep -ciE "^#{2,4} \[(critical|high|medium|low|info)\]" "$f"); echo "$count $(basename "$f")"; done | sort -rn
 ```
 
-Then build batches:
+Then build batches so that **every finding file (zero-finding included) is assigned to exactly one batch**:
 
 - **Heavy files (>25 findings)**: dedicate 1 batch per ~25-finding chunk. Example: a 107-finding file splits into 4 batches of 25 + 25 + 25 + 32.
 - **Mid files (10-25 findings)**: 1-2 files per batch (target ~20-30 findings).
 - **Small files (1-9 findings)**: pack 5-8 files per batch, total findings per batch ~20-30.
-- **Zero-finding files**: skip entirely.
+- **Zero-finding files**: do NOT skip silently -- assign them to a light batch that spot-checks the auditor's "clean" evidence (a clean verdict still needs a sanity check; this is cheap and catches mislabelled-as-clean misses).
 
 Target: each validator processes ~20-30 findings. Going much higher risks the validator running out of focus; going much lower wastes overhead.
 
-For a typical full run (~400 findings across ~100 non-empty files), expect ~17-25 validation batches. Launch them with the same rolling-pool-of-10 cadence as Phase 2.
+For a typical full run (~700 findings across ~130 non-empty files + ~30 clean), expect ~30-40 validation batches. Launch them with the same rolling-pool-of-5-8 cadence as Phase 2.
+
+#### Coverage assertion (MANDATORY -- hard-stop)
+
+Before proceeding past validation, prove every finding file was covered. Maintain the explicit set of `NN` values you binned into batches and compare against the on-disk set:
+
+```bash
+ls -1 _audit/latest/findings/[0-9]*-*.md | sed -E 's#.*/([0-9]+)-.*#\1#' | sort -u
+```
+
+Every `NN` in that list MUST appear in exactly one batch. If any file is unbinned, you have NOT validated every finding -- launch the missing batches before any synthesis. Do not write INDEX.md / findings.json until the binned set equals the on-disk set. (This single gate would have prevented the 35-file miss.)
 
 ### Validation Agent Prompt
 
@@ -3846,10 +3936,19 @@ CRITICAL; all were FALSE_POSITIVE.
 
 For each finding below:
 1. Read the file at the reported line number
-2. Quote the actual code (2-5 lines)
+2. Quote the actual code (2-5 lines). If the audit agent supplied an emit-time
+   quote, confirm it matches the real source; if it does NOT match (wrong line,
+   stale, hallucinated), that alone is FALSE_POSITIVE.
 3. Check if the issue is real or a false positive
 4. Check if it's intentional (read surrounding comments, docstrings)
 5. Give a verdict: CONFIRMED, FALSE_POSITIVE, or INTENTIONAL
+
+A finding whose own text only asserts something is CORRECT / "no drift" / "no
+change required" / "requires verification" is NOT a real finding -- verdict it
+FALSE_POSITIVE (non-finding) so it is purged and does not inflate counts.
+A compound finding (one entry, two claims) where only part holds: verdict the
+entry on its PRIMARY claim, and note the wrong sub-claim in the reason so the
+purge step keeps the real issue and drops the bad sub-claim.
 
 Write results to: _audit/latest/findings/validate-batch-{N}.md
 
@@ -4249,10 +4348,11 @@ Phase 4 reads it when building INDEX (findings matching a `finding`/`agent` pair
 1. **Every agent writes to `_audit/latest/findings/`** using the Write tool, not Bash
 2. **Architecture brief in every prompt**: no blind agents
 3. **Validation is required** for every finding at every severity on every run; no opt-out, no threshold
-4. **Batch execution**: ~10 agents per batch, wait between batches
-5. **Model selection**:
-   - **Haiku**: pure pattern matching with low ambiguity (grep + filter, regex over fixed token sets, listing TODOs).
-   - **Sonnet** (default): cross-file reasoning, judgment calls, semantic analysis, anything where false-positive cost matters.
+4. **Streaming pool, not fixed batches**: rolling pool of 5-8 active agents (default 6); refill one-for-one on completion. NEVER burst 20+ wide -- it triggers server-side rate-limiting (2026-06-21).
+5. **Model selection (pin explicitly on EVERY Agent call -- never inherit)**:
+   - Pass an explicit `model` to every `Agent` spawn. An unpinned/`inherit` agent resolves to the caller's session model (often the most expensive tier), so a fan-out silently runs all agents on it. Per CLAUDE.md subagent-model cost-safety rule.
+   - **Haiku**: pure pattern matching with low ambiguity (grep + filter, regex over fixed token sets, listing TODOs), and zero-finding clean-scan spot-checks.
+   - **Sonnet** (default): cross-file reasoning, judgment calls, semantic analysis, ALL validation agents (sonnet validators were accurate and cheap in 2026-06-21; opus is not needed for validation).
    - **Opus**: reserved for the small set of agents requiring cross-document architectural synthesis. Permitted only on the agents listed below; do not use Opus for any other audit agent without explicit user approval.
    - **Opus-permitted agents**: 42 (design-spec-drift), 70 (pluggable-impl-coverage), 71 (abstraction-swap-readiness), 72 (dependency-inversion-violations), 81 (design-spec-contradictions), 92 (prompt-injection-defenses), 137 (centralization-opportunities), 145 (abstraction-on-wrong-axis), plus the Wave 28 meta-synthesis agent in Phase 3.5. Total: 9.
 6. **Do NOT fix anything**: audit only, findings only
@@ -4302,5 +4402,15 @@ Document specific issues observed in named runs so future runs avoid repeating t
 - **Validators rubber-stamped some CONFIRMED verdicts** without quoting source code. Added R-G (validator must quote 2-5 lines of source code per verdict) to make rubber-stamping mechanically visible in the verdict file.
 
 - **finding-file format varies** across agents -- some used strict `### [severity] file:LINE` headings, many used prose summaries. The skill's "Finding File Format" section is mandatory but agents disobey under prompt pressure. Phase 4 INDEX builder must extract findings tolerantly (read each summary section) rather than relying on `grep -c "^### "` counts. The 2026-05-15 run had every file return `0` to the standard heading-pattern grep despite ~673 raw findings collected.
+
+### 2026-06-21 run
+
+- **Validation skipped 35 of 158 finding files** because the batch plan was hand-written instead of derived from the on-disk file list. Agent 18's 5 bogus "CRITICAL syntax errors" nearly reached INDEX.md. Fixed via the MANDATORY coverage-assertion hard-stop in Phase 3 (binned set must equal on-disk set before any synthesis) + "generate the batch plan programmatically" directive.
+- **Agent 18 re-emitted the PEP-758 false positives as CRITICAL** (5 of them) -- the SAME class agent 88 hit in 2026-05-15, despite the prose HARD STOP. Prose is insufficient. Fixed via R-H (syntax claims require a `python -m py_compile` / `ruff check` machine-check; auto-void if it compiles) + agent-18 prompt now excludes syntax errors entirely.
+- **Self-inflicted rate-limiting at 50-wide concurrency + sub-agent fan-out.** `general-purpose` agents have Agent-tool access and spawned their own helpers; the server throttled ~40 agents on launch. Fixed via pool cap 5-8 (Rule #4) + mandatory "do ALL work yourself, never spawn sub-agents" in every agent prompt. Separately, a broad Anthropic 529 capacity event (server-side) was ridden out with scheduled-resume backoff + idempotent refill (only relaunch agents whose finding file is missing).
+- **Severity tag case drift** (`[high]` vs `[HIGH]`) made case-sensitive greps undercount and mis-bin. Fixed via lowercase-only severity in the format spec + `-i` on the batching/aggregation greps.
+- **Non-findings inflated counts**: agents 152 (5x "no drift detected" INFO), 113 ("no change required"), 97 ("requires verification") emitted verification notes as severity-tagged entries. Fixed via the hedge-word ban + mandatory "Verified clean" section that is never `###`-tagged.
+- **Compound + grouped findings forced partial-FP calls**: agent 13 (clients.ts), 104 (panel-count), 105 (decomposers) bundled a real issue with a wrong sub-claim; agents 136/141 packed 17/18 sites under one header, breaking per-site FP/INTENTIONAL tagging. Fixed via "one finding = one claim = one site" (format rule 2).
+- **Emit-time code quotes were absent**, so wrong claims looked plausible and validators had to re-derive everything. Fixed via mandatory emit-time `**Cited code**` quote (R-G applied at emit time) -- the single biggest upstream FP-killer.
 
 When updating the skill in response to a new run's lessons, add a new dated subsection here. Older subsections stay so the rationale for each rule is traceable.
