@@ -21,6 +21,10 @@ from synthorg.observability.events.security import (
     SECURITY_AUTH_ACCOUNT_LOCKED,
     SECURITY_AUTH_LOCKOUT_CLEARED,
 )
+from synthorg.observability.metrics_hub import (
+    record_auth_failure,
+    record_auth_lockout,
+)
 
 logger = get_logger(__name__)
 
@@ -75,6 +79,9 @@ async def _record_failed_login(
     Raises:
         AccountLockedError: Raised on the corresponding failure path.
     """
+    # Count every failed credential check, independent of whether a lockout
+    # store is wired, so the auth-failure counter reflects real attempts.
+    record_auth_failure(reason="invalid_password")
     if app_state.slice(ApiCoreStateSlice).lockout_store is None:
         return
     client = request.client
@@ -91,6 +98,7 @@ async def _record_failed_login(
         threshold=lockout_store_of(app_state).threshold,
         duration_minutes=(lockout_store_of(app_state).lockout_duration_seconds // 60),
     )
+    record_auth_lockout()
     raise AccountLockedError(
         retry_after=lockout_store_of(app_state).lockout_duration_seconds,
     )

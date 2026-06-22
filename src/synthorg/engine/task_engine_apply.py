@@ -36,7 +36,10 @@ from synthorg.observability.events.task_engine import (
     TASK_ENGINE_MUTATION_FAILED,
     TASK_ENGINE_STATUS_TRANSITIONED,
 )
-from synthorg.observability.metrics_hub import record_task_run
+from synthorg.observability.metrics_hub import (
+    record_task_run,
+    record_task_transition,
+)
 from synthorg.observability.tracing.instrumentation import get_tracer
 
 if TYPE_CHECKING:
@@ -391,6 +394,10 @@ async def apply_transition(
             from_status=previous_status.value,
             to_status=mutation.target_status.value,
         )
+        record_task_transition(
+            from_status=previous_status.value,
+            to_status=mutation.target_status.value,
+        )
 
     # Emit the recorded-outcome metric only on hops that map to a
     # bounded outcome (see ``_RECORDED_STATUS_OUTCOME``), so a
@@ -528,6 +535,10 @@ async def apply_cancel(
         TASK_ENGINE_STATUS_TRANSITIONED,
         request_id=mutation.request_id,
         task_id=mutation.task_id,
+        from_status=previous_status.value,
+        to_status=TaskStatus.CANCELLED.value,
+    )
+    record_task_transition(
         from_status=previous_status.value,
         to_status=TaskStatus.CANCELLED.value,
     )

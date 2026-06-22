@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Final, get_args
 
 from synthorg.core.error_taxonomy import ErrorCategory
+from synthorg.core.task_enums import TaskStatus
 from synthorg.observability import get_logger
 from synthorg.observability.events.metrics import METRICS_SCRAPE_FAILED
 from synthorg.providers.errors import ProviderErrorLabel
@@ -179,6 +180,38 @@ def fold_http_method(value: str) -> str:
         The bounded method label.
     """
     return value if value in VALID_HTTP_METHODS else HTTP_METHOD_OTHER
+
+
+# Bounded ``reason`` vocabulary for ``synthorg_auth_failures_total``. Auth
+# failures are logged at many call sites with free-form ``reason=`` strings;
+# the metric folds anything outside this set to :data:`AUTH_FAILURE_OTHER` so
+# a new log reason cannot mint an unbounded series.
+VALID_AUTH_FAILURE_REASONS: Final[frozenset[str]] = frozenset(
+    {
+        "invalid_password",
+        "hash_verification_error",
+        "jwt_secret_missing",
+        "token_expired",
+        "token_invalid",
+        "refresh_rejected",
+        "account_locked",
+        "unauthenticated",
+    }
+)
+AUTH_FAILURE_OTHER: Final[str] = "__other__"
+
+# Task status labels for ``synthorg_task_transitions_total``; derived from
+# ``TaskStatus`` so the two stay in lockstep without a hand-maintained list.
+VALID_TASK_STATUSES: Final[frozenset[str]] = frozenset(s.value for s in TaskStatus)
+
+
+def fold_auth_failure_reason(value: str) -> str:
+    """Return *value* if a known auth-failure reason, else the sentinel.
+
+    Returns:
+        The bounded reason label (:data:`AUTH_FAILURE_OTHER` when unknown).
+    """
+    return value if value in VALID_AUTH_FAILURE_REASONS else AUTH_FAILURE_OTHER
 
 
 VALID_VERDICTS: Final[frozenset[str]] = frozenset(

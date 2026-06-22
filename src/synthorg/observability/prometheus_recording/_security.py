@@ -7,6 +7,7 @@ from synthorg.observability.prometheus_labels import (
     VALID_AUDIT_APPEND_STATUSES,
     VALID_AUDIT_VERIFICATION_OUTCOMES,
     VALID_VERDICTS,
+    fold_auth_failure_reason,
     require_finite,
     require_label,
     require_non_negative,
@@ -36,6 +37,19 @@ class _SecurityRecordingMixin(_RecordingMetricsBase):
         """
         require_label("security verdict", verdict, VALID_VERDICTS)
         self._security_evaluations.labels(verdict=verdict).inc()
+
+    def record_auth_failure(self, *, reason: str) -> None:
+        """Increment the auth-failure counter, folding *reason* to a bound.
+
+        Wired at the auth rejection points (password verify, token
+        validation, refresh reject, lockout). The free-form ``reason``
+        folds to ``__other__`` so the label set stays bounded.
+        """
+        self._auth_failures.labels(reason=fold_auth_failure_reason(reason)).inc()
+
+    def record_auth_lockout(self) -> None:
+        """Increment the account-lockout counter (no labels)."""
+        self._auth_lockouts.inc()
 
     def record_security_audit_fill_ratio(self, *, ratio: float) -> None:
         """Set the security audit log occupancy fraction.

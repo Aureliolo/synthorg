@@ -4,6 +4,7 @@
 from synthorg.observability import get_logger
 from synthorg.observability.prometheus_labels import (
     VALID_TASK_OUTCOMES,
+    VALID_TASK_STATUSES,
     VALID_TOOL_OUTCOMES,
     require_label,
     require_non_negative,
@@ -48,6 +49,28 @@ class _TaskToolRecordingMixin(_RecordingMetricsBase):
         if duration_sec is not None:
             require_non_negative("record_task_run: duration_sec", duration_sec)
             self._task_duration.labels(outcome=outcome).observe(duration_sec)
+
+    def record_task_transition(
+        self,
+        *,
+        from_status: str,
+        to_status: str,
+    ) -> None:
+        """Increment the task status-transition counter.
+
+        Wired alongside the ``TASK_ENGINE_STATUS_TRANSITIONED`` log so the
+        per-hop transition rate is queryable. Both labels are bounded by
+        :data:`VALID_TASK_STATUSES` (the ``TaskStatus`` enum).
+
+        Raises:
+            ValueError: If either status is not a known ``TaskStatus``.
+        """
+        require_label("task transition from_status", from_status, VALID_TASK_STATUSES)
+        require_label("task transition to_status", to_status, VALID_TASK_STATUSES)
+        self._task_transitions.labels(
+            from_status=from_status,
+            to_status=to_status,
+        ).inc()
 
     def record_tool_invocation(
         self,

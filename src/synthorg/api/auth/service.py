@@ -36,6 +36,7 @@ from synthorg.observability.events.security import (
     SECURITY_AUTH_REFRESH_CREATED,
     SECURITY_AUTH_REFRESH_REJECTED,
 )
+from synthorg.observability.metrics_hub import record_auth_failure
 from synthorg.persistence.auth_protocol import RefreshTokenRepository
 from synthorg.persistence.user_protocol import UserRepository
 
@@ -154,6 +155,7 @@ class AuthService:
                 reason="jwt_secret_missing",
                 operation=operation,
             )
+            record_auth_failure(reason="jwt_secret_missing")
             raise SecretNotConfiguredError(msg)
         return secret
 
@@ -203,6 +205,7 @@ class AuthService:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            record_auth_failure(reason="hash_verification_error")
             raise
         except argon2.exceptions.InvalidHashError as exc:
             log_exception_redacted(
@@ -471,6 +474,7 @@ class AuthService:
         """
         if not raw_refresh_token:
             logger.warning(SECURITY_AUTH_REFRESH_REJECTED, reason="cookie_missing")
+            record_auth_failure(reason="refresh_rejected")
             raise RefreshTokenInvalidError
 
         token_hash = self.hash_api_key(raw_refresh_token)
@@ -483,6 +487,7 @@ class AuthService:
                 SECURITY_AUTH_REFRESH_REJECTED,
                 reason=outcome.reject_reason.value,
             )
+            record_auth_failure(reason="refresh_rejected")
             raise RefreshTokenInvalidError
 
         record = outcome.record
@@ -497,6 +502,7 @@ class AuthService:
                 SECURITY_AUTH_REFRESH_REJECTED,
                 reason="consume_outcome_invariant_violation",
             )
+            record_auth_failure(reason="refresh_rejected")
             raise RefreshTokenInvalidError
 
         user = await users.get(record.user_id)
@@ -508,6 +514,7 @@ class AuthService:
                 reason="user_not_found_after_consume",
                 user_id=record.user_id,
             )
+            record_auth_failure(reason="refresh_rejected")
             raise RefreshTokenInvalidError
 
         token, expires_in, session_id = self.create_token(
