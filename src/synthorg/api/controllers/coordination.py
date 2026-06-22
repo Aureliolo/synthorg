@@ -19,6 +19,7 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.budget.currency_resolver import resolve_currency
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
@@ -197,19 +198,7 @@ class CoordinationController(Controller):
             context,
             task_id,
         )
-        try:
-            currency = await config_resolver_of(app_state).get_str("budget", "currency")
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            # Drop ``exc_info=True`` -- the config-resolver traceback
-            # can carry secret-store URLs in frame-locals.
-            logger.warning(
-                API_COORDINATION_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                note="budget config unavailable, using default currency",
-            )
-            currency = DEFAULT_CURRENCY
+        currency = await resolve_currency(config_resolver_of(app_state))
         return ApiResponse(
             data=_map_result_to_response(
                 attributed.result,

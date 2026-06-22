@@ -21,6 +21,7 @@ from synthorg.api.guards import require_read_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.currency_resolver import resolve_currency
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.budget.trends import BucketSize, bucket_cost_records
@@ -62,7 +63,7 @@ async def _assemble_overview(  # noqa: PLR0913
     counts = Counter(t.status.value for t in all_tasks)
     by_status = {s.value: counts.get(s.value, 0) for s in TaskStatus}
 
-    currency = await config_resolver_of(app_state).get_str("budget", "currency")
+    currency = await resolve_currency(config_resolver_of(app_state))
     budget = await _resolve_budget_context(app_state, total_cost, now=now)
     # Overview sparkline uses daily buckets intentionally (not hourly
     # like /trends?period=7d) to produce a compact 7-point sparkline.

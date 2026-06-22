@@ -18,6 +18,7 @@ from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
+from synthorg.budget.currency_resolver import resolve_currency
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.budget.trends import project_daily_spend
@@ -95,7 +96,7 @@ class AnalyticsForecastController(Controller):
             days_until_exhausted=forecast.days_until_exhausted,
         )
 
-        currency = await config_resolver_of(app_state).get_str("budget", "currency")
+        currency = await resolve_currency(config_resolver_of(app_state))
         return ApiResponse(
             data=ForecastResponse(
                 horizon_days=horizon_days,

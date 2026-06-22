@@ -19,7 +19,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.budget.currency_resolver import resolve_currency
 from synthorg.budget.tracker_protocol import (
     CostTrackerProtocol,
     collect_all_records,
@@ -452,20 +452,7 @@ class ActivityFeedService:
         Returns:
             Result of type ``str``.
         """
-        if self._config_resolver is None:
-            return DEFAULT_CURRENCY
-        try:
-            currency = await self._config_resolver.get_str("budget", "currency")
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                HR_ACTIVITY_SOURCE_FETCH_FAILED,
-                source="config_resolver.budget",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return DEFAULT_CURRENCY
-        return currency
+        return await resolve_currency(self._config_resolver)
 
     async def _fetch_lifecycle(
         self,

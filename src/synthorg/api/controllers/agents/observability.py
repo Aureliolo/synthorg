@@ -21,8 +21,7 @@ from synthorg.api.pagination import (
 )
 from synthorg.api.path_params import PathId
 from synthorg.api.state import AppState
-from synthorg.budget.currency import DEFAULT_CURRENCY
-from synthorg.core.critical_errors import reraise_critical
+from synthorg.budget.currency_resolver import resolve_currency
 from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.activity import (
@@ -38,14 +37,13 @@ from synthorg.hr.performance.summary import (
     extract_performance_summary,
 )
 from synthorg.hr.state import performance_tracker_of
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AGENT_ACTIVITY_QUERIED,
     API_AGENT_HEALTH_QUERIED,
     API_AGENT_HEALTH_TREND_MISSING,
     API_AGENT_HISTORY_QUERIED,
     API_AGENT_PERFORMANCE_QUERIED,
-    API_REQUEST_ERROR,
 )
 from synthorg.persistence.state import persistence_of
 from synthorg.security.state import SecurityStateSlice
@@ -216,19 +214,7 @@ class AgentObservabilityController(Controller):
         task_metrics = performance_tracker_of(app_state).get_task_metrics(
             agent_id=agent_id,
         )
-        try:
-            currency = await config_resolver_of(app_state).get_str("budget", "currency")
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                API_REQUEST_ERROR,
-                endpoint="agents.activity",
-                agent_name=agent_name,
-                detail="budget config unavailable, using default currency",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            currency = DEFAULT_CURRENCY
+        currency = await resolve_currency(config_resolver_of(app_state))
         timeline = merge_activity_timeline(
             lifecycle_events=lifecycle_events,
             task_metrics=task_metrics,
