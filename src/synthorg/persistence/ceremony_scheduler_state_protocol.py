@@ -8,8 +8,9 @@ together describe the ceremony-trigger position of one active sprint:
 * ``_total_completions``: number of task completions across the sprint.
 * ``_velocity_history``: recent ``VelocityRecord`` snapshots.
 
-Before WP-1 these were lost on process restart. This repository
-persists all four as a single snapshot row per sprint, written
+This repository persists all four as a single snapshot row per sprint
+so the scheduler restores its position after a process restart rather
+than losing ceremony-trigger state. The snapshot is written
 atomically under the scheduler's lock after every mutation and read
 back at ``activate_sprint`` time. JSON-blob columns carry the dict,
 set, and tuple fields; ``total_completions`` is a plain integer.

@@ -388,7 +388,7 @@ def _phase2_messages() -> tuple[ChatMessage, ...]:
 
 @pytest.mark.unit
 class TestPhase2Compaction:
-    """make_compaction_callback with the Phase-2 summariser / offloader."""
+    """make_compaction_callback with the semantic summariser / offloader."""
 
     async def test_llm_summary_replaces_text_summary(
         self,
@@ -444,7 +444,7 @@ class TestPhase2Compaction:
         )
         result = await callback(ctx)
         assert result is not None
-        # Phase-1 text summary used on LLM failure.
+        # Text summary used on LLM failure.
         assert "Archived" in (result.conversation[1].content or "")
 
     async def test_offload_called_when_enabled(

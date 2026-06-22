@@ -43,8 +43,9 @@ class CompactionConfig(BaseModel):
         preserve_epistemic_markers: Detect and preserve epistemic
             markers (hedging, reconsideration, etc.) in summaries.
         llm_summarizer_enabled: Use an LLM to summarise the archived turn
-            batch (Phase-2) instead of the snippet-join text summary; the
-            text summary remains the fallback on any provider failure.
+            batch (semantic compaction) instead of the snippet-join text
+            summary; the text summary remains the fallback on any provider
+            failure.
         llm_summary_model: Model id for the LLM summariser. Required when
             ``llm_summarizer_enabled`` is True.
         llm_summary_temperature: Sampling temperature for the LLM summary.
@@ -93,7 +94,7 @@ class CompactionConfig(BaseModel):
     )
     llm_summarizer_enabled: bool = Field(
         default=False,
-        description="Use an LLM to summarise the archived turn batch (Phase-2).",
+        description="Use an LLM to summarise the archived turn batch (semantic).",
     )
     llm_summary_model: NotBlankStr | None = Field(
         default=None,

@@ -1,12 +1,11 @@
 """Docker sandbox container reconciliation on lifecycle start.
 
-Pre-WP-1 the sandbox lifecycle's ``_tracked_containers`` dict was lost
-on process restart, so a process crash mid-task would leave orphan
-containers running on the Docker daemon with no record of who owned
-them. WP-1 added :class:`TrackedContainerRepository` so the dict
-survives restarts; this module is the reconciliation pass that the
-sandbox subsystem runs at start to close the loop with the actual
-Docker daemon state.
+:class:`TrackedContainerRepository` persists the sandbox lifecycle's
+``_tracked_containers`` dict so it survives a restart; this module is
+the reconciliation pass the sandbox subsystem runs at start to close
+the loop with the actual Docker daemon state. Without it, a process
+crash mid-task would leave orphan containers running on the daemon
+with no record of who owned them.
 
 Algorithm:
 

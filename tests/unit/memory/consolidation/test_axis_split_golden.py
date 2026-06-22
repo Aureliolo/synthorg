@@ -1,4 +1,4 @@
-"""Byte-identical golden guard for the RFC#10 consolidation axis split.
+"""Byte-identical golden guard for the consolidation axis split.
 
 Pins the exact ``ConsolidationResult`` and stored-summary content for
 the Simple / DualMode / LLM composites on fixed inputs, against

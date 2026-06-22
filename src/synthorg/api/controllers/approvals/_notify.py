@@ -126,7 +126,7 @@ def _publish_approval_event(
 def _decided_attribution() -> tuple[str, str]:
     """Resolve ``(decided_by, decided_by_user_id)`` from the actor seam.
 
-    RFC#3 / ADR-0003: the decision attribution comes from the actor
+    ADR-0003: the decision attribution comes from the actor
     bound by ``AuthContextMiddleware`` (``label`` == username,
     ``actor_id`` == immutable user id) rather than being re-derived
     from the request's auth user. Values are byte-identical to the

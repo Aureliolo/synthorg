@@ -1,9 +1,8 @@
 """Unit tests for the shared agent-persona system-prompt renderer.
 
-Guards the Phase-0 extraction of ``_render_system_prompt`` out of the
-meeting agent caller: the shared renderer must produce byte-identical
-output to the meeting caller's wrapper, and must always carry the
-untrusted-content directive.
+Verifies that the shared ``_render_system_prompt`` renderer produces
+byte-identical output to the meeting agent caller's private wrapper, and
+that the untrusted-content directive is always present.
 """
 
 from datetime import date
@@ -81,8 +80,8 @@ class TestRenderAgentSystemPrompt:
         assert expected in prompt
 
     def test_meeting_caller_wrapper_matches_shared_renderer(self) -> None:
-        # The Phase-0 extraction must not change meeting behaviour: the
-        # caller's private wrapper delegates to the shared renderer.
+        # Delegating to the shared renderer must not change meeting
+        # behaviour: the caller's private wrapper produces identical output.
         identity = _identity()
         assert _render_system_prompt(identity) == render_agent_system_prompt(identity)
 

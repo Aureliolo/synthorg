@@ -472,11 +472,11 @@ def _build_compaction_callback(
 ) -> CompactionCallback:
     """Build the boot compaction callback from the live config.
 
-    Phase-1 text compaction is always wired (the callback fires once the
-    context fill threshold is reached). The Phase-2 LLM summariser and
-    memory offloader are built only when their config flags are on and
-    their collaborator (provider / memory backend) is present; otherwise
-    the callback degrades to the Phase-1 text summary.
+    Text compaction is always wired (the callback fires once the context
+    fill threshold is reached). The semantic LLM summariser and memory
+    offloader are built only when their config flags are on and their
+    collaborator (provider / memory backend) is present; otherwise the
+    callback degrades to the text summary.
 
     Returns:
         The compaction callback for the boot ``AgentEngine``.

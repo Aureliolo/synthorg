@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
     """Populate the runtime slice and late-bind the dispatcher bridge config.
 
-    The distributed dispatcher is built (in phase-1 auto-wiring) before
+    The distributed dispatcher is built (in construction-phase auto-wiring) before
     ``AppState`` exists, so its workers-bridge-config provider is late-bound
     here against the live state. Each publish then reads the current snapshot,
     so an operator hot-reload of a ``workers.dispatcher_publish_*`` setting

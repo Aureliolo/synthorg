@@ -114,7 +114,7 @@ def _to_response(escalation: Escalation) -> EscalationResponse:
 def _operator_id() -> str:
     """Resolve the deciding operator id, prefixed with ``human:``.
 
-    RFC#3 / ADR-0003: the identity comes from the actor seam bound by
+    ADR-0003: the identity comes from the actor seam bound by
     ``AuthContextMiddleware`` (``actor_id`` == immutable user id)
     rather than re-reading ``request.scope["user"]``. The
     ``human:<user_id>`` shape is byte-identical to the previous

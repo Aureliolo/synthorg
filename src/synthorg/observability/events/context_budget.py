@@ -25,7 +25,7 @@ CONTEXT_BUDGET_EPISTEMIC_MARKERS_PRESERVED: Final[str] = (
     "context_budget.epistemic_markers.preserved"
 )
 
-# Phase-2: LLM-backed summariser
+# Semantic compaction: LLM-backed summariser
 CONTEXT_BUDGET_COMPACTION_LLM_STARTED: Final[str] = (
     "context_budget.compaction.llm.started"
 )
@@ -36,7 +36,7 @@ CONTEXT_BUDGET_COMPACTION_LLM_FALLBACK: Final[str] = (
     "context_budget.compaction.llm.fallback"
 )
 
-# Phase-2: memory offload of archived turn batches
+# Semantic compaction: memory offload of archived turn batches
 CONTEXT_BUDGET_COMPACTION_OFFLOAD_STORED: Final[str] = (
     "context_budget.compaction.offload.stored"
 )

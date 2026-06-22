@@ -115,8 +115,8 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         Args:
             task_id: The task identifier.
             decided_by: Optional explicit decider override (system /
-                non-HTTP paths). When omitted the bound actor (RFC#3 /
-                ADR-0003) supplies it via :func:`resolve_decided_by`.
+                non-HTTP paths). When omitted the bound actor (ADR-0003)
+                supplies it via :func:`resolve_decided_by`.
 
         Returns:
             The validated ``Task`` fetched from the engine.  Returned
@@ -161,7 +161,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
 
         ``decided_by`` is an optional explicit override (system /
         non-HTTP paths); when omitted the bound actor supplies it via
-        :func:`resolve_decided_by` (RFC#3 / ADR-0003).
+        :func:`resolve_decided_by` (ADR-0003).
 
         Raises:
             TaskNotFoundError: If the task cannot be found.

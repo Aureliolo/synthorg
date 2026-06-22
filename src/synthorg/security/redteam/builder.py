@@ -70,7 +70,7 @@ class RedTeamToolSeed(NamedTuple):
 
 
 def build_red_team_tool_seed(*, config: RedTeamConfig) -> RedTeamToolSeed:
-    """Build the boot-phase-1 seed for the red-team tool + repo.
+    """Build the construction-phase boot seed for the red-team tool + repo.
 
     The runtime-builder appends ``extra_tools`` to its config-driven
     tool list before constructing the agent engine, so the seed must be
@@ -142,7 +142,7 @@ def build_red_team_runtime(  # noqa: PLR0913 -- boot-time builder inputs, all re
         model: :class:`ModelConfig` for the red-team agent identity.
             Operators pin the same provider / model the rest of the
             company uses, unless they want a separate red-team budget.
-        seed: The boot-phase-1 :class:`RedTeamToolSeed` returned by
+        seed: The construction-phase :class:`RedTeamToolSeed` returned by
             :func:`build_red_team_tool_seed`. Its ``report_repo`` and
             ``submit_tool`` (built BEFORE the engine, so they land on
             the engine's tool registry at construction time) are reused

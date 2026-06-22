@@ -364,7 +364,7 @@ class ApprovalTimeoutScheduler:
     async def _evaluate_item(self, item: ApprovalItem) -> None:
         """Evaluate a single item and apply the action if decisive.
 
-        RFC#3 / ADR-0003: this is a system-initiated decision path with
+        ADR-0003: this is a system-initiated decision path with
         no human in the loop. The system actor is bound for the whole
         evaluation so any downstream gate / resume flow resolves
         ``decided_by`` to the timeout-policy identity via the actor

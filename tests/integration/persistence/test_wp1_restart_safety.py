@@ -1,9 +1,9 @@
-"""Restart-safety integration test for WP-1 persistence.
+"""Restart-safety integration test for the durable state stores.
 
-Per the WP-1 plan: after the four critical state stores
-(ceremony scheduler state, meeting cooldown, tracked containers,
-webhook receipts) gained durable persistence, a process restart
-must rehydrate them from the backend instead of starting from zero.
+The four critical state stores (ceremony scheduler state, meeting
+cooldown, tracked containers, webhook receipts) have durable
+persistence, so a process restart must rehydrate them from the backend
+instead of starting from zero.
 
 A genuine restart cycle requires constructing a *second*
 ``PersistenceBackend`` instance, pointing at the same storage, after
@@ -255,7 +255,7 @@ class TestWP1RestartSafety:
         self,
         backend_factory: BackendFactory,
     ) -> None:
-        """All four WP-1 state stores survive a real restart cycle.
+        """All four durable state stores survive a real restart cycle.
 
         Mirrors the production restart sequence: a process crash
         leaves all four backends in some persisted state. After
