@@ -72,6 +72,18 @@ FAILURE_EXIT_CODE = 1
 SIG_PROPAGATION_ATTEMPTS = 3
 SIG_PROPAGATION_BACKOFF_SECONDS = 3
 
+# Transient-error retry budget for the registry calls that are NOT the
+# eventual-consistency referrer poll: the token mint and the tag->digest
+# HEAD. A single GHCR network blip (``i/o timeout``, connection reset) or a
+# 5xx on either of these would otherwise red the whole verify-signatures
+# gate for an image that is in fact correctly published and signed -- the
+# same class of failure the publish actions already absorb via
+# docker_push_with_retry.sh. Kept short: a 4xx (auth, genuine 404) is a real
+# answer and is returned immediately, never retried.
+REGISTRY_RETRY_ATTEMPTS = 4
+REGISTRY_RETRY_BACKOFF_SECONDS = 5
+HTTP_SERVER_ERROR_MIN = 500
+
 # Anchored allowlist patterns, applied to every value that flows into
 # the registry URL path. Closes the partial-SSRF window CodeQL flags
 # (rule py/partial-ssrf): the registry hostname is hardcoded to
@@ -245,15 +257,18 @@ def mint_pull_token(repo_path: str, ghcr_token: str | None) -> str | None:
         f"https://{GHCR_REGISTRY}/token?service={GHCR_REGISTRY}"
         f"&scope=repository:{safe_repo}:pull"
     )
-    req = urllib.request.Request(
-        url,
-        headers={"Authorization": f"Basic {_basic_auth('x-access-token', ghcr_token)}"},
-    )
-    # S310: URL is built from constants + a percent-encoded repo path,
-    # so the scheme is always https (no file:/custom-scheme surface).
-    with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_SECONDS) as resp:  # noqa: S310
-        body = json.loads(resp.read().decode())
-    token = body.get("token")
+    headers = {"Authorization": f"Basic {_basic_auth('x-access-token', ghcr_token)}"}
+    # Retry a transient blip on the single token mint that gates the whole
+    # gate: a 5xx / reset here would otherwise fail verification for a
+    # correctly-published image. A persistent non-200 (auth rejection, or a
+    # 5xx that outlasts the budget) is raised as URLError so the caller
+    # reports a network/auth error rather than an empty token.
+    status, _, body = _request_with_retry("GET", url, headers)
+    if status != HTTP_OK:
+        msg = f"token endpoint returned HTTP {status} for {url}"
+        raise urllib.error.URLError(msg)
+    payload = json.loads(body.decode())
+    token = payload.get("token")
     return token if isinstance(token, str) else None
 
 
@@ -281,6 +296,42 @@ def _request(
         return exc.code, dict(exc.headers or {}), exc.read()
 
 
+def _request_with_retry(
+    method: str,
+    url: str,
+    headers: dict[str, str],
+) -> tuple[int, dict[str, str], bytes]:
+    """``_request`` with bounded retry on transient network errors and 5xx.
+
+    A connection-level failure (timeout, reset, refused) or a server-side
+    5xx is transient: GHCR was momentarily unreachable, not a real answer
+    about the image. Retry a few times with a fixed backoff, then surface
+    the last result so the caller's existing handling applies. A 4xx
+    (auth, genuine 404) is a definitive answer and is returned on the
+    first attempt -- never retried. Mirrors the transient/terminal split
+    docker_push_with_retry.sh applies on the publish path.
+
+    Raises:
+        urllib.error.URLError / OSError: a network-level failure that
+            persisted across every attempt (matches ``_request``).
+    """
+    for attempt in range(1, REGISTRY_RETRY_ATTEMPTS + 1):
+        try:
+            status, response_headers, body = _request(method, url, headers)
+        except urllib.error.URLError, OSError:
+            if attempt < REGISTRY_RETRY_ATTEMPTS:
+                time.sleep(REGISTRY_RETRY_BACKOFF_SECONDS)
+                continue
+            raise
+        if status >= HTTP_SERVER_ERROR_MIN and attempt < REGISTRY_RETRY_ATTEMPTS:
+            time.sleep(REGISTRY_RETRY_BACKOFF_SECONDS)
+            continue
+        return status, response_headers, body
+    # Unreachable: the loop either returns or raises on the final attempt.
+    msg = f"exhausted retry budget for {method} {url}"
+    raise urllib.error.URLError(msg)
+
+
 def resolve_digest(
     repo_path: str,
     tag: str,
@@ -301,7 +352,7 @@ def resolve_digest(
     safe_tag = urllib.parse.quote(tag, safe="")
     url = f"https://{GHCR_REGISTRY}/v2/{safe_repo}/manifests/{safe_tag}"
     headers = {"Accept": MANIFEST_ACCEPT, **auth_header}
-    status, response_headers, _ = _request("HEAD", url, headers)
+    status, response_headers, _ = _request_with_retry("HEAD", url, headers)
     if status != HTTP_OK:
         return None, f"tag does not resolve in registry (HTTP {status})"
     for k, v in response_headers.items():
