@@ -15,6 +15,7 @@ from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import (
     MirrorField,
     apply_settings_mirrors,
+    parse_bool,
     parse_float,
     parse_int,
 )
@@ -94,6 +95,12 @@ class RiskBudgetConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="enabled",
+            namespace=SettingNamespace.BUDGET,
+            key="risk_enabled",
+            parse=parse_bool,
+        ),
         MirrorField(
             field="per_task_risk_limit",
             namespace=SettingNamespace.BUDGET,

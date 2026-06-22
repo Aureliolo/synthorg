@@ -22,6 +22,11 @@ def _make_app(*, collector: object | None = None) -> Litestar:
     so these tests exercise the scrape behaviour, not throttling. Setting
     ``per_op_limits=None`` forces the guard onto the state-dict fallback.
     """
+    # A permissive ``MagicMock`` is deliberate here: the rate-limit guard
+    # reads ``per_op_limits`` dynamically (it is not a declared ``AppState``
+    # attribute, so a spec'd ``mock_of[AppState]`` cannot model it), and the
+    # collector lookup walks several state-slice attributes a fixed
+    # ``SimpleNamespace`` would not cover.
     mock_state = MagicMock()
     mock_state.per_op_limits = None
     mock_state.slice.return_value = SimpleNamespace(

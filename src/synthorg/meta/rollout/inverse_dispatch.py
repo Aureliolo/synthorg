@@ -336,8 +336,9 @@ class RevertBranchHandler:
     async def aclose(self) -> None:
         """Close the mutator's GitHub HTTP client if it exposes ``aclose``.
 
-        Reached from ``RollbackExecutor.aclose`` so the branch-revert
-        client's connection pool is released at shutdown.
+        Released at shutdown by any close orchestrator that discovers this
+        method through the duck-typed ``aclose`` protocol, so the
+        branch-revert client's connection pool does not leak.
         """
         close = getattr(self._mutator, "aclose", None)
         if close is not None:

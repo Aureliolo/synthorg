@@ -200,7 +200,15 @@ class PostgresConnectionMixin:
         raise PersistenceConnectionError(msg) from exc
 
     async def disconnect(self) -> None:
-        """Close the connection pool."""
+        """Close the connection pool, best-effort.
+
+        A timeout-forced partial close (the pool's close handshake can
+        raise ``asyncio.TimeoutError``, not a ``psycopg.Error``/``OSError``)
+        is intentionally absorbed and logged at WARNING: ``_clear_state``
+        runs regardless so the backend is left disconnected, and the
+        lifecycle runner can proceed with the rest of shutdown rather than
+        aborting on a pool that refused to drain in time.
+        """
         async with self._lifecycle_lock:
             if self._pool is None:
                 return
@@ -217,9 +225,7 @@ class PostgresConnectionMixin:
                     host=self._config.host,
                     database=self._config.database,
                 )
-            except Exception as exc:  # noqa: BLE001 -- broad: pool internals may
-                # raise asyncio.TimeoutError (not a psycopg.Error/OSError) from
-                # the close handshake; ``_clear_state`` still runs in finally.
+            except Exception as exc:  # noqa: BLE001 -- pool close timeout, best-effort
                 reraise_critical(exc)
                 logger.warning(
                     PERSISTENCE_BACKEND_DISCONNECT_ERROR,

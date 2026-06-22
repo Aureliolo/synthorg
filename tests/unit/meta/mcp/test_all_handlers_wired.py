@@ -218,6 +218,10 @@ class TestNoPlaceholderInProduction:
     contract forbids.
     """
 
+    # ``build_handler_map`` is evaluated at collection time, so an import
+    # error in any handler module fails collection of this whole file
+    # (not just one case). That is intentional: it doubles as a
+    # "every handler module must import cleanly" gate.
     @pytest.mark.parametrize(
         "tool_name",
         sorted(build_handler_map().keys()),

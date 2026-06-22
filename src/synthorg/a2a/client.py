@@ -41,28 +41,41 @@ _HTTP_TOO_MANY_REQUESTS: Final[int] = 429
 
 
 class A2AClientError(DomainError):
-    """Error raised by the outbound A2A client."""
+    """Error raised by the outbound A2A client.
+
+    Non-retryable by default. Transient peer failures (HTTP 429,
+    connection resets, timeouts) raise :class:`A2ATransientError`, which
+    the project-standard ``is_retryable`` class attribute marks for retry.
+    """
 
     default_message: ClassVar[str] = "A2A client request failed"
     error_category: ClassVar[ErrorCategory] = ErrorCategory.PROVIDER_ERROR
     error_code: ClassVar[ErrorCode] = ErrorCode.PROVIDER_ERROR
     status_code: ClassVar[int] = 502
+    is_retryable: ClassVar[bool] = False
 
     def __init__(
         self,
         message: str,
         *,
         peer_name: str = "",
-        transient: bool = False,
         retry_after_seconds: float | None = None,
     ) -> None:
         super().__init__(message)
         self.peer_name = peer_name
-        # ``transient`` lets a caller distinguish a retryable peer
-        # back-pressure (HTTP 429) from a hard failure; ``retry_after_seconds``
-        # carries the peer's advertised cool-off when it sent one.
-        self.transient = transient
+        # ``retry_after_seconds`` carries the peer's advertised cool-off
+        # when it sent one (populated on the transient subclass).
         self.retry_after_seconds = retry_after_seconds
+
+
+class A2ATransientError(A2AClientError):
+    """Retryable A2A failure: 429 back-pressure or a connect / timeout error.
+
+    Keeps the parent's ``PROVIDER_ERROR`` code (inheritance alias) and
+    only flips ``is_retryable`` so a wrapping retry layer reacts to it.
+    """
+
+    is_retryable: ClassVar[bool] = True
 
 
 class A2AClient:
@@ -348,7 +361,9 @@ class A2AClient:
             HTTP response.
 
         Raises:
-            A2AClientError: On any HTTP failure.
+            A2ATransientError: On a 429 or a connection / timeout error
+                (retryable).
+            A2AClientError: On any other HTTP failure.
         """
         try:
             response = await self._do_post(
@@ -367,7 +382,7 @@ class A2AClient:
                 transient=True,
             )
             msg = f"Connection to peer '{peer_name}' failed"
-            raise A2AClientError(msg, peer_name=peer_name) from exc
+            raise A2ATransientError(msg, peer_name=peer_name) from exc
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code
             if status == _HTTP_TOO_MANY_REQUESTS:
@@ -385,10 +400,9 @@ class A2AClient:
                     retry_after_seconds=retry_after,
                 )
                 msg = f"Peer '{peer_name}' rate-limited the request (429)"
-                raise A2AClientError(
+                raise A2ATransientError(
                     msg,
                     peer_name=peer_name,
-                    transient=True,
                     retry_after_seconds=retry_after,
                 ) from exc
             logger.warning(

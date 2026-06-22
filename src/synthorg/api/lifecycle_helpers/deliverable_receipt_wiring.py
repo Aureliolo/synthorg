@@ -1,10 +1,9 @@
 # module-kind: orchestrator
 """On-startup wiring for the deliverable-receipts feature engine.
 
-Extracted from :mod:`synthorg.api.lifecycle_helpers.feature_wiring` so
-that module stays within its size budget. Best-effort + idempotent like
-every other ``_wire_*`` helper: a missing collaborator leaves the
-receipt controllers to 503 rather than poisoning startup.
+Best-effort + idempotent like every other ``_wire_*`` helper: a missing
+collaborator leaves the receipt controllers to 503 rather than poisoning
+startup.
 """
 
 from synthorg.api.state import AppState

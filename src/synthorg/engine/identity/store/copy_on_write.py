@@ -168,7 +168,10 @@ class CopyOnWriteIdentityStore:
         # Reading the snapshot outside the lock was a TOCTOU race: a put()
         # could advance ``_current_version[key]`` between the read and the
         # write, and this method would then silently roll the pointer back
-        # over the newer committed state.
+        # over the newer committed state. Note: the public read-only
+        # ``get_version`` fetch does not take the lock and is not covered by
+        # this guarantee; only the registry mutation + pointer write here is
+        # serialised.
         async with self._version_lock:
             snapshot = await self._repo.get_version(key, version)
             if snapshot is None:

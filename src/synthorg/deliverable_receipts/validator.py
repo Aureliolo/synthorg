@@ -95,6 +95,9 @@ class ReceiptValidator:
     async def _check_cassette(self, receipt: DeliverableReceipt) -> list[str]:
         """Confirm the cassette loads, hashes, and parses (when present).
 
+        Async: the file read is offloaded via ``asyncio.to_thread`` so a
+        large cassette does not block the event loop during validation.
+
         Returns:
             Error strings for an unreadable file, a drifted hash, or an
             unparseable cassette; empty when absent or consistent.

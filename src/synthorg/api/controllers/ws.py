@@ -729,19 +729,17 @@ async def _setup_connection(
 ) -> tuple[ChannelsPlugin, Subscriber] | None:
     """Resolve plugin, accept the connection, and subscribe to channels.
 
-    Returns ``(channels_plugin, subscriber)`` on success, or ``None``
-    (socket already closed) on failure.
-
     Note: the query-param (ticket) path role-checks before ``accept()``,
     so an insufficient-role client is rejected without an upgrade. The
     first-message path must accept to read the auth frame, so there an
     insufficient-role client receives the upgrade followed immediately by
     close code 4003 -- inherent to reading over an established WS
-    connection. Either way no in-scope role reaches subscription.
+    connection. Either way, a socket bearing an insufficient role never
+    reaches the subscription step.
 
     Returns:
-        The ``tuple[ChannelsPlugin, Subscriber]`` value when present,
-        ``None`` otherwise.
+        ``(channels_plugin, subscriber)`` on success, or ``None`` when the
+        socket was already closed.
     """
     channels_plugin = _resolve_channels_plugin(socket)
     if channels_plugin is None:

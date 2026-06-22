@@ -6,9 +6,11 @@ classifier, so runtime SecOps overrides only matter when a
 :class:`TieredTimeoutConfig` is configured. Once persistence is up this
 hook rebuilds the tiered policy's classifier wrapped in a
 :class:`SecOpsRiskClassifier` seeded from the durable override repo, swaps
-it into the live scheduler, and publishes a :class:`RiskOverrideService`
-so the REST + MCP surfaces can create / revoke overrides that mutate the
-same live classifier.
+the wrapping tiered policy into the live scheduler via
+``ApprovalTimeoutScheduler.set_timeout_policy`` (which holds the scheduler's
+``_lifecycle_lock`` to order the swap against any concurrent ``start`` /
+``stop``), and publishes a :class:`RiskOverrideService` so the REST + MCP
+surfaces can create / revoke overrides that mutate the same live classifier.
 
 Best-effort + idempotent: an already-wired service short-circuits, and a
 non-tiered policy / absent persistence / absent scheduler leaves the

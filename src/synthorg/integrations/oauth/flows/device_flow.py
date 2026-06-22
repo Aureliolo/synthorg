@@ -15,6 +15,7 @@ from synthorg.core.resilience.retry_after import (
 from synthorg.integrations.connections.models import OAuthToken
 from synthorg.integrations.errors import (
     DeviceFlowTimeoutError,
+    OAuthConfigurationError,
     TokenExchangeFailedError,
 )
 from synthorg.observability import get_logger, safe_error_description
@@ -337,7 +338,9 @@ class DeviceFlow:
         Raises:
             DeviceFlowTimeoutError: If the user does not authorize
                 within the timeout.
-            TokenExchangeFailedError: On unexpected errors.
+            OAuthConfigurationError: On a deterministic failure (an
+                SSRF-rejected token URL).
+            TokenExchangeFailedError: On a transient transport / body error.
             ValueError: If ``interval`` or ``max_wait_seconds`` is
                 non-positive (would cause a tight loop / immediate
                 timeout).
@@ -426,10 +429,12 @@ class DeviceFlow:
                         resp.headers.get("Retry-After") if rate_limited else None
                     )
                     data = None if rate_limited else resp.json()
-            except (httpx.HTTPError, json.JSONDecodeError, ValueError) as exc:
-                # The polling POST body carries the ``device_code``
-                # which is a credential until the user authorizes.
-                # ``ValueError`` covers an SSRF rejection of ``token_url``.
+            except (httpx.HTTPError, json.JSONDecodeError) as exc:
+                # The polling POST body carries the ``device_code`` which is
+                # a credential until the user authorizes. Transient transport
+                # / malformed-body failures stay retryable. (``JSONDecodeError``
+                # is a ``ValueError`` subclass, so this clause must precede the
+                # SSRF ``ValueError`` clause below.)
                 logger.warning(
                     OAUTH_TOKEN_EXCHANGE_FAILED,
                     error_type=type(exc).__name__,
@@ -437,12 +442,24 @@ class DeviceFlow:
                 )
                 msg = f"Device flow polling failed: {type(exc).__name__}"
                 raise TokenExchangeFailedError(msg) from exc
+            except ValueError as exc:
+                # An SSRF rejection of ``token_url`` raised before network
+                # I/O: deterministic, so non-retryable.
+                logger.warning(
+                    OAUTH_TOKEN_EXCHANGE_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                msg = f"Device flow polling rejected: {type(exc).__name__}"
+                raise OAuthConfigurationError(msg) from exc
 
             if rate_limited:
                 # RFC 8628 token-endpoint back-pressure: treat a hard 429
                 # like ``slow_down`` rather than a fatal error -- honour the
-                # advertised ``Retry-After`` cool-off when present (falling
-                # back to the +5s slow-down step) and keep polling.
+                # advertised ``Retry-After`` cool-off only when it EXCEEDS the
+                # current interval, otherwise apply the +5s slow-down step
+                # (a smaller or absent Retry-After must not shrink the
+                # interval -- backoff stays monotone), and keep polling.
                 retry_after = coerce_finite_nonneg_seconds(
                     parse_retry_after_seconds(
                         retry_after_header,

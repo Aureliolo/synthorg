@@ -378,34 +378,30 @@ class Worker:
         *,
         stage: str,
     ) -> None:
-        """Log a dedup-store failure, escalating permanent failures to CRITICAL.
+        """Log a dedup-store failure at exactly one level by retryability.
 
         A retryable failure is a transient blip: JetStream redelivers within
-        ``ack_wait`` and the next attempt re-consults the store, so it stays a
-        WARNING. A NON-retryable failure (``is_retryable=False`` -- schema
-        drift, a malformed query) means the dedup guarantee is systematically
-        bypassed for every claim until an operator intervenes, silently turning
-        exactly-once into at-least-once; that is logged CRITICAL so it surfaces
-        rather than hiding among routine warnings.
+        ``ack_wait`` and the next attempt re-consults the store, so it logs a
+        single WARNING. A NON-retryable failure (``is_retryable=False`` --
+        schema drift, a malformed query) means the dedup guarantee is
+        systematically bypassed for every claim until an operator intervenes,
+        silently turning exactly-once into at-least-once; that logs a single
+        CRITICAL (``WORKERS_DEDUP_BYPASS_PERMANENT``) so it surfaces rather
+        than hiding among routine warnings. The two paths are mutually
+        exclusive -- no event is emitted twice.
         """
-        logger.warning(
-            event,
-            worker_id=self._worker_id,
-            task_id=claim.task_id,
-            idempotency_key=claim.idempotency_key,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        if not exc.is_retryable:
-            logger.critical(
-                WORKERS_DEDUP_BYPASS_PERMANENT,
-                worker_id=self._worker_id,
-                task_id=claim.task_id,
-                idempotency_key=claim.idempotency_key,
-                stage=stage,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
+        fields = {
+            "worker_id": self._worker_id,
+            "task_id": claim.task_id,
+            "idempotency_key": claim.idempotency_key,
+            "stage": stage,
+            "error_type": type(exc).__name__,
+            "error": safe_error_description(exc),
+        }
+        if exc.is_retryable:
+            logger.warning(event, **fields)
+            return
+        logger.critical(WORKERS_DEDUP_BYPASS_PERMANENT, **fields)
 
     async def _execute_claim(
         self,

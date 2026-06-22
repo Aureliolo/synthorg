@@ -482,6 +482,18 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.BUDGET,
+        key="risk_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description="Whether cumulative risk-unit budget tracking is active.",
+        group="Risk Budget",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
         key="risk_per_task_limit",
         type=SettingType.FLOAT,
         default="5.0",

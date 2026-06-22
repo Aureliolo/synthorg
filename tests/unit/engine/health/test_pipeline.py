@@ -9,6 +9,8 @@ from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.quality.models import StepQuality, StepQualitySignal
 from synthorg.notifications.models import Notification, NotificationCategory
 
+pytestmark = pytest.mark.unit
+
 
 class _FakeDispatcher:
     """In-memory notification dispatcher for testing."""
@@ -38,7 +40,6 @@ def _signal(quality: StepQuality, step_index: int = 0) -> StepQualitySignal:
     )
 
 
-@pytest.mark.unit
 class TestHealthMonitoringPipeline:
     """End-to-end pipeline tests."""
 

@@ -48,7 +48,7 @@ Values marked `sensitive=True` (API keys, webhook URLs, passwords) are Fernet-en
 | `company` | Company name, autonomy level, monthly budget, communication pattern |
 | `providers` | LLM provider CRUD, routing strategy, SSRF discovery allowlist |
 | `memory` | Memory backend, retention, embedding model, consolidation policy |
-| `budget` | Monthly budget, currency, alerts, auto-downgrade, risk budget |
+| `budget` | Monthly budget, currency, alerts, auto-downgrade, risk budget, quota poller |
 | `security` | Autonomy levels, approval policies, output scanner, trust strategy, policy engine |
 | `coordination` | Coordination metrics, error taxonomy, orchestration ratio alerts |
 | `observability` | Log level, correlation tracking, sink overrides, custom sinks |
@@ -61,7 +61,7 @@ These surface previously-hardcoded timeouts, batch sizes, and resource limits. A
 
 | Namespace | What it configures |
 |-----------|---------------------|
-| `engine` | Prompt profiles, stagnation detection, context compaction, evolution, crash recovery |
+| `engine` | Prompt profiles, stagnation detection, context compaction, evolution, crash recovery, health monitoring |
 | `communication` | Message bus configuration, delegation policies, meeting protocol timeouts |
 | `a2a` | A2A gateway auth, allowlist, agent card verification, webhook security |
 | `integrations` | Secret backend, OAuth manager, health prober interval, webhook dedup window |

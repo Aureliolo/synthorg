@@ -82,7 +82,18 @@ def bind_github_default_api_url(default_api_url: str) -> None:
     the public default; startup wiring resolves
     ``integrations.github_api_url`` and calls this so a GitHub Enterprise
     deployment's health probes target the operator endpoint.
+
+    A non-``https`` value is rejected (logged, not injected): the health
+    probe carries the connection's bearer token, so a plaintext endpoint
+    would leak it. The secure public default stays in force.
     """
+    if not default_api_url.startswith("https://"):
+        logger.warning(
+            HEALTH_PROBER_CONFIG_INVALID,
+            setting="integrations.github_api_url",
+            note="non-https github_api_url ignored; keeping secure default",
+        )
+        return
     checker = _CHECK_REGISTRY.get(ConnectionType.GITHUB)
     setter = getattr(checker, "set_default_api_url", None)
     if callable(setter):

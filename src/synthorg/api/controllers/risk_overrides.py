@@ -41,28 +41,6 @@ def _require_actor(request: Request[object, object, State]) -> AuthenticatedUser
     return actor
 
 
-def _override_to_dict(override: RiskTierOverride) -> dict[str, object]:
-    """Render an override as a JSON-safe dict.
-
-    Returns:
-        Mapping of the override's public fields.
-    """
-    return {
-        "id": str(override.id),
-        "action_type": str(override.action_type),
-        "original_tier": override.original_tier.value,
-        "override_tier": override.override_tier.value,
-        "reason": str(override.reason),
-        "created_by": str(override.created_by),
-        "created_at": override.created_at.isoformat(),
-        "expires_at": override.expires_at.isoformat(),
-        "revoked_at": (
-            override.revoked_at.isoformat() if override.revoked_at else None
-        ),
-        "revoked_by": str(override.revoked_by) if override.revoked_by else None,
-    }
-
-
 class CreateRiskOverrideRequest(BaseModel):
     """Request body for creating a risk-tier override."""
 
@@ -72,6 +50,43 @@ class CreateRiskOverrideRequest(BaseModel):
     override_tier: ApprovalRiskLevel
     reason: NotBlankStr
     expires_at: AwareDatetime
+
+
+class RiskOverrideResponse(BaseModel):
+    """Typed view of a risk-tier override audit artefact."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    id: str
+    action_type: str
+    original_tier: ApprovalRiskLevel
+    override_tier: ApprovalRiskLevel
+    reason: str
+    created_by: str
+    created_at: AwareDatetime
+    expires_at: AwareDatetime
+    revoked_at: AwareDatetime | None = None
+    revoked_by: str | None = None
+
+    @classmethod
+    def from_override(cls, override: RiskTierOverride) -> RiskOverrideResponse:
+        """Project a domain override onto the wire response.
+
+        Returns:
+            The typed response view of ``override``.
+        """
+        return cls(
+            id=str(override.id),
+            action_type=str(override.action_type),
+            original_tier=override.original_tier,
+            override_tier=override.override_tier,
+            reason=str(override.reason),
+            created_by=str(override.created_by),
+            created_at=override.created_at,
+            expires_at=override.expires_at,
+            revoked_at=override.revoked_at,
+            revoked_by=str(override.revoked_by) if override.revoked_by else None,
+        )
 
 
 class RiskOverrideController(Controller):
@@ -93,7 +108,7 @@ class RiskOverrideController(Controller):
     )
     async def list_overrides(
         self, state: State
-    ) -> ApiResponse[list[dict[str, object]]]:
+    ) -> ApiResponse[list[RiskOverrideResponse]]:
         """List currently active risk-tier overrides.
 
         Args:
@@ -104,7 +119,7 @@ class RiskOverrideController(Controller):
         """
         service = risk_override_service_of(state.app_state)
         active = service.list_active()
-        return ApiResponse(data=[_override_to_dict(o) for o in active])
+        return ApiResponse(data=[RiskOverrideResponse.from_override(o) for o in active])
 
     @post(
         "/",
@@ -118,7 +133,7 @@ class RiskOverrideController(Controller):
         state: State,
         request: Request[object, object, State],
         data: CreateRiskOverrideRequest,
-    ) -> ApiResponse[dict[str, object]]:
+    ) -> ApiResponse[RiskOverrideResponse]:
         """Create and apply a risk-tier override.
 
         Args:
@@ -141,10 +156,11 @@ class RiskOverrideController(Controller):
             created_by=NotBlankStr(str(actor.user_id)),
             expires_at=data.expires_at,
         )
-        return ApiResponse(data=_override_to_dict(override))
+        return ApiResponse(data=RiskOverrideResponse.from_override(override))
 
     @post(
         "/{override_id:str}/revoke",
+        status_code=200,
         guards=[
             per_op_rate_limit_from_policy("security.risk_override_revoke", key="user"),
         ],
@@ -154,7 +170,7 @@ class RiskOverrideController(Controller):
         state: State,
         request: Request[object, object, State],
         override_id: PathId,
-    ) -> ApiResponse[dict[str, object]]:
+    ) -> ApiResponse[RiskOverrideResponse]:
         """Revoke an active risk-tier override.
 
         Args:
@@ -163,7 +179,8 @@ class RiskOverrideController(Controller):
             override_id: Identifier of the override to revoke.
 
         Returns:
-            The revoked override.
+            The revoked override (HTTP 200; a state transition, not a
+            resource creation).
 
         Raises:
             NotFoundError: If no active override with that id exists.
@@ -177,7 +194,11 @@ class RiskOverrideController(Controller):
         if revoked is None:
             msg = f"No active risk override {override_id}"
             raise NotFoundError(msg)
-        return ApiResponse(data=_override_to_dict(revoked))
+        return ApiResponse(data=RiskOverrideResponse.from_override(revoked))
 
 
-__all__ = ["CreateRiskOverrideRequest", "RiskOverrideController"]
+__all__ = [
+    "CreateRiskOverrideRequest",
+    "RiskOverrideController",
+    "RiskOverrideResponse",
+]

@@ -101,7 +101,11 @@ class RiskOverrideService:
         *,
         revoked_by: NotBlankStr,
     ) -> RiskTierOverride | None:
-        """Revoke an active override in the classifier and the repo.
+        """Revoke an active override in the repo and the classifier.
+
+        Persists before mutating the in-memory classifier so a repo
+        failure cannot leave the live classifier ahead of the durable
+        store (the inverse ordering of ``create``).
 
         Args:
             override_id: The override to revoke.
@@ -111,15 +115,22 @@ class RiskOverrideService:
             The revoked override, or ``None`` when no active override
             with that id exists.
         """
-        revoked = self._classifier.revoke_override(override_id, revoked_by=revoked_by)
-        if revoked is None:
+        target = next(
+            (o for o in self._classifier.active_overrides() if o.id == override_id),
+            None,
+        )
+        if target is None:
             return None
+        revoked_at = self._clock.now()
         await self._repo.revoke(
             override_id,
             revoked_by=revoked_by,
-            revoked_at=revoked.revoked_at or self._clock.now(),
+            revoked_at=revoked_at,
         )
-        return revoked
+        self._classifier.revoke_override(override_id, revoked_by=revoked_by)
+        return target.model_copy(
+            update={"revoked_at": revoked_at, "revoked_by": revoked_by},
+        )
 
     def list_active(self) -> tuple[RiskTierOverride, ...]:
         """Return the currently active overrides.

@@ -4,8 +4,8 @@ This module is NOT agent-facing. Agent-facing git operations live in
 ``synthorg.tools.git_tools`` and carry distinct security validation
 (workspace-path confinement, env hardening). This module is a pure
 process-management helper for :class:`SynthOrgGitWorktree` setup,
-merge, and teardown flows, extracted from ``git_worktree.py`` per
-PST-1 so the subprocess lifecycle lives in one focused place.
+merge, and teardown flows, isolating the subprocess lifecycle from the
+high-level worktree coordination logic.
 """
 
 import asyncio

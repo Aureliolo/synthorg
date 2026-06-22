@@ -128,7 +128,7 @@ class AuditController(Controller):
             str | None,
             QueryParameter(
                 max_length=QUERY_MAX_LENGTH,
-                pattern=r"^[a-z_]+:[a-z_]+$",
+                pattern=r"^[a-z0-9_]+:[a-z0-9_]+$",
                 description="Filter by action type in 'category:action' format.",
             ),
         ] = None,

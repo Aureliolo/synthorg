@@ -6,8 +6,8 @@ with override support.  Overrides have mandatory expiration and can
 be revoked, with all changes audit-logged.
 """
 
-from datetime import datetime
-from typing import Self
+from datetime import datetime, timedelta
+from typing import Final, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, model_validator
 
@@ -26,6 +26,12 @@ from synthorg.security.timeout.protocol import RiskTierClassifier
 logger = get_logger(__name__)
 
 _DEFAULT_REVOKED_BY = NotBlankStr("system")
+
+# Safety ceiling on override lifetime. A CEO-level reclassification may
+# legitimately last months, so the bound is generous; its job is to reject
+# absurd expiries (a mistyped year) that would silently pin a tier far into
+# the future.
+_MAX_OVERRIDE_DURATION_DAYS: Final[int] = 365
 
 
 class RiskTierOverride(BaseModel):
@@ -73,6 +79,14 @@ class RiskTierOverride(BaseModel):
         if self.expires_at <= self.created_at:
             msg = "expires_at must be after created_at"
             raise ValueError(msg)
+        if self.expires_at - self.created_at > timedelta(
+            days=_MAX_OVERRIDE_DURATION_DAYS
+        ):
+            msg = (
+                "expires_at must be within "
+                f"{_MAX_OVERRIDE_DURATION_DAYS} days of created_at"
+            )
+            raise ValueError(msg)
         return self
 
     @model_validator(mode="after")
@@ -112,8 +126,9 @@ class RiskTierOverride(BaseModel):
         """Return whether the override is neither revoked nor expired.
 
         Args:
-            now: The current time, read through the caller's ``Clock``
-                seam so activity evaluation is deterministic in tests.
+            now: The current time (a timezone-aware ``datetime``), read
+                through the caller's ``Clock`` seam so activity evaluation
+                is deterministic in tests.
 
         Returns:
             True if the override has not been revoked and ``now`` is
@@ -209,7 +224,15 @@ class SecOpsRiskClassifier:
 
         Args:
             override: The override to add.
+
+        Raises:
+            ValueError: If an override with the same id is already
+                registered (guards against a double-add from a replayed
+                persist or a re-seed).
         """
+        if any(existing.id == override.id for existing in self._overrides):
+            msg = f"Override {override.id!r} is already registered"
+            raise ValueError(msg)
         self._overrides = [*self._overrides, override]
         logger.info(
             SECURITY_RISK_OVERRIDE_CREATED,

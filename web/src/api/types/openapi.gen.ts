@@ -6788,11 +6788,9 @@ export type components = {
              */
             readonly success: boolean;
         };
-        /** ApiResponse[list[dict[str, object]]] */
-        readonly ApiResponse_list_dict_str_object_: {
-            readonly data: readonly {
-                readonly [key: string]: unknown;
-            }[] | null;
+        /** ApiResponse[list[RiskOverrideResponse]] */
+        readonly ApiResponse_list_RiskOverrideResponse_: {
+            readonly data: readonly components["schemas"]["RiskOverrideResponse"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /**
@@ -7209,6 +7207,19 @@ export type components = {
         /** ApiResponse[RestoreResponse] */
         readonly ApiResponse_RestoreResponse_: {
             readonly data: components["schemas"]["RestoreResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[RiskOverrideResponse] */
+        readonly ApiResponse_RiskOverrideResponse_: {
+            readonly data: components["schemas"]["RiskOverrideResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /**
@@ -15536,6 +15547,31 @@ export type components = {
          * @enum {string}
          */
         readonly RiskLevel: "low" | "medium" | "high";
+        /** RiskOverrideResponse */
+        readonly RiskOverrideResponse: {
+            readonly action_type: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly created_at: string;
+            readonly created_by: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly expires_at: string;
+            readonly id: string;
+            readonly original_tier: components["schemas"]["ApprovalRiskLevel"];
+            readonly override_tier: components["schemas"]["ApprovalRiskLevel"];
+            readonly reason: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly revoked_at: string | null;
+            readonly revoked_by: string | null;
+        };
         /** RiskPayload */
         readonly RiskPayload: {
             /**
@@ -27743,7 +27779,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_list_dict_str_object_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_list_RiskOverrideResponse_"];
                 };
             };
             readonly 401: components["responses"]["Unauthorized"];
@@ -27772,7 +27808,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_RiskOverrideResponse_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -27796,13 +27832,13 @@ export interface operations {
         };
         readonly requestBody?: never;
         readonly responses: {
-            /** @description Document created, URL follows */
-            readonly 201: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_RiskOverrideResponse_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

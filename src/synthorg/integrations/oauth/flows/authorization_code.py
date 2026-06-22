@@ -22,6 +22,7 @@ from synthorg.integrations.connections.models import (
     OAuthToken,
 )
 from synthorg.integrations.errors import (
+    OAuthConfigurationError,
     OAuthRateLimitedError,
     TokenExchangeFailedError,
     TokenRefreshFailedError,
@@ -239,11 +240,14 @@ class AuthorizationCodeFlow:
             ``scope_granted``, and optional ``id_token``.
 
         Raises:
-            TokenExchangeFailedError: If the exchange fails.
+            OAuthConfigurationError: For a deterministic failure (missing
+                or undecryptable PKCE verifier, SSRF-rejected token URL).
+            TokenExchangeFailedError: For a transient transport / body
+                failure.
         """
         if state.pkce_verifier is None:
             msg = "PKCE verifier missing from OAuth state"
-            raise TokenExchangeFailedError(msg)
+            raise OAuthConfigurationError(msg)
         # state.pkce_verifier is encrypted at rest; decrypt before
         # sending to the OAuth provider.
         try:
@@ -257,7 +261,7 @@ class AuthorizationCodeFlow:
                 error=safe_error_description(exc),
             )
             msg = f"Invalid PKCE verifier in OAuth state: {safe_error_description(exc)}"
-            raise TokenExchangeFailedError(msg) from exc
+            raise OAuthConfigurationError(msg) from exc
 
         payload = {
             "grant_type": "authorization_code",
@@ -274,12 +278,14 @@ class AuthorizationCodeFlow:
                 payload=payload,
                 field="token_url",
             )
-        except (httpx.HTTPError, json.JSONDecodeError, ValueError) as exc:
+        except (httpx.HTTPError, json.JSONDecodeError) as exc:
             # Use ``warning`` (no traceback) + scrubbed description so the
             # request payload that contained ``client_secret`` and
             # ``code_verifier`` cannot leak through frame-local repr's or
-            # stringified error bodies. ``ValueError`` covers an SSRF
-            # rejection of ``token_url`` raised before any network I/O.
+            # stringified error bodies. Transient transport / malformed-body
+            # failures stay retryable. (``json.JSONDecodeError`` is a
+            # ``ValueError`` subclass, so this clause must precede the
+            # SSRF ``ValueError`` clause below.)
             logger.warning(
                 OAUTH_TOKEN_EXCHANGE_FAILED,
                 error_type=type(exc).__name__,
@@ -287,6 +293,16 @@ class AuthorizationCodeFlow:
             )
             msg = f"Token exchange failed: {type(exc).__name__}"
             raise TokenExchangeFailedError(msg) from exc
+        except ValueError as exc:
+            # An SSRF rejection of ``token_url`` raised before any network
+            # I/O: deterministic, so non-retryable.
+            logger.warning(
+                OAUTH_TOKEN_EXCHANGE_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = f"Token exchange rejected: {type(exc).__name__}"
+            raise OAuthConfigurationError(msg) from exc
 
         return self._parse_token_response(data, "exchange")
 

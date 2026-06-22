@@ -450,7 +450,7 @@ async def wire_brownfield_intake(app_state: AppState) -> bool:
         await wire_real_brownfield_entry(app_state)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
-        logger.info(
+        logger.warning(
             API_APP_STARTUP,
             service="brownfield_intake",
             note="brownfield intake wiring unavailable; skipped",
