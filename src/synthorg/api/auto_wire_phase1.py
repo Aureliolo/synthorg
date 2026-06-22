@@ -192,6 +192,39 @@ def resolve_cassette_config() -> CassetteConfig | None:
     return CassetteConfig(mode=mode, path=path)
 
 
+def resolve_retry_max_attempts() -> int | None:
+    """Resolve the boot-time provider retry cap (Cat-2: env > default).
+
+    Reads ``providers.retry_max_attempts`` through the sanctioned pre-init
+    bootstrap resolver (env > registered default), so a fresh boot honours
+    ``SYNTHORG_PROVIDERS_RETRY_MAX_ATTEMPTS`` without an ``os.environ`` read
+    in provider code. The DB-stored value is applied later, when the
+    settings layer is connected, by ``ProviderSettingsSubscriber`` on change
+    and by the provider hot-reload / setup-reinit paths.
+
+    Returns:
+        The resolved retry cap, or ``None`` when the registered default is
+        absent so the registry leaves each provider's own retry untouched.
+    """
+    from synthorg.settings.bootstrap_resolver import (  # noqa: PLC0415
+        resolve_init_value,
+    )
+    from synthorg.settings.enums import SettingNamespace  # noqa: PLC0415
+
+    def _parse_int(raw: str) -> int | None:
+        try:
+            return int(raw)
+        except ValueError:
+            return None
+
+    resolved = resolve_init_value(
+        SettingNamespace.PROVIDERS,
+        "retry_max_attempts",
+        parse=_parse_int,
+    ).value
+    return resolved if isinstance(resolved, int) else None
+
+
 def _wire_provider_registry(
     effective_config: RootConfig,
 ) -> ProviderRegistry:
@@ -204,6 +237,7 @@ def _wire_provider_registry(
         registry = ProviderRegistry.from_config(
             effective_config.providers,
             cassette=resolve_cassette_config(),
+            retry_max_attempts=resolve_retry_max_attempts(),
         )
     except Exception as exc:
         log_exception_redacted(

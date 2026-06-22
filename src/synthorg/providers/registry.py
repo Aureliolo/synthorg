@@ -158,6 +158,7 @@ class ProviderRegistry:
         factory_overrides: dict[str, object] | None = None,
         cassette: CassetteConfig | None = None,
         connection_catalog: ConnectionCatalog | None = None,
+        retry_max_attempts: int | None = None,
     ) -> Self:
         """Build a registry from a provider config dict.
 
@@ -188,6 +189,12 @@ class ProviderRegistry:
             connection_catalog: Always-on credential catalog bound onto
                 each built driver for ``connection_name`` resolution;
                 ``None`` leaves drivers without catalog-backed credentials.
+            retry_max_attempts: Org-wide default cap on transient-error
+                retries (the resolved ``providers.retry_max_attempts``
+                setting). Applied as each driver's ``retry.max_retries``
+                only when that provider's config did not explicitly carry a
+                ``retry`` block, so a per-provider YAML ``retry`` still wins.
+                ``None`` leaves every provider's own retry config untouched.
 
         Returns:
             A new ``ProviderRegistry`` with all providers registered.
@@ -214,6 +221,7 @@ class ProviderRegistry:
                     overrides,
                     cassette,
                     connection_catalog,
+                    retry_max_attempts,
                 )
 
         from .drivers.litellm_driver import (  # noqa: PLC0415
@@ -233,12 +241,18 @@ class ProviderRegistry:
                 overrides,
                 cassette,
                 connection_catalog,
+                retry_max_attempts,
             )
 
         drivers: dict[str, BaseCompletionProvider] = {}
         for name, config in providers.items():
             drivers[name] = _build_driver(
-                name, config, defaults, overrides, connection_catalog
+                name,
+                config,
+                defaults,
+                overrides,
+                connection_catalog,
+                retry_max_attempts,
             )
 
         logger.info(
@@ -249,13 +263,14 @@ class ProviderRegistry:
         return cls(drivers)
 
     @classmethod
-    def _build_cassette_registry(
+    def _build_cassette_registry(  # noqa: PLR0913 -- build modifiers, all internal
         cls,
         providers: Mapping[str, ProviderConfig],
         defaults: dict[str, type[BaseCompletionProvider]],
         overrides: dict[str, object],
         cassette: CassetteConfig,
         connection_catalog: ConnectionCatalog | None = None,
+        retry_max_attempts: int | None = None,
     ) -> Self:
         """Wrap every driver in one shared cassette session.
 
@@ -293,7 +308,12 @@ class ProviderRegistry:
                 None
                 if is_replay
                 else _build_driver(
-                    name, config, defaults, overrides, connection_catalog
+                    name,
+                    config,
+                    defaults,
+                    overrides,
+                    connection_catalog,
+                    retry_max_attempts,
                 )
             )
             drivers[name] = CassetteCompletionProvider(
@@ -315,14 +335,47 @@ class ProviderRegistry:
         return cls(drivers, cassette_session=session)
 
 
-def _build_driver(
+def _apply_global_retry_default(
+    config: ProviderConfig,
+    retry_max_attempts: int | None,
+) -> ProviderConfig:
+    """Apply the org-wide retry-attempt default to a provider config.
+
+    The ``providers.retry_max_attempts`` setting is the company-wide cap on
+    transient-error retries. It applies only when *config* did not carry an
+    explicit ``retry`` block (detected via ``model_fields_set``), so a
+    per-provider YAML ``retry`` always wins over the global default.
+
+    Returns:
+        *config* unchanged when no global is supplied or the provider set
+        ``retry`` explicitly; otherwise a copy whose ``retry.max_retries``
+        is the global default.
+    """
+    if retry_max_attempts is None or "retry" in config.model_fields_set:
+        return config
+    return config.model_copy(
+        update={
+            "retry": config.retry.model_copy(
+                update={"max_retries": retry_max_attempts},
+            ),
+        },
+    )
+
+
+def _build_driver(  # noqa: PLR0913 -- build modifiers, all internal
     name: str,
     config: ProviderConfig,
     defaults: dict[str, type[BaseCompletionProvider]],
     overrides: dict[str, object],
     connection_catalog: ConnectionCatalog | None = None,
+    retry_max_attempts: int | None = None,
 ) -> BaseCompletionProvider:
     """Instantiate a single driver from config and factories.
+
+    Applies the org-wide ``retry_max_attempts`` default (when supplied and
+    the provider did not set its own ``retry`` block) before constructing
+    the driver, so the driver's :class:`RetryHandler` is built from the
+    effective retry config.
 
     Returns:
         A concrete ``BaseCompletionProvider`` driver instance for the
@@ -334,9 +387,10 @@ def _build_driver(
     """
     driver_type = config.driver
     factory = _resolve_factory(name, driver_type, defaults, overrides)
+    effective_config = _apply_global_retry_default(config, retry_max_attempts)
 
     try:
-        driver = factory(name, config)  # type: ignore[operator]
+        driver = factory(name, effective_config)  # type: ignore[operator]
     except Exception as exc:
         reraise_critical(exc)
         msg = f"Failed to instantiate driver {driver_type!r} for provider {name!r}"

@@ -18,6 +18,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_CONFIG_PERSIST_FAILED,
     PROVIDER_CONFIG_SERIALIZE_FAILED,
     PROVIDER_HOT_RELOAD_FAILED,
+    PROVIDER_RETRY_RESOLVE_FAILED,
     PROVIDER_VALIDATION_FAILED,
 )
 from synthorg.providers.errors import (
@@ -63,7 +64,10 @@ async def apply_provider_change(
         ProviderPersistenceError: If the DB write or the hot-reload (after
             rollback) fails.
     """
-    registry, router = _build_registry_and_router(new_providers, build_router)
+    retry_max_attempts = await resolve_retry_max_attempts(config_resolver)
+    registry, router = _build_registry_and_router(
+        new_providers, build_router, retry_max_attempts
+    )
     serialized = _serialize_envelope(new_providers)
     had_db_row, prior_providers = await _snapshot_and_persist(
         settings_service=settings_service,
@@ -98,9 +102,35 @@ async def apply_provider_change(
         raise ProviderPersistenceError(msg) from exc
 
 
+async def resolve_retry_max_attempts(
+    config_resolver: ConfigResolver,
+) -> int | None:
+    """Resolve ``providers.retry_max_attempts`` via the live resolver.
+
+    Returns the org-wide retry cap so a registry rebuild re-applies the
+    operator's setting instead of reverting to per-provider config defaults.
+    Degrades to ``None`` (registry leaves each provider's own retry config
+    untouched) on a corrupt value rather than blocking the provider change.
+
+    Returns:
+        The resolved retry cap, or ``None`` on resolution failure.
+    """
+    try:
+        return await config_resolver.get_int("providers", "retry_max_attempts")
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            PROVIDER_RETRY_RESOLVE_FAILED,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None
+
+
 def _build_registry_and_router(
     new_providers: dict[str, ProviderConfig],
     build_router: Callable[[dict[str, ProviderConfig]], ModelRouter],
+    retry_max_attempts: int | None = None,
 ) -> tuple[ProviderRegistry, ModelRouter]:
     """Build the registry + router (validation) before any I/O.
 
@@ -111,7 +141,9 @@ def _build_registry_and_router(
         ProviderValidationError: If the registry/router build fails.
     """
     try:
-        registry = ProviderRegistry.from_config(new_providers)
+        registry = ProviderRegistry.from_config(
+            new_providers, retry_max_attempts=retry_max_attempts
+        )
         router = build_router(new_providers)
     except Exception as exc:
         reraise_critical(exc)

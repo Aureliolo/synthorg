@@ -27,14 +27,20 @@ class ProviderSettingsSubscriber:
     On ``routing_strategy`` change, rebuilds :class:`ModelRouter`
     with the new strategy and swaps it into ``AppState``.
 
-    ``retry_max_attempts`` is advisory-only: it is read through
-    :class:`ConfigResolver` at use time and does not require a
-    service rebuild.  It is watched so the operator sees a log entry
-    confirming the change was detected.
+    On ``retry_max_attempts`` change, rebuilds the :class:`ProviderRegistry`
+    so the new org-wide retry cap applies live without a restart. The cap
+    is baked into each driver's :class:`RetryHandler` at build time, so a
+    change only takes effect through a registry rebuild; rebuilding here
+    is the seam that makes the setting live. The rebuild resolves the
+    current provider set (DB-persisted blob, else the boot template) and
+    re-binds the always-on credential catalog so ``connection_name`` auth
+    keeps resolving. A rebuild is skipped while a cassette session is
+    active (the recorded-LLM seam is baked in at process start), in which
+    case the new cap applies on the next restart.
 
     Errors during rebuild propagate to the dispatcher, which logs
     them with full subscriber context and continues to the next
-    subscriber.  The previously wired ``ModelRouter`` stays in place.
+    subscriber.  The previously wired service stays in place.
 
     Args:
         config: Root company configuration (providers + routing).
@@ -69,8 +75,10 @@ class ProviderSettingsSubscriber:
     ) -> None:
         """Handle a provider setting change.
 
-        Only ``routing_strategy`` triggers a :class:`ModelRouter`
-        rebuild.  Other keys are advisory and logged at INFO level.
+        ``routing_strategy`` triggers a :class:`ModelRouter` rebuild;
+        ``retry_max_attempts`` triggers a :class:`ProviderRegistry` rebuild
+        so the new retry cap goes live. Other keys are advisory and logged
+        at INFO level.
 
         Args:
             namespace: Changed setting namespace.
@@ -78,13 +86,15 @@ class ProviderSettingsSubscriber:
         """
         if namespace == "providers" and key == "routing_strategy":
             await self._rebuild_router()
+        elif namespace == "providers" and key == "retry_max_attempts":
+            await self._rebuild_registry()
         else:
             logger.info(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
                 subscriber=self.subscriber_name,
                 namespace=namespace,
                 key=key,
-                note="advisory -- read through ConfigResolver at use time",
+                note="advisory -- no service rebuild required",
             )
 
     async def _rebuild_router(self) -> None:
@@ -124,6 +134,58 @@ class ProviderSettingsSubscriber:
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="model_router",
                 attempted_strategy=attempted_strategy,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
+
+    async def _rebuild_registry(self) -> None:
+        """Rebuild the ProviderRegistry with the new retry cap and swap it in.
+
+        Resolves the live ``providers.retry_max_attempts`` value and the
+        current provider set (the DB-persisted blob, falling back to the
+        boot template), rebuilds the registry with the catalog re-bound, and
+        hot-swaps it. Skipped while a cassette session is active, since the
+        recorded-LLM seam is baked in at process start and the cap then
+        applies on the next restart. On failure the existing registry stays
+        in place; the error is logged with context before re-raising to the
+        dispatcher.
+        """
+        from synthorg.integrations.state import (  # noqa: PLC0415
+            provider_credential_catalog_of,
+        )
+        from synthorg.providers.management._persistence import (  # noqa: PLC0415
+            resolve_retry_max_attempts,
+        )
+        from synthorg.providers.registry import ProviderRegistry  # noqa: PLC0415
+        from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
+        from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
+
+        try:
+            current = self._app_state.slice(ProvidersStateSlice).registry
+            if current is not None and current.cassette_session is not None:
+                logger.info(
+                    SETTINGS_SUBSCRIBER_NOTIFIED,
+                    subscriber=self.subscriber_name,
+                    namespace="providers",
+                    key="retry_max_attempts",
+                    note="cassette active -- retry cap applies on next restart",
+                )
+                return
+            resolver = config_resolver_of(self._app_state)
+            retry_max_attempts = await resolve_retry_max_attempts(resolver)
+            provider_configs = dict(await resolver.get_provider_configs())
+            new_registry = ProviderRegistry.from_config(
+                provider_configs,
+                connection_catalog=provider_credential_catalog_of(self._app_state),
+                retry_max_attempts=retry_max_attempts,
+            )
+            self._app_state.swap_provider_registry(new_registry)
+        except Exception as exc:
+            reraise_critical(exc)
+            logger.error(
+                SETTINGS_SERVICE_SWAP_FAILED,
+                service="provider_registry",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
