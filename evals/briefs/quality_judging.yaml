@@ -3,7 +3,7 @@
 # Exercises the HR quality judge: the org must review a deliverable that is
 # polished on the surface but carries a subtle correctness flaw. A competent run
 # appraises it accurately and flags the flaw; a degraded run is fooled by the
-# polish and signs it off. Judged against the ``quality-judging`` anchor set.
+# polish and signs it off. Graded on the calibrated ``default-bench`` rubric.
 brief_id: quality-judging
 schema_version: 1
 kind: judged
@@ -21,9 +21,9 @@ limits:
   max_wall_clock_seconds: 180
   max_turns: 8
 rubric:
-  rubric_id: quality-judging
-  reference_answer_path: "references/quality-judging.md"
+  rubric_id: default-bench
+  reference_answer_path: "references/default-bench.md"
   dimensions:
-    - name: appraisal_accuracy
+    - name: correctness
       weight: 1.0
       grade_type: score

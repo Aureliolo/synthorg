@@ -3,8 +3,8 @@
 # Exercises the memory re-ranker: the working set holds many near-duplicate
 # prior lessons, only one of which actually applies to the current task. A
 # competent run surfaces and applies the single relevant lesson; a degraded run
-# is misled by a superficially-similar but wrong neighbour. Judged against the
-# ``retrieval-reranking`` anchor set.
+# is misled by a superficially-similar but wrong neighbour. Graded on the
+# calibrated ``default-bench`` correctness rubric.
 brief_id: retrieval-reranking
 schema_version: 1
 kind: judged
@@ -22,9 +22,9 @@ limits:
   max_wall_clock_seconds: 240
   max_turns: 10
 rubric:
-  rubric_id: retrieval-reranking
-  reference_answer_path: "references/retrieval-reranking.md"
+  rubric_id: default-bench
+  reference_answer_path: "references/default-bench.md"
   dimensions:
-    - name: retrieval_relevance
+    - name: correctness
       weight: 1.0
       grade_type: score

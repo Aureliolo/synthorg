@@ -3,7 +3,7 @@
 # Exercises the engine evolution analyser: given a recurring failure pattern,
 # the org must analyse the root cause and propose a targeted, non-speculative
 # improvement. A degraded run proposes a vague or speculative change, or
-# misdiagnoses the cause. Judged against the ``evolution-analysis`` anchor set.
+# misdiagnoses the cause. Graded on the calibrated ``default-bench`` rubric.
 brief_id: evolution-analysis
 schema_version: 1
 kind: judged
@@ -21,9 +21,9 @@ limits:
   max_wall_clock_seconds: 180
   max_turns: 8
 rubric:
-  rubric_id: evolution-analysis
-  reference_answer_path: "references/evolution-analysis.md"
+  rubric_id: default-bench
+  reference_answer_path: "references/default-bench.md"
   dimensions:
-    - name: improvement_insight
+    - name: correctness
       weight: 1.0
       grade_type: score

@@ -3,8 +3,8 @@
 # Exercises the procedural-memory success proposer: after the org succeeds at a
 # tricky task, it must capture a procedural lesson general enough to transfer to
 # a sibling task yet specific enough to be actionable. A degraded run captures
-# nothing, or an over-narrow / over-broad rule. Judged against the
-# ``procedural-capture`` anchor set.
+# nothing, or an over-narrow / over-broad rule. Graded on the calibrated
+# ``default-bench`` correctness rubric.
 brief_id: procedural-capture
 schema_version: 1
 kind: judged
@@ -22,9 +22,9 @@ limits:
   max_wall_clock_seconds: 180
   max_turns: 8
 rubric:
-  rubric_id: procedural-capture
-  reference_answer_path: "references/procedural-capture.md"
+  rubric_id: default-bench
+  reference_answer_path: "references/default-bench.md"
   dimensions:
-    - name: lesson_reusability
+    - name: correctness
       weight: 1.0
       grade_type: score

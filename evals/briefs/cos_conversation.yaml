@@ -4,8 +4,8 @@
 # CONCERN_ROUTING + RUN_NARRATIVE prompts): from an ambiguous operator request,
 # the chief-of-staff must propose a correctly-scoped, clarified work item,
 # route it to the right role, and narrate the outcome faithfully. A degraded run
-# mis-scopes, mis-routes, or narrates beyond the record. Judged against the
-# ``cos-conversation`` anchor set.
+# mis-scopes, mis-routes, or narrates beyond the record. Graded on the
+# calibrated ``default-bench`` correctness rubric.
 brief_id: cos-conversation
 schema_version: 1
 kind: judged
@@ -23,9 +23,9 @@ limits:
   max_wall_clock_seconds: 180
   max_turns: 8
 rubric:
-  rubric_id: cos-conversation
-  reference_answer_path: "references/cos-conversation.md"
+  rubric_id: default-bench
+  reference_answer_path: "references/default-bench.md"
   dimensions:
-    - name: proposal_clarity
+    - name: correctness
       weight: 1.0
       grade_type: score

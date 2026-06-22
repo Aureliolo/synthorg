@@ -4,8 +4,8 @@
 # work sessions, and the second session can only succeed cheaply if the
 # strategic lesson from the first was consolidated and retrievable. A competent
 # run carries the hard-won approach forward; a degraded run re-derives it (or
-# repeats the first session's mistake). Judged against the
-# ``memory-consolidation`` anchor set.
+# repeats the first session's mistake). Graded on the calibrated
+# ``default-bench`` correctness rubric.
 brief_id: memory-consolidation
 schema_version: 1
 kind: judged
@@ -23,9 +23,9 @@ limits:
   max_wall_clock_seconds: 240
   max_turns: 10
 rubric:
-  rubric_id: memory-consolidation
-  reference_answer_path: "references/memory-consolidation.md"
+  rubric_id: default-bench
+  reference_answer_path: "references/default-bench.md"
   dimensions:
-    - name: strategic_retention
+    - name: correctness
       weight: 1.0
       grade_type: score

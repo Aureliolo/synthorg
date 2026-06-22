@@ -2,8 +2,8 @@
 #
 # Exercises the HR training curation prompt: onboarding a new mid-level
 # engineer, the org must curate a source set that is relevant to the role and
-# non-redundant. A degraded run curates off-role or duplicative material. Judged
-# against the ``training-curation`` anchor set.
+# non-redundant. A degraded run curates off-role or duplicative material. Graded
+# on the calibrated ``default-bench`` correctness rubric.
 brief_id: training-curation
 schema_version: 1
 kind: judged
@@ -21,9 +21,9 @@ limits:
   max_wall_clock_seconds: 180
   max_turns: 8
 rubric:
-  rubric_id: training-curation
-  reference_answer_path: "references/training-curation.md"
+  rubric_id: default-bench
+  reference_answer_path: "references/default-bench.md"
   dimensions:
-    - name: curation_relevance
+    - name: correctness
       weight: 1.0
       grade_type: score

@@ -3,7 +3,7 @@
 # Exercises the engine rubric grader: the org must grade two candidate
 # solutions where the weaker one is the more verbose and confident. A competent
 # run grades to real quality and ranks them correctly; a degraded run rewards
-# length and confidence. Judged against the ``rubric-grading`` anchor set.
+# length and confidence. Graded on the calibrated ``default-bench`` rubric.
 brief_id: rubric-grading
 schema_version: 1
 kind: judged
@@ -21,9 +21,9 @@ limits:
   max_wall_clock_seconds: 180
   max_turns: 8
 rubric:
-  rubric_id: rubric-grading
-  reference_answer_path: "references/rubric-grading.md"
+  rubric_id: default-bench
+  reference_answer_path: "references/default-bench.md"
   dimensions:
-    - name: grading_fidelity
+    - name: correctness
       weight: 1.0
       grade_type: score

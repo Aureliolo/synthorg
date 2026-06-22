@@ -4,8 +4,8 @@
 # more turns than fit one context window, so the run must compact earlier
 # turns. A competent run preserves the phase-1 architectural decision through
 # compaction and honours it in phase 3; a degraded run loses the decision in
-# the summary and contradicts it later. Judged against the
-# ``compaction-fidelity`` anchor set.
+# the summary and contradicts it later. Graded on the calibrated
+# ``default-bench`` correctness rubric.
 brief_id: compaction-fidelity
 schema_version: 1
 kind: judged
@@ -23,9 +23,9 @@ limits:
   max_wall_clock_seconds: 240
   max_turns: 12
 rubric:
-  rubric_id: compaction-fidelity
-  reference_answer_path: "references/compaction-fidelity.md"
+  rubric_id: default-bench
+  reference_answer_path: "references/default-bench.md"
   dimensions:
-    - name: context_fidelity
+    - name: correctness
       weight: 1.0
       grade_type: score
