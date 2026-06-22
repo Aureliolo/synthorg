@@ -27,17 +27,22 @@ export function buildSsrfViolation(
 export const ssrfViolationsHandlers = [
   http.get(`${BASE}/`, () => HttpResponse.json(emptyPageEnvelope<SsrfViolationDTO>())),
   http.post(`${BASE}/:id/resolve`, async ({ params, request }) => {
-    const body = (await request.json()) as { status?: unknown }
+    const raw: unknown = await request.json()
+    const status =
+      typeof raw === 'object' && raw !== null && 'status' in raw
+        ? (raw as { status?: unknown }).status
+        : undefined
     // Validate the discriminator at runtime instead of force-casting, so the
-    // mock mirrors the real endpoint's contract and rejects malformed requests.
-    if (body.status !== 'allowed' && body.status !== 'denied') {
+    // mock mirrors the real endpoint's contract and rejects malformed requests
+    // (including null / primitive bodies) in a controlled way.
+    if (status !== 'allowed' && status !== 'denied') {
       return HttpResponse.json(apiError('status must be "allowed" or "denied"'), {
         status: 400,
       })
     }
     return HttpResponse.json(
       successFor<typeof resolveSsrfViolation>(
-        buildSsrfViolation({ id: String(params['id']), status: body.status }),
+        buildSsrfViolation({ id: String(params['id']), status }),
       ),
     )
   }),
