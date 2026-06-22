@@ -135,6 +135,22 @@ def test_record_api_request_bucketed_by_status_class() -> None:
     )
 
 
+def test_record_api_request_folds_unknown_method() -> None:
+    """An unrecognised HTTP verb folds to ``__other__`` (cardinality guard)."""
+    collector = PrometheusCollector()
+    collector.record_api_request(
+        method="BREW",
+        route="/coffee",
+        status_code=418,
+        duration_sec=0.01,
+    )
+    text = generate_latest(collector.registry).decode()
+    assert (
+        'synthorg_api_request_duration_seconds_count{method="__other__",'
+        'route="/coffee",status_class="4xx"} 1.0' in text
+    )
+
+
 def test_record_api_request_rejects_invalid_status_code() -> None:
     collector = PrometheusCollector()
     with pytest.raises(ValueError, match="invalid status_code"):

@@ -685,3 +685,27 @@ def test_valid_settings_namespaces_matches_definitions_directory() -> None:
         f"missing={discovered - VALID_SETTINGS_NAMESPACES} "
         f"extra={VALID_SETTINGS_NAMESPACES - discovered}"
     )
+
+
+# -- agent gauge label parity ------------------------------------------------
+
+
+def test_valid_agent_statuses_matches_enum() -> None:
+    """The active-agents status allowlist mirrors ``AgentStatus``.
+
+    The allowlist is duplicated as literals to avoid an ``hr`` import in
+    ``prometheus_labels``; this test is the forcing function that keeps the
+    two in lockstep so a new status cannot silently fold to ``"other"``.
+    """
+    from synthorg.hr.enums import AgentStatus
+    from synthorg.observability.prometheus_labels import VALID_AGENT_STATUSES
+
+    assert frozenset(s.value for s in AgentStatus) == VALID_AGENT_STATUSES
+
+
+def test_valid_trust_levels_matches_enum() -> None:
+    """The active-agents trust-level allowlist mirrors ``ToolAccessLevel``."""
+    from synthorg.core.tool_constraints import ToolAccessLevel
+    from synthorg.observability.prometheus_labels import VALID_TRUST_LEVELS
+
+    assert frozenset(t.value for t in ToolAccessLevel) == VALID_TRUST_LEVELS
