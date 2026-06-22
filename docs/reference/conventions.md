@@ -110,7 +110,7 @@ description of the invariant), e.g. `_validate_temporal_order`,
 reserved for the settings-mirror `mode="before"` validators described above.
 This is a review-enforced convention rather than a gated one: there is no
 `check_*` script asserting the pattern, so new validators are kept consistent
-in code review (like the route-access-guard placement convention above).
+in code review (like the route-access-guard placement convention below).
 
 ## 5. Event constant module imports
 

@@ -430,6 +430,7 @@ departments:
 | `name` | string | *(required)* | Department name (must be unique) |
 | `budget_percent` | int | `0` | Percentage of company budget |
 | `head_role` | string | `null` | Department head role name. Use the companion `head_merge_id` to disambiguate when several agents share the role |
+| `head_merge_id` | string | `null` | Department head agent `merge_id`; use when several agents share `head_role` |
 | `reporting_lines` | list | `[]` | Subordinate-supervisor relationships |
 
 ### Workflow Handoffs

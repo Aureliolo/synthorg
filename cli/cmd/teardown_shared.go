@@ -81,6 +81,12 @@ func acquireTeardownLock(ctx context.Context, safeDir string, errOut *ui.UI) (*r
 	if errors.Is(err, runlock.ErrLocked) {
 		return nil, err
 	}
+	// A cancelled or timed-out context is the operator aborting (Ctrl+C) or a
+	// deadline firing, NOT a missing-lock-file best-effort case: propagate it so
+	// a destructive teardown stops rather than silently proceeding unlocked.
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return nil, err
+	}
 	errOut.Warn(fmt.Sprintf("Could not acquire lifecycle lock (%v); continuing teardown without it.", err))
 	return nil, nil
 }

@@ -173,6 +173,7 @@ graph TD
 | `name` | string | *(required)* | Unique department name |
 | `budget_percent` | int | `0` | Percentage of company budget allocated |
 | `head_role` | string | `null` | Role name of the department head. Use the companion `head_merge_id` to disambiguate when several agents share the role |
+| `head_merge_id` | string | `null` | Department head agent `merge_id`; use when multiple agents share `head_role` |
 | `reporting_lines` | list | `[]` | Subordinate-supervisor pairs |
 
 Use `subordinate_id` in reporting lines when you have multiple agents with the same role (matches the agent's `merge_id` when using templates).
