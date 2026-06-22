@@ -73,6 +73,8 @@ export function WizardNavigation({
   const rawIdx = stepOrder.indexOf(currentStep)
   const currentIdx = rawIdx === -1 ? 0 : rawIdx
   const isFirst = currentIdx === 0
+  // Relies on the step-order invariant (see navigation.ts): ``complete`` is
+  // always the final entry, so the last index is the terminal step.
   const isLast = currentIdx === stepOrder.length - 1
   const showNext = !isLast && !hideNext
   // Stable id for the disabled-reason caption so the Next button can

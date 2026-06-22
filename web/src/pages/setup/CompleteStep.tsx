@@ -174,7 +174,10 @@ export function CompleteStep() {
           title="No company configured yet"
           description="You reached the final step before a company was generated. Name your organisation below to finish with defaults, or go back to apply a template."
         />
-        <SkipWizardForm />
+        <SkipWizardForm
+          heading="Finish with defaults"
+          description="Your providers and agents from earlier steps are saved. Enter a company name to complete setup."
+        />
       </div>
     )
   }

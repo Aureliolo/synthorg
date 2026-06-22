@@ -99,17 +99,29 @@ function useSkipWizardSubmit(): SkipWizardSubmit {
   }
 }
 
-export function SkipWizardForm() {
+export interface SkipWizardFormProps {
+  /**
+   * Heading shown above the form. Defaults to the standalone Quick-Setup
+   * wording; the guided wizard's Complete-step fallback overrides it so the
+   * operator is not told to "skip the wizard" while already in its final step.
+   */
+  heading?: string
+  /** Sub-heading copy paired with {@link heading}. */
+  description?: string
+}
+
+export function SkipWizardForm({
+  heading = 'Quick Setup',
+  description = 'Skip the wizard and configure everything later in Settings.',
+}: SkipWizardFormProps = {}) {
   const { companyName, setCompanyName, error, setError, loading, canSubmit, handleSubmit } =
     useSkipWizardSubmit()
 
   return (
     <div className="mx-auto max-w-md space-y-section-gap">
       <div className="space-y-2">
-        <h2 className="text-lg font-semibold text-foreground">Quick Setup</h2>
-        <p className="text-sm text-muted-foreground">
-          Skip the wizard and configure everything later in Settings.
-        </p>
+        <h2 className="text-lg font-semibold text-foreground">{heading}</h2>
+        <p className="text-sm text-muted-foreground">{description}</p>
       </div>
 
       <form

@@ -35,6 +35,7 @@ export const createAgentsSlice: SliceCreator<AgentsSlice> = (set) => ({
   agents: [],
   agentsLoading: false,
   agentsError: null,
+  agentsFetched: false,
   personalityPresets: [],
   personalityPresetsLoading: false,
   personalityPresetsError: null,
@@ -43,7 +44,7 @@ export const createAgentsSlice: SliceCreator<AgentsSlice> = (set) => ({
     set({ agentsLoading: true, agentsError: null })
     try {
       const agents = await getAgents()
-      set({ agents: [...agents], agentsLoading: false })
+      set({ agents: [...agents], agentsLoading: false, agentsFetched: true })
     } catch (err) {
       log.error('fetchAgents failed:', getErrorMessage(err))
       set({ agentsError: getErrorMessage(err), agentsLoading: false })

@@ -55,6 +55,7 @@ export const createCompanySlice: SliceCreator<CompanySlice> = (set, get) => ({
       set({
         companyResponse: response,
         agents: [...response.agents],
+        agentsFetched: true,
         companyLoading: false,
       })
     } catch (err) {

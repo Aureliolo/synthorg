@@ -169,17 +169,20 @@ export function useTemplateStepController(): TemplateStepController {
   )
 
   // Track step completion -- validates against the full template list (not
-  // filtered) so UI filters don't invalidate the selection. Skip while
-  // loading to avoid false negatives from an empty templates array.
+  // filtered) so UI filters don't invalidate the selection. Skip while loading
+  // AND while not-yet-fetched (``templates`` is the slice default ``[]`` before
+  // the fetch resolves): on reload ``templatesLoading`` starts false, so
+  // skipping only on loading would demote a previously-selected template to
+  // incomplete every mount before the list arrives.
   useEffect(() => {
-    if (templatesLoading) return
+    if (templatesLoading || (templates.length === 0 && !templatesError)) return
     const store = useSetupWizardStore.getState()
     if (selectedTemplate && templates.some((t) => t.name === selectedTemplate)) {
       store.markStepComplete('template')
     } else {
       store.markStepIncomplete('template')
     }
-  }, [selectedTemplate, templates, templatesLoading])
+  }, [selectedTemplate, templates, templatesLoading, templatesError])
 
   const { recommended, others } = useMemo(
     () => splitRecommended(filteredTemplates, recommendedTemplates),

@@ -129,6 +129,7 @@ function useAgentsStepController(): AgentsStepController {
   const personalityPresets = useSetupWizardStore((s) => s.personalityPresets)
   const personalityPresetsLoading = useSetupWizardStore((s) => s.personalityPresetsLoading)
   const personalityPresetsError = useSetupWizardStore((s) => s.personalityPresetsError)
+  const agentsFetched = useSetupWizardStore((s) => s.agentsFetched)
   const fetchAgents = useSetupWizardStore((s) => s.fetchAgents)
   const fetchPersonalityPresets = useSetupWizardStore((s) => s.fetchPersonalityPresets)
   const updateAgentName = useSetupWizardStore((s) => s.updateAgentName)
@@ -137,12 +138,16 @@ function useAgentsStepController(): AgentsStepController {
   const updateAgentPersonality = useSetupWizardStore((s) => s.updateAgentPersonality)
   const goToProvidersStep = useGoToStep('providers')
 
-  // Fetch agents if not already loaded (e.g., direct URL navigation)
+  // Fetch agents if not already loaded (e.g., direct URL navigation). Gate on
+  // ``agentsFetched`` rather than ``agents.length === 0`` so a legitimately
+  // empty roster (a template with no declared agents) cannot re-fire the fetch
+  // on every mount. ``agentsFetched`` is set by both ``fetchAgents`` and the
+  // ``submitCompany`` template-apply path.
   useEffect(() => {
-    if (agents.length === 0 && !agentsLoading && !agentsError) {
+    if (!agentsFetched && !agentsLoading && !agentsError) {
       void fetchAgents()
     }
-  }, [agents.length, agentsLoading, agentsError, fetchAgents])
+  }, [agentsFetched, agentsLoading, agentsError, fetchAgents])
 
   // Fetch personality presets on mount (stop on error to avoid loop)
   useEffect(() => {

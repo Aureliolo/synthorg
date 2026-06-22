@@ -1,6 +1,10 @@
 import { resolveAgentModels } from '@/utils/setup-validation'
 import type { NavigationSlice, SliceCreator, WizardMode, WizardStep } from './types'
 
+// Invariant: ``complete`` MUST stay the final entry in every step-order
+// constant below. ``WizardNavigation`` derives ``isLast`` from the last index,
+// and the Complete step renders the terminal "Complete Setup" action rather
+// than a Next button. Appending any step after ``complete`` would break both.
 const GUIDED_STEP_ORDER: readonly WizardStep[] = [
   'mode', 'template', 'providers', 'company',
   'agents', 'theme', 'complete',
@@ -96,6 +100,12 @@ function setWizardModeImpl(
   })
 }
 
+// Low-level primitive: sets ``currentStep`` for any step that exists in the
+// current ``stepOrder`` WITHOUT enforcing prerequisite completion. The
+// navigation gate is ``canNavigateTo`` (the contract callers must check first,
+// as ``WizardShell.handleStepClick`` / ``useWizardUrlSync`` do). Keep this
+// guard-free so internal callers (mode switch, URL sync) can position the user
+// after their own validation.
 function setStepImpl(set: WizSet, get: WizGet, step: WizardStep): void {
   const { stepOrder, currentStep } = get()
   const targetIdx = stepOrder.indexOf(step)
