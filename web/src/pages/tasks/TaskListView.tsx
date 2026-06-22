@@ -7,7 +7,7 @@ import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { EmptyState } from '@/components/ui/empty-state'
 import { getTaskTypeLabel } from '@/utils/tasks'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
-import { formatRelativeTime, formatCurrency } from '@/utils/format'
+import { formatRelativeTime, formatDateTime, formatCurrency } from '@/utils/format'
 import { ArrowDown, ArrowUp, Inbox } from 'lucide-react'
 import type { DashboardTask } from '@/api/types/tasks'
 
@@ -191,7 +191,13 @@ const TaskListRow = memo(function TaskListRow({ task, onSelectTask }: TaskListRo
         {getTaskTypeLabel(task.type)}
       </span>
       <span className="w-24 font-mono text-[10px] text-text-muted">
-        {task.deadline ? formatRelativeTime(task.deadline) : '--'}
+        {task.deadline ? (
+          <time dateTime={task.deadline} title={formatDateTime(task.deadline)}>
+            {formatRelativeTime(task.deadline)}
+          </time>
+        ) : (
+          '--'
+        )}
       </span>
       <span className="w-20 text-right font-mono text-[10px] text-text-muted">
         {task.cost != null ? formatCurrency(task.cost, DEFAULT_CURRENCY) : '--'}

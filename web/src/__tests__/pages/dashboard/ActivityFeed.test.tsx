@@ -23,7 +23,7 @@ function renderWithRouter(ui: React.ReactElement) {
 describe('ActivityFeed', () => {
   it('renders section title', () => {
     renderWithRouter(<ActivityFeed activities={[]} />)
-    expect(screen.getByText('Activity')).toBeInTheDocument()
+    expect(screen.getByText('Live Activity')).toBeInTheDocument()
   })
 
   it('shows empty state when no activities', () => {

@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { ROUTES } from '@/router/routes'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ConfirmDialog, type ConfirmHandler } from '@/components/ui/confirm-dialog'
-import { formatDateTime } from '@/utils/format'
+import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import type { WorkflowDefinition } from '@/api/types/workflows'
 
 interface WorkflowTableViewProps {
@@ -158,7 +158,11 @@ function WorkflowTableRow({
       <td className="px-4 py-2.5 text-right text-muted-foreground">{workflow.nodes.length}</td>
       <td className="px-4 py-2.5 text-right text-muted-foreground">{workflow.edges.length}</td>
       <td className="px-4 py-2.5 text-right text-muted-foreground">v{workflow.version}</td>
-      <td className="px-4 py-2.5 text-muted-foreground">{formatDateTime(workflow.updated_at)}</td>
+      <td className="px-4 py-2.5 text-muted-foreground">
+        <time dateTime={workflow.updated_at} title={formatDateTime(workflow.updated_at)}>
+          {formatRelativeTime(workflow.updated_at)}
+        </time>
+      </td>
       <td className="px-2 py-2.5">
         <WorkflowRowMenu
           workflowName={workflow.name}

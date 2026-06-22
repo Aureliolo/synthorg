@@ -5,7 +5,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import type { AgentHealthResponse } from '@/api/types'
 import { toRuntimeStatus } from '@/utils/agents'
-import { formatDateTime } from '@/utils/format'
+import { formatDateTime, formatRelativeTime } from '@/utils/format'
 
 export interface AgentHealthCardProps {
   health: AgentHealthResponse | null
@@ -19,9 +19,7 @@ export interface AgentHealthCardProps {
 export function AgentHealthCard({ health }: AgentHealthCardProps) {
   if (!health) return null
   const trustLevel = health.trust ? health.trust.level : '--'
-  const lastActive = health.last_active_at
-    ? formatDateTime(health.last_active_at)
-    : '--'
+  const lastActiveAt = health.last_active_at
   return (
     <SectionCard title="Health" icon={HeartPulse}>
       <dl className="grid grid-cols-3 gap-grid-gap max-[1023px]:grid-cols-1">
@@ -35,7 +33,17 @@ export function AgentHealthCard({ health }: AgentHealthCardProps) {
           <span className="text-sm text-foreground">{trustLevel}</span>
         </HealthField>
         <HealthField label="Last active">
-          <span className="text-sm text-foreground">{lastActive}</span>
+          {lastActiveAt !== null ? (
+            <time
+              dateTime={lastActiveAt}
+              title={formatDateTime(lastActiveAt)}
+              className="text-sm text-foreground"
+            >
+              {formatRelativeTime(lastActiveAt)}
+            </time>
+          ) : (
+            <span className="text-sm text-foreground">--</span>
+          )}
         </HealthField>
       </dl>
     </SectionCard>

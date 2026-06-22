@@ -2,7 +2,7 @@ import { memo } from 'react'
 import { Link } from 'react-router'
 import { Clock, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { formatLabel, formatRelativeTime, formatTokenCount } from '@/utils/format'
+import { formatDateTime, formatLabel, formatRelativeTime, formatTokenCount } from '@/utils/format'
 import {
   formatMeetingDuration,
   getProtocolLabel,
@@ -101,6 +101,7 @@ function MeetingCardImpl({ meeting, className }: MeetingCardProps) {
       {startedAt && (
         <time
           dateTime={startedAt}
+          title={formatDateTime(startedAt)}
           className="text-micro font-mono text-muted-foreground"
         >
           {formatRelativeTime(startedAt)}
