@@ -39,13 +39,25 @@ HR_REGISTRY_IDENTITY_EVOLVED: Final[str] = "hr.registry.identity_evolved"
 HR_REGISTRY_CLEARED: Final[str] = "hr.registry.cleared"
 
 HR_AGENT_STATUS_TRANSITIONED: Final[str] = "hr.agent.status_transitioned"
-"""Agent status transition (any persisted hop).
+"""Agent lifecycle-status transition (any persisted ``AgentStatus`` hop).
 
 Emitted AFTER the registry write succeeds, carrying ``from_status``
 / ``to_status`` / ``agent_id``.  Complements terminal events
 (``HR_ONBOARDING_COMPLETE``, ``HR_FIRING_COMPLETE``) which stay on
 the terminal hop and remain the canonical "this is the final state"
-markers."""
+markers. Autonomy-level changes ride
+``HR_AGENT_AUTONOMY_LEVEL_TRANSITIONED`` instead, so the two enum spaces
+(``AgentStatus`` vs ``AutonomyLevel``) never collide on one event stream."""
+
+HR_AGENT_AUTONOMY_LEVEL_TRANSITIONED: Final[str] = (
+    "hr.agent.autonomy_level_transitioned"
+)
+"""Agent autonomy-level transition (any persisted ``AutonomyLevel`` hop).
+
+Emitted AFTER the snapshot write succeeds, carrying ``from_level`` /
+``to_level`` / ``agent_id`` / ``saved_by``. Distinct from
+``HR_AGENT_STATUS_TRANSITIONED`` so a consumer can branch on autonomy
+promotions / demotions without conflating them with lifecycle-status hops."""
 
 HIRING_REQUEST_STATUS_TRANSITIONED: Final[str] = "hr.hiring_request.status_transitioned"
 """Hiring request status transition (any persisted hop).

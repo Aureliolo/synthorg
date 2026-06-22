@@ -386,8 +386,8 @@ class TestAgentRegistryService:
         self,
         registry: AgentRegistryService,
     ) -> None:
-        """The atomic autonomy update logs HR_AGENT_STATUS_TRANSITIONED on a
-        real level change, mirroring the non-atomic apply path."""
+        """The atomic autonomy update logs HR_AGENT_AUTONOMY_LEVEL_TRANSITIONED
+        on a real level change, mirroring the non-atomic apply path."""
         identity = make_agent_identity(name="alice")
         await registry.register(identity)
         with structlog.testing.capture_logs() as events:
@@ -397,10 +397,12 @@ class TestAgentRegistryService:
                 saved_by="operator",
             )
         transition_events = [
-            e for e in events if e.get("event") == "hr.agent.status_transitioned"
+            e
+            for e in events
+            if e.get("event") == "hr.agent.autonomy_level_transitioned"
         ]
         assert len(transition_events) == 1
-        assert transition_events[0]["to_status"] == AutonomyLevel.FULL.value
+        assert transition_events[0]["to_level"] == AutonomyLevel.FULL.value
         assert transition_events[0]["agent_id"] == str(identity.id)
 
     async def test_update_status_noop_skips_transition_event(

@@ -21,6 +21,7 @@ from synthorg.meta.errors import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.charter import (
+    CHARTER_EDITED,
     CHARTER_NOT_EDITABLE,
     CHARTER_NOT_FOUND,
     CHARTER_OWNERSHIP_DENIED,
@@ -167,7 +168,7 @@ class CharterCrudMixin:
             )
             raise CharterNotEditableError(charter_id=charter_id)
         logger.info(
-            CHARTER_STATUS_TRANSITIONED,
+            CHARTER_EDITED,
             charter_id=charter_id,
             edited_by=edited_by,
             version=updated.version,

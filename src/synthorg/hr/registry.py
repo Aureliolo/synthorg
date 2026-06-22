@@ -39,6 +39,7 @@ from synthorg.hr.errors import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
+    HR_AGENT_AUTONOMY_LEVEL_TRANSITIONED,
     HR_AGENT_STATUS_TRANSITIONED,
     HR_REGISTRY_AGENT_REGISTERED,
     HR_REGISTRY_AGENT_REMOVED,
@@ -785,10 +786,10 @@ class AgentRegistryService:
         # stream that consumers cannot distinguish from a real change.
         if prior_level is not None and prior_level != level:
             logger.info(
-                HR_AGENT_STATUS_TRANSITIONED,
+                HR_AGENT_AUTONOMY_LEVEL_TRANSITIONED,
                 agent_id=key,
-                from_status=prior_level.value,
-                to_status=level.value,
+                from_level=prior_level.value,
+                to_level=level.value,
                 saved_by=saved_by,
             )
         return applied
@@ -851,13 +852,13 @@ class AgentRegistryService:
         # Mirror ``apply_autonomy_level``: record a transition only on a real
         # level change (the snapshotted write succeeded above), so the atomic
         # promote / demote path appears in the
-        # ``hr.agent.status_transitioned`` stream like the non-atomic one.
+        # ``hr.agent.autonomy_level_transitioned`` stream like the non-atomic one.
         if previous_level != level:
             logger.info(
-                HR_AGENT_STATUS_TRANSITIONED,
+                HR_AGENT_AUTONOMY_LEVEL_TRANSITIONED,
                 agent_id=key,
-                from_status=previous_level.value,
-                to_status=level.value,
+                from_level=previous_level.value,
+                to_level=level.value,
                 saved_by=saved_by,
             )
         return previous_level, applied
