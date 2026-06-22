@@ -446,7 +446,15 @@ except ImportError:
 # the periodic all-thread stack dump while a hang is live; that
 # trade-off is mandatory because the watchdog itself was the cause of
 # the worker SEGVs we were trying to diagnose.
-faulthandler.enable(file=sys.stderr, all_threads=True)
+# ``faulthandler.enable`` needs a stream backed by a real file descriptor.
+# Under Python-level pytest capture -- including when this module is
+# re-exec'd white-box by ``tests/unit/test_conftest_regression_helpers.py``
+# -- ``sys.stderr`` is a capture proxy whose ``fileno()`` raises
+# ``io.UnsupportedOperation`` (an ``OSError`` / ``ValueError`` subclass).
+# Skip enabling rather than crash the import: the watchdog is a diagnostic
+# aid, not a correctness dependency.
+with contextlib.suppress(OSError, ValueError):
+    faulthandler.enable(file=sys.stderr, all_threads=True)
 
 # ── Windows console-flash suppression ──────────────────────────────
 #
