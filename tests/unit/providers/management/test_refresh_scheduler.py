@@ -109,12 +109,7 @@ class TestModelRefreshScheduler:
             await scheduler.stop()
         assert captured["auto_apply"] is True
 
-    async def test_stop_drain_timeout_marks_unrestartable(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        import synthorg.providers.management.refresh_scheduler as scheduler_module
-
-        monkeypatch.setattr(scheduler_module, "_STOP_DRAIN_TIMEOUT_SECONDS", 0.05)
+    async def test_stop_drain_timeout_marks_unrestartable(self) -> None:
         started = asyncio.Event()
         release_cleanup = asyncio.Event()
 
@@ -138,6 +133,7 @@ class TestModelRefreshScheduler:
             interval_seconds=60.0,
             config_resolver=_resolver("detect_only"),
         )
+        scheduler._drain_timeout = 0.05
         await scheduler.start()
         await asyncio.wait_for(started.wait(), timeout=5.0)
         try:
