@@ -39,12 +39,14 @@ from synthorg.observability.events.metrics import (
     METRICS_SCRAPE_COMPLETED,
     METRICS_SCRAPE_FAILED,
 )
+from synthorg.observability.prometheus_label_folds import (
+    fold_agent_status,
+    fold_trust_level,
+)
 from synthorg.observability.prometheus_labels import (
     _LabelSnapshot,
     _snapshot_for_collector,
     _snapshot_lock_for_collector,
-    fold_agent_status,
-    fold_trust_level,
     update_label_snapshot,
 )
 from synthorg.observability.prometheus_push_metrics import PushMetrics

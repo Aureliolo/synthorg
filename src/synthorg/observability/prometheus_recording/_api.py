@@ -7,12 +7,12 @@ from synthorg.observability.events.metrics import (
     CLIENT_DISCONNECTED,
     METRICS_SCRAPE_FAILED,
 )
+from synthorg.observability.prometheus_label_folds import fold_http_method
 from synthorg.observability.prometheus_labels import (
     VALID_API_ERROR_CATEGORIES,
     VALID_DISCONNECT_REASONS,
     VALID_DISCONNECT_TRANSPORTS,
     VALID_STATUS_CLASSES,
-    fold_http_method,
     require_label,
     require_non_negative,
     status_class,

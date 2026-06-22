@@ -1,11 +1,10 @@
 """Resolve the operator-configured display currency with a safe fallback.
 
-Eight call sites previously inlined ``config_resolver.get_str("budget",
-"currency")`` plus bespoke ``reraise_critical`` + WARNING + ``DEFAULT_CURRENCY``
-fallback boilerplate. This module centralises that read so the fallback policy
-lives in one place: each site collapses to
-``resolve_currency(config_resolver_of(app_state))`` (or, where a resolver is
-held directly, ``resolve_currency(self._config_resolver)``).
+Centralises the ``config_resolver.get_str("budget", "currency")`` read plus
+its ``reraise_critical`` + WARNING + ``DEFAULT_CURRENCY`` fallback policy so it
+lives in one place: each caller is ``resolve_currency(config_resolver_of(
+app_state))`` (or, where a resolver is held directly,
+``resolve_currency(self._config_resolver)``).
 
 Kept separate from :mod:`synthorg.budget.currency` (which is imported by every
 cost-bearing model for the ``CurrencyCode`` type) so the ``settings``-layer

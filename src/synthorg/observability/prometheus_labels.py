@@ -14,7 +14,6 @@ from dataclasses import dataclass
 from typing import Final, get_args
 
 from synthorg.core.error_taxonomy import ErrorCategory
-from synthorg.core.task_enums import TaskStatus
 from synthorg.observability import get_logger
 from synthorg.observability.events.metrics import METRICS_SCRAPE_FAILED
 from synthorg.providers.errors import ProviderErrorLabel
@@ -126,92 +125,6 @@ def require_non_negative(label: str, value: float | int) -> None:
         )
         msg = f"{label} must be non-negative, got {value!r}"
         raise ValueError(msg)
-
-
-# Agent gauge label vocabularies for ``synthorg_active_agents_total``.
-# Both mirror enums (``synthorg.hr.enums.AgentStatus`` /
-# ``synthorg.core.tool_constraints.ToolAccessLevel``); they are duplicated
-# here as literals rather than imported to keep ``prometheus_labels`` free of
-# an ``hr`` / ``tool_constraints`` import (the latter imports ``observability``
-# and would risk a cold-import cycle). A parity test under
-# ``tests/unit/observability/`` asserts the two stay in lockstep. An
-# out-of-vocabulary value folds to :data:`AGENT_LABEL_OTHER` rather than
-# minting a new series.
-VALID_AGENT_STATUSES: Final[frozenset[str]] = frozenset(
-    {"active", "onboarding", "on_leave", "terminated"}
-)
-VALID_TRUST_LEVELS: Final[frozenset[str]] = frozenset(
-    {"sandboxed", "restricted", "standard", "elevated", "custom"}
-)
-AGENT_LABEL_OTHER: Final[str] = "other"
-
-# Bounded HTTP-method vocabulary for ``synthorg_api_requests_total``. The
-# method arrives from the request line (attacker-controllable), so an
-# unrecognised verb folds to :data:`HTTP_METHOD_OTHER` rather than minting an
-# unbounded per-method series.
-VALID_HTTP_METHODS: Final[frozenset[str]] = frozenset(
-    {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE", "CONNECT"}
-)
-HTTP_METHOD_OTHER: Final[str] = "__other__"
-
-
-def fold_agent_status(value: str) -> str:
-    """Return *value* if a known agent status, else :data:`AGENT_LABEL_OTHER`.
-
-    Returns:
-        The bounded status label.
-    """
-    return value if value in VALID_AGENT_STATUSES else AGENT_LABEL_OTHER
-
-
-def fold_trust_level(value: str) -> str:
-    """Return *value* if a known trust level, else :data:`AGENT_LABEL_OTHER`.
-
-    Returns:
-        The bounded trust-level label.
-    """
-    return value if value in VALID_TRUST_LEVELS else AGENT_LABEL_OTHER
-
-
-def fold_http_method(value: str) -> str:
-    """Return *value* if a known HTTP method, else :data:`HTTP_METHOD_OTHER`.
-
-    Returns:
-        The bounded method label.
-    """
-    return value if value in VALID_HTTP_METHODS else HTTP_METHOD_OTHER
-
-
-# Bounded ``reason`` vocabulary for ``synthorg_auth_failures_total``. Auth
-# failures are logged at many call sites with free-form ``reason=`` strings;
-# the metric folds anything outside this set to :data:`AUTH_FAILURE_OTHER` so
-# a new log reason cannot mint an unbounded series.
-VALID_AUTH_FAILURE_REASONS: Final[frozenset[str]] = frozenset(
-    {
-        "invalid_password",
-        "hash_verification_error",
-        "jwt_secret_missing",
-        "token_expired",
-        "token_invalid",
-        "refresh_rejected",
-        "account_locked",
-        "unauthenticated",
-    }
-)
-AUTH_FAILURE_OTHER: Final[str] = "__other__"
-
-# Task status labels for ``synthorg_task_transitions_total``; derived from
-# ``TaskStatus`` so the two stay in lockstep without a hand-maintained list.
-VALID_TASK_STATUSES: Final[frozenset[str]] = frozenset(s.value for s in TaskStatus)
-
-
-def fold_auth_failure_reason(value: str) -> str:
-    """Return *value* if a known auth-failure reason, else the sentinel.
-
-    Returns:
-        The bounded reason label (:data:`AUTH_FAILURE_OTHER` when unknown).
-    """
-    return value if value in VALID_AUTH_FAILURE_REASONS else AUTH_FAILURE_OTHER
 
 
 VALID_VERDICTS: Final[frozenset[str]] = frozenset(

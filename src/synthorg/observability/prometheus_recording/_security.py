@@ -3,11 +3,11 @@
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import SECURITY_AUDIT_CHAIN_VERIFY_OUTCOME
+from synthorg.observability.prometheus_label_folds import fold_auth_failure_reason
 from synthorg.observability.prometheus_labels import (
     VALID_AUDIT_APPEND_STATUSES,
     VALID_AUDIT_VERIFICATION_OUTCOMES,
     VALID_VERDICTS,
-    fold_auth_failure_reason,
     require_finite,
     require_label,
     require_non_negative,

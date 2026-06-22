@@ -698,7 +698,7 @@ def test_valid_agent_statuses_matches_enum() -> None:
     two in lockstep so a new status cannot silently fold to ``"other"``.
     """
     from synthorg.hr.enums import AgentStatus
-    from synthorg.observability.prometheus_labels import VALID_AGENT_STATUSES
+    from synthorg.observability.prometheus_label_folds import VALID_AGENT_STATUSES
 
     assert frozenset(s.value for s in AgentStatus) == VALID_AGENT_STATUSES
 
@@ -706,6 +706,6 @@ def test_valid_agent_statuses_matches_enum() -> None:
 def test_valid_trust_levels_matches_enum() -> None:
     """The active-agents trust-level allowlist mirrors ``ToolAccessLevel``."""
     from synthorg.core.tool_constraints import ToolAccessLevel
-    from synthorg.observability.prometheus_labels import VALID_TRUST_LEVELS
+    from synthorg.observability.prometheus_label_folds import VALID_TRUST_LEVELS
 
     assert frozenset(t.value for t in ToolAccessLevel) == VALID_TRUST_LEVELS

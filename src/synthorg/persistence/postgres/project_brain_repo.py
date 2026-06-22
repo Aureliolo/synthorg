@@ -10,7 +10,6 @@ from datetime import datetime
 
 import psycopg
 from psycopg.rows import DictRow, TupleRow, dict_row
-from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
@@ -30,13 +29,13 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._project_brain_sql import (
     BRAIN_COLUMNS as _COLUMNS,
 )
-from synthorg.persistence._project_brain_sql import (
-    build_current_filter_sql,
-    build_filter_sql,
-    insert_params,
-    row_to_entry,
-)
 from synthorg.persistence._shared.pagination import validate_pagination_args
+from synthorg.persistence.postgres._project_brain_marshalling import (
+    brain_current_filter_sql,
+    brain_filter_sql,
+    brain_insert_params,
+    row_to_brain_entry,
+)
 from synthorg.persistence.project_brain_protocol import (
     BrainEntryRevisionKey,
     BrainFilterSpec,
@@ -49,65 +48,6 @@ from synthorg.project_brain.models import (
 logger = get_logger(__name__)
 
 _MAX_LIST_ROWS: int = 10_000
-
-
-def _load_json(value: object) -> object:
-    """Parse a JSON column that Postgres may return as ``str`` or pre-parsed.
-
-    Returns:
-        The decoded JSON value.
-    """
-    if isinstance(value, str):
-        return json.loads(value)
-    return value
-
-
-def _row_to_entry(row: DictRow) -> BrainEntry:
-    """Reconstruct a :class:`BrainEntry` from a Postgres ``dict_row``.
-
-    Returns:
-        The reconstructed entry.
-    """
-    return row_to_entry(row, load_json=_load_json)
-
-
-def _passthrough_dt(value: datetime) -> object:
-    """Return *value* unchanged: psycopg binds ``datetime`` natively.
-
-    Returns:
-        The datetime, for the shared serialiser slots.
-    """
-    return value
-
-
-def _encode_jsonb(value: object) -> object:
-    """Wrap a JSON value for binding to a native JSONB column.
-
-    Returns:
-        A :class:`~psycopg.types.json.Jsonb` adapter.
-    """
-    return Jsonb(value)
-
-
-def _jsonb_exists_contains(column: str, ph: str, value: str) -> tuple[str, object]:
-    """Array-membership predicate against a native JSONB array.
-
-    Returns:
-        ``(sql_fragment, bound_param)`` using ``jsonb_exists`` (the function
-        form of the ``?`` operator, which psycopg binds without escaping).
-    """
-    return f"jsonb_exists({column}, {ph})", value
-
-
-def _insert_params(entity: BrainEntry) -> tuple[object, ...]:
-    """Positional INSERT parameters (``recorded_at`` + JSON bound natively).
-
-    Returns:
-        The positional parameter tuple in column order.
-    """
-    return insert_params(
-        entity, serialize_dt=_passthrough_dt, encode_json=_encode_jsonb
-    )
 
 
 class PostgresProjectBrainRepository:
@@ -143,7 +83,7 @@ class PostgresProjectBrainRepository:
         )
         async with self._pool.connection() as conn, conn.cursor() as cur:
             try:
-                await cur.execute(sql, _insert_params(event))
+                await cur.execute(sql, brain_insert_params(event))
                 await conn.commit()
             except psycopg.errors.UniqueViolation as exc:
                 await self._safe_rollback(conn, event=BRAIN_PERSIST_SAVE_FAILED)
@@ -189,7 +129,7 @@ class PostgresProjectBrainRepository:
             f"VALUES (%s, %s, ({next_rev_sql}), %s, %s, %s, %s, %s, %s, %s, %s, "
             "%s, %s, %s, %s, %s) RETURNING revision"
         )
-        full = _insert_params(entry)
+        full = brain_insert_params(entry)
         params = (full[0], full[1], full[0], full[1], *full[3:])
         async with (
             self._pool.connection() as conn,
@@ -240,7 +180,7 @@ class PostgresProjectBrainRepository:
             "WHERE project_id = %s AND entry_id = %s AND revision = %s"
         )
         row = await self._fetch_one(sql, (project_id, entry_id, revision))
-        return _row_to_entry(row) if row is not None else None
+        return row_to_brain_entry(row) if row is not None else None
 
     async def get_current(
         self,
@@ -261,7 +201,7 @@ class PostgresProjectBrainRepository:
             "ORDER BY revision DESC LIMIT 1"
         )
         row = await self._fetch_one(sql, (project_id, entry_id))
-        return _row_to_entry(row) if row is not None else None
+        return row_to_brain_entry(row) if row is not None else None
 
     async def history(
         self,
@@ -308,7 +248,7 @@ class PostgresProjectBrainRepository:
         limit = validate_pagination_args(
             limit, offset, event=BRAIN_PERSIST_QUERY_FAILED
         )
-        where_sql, params = _filter_sql(filter_spec)
+        where_sql, params = brain_filter_sql(filter_spec)
         sql = (
             f"SELECT {_COLUMNS} FROM project_brain_entries {where_sql} "  # noqa: S608
             "ORDER BY recorded_at DESC, revision DESC LIMIT %s OFFSET %s"
@@ -332,7 +272,7 @@ class PostgresProjectBrainRepository:
             QueryError: If the database query fails.
         """
         limit = validate_pagination_args(limit, offset, event=BRAIN_PERSIST_LIST_FAILED)
-        outer_where, params = _current_filter_sql(filter_spec)
+        outer_where, params = brain_current_filter_sql(filter_spec)
         sql = (
             f"SELECT {_COLUMNS} FROM ("  # noqa: S608
             "SELECT *, ROW_NUMBER() OVER ("
@@ -353,7 +293,7 @@ class PostgresProjectBrainRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        outer_where, params = _current_filter_sql(filter_spec)
+        outer_where, params = brain_current_filter_sql(filter_spec)
         sql = (
             "SELECT COUNT(*) AS n FROM ("  # noqa: S608
             "SELECT entry_id, status, entry_kind, author, recorded_at, tags, "
@@ -551,7 +491,7 @@ class PostgresProjectBrainRepository:
             QueryError: If deserialisation fails.
         """
         try:
-            return tuple(_row_to_entry(row) for row in rows)
+            return tuple(row_to_brain_entry(row) for row in rows)
         except (ValueError, ValidationError, KeyError, json.JSONDecodeError) as exc:
             msg = "Failed to deserialize brain entries"
             logger.warning(
@@ -560,33 +500,3 @@ class PostgresProjectBrainRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-
-
-def _filter_sql(filter_spec: BrainFilterSpec) -> tuple[str, tuple[object, ...]]:
-    """All-revisions ``WHERE`` clause for this backend (``%s`` placeholders).
-
-    Returns:
-        ``(where_sql, params)`` with ``project_id`` first.
-    """
-    return build_filter_sql(
-        filter_spec,
-        ph="%s",
-        serialize_dt=_passthrough_dt,
-        array_contains=_jsonb_exists_contains,
-    )
-
-
-def _current_filter_sql(
-    filter_spec: BrainFilterSpec,
-) -> tuple[str, tuple[object, ...]]:
-    """Outer AND-fragment for current-state queries (``%s`` placeholders).
-
-    Returns:
-        ``(outer_and_sql, params)`` beginning with `` AND`` when non-empty.
-    """
-    return build_current_filter_sql(
-        filter_spec,
-        ph="%s",
-        serialize_dt=_passthrough_dt,
-        array_contains=_jsonb_exists_contains,
-    )

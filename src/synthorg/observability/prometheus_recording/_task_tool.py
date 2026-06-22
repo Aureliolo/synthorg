@@ -2,9 +2,9 @@
 """Task-run and tool-invocation recording."""
 
 from synthorg.observability import get_logger
+from synthorg.observability.prometheus_label_folds import VALID_TASK_STATUSES
 from synthorg.observability.prometheus_labels import (
     VALID_TASK_OUTCOMES,
-    VALID_TASK_STATUSES,
     VALID_TOOL_OUTCOMES,
     require_label,
     require_non_negative,
