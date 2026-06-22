@@ -549,16 +549,11 @@ async def _run_shutdown(  # noqa: PLR0913
         distributed_backend_services=app_state.slice(
             RuntimeStateSlice
         ).distributed_backend_services,
+        # Drained inside _safe_shutdown after the message bus but before
+        # persistence.disconnect, so a final delivery flush still reaches
+        # the DB instead of failing against a disconnected backend.
+        notification_dispatcher=app_state.slice(NotificationsStateSlice).dispatcher,
     )
-    notification_dispatcher = app_state.slice(NotificationsStateSlice).dispatcher
-    if notification_dispatcher is not None:
-        await _try_stop(
-            notification_dispatcher.aclose(),
-            API_APP_SHUTDOWN,
-            "Failed to stop notification dispatcher",
-            timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
-            service="notification_dispatcher",
-        )
     # Close the A2A outbound HTTP client if wired. Routed through ``_try_stop``
     # with a bounded timeout (like every other stop step) so a hung keep-alive
     # socket or stalled TLS shutdown cannot block teardown past the SIGKILL

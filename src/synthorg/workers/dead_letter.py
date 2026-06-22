@@ -35,8 +35,10 @@ from synthorg.observability import (
     log_exception_redacted,
     safe_error_description,
 )
+from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.workers import (
     WORKERS_DEAD_LETTER_ALREADY_TERMINAL,
+    WORKERS_DEAD_LETTER_CONSUMER_LOOP_DIED,
     WORKERS_DEAD_LETTER_CONSUMER_START_REJECTED,
     WORKERS_DEAD_LETTER_CONSUMER_STARTED,
     WORKERS_DEAD_LETTER_CONSUMER_STOPPED,
@@ -210,6 +212,17 @@ class DeadLetterConsumer:
             self._running = True
             self._stop_event.clear()
             self._task = asyncio.create_task(self._consume_loop())
+            # Surface an unexpected loop death as a WARNING: without the
+            # done-callback a non-cancellation crash would be swallowed
+            # by the event loop and dead-lettered claims would stop
+            # being drained with no operator signal.
+            self._task.add_done_callback(
+                log_task_exceptions(
+                    logger,
+                    WORKERS_DEAD_LETTER_CONSUMER_LOOP_DIED,
+                    note="loop_died",
+                ),
+            )
             logger.info(WORKERS_DEAD_LETTER_CONSUMER_STARTED)
 
     async def stop(self) -> None:

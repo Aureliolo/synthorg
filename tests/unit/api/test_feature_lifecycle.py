@@ -128,6 +128,29 @@ async def test_hanging_stop_is_abandoned_at_budget() -> None:
     assert log == ["start:a", "start:b", "stop:a"]
 
 
+async def test_none_stop_timeout_uses_default_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A hook declaring no stop budget (``None``) must fall back to the
+    # bounded default rather than awaiting unbounded; without the
+    # fallback this test would hang forever.
+    monkeypatch.setattr(
+        "synthorg.api.lifecycle_helpers.feature_lifecycle."
+        "_FEATURE_HOOK_DEFAULT_STOP_SECONDS",
+        0.01,
+    )
+    log: list[str] = []
+    runner = FeatureLifecycleRunner(
+        [
+            _RecordingHook("a", log),
+            _RecordingHook("b", log, hang_on_stop=True, stop_timeout_seconds=None),
+        ]
+    )
+    await runner.start_all()
+    await runner.stop_all()
+    assert log == ["start:a", "start:b", "stop:a"]
+
+
 # ``build_feature_lifecycle_runner`` is the collector that makes the
 # ``lifecycle_hooks`` manifest slot reachable from the composition root. These
 # guard the regression where ``FeatureLifecycleRunner`` existed but no runner

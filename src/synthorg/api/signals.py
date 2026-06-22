@@ -11,6 +11,17 @@ Windows's proactor event loop raises ``NotImplementedError`` on
 ``signal.signal`` API (main thread only) and re-enters the loop via
 ``call_soon_threadsafe``; a worker-thread lifespan logs a DEBUG event
 and returns, so the app still boots.
+
+Shutdown window (operator reference): on ``SIGTERM`` the handler here
+sets ``AppState.shutdown_requested`` and closes the cooperative drain
+gate (new parallel agent tasks are rejected immediately), then uvicorn
+triggers the ASGI lifespan shutdown, which runs the ordered on-shutdown
+teardown (``api/lifecycle_runner_shutdown``: drain in-flight work, stop
+background services, then ``_safe_shutdown`` -> persistence disconnect).
+uvicorn's ``timeout_graceful_shutdown`` (75s, configured in
+``api/server.py``) bounds that teardown; if it overruns, uvicorn escalates
+to ``SIGKILL``. Every per-service stop step is therefore individually
+bounded so the aggregate stays inside that 75s window.
 """
 
 import asyncio

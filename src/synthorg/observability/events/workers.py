@@ -41,6 +41,9 @@ WORKERS_DEAD_LETTER_CONSUMER_STARTED: Final[str] = (
 WORKERS_DEAD_LETTER_CONSUMER_STOPPED: Final[str] = (
     "workers.dead_letter.consumer_stopped"
 )
+WORKERS_DEAD_LETTER_CONSUMER_LOOP_DIED: Final[str] = (
+    "workers.dead_letter.consumer_loop_died"
+)
 WORKERS_DEAD_LETTER_TRANSITIONED: Final[str] = "workers.dead_letter.transitioned"
 WORKERS_DEAD_LETTER_ALREADY_TERMINAL: Final[str] = (
     "workers.dead_letter.already_terminal"
@@ -53,6 +56,9 @@ WORKERS_DEAD_LETTER_FAILED: Final[str] = "workers.dead_letter.failed"
 # seen_claims pruner (backend-side)
 WORKERS_SEEN_CLAIMS_PRUNER_STARTED: Final[str] = "workers.seen_claims_pruner.started"
 WORKERS_SEEN_CLAIMS_PRUNER_STOPPED: Final[str] = "workers.seen_claims_pruner.stopped"
+WORKERS_SEEN_CLAIMS_PRUNER_LOOP_DIED: Final[str] = (
+    "workers.seen_claims_pruner.loop_died"
+)
 WORKERS_SEEN_CLAIMS_PRUNED: Final[str] = "workers.seen_claims_pruner.pruned"
 WORKERS_SEEN_CLAIMS_PRUNE_FAILED: Final[str] = "workers.seen_claims_pruner.prune_failed"
 
