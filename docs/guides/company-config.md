@@ -106,7 +106,7 @@ LLM providers are configured under the `providers` key. Each entry is a named pr
 | `litellm_provider` | string | `null` | LiteLLM routing key override |
 | `family` | string | `null` | Provider family for grouping |
 | `auth_type` | AuthType | `"api_key"` | Authentication method |
-| `api_key` | string | `null` | API key (required for `api_key` auth) |
+| `connection_name` | string | `null` | Reference to a `ConnectionCatalog` entry; credentials resolve from the catalog at runtime. Required for `api_key` auth (which has no embedded credential field). `custom_header` auth instead requires the embedded `custom_header_name` / `custom_header_value` fields. |
 | `subscription_token` | string | `null` | Subscription token |
 | `base_url` | string | `null` | Custom API base URL |
 | `models` | list | `[]` | Available models |
@@ -119,7 +119,7 @@ LLM providers are configured under the `providers` key. Each entry is a named pr
 
 | Auth Type | Required Fields |
 |-----------|-----------------|
-| `api_key` | `api_key` |
+| `api_key` | `connection_name` |
 | `subscription` | `subscription_token`, `tos_accepted_at` |
 | `oauth` | OAuth-specific fields |
 | `custom_header` | `custom_header_name`, `custom_header_value` |
@@ -146,7 +146,7 @@ Each provider lists its available models under the `models` key:
     providers:
       my-cloud:
         auth_type: api_key
-        api_key: "sk-..."
+        connection_name: "provider-my-cloud"
         models:
           - id: "example-large-001"
             alias: "large"
@@ -182,7 +182,11 @@ Each provider lists its available models under the `models` key:
         tos_accepted_at: "2026-01-15T00:00:00Z"
         base_url: "https://api.example.com/v1"
         subscription:
-          monthly_quota: 1000000
+          plan_name: "pro"
+          monthly_cost: 50.0
+          quotas:
+            - window: per_month
+              max_tokens: 1000000
         models:
           - id: "example-medium-001"
             alias: "medium"
@@ -199,13 +203,11 @@ Each provider lists its available models under the `models` key:
     providers:
       primary-cloud:
         auth_type: api_key
-        api_key: "sk-..."
+        connection_name: "provider-primary-cloud"
         degradation:
-          fallback_provider: secondary-cloud
-          trigger_on:
-            - rate_limit
-            - provider_timeout
-            - provider_connection
+          strategy: fallback
+          fallback_providers:
+            - secondary-cloud
         models:
           - id: "example-large-001"
             alias: "large"
@@ -213,7 +215,7 @@ Each provider lists its available models under the `models` key:
             alias: "small"
       secondary-cloud:
         auth_type: api_key
-        api_key: "sk-backup-..."
+        connection_name: "provider-secondary-cloud"
         models:
           # Both providers expose the same alias names so the routing
           # layer can hand off without reconfiguring agents.
@@ -427,7 +429,8 @@ departments:
 |-------|------|---------|-------------|
 | `name` | string | *(required)* | Department name (must be unique) |
 | `budget_percent` | int | `0` | Percentage of company budget |
-| `head_role` | string | *(required)* | Department head role |
+| `head_role` | string | `null` | Department head role name. Use the companion `head_merge_id` to disambiguate when several agents share the role |
+| `head_merge_id` | string | `null` | Department head agent `merge_id`; use when several agents share `head_role` |
 | `reporting_lines` | list | `[]` | Subordinate-supervisor relationships |
 
 ### Workflow Handoffs
@@ -557,7 +560,7 @@ SynthOrg enforces the following cross-field validation rules at load time:
     providers:
       cloud:
         auth_type: api_key
-        api_key: "sk-example-key"
+        connection_name: "provider-cloud"
         models:
           - id: "example-large-001"
             alias: "large"
@@ -654,10 +657,10 @@ SynthOrg enforces the following cross-field validation rules at load time:
     fully-constructed `EvolutionConfig` object plus runtime dependencies
     (registry, versioning, tracker, optional provider, optional shadow runner).
 
-    A REST API and dashboard UI for runtime evolution management are planned.
-    Until they ship, operators who need to adjust guards, triggers, proposers,
-    or adapters must do so in application code that wires the service, not in
-    the company YAML.
+    Runtime evolution management is configured in application code: operators
+    who need to adjust guards, triggers, proposers, or adapters do so where the
+    service is wired, not in the company YAML. There is no REST API or dashboard
+    UI for this surface.
 
     See [HR & Agent Lifecycle: Agent Evolution](../design/hr-lifecycle.md#agent-evolution)
     for the full architecture, the pluggable axes (triggers / proposers /

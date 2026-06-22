@@ -68,6 +68,20 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	autoAccept := opts.Yes
+	// Hold the lifecycle lock across the ENTIRE teardown -- the container stop
+	// AND the data-directory removal -- so a concurrent `synthorg start`/`update`
+	// cannot bring the stack back up or recreate state mid-uninstall. The lock
+	// file is a sibling of the data dir, so holding it across removal does not
+	// block RemoveAll on Windows.
+	lock, lerr := acquireTeardownLock(ctx, safeDir, errUI)
+	if lerr != nil {
+		return lerr
+	}
+	defer func() {
+		if rerr := lock.Release(); rerr != nil {
+			errUI.Warn(fmt.Sprintf("could not release lifecycle lock: %v", rerr))
+		}
+	}()
 	if err := uninstallContainers(cmd, ctx, safeDir, out, errUI, autoAccept); err != nil {
 		return err
 	}
@@ -172,6 +186,9 @@ func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, dataDir string, 
 	if err != nil {
 		return err
 	}
+	// The lifecycle lock that serialises this teardown against a concurrent
+	// `synthorg start`/`update` is held by the caller (runUninstall) across the
+	// whole uninstall, not just this container-stop step.
 	downArgs := []string{"down"}
 	if removeVolumes {
 		downArgs = append(downArgs, "-v")

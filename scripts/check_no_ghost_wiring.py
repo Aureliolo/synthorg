@@ -3,10 +3,9 @@
 
 A "ghost" is a runtime component that is defined and unit-tested but never
 constructed/called in the shipped ``src/`` boot path, so it can never run in
-a real deployment. Issue #1951 / EPIC #1955 found a whole runtime
-(``AgentEngine``, the coordinator, coordination metrics, the intake engine)
-in this state. It hid because nothing enforced "if it ships, it must be
-reachable".
+a real deployment. A whole runtime (``AgentEngine``, the coordinator,
+coordination metrics, the intake engine) can sit in this state, hidden
+because nothing enforces "if it ships, it must be reachable".
 
 This gate is manifest-driven (``scripts/_ghost_wiring_manifest.txt``). For
 every ``ENFORCED`` symbol it asserts there is at least one
@@ -14,8 +13,8 @@ construction/call site in ``src/synthorg/`` *outside* the symbol's own
 defining module and *outside* ``tests/``. Zero such sites means the symbol
 has regressed into a ghost; the gate fails.
 
-``PENDING`` symbols (known ghosts still being wired by an EPIC #1955 issue)
-are not enforced yet -- enforcing now would fail until the wiring PR lands.
+``PENDING`` symbols (known ghosts still being wired) are not enforced
+yet -- enforcing now would fail until the wiring PR lands.
 Per the Convention Rollout rule the wiring PR flips its line
 ``PENDING -> ENFORCED`` in the same change. The gate prints an advisory
 nudge when a ``PENDING`` symbol already looks constructed so reviewers
@@ -90,22 +89,22 @@ RUNTIME_PREFIXES: Final[tuple[str, ...]] = (
     # knowledge/ is reached at boot via api/app.py::_wire_knowledge_engine
     # (build_knowledge_service / build_knowledge_tool_factory); counting its
     # factory + tool-factory construction lets the manifest track the
-    # knowledge substrate's wiring (#1988).
+    # knowledge substrate's wiring.
     "src/synthorg/knowledge/",
     # project_brain/ is reached at boot via
     # api/lifecycle_helpers/feature_wiring.py::_wire_project_brain
     # (build_project_brain_service); counting its factory + tool-factory
-    # construction lets the manifest track the project-brain wiring (#1996).
+    # construction lets the manifest track the project-brain wiring.
     "src/synthorg/project_brain/",
     # research/ is reached at boot via api/app.py::_wire_research_engine
     # (build_research_service / build_research_tool_factory); counting its
     # factory + strategy + tool-factory construction lets the manifest track
-    # the research subsystem's wiring (#1989).
+    # the research subsystem's wiring.
     "src/synthorg/research/",
     # deliverable_receipts/ is reached at boot via
     # api/lifecycle_helpers/feature_wiring.py::_wire_deliverable_receipts
     # (build_deliverable_receipt_service); counting its factory construction
-    # lets the manifest track the provenance-receipt wiring (#1999).
+    # lets the manifest track the provenance-receipt wiring.
     "src/synthorg/deliverable_receipts/",
 )
 
@@ -404,10 +403,10 @@ def _run(
         print(f"  {e.symbol} ({e.issue}) -- {e.note}")
         print(f"    manifest: scripts/_ghost_wiring_manifest.txt:{e.lineno}")
     print(
-        "\nFix: restore the boot-path construction (see the issue), or, if "
-        "the component was deliberately removed, delete its manifest line "
-        "in the same PR. An ENFORCED symbol that ships unreachable is the "
-        "exact #1951 / EPIC #1955 defect this gate exists to prevent."
+        "\nFix: restore the boot-path construction, or, if the component "
+        "was deliberately removed, delete its manifest line in the same "
+        "PR. An ENFORCED symbol that ships unreachable is the exact defect "
+        "this gate exists to prevent."
     )
     return 1
 

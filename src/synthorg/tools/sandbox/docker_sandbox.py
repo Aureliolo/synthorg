@@ -536,7 +536,7 @@ class DockerSandbox(
         host_config = self._build_host_config(effective_root, category=category)
         if network_mode is not None:
             host_config["NetworkMode"] = network_mode
-        # WP-1: ``synthorg.managed=true`` is the canonical label the
+        # ``synthorg.managed=true`` is the canonical label the
         # reconciliation pass filters on at sandbox-subsystem start
         # (see ``synthorg.tools.sandbox.reconciliation``).  Operators
         # MUST NOT strip this label or the orphan cleanup will treat

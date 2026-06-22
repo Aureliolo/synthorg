@@ -77,14 +77,18 @@ Run the interactive setup wizard:
 synthorg init
 ```
 
-The wizard will prompt you to configure infrastructure settings:
+The wizard's primary screen prompts for the infrastructure choices that shape the deployment:
 
 1. **Data directory**: where SynthOrg stores its data (default: platform-appropriate path).
-2. **Backend API port**: port for the REST/WebSocket API (default: 3001).
-3. **Web dashboard port**: port for the web UI (default: 3000).
-4. **Enable agent code sandbox**: optionally mount the Docker socket for sandboxed code execution.
+2. **Database backend**: Postgres or SQLite (interactive default: Postgres).
+3. **Message bus backend**: NATS or the in-process internal bus (interactive default: NATS).
+4. **Fine-tuning**: enable the optional fine-tuning toolchain.
 
-`synthorg init` generates the four required secrets (`SYNTHORG_JWT_SECRET`, `SYNTHORG_SETTINGS_KEY`, `SYNTHORG_MASTER_KEY`, and `SYNTHORG_PAGINATION_CURSOR_SECRET`) and writes the configuration automatically. Company setup (name, LLM provider, template) happens in the web dashboard after containers start (see [Step 4](#step-4-explore-the-dashboard)).
+The defaults above apply to the interactive wizard, which targets a production-style multi-node deployment. The non-interactive path (`synthorg init` with the required flags supplied, omitting `--persistence-backend` / `--bus-backend`) instead defaults to the single-node **SQLite + internal bus** pair, matching the programmatic `DefaultState`.
+
+An **Advanced settings** section (collapsed by default) holds the backend API port (default: 3001), web dashboard port (default: 3000), the agent code sandbox toggle, and secret encryption; leave it at the defaults unless you need to change a port or the sandbox. Press the expander to reveal it, then **Continue**.
+
+`synthorg init` generates the required secrets and writes the configuration automatically: `SYNTHORG_JWT_SECRET`, `SYNTHORG_SETTINGS_KEY`, and `SYNTHORG_PAGINATION_CURSOR_SECRET` are always written, and `SYNTHORG_MASTER_KEY` is generated when secret encryption is enabled (the default). Company setup (name, LLM provider, template) happens in the web dashboard after containers start (see [Step 4](#step-4-explore-the-dashboard)).
 
 ---
 
@@ -110,7 +114,7 @@ You should see both containers (`backend` and `web`) reporting healthy.
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-On a fresh install, the **setup wizard** appears. First, **choose a setup mode**: pick **Guided Setup** (the **Quick Setup** path is described below). Guided Setup then steps through:
+On a fresh install with no admin user yet, the **setup wizard** first asks you to **create an admin account** (email and password). After the admin account exists, you **choose a setup mode**: pick **Guided Setup** (the **Quick Setup** path is described below). Guided Setup then steps through:
 
 1. **Select a template**: choose **Solo Builder** (the minimal 2-agent template).
 2. **Add an LLM provider**: enter your provider's API key. Local providers like Ollama are auto-detected.
@@ -142,11 +146,14 @@ Once the wizard completes, the dashboard loads and you will see:
       -H "Authorization: Bearer <your-jwt-token>" \
       -d '{
         "title": "Write a hello world script",
-        "description": "Create a simple Python script that prints hello world"
+        "description": "Create a simple Python script that prints hello world",
+        "type": "development",
+        "project": "<project-id>",
+        "created_by": "<agent-name>"
       }'
     ```
 
-    Replace `<your-jwt-token>` with the JWT from your admin session. See the [REST API Reference](../openapi/index.md) for authentication details.
+    `type`, `project`, and `created_by` are required; the request returns a 422 validation error without them. Fill `project` with an existing project ID and `created_by` with an existing agent name. Replace `<your-jwt-token>` with the JWT from your admin session. See the [REST API Reference](../openapi/index.md) for authentication details.
 
 With a configured provider the agent runtime picks the task up and executes it
 (LLM + sandboxed tools under the safety spine), exercised today by deterministic

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Phase 3 of RFC #1711: lint guard for the typed-boundary contract.
+"""Lint guard for the typed-boundary contract.
 
 The six security-sensitive entry points enumerated below MUST validate
 inbound payloads through :func:`synthorg.core.boundary.parse_typed`. A
 regression here re-introduces a ``dict[str, Any]`` shaped boundary --
-exactly the surface that caused the audit finding behind this RFC.
+exactly the untyped surface this contract exists to forbid.
 
 The checker walks each registered (file, function) pair, finds the
 ``FunctionDef`` (or ``AsyncFunctionDef``) node, and confirms its body
@@ -316,8 +316,8 @@ def main() -> int:
     for line in violations:
         print(f"  {line}", file=sys.stderr)
     print(
-        "\nRFC #1711 requires every registered API boundary to validate "
-        "via synthorg.core.boundary.parse_typed; raw dict access at "
+        "\nEvery registered API boundary must validate via "
+        "synthorg.core.boundary.parse_typed; raw dict access at "
         "these surfaces is the exact regression this gate prevents.",
         file=sys.stderr,
     )

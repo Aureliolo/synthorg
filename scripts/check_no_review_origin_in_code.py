@@ -11,7 +11,8 @@ renumbered:
   ``Round-N`` / ``round-N`` narrative.
 * In-code issue / PR back-references: ``(#NNNN)`` paren-form,
   ``Issue #N``, ``fixes #N``, ``closes #N``, ``see PR #N``,
-  ``as part of #N``, ``GH-NNNN``.
+  ``as part of #N``, ``GH-NNNN``, ``WP-N`` work-package labels, and
+  ``RFC#N`` orphaned planning labels (use the canonical ADR number).
 * Naked ``SEC-N`` taxonomy in ``src/synthorg/`` or ``tests/`` -- the
   canonical home is ``docs/design/`` / ``docs/reference/``; appearing
   unexplained in code wastes the next reader's time.
@@ -80,6 +81,12 @@ _BACKREF_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
     ("pre/post-#N", re.compile(r"\b(?:pre|post)-#\d{2,}", re.IGNORECASE)),
     # GitHub global-id form.
     ("GH-N", re.compile(r"\bGH-\d{3,}\b")),
+    # Internal work-package label (``WP-1``). Unresolvable to any document;
+    # it only means something to whoever lived through that planning cycle.
+    ("WP-N", re.compile(r"\bWP-\d+\b")),
+    # Orphaned RFC label (``RFC#3`` / ``RFC# 3``). There is no rfc-N document;
+    # the canonical reference is the ADR number, which carries the same intent.
+    ("RFC#N", re.compile(r"\bRFC#\s?\d+\b")),
 )
 
 # Naked SEC-N taxonomy. Word boundaries reject ``SEC-1`` inside

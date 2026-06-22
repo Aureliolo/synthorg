@@ -206,8 +206,8 @@
     },
     "src/synthorg/api/lifecycle_runner_shutdown.py": {
       "cap": 500,
-      "loc": 404,
-      "ratio": 0.808,
+      "loc": 420,
+      "ratio": 0.84,
       "tier": "code"
     },
     "src/synthorg/api/lifecycle_runner_startup.py": {
@@ -710,8 +710,8 @@
     },
     "src/synthorg/integrations/oauth/flows/authorization_code.py": {
       "cap": 500,
-      "loc": 402,
-      "ratio": 0.804,
+      "loc": 410,
+      "ratio": 0.82,
       "tier": "code"
     },
     "src/synthorg/integrations/oauth/flows/device_flow.py": {

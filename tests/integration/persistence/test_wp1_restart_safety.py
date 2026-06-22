@@ -1,9 +1,14 @@
-"""Restart-safety integration test for WP-1 persistence.
+"""Restart-safety integration test for the durable state stores.
 
-Per the WP-1 plan: after the four critical state stores
-(ceremony scheduler state, meeting cooldown, tracked containers,
-webhook receipts) gained durable persistence, a process restart
-must rehydrate them from the backend instead of starting from zero.
+The four critical state stores (ceremony scheduler state, meeting
+cooldown, tracked containers, webhook receipts) have durable
+persistence, so a process restart must rehydrate them from the backend
+instead of starting from zero. The three foreign-key-free stores
+(ceremony scheduler state, meeting cooldown, tracked containers) are
+round-tripped through a fresh backend instance here; webhook receipts
+(which require a parent connection) are smoke-checked for wiring, with
+their persistence round-trip covered by the dual-backend conformance
+suite.
 
 A genuine restart cycle requires constructing a *second*
 ``PersistenceBackend`` instance, pointing at the same storage, after
@@ -251,16 +256,18 @@ class TestWP1RestartSafety:
         finally:
             await second.disconnect()
 
-    async def test_all_four_state_stores_independently_recoverable(
+    async def test_durable_state_stores_recoverable_after_restart(
         self,
         backend_factory: BackendFactory,
     ) -> None:
-        """All four WP-1 state stores survive a real restart cycle.
+        """Durable state stores survive a real restart cycle.
 
-        Mirrors the production restart sequence: a process crash
-        leaves all four backends in some persisted state. After
-        restart, each must be queryable on a fresh backend instance
-        without any in-memory carryover.
+        Mirrors the production restart sequence: a process crash leaves
+        the backends in some persisted state. After restart, the three
+        foreign-key-free stores are re-queried on a fresh backend
+        instance without any in-memory carryover; webhook receipts are
+        smoke-checked for wiring (their persistence round-trip is covered
+        by the dual-backend conformance suite).
         """
         first = await backend_factory()
         try:

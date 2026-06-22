@@ -144,6 +144,21 @@ class TestIssueBackRefs:
         issues = _scan(src_dir, "src/synthorg/x.py", "# workaround for GH-1234\n")
         assert any("GH-" in i for i in issues), issues
 
+    def test_wp_dash_n(self, src_dir: Path) -> None:
+        """``WP-1`` work-package labels are unresolvable back-refs."""
+        issues = _scan(src_dir, "src/synthorg/x.py", "# Pre-WP-1 this was lost\n")
+        assert any("WP-N" in i for i in issues), issues
+
+    def test_rfc_hash_n(self, src_dir: Path) -> None:
+        """``RFC#3`` is an orphaned planning label (use the ADR number)."""
+        issues = _scan(src_dir, "src/synthorg/x.py", "# RFC#3 / ADR-0003 actor seam\n")
+        assert any("RFC#N" in i for i in issues), issues
+
+    def test_wp_word_not_flagged(self, src_dir: Path) -> None:
+        """Bare ``WP`` without a digit (e.g. wp-content paths) is allowed."""
+        issues = _scan(src_dir, "src/synthorg/x.py", "# the WP admin endpoint\n")
+        assert issues == [], issues
+
     def test_issue_n_narrative(self, src_dir: Path) -> None:
         issues = _scan(
             src_dir,

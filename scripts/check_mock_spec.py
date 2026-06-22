@@ -9,7 +9,7 @@ return / yield of a function whose return annotation is a concrete
 type. Bare mocks at these sites silently absorb any attribute access:
 production code can rename or drop a method without a single test
 failing because the mock keeps returning a child mock for the missing
-method. This is the "mock drift" finding from issue #1604.
+method. This is the "mock drift" failure mode the gate prevents.
 
 The gate deliberately ignores the lower rungs of the test-double
 ladder (``docs/reference/conventions.md`` section 12.1):

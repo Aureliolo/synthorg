@@ -15,7 +15,7 @@ date: 2026-05-02
 
 ## Bottom line
 
-SynthOrg keeps `psycopg[binary]==3.3.3` and `psycopg-pool==3.3.0` (both LGPL-3.0-or-later) inside the optional `[postgres]` extra. The drivers are linked dynamically, the extra is opt-in, and the BUSL-1.1 narrowed Additional Use Grant does not require redistribution under terms incompatible with LGPL. SQLite remains the default backend for new operators.
+SynthOrg keeps `psycopg[binary]` and `psycopg-pool` (both LGPL-3.0-or-later) inside the optional `[postgres]` extra (the pinned versions shown here are as of the decision date; `pyproject.toml` is authoritative for the current pins). The drivers are linked dynamically, the extra is opt-in, and the BUSL-1.1 narrowed Additional Use Grant does not require redistribution under terms incompatible with LGPL. SQLite remains the default backend for new operators.
 
 ## Context
 

@@ -1,11 +1,11 @@
 # module-kind: adapter
-"""LLM-backed compaction summariser (Phase-2).
+"""LLM-backed semantic compaction summariser.
 
-Replaces the Phase-1 snippet-join text summary with a semantic summary
-produced by a completion provider. Resilience (retry / rate limit) stays
-in the provider base, never here. Any provider failure -- empty content,
-retryable or non-retryable error -- degrades to the Phase-1 text summary
-that the caller passes in, logged as a fallback so the downgrade is never
+Produces a semantic summary via a completion provider in place of the
+snippet-join text summary. Resilience (retry / rate limit) stays in the
+provider base, never here. Any provider failure -- empty content,
+retryable or non-retryable error -- degrades to the text summary that
+the caller passes in, logged as a fallback so the downgrade is never
 silent.
 """
 
@@ -106,7 +106,7 @@ class LLMSummarizer:
 
         Args:
             archivable: The conversation messages being archived.
-            fallback_text: The Phase-1 text summary used on any failure.
+            fallback_text: The text summary used on any failure.
 
         Returns:
             The LLM summary text, or ``fallback_text`` when the provider

@@ -141,6 +141,7 @@ _r.register(
         ),
         group="Model Refresh",
         level=SettingLevel.ADVANCED,
+        restart_required=True,
         min_value=60.0,
         max_value=604800.0,
     )

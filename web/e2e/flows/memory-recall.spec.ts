@@ -29,7 +29,7 @@ test.describe('Memory recall critical flow', () => {
           data: [makeOntologyEntity()],
           error: null,
           error_detail: null,
-          pagination: { total: 1, offset: 0, limit: 50 },
+          pagination: { total: 1, offset: 0, limit: 50, next_cursor: null, has_more: false },
         },
       }),
     )
@@ -63,5 +63,42 @@ test.describe('Memory recall critical flow', () => {
     })
     await page.getByRole('button', { name: /notifications/i }).click()
     await expect(page.getByText('Personality trimmed').first()).toBeVisible()
+  })
+
+  test('filters the catalogue via the entity search box', async ({ page }) => {
+    // Two distinct entities so the client-side search has something to
+    // narrow. This route wins over the single-entity beforeEach stub
+    // (Playwright matches handlers LIFO).
+    await page.route('**/api/v1/ontology/entities**', (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: [
+            makeOntologyEntity({
+              name: 'TaskAssignment',
+              definition: 'A task assigned to an agent.',
+            }),
+            makeOntologyEntity({
+              name: 'BudgetLedger',
+              definition: 'A record of company spend.',
+            }),
+          ],
+          error: null,
+          error_detail: null,
+          pagination: { total: 2, offset: 0, limit: 50, next_cursor: null, has_more: false },
+        },
+      }),
+    )
+
+    await page.goto('/ontology')
+    await expect(page.getByText('TaskAssignment').first()).toBeVisible()
+    await expect(page.getByText('BudgetLedger').first()).toBeVisible()
+
+    // Typing into the search box narrows the catalogue to the matching
+    // entity; the non-matching one drops out of the grid. The filter is
+    // client-side (ontology store ``searchQuery``), so no request fires.
+    await page.getByPlaceholder(/search entities/i).fill('BudgetLedger')
+    await expect(page.getByText('BudgetLedger').first()).toBeVisible()
+    await expect(page.getByText('TaskAssignment')).toHaveCount(0)
   })
 })

@@ -442,7 +442,7 @@ layer on top: analytics is a stateless view over `SignalsService`
 snapshots (single source of truth, no independent cache), and
 reports owns async job lifecycle + artifact storage.
 
-## Open Follow-ups
-
-- MCP handler remaining gaps: tracked in #1528 (CRUD writes) and #1529
-  (observability + memory + coordination), scoped as parallel-safe follow-ups.
+The MCP handler surface for the self-improvement loop is described in
+[MCP Handler Contract](../reference/mcp-handler-contract.md); coverage across
+the CRUD, observability, memory, and coordination domains follows the same
+`ToolHandler` + `args_model` pattern as the rest of the MCP tool surface.

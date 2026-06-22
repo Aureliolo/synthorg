@@ -3,9 +3,9 @@
 The Docker sandbox lifecycle (``src/synthorg/tools/sandbox/``) tracks
 the set of running sandbox containers in a plain ``dict[str, str |
 None]`` (sandbox container id to optional sidecar container id).
-Pre-WP-1 this dict was lost on restart, so a process crash mid-task
-would leave orphan containers running on the Docker daemon with no
-record of who owned them.
+That in-memory dict does not survive a restart on its own, so without
+durable tracking a process crash mid-task would leave orphan containers
+running on the Docker daemon with no record of who owned them.
 
 This repository persists one row per tracked sandbox. On restart the
 sandbox lifecycle calls :func:`reconcile_tracked_containers` (in

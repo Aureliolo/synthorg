@@ -175,6 +175,15 @@ class TestPhaseN:
         )
         assert any("phase" in i.lower() for i in issues), issues
 
+    def test_phase_hyphenated(self, src_dir: Path) -> None:
+        """``Phase-2`` (hyphen separator) is migration framing too."""
+        issues = _scan(
+            src_dir,
+            "src/synthorg/x.py",
+            "# Phase-2: LLM-backed summariser\n",
+        )
+        assert any("phase" in i.lower() for i in issues), issues
+
     def test_phase_no_digit_not_flagged(self, src_dir: Path) -> None:
         """Bare ``Phase`` without digit (domain class names) is allowed."""
         issues = _scan(

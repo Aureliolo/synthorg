@@ -1879,7 +1879,7 @@ CREATE TABLE principle_overrides (
     updated_at TIMESTAMPTZ NOT NULL
 );
 
--- WP-1 restart-safety tables: persist scheduler / cooldown / sandbox
+-- Restart-safety tables: persist scheduler / cooldown / sandbox
 -- state across process restarts. Backed by single-row-per-key
 -- repositories; see the matching ``*_protocol.py`` files for the full
 -- semantics. JSON columns are TEXT (not JSONB) so save/get round-trips

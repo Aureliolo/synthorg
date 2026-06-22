@@ -1,4 +1,4 @@
-"""Error-translation coverage for the WP-1 singleton-per-key sqlite repos.
+"""Error-translation coverage for the singleton-per-key sqlite repos.
 
 ``meeting_cooldown`` / ``tracked_container`` /
 ``ceremony_scheduler_state`` each wrap every method's DB call in the

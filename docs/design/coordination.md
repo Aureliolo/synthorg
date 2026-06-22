@@ -113,8 +113,8 @@ Strategies that only have an error string (`FailAndReassignStrategy`, `Checkpoin
     When resuming from a checkpoint, the agent receives a system message
     informing it of the resume point (turn number) and the error that triggered
     recovery. This reconciliation message allows the agent to review its
-    progress and adapt. Richer reconciliation (e.g. workspace change
-    detection) is planned.
+    progress and adapt. Reconciliation currently conveys the resume point and
+    the triggering error; it does not include workspace change detection.
 
 === "Lightweight Alternative: Session Replay"
 

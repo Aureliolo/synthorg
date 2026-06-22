@@ -44,13 +44,17 @@ sprints:
       auto_transition: false
 ```
 
-The next sprint's scheduler picks up the override at construction. To migrate a running sprint, call:
+A new policy takes effect at the next `activate_sprint`; there is no live-reload method on the scheduler. To apply the override to a running sprint, deactivate and re-activate it through the scheduler on the `EngineStateSlice`:
 
 ```python
-from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler
+from synthorg.engine.state import EngineStateSlice
 
-scheduler: CeremonyScheduler = app_state.ceremony_scheduler
-await scheduler.reload_for_active_sprint()  # reads the updated config
+scheduler = app_state.slice(EngineStateSlice).ceremony_scheduler
+await scheduler.deactivate_sprint()
+# activate_sprint requires the sprint plus its SprintConfig and the
+# CeremonySchedulingStrategy; re-pass the same values the sprint was originally
+# activated with so it re-reads the updated ceremony policy.
+await scheduler.activate_sprint(sprint, config, strategy)
 ```
 
 ## Swap to a different strategy

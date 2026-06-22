@@ -1292,7 +1292,7 @@ class FakePersistenceBackend(PersistenceBackend):
     @override
     @property
     def meeting_cooldown(self) -> AsyncMock:
-        """Cached fake meeting cooldown repository (WP-1)."""
+        """Cached fake meeting cooldown repository."""
         from unittest.mock import AsyncMock
 
         from synthorg.persistence.meeting_cooldown_protocol import (
@@ -1308,7 +1308,7 @@ class FakePersistenceBackend(PersistenceBackend):
     @override
     @property
     def ceremony_scheduler_state(self) -> AsyncMock:
-        """Cached fake ceremony scheduler state repository (WP-1)."""
+        """Cached fake ceremony scheduler state repository."""
         from unittest.mock import AsyncMock
 
         from synthorg.persistence.ceremony_scheduler_state_protocol import (
@@ -1325,7 +1325,7 @@ class FakePersistenceBackend(PersistenceBackend):
     @override
     @property
     def tracked_containers(self) -> AsyncMock:
-        """Cached fake tracked-container repository (WP-1)."""
+        """Cached fake tracked-container repository."""
         from unittest.mock import AsyncMock
 
         from synthorg.persistence.tracked_container_protocol import (

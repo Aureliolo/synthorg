@@ -1,15 +1,10 @@
 package cmd
 
 import (
-	"archive/tar"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"io/fs"
-	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -192,6 +187,20 @@ func (wc *wipeContext) confirmAndWipe() error {
 		wc.out.HintNextStep("Wipe cancelled.")
 		return nil
 	}
+	// Hold the lifecycle lock across BOTH the container teardown and the data
+	// directory removal so a concurrent `synthorg start`/`update` cannot bring
+	// the stack back up (or recreate state) mid-wipe. The lock file is a sibling
+	// of the data dir, so holding it across removeDataDirectory does not block
+	// RemoveAll on Windows.
+	lock, lerr := acquireTeardownLock(wc.ctx, wc.safeDir, wc.errOut)
+	if lerr != nil {
+		return lerr
+	}
+	defer func() {
+		if rerr := lock.Release(); rerr != nil {
+			wc.errOut.Warn(fmt.Sprintf("could not release lifecycle lock: %v", rerr))
+		}
+	}()
 	if err := wc.stopAndPrune(); err != nil {
 		return err
 	}
@@ -227,6 +236,9 @@ func (wc *wipeContext) stopAndPrune() error {
 		wc.out.Step(msgNothingToStop)
 		return nil
 	}
+	// The lifecycle lock that serialises this destructive `compose down -v`
+	// against a concurrent `synthorg start`/`update` is held by the caller
+	// (confirmAndWipe) across the whole wipe, not just this step.
 	downArgs := []string{"down", "-v"}
 	if !wipeKeepImages {
 		downArgs = append(downArgs, "--rmi", "all")
@@ -413,7 +425,15 @@ func (wc *wipeContext) verifyAndPin() error {
 // timeout or the context is cancelled.
 func (wc *wipeContext) waitForBackendHealth() error {
 	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", wc.state.BackendPort)
-	return health.WaitForHealthy(wc.ctx, healthURL, 30*time.Second, 2*time.Second, 5*time.Second)
+	// Use the same readiness-wait budget as start (SYNTHORG_HEALTH_WAIT_TIMEOUT,
+	// default 90s) rather than a hardcoded 30s: a slow first boot (e.g. a large
+	// Postgres migration) can legitimately take longer than 30s, and a shorter
+	// budget here would false-negative a backend that is still coming up.
+	healthTimeout := GetGlobalOpts(wc.ctx).Tunables.HealthWaitTimeout
+	if healthTimeout <= 0 {
+		healthTimeout = config.DefaultHealthWaitTimeout
+	}
+	return health.WaitForHealthy(wc.ctx, healthURL, healthTimeout, 2*time.Second, 5*time.Second)
 }
 
 // offerBackup prompts whether to create a backup, and if so, ensures
@@ -491,12 +511,10 @@ func (wc *wipeContext) ensureRunningForBackup() (bool, error) {
 		return askToSkip("Could not start containers for backup. Continue with wipe anyway?")
 	}
 
-	// Containers just started -- wait for the backend before attempting backup.
-	if err := wc.waitForBackendHealth(); err != nil {
-		wc.errOut.Warn(fmt.Sprintf("Backend not healthy after start: %v", err))
-		return askToSkip("Backend is not healthy. Continue with wipe anyway?")
-	}
-
+	// No second health wait here: startContainers -> pullStartAndWait already
+	// blocks until the backend is healthy, so re-checking with a separate (and
+	// previously shorter) budget could only false-negative a backend that just
+	// reported healthy.
 	return true, nil
 }
 
@@ -666,99 +684,6 @@ func (wc *wipeContext) createAndCopyBackup(savePath string) error {
 	return nil
 }
 
-// createBackupViaAPI triggers a manual backup and returns the manifest.
-func createBackupViaAPI(ctx context.Context, state config.State) (backupManifest, error) {
-	body, statusCode, err := backupAPIRequest(
-		ctx, state.BackendPort, http.MethodPost, "", nil,
-		60*time.Second, state.JWTSecret,
-	)
-	if err != nil {
-		return backupManifest{}, fmt.Errorf("backup API request: %w", err)
-	}
-	if statusCode < 200 || statusCode >= 300 {
-		msg := apiErrorMessage(body, "backup failed")
-		return backupManifest{}, fmt.Errorf("backup API error: %s", sanitizeAPIMessage(msg))
-	}
-
-	data, err := parseAPIResponse(body)
-	if err != nil {
-		return backupManifest{}, fmt.Errorf("parsing backup response: %w", err)
-	}
-
-	var manifest backupManifest
-	if err := json.Unmarshal(data, &manifest); err != nil {
-		return backupManifest{}, fmt.Errorf("parsing backup manifest: %w", err)
-	}
-	return manifest, nil
-}
-
-// copyBackupFromContainer copies the backup archive from the backend
-// container to a local path. It tries the compressed archive first,
-// then falls back to the uncompressed directory.
-func copyBackupFromContainer(ctx context.Context, info docker.Info, safeDir, backupID, localPath string) error {
-	// Validate backup ID format (12 hex chars).
-	if !isValidBackupID(backupID) {
-		return fmt.Errorf("invalid backup ID: %s", backupID)
-	}
-
-	// Try compressed archive first (default). If the compressed file
-	// does not exist, docker compose cp fails and we fall back to the
-	// uncompressed directory below. Log the first error for diagnostics.
-	archiveName := backupID + "_manual.tar.gz"
-	containerSrc := "backend:/data/backups/" + archiveName
-	firstErr := composeRunQuiet(ctx, info, safeDir, "cp", containerSrc, localPath)
-	if firstErr == nil {
-		return nil
-	}
-
-	// Fall back to uncompressed directory -- the compressed archive may
-	// not exist depending on the backup handler. Log the first attempt
-	// error for diagnostics in case the fallback also fails.
-	_, _ = fmt.Fprintf(os.Stderr, "compressed archive not available (%v), trying uncompressed directory\n", firstErr)
-	dirName := backupID + "_manual"
-	containerSrc = "backend:/data/backups/" + dirName + "/."
-	tmpDir, mkErr := os.MkdirTemp("", "synthorg-backup-*")
-	if mkErr != nil {
-		return fmt.Errorf("creating temp dir: %w", mkErr)
-	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
-
-	if err := composeRunQuiet(ctx, info, safeDir, "cp", containerSrc, tmpDir+"/"); err != nil {
-		return fmt.Errorf("copying backup from container: %w", err)
-	}
-
-	// The user expects a single file at localPath.
-	return tarDirectory(tmpDir, localPath)
-}
-
-// tarDirectory creates a tar.gz archive of the contents of srcDir at dstPath.
-func tarDirectory(srcDir, dstPath string) error {
-	entries, err := os.ReadDir(srcDir)
-	if err != nil {
-		return fmt.Errorf("reading backup dir: %w", err)
-	}
-	if len(entries) == 0 {
-		return fmt.Errorf("backup directory is empty")
-	}
-
-	dstPath = filepath.Clean(dstPath)
-	f, err := os.OpenFile(dstPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
-	if err != nil {
-		return fmt.Errorf("creating archive: %w", err)
-	}
-
-	if err := createTarGz(f, srcDir); err != nil {
-		_ = f.Close()
-		_ = os.Remove(dstPath)
-		return err
-	}
-	if err := f.Close(); err != nil {
-		_ = os.Remove(dstPath)
-		return fmt.Errorf("finalising archive: %w", err)
-	}
-	return nil
-}
-
 // askContinueWithoutBackup prompts whether to proceed with the wipe even
 // though the backup could not be created. The title parameter customises
 // the prompt to match the reason (e.g. user declined, Docker unreachable,
@@ -809,90 +734,6 @@ func isEmptyPS(output string) (bool, error) {
 	}
 	// NDJSON: any non-empty line means at least one container.
 	return false, nil
-}
-
-// createTarGz writes a gzip-compressed tar archive of srcDir's contents to w.
-// Symlinks are skipped to prevent following links outside the source directory.
-func createTarGz(w io.Writer, srcDir string) error {
-	gw := gzip.NewWriter(w)
-	tw := tar.NewWriter(gw)
-
-	walkErr := filepath.WalkDir(srcDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.Type()&fs.ModeSymlink != 0 {
-			return nil // skip symlinks
-		}
-		rel, err := filepath.Rel(srcDir, path)
-		if err != nil {
-			return err
-		}
-		if rel == "." {
-			return nil
-		}
-		return writeTarEntry(tw, path, rel, d)
-	})
-
-	// Close tar then gzip; errors.Join reports all errors.
-	errTar := tw.Close()
-	errGzip := gw.Close()
-	return errors.Join(walkErr, errTar, errGzip)
-}
-
-// writeTarEntry writes a single directory or file entry into the tar writer.
-// It normalizes the path, validates against traversal, and strips host identity.
-func writeTarEntry(tw *tar.Writer, path, rel string, d fs.DirEntry) error {
-	fi, err := d.Info()
-	if err != nil {
-		return fmt.Errorf("stat %s: %w", rel, err)
-	}
-
-	header, err := tar.FileInfoHeader(fi, "")
-	if err != nil {
-		return fmt.Errorf("creating tar header for %s: %w", rel, err)
-	}
-
-	// Normalize path and validate against traversal.
-	cleanRel := filepath.ToSlash(filepath.Clean(rel))
-	if strings.HasPrefix(cleanRel, "..") {
-		return fmt.Errorf("refusing to archive path with traversal component: %s", rel)
-	}
-	header.Name = cleanRel
-
-	// Strip host identity to avoid information disclosure and permission
-	// mismatch when the archive is restored on a different machine.
-	header.Uid = 0
-	header.Gid = 0
-	header.Uname = ""
-	header.Gname = ""
-
-	if err := tw.WriteHeader(header); err != nil {
-		return fmt.Errorf("writing tar header for %s: %w", rel, err)
-	}
-
-	if d.IsDir() {
-		return nil
-	}
-
-	return addFileToTar(tw, path, rel)
-}
-
-// addFileToTar copies a single file into the tar writer.
-func addFileToTar(tw *tar.Writer, path, rel string) error {
-	f, err := os.Open(path) //nolint:gosec // G304: path comes from the filepath.Walk over the data-dir backup root, not external input
-	if err != nil {
-		return fmt.Errorf("opening %s: %w", rel, err)
-	}
-
-	_, copyErr := io.Copy(tw, f)
-	if err := f.Close(); err != nil && copyErr == nil {
-		return fmt.Errorf("closing %s: %w", rel, err)
-	}
-	if copyErr != nil {
-		return fmt.Errorf("writing %s to archive: %w", rel, copyErr)
-	}
-	return nil
 }
 
 // isUserAbort returns true if the error is a huh user-abort (Ctrl-C/Esc).

@@ -21,9 +21,8 @@
 #     or `repo` (classic PAT).
 #   - jq >= 1.6 and yq (Mike Farah's Go yq) >= 4.0 on PATH.
 #
-# Follow-up: promote this from CI continue-on-error to blocking once
-# the spec has survived 30 days of zero-drift runs (tracked in the
-# initial PR #1555).
+# This runs as a CI continue-on-error advisory; promote it to blocking
+# once the spec has demonstrated a sustained zero-drift run history.
 
 set -euo pipefail
 

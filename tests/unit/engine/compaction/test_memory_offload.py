@@ -1,4 +1,4 @@
-"""Unit tests for the Phase-2 compaction memory offloader."""
+"""Unit tests for the semantic compaction memory offloader."""
 
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock

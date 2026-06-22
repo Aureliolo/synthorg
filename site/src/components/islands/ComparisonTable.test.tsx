@@ -24,7 +24,7 @@ const competitors: Competitor[] = [
     category: "framework",
     is_synthorg: true,
     features: {
-      memory: { support: "full", note: "5 memory types" },
+      memory: { support: "full", note: "8 memory categories" },
       tool_use: { support: "full", note: "MCP protocol" },
     },
   },

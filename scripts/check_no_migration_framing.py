@@ -29,9 +29,10 @@ recurring shapes:
   ``wrapped``, ``emitted``, ``inlined``, ``extracted``, ``routed``,
   ``handled`` -- "as originally promised" framing that pins prose to
   a long-gone earlier version of the code.
-* ``Phase \\d+`` and ``phase \\d+`` -- ordinal pipeline numbering
-  couples to a specific shape; semantic names (``decompose``,
-  ``route``, ``dispatch``) survive insertions / reorders.
+* ``Phase \\d+`` / ``phase \\d+`` / ``Phase-\\d+`` (space or hyphen
+  separator) -- ordinal pipeline numbering couples to a specific shape;
+  semantic names (``decompose``, ``route``, ``dispatch``) survive
+  insertions / reorders.
 * ``Round-\\d+ fix`` / ``round-\\d+ review`` -- round numbering is
   feedback-loop scaffolding that means nothing once a feature ships.
 
@@ -76,9 +77,11 @@ _FRAMING_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
     # contexts (``CoordinationPhaseResult`` -- the bare word ``Phase``
     # has no digit after, so the digit requirement already catches it,
     # but the lookbehind keeps belt+braces).
+    # Both the space-separated (``Phase 2``) and hyphenated (``Phase-2``)
+    # ordinal forms; the hyphenated variant slips through a bare ``\s+``.
     (
         "Phase N",
-        re.compile(r"(?<![A-Za-z0-9_])phase\s+\d+", re.IGNORECASE),
+        re.compile(r"(?<![A-Za-z0-9_])phase[\s-]+\d+", re.IGNORECASE),
     ),
     # ``Round-\d+ fix`` / ``round-\d+ review`` narrative. The dashed
     # form is unambiguous (verb ``round`` never carries a dash).

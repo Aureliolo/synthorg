@@ -107,11 +107,12 @@ payload. It extends `StructuredArtifact` (shared base with
 `ApprovalItem.evidence_package` (optional) carries the package; existing
 approval paths can adopt incrementally.
 
-**Quantum-safe signing**: High-risk `EvidencePackage` approvals
+**Threshold signing**: High-risk `EvidencePackage` approvals
 (`risk_level >= HIGH`) use m-of-n threshold signing via the
-[Quantum-Safe Audit Trail](security.md#quantum-safe-audit-trail).
-`EvidencePackageSignature` carries ML-DSA-65 signatures; the
-`is_fully_signed` computed field checks the threshold.
+[Signed Audit Trail](security.md#signed-audit-trail).
+`EvidencePackageSignature.algorithm` is Ed25519 (the baseline signing
+arm; the `ml-dsa-65` value reserves the future quantum-safe arm), and the
+`is_fully_signed` computed field checks the `signature_threshold`.
 See `src/synthorg/observability/audit_chain/` for the signing
 infrastructure.
 

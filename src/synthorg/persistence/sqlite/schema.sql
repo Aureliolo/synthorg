@@ -1938,7 +1938,7 @@ CREATE TABLE principle_overrides (
     updated_at TEXT NOT NULL CHECK (LENGTH(TRIM(updated_at)) > 0)
 );
 
--- WP-1 restart-safety tables: persist scheduler / cooldown / sandbox
+-- Restart-safety tables: persist scheduler / cooldown / sandbox
 -- state across process restarts. Backed by single-row-per-key
 -- repositories; see the matching ``*_protocol.py`` files for the full
 -- semantics.

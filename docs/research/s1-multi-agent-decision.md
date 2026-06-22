@@ -129,7 +129,7 @@ Paper 3 challenges multi-agent's value claim by showing single-agent matches or 
 - `AssumptionViolationMiddleware`: **IMPLEMENTED** as agent middleware (`after_model`) in `engine/middleware/s1_constraints.py`.
 - Pre-decomposition clarification gate: **IMPLEMENTED** as coordination middleware (`before_decompose`) in `engine/middleware/s1_constraints.py`.
 - Delegation-chain content hash: **IMPLEMENTED** as agent middleware (`before_agent`) in `engine/middleware/s1_constraints.py`.
-- `EvidenceWeightedSynthesizer`: not yet implemented (unblocked; R2 verification stages landed in [#1262](https://github.com/Aureliolo/synthorg/issues/1262)).
+- `EvidenceWeightedSynthesizer`: not implemented. The current synthesizer weights positions equally; evidence-weighted synthesis is a known limitation rather than a wired component.
 
 ---
 

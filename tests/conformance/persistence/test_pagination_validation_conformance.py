@@ -1,6 +1,6 @@
 """Cross-repo conformance: ``list_items`` pagination validation.
 
-The WP-1 rollout routes every paginated repository ``list_items`` through
+Every paginated repository ``list_items`` routes through
 ``validate_pagination_args``, which rejects out-of-range pagination with
 a domain ``QueryError`` rather than returning ``()`` or hitting the DB.
 This module exercises that single reject branch across every touched

@@ -190,7 +190,7 @@ class TestBackupComponentDispatch:
         ``SYNTHORG_CONFIG_PATH`` is read exactly once at app boot
         (``api/app.py``) and the resolved ``Path`` is threaded in as
         ``resolved_config_path`` -- this module never re-reads the env
-        var (config-soup dedupe, RFC#4 section 6).
+        var (single config-path read, no env re-reads in this module).
         """
         config = RootConfig(company_name="test-co")
         backup_config = BackupConfig(include=(BackupComponent.CONFIG,))

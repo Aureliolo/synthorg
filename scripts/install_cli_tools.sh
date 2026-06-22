@@ -592,7 +592,24 @@ sync_vale_packages() {
   fi
 
   echo "Running vale sync (populates StylesPath with packages declared in .vale.ini)..."
-  ( cd "${repo_root}" && "${vale_bin}" sync )
+  # `vale sync` downloads the Google style package from a CDN (jsdelivr); a
+  # single 5xx there should not fail the whole install/CI step. Retry up to 3
+  # times with a short backoff, mirroring the curl --retry pattern used for the
+  # binary downloads above (vale sync is not curl, so the loop is explicit).
+  local sync_attempt
+  for sync_attempt in 1 2 3; do
+    if ( cd "${repo_root}" && "${vale_bin}" sync ); then
+      return 0
+    fi
+    # Only back off BETWEEN attempts; after the 3rd (final) failure fall
+    # straight through to the error below instead of sleeping pointlessly.
+    if [ "${sync_attempt}" -lt 3 ]; then
+      echo "warning: vale sync failed (attempt ${sync_attempt}/3); retrying in 10s..." >&2
+      sleep 10
+    fi
+  done
+  echo "error: vale sync failed after 3 attempts" >&2
+  return 1
 }
 
 # ---------------------------------------------------------------------------

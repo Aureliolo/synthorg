@@ -94,7 +94,8 @@ a bidirectional reference for the gateway translation layer.
 | `IN_PROGRESS` | `working` | Bidirectional | Active execution |
 | `IN_REVIEW` | `working` | SynthOrg -> A2A | Internal review stage, opaque externally |
 | `BLOCKED` | `input-required` | Bidirectional | Waiting for external input |
-| `SUSPENDED` | `input-required` | SynthOrg -> A2A | Approval-parked tasks |
+| `AUTH_REQUIRED` | `auth-required` | SynthOrg -> A2A | Mid-execution approval park; returns to `ASSIGNED` on approval, `CANCELLED` on timeout |
+| `SUSPENDED` | `input-required` | SynthOrg -> A2A | Checkpointed (graceful-shutdown) tasks; resume from checkpoint returns to `ASSIGNED` |
 | `INTERRUPTED` | `failed` | SynthOrg -> A2A | Interrupted execution; externally indistinguishable from failure |
 | `COMPLETED` | `completed` | Bidirectional | Successful completion |
 | `FAILED` | `failed` | Bidirectional | Unrecoverable failure |
@@ -105,7 +106,7 @@ a bidirectional reference for the gateway translation layer.
 
 | SynthOrg Verdict | A2A State | Direction | Notes |
 |------------------|-----------|-----------|-------|
-| Approval gate `ESCALATED` | `auth-required` | SynthOrg -> A2A | Gateway maps ESCALATED verdict to A2A auth-required; external client must provide additional credentials |
+| Verdict `ESCALATED` | `auth-required` | SynthOrg -> A2A | The `ESCALATED` verdict is what parks the task in the `AUTH_REQUIRED` state above; both surface to A2A as `auth-required` (one is the task state, this row is the verdict that produces it). External client must provide additional credentials |
 
 ### Identity Mapping
 

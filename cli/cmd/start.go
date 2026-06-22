@@ -16,6 +16,7 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
 	"github.com/Aureliolo/synthorg/cli/internal/health"
+	"github.com/Aureliolo/synthorg/cli/internal/runlock"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/Aureliolo/synthorg/cli/internal/verify"
 	"github.com/Aureliolo/synthorg/cli/internal/version"
@@ -78,13 +79,34 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	if err := assertComposeExists(safeDir); err != nil {
-		return err
-	}
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 	if startDryRun {
-		return printStartDryRun(out, state, opts)
+		// Dry run only previews; validate compose existence for an accurate
+		// preview but take no lock (it mutates nothing, so there is no race).
+		if err := assertComposeExists(safeDir); err != nil {
+			return err
+		}
+		printStartDryRun(out, state, opts)
+		return nil
+	}
+	// Hold the lifecycle lock across the whole start so a concurrent stop or
+	// update-restart cannot race `compose up -d` on the same named volumes.
+	lock, err := runlock.Acquire(ctx, safeDir)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if rerr := lock.Release(); rerr != nil {
+			errOut.Warn(fmt.Sprintf("could not release lifecycle lock: %v", rerr))
+		}
+	}()
+	// Validate compose existence AFTER acquiring the lock so the check and the
+	// subsequent `compose up` happen atomically inside the critical section: a
+	// concurrent wipe/uninstall cannot delete compose.yml between the check and
+	// the up (it would block on this same lock until the start completes).
+	if err := assertComposeExists(safeDir); err != nil {
+		return err
 	}
 	return startContainers(ctx, cmd, state, safeDir, out, errOut, healthTimeout)
 }
@@ -180,7 +202,7 @@ func validateStartFlags(cmd *cobra.Command) error {
 	return nil
 }
 
-func printStartDryRun(out *ui.UI, state config.State, opts *GlobalOpts) error {
+func printStartDryRun(out *ui.UI, state config.State, opts *GlobalOpts) {
 	out.KeyValue("Image tag", state.ImageTag)
 	out.KeyValue("Backend port", strconv.Itoa(state.BackendPort))
 	out.KeyValue("Web port", strconv.Itoa(state.WebPort))
@@ -195,7 +217,6 @@ func printStartDryRun(out *ui.UI, state config.State, opts *GlobalOpts) error {
 	} else {
 		out.HintNextStep("Remove --dry-run to start the stack")
 	}
-	return nil
 }
 
 func startContainers(ctx context.Context, cmd *cobra.Command, state config.State, safeDir string, out, errOut *ui.UI, healthTimeout time.Duration) error {

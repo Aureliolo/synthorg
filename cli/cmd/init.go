@@ -1,20 +1,16 @@
 package cmd
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
-	"github.com/Aureliolo/synthorg/cli/internal/compose"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
+	"github.com/Aureliolo/synthorg/cli/internal/docker"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/Aureliolo/synthorg/cli/internal/version"
 	"github.com/spf13/cobra"
@@ -126,6 +122,18 @@ func runInitInteractive(cmd *cobra.Command, out *ui.UI) error {
 	hintAfterInit(out, state)
 
 	if result.startNow {
+		// Pre-flight Docker reachability before re-exec'ing start. Without
+		// this, an unreachable daemon surfaces as a start failure printed
+		// after the "initialized" banner and config summary, implying the
+		// auto-start was expected to succeed. Probing here lets us degrade to
+		// a clear "run start once Docker is running" hint while still leaving
+		// init reported as successful.
+		if _, derr := docker.Detect(cmd.Context()); derr != nil {
+			out.Blank()
+			out.Warn(fmt.Sprintf("Docker is not available, so the stack was not started: %v", derr))
+			out.Section("Next: start Docker, then run 'synthorg start'")
+			return nil
+		}
 		out.Blank()
 		_ = os.Setenv("SYNTHORG_NO_LOGO", "1")
 		cmd.Root().SetArgs([]string{"start"})
@@ -587,269 +595,4 @@ func runInteractiveInit(_ *cobra.Command, opts *GlobalOpts) (*interactiveResult,
 		return nil, nil
 	}
 	return buildInteractiveResult(final, defaults)
-}
-
-// setupDockerSockConfig validates the host Docker socket path and captures
-// the owning GID so the compose template can render “group_add“ for the
-// backend. Returns “-1“ for the GID when detection is not applicable
-// (Windows named pipe, socket missing).
-func setupDockerSockConfig(sandbox bool, dockerSock string) (string, int, error) {
-	sock := strings.TrimSpace(dockerSock)
-	if !sandbox {
-		return sock, -1, nil
-	}
-	if err := validateDockerSock(sock); err != nil {
-		return "", -1, err
-	}
-	gid := -1
-	if detected, ok := config.DetectDockerSockGID(sock); ok {
-		gid = detected
-	}
-	return sock, gid, nil
-}
-
-// setupPostgresConfig validates Postgres port collisions and generates
-// a random password when the selected backend is “postgres“. Returns
-// “(0, "", nil)“ for non-postgres backends so the State zero values
-// are serialized cleanly.
-func setupPostgresConfig(a setupAnswers, backendPort, webPort int) (int, string, error) {
-	if a.persistenceBackend != "postgres" {
-		return 0, "", nil
-	}
-	port := a.postgresPort
-	if port == 0 {
-		port = config.DefaultState().PostgresPort
-	}
-	// Validate the RESOLVED port against backend/web ports. The CLI-flag
-	// check in validateInitFlags only fires when --postgres-port is
-	// explicit; the default 3002 can still collide if the user set
-	// --backend-port 3002 (or similar).
-	if port == backendPort {
-		return 0, "", fmt.Errorf(
-			"postgres port %d conflicts with backend port %d", port, backendPort,
-		)
-	}
-	if port == webPort {
-		return 0, "", fmt.Errorf(
-			"postgres port %d conflicts with web port %d", port, webPort,
-		)
-	}
-	pw, err := compose.GeneratePassword(32)
-	if err != nil {
-		return 0, "", fmt.Errorf("generating postgres password: %w", err)
-	}
-	return port, pw, nil
-}
-
-// resolvedInitInputs bundles the validated and derived values buildState
-// needs to assemble the persisted State. Extracting it keeps both the
-// resolution step and the assembly step within the function-size budget.
-type resolvedInitInputs struct {
-	dir              string
-	backendPort      int
-	webPort          int
-	dockerSock       string
-	dockerSockGID    int
-	jwtSecret        string
-	settingsKey      string
-	masterKey        string
-	cursorSecret     string
-	imageTag         string
-	channel          string
-	busBackend       string
-	postgresPort     int
-	postgresPassword string
-}
-
-// resolveInitInputs validates and derives every value buildState assembles
-// into the persisted State (ports, secrets, docker socket, postgres, and the
-// channel/bus/image-tag defaults).
-func resolveInitInputs(a setupAnswers) (resolvedInitInputs, error) {
-	dir := strings.TrimSpace(a.dir)
-	if !filepath.IsAbs(dir) {
-		return resolvedInitInputs{}, fmt.Errorf("data directory must be an absolute path, got %q", dir)
-	}
-	backendPort, err := parsePort(a.backendPortStr, "backend")
-	if err != nil {
-		return resolvedInitInputs{}, err
-	}
-	webPort, err := parsePort(a.webPortStr, "web")
-	if err != nil {
-		return resolvedInitInputs{}, err
-	}
-	dockerSock, dockerSockGID, err := setupDockerSockConfig(a.sandbox, a.dockerSock)
-	if err != nil {
-		return resolvedInitInputs{}, err
-	}
-	jwtSecret, settingsKey, masterKey, cursorSecret, err := generateInitSecrets()
-	if err != nil {
-		return resolvedInitInputs{}, err
-	}
-	channel := "stable"
-	if a.channel != "" {
-		channel = a.channel
-	}
-	busBackend := a.busBackend
-	if busBackend == "" {
-		busBackend = "internal"
-	}
-	postgresPort, postgresPassword, err := setupPostgresConfig(a, backendPort, webPort)
-	if err != nil {
-		return resolvedInitInputs{}, err
-	}
-	return resolvedInitInputs{
-		dir: dir, backendPort: backendPort, webPort: webPort,
-		dockerSock: dockerSock, dockerSockGID: dockerSockGID,
-		jwtSecret: jwtSecret, settingsKey: settingsKey, masterKey: masterKey, cursorSecret: cursorSecret,
-		imageTag: resolveImageTag(a.imageTag), channel: channel, busBackend: busBackend,
-		postgresPort: postgresPort, postgresPassword: postgresPassword,
-	}, nil
-}
-
-func buildState(a setupAnswers) (config.State, error) {
-	r, err := resolveInitInputs(a)
-	if err != nil {
-		return config.State{}, err
-	}
-	return config.State{
-		DataDir:            r.dir,
-		ImageTag:           r.imageTag,
-		Channel:            r.channel,
-		BackendPort:        r.backendPort,
-		WebPort:            r.webPort,
-		Sandbox:            a.sandbox,
-		DockerSock:         r.dockerSock,
-		DockerSockGID:      r.dockerSockGID,
-		LogLevel:           a.logLevel,
-		JWTSecret:          r.jwtSecret,
-		SettingsKey:        r.settingsKey,
-		MasterKey:          r.masterKey,
-		CursorSecret:       r.cursorSecret,
-		EncryptSecrets:     a.encryptSecrets,
-		PersistenceBackend: a.persistenceBackend,
-		MemoryBackend:      a.memoryBackend,
-		BusBackend:         r.busBackend,
-		NatsClientPort:     config.DefaultState().NatsClientPort,
-		PostgresPort:       r.postgresPort,
-		PostgresPassword:   r.postgresPassword,
-		TelemetryOptIn:     a.telemetryOptIn,
-		FineTuning:         a.fineTuning,
-		FineTuningVariant:  a.fineTuneVariant,
-	}, nil
-}
-
-// writeInitFiles creates the data directory, generates compose.yml, and saves
-// config. Returns the sanitized data directory path.
-func writeInitFiles(state config.State) (string, error) {
-	safeDir, err := config.SecurePath(state.DataDir)
-	if err != nil {
-		return "", err
-	}
-	state.DataDir = safeDir // normalize before persisting
-	if err := os.MkdirAll(safeDir, 0o700); err != nil {
-		return "", fmt.Errorf("creating data directory: %w", err)
-	}
-
-	params, err := compose.ParamsFromState(state)
-	if err != nil {
-		return "", fmt.Errorf("building compose params: %w", err)
-	}
-	composeYAML, err := compose.Generate(params)
-	if err != nil {
-		return "", fmt.Errorf("generating compose file: %w", err)
-	}
-
-	if err := compose.WriteComposeAndNATS("compose.yml", composeYAML, state.BusBackend, safeDir); err != nil {
-		return "", fmt.Errorf("writing compose files: %w", err)
-	}
-
-	if err := config.Save(state); err != nil {
-		return "", fmt.Errorf("saving config: %w", err)
-	}
-	return safeDir, nil
-}
-
-// resolveImageTag returns the image tag to use: the override if set,
-// the CLI version, or "latest" for dev builds.
-func resolveImageTag(override string) string {
-	if override != "" {
-		return override
-	}
-	if v := version.Version; v != "" && v != "dev" {
-		return v
-	}
-	return "latest"
-}
-
-// generateInitSecrets creates the JWT, settings encryption, secret-storage
-// master, and pagination cursor signing keys. The settings key and master
-// key are 32 bytes (44-char URL-safe base64) each, matching the format
-// required by Python cryptography.fernet.Fernet. Do NOT change byte counts.
-// The cursor secret is 32 bytes (well above the backend's 16-byte minimum)
-// so the boot guard accepts it unconditionally on every channel.
-func generateInitSecrets() (jwtSecret, settingsKey, masterKey, cursorSecret string, err error) {
-	jwtSecret, err = generateSecret(48)
-	if err != nil {
-		return "", "", "", "", fmt.Errorf("generating JWT secret: %w", err)
-	}
-	settingsKey, err = generateSecret(32)
-	if err != nil {
-		return "", "", "", "", fmt.Errorf("generating settings encryption key: %w", err)
-	}
-	// Route the master key through the shared generator so init, config
-	// set, and config import all produce the same Fernet key format.
-	masterKey, err = config.GenerateMasterKey()
-	if err != nil {
-		return "", "", "", "", fmt.Errorf("generating secret master key: %w", err)
-	}
-	cursorSecret, err = generateSecret(32)
-	if err != nil {
-		return "", "", "", "", fmt.Errorf("generating pagination cursor secret: %w", err)
-	}
-	return jwtSecret, settingsKey, masterKey, cursorSecret, nil
-}
-
-func validateDockerSock(path string) error {
-	if !filepath.IsAbs(path) && !strings.HasPrefix(path, "//") {
-		return fmt.Errorf("docker socket must be an absolute path, got %q", path)
-	}
-	if strings.ContainsAny(path, "\"'`$\n\r{}[]") {
-		return fmt.Errorf("docker socket path %q contains unsafe characters", path)
-	}
-	return nil
-}
-
-func defaultDockerSock() string {
-	if runtime.GOOS == "windows" {
-		return "//./pipe/docker_engine"
-	}
-	return "/var/run/docker.sock"
-}
-
-func generateSecret(n int) (string, error) {
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return base64.URLEncoding.EncodeToString(b), nil
-}
-
-// fileExists reports whether the given path exists on disk.
-// The path must be absolute; relative paths are treated as non-existent.
-func fileExists(path string) bool {
-	safe, err := config.SecurePath(path)
-	if err != nil {
-		return false
-	}
-	_, err = os.Stat(safe)
-	return err == nil
-}
-
-func parsePort(s, name string) (int, error) {
-	s = strings.TrimSpace(s)
-	n, err := strconv.Atoi(s)
-	if err != nil || n < 1 || n > 65535 {
-		return 0, fmt.Errorf("invalid %s port: %q (must be 1-65535)", name, s)
-	}
-	return n, nil
 }

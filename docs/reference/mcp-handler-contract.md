@@ -28,9 +28,9 @@ async def list_tasks_handler(*, app_state, arguments: dict[str, object], actor=N
     return ok(data=...)
 ```
 
-Tools without an `args_model` (legacy / dynamically-shaped tools such as `MCPBridgeTool`) keep the manual `common_args` validation path described below.
+Tools without an `args_model` (dynamically-shaped tools such as `MCPBridgeTool`) use the manual `common_args` validation path described below.
 
-## Argument validation (legacy `common_args` path)
+## Argument validation (dynamic `common_args` path)
 
 ## Shared helper modules
 

@@ -16,13 +16,17 @@ graph LR
     User["Browser"]
     Web["web<br/><small>caddy:8080</small><br/><small>UID 65532</small>"]
     Backend["backend<br/><small>uvicorn:3001</small><br/><small>UID 65532</small>"]
-    Volume["synthorg-data<br/><small>SQLite + Memory</small>"]
+    Volume["synthorg-data<br/><small>Files + Memory (+ SQLite)</small>"]
+    Postgres["postgres<br/><small>:5432</small><br/><small>synthorg-pgdata</small>"]
 
     User -->|":3000"| Web
     Web -->|"/api/* proxy"| Backend
     Web -->|"/api/v1/ws proxy"| Backend
     Backend --> Volume
+    Backend -->|"bundled default"| Postgres
 ```
+
+The `synthorg-data` volume holds logs, artifacts, and agent memory (and the SQLite database file when SQLite is the backend). The bundled `docker/compose.yml` ships Postgres on a separate `synthorg-pgdata` volume; SQLite deployments omit the Postgres service.
 
 | Container | Image | Purpose |
 |-----------|-------|---------|
@@ -91,7 +95,7 @@ These environment variables are read by the code but were previously undocumente
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SYNTHORG_DATABASE_URL` | *(unset)* | Postgres connection URL (e.g. `postgres://user:pass@host:5432/synthorg`). Setting this switches the persistence backend from SQLite to Postgres regardless of `SYNTHORG_PERSISTENCE_BACKEND`. Query parameters are **not** supported in this URL; `_postgres_config_from_url()` rejects them up front; route `sslmode` overrides through `SYNTHORG_POSTGRES_SSL_MODE` instead. |
-| `SYNTHORG_POSTGRES_SSL_MODE` | `require` | Override Postgres SSL mode (`disable`, `require`, `verify-ca`, `verify-full`). When unset, the default comes from `PostgresConfig.ssl_mode` (`"require"`), which rejects plaintext connections. |
+| `SYNTHORG_POSTGRES_SSL_MODE` | `require` | Override Postgres SSL mode (`disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full`). When unset, the default comes from `PostgresConfig.ssl_mode` (`"require"`), which rejects plaintext connections. |
 | `SYNTHORG_NATS_URL` | `nats://nats:4222` | NATS server URL for the distributed task queue. Required when `queue.enabled=true`. Must use `nats://`, `tls://`, or `nats+tls://`. |
 | `SYNTHORG_NATS_STREAM_PREFIX` | `SYNTHORG` | JetStream stream name prefix. The bus stream is `<prefix>_BUS`; the KV bucket is `<prefix>_BUS_CHANNELS`. |
 | `SYNTHORG_ARTIFACT_DIR` | `/data` (Postgres) or DB path directory (SQLite) | Filesystem path for artifact storage. Container deployments usually bind-mount this. |

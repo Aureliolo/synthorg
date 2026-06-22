@@ -67,6 +67,7 @@ flowchart LR
 src/synthorg/knowledge/
   models.py          KnowledgeSource, KnowledgeChunk, ProvenanceLocator union,
                      Citation, KnowledgeHit, RawDocument / RawUnit
+  enums.py           SourceType + retrieval / chunker enums
   config.py          KnowledgeConfig + loader / chunker discriminators
   constants.py       namespace, system agent id, tag prefixes, chunk budgets
   errors.py          KnowledgeError family (DomainError subclasses)
@@ -89,6 +90,8 @@ src/synthorg/knowledge/
   service.py         KnowledgeService
   factory.py         build_knowledge_service -> KnowledgeRuntime
   tool_factory.py    KnowledgeToolFactory (per-task agent tools)
+  state.py           KnowledgeStateSlice (AppState wiring)
+  feature.py         feature manifest (construction wirer, MCP contribution)
 ```
 
 ## Data model
@@ -162,7 +165,7 @@ Every loader satisfies the `SourceLoader` protocol
 | `PdfLoader` | `PDF`, `DESIGN_DOC` | pdfplumber per page (parsing offloaded to a worker thread); one `RawUnit` per page with a `PdfLocator(page, char offsets)`. Citations resolve to the page; word-level `bbox` refinement is a planned follow-up (the field exists, unset today). |
 | `WebLoader` | `WEB` | Fetches via an injected `HtmlFetcher` (the factory wires one on the governed HTTP path: network policy, SSRF, DNS pinning), sanitises with `HTMLParseGuard` to strip scripts and hidden-injection vectors, and emits one `DOCUMENT` unit with a `WebLocator`. |
 | `RepoLoader` | `REPO` | Walks the local repo tree deterministically, skips VCS-internal / vendored / binary / oversized files, and emits one `CODE` unit per text file with a `CodeLocator` (repo-relative path + line span). |
-| `TicketLoader` | `TICKET` | Live fetch routes through the merged governed external-API access tool (#1991). Transport wiring is staged after the MVP corpus, so the loader currently raises `KnowledgeSourceUnavailableError` rather than degrade silently. |
+| `TicketLoader` | `TICKET` | Live fetch routes through the governed external-API access tool. Transport wiring is not yet implemented, so the loader raises `KnowledgeSourceUnavailableError` rather than degrading silently. |
 
 PDF support is **pdfplumber** (MIT). pymupdf is deliberately excluded: its AGPL
 licence is incompatible with the project's BUSL-to-Apache model.
@@ -280,8 +283,8 @@ Agent tools (in-process, per-task binding):
 
 MCP handlers (operator-driven, `meta/mcp/domains/knowledge.py`):
 
-- `knowledge:search` (read capability)
-- `knowledge:ingest`, `knowledge:reindex` (admin capability, guardrail triple)
+- `knowledge:search`, `knowledge:list`, `knowledge:get` (read capability)
+- `knowledge:ingest`, `knowledge:reindex`, `knowledge:delete` (admin capability, guardrail triple)
 
 ## Configuration
 

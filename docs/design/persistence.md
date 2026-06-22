@@ -154,13 +154,13 @@ follows a bounded **compare-and-swap** loop:
    new value and raises `VersionConflictError` if the stored `updated_at`
    has advanced since step 1.
 4. On conflict, the controller re-reads and retries up to
-   `_DEPT_POLICY_CAS_MAX_ATTEMPTS` (currently `3`).  Persistent contention
+   `_DEPT_POLICY_CAS_FALLBACK_ATTEMPTS` (currently `3`).  Persistent contention
    surfaces as HTTP 409 `VersionConflictError` so the caller can retry with
    fresh state rather than the loop spinning forever.
 
 Frontend callers that mutate CAS-backed settings must handle 409 explicitly
 (surface a retry toast or re-fetch + re-submit).  The pattern is implemented
-in `src/synthorg/api/controllers/departments.py::_mutate_dept_policies_with_retry`
+in `src/synthorg/api/controllers/departments/_shared.py::_mutate_dept_policies_with_retry`
 and should be reused verbatim for any future JSON-blob settings that are
 mutated from multiple workers.
 

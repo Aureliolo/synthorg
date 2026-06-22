@@ -312,8 +312,8 @@ spawns the exact attested image. See [Deployment &rarr; Fine-Tuning (optional)](
 for the BYO snippet. The container reads stage configuration
 from `/etc/fine-tune/config.json`, executes the pipeline function, and emits
 structured progress markers (`STAGE_START:`, `STAGE_COMPLETE:`) on stdout. The
-orchestrator will parse these markers from container logs for progress reporting
-(orchestrator integration is planned; the runner and markers are implemented).
+runner and markers are implemented; orchestrator consumption of these markers
+from container logs for progress reporting is not yet wired.
 Source data is mounted at `/data` (read-only), checkpoints written to `/checkpoints`
 (read-write). GPU passthrough is available via `gpu_enabled=True` (only meaningful
 for the GPU variant). The in-process fallback (`backend="in-process"`) is preserved

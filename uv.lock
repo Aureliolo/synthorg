@@ -291,21 +291,6 @@ wheels = [
 ]
 
 [[package]]
-name = "bandit"
-version = "1.9.4"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-8-synthorg-fine-tune-cpu' and extra == 'extra-8-synthorg-fine-tune-gpu') or (extra == 'group-8-synthorg-fine-tune-cpu' and extra == 'group-8-synthorg-fine-tune-gpu')" },
-    { name = "pyyaml" },
-    { name = "rich" },
-    { name = "stevedore" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/aa/c3/0cb80dfe0f3076e5da7e4c5ad8e57bac6ac357ff4a6406205501cade4965/bandit-1.9.4.tar.gz", hash = "sha256:b589e5de2afe70bd4d53fa0c1da6199f4085af666fde00e8a034f152a52cd628", size = 4242677, upload-time = "2026-02-25T06:44:15.503Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/05/a4/a26d5b25671d27e03afb5401a0be5899d94ff8fab6a698b1ac5be3ec29ef/bandit-1.9.4-py3-none-any.whl", hash = "sha256:f89ffa663767f5a0585ea075f01020207e966a9c0f2b9ef56a57c7963a3f6f8e", size = 134741, upload-time = "2026-02-25T06:44:13.694Z" },
-]
-
-[[package]]
 name = "boolean-py"
 version = "5.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3108,18 +3093,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pytest-randomly"
-version = "4.1.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pytest" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/27/b3/36192dacc0f470ac2cc516f73e01739c9a48a8224f76beada4f85e1c8a89/pytest_randomly-4.1.0.tar.gz", hash = "sha256:47f1d9746c3bc3efabd53ae1ebfb8bb385cf3d4df4b505b6d58d9c97a3dfe70f", size = 14302, upload-time = "2026-04-20T13:01:51.831Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9a/db/2df9a1fca597a273f957a559c20c2d95d629928384507b2afa43ba6909d1/pytest_randomly-4.1.0-py3-none-any.whl", hash = "sha256:f55e89e53367b090c0c053697d7f9d77595543d0e0516c93978b50c0f6b252f9", size = 8353, upload-time = "2026-04-20T13:01:50.382Z" },
-]
-
-[[package]]
 name = "pytest-repeat"
 version = "0.9.4"
 source = { registry = "https://pypi.org/simple" }
@@ -3810,15 +3783,6 @@ wheels = [
 ]
 
 [[package]]
-name = "stevedore"
-version = "5.8.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/e9/88/35e4d27d9177d7df76d060e0a18f69c6c5794c96960c94042e20a12c8ba2/stevedore-5.8.0.tar.gz", hash = "sha256:b49867b32ca3016e94100e68dbf26e72aa7b8708d0a3f73c08aeb220370ac715", size = 514710, upload-time = "2026-05-18T09:15:27.731Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f5/ac/19f9941c74add59d17694930ec8105d5eddeee4ce56dd8632b765ca16d6c/stevedore-5.8.0-py3-none-any.whl", hash = "sha256:88eede9e66ca80e34085b9174e2327da2c61ac91f24f70e41c3ad76e4bb4872b", size = 54553, upload-time = "2026-05-18T09:15:25.82Z" },
-]
-
-[[package]]
 name = "structlog"
 version = "26.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3911,7 +3875,6 @@ telemetry = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "bandit" },
     { name = "codespell" },
     { name = "commitizen" },
     { name = "defusedxml" },
@@ -3938,7 +3901,6 @@ dev = [
     { name = "pytest-codspeed" },
     { name = "pytest-cov" },
     { name = "pytest-mock" },
-    { name = "pytest-randomly" },
     { name = "pytest-repeat" },
     { name = "pytest-split" },
     { name = "pytest-timeout" },
@@ -4053,7 +4015,6 @@ provides-extras = ["distributed", "fine-tune-cpu", "fine-tune-gpu", "knowledge",
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "bandit", specifier = "==1.9.4" },
     { name = "codespell", specifier = "==2.4.2" },
     { name = "commitizen", specifier = "==4.16.3" },
     { name = "defusedxml", specifier = "==0.7.1" },
@@ -4080,7 +4041,6 @@ dev = [
     { name = "pytest-codspeed", specifier = "==5.0.3" },
     { name = "pytest-cov", specifier = "==7.1.0" },
     { name = "pytest-mock", specifier = "==3.15.1" },
-    { name = "pytest-randomly", specifier = "==4.1.0" },
     { name = "pytest-repeat", specifier = "==0.9.4" },
     { name = "pytest-split", specifier = "==0.11.0" },
     { name = "pytest-timeout", specifier = "==2.4.0" },

@@ -3,8 +3,9 @@
 
 ``create_app`` delegates the persistence-independent service construction to
 :func:`build_construction_services`: it builds ``AppState``, auto-wires the
-phase-1 / meeting / integration services, composes every feature's state slice,
-runs each feature's ``construction_wirer`` (via ``run_construction_wiring``),
+construction-phase / meeting / integration services, composes every feature's
+state slice, runs each feature's ``construction_wirer`` (via
+``run_construction_wiring``),
 wires the communication-domain services + escalation stack, builds the
 bridge / backup / settings-dispatcher / middleware, and returns the handful of
 collaborators the composition root threads into route assembly, the lifespan

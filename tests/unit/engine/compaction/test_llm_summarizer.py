@@ -1,4 +1,4 @@
-"""Unit tests for the Phase-2 LLM-backed compaction summariser."""
+"""Unit tests for the LLM-backed semantic compaction summariser."""
 
 import pytest
 

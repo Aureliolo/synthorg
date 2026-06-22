@@ -255,4 +255,52 @@ Practical guides for configuring, operating, and extending your synthetic organi
 
     [:octicons-arrow-right-24: Workers & Background Tasks](workers-and-background-tasks.md)
 
+-   :material-brain:{ .lg .middle } **Project Brain**
+
+    ---
+
+    Query a project's structured decision log: decisions, open questions, blockers, risks, dependencies, and plan revisions.
+
+    [:octicons-arrow-right-24: Project Brain](project-brain.md)
+
+-   :material-file-document-multiple:{ .lg .middle } **Living Documentation**
+
+    ---
+
+    Browse and search the per-project document wiki agents write to and retrieve from automatically.
+
+    [:octicons-arrow-right-24: Living Documentation](living-documentation.md)
+
+-   :material-book-search:{ .lg .middle } **Knowledge Substrate**
+
+    ---
+
+    Ingest external corpora (PDFs, web pages, repositories) into a provenance-tracked retrieval layer agents can cite.
+
+    [:octicons-arrow-right-24: Knowledge Substrate](knowledge-substrate.md)
+
+-   :material-rudder:{ .lg .middle } **Mid-Flight Steering**
+
+    ---
+
+    Inject hints and redirects into a running project and supersede obsolete tasks without stopping it.
+
+    [:octicons-arrow-right-24: Mid-Flight Steering](mid-flight-steering.md)
+
+-   :material-magnify-scan:{ .lg .middle } **Research Mode**
+
+    ---
+
+    Run recorded, replayable research briefs through a pipeline that synthesises cited reports.
+
+    [:octicons-arrow-right-24: Research Mode](research-mode.md)
+
+-   :material-application-import:{ .lg .middle } **Brownfield Intake**
+
+    ---
+
+    Import an existing codebase into a project, build a structure map, and run an automated analysis pass.
+
+    [:octicons-arrow-right-24: Brownfield Intake](brownfield-intake.md)
+
 </div>

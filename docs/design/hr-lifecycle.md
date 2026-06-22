@@ -293,7 +293,7 @@ human decision.
 
 !!! info "Design decisions ([Decision Log](../architecture/decisions.md) D9, D10)"
 
-    Each decision below names the protocol that ships today and the
+    Each decision below names the protocol that is currently implemented and the
     concrete `Initial strategy` that the default factory wires. "Initial
     strategy" is the shipped default, not aspirational scaffolding;
     operators replace it by registering an alternative strategy on the
@@ -400,87 +400,7 @@ agent_metrics:
 
 ## Evaluation Loop
 
-The closed-loop evaluation framework continuously measures agent performance and
-identifies improvement opportunities. Built on top of the existing five-pillar
-evaluation, performance tracking, trajectory scoring, and training infrastructure.
-
-### Closed-Loop Architecture
-
-```mermaid
-flowchart LR
-    T[Trace Capture] --> BT[Behavior Tagging]
-    BT --> EE[Eval Enrichment<br/>5 Pillars]
-    EE --> PI[Pattern Identification<br/>stub]
-    PI --> FP[Fix Proposal<br/>stub]
-    FP --> V[Validation<br/>next run]
-    V -->|feedback| T
-```
-
-The ``EvalLoopCoordinator`` orchestrates existing services into cycles:
-collect metrics, enrich with five-pillar evaluation, identify failure patterns
-(stub), propose targeted fixes (stub), and validate via next-run trajectory scores.
-
-### Behaviour Tagging
-
-Each turn is tagged with one or more ``BehaviorTag`` categories for fine-grained
-trace analysis and eval routing:
-
-| Tag | Description |
-|-----|-------------|
-| `file_operations` | Read, write, edit, list, grep |
-| `retrieval` | Search, multi-hop document synthesis |
-| `tool_use` | Generic tool selection and chaining |
-| `memory` | Recall, preference extraction, persistence |
-| `conversation` | Multi-turn dialogue, clarifying questions |
-| `summarization` | Context overflow handling |
-| `delegation` | Sub-agent spawning, handoff |
-| `coordination` | Multi-agent pipeline waves |
-| `verification` | Rubric grading, quality assessment |
-
-Tags are inferred by ``BehaviorTaggerMiddleware`` (opt-in, ``after_model`` slot)
-via tool-name pattern matching. Stored on ``TurnRecord.behavior_tags``.
-
-### Efficiency Ratios
-
-Per-run efficiency ratios measured against ``IdealTrajectoryBaseline``:
-
-- **Step ratio**: observed steps / ideal steps (1.0 = on target)
-- **Tool call ratio**: observed calls / ideal calls
-- **Latency ratio**: observed time / ideal time
-- **Verbosity ratio**: observed output tokens / ideal tokens (from SlopCodeBench)
-- **Structural erosion score**: composite 0.0--1.0 (duplicated blocks, cyclomatic
-  complexity delta, dead-branch ratio)
-- **PTE**: Prefill Token Equivalents (hardware-aware cost metric, from arXiv:2604.05404)
-- **PTE ratio**: observed PTE / ideal PTE
-
-Baselines are human-curated and versioned, not auto-updated from observed runs.
-
-### Quality Erosion Detection
-
-New stagnation variant (``StagnationReason.QUALITY_EROSION``): agent keeps working
-but ``structural_erosion_score`` climbs past threshold (default 0.5).
-``QualityErosionDetector`` implements the ``StagnationDetector`` protocol and fires
-corrective prompt injection or termination.
-
-### External Benchmarks
-
-Pluggable ``ExternalBenchmark`` protocol for adopting external benchmark suites
-without modifying the framework. ``ExternalBenchmarkRegistry`` manages registration
-and execution.
-
-### Agent Evaluation Testing
-
-Tests tagged ``@pytest.mark.agent_eval(category="file_operations")`` run separately
-from the default unit suite:
-
-```bash
-uv run python -m pytest tests/evals/ -n 8 --eval-timeout=300
-```
-
-``n1_prefix_replay`` utility replays first N-1 turns of a recorded trace and lets
-the agent generate only the final turn for regression testing.
-
-CI: ``evals.yml`` runs nightly and on ``run-evals`` label.
+The closed-loop evaluation framework continuously measures agent performance and identifies improvement opportunities, built on top of the five-pillar evaluation, performance tracking, and trajectory scoring described elsewhere on this page. It captures traces, tags behaviour, enriches each turn with five-pillar evaluation, and proposes targeted fixes validated on the next run. The framework has its own design page: [Evaluation Loop](evaluation-loop.md).
 
 ---
 
@@ -495,7 +415,7 @@ Agents can move between seniority levels based on performance:
 
 !!! info "Design decisions ([Decision Log](../architecture/decisions.md) D13, D14, D15)"
 
-    Each decision below names the protocol that ships today and the
+    Each decision below names the protocol that is currently implemented and the
     concrete `Initial strategy` that the default factory wires. "Initial
     strategy" is the shipped default; operators substitute via the
     factory.
@@ -637,8 +557,9 @@ evolution:
 !!! note "Runtime wiring status"
     The evolution config, service, and factory are implemented and wired:
     ``build_evolution_service()`` is called from the worker engine assembly
-    (``workers/_engine_assembly.py``). REST API + dashboard for runtime
-    evolution management are planned.
+    (``workers/_engine_assembly.py``). Runtime evolution management has no REST
+    API or dashboard UI; it is configured in the application code that wires the
+    service.
 
 ## Five-Pillar Evaluation Framework
 

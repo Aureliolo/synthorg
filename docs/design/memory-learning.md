@@ -278,10 +278,9 @@ the agent during execution.
 
     - Injects a brief system instruction about available memory tools
     - Exposes `search_memory` and `recall_memory` (by ID) tools
-    - Delegates `search_memory` requests to `MemoryBackend.retrieve()` (dense-only;
-      hybrid dense+sparse with RRF fusion is not yet wired into the tool-based path)
-    - Hybrid retrieval and RRF fusion are handled at the `ContextInjectionStrategy`
-      level, not within `ToolBasedInjectionStrategy`
+    - Delegates `search_memory` requests to `MemoryBackend.retrieve()` (dense-only)
+    - Hybrid dense+sparse retrieval with RRF fusion applies at the
+      `ContextInjectionStrategy` level, not within `ToolBasedInjectionStrategy`
     - When `query_reformulation_enabled: true` is set on the config and both a
       `QueryReformulator` and a `SufficiencyChecker` are provided at construction,
       `search_memory` runs an iterative **Search-and-Ask** loop: retrieve -> check
@@ -344,7 +343,7 @@ Strategy selection via config: ``memory.retrieval.strategy: context | tool_based
 
 ## Memory Service Layer
 
-`MemoryService` (at `src/synthorg/memory/service.py`) is the single entry point for `/memory/fine-tune/*` REST endpoints and the MCP memory tools. Controllers and handlers never reach into `app_state.persistence.*` directly; the service owns the repository handle, audit logging, and typed error routing.
+`MemoryService` (at `src/synthorg/memory/service.py`) is the single entry point for the `/admin/memory/fine-tune/*` REST endpoints (served by the memory admin sub-controllers under `src/synthorg/api/controllers/memory/`) and the MCP memory tools. Controllers and handlers never reach into `app_state.persistence.*` directly; the service owns the repository handle, audit logging, and typed error routing.
 
 ### Fine-tune lifecycle
 

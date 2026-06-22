@@ -64,17 +64,17 @@ def make_compaction_callback(
     exceeds ``config.fill_threshold_percent`` and, if so, replaces
     the oldest conversation turns with a summary message.
 
-    When a Phase-2 ``summarizer`` or ``offloader`` is wired (and enabled
+    When a semantic ``summarizer`` or ``offloader`` is wired (and enabled
     in ``config``), the archived batch is semantically summarised by an
     LLM and/or offloaded to memory before the in-context summary replaces
-    it; both degrade to the Phase-1 text path on absence or failure.
+    it; both degrade to the text path on absence or failure.
 
     Args:
         config: Compaction configuration.
         estimator: Token estimator for summary size estimation;
             defaults to ``DefaultTokenEstimator``.
-        summarizer: Optional LLM-backed summariser (Phase-2).
-        offloader: Optional memory offloader for archived batches (Phase-2).
+        summarizer: Optional LLM-backed semantic summariser.
+        offloader: Optional memory offloader for archived batches.
 
     Returns:
         An async compaction callback.
@@ -98,7 +98,7 @@ def _do_compaction(
     *,
     force: bool = False,
 ) -> AgentContext | None:
-    """Core (Phase-1, synchronous) compaction logic.
+    """Core (text, synchronous) compaction logic.
 
     Args:
         ctx: Current agent context.
@@ -117,7 +117,7 @@ def _do_compaction(
     return _finalise(ctx, head, archivable, recent, estimator, summary_text)
 
 
-async def _do_compaction_phase2(  # noqa: PLR0913 -- ctx + config + estimator + two Phase-2 collaborators + force flag
+async def _do_compaction_phase2(  # noqa: PLR0913 -- ctx + config + estimator + two semantic collaborators + force flag
     ctx: AgentContext,
     config: CompactionConfig,
     estimator: PromptTokenEstimator,
@@ -126,9 +126,9 @@ async def _do_compaction_phase2(  # noqa: PLR0913 -- ctx + config + estimator + 
     offloader: MemoryOffloader | None,
     force: bool = False,
 ) -> AgentContext | None:
-    """Phase-2 compaction: LLM summary and/or memory offload.
+    """Semantic compaction: LLM summary and/or memory offload.
 
-    Falls back to the Phase-1 text summary when the LLM summariser is
+    Falls back to the text summary when the LLM summariser is
     absent / disabled / fails. The offload is best-effort and never
     blocks the compaction.
 
@@ -209,10 +209,10 @@ def _build_phase1_summary(
     archivable: tuple[ChatMessage, ...],
     config: CompactionConfig,
 ) -> str:
-    """Build the Phase-1 snippet-join summary text for the archived batch.
+    """Build the snippet-join text summary for the archived batch.
 
     Returns:
-        The summary text (also the Phase-2 fallback).
+        The summary text (also the semantic-path fallback).
     """
     task_complexity = _extract_task_complexity(ctx)
     return _build_summary(
@@ -312,7 +312,7 @@ def _compress(  # noqa: PLR0913
         archivable: The messages being archived (for turn counting).
         recent: Preserved recent messages.
         estimator: Token estimator.
-        summary_text: The resolved summary text (Phase-1 or Phase-2).
+        summary_text: The resolved summary text (text or semantic).
 
     Returns:
         ``(compressed_conversation, metadata, summary_tokens)`` --
@@ -449,17 +449,17 @@ async def force_compaction(
     Used when an agent explicitly requests compaction via the
     ``compact_context`` tool. Skips the fill-threshold comparison while
     preserving all other checks (minimum message count, recent-turn
-    preservation). When a Phase-2 ``summarizer`` / ``offloader`` is
+    preservation). When a semantic ``summarizer`` / ``offloader`` is
     supplied (and enabled in ``config``) the forced compaction runs the
     same semantic summary / memory-offload path as the threshold-triggered
-    callback, rather than silently downgrading to the Phase-1 text summary.
+    callback, rather than silently downgrading to the text summary.
 
     Args:
         ctx: Current agent context.
         config: Compaction configuration.
         estimator: Token estimator.
-        summarizer: Optional LLM-backed summariser (Phase-2).
-        offloader: Optional memory offloader for archived batches (Phase-2).
+        summarizer: Optional LLM-backed semantic summariser.
+        offloader: Optional memory offloader for archived batches.
 
     Returns:
         Compacted context, or ``None`` if too few messages.

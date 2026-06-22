@@ -1,5 +1,5 @@
 # module-kind: code
-"""Construction-time phase-1 service auto-wiring.
+"""Construction-time service auto-wiring.
 
 Creates the services that do not need a connected persistence backend --
 message bus, cost tracker, provider registry, task engine (+ optional

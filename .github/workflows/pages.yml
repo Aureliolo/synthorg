@@ -37,6 +37,9 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+          # Full history + tags so scripts/compute_release_cadence.py can
+          # measure the release cadence; it errors out on a shallow clone.
+          fetch-depth: "0"
 
       # --- Zensical (documentation at /docs) ---
       - name: Set up Python
@@ -87,6 +90,14 @@ jobs:
 
       - name: Generate comparison page
         run: uv run python scripts/generate_comparison.py
+
+      - name: Refresh release cadence page
+        # Regenerates docs/reference/release-cadence.md from git tag history
+        # so the published cadence metrics track every release without a
+        # manual run. Requires the full-history checkout above; it errors
+        # (and fails the deploy) on a shallow clone rather than rendering
+        # silently wrong numbers.
+        run: uv run python scripts/compute_release_cadence.py
 
       - name: Refresh runtime stats
         # Best-effort refresh of data/runtime_stats.yaml (pytest count,
@@ -149,6 +160,14 @@ jobs:
 
       - name: Patch sitemap with static OpenAPI artifacts
         run: uv run python scripts/patch_sitemap.py
+
+      - name: Generate old-path redirect stubs
+        # zensical builds the docs but does NOT run the mkdocs-redirects plugin,
+        # so the redirect_maps in mkdocs.yml never materialise as pages and the
+        # old URLs 404. This script reads redirect_maps from mkdocs.yml (single
+        # source of truth) and writes a meta-refresh + canonical stub for each
+        # old path into the built _site/docs tree so inbound links keep working.
+        run: uv run python scripts/generate_docs_redirects.py
 
       # --- Astro (landing page at /) ---
       - name: Set up Node.js
