@@ -7,12 +7,19 @@ promotion/demotion behavior.
 import copy
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import Self
+from typing import ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.seniority import SeniorityLevel
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import (
+    MirrorField,
+    apply_settings_mirrors,
+    parse_float,
+    parse_int,
+)
 
 
 class PromotionCriteriaConfig(BaseModel):
@@ -126,6 +133,21 @@ class PromotionConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="cycle_interval_seconds",
+            namespace=SettingNamespace.HR,
+            key="promotion_cycle_interval_seconds",
+            parse=parse_float,
+        ),
+        MirrorField(
+            field="cooldown_hours",
+            namespace=SettingNamespace.HR,
+            key="promotion_cooldown_hours",
+            parse=parse_int,
+        ),
+    )
+
     enabled: bool = Field(
         default=True,
         description="Whether the promotion subsystem is enabled",
@@ -152,3 +174,13 @@ class PromotionConfig(BaseModel):
         default_factory=ModelMappingConfig,
         description="Model mapping configuration",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: object) -> object:
+        """Apply settings mirrors.
+
+        Returns:
+            Result of type ``object``.
+        """
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)

@@ -9,11 +9,13 @@ concrete backend.
 import asyncio
 import contextlib
 import math
+from typing import Final
 
 import psycopg
 from psycopg import sql
 from psycopg_pool import AsyncConnectionPool
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.backend import (
@@ -29,6 +31,13 @@ from synthorg.observability.events.persistence.backend import (
 from synthorg.persistence.config import PostgresConfig
 
 logger = get_logger(__name__)
+
+# Aligned with the api-side ``_PERSISTENCE_SHUTDOWN_SECONDS`` budget that the
+# shutdown runner gives ``disconnect()``: the pool's own ``close`` timeout
+# triggers an orderly handshake with each checked-out connection within the
+# window instead of relying on the 30s psycopg-pool default (which the outer
+# wrapper would cancel mid-drain, leaking server-side connections).
+_POOL_CLOSE_TIMEOUT_SECONDS: Final[float] = 5.0
 
 
 def _build_conninfo(config: PostgresConfig) -> str:
@@ -202,13 +211,16 @@ class PostgresConnectionMixin:
                 database=self._config.database,
             )
             try:
-                await self._pool.close()
+                await self._pool.close(timeout=_POOL_CLOSE_TIMEOUT_SECONDS)
                 logger.info(
                     PERSISTENCE_BACKEND_DISCONNECTED,
                     host=self._config.host,
                     database=self._config.database,
                 )
-            except (psycopg.Error, OSError) as exc:
+            except Exception as exc:  # noqa: BLE001 -- broad: pool internals may
+                # raise asyncio.TimeoutError (not a psycopg.Error/OSError) from
+                # the close handshake; ``_clear_state`` still runs in finally.
+                reraise_critical(exc)
                 logger.warning(
                     PERSISTENCE_BACKEND_DISCONNECT_ERROR,
                     host=self._config.host,

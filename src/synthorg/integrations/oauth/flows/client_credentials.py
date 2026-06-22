@@ -14,6 +14,8 @@ from synthorg.observability.events.integrations import (
     OAUTH_TOKEN_EXCHANGE_FAILED,
     OAUTH_TOKEN_EXCHANGED,
 )
+from synthorg.tools.network_validator import NetworkPolicy
+from synthorg.tools.ssrf import build_pinned_transport, resolve_outbound_target
 
 logger = get_logger(__name__)
 
@@ -44,6 +46,7 @@ class ClientCredentialsFlow:
         *,
         http_timeout_seconds: float = _DEFAULT_HTTP_TIMEOUT_SECONDS,
         clock: Clock | None = None,
+        network_policy: NetworkPolicy | None = None,
     ) -> None:
         # Strict numeric + finite + positive: reject ``bool`` (which
         # is an ``int`` subclass and would silently flow into
@@ -64,6 +67,13 @@ class ClientCredentialsFlow:
             raise ValueError(msg)
         self._http_timeout_seconds = float(http_timeout_seconds)
         self._clock: Clock = clock if clock is not None else SystemClock()
+        # SSRF policy for the outbound token-endpoint POST. ``token_url`` is
+        # operator/provider-supplied, so the exchange is DNS-resolved + pinned
+        # before connecting (DNS-rebinding defence) with no redirects, at
+        # parity with the authorization-code and device flows.
+        self._network_policy: NetworkPolicy = (
+            network_policy if network_policy is not None else NetworkPolicy()
+        )
 
     @property
     def grant_type(self) -> str:
@@ -106,7 +116,19 @@ class ClientCredentialsFlow:
             payload["scope"] = " ".join(scopes)
 
         try:
-            async with httpx.AsyncClient(timeout=self._http_timeout_seconds) as client:
+            # SSRF-validate + DNS-pin ``token_url`` before connecting, with
+            # redirects disabled so a 3xx cannot bounce the credential-bearing
+            # POST to an internal host.
+            validation = await resolve_outbound_target(
+                token_url,
+                field="token_url",
+                policy=self._network_policy,
+            )
+            async with httpx.AsyncClient(
+                timeout=self._http_timeout_seconds,
+                follow_redirects=False,
+                transport=build_pinned_transport(validation),
+            ) as client:
                 resp = await client.post(token_url, data=payload)
                 resp.raise_for_status()
                 data = resp.json()

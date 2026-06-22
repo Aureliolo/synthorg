@@ -104,6 +104,9 @@ _ENV_VALUE_OVERRIDES: Final[dict[tuple[str, str], str]] = {
     ("BudgetConfig", "benchmark_provider"): "measured",
     ("CompanyMemoryConfig", "backend"): "inmemory",
     ("NatsConfig", "url"): "nats://override.example:4222",
+    # ``github_api_url`` carries an https-only field validator, so the
+    # generic sentinel would fail validation; supply a valid https override.
+    ("CodeModificationConfig", "github_api_url"): "https://ghe.override.example",
 }
 
 

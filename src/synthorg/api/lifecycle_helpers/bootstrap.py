@@ -19,6 +19,7 @@ from synthorg.core.pagination import paginate
 from synthorg.hr.state import HrStateSlice, agent_registry_of
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.security import SECURITY_PERMISSION_GRANTED
 from synthorg.observability.events.setup import SETUP_AGENT_BOOTSTRAP_FAILED
 from synthorg.persistence.state import PersistenceStateSlice, persistence_of
 from synthorg.settings.state import (
@@ -115,6 +116,19 @@ async def _maybe_promote_first_owner(app_state: AppState) -> None:
         note="Auto-promoted first user to owner",
         user_id=first.id,
         username=first.username,
+    )
+    # Sign the OWNER grant into the audit chain: an auto-promotion is a
+    # control-plane permission change and must be forensically traceable,
+    # mirroring the REST grant_org_role path. ``principal="system"`` marks
+    # the boot-time actor.
+    logger.info(
+        SECURITY_PERMISSION_GRANTED,
+        principal="system",
+        resource=f"user:{first.id}",
+        action_type="permission:grant",
+        intent="auto_promote_first_owner",
+        user_id=first.id,
+        role=OrgRole.OWNER.value,
     )
 
 

@@ -94,6 +94,77 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.META,
+        key="toolsmith_gap_recurrence_threshold",
+        type=SettingType.INTEGER,
+        default="3",
+        description=(
+            "How many times a capability-gap signature must recur within"
+            " the window before the toolsmith proposes a new tool."
+        ),
+        group="Self-Improvement",
+        level=SettingLevel.ADVANCED,
+        min_value=2,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.META,
+        key="toolsmith_gap_window_hours",
+        type=SettingType.INTEGER,
+        default="24",
+        description="Sliding window for toolsmith capability-gap aggregation.",
+        group="Self-Improvement",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.META,
+        key="toolsmith_gap_buffer_size",
+        type=SettingType.INTEGER,
+        default="512",
+        description="Ring-buffer capacity for raw toolsmith capability-gap rows.",
+        group="Self-Improvement",
+        level=SettingLevel.ADVANCED,
+        min_value=16,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.META,
+        key="toolsmith_cycle_interval_seconds",
+        type=SettingType.FLOAT,
+        default="3600.0",
+        description=(
+            "Cadence of the toolsmith autonomous detection cycle. The"
+            " scheduler floors this at 60 seconds."
+        ),
+        group="Self-Improvement",
+        level=SettingLevel.ADVANCED,
+        min_value=60.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.META,
+        key="toolsmith_max_active_tools",
+        type=SettingType.INTEGER,
+        default="50",
+        description="Cap on simultaneously-active authored toolsmith tools.",
+        group="Self-Improvement",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.META,
         key="scorecard_history_dir",
         type=SettingType.STRING,
         default="",

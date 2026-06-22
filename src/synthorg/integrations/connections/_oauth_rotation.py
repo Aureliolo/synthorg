@@ -26,6 +26,7 @@ from synthorg.observability.events.integrations import (
     SECRET_DELETE_FAILED,
     SECRET_DELETED,
 )
+from synthorg.observability.events.security import SECURITY_CONNECTION_UPDATED
 
 if TYPE_CHECKING:
     from contextlib import AbstractAsyncContextManager
@@ -118,6 +119,19 @@ class OAuthRotationMixin:
                 OAUTH_TOKEN_EXCHANGED,
                 connection_name=name,
                 has_refresh=refresh_token is not None,
+            )
+            # Sign the credential write into the audit chain: storing live
+            # OAuth bearer tokens is equivalent in impact to a REST
+            # connection update (which signs ``SECURITY_CONNECTION_UPDATED``),
+            # and this callback path is unauthenticated, making audit
+            # coverage more critical. ``principal="system"`` marks the
+            # provider-driven callback actor.
+            logger.info(
+                SECURITY_CONNECTION_UPDATED,
+                principal="system",
+                resource=f"connection:{name}",
+                action_type="oauth_token_rotation",
+                connection_name=name,
             )
             return updated
 

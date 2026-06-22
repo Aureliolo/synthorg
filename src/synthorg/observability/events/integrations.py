@@ -60,6 +60,7 @@ OAUTH_TOKEN_EXCHANGED: Final[str] = "integrations.oauth.token_exchanged"  # noqa
 OAUTH_TOKEN_EXCHANGE_FAILED: Final[str] = "integrations.oauth.token_exchange_failed"  # noqa: S105
 OAUTH_TOKEN_REFRESHED: Final[str] = "integrations.oauth.token_refreshed"  # noqa: S105
 OAUTH_TOKEN_REFRESH_FAILED: Final[str] = "integrations.oauth.token_refresh_failed"  # noqa: S105
+OAUTH_TOKEN_RATE_LIMITED: Final[str] = "integrations.oauth.token_rate_limited"  # noqa: S105
 OAUTH_TOKEN_EXPIRED: Final[str] = "integrations.oauth.token_expired"  # noqa: S105
 OAUTH_DEVICE_FLOW_STARTED: Final[str] = "integrations.oauth.device_flow_started"
 OAUTH_DEVICE_FLOW_POLLING: Final[str] = "integrations.oauth.device_flow_polling"

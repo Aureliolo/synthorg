@@ -156,6 +156,30 @@ class TokenRefreshFailedError(OAuthError):
     retryable: ClassVar[bool] = True
 
 
+class OAuthRateLimitedError(OAuthError):
+    """The token endpoint rate-limited the request (HTTP 429).
+
+    Transient -- the caller should back off and retry. Carries the
+    provider's advertised ``Retry-After`` cool-off (seconds) when the
+    response supplied a parseable one, so a retry layer can honour the
+    hint instead of guessing a backoff. Keeps the ancestor
+    ``OAUTH_ERROR`` code (inheritance alias) since clients branch on the
+    OAuth family, not a dedicated 429 code.
+    """
+
+    is_retryable = True
+    retryable: ClassVar[bool] = True
+
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        retry_after_seconds: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
+
+
 class InvalidStateError(OAuthError):
     """The OAuth state parameter is invalid, expired, or already used."""
 

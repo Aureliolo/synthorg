@@ -19,6 +19,7 @@ from synthorg.meta.models import (
     ProposalStatus,
 )
 from synthorg.meta.protocol import ProposalApplier
+from synthorg.meta.rollout.rollback import RollbackExecutor
 from synthorg.meta.telemetry.protocol import AnalyticsEmitter
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.chief_of_staff import (
@@ -48,6 +49,7 @@ class SelfImprovementLifecycleMixin:
     _appliers: Mapping[ProposalAltitude, ProposalApplier]
     _outcome_store: MemoryBackendOutcomeStore | None
     _analytics_emitter: AnalyticsEmitter | None
+    _rollback_executor: RollbackExecutor | None
 
     async def validate_prerequisites(self) -> None:
         """Validate startup prerequisites.
@@ -180,6 +182,20 @@ class SelfImprovementLifecycleMixin:
                 logger.warning(
                     XDEPLOY_EVENT_EMIT_FAILED,
                     reason="emitter_close_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+        # The rollback executor's ``revert_branch`` handler owns a GitHub
+        # HTTP client that is NOT reachable from ``self._appliers`` above, so
+        # close it explicitly here to release its connection pool.
+        if self._rollback_executor is not None:
+            try:
+                await self._rollback_executor.aclose()
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                logger.warning(
+                    META_SERVICE_CLOSE_FAILED,
+                    reason="rollback_executor_close_failed",
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )

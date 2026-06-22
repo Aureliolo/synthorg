@@ -4355,6 +4355,41 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/security/risk-overrides": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListOverrides */
+        readonly get: operations["ApiV1SecurityRiskOverridesListOverrides"];
+        readonly put?: never;
+        /** CreateOverride */
+        readonly post: operations["ApiV1SecurityRiskOverridesCreateOverride"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/security/risk-overrides/{override_id}/revoke": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** RevokeOverride */
+        readonly post: operations["ApiV1SecurityRiskOverridesOverrideIdRevokeRevokeOverride"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/settings": {
         readonly parameters: {
             readonly query?: never;
@@ -6743,6 +6778,21 @@ export type components = {
         /** ApiResponse[list[ApiKeyResponse]] */
         readonly ApiResponse_list_ApiKeyResponse_: {
             readonly data: readonly components["schemas"]["ApiKeyResponse"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[list[dict[str, object]]] */
+        readonly ApiResponse_list_dict_str_object_: {
+            readonly data: readonly {
+                readonly [key: string]: unknown;
+            }[] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /**
@@ -9857,6 +9907,17 @@ export type components = {
             /** @description Requesting client id */
             readonly client_id: string;
             readonly requirement: components["schemas"]["TaskRequirement"];
+        };
+        /** CreateRiskOverrideRequest */
+        readonly CreateRiskOverrideRequest: {
+            readonly action_type: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly expires_at: string;
+            readonly override_tier: components["schemas"]["ApprovalRiskLevel"];
+            readonly reason: string;
         };
         /** CreateSubworkflowRequest */
         readonly CreateSubworkflowRequest: {
@@ -27623,7 +27684,7 @@ export interface operations {
     readonly ApiV1SecurityAuditListAuditEntries: {
         readonly parameters: {
             readonly query?: {
-                /** @description Filter to audit entries with this action type. */
+                /** @description Filter by action type in 'category:action' format. */
                 readonly action_type?: string | null;
                 /** @description Filter to audit entries emitted for this agent. */
                 readonly agent_id?: string | null;
@@ -27641,8 +27702,8 @@ export interface operations {
                 readonly tool_name?: string | null;
                 /** @description Filter to entries emitted at or before this ISO timestamp. */
                 readonly until?: string | null;
-                /** @description Filter by verdict (APPROVED / DENIED). */
-                readonly verdict?: string | null;
+                /** @description Filter by verdict (allow/deny/escalate/output_scan). */
+                readonly verdict?: "allow" | "deny" | "escalate" | "output_scan" | null;
             };
             readonly header?: never;
             readonly path?: never;
@@ -27662,6 +27723,93 @@ export interface operations {
             readonly 400: components["responses"]["BadRequest"];
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1SecurityRiskOverridesListOverrides: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_list_dict_str_object_"];
+                };
+            };
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1SecurityRiskOverridesCreateOverride: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CreateRiskOverrideRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1SecurityRiskOverridesOverrideIdRevokeRevokeOverride: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly override_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];
@@ -28536,7 +28684,8 @@ export interface operations {
     readonly ApiV1SimulationsSimulationIdReportGetReport: {
         readonly parameters: {
             readonly query?: {
-                readonly fmt?: string;
+                /** @description Report format: summary (default) or detailed. */
+                readonly fmt?: "summary" | "detailed";
             };
             readonly header?: never;
             readonly path: {

@@ -24,6 +24,7 @@ from synthorg.api.pagination import (
     paginate_cursor,
 )
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.approval.state import ApprovalStateSlice
@@ -37,7 +38,12 @@ class ApprovalsQueryController(Controller):
     path = "/approvals"
     tags = ("approvals",)
 
-    @get(guards=[require_read_access])
+    @get(
+        guards=[
+            require_read_access,
+            per_op_rate_limit_from_policy("approvals.list", key="user"),
+        ]
+    )
     async def list_approvals(  # noqa: PLR0913
         self,
         state: State,

@@ -7,6 +7,8 @@ from typing import ClassVar, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import MirrorField, apply_settings_mirrors, parse_float
 
 
 class PerformanceConfig(BaseModel):
@@ -36,6 +38,15 @@ class PerformanceConfig(BaseModel):
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="llm_sampling_rate",
+            namespace=SettingNamespace.HR,
+            key="performance_llm_sampling_rate",
+            parse=parse_float,
+        ),
+    )
 
     min_data_points: int = Field(
         default=5,
@@ -106,6 +117,16 @@ class PerformanceConfig(BaseModel):
     )
 
     _WEIGHT_TOLERANCE: ClassVar[float] = 1e-6
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: object) -> object:
+        """Apply settings mirrors.
+
+        Returns:
+            Result of type ``object``.
+        """
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _validate_quality_judge_provider_requires_model(self) -> Self:

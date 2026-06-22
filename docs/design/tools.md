@@ -258,8 +258,8 @@ External tools are integrated via the **Model Context Protocol** (MCP).
 
 ### SynthOrg MCP Tool Surface
 
-SynthOrg exposes its own MCP server offering <!--RS:mcp_tools-->241<!--/RS-->
-tools across <!--RS:mcp_domains-->21<!--/RS--> domain
+SynthOrg exposes its own MCP server offering <!--RS:mcp_tools-->244<!--/RS-->
+tools across <!--RS:mcp_domains-->22<!--/RS--> domain
 modules (agents, analytics, approvals, brain, budget, charter, cockpit,
 communication, coordination, docs, infrastructure, integrations, knowledge,
 memory, meta, organisation, quality, research, signals, tasks, workflows).
@@ -341,7 +341,7 @@ placeholder factories:
   for future surgical use. Emits `MCP_HANDLER_SERVICE_FALLBACK`;
   META-MCP-2 removed every call site and the integration sweep at
   `tests/integration/mcp/test_tool_surface.py` asserts zero emissions of
-  this event across the full <!--RS:mcp_tools-->241<!--/RS-->-tool surface.
+  this event across the full <!--RS:mcp_tools-->244<!--/RS-->-tool surface.
 - `capability_gap(tool_name, reason)`: live handler whose underlying
   primitive does not yet expose the required method (e.g. agent
   `activity_feed`, memory fine-tune orchestrator on a backend that

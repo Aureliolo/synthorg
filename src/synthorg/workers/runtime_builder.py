@@ -28,6 +28,7 @@ Engine-side construction helpers live in
 :mod:`synthorg.workers._coordinator_assembly`.
 """
 
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import NamedTuple
 
@@ -38,11 +39,17 @@ from synthorg.budget.state import BudgetStateSlice, cost_tracker_of
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.coordination.state import CoordinationStateSlice
 from synthorg.engine.coordination.service import MultiAgentCoordinator
+from synthorg.engine.health import (
+    HealthJudge,
+    HealthMonitoringPipeline,
+    TriageFilter,
+)
 from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.state import task_engine_of
 from synthorg.engine.workspace.state import WorkspaceStateSlice
 from synthorg.hr.state import agent_registry_of
 from synthorg.integrations.state import provider_credential_catalog_of
+from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.providers.registry import ProviderRegistry
@@ -127,6 +134,42 @@ def _construct_coordination_collector(
         metrics_store=app_state.slice(CoordinationStateSlice).metrics_store,
         clock=app_state.clock,
     )
+
+
+def _build_health_runtime(
+    app_state: AppState,
+) -> tuple[HealthMonitoringPipeline | None, Callable[[], Awaitable[bool]] | None]:
+    """Build the post-run agent-health pipeline + its live enabled check.
+
+    The pipeline composes the sensitive :class:`HealthJudge`, the
+    conservative :class:`TriageFilter`, and the notification dispatcher as
+    the escalation sink. Without a wired dispatcher there is nowhere to
+    deliver escalations, so ``(None, None)`` is returned. The enabled
+    check re-reads ``engine.health_monitoring_enabled`` per run so the
+    monitor can be toggled without a restart.
+
+    Returns:
+        A ``(pipeline, enabled_check)`` pair, or ``(None, None)`` when no
+        notification dispatcher is wired.
+    """
+    from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
+
+    dispatcher = app_state.slice(NotificationsStateSlice).dispatcher
+    if dispatcher is None:
+        return None, None
+    pipeline = HealthMonitoringPipeline(
+        judge=HealthJudge(),
+        triage=TriageFilter(),
+        notification_dispatcher=dispatcher,
+    )
+    resolver = config_resolver_of(app_state)
+
+    async def _enabled() -> bool:
+        return await resolver.get_bool(
+            SettingNamespace.ENGINE, "health_monitoring_enabled"
+        )
+
+    return pipeline, _enabled
 
 
 class RuntimeServices(NamedTuple):
@@ -302,11 +345,14 @@ async def build_runtime_services(
         category=ToolCategory.CODE_EXECUTION,
     )
     workspace_slice = app_state.slice(WorkspaceStateSlice)
+    health_pipeline, health_enabled = _build_health_runtime(app_state)
     worker_execution_service = AgentEngineExecutionService(
         engine=engine,
         task_engine=task_engine_of(app_state),
         agent_registry=agent_registry_of(app_state),
         autonomy_resolver=autonomy_resolver,
+        health_pipeline=health_pipeline,
+        health_enabled=health_enabled,
         # Release the lifecycle owner on the SAME backend the code-execution
         # tools resolve to (not hardwired docker): if code execution maps to
         # subprocess, a docker-pinned release would target the wrong backend

@@ -36,6 +36,7 @@ from synthorg.api.controllers.setup_models import (
 )
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import (
@@ -55,7 +56,10 @@ class SetupStatusController(Controller):
     path = "/setup"
     tags = ("setup",)
 
-    @get("/status")
+    @get(
+        "/status",
+        guards=[per_op_rate_limit_from_policy("setup.status", key="ip")],
+    )
     async def get_status(
         self,
         state: State,
@@ -130,7 +134,9 @@ class SetupStatusController(Controller):
         """
         from synthorg.templates.loader import list_templates  # noqa: PLC0415
 
-        templates = list_templates()
+        # ``list_templates`` scans the bundled template directory and parses
+        # each YAML file; offload the blocking disk I/O off the event loop.
+        templates = await asyncio.to_thread(list_templates)
         result = tuple(
             TemplateInfoResponse(
                 name=t.name,

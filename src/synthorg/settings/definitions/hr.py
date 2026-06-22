@@ -51,6 +51,136 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.HR,
+        key="promotion_cycle_interval_seconds",
+        type=SettingType.FLOAT,
+        default="3600.0",
+        description=(
+            "Cadence between automatic promotion-cycle scans. The"
+            " scheduler floors this at 60 seconds."
+        ),
+        group="Promotion",
+        level=SettingLevel.ADVANCED,
+        min_value=60.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.HR,
+        key="promotion_cooldown_hours",
+        type=SettingType.INTEGER,
+        default="24",
+        description="Hours between consecutive promotions/demotions for an agent.",
+        group="Promotion",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+    )
+)
+
+# ── Workload scaling tuning knobs ────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.HR,
+        key="scaling_hire_threshold",
+        type=SettingType.FLOAT,
+        default="0.85",
+        description="Utilisation fraction above which the scaler recommends hiring.",
+        group="Scaling",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+        max_value=1.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.HR,
+        key="scaling_prune_threshold",
+        type=SettingType.FLOAT,
+        default="0.30",
+        description="Utilisation fraction below which the scaler recommends pruning.",
+        group="Scaling",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+        max_value=1.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.HR,
+        key="scaling_cooldown_seconds",
+        type=SettingType.INTEGER,
+        default="3600",
+        description="Cooldown between same-type scaling actions (hire/prune).",
+        group="Scaling",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.HR,
+        key="scaling_max_hires_per_day",
+        type=SettingType.INTEGER,
+        default="3",
+        description="Daily cap on scaler-driven hires.",
+        group="Scaling",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.HR,
+        key="scaling_max_prunes_per_day",
+        type=SettingType.INTEGER,
+        default="1",
+        description="Daily cap on scaler-driven prunes.",
+        group="Scaling",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.HR,
+        key="scaling_trigger_interval_seconds",
+        type=SettingType.INTEGER,
+        default="900",
+        description="Polling cadence of the batched scaling trigger loop.",
+        group="Scaling",
+        level=SettingLevel.ADVANCED,
+        min_value=60,
+    )
+)
+
+# ── Performance calibration sampling ─────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.HR,
+        key="performance_llm_sampling_rate",
+        type=SettingType.FLOAT,
+        default="0.01",
+        description=(
+            "Fraction of agent collaboration events sampled by the LLM"
+            " calibrator for quality evaluation (0.01 = 1%)."
+        ),
+        group="Performance",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+        max_value=1.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.HR,
         key="evaluation_quality_enabled",
         type=SettingType.BOOLEAN,
         default="true",

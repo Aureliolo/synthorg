@@ -35,6 +35,9 @@ from synthorg.api.lifecycle_helpers.meta_wiring import (
     _wire_reports_service,
 )
 from synthorg.api.lifecycle_helpers.narrative_wiring import wire_run_narrator
+from synthorg.api.lifecycle_helpers.org_memory_wiring import (
+    wire_org_memory_backend,
+)
 from synthorg.api.state import AppState
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.budget.tracker import CostTracker
@@ -587,6 +590,7 @@ async def wire_features_on_startup(
     await _wire_docs_engine(app_state)
     await _wire_project_brain(app_state)
     await _wire_steering_service(app_state, provider_registry=provider_registry)
+    await wire_org_memory_backend(app_state)
     await _wire_knowledge_engine(app_state)
     await _wire_custom_rules_service(app_state)
     await _wire_budget_versions_service(app_state)

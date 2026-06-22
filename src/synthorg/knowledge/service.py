@@ -9,6 +9,7 @@ records lifecycle status on the source row.
 """
 
 import builtins
+from pathlib import Path
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.concurrency import RefcountedLockMap
@@ -25,6 +26,7 @@ from synthorg.knowledge.enums import SourceStatus, SourceType
 from synthorg.knowledge.errors import (
     KnowledgeError,
     KnowledgeSourceNotFoundError,
+    KnowledgeValidationError,
 )
 from synthorg.knowledge.indexer import KnowledgeIndexer
 from synthorg.knowledge.loaders import build_source_loader
@@ -287,6 +289,37 @@ class KnowledgeService:
         logger.info(KNOWLEDGE_SOURCE_DELETED, source_id=source_id, deleted=deleted)
         return deleted
 
+    def _validate_filesystem_uri(self, uri: str) -> None:
+        """Reject a REPO/PDF source URI that escapes the configured root.
+
+        Filesystem ingestion is bounded by ``KnowledgeConfig.repo_root``:
+        the URI is resolved (following symlinks) and must stay inside the
+        resolved root. An empty root is fail-closed (no filesystem
+        ingestion until an operator configures one). This is the
+        path-traversal defence for ``RepoLoader`` / ``PdfLoader``, whose
+        URIs originate from user-controlled API input.
+
+        Raises:
+            KnowledgeValidationError: When no root is configured, the URI
+                cannot be resolved, or it escapes the configured root.
+        """
+        root = self._config.repo_root.strip()
+        if not root:
+            msg = (
+                "filesystem ingestion (REPO/PDF) requires knowledge.repo_root "
+                "to be configured; refusing an unbounded path"
+            )
+            raise KnowledgeValidationError(msg)
+        resolved_root = Path(root).resolve()
+        try:
+            resolved = Path(uri).resolve()
+        except OSError as exc:
+            msg = "source URI could not be resolved to a filesystem path"
+            raise KnowledgeValidationError(msg) from exc
+        if not resolved.is_relative_to(resolved_root):
+            msg = "source URI escapes the configured knowledge.repo_root"
+            raise KnowledgeValidationError(msg)
+
     async def _run_ingest(  # noqa: PLR0913 -- cohesive ingest inputs
         self,
         *,
@@ -298,6 +331,8 @@ class KnowledgeService:
         existing: KnowledgeSource | None,
         force: bool,
     ) -> KnowledgeSource:
+        if source_type in (SourceType.REPO, SourceType.PDF):
+            self._validate_filesystem_uri(uri)
         loader = build_source_loader(
             source_type,
             html_fetcher=self._html_fetcher,

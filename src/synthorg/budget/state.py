@@ -23,6 +23,7 @@ from synthorg.budget.forecast_service import BudgetForecastService
 from synthorg.budget.forecaster import CostForecaster
 from synthorg.budget.optimizer import CostOptimizer
 from synthorg.budget.pareto import ParetoAnalyzer
+from synthorg.budget.quota_poller import QuotaPoller
 from synthorg.budget.quota_tracker import QuotaTracker
 from synthorg.budget.risk_tracker import RiskTracker
 from synthorg.budget.tracker import CostTracker
@@ -43,6 +44,7 @@ class BudgetStateSlice(BaseFeatureStateSlice):
     cost_tracker: CostTracker | None = None
     budget_enforcer: BudgetAffordabilityChecker | None = None
     quota_tracker: QuotaTracker | None = None
+    quota_poller: QuotaPoller | None = None
     risk_tracker: RiskTracker | None = None
     call_analytics_service: CallAnalyticsService | None = None
     cost_forecaster: CostForecaster | None = None

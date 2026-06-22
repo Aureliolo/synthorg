@@ -85,6 +85,7 @@ class AgentEngineRunMixin:
                 execution_id=execution_result.context.execution_id,
                 agent_id=agent_id,
                 task_id=task_id,
+                summary_max_chars=self._flight_recorder_sink.summary_max_chars,
                 clock=self._clock,
             )
             if frames:

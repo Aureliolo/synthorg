@@ -35,7 +35,7 @@ from synthorg.observability.events.api import (
     API_VALIDATION_FAILED,
 )
 from synthorg.persistence.state import persistence_of
-from synthorg.security.models import AuditEntry
+from synthorg.security.models import AuditEntry, AuditVerdictStr
 from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
@@ -128,14 +128,14 @@ class AuditController(Controller):
             str | None,
             QueryParameter(
                 max_length=QUERY_MAX_LENGTH,
-                description="Filter to audit entries with this action type.",
+                pattern=r"^[a-z_]+:[a-z_]+$",
+                description="Filter by action type in 'category:action' format.",
             ),
         ] = None,
         verdict: Annotated[
-            str | None,
+            AuditVerdictStr | None,
             QueryParameter(
-                max_length=50,
-                description="Filter by verdict (APPROVED / DENIED).",
+                description="Filter by verdict (allow/deny/escalate/output_scan).",
             ),
         ] = None,
         since: Annotated[

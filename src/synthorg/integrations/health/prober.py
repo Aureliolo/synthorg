@@ -5,18 +5,19 @@ Periodically checks the health of all connections with
 """
 
 import asyncio
-import contextlib
 import copy
 from types import MappingProxyType
 from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import (
     ConnectionStatus,
     ConnectionType,
 )
+from synthorg.integrations.errors import IntegrationLifecycleConflictError
 from synthorg.integrations.health.checks.database import DatabaseHealthCheck
 from synthorg.integrations.health.checks.generic_http import (
     GenericHttpHealthCheck,
@@ -72,6 +73,20 @@ def bind_health_check_catalog(catalog: ConnectionCatalog) -> None:
         bind = getattr(checker, "bind_catalog", None)
         if callable(bind):
             bind(catalog)
+
+
+def bind_github_default_api_url(default_api_url: str) -> None:
+    """Inject the operator-configured GitHub API base URL into the checker.
+
+    The registry's :class:`GitHubHealthCheck` is built at import time with
+    the public default; startup wiring resolves
+    ``integrations.github_api_url`` and calls this so a GitHub Enterprise
+    deployment's health probes target the operator endpoint.
+    """
+    checker = _CHECK_REGISTRY.get(ConnectionType.GITHUB)
+    setter = getattr(checker, "set_default_api_url", None)
+    if callable(setter):
+        setter(default_api_url)
 
 
 class HealthProberService:
@@ -138,23 +153,73 @@ class HealthProberService:
         self._task: asyncio.Task[None] | None = None
         # Eager init: stop() must be safe before any start() call.
         self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
+        # Survives a timed-out stop so a later start() cannot stack a
+        # second probe loop on the orphaned one (canonical lifecycle
+        # pattern, see docs/reference/lifecycle-sync.md).
+        self._stop_failed = False
 
     async def start(self) -> None:
-        """Start the background probe loop."""
+        """Start the background probe loop.
+
+        Raises:
+            IntegrationLifecycleConflictError: If a prior ``stop`` timed
+                out and the prober is now unrestartable.
+        """
         async with self._lifecycle_lock:
+            if self._stop_failed:
+                logger.warning(
+                    HEALTH_PROBER_STOPPED,
+                    error="unrestartable after a timed-out stop",
+                )
+                raise IntegrationLifecycleConflictError
             if self._task is not None:
                 return
             self._task = asyncio.create_task(self._probe_loop())
             logger.info(HEALTH_PROBER_STARTED, interval=self._interval)
 
     async def stop(self) -> None:
-        """Stop the background probe loop."""
+        """Stop the background probe loop.
+
+        Raises:
+            TimeoutError: If the probe-task drain exceeds the hard
+                deadline; the prober is then marked unrestartable.
+        """
         async with self._lifecycle_lock:
-            if self._task is None:
+            task = self._task
+            if task is None:
                 return
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
+            task.cancel()
+
+            async def _drain() -> None:
+                """Await the cancelled probe task, swallowing its cancellation."""
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                    reraise_critical(exc)
+                    logger.warning(
+                        HEALTH_PROBER_STOPPED,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                        note="shutdown",
+                    )
+
+            drain_task: asyncio.Task[None] = asyncio.create_task(_drain())
+            try:
+                await asyncio.wait_for(
+                    asyncio.shield(drain_task),
+                    timeout=DEFAULT_DRAIN_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                self._stop_failed = True
+                drain_task.cancel()
+                logger.error(
+                    HEALTH_PROBER_STOPPED,
+                    error="stop exceeded hard deadline; prober marked unrestartable",
+                    timeout_seconds=DEFAULT_DRAIN_TIMEOUT_SECONDS,
+                )
+                raise
             self._task = None
             logger.info(HEALTH_PROBER_STOPPED)
 

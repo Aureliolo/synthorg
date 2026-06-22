@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
-from synthorg.backup.errors import RestoreError
+from synthorg.backup.errors import BackupError, RestoreError
 from synthorg.backup.models import BackupTrigger, RestoreConfirmation
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
@@ -75,6 +75,19 @@ def _restore_idempotency_key(backup_id: str, idempotency_key: str) -> str:
     """
     material = f"{backup_id}:{idempotency_key}"
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def _create_idempotency_key(idempotency_key: str) -> str:
+    """Return a fixed-width create dedup key.
+
+    A create has no ``backup_id`` yet, so the caller key alone identifies the
+    logical request; hashing bounds it to 64 hex chars so a max-length caller
+    key cannot overflow the durable store's 255-char key column.
+
+    Returns:
+        The 64-char hex dedup key.
+    """
+    return hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
 
 
 async def _backup_list(
@@ -157,21 +170,58 @@ async def _backup_create(
     tool = "synthorg_backup_create"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        trigger_raw = typed_args(arguments, BackupCreateArgs).trigger
+        args = typed_args(arguments, BackupCreateArgs)
+        actor_id = require_actor_id(resolved_actor)
         try:
-            trigger = BackupTrigger(trigger_raw)
+            trigger = BackupTrigger(args.trigger)
         except ValueError as exc:
             raise ArgumentValidationError(_ARG_TRIGGER, _TY_BACKUP_TRIGGER) from exc
-        manifest = await backup_facade_service_of(app_state).create_backup(
-            trigger=trigger,
+
+        async def _create() -> object:
+            manifest = await backup_facade_service_of(app_state).create_backup(
+                trigger=trigger,
+            )
+            # Logged inside the callback so a cache-hit (idempotent retry)
+            # does not record a second admin-op execution for a backup that
+            # never actually ran.
+            logger.info(
+                MCP_ADMIN_OP_EXECUTED,
+                tool_name=tool,
+                actor_agent_id=actor_id,
+                reason=reason,
+                trigger=trigger.value,
+            )
+            return _to_jsonable(manifest)
+
+        # ``meta`` cannot import ``api.services`` (layering contract), so the
+        # handler constructs the service over the neutral repository instead
+        # of reaching for the api-side ``idempotency_service_of`` accessor;
+        # the dedup state lives in the shared repo, so a per-call instance is
+        # equivalent. The app clock seam threads an injected FakeClock so the
+        # in-flight poll honours test time rather than waiting in real time.
+        service = IdempotencyService(
+            persistence_of(app_state).idempotency_keys,
+            clock=app_state.clock,
         )
-        logger.info(
-            MCP_ADMIN_OP_EXECUTED,
-            tool_name=tool,
-            actor_agent_id=require_actor_id(resolved_actor),
-            reason=reason,
-            trigger=trigger.value,
+        outcome = await service.run_idempotent(
+            scope="mcp:backup_create",
+            key=_create_idempotency_key(args.idempotency_key),
+            callback=_create,
         )
+        if outcome.timed_out:
+            logger.warning(
+                IDEMPOTENCY_CLAIM_IN_FLIGHT,
+                scope="mcp:backup_create",
+                idempotency_key=args.idempotency_key,
+                tool_name=tool,
+            )
+            msg = "Concurrent in-flight create with this idempotency key"
+            return err(ConflictError(msg), domain_code="conflict")
+        if not isinstance(outcome.result, dict):
+            msg = "Cached create response failed validation; rerun the create"
+            log_handler_invoke_failed(tool, TypeError(msg))
+            return err(BackupError(msg))
+        payload: dict[str, object] = outcome.result
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except GuardrailViolationError as exc:
@@ -185,7 +235,7 @@ async def _backup_create(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(_to_jsonable(manifest))
+    return ok(payload)
 
 
 async def _backup_delete(

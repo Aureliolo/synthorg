@@ -162,13 +162,20 @@ class CopyOnWriteIdentityStore:
             ValueError: If version does not exist.
         """
         key = str(agent_id)
-        snapshot = await self._repo.get_version(key, version)
-        if snapshot is None:
-            msg = f"Version {version} not found for agent {agent_id!r}"
-            raise ValueError(msg)
-
-        restored = snapshot.snapshot
+        # Hold ``_version_lock`` across the version read AND the registry
+        # mutation + pointer write so the whole rollback is atomic against a
+        # concurrent ``put()`` (which also holds the lock for its full body).
+        # Reading the snapshot outside the lock was a TOCTOU race: a put()
+        # could advance ``_current_version[key]`` between the read and the
+        # write, and this method would then silently roll the pointer back
+        # over the newer committed state.
         async with self._version_lock:
+            snapshot = await self._repo.get_version(key, version)
+            if snapshot is None:
+                msg = f"Version {version} not found for agent {agent_id!r}"
+                raise ValueError(msg)
+
+            restored = snapshot.snapshot
             await self._registry.evolve_identity(
                 agent_id,
                 restored,

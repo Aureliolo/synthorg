@@ -291,6 +291,7 @@ def auto_wire_integrations(  # noqa: PLR0913
         )
         from synthorg.integrations.health.prober import (  # noqa: PLC0415
             HealthProberService,
+            bind_github_default_api_url,
             bind_health_check_catalog,
         )
         from synthorg.integrations.oauth.token_manager import (  # noqa: PLC0415
@@ -371,6 +372,20 @@ def auto_wire_integrations(  # noqa: PLR0913
 
         bundle.connection_catalog = catalog
         bind_health_check_catalog(catalog)
+        # Resolve the operator-configured GitHub API base URL (env > default;
+        # the same ``integrations.github_api_url`` setting that backs the
+        # code-mod client) and inject it into the import-time health checker
+        # so GitHub Enterprise probes target the operator endpoint.
+        from synthorg.settings.bootstrap_resolver import (  # noqa: PLC0415
+            resolve_init_value,
+        )
+        from synthorg.settings.enums import SettingNamespace  # noqa: PLC0415
+
+        github_api_url = resolve_init_value(
+            SettingNamespace.INTEGRATIONS,
+            "github_api_url",
+        )
+        bind_github_default_api_url(str(github_api_url.value))
         logger.info(API_SERVICE_AUTO_WIRED, service="connection_catalog")
 
         health_cfg = effective_config.integrations.health

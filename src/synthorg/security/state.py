@@ -19,6 +19,7 @@ from synthorg.security.autonomy.protocol import (
 )
 from synthorg.security.policy_engine.protocol import PolicyEngine
 from synthorg.security.redteam.protocol import RedTeamReportRepository
+from synthorg.security.rules.risk_override_service import RiskOverrideService
 from synthorg.security.trust.service import TrustService
 
 
@@ -32,6 +33,7 @@ class SecurityStateSlice(BaseFeatureStateSlice):
     autonomy_change_strategy: AutonomyChangeStrategy | None = None
     red_team_reports: RedTeamReportRepository | None = None
     policy_engine: PolicyEngine | None = None
+    risk_override_service: RiskOverrideService | None = None
 
 
 def audit_log_of(app_state: AppStateSliceMixin) -> AuditLog:
@@ -51,4 +53,19 @@ def trust_service_of(app_state: AppStateSliceMixin) -> TrustService:
     """
     return require_service(
         app_state.slice(SecurityStateSlice).trust_service, "Trust Service"
+    )
+
+
+def risk_override_service_of(app_state: AppStateSliceMixin) -> RiskOverrideService:
+    """Resolve the SecOps risk-override service from its slice, or raise 503.
+
+    Absent unless the configured approval-timeout policy is tiered (the
+    only consumer of the risk classifier the overrides drive).
+
+    Returns:
+        The wired risk-override service.
+    """
+    return require_service(
+        app_state.slice(SecurityStateSlice).risk_override_service,
+        "Risk Override Service",
     )

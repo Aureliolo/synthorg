@@ -159,6 +159,7 @@ class UserOrgRolesController(Controller):
             await service.save_update(
                 updated,
                 intent="grant_org_role",
+                principal=str(actor.user_id),
                 granted_org_role=data.role.value,
             )
         except QueryError:
@@ -236,6 +237,7 @@ class UserOrgRolesController(Controller):
             await service.save_update(
                 updated,
                 intent="revoke_org_role",
+                principal=str(actor.user_id),
                 revoked_org_role=role,
             )
         except QueryError:

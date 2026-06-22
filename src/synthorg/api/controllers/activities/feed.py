@@ -18,6 +18,10 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     paginate_cursor,
 )
+from synthorg.api.rate_limits import (
+    per_op_concurrency_from_policy,
+    per_op_rate_limit_from_policy,
+)
 from synthorg.api.state import AppState
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.hr.activity import ActivityEvent, redact_cost_events
@@ -45,7 +49,10 @@ class ActivityController(Controller):
     tags = ("activities",)
     guards = [require_read_access]  # noqa: RUF012
 
-    @get()
+    @get(
+        guards=[per_op_rate_limit_from_policy("activities.list", key="user")],
+        opt=per_op_concurrency_from_policy("activities.list", key="user"),
+    )
     async def list_activities(  # noqa: PLR0913
         self,
         request: Request[object, object, State],

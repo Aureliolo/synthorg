@@ -6,12 +6,19 @@ with no network, and a benchmark gate that requires the golden-scorecard
 no-regression check.
 """
 
-from typing import Literal, Self
+from typing import ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.toolsmith.models import ToolSandboxBackend
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import (
+    MirrorField,
+    apply_settings_mirrors,
+    parse_float,
+    parse_int,
+)
 
 
 class ToolAuthoringConfig(BaseModel):
@@ -87,6 +94,39 @@ class ToolsmithConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="gap_recurrence_threshold",
+            namespace=SettingNamespace.META,
+            key="toolsmith_gap_recurrence_threshold",
+            parse=parse_int,
+        ),
+        MirrorField(
+            field="gap_window_hours",
+            namespace=SettingNamespace.META,
+            key="toolsmith_gap_window_hours",
+            parse=parse_int,
+        ),
+        MirrorField(
+            field="gap_buffer_size",
+            namespace=SettingNamespace.META,
+            key="toolsmith_gap_buffer_size",
+            parse=parse_int,
+        ),
+        MirrorField(
+            field="cycle_interval_seconds",
+            namespace=SettingNamespace.META,
+            key="toolsmith_cycle_interval_seconds",
+            parse=parse_float,
+        ),
+        MirrorField(
+            field="max_active_tools",
+            namespace=SettingNamespace.META,
+            key="toolsmith_max_active_tools",
+            parse=parse_int,
+        ),
+    )
+
     enabled: bool = False
     gap_recurrence_threshold: int = Field(default=3, ge=2)
     gap_window_hours: int = Field(default=24, ge=1)
@@ -99,6 +139,16 @@ class ToolsmithConfig(BaseModel):
     max_active_tools: int = Field(default=50, ge=1)
     authoring: ToolAuthoringConfig = Field(default_factory=ToolAuthoringConfig)
     validation: ToolValidationConfig = Field(default_factory=ToolValidationConfig)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: object) -> object:
+        """Apply settings mirrors.
+
+        Returns:
+            Result of type ``object``.
+        """
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _enabled_requires_allowlist(self) -> Self:

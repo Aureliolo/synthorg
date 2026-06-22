@@ -77,9 +77,21 @@ class ProvidersTestConnectionArgs(_ProviderNameArgs, AdminGuardrailFields):
 
 
 class BackupCreateArgs(AdminGuardrailFields):
-    """Args for ``backup.create`` (admin op)."""
+    """Args for ``backup.create`` (admin op).
+
+    A required ``idempotency_key`` makes a re-issued create (e.g. an agent
+    retry after a transport error) a no-op that returns the cached manifest
+    instead of writing a second backup run for the same logical request.
+    """
 
     trigger: NotBlankStr = Field(description="What initiated the backup")
+    idempotency_key: NotBlankStr = Field(
+        max_length=255,
+        description=(
+            "Retry-safe key: an identical key returns the cached create "
+            "result instead of triggering a second backup run."
+        ),
+    )
 
 
 class BackupListArgs(PaginationFields):

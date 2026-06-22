@@ -2,7 +2,7 @@
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Annotated, Final, cast
+from typing import Annotated, Final, Literal, cast
 
 from litestar import Controller, Request, get, post
 from litestar.datastructures import State
@@ -43,7 +43,6 @@ from synthorg.observability.events.client import (
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
-_FMT_MAX_LENGTH: Final[int] = 32
 
 
 class StartSimulationPayload(BaseModel):
@@ -383,7 +382,10 @@ class SimulationController(Controller):
         self,
         state: State,
         simulation_id: PathId,
-        fmt: Annotated[str, QueryParameter(max_length=_FMT_MAX_LENGTH)] = "summary",
+        fmt: Annotated[
+            Literal["summary", "detailed"],
+            QueryParameter(description="Report format: summary (default) or detailed."),
+        ] = "summary",
     ) -> ApiResponse[dict[str, object]]:
         """Return a generated report for a simulation run.
 
@@ -391,11 +393,10 @@ class SimulationController(Controller):
             state: Injected app state.
             simulation_id: Id of the run to report on.
             fmt: Report format -- ``summary`` (default) or
-                ``detailed``.
+                ``detailed``. Litestar rejects any other value with 422.
 
         Raises:
             NotFoundError: If the simulation id is not known.
-            ConflictError: If ``fmt`` is not a supported format.
 
         Returns:
             ``ApiResponse[dict[str, object]]`` instance.
@@ -409,11 +410,8 @@ class SimulationController(Controller):
             raise NotFoundError(msg) from exc
         if fmt == "summary":
             payload = await SummaryReport().generate_report(record.metrics)
-        elif fmt == "detailed":
-            payload = await DetailedReport().generate_report(record.metrics)
         else:
-            msg = f"Unsupported report format: {fmt!r}"
-            raise ConflictError(msg)
+            payload = await DetailedReport().generate_report(record.metrics)
         payload["simulation_id"] = record.simulation_id
         payload["status"] = record.status
         return ApiResponse(data=cast("dict[str, object]", payload))

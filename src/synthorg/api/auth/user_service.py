@@ -188,6 +188,9 @@ class UserService:
         ``intent`` distinguishes updates in the audit log (role change,
         org-role grant, org-role revoke); extra ``audit_fields`` are
         forwarded into the ``SECURITY_USER_UPDATED`` event verbatim.
+        Callers SHOULD pass ``principal=<acting user id>`` so the signed
+        chain record binds the actor; the target user is always bound as
+        ``resource`` here.
 
         Returns:
             ``User`` instance.
@@ -201,10 +204,16 @@ class UserService:
             await self._repo.save(user)
         except ConstraintViolationError as exc:
             raise_for_user_constraint(exc)
+        # ``resource`` + ``action_type`` are extracted into the signed
+        # audit-chain payload so the chain record cryptographically binds
+        # WHICH user changed and WHAT changed; ``principal`` (the actor)
+        # rides in via ``audit_fields`` from the controller.
         logger.info(
             SECURITY_USER_UPDATED,
             user_id=user.id,
             intent=intent,
+            resource=f"user:{user.id}",
+            action_type=f"user:{intent}",
             **audit_fields,
         )
         return user

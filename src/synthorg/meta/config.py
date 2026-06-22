@@ -5,7 +5,7 @@ disabled by default, mandatory approval gate, conservative
 thresholds.
 """
 
-from typing import Literal, Self
+from typing import ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -18,6 +18,8 @@ from synthorg.meta.telemetry.config import CrossDeploymentAnalyticsConfig
 from synthorg.meta.toolsmith.config import ToolsmithConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import META_SELF_IMPROVEMENT_LOAD_FAILED
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import MirrorField, apply_settings_mirrors
 from synthorg.settings.service_protocol import SettingsServiceProtocol
 
 logger = get_logger(__name__)
@@ -184,6 +186,18 @@ class CodeModificationConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    # The GitHub API base URL lives in the ``integrations`` settings
+    # namespace (the operator's single source of truth, shared with the
+    # connection health check) but is consumed here by the code-mod GitHub
+    # client; mirror it so an operator override flows to both.
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="github_api_url",
+            namespace=SettingNamespace.INTEGRATIONS,
+            key="github_api_url",
+        ),
+    )
+
     allowed_paths: tuple[NotBlankStr, ...] = (
         NotBlankStr("src/synthorg/meta/strategies/*"),
         NotBlankStr("src/synthorg/meta/guards/*"),
@@ -265,6 +279,16 @@ class CodeModificationConfig(BaseModel):
             msg = "github_api_url must use the https scheme"
             raise ValueError(msg)
         return value
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: object) -> object:
+        """Populate unset mirror fields from the settings registry.
+
+        Returns:
+            Result of type ``object``.
+        """
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
 
 class SelfImprovementConfig(BaseModel):

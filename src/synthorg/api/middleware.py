@@ -81,7 +81,8 @@ def _is_healthcheck_path(path: str) -> bool:
 _API_CSP: Final[str] = (
     "default-src 'self'; script-src 'self'; style-src 'self'; "
     "img-src 'self'; font-src 'self'; connect-src 'self'; "
-    "object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+    "object-src 'none'; base-uri 'self'; form-action 'self'; "
+    "frame-ancestors 'none'"
 )
 
 # Relaxed CSP for /docs/ -- Scalar UI loads resources from external origins.
@@ -143,6 +144,7 @@ def build_docs_csp(origins: Sequence[str]) -> str:
         f"connect-src 'self' {joined}; "
         f"object-src 'none'; "
         f"base-uri 'self'; "
+        f"form-action 'self'; "
         f"frame-ancestors 'none'"
     )
 

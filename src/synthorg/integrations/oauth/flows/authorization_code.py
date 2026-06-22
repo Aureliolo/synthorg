@@ -4,6 +4,7 @@ import json
 import math
 import secrets as stdlib_secrets
 from datetime import timedelta
+from typing import Final
 from urllib.parse import urlencode
 
 import httpx
@@ -11,12 +12,17 @@ import httpx
 from synthorg.core.auth.token_size import get_auth_token_bytes
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.resilience.retry_after import (
+    coerce_finite_nonneg_seconds,
+    parse_retry_after_seconds,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import (
     OAuthState,
     OAuthToken,
 )
 from synthorg.integrations.errors import (
+    OAuthRateLimitedError,
     TokenExchangeFailedError,
     TokenRefreshFailedError,
 )
@@ -31,6 +37,7 @@ from synthorg.observability.events.integrations import (
     OAUTH_FLOW_STARTED,
     OAUTH_TOKEN_EXCHANGE_FAILED,
     OAUTH_TOKEN_EXCHANGED,
+    OAUTH_TOKEN_RATE_LIMITED,
     OAUTH_TOKEN_REFRESH_FAILED,
     OAUTH_TOKEN_REFRESHED,
 )
@@ -38,6 +45,8 @@ from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.ssrf import build_pinned_transport, resolve_outbound_target
 
 logger = get_logger(__name__)
+
+_HTTP_TOO_MANY_REQUESTS: Final[int] = 429
 
 _DEFAULT_HTTP_TIMEOUT_SECONDS: float = 30.0
 """Fallback OAuth HTTP timeout used when no operator override is supplied."""
@@ -112,6 +121,7 @@ class AuthorizationCodeFlow:
             httpx.HTTPError: On transport / status failure.
             json.JSONDecodeError: When the response body is not JSON.
             TokenExchangeFailedError: When the JSON body is not an object.
+            OAuthRateLimitedError: When the token endpoint returns HTTP 429.
         """
         validation = await resolve_outbound_target(
             token_url,
@@ -124,6 +134,20 @@ class AuthorizationCodeFlow:
             transport=build_pinned_transport(validation),
         ) as client:
             resp = await client.post(token_url, data=payload)
+            if resp.status_code == _HTTP_TOO_MANY_REQUESTS:
+                retry_after = coerce_finite_nonneg_seconds(
+                    parse_retry_after_seconds(
+                        resp.headers.get("Retry-After"),
+                        now=self._clock.now(),
+                    ),
+                )
+                logger.warning(
+                    OAUTH_TOKEN_RATE_LIMITED,
+                    field=field,
+                    retry_after_seconds=retry_after,
+                )
+                msg = "token endpoint rate-limited the request (429)"
+                raise OAuthRateLimitedError(msg, retry_after_seconds=retry_after)
             resp.raise_for_status()
             parsed = resp.json()
         if not isinstance(parsed, dict):

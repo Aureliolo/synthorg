@@ -6,6 +6,8 @@ is selected -- auto-creates the template's agents with model assignments
 matched to the configured provider(s).
 """
 
+import asyncio
+
 from litestar import Controller, post
 from litestar.datastructures import State
 from litestar.status_codes import HTTP_201_CREATED
@@ -41,6 +43,7 @@ from synthorg.api.controllers.setup_models import (
 )
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import (
@@ -61,7 +64,10 @@ class SetupCompanyController(Controller):
     @post(
         "/company",
         status_code=HTTP_201_CREATED,
-        guards=[require_ceo],
+        guards=[
+            require_ceo,
+            per_op_rate_limit_from_policy("setup.company", key="user_or_ip"),
+        ],
     )
     async def create_company(
         self,
@@ -87,7 +93,10 @@ class SetupCompanyController(Controller):
         app_state: AppState = state.app_state
         settings_svc = settings_service_of(app_state)
 
-        tmpl_res = _resolve_template(data.template_name)
+        # ``_resolve_template`` loads and renders the selected company
+        # template from disk (YAML parse + inheritance walk); offload the
+        # blocking file I/O so it does not stall the event loop.
+        tmpl_res = await asyncio.to_thread(_resolve_template, data.template_name)
         description = normalize_description(data.description)
 
         # Serialise the whole check / persist / agents-write sequence

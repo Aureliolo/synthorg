@@ -7,9 +7,17 @@ with alert thresholds.
 See the Operations design page (Risk Budget section).
 """
 
-from typing import Self
+from typing import ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import (
+    MirrorField,
+    apply_settings_mirrors,
+    parse_float,
+    parse_int,
+)
 
 
 class RiskBudgetAlertConfig(BaseModel):
@@ -22,8 +30,33 @@ class RiskBudgetAlertConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="warn_at",
+            namespace=SettingNamespace.BUDGET,
+            key="risk_warn_pct",
+            parse=parse_int,
+        ),
+        MirrorField(
+            field="critical_at",
+            namespace=SettingNamespace.BUDGET,
+            key="risk_critical_pct",
+            parse=parse_int,
+        ),
+    )
+
     warn_at: int = Field(default=75, ge=0, le=100, strict=True)
     critical_at: int = Field(default=90, ge=0, le=100, strict=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: object) -> object:
+        """Apply settings mirrors.
+
+        Returns:
+            Result of type ``object``.
+        """
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _validate_ordering(self) -> Self:
@@ -60,6 +93,27 @@ class RiskBudgetConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="per_task_risk_limit",
+            namespace=SettingNamespace.BUDGET,
+            key="risk_per_task_limit",
+            parse=parse_float,
+        ),
+        MirrorField(
+            field="per_agent_daily_risk_limit",
+            namespace=SettingNamespace.BUDGET,
+            key="risk_per_agent_daily",
+            parse=parse_float,
+        ),
+        MirrorField(
+            field="total_daily_risk_limit",
+            namespace=SettingNamespace.BUDGET,
+            key="risk_total_daily",
+            parse=parse_float,
+        ),
+    )
+
     enabled: bool = False
     per_task_risk_limit: float = Field(default=5.0, ge=0.0)
     per_agent_daily_risk_limit: float = Field(default=20.0, ge=0.0)
@@ -67,6 +121,16 @@ class RiskBudgetConfig(BaseModel):
     alerts: RiskBudgetAlertConfig = Field(
         default_factory=RiskBudgetAlertConfig,
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: object) -> object:
+        """Apply settings mirrors.
+
+        Returns:
+            Result of type ``object``.
+        """
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _validate_limits(self) -> Self:
