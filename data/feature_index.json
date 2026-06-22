@@ -725,6 +725,7 @@
         "mcp_bridge_factory",
         "health_prober_service",
         "webhook_activity_service",
+        "webhook_receipt_service",
         "webhook_replay_protector"
       ]
     },
@@ -1299,6 +1300,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-22T13:31:19.734362Z",
+  "generated_at": "2026-06-22T15:32:56.701134Z",
   "schema_version": 1
 }
