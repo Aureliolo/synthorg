@@ -84,6 +84,7 @@ import { personalitiesHandlers } from './personalities'
 import { projectBrainHandlers } from './projectBrain'
 import { projectDocsHandlers } from './projectDocs'
 import { projectsHandlers } from './projects'
+import { promotionHandlers } from './promotion'
 import { providersHandlers } from './providers'
 import { qualityHandlers } from './quality'
 import { recommendationsHandlers } from './recommendations'
@@ -153,6 +154,7 @@ export const defaultHandlers = [
   ...projectBrainHandlers,
   ...projectDocsHandlers,
   ...projectsHandlers,
+  ...promotionHandlers,
   ...providersHandlers,
   ...qualityHandlers,
   ...recommendationsHandlers,
@@ -188,5 +190,6 @@ export {
 } from './deliverableReceipts'
 export { buildConnection } from './connections'
 export { buildCustomRule } from './custom-rules'
+export { buildPromotionEvaluation, buildPromotionRecord } from './promotion'
 export { buildCloudPreset, buildLocalPreset } from './providers'
 export { buildSimulation } from './clients'

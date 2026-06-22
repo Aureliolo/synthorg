@@ -10,6 +10,7 @@ import { getErrorMessage } from '@/utils/errors'
 const log = createLogger('ScalingPage')
 
 import { DecisionHistory } from './scaling/DecisionHistory'
+import { PromotionCycleSection } from './scaling/PromotionCycleSection'
 import { ScalingMetrics } from './scaling/ScalingMetrics'
 import { ScalingSkeleton } from './scaling/ScalingSkeleton'
 import { SignalGauges } from './scaling/SignalGauges'
@@ -110,6 +111,11 @@ export default function ScalingPage() {
       {/* Recent decisions */}
       <ErrorBoundary level="section">
         <DecisionHistory decisions={decisions} />
+      </ErrorBoundary>
+
+      {/* Cluster-wide promotion cycle */}
+      <ErrorBoundary level="section">
+        <PromotionCycleSection />
       </ErrorBoundary>
     </div>
   )
