@@ -25,6 +25,8 @@ from synthorg.meta.models import (
     RollbackOperation,
     RollbackPlan,
 )
+from synthorg.meta.protocol import CIValidator
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -100,10 +102,14 @@ def _ci_fail() -> CIValidationResult:
 
 def _mock_ci_validator(
     result: CIValidationResult | None = None,
-) -> AsyncMock:
-    ci = AsyncMock()
-    ci.validate = AsyncMock(return_value=result or _ci_pass())
-    return ci
+) -> CIValidator:
+    # Spec against the CIValidator protocol so a rename of its keyword-only
+    # ``validate(*, project_root, changed_files)`` signature is caught here
+    # rather than silently passing against a bare AsyncMock.
+    validator: CIValidator = mock_of[CIValidator](
+        validate=AsyncMock(return_value=result or _ci_pass()),
+    )
+    return validator
 
 
 def _mock_github_client() -> AsyncMock:

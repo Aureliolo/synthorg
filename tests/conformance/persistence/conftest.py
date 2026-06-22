@@ -211,6 +211,10 @@ def _wait_for_postgres_accept(
             with socket.create_connection((host, port), timeout=1.0):
                 return
         except OSError:
+            # Platform-specific poll backoff: the Docker Desktop port-proxy can
+            # take 1-2s to route the published port after pg_isready already
+            # passes. Bounded by ``deadline`` above, this fixture runs once per
+            # session, so a fixed 0.2s wall-clock backoff carries no flake risk.
             time.sleep(0.2)
 
 

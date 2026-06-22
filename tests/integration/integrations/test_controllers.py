@@ -60,8 +60,9 @@ def _make_conn(name: str = "c1") -> Connection:
 class TestConnectionsController:
     async def test_list_returns_catalog_entries(self) -> None:
         from synthorg.api.controllers.connections import ConnectionsController
+        from synthorg.integrations.connections.catalog import ConnectionCatalog
 
-        catalog = MagicMock()
+        catalog = MagicMock(spec=ConnectionCatalog)
         catalog.list_all = AsyncMock(return_value=(_make_conn("a"), _make_conn("b")))
         state = State(
             {
@@ -79,8 +80,9 @@ class TestConnectionsController:
 
     async def test_get_missing_raises_not_found(self) -> None:
         from synthorg.api.controllers.connections import ConnectionsController
+        from synthorg.integrations.connections.catalog import ConnectionCatalog
 
-        catalog = MagicMock()
+        catalog = MagicMock(spec=ConnectionCatalog)
         catalog.get = AsyncMock(return_value=None)
         state = State({"app_state": make_app_state(connection_catalog=catalog)})
 
@@ -114,8 +116,9 @@ class TestConnectionsController:
             ConnectionsController,
             CreateConnectionRequest,
         )
+        from synthorg.integrations.connections.catalog import ConnectionCatalog
 
-        catalog = MagicMock()
+        catalog = MagicMock(spec=ConnectionCatalog)
         catalog.create = AsyncMock(
             side_effect=DuplicateConnectionError("dup"),
         )

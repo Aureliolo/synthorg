@@ -485,7 +485,9 @@ class TestBackupGuards:
         mock_svc = MagicMock(spec=BackupService)
         mock_svc.on_startup = False
         mock_svc.on_shutdown = False
-        mock_svc.list_backups.return_value = []
+        # BackupService.list_backups() returns tuple[BackupInfo, ...]; mirror the
+        # real return type so the mock cannot drift from the protocol contract.
+        mock_svc.list_backups.return_value = ()
         scheduler = MagicMock(spec=BackupScheduler)
         scheduler.stop = AsyncMock(spec=BackupScheduler.stop)
         mock_svc.scheduler = scheduler
