@@ -1214,8 +1214,8 @@
     },
     "src/synthorg/providers/registry.py": {
       "cap": 500,
-      "loc": 425,
-      "ratio": 0.85,
+      "loc": 426,
+      "ratio": 0.852,
       "tier": "code"
     },
     "src/synthorg/research/models.py": {
@@ -1447,7 +1447,7 @@
     "synthorg.memory.models": 73,
     "synthorg.memory.protocol": 67,
     "synthorg.meta.chief_of_staff.models": 32,
-    "synthorg.meta.config": 23,
+    "synthorg.meta.config": 24,
     "synthorg.meta.mcp.domains._remaining_args": 25,
     "synthorg.meta.mcp.errors": 56,
     "synthorg.meta.mcp.handler_protocol": 45,
@@ -1457,10 +1457,10 @@
     "synthorg.meta.mcp.handlers.common_logging": 48,
     "synthorg.meta.mcp.registry": 30,
     "synthorg.meta.mcp.tool_builder": 22,
-    "synthorg.meta.models": 64,
+    "synthorg.meta.models": 65,
     "synthorg.meta.signal_models": 23,
     "synthorg.notifications.models": 20,
-    "synthorg.observability": 1637,
+    "synthorg.observability": 1638,
     "synthorg.observability.background_tasks": 25,
     "synthorg.observability.events.api": 176,
     "synthorg.observability.events.approval_gate": 20,
@@ -1475,7 +1475,7 @@
     "synthorg.observability.events.integrations": 64,
     "synthorg.observability.events.mcp": 63,
     "synthorg.observability.events.memory": 55,
-    "synthorg.observability.events.meta": 61,
+    "synthorg.observability.events.meta": 62,
     "synthorg.observability.events.ontology": 21,
     "synthorg.observability.events.provider": 43,
     "synthorg.observability.events.security": 73,
@@ -1611,7 +1611,7 @@
     },
     "synthorg.hr.registry:AgentRegistryService": {
       "lcom4": 2,
-      "loc": 666
+      "loc": 665
     },
     "synthorg.hr.scaling.service:ScalingService": {
       "lcom4": 1,

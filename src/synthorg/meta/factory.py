@@ -246,70 +246,11 @@ def build_appliers(
         ProposalAltitude.PROMPT_TUNING: PromptApplier(context=prompt_context),
     }
     if config is not None and config.code_modification_enabled:
-        code_cfg = config.code_modification
-        if code_cfg.github_token is None or code_cfg.github_repo is None:
-            logger.warning(
-                META_STRATEGY_REGISTERED,
-                altitude="code_modification_applier",
-                reason="skipped_no_github_credentials",
-            )
-        elif code_cfg.project_root is None:
-            # Fail closed: the CI validator must run against an explicit,
-            # absolute checkout. Defaulting to the process CWD would point
-            # ruff / mypy / pytest at whatever tree the worker happened to
-            # start in, so an unset project_root disables the applier
-            # rather than silently validating the wrong files.
-            logger.warning(
-                META_STRATEGY_REGISTERED,
-                altitude="code_modification_applier",
-                reason="skipped_no_project_root",
-            )
-        else:
-            from pathlib import Path  # noqa: PLC0415
+        from synthorg.meta._code_applier_wiring import (  # noqa: PLC0415
+            maybe_install_code_applier,
+        )
 
-            from synthorg.meta.appliers.code_applier import (  # noqa: PLC0415
-                CodeApplier,
-            )
-            from synthorg.meta.appliers.github_client import (  # noqa: PLC0415
-                HttpGitHubClient,
-            )
-            from synthorg.meta.validation.ci_validator import (  # noqa: PLC0415
-                LocalCIValidator,
-            )
-
-            project_root = Path(str(code_cfg.project_root))
-            if not project_root.is_absolute():
-                # Fail closed: a relative project_root resolves against the
-                # process CWD, pointing ruff / mypy / pytest at whatever tree
-                # the worker started in rather than the declared checkout.
-                # Disable the applier instead of silently validating the
-                # wrong files (same posture as the unset-root branch above).
-                logger.warning(
-                    META_STRATEGY_REGISTERED,
-                    altitude="code_modification_applier",
-                    reason="skipped_non_absolute_project_root",
-                )
-            else:
-                ci_validator = LocalCIValidator(
-                    project_root=project_root.resolve(),
-                    scope_validator=ScopeValidator(
-                        allowed_paths=tuple(code_cfg.allowed_paths),
-                        forbidden_paths=tuple(code_cfg.forbidden_paths),
-                    ),
-                    timeout_seconds=code_cfg.ci_timeout_seconds,
-                )
-                github_client = HttpGitHubClient(
-                    token=str(code_cfg.github_token),
-                    repo=str(code_cfg.github_repo),
-                    api_base_url=str(code_cfg.github_api_url),
-                    base_branch=str(code_cfg.base_branch),
-                    timeout=code_cfg.api_timeout_seconds,
-                )
-                appliers[ProposalAltitude.CODE_MODIFICATION] = CodeApplier(
-                    ci_validator=ci_validator,
-                    github_client=github_client,
-                    code_modification_config=code_cfg,
-                )
+        maybe_install_code_applier(appliers, config.code_modification)
     return MappingProxyType(deepcopy(appliers))
 
 
