@@ -1,0 +1,115 @@
+package runlock
+
+import (
+	"context"
+	"errors"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+// withShortWait shrinks the contention wait budget for the duration of a test
+// so a "second holder is blocked" assertion does not stall for the production
+// 5s budget. It restores the previous values on cleanup.
+func withShortWait(t *testing.T) {
+	t.Helper()
+	prevWait, prevRetry := WaitTimeout, RetryInterval
+	WaitTimeout = 150 * time.Millisecond
+	RetryInterval = 20 * time.Millisecond
+	t.Cleanup(func() {
+		WaitTimeout, RetryInterval = prevWait, prevRetry
+	})
+}
+
+func TestAcquireRelease(t *testing.T) {
+	tests := []struct {
+		name    string
+		prelock bool // hold the lock before the subject Acquire
+		wantErr error
+	}{
+		{name: "free lock acquires", prelock: false, wantErr: nil},
+		{name: "held lock returns ErrLocked", prelock: true, wantErr: ErrLocked},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			withShortWait(t)
+			dir := t.TempDir()
+			ctx := context.Background()
+
+			if tc.prelock {
+				held, err := Acquire(ctx, dir)
+				if err != nil {
+					t.Fatalf("prelock Acquire: %v", err)
+				}
+				t.Cleanup(func() { _ = held.Release() })
+			}
+
+			lock, err := Acquire(ctx, dir)
+			if tc.wantErr != nil {
+				if !errors.Is(err, tc.wantErr) {
+					t.Fatalf("Acquire err = %v, want %v", err, tc.wantErr)
+				}
+				if lock != nil {
+					t.Fatalf("Acquire returned a non-nil lock on error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Acquire: %v", err)
+			}
+			t.Cleanup(func() { _ = lock.Release() })
+		})
+	}
+}
+
+func TestReleaseAllowsReacquire(t *testing.T) {
+	withShortWait(t)
+	dir := t.TempDir()
+	ctx := context.Background()
+
+	first, err := Acquire(ctx, dir)
+	if err != nil {
+		t.Fatalf("first Acquire: %v", err)
+	}
+	if err := first.Release(); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+
+	second, err := Acquire(ctx, dir)
+	if err != nil {
+		t.Fatalf("re-Acquire after Release: %v", err)
+	}
+	t.Cleanup(func() { _ = second.Release() })
+}
+
+func TestReleaseIsNilAndDoubleSafe(t *testing.T) {
+	var nilLock *Lock
+	if err := nilLock.Release(); err != nil {
+		t.Fatalf("nil Release: %v", err)
+	}
+
+	dir := t.TempDir()
+	lock, err := Acquire(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("Acquire: %v", err)
+	}
+	if err := lock.Release(); err != nil {
+		t.Fatalf("first Release: %v", err)
+	}
+	if err := lock.Release(); err != nil {
+		t.Fatalf("second Release should be a no-op: %v", err)
+	}
+}
+
+func TestLockFileLivesInDataDir(t *testing.T) {
+	dir := t.TempDir()
+	lock, err := Acquire(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("Acquire: %v", err)
+	}
+	t.Cleanup(func() { _ = lock.Release() })
+
+	if got := lock.fl.Path(); got != filepath.Join(dir, lockFileName) {
+		t.Fatalf("lock path = %q, want %q", got, filepath.Join(dir, lockFileName))
+	}
+}

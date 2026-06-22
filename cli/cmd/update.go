@@ -16,6 +16,7 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
 	"github.com/Aureliolo/synthorg/cli/internal/health"
+	"github.com/Aureliolo/synthorg/cli/internal/runlock"
 	"github.com/Aureliolo/synthorg/cli/internal/selfupdate"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/Aureliolo/synthorg/cli/internal/version"
@@ -320,23 +321,25 @@ func isDevChannelMismatch(channel, ver string) bool {
 // prints the "New version available" notice before this is called, so this
 // function goes straight to the install confirm prompt.
 func downloadAndApplyCLI(ctx context.Context, out *ui.UI, result selfupdate.CheckResult, autoAccept bool) error {
-	// Surface a permission error in the install directory before the
-	// confirmation prompt; otherwise we ask the user to confirm an
-	// update that cannot possibly succeed, then fail at the final
-	// ``Replace`` step after they have already said yes.
-	if err := selfupdate.ProbeInstallDirWritable(); err != nil {
-		return fmt.Errorf(
-			"cannot update CLI in place; re-run as an administrator "+
-				"or move the binary to a writable directory: %w", err,
-		)
-	}
-
 	ok, err := confirmUpdate(ctx, fmt.Sprintf("Update CLI from %s to %s?", result.CurrentVersion, result.LatestVersion), autoAccept)
 	if err != nil {
 		return fmt.Errorf("confirming CLI update: %w", err)
 	}
 	if !ok {
 		return nil
+	}
+
+	// Surface a permission error in the install directory before the
+	// (slow) download but only after the user has consented; otherwise the
+	// probe would create and remove a temp file in the binary directory on
+	// every declined update check. The download is the expensive step, so
+	// failing here still avoids the "wait through a multi-MB download then
+	// fail at Replace" scenario.
+	if err := selfupdate.ProbeInstallDirWritable(); err != nil {
+		return fmt.Errorf(
+			"cannot update CLI in place; re-run as an administrator "+
+				"or move the binary to a writable directory: %w", err,
+		)
 	}
 
 	sp := out.StartSpinner("Downloading CLI update...")
@@ -865,6 +868,17 @@ func restartIfRunning(cmd *cobra.Command, info docker.Info, safeDir string, stat
 // performRestart stops, restarts, and health-checks containers.
 func performRestart(ctx context.Context, out io.Writer, info docker.Info, safeDir string, state config.State, uiOpts ui.Options) (bool, error) {
 	uiOut := ui.NewUIWithOptions(out, uiOpts)
+
+	// Hold the lifecycle lock across the whole stop+start so a concurrent
+	// `synthorg start` cannot bring the stack up in the window between this
+	// down and the up below (a split-brain race on the named volumes). The
+	// post-down `ps -q` assertion further down then runs under the lock and is
+	// therefore reliable rather than point-in-time.
+	lock, err := runlock.Acquire(ctx, safeDir)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = lock.Release() }()
 
 	sp := uiOut.StartSpinner("Stopping containers...")
 	if err := composeRunQuiet(ctx, info, safeDir, "down"); err != nil {

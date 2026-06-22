@@ -10,6 +10,7 @@ import (
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
+	"github.com/Aureliolo/synthorg/cli/internal/runlock"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -70,6 +71,13 @@ func runStop(cmd *cobra.Command, _ []string) error {
 	if _, err := os.Stat(composePath); errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("compose.yml not found in %s", safeDir)
 	}
+	// Hold the lifecycle lock across the `compose down` so a concurrent start
+	// or update-restart cannot bring the stack back up mid-stop.
+	lock, err := runlock.Acquire(ctx, safeDir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lock.Release() }()
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
 	info, err := docker.Detect(ctx)

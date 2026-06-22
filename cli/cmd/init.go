@@ -15,6 +15,7 @@ import (
 	"charm.land/huh/v2"
 	"github.com/Aureliolo/synthorg/cli/internal/compose"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
+	"github.com/Aureliolo/synthorg/cli/internal/docker"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/Aureliolo/synthorg/cli/internal/version"
 	"github.com/spf13/cobra"
@@ -126,6 +127,18 @@ func runInitInteractive(cmd *cobra.Command, out *ui.UI) error {
 	hintAfterInit(out, state)
 
 	if result.startNow {
+		// Pre-flight Docker reachability before re-exec'ing start. Without
+		// this, an unreachable daemon surfaces as a start failure printed
+		// after the "initialized" banner and config summary, implying the
+		// auto-start was expected to succeed. Probing here lets us degrade to
+		// a clear "run start once Docker is running" hint while still leaving
+		// init reported as successful.
+		if _, derr := docker.Detect(cmd.Context()); derr != nil {
+			out.Blank()
+			out.Warn(fmt.Sprintf("Docker is not available, so the stack was not started: %v", derr))
+			out.Section("Next: start Docker, then run 'synthorg start'")
+			return nil
+		}
 		out.Blank()
 		_ = os.Setenv("SYNTHORG_NO_LOGO", "1")
 		cmd.Root().SetArgs([]string{"start"})

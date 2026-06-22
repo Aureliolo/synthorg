@@ -413,7 +413,15 @@ func (wc *wipeContext) verifyAndPin() error {
 // timeout or the context is cancelled.
 func (wc *wipeContext) waitForBackendHealth() error {
 	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", wc.state.BackendPort)
-	return health.WaitForHealthy(wc.ctx, healthURL, 30*time.Second, 2*time.Second, 5*time.Second)
+	// Use the same readiness-wait budget as start (SYNTHORG_HEALTH_WAIT_TIMEOUT,
+	// default 90s) rather than a hardcoded 30s: a slow first boot (e.g. a large
+	// Postgres migration) can legitimately take longer than 30s, and a shorter
+	// budget here would false-negative a backend that is still coming up.
+	healthTimeout := GetGlobalOpts(wc.ctx).Tunables.HealthWaitTimeout
+	if healthTimeout <= 0 {
+		healthTimeout = config.DefaultHealthWaitTimeout
+	}
+	return health.WaitForHealthy(wc.ctx, healthURL, healthTimeout, 2*time.Second, 5*time.Second)
 }
 
 // offerBackup prompts whether to create a backup, and if so, ensures
@@ -491,12 +499,10 @@ func (wc *wipeContext) ensureRunningForBackup() (bool, error) {
 		return askToSkip("Could not start containers for backup. Continue with wipe anyway?")
 	}
 
-	// Containers just started -- wait for the backend before attempting backup.
-	if err := wc.waitForBackendHealth(); err != nil {
-		wc.errOut.Warn(fmt.Sprintf("Backend not healthy after start: %v", err))
-		return askToSkip("Backend is not healthy. Continue with wipe anyway?")
-	}
-
+	// No second health wait here: startContainers -> pullStartAndWait already
+	// blocks until the backend is healthy, so re-checking with a separate (and
+	// previously shorter) budget could only false-negative a backend that just
+	// reported healthy.
 	return true, nil
 }
 
