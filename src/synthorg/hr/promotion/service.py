@@ -27,6 +27,7 @@ from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.promotion._approval_ops import create_approval, verify_approval
 from synthorg.hr.promotion._identity_guard import checked_identity
 from synthorg.hr.promotion._levels import next_level, prev_level
+from synthorg.hr.promotion._record_builder import build_promotion_record
 from synthorg.hr.promotion.approval_protocol import PromotionApprovalStrategy
 from synthorg.hr.promotion.config import PromotionConfig
 from synthorg.hr.promotion.criteria_protocol import PromotionCriteriaStrategy
@@ -485,7 +486,7 @@ class PromotionService:
             )
 
             now = datetime.now(UTC)
-            record = self._build_promotion_record(
+            record = build_promotion_record(
                 request,
                 identity=identity,
                 new_model_id=new_model_id,
@@ -523,44 +524,6 @@ class PromotionService:
             error_type=PromotionCooldownError.__name__,
         )
         raise PromotionCooldownError(msg)
-
-    def _build_promotion_record(
-        self,
-        request: PromotionRequest,
-        *,
-        identity: AgentIdentity,
-        new_model_id: str | None,
-        initiated_by: NotBlankStr,
-        now: datetime,
-    ) -> PromotionRecord:
-        """Construct the immutable promotion record for an applied change.
-
-        Returns:
-            The promotion record.
-        """
-        return PromotionRecord(
-            agent_id=request.agent_id,
-            agent_name=request.agent_name,
-            old_level=request.current_level,
-            new_level=request.target_level,
-            direction=request.direction,
-            evaluation=request.evaluation,
-            approved_by=(
-                NotBlankStr("auto")
-                if request.approval_id is None
-                else NotBlankStr("human")
-            ),
-            approval_id=request.approval_id,
-            effective_at=now,
-            initiated_by=initiated_by,
-            model_changed=new_model_id is not None,
-            old_model_id=(
-                identity.model.model_id if new_model_id is not None else None
-            ),
-            new_model_id=(
-                NotBlankStr(new_model_id) if new_model_id is not None else None
-            ),
-        )
 
     async def _reevaluate_trust_best_effort(self, agent_id: NotBlankStr) -> None:
         """Re-evaluate trust after a promotion; never block the record.
