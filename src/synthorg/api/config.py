@@ -178,7 +178,7 @@ class RateLimitConfig(BaseModel):
         description="Maximum unauthenticated requests per time window (by IP)",
     )
     auth_max_requests: int = Field(
-        default=600,
+        default=6000,
         ge=1,
         description="Maximum authenticated requests per time window (by user ID)",
     )
