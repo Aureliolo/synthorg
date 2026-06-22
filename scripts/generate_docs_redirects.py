@@ -13,16 +13,22 @@ resolve to their current location. It runs in the Pages workflow after
 ``zensical build``.
 """
 
+import html
 import sys
 from pathlib import Path
+from typing import Final
 from urllib.parse import urlsplit
 
 import yaml
 
-_REPO_ROOT: Path = Path(__file__).resolve().parent.parent
-_MKDOCS_CONFIG: Path = _REPO_ROOT / "mkdocs.yml"
+_REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
+_MKDOCS_CONFIG: Final[Path] = _REPO_ROOT / "mkdocs.yml"
 
-_STUB_TEMPLATE: str = """\
+# Schemes a redirect target may carry. Anything else (notably ``javascript:``)
+# is rejected before interpolation into the HTML stub.
+_ALLOWED_TARGET_SCHEMES: Final[frozenset[str]] = frozenset({"", "http", "https"})
+
+_STUB_TEMPLATE: Final[str] = """\
 <!doctype html>
 <html lang="en">
 <head>
@@ -55,7 +61,13 @@ _IgnoreUnknownTags.add_multi_constructor(  # type: ignore[no-untyped-call]  # Py
 
 
 def _load_config() -> dict[str, object]:
-    """Parse ``mkdocs.yml`` into a plain dict."""
+    """Parse ``mkdocs.yml`` into a plain dict.
+
+    Raises:
+        OSError: ``mkdocs.yml`` is missing or unreadable.
+        yaml.YAMLError: the file is not valid YAML.
+        TypeError: the document does not parse to a mapping.
+    """
     text = _MKDOCS_CONFIG.read_text(encoding="utf-8")
     # _IgnoreUnknownTags subclasses yaml.SafeLoader and maps every unknown tag
     # to None, so no arbitrary object can be instantiated; this is as safe as
@@ -100,15 +112,49 @@ def _doc_to_url(doc_path: str, prefix: str) -> str:
 
 
 def _doc_to_stub_dir(site_dir: Path, doc_path: str) -> Path:
-    """Map an old mkdocs source path to the directory its stub index.html lives in."""
+    """Map an old mkdocs source path to the directory its stub index.html lives in.
+
+    Raises:
+        ValueError: the redirect key escapes ``site_dir`` (a ``../`` traversal),
+            which would write the stub outside the built site tree.
+    """
     slug = doc_path.removesuffix(".md")
     slug = slug.removesuffix("/index")
-    return site_dir / slug
+    stub_dir = (site_dir / slug).resolve()
+    # A malformed redirect_maps key (e.g. ``../../escape.md``) must not write
+    # outside the built site; relative_to raises ValueError when it escapes.
+    stub_dir.relative_to(site_dir.resolve())
+    return stub_dir
+
+
+def _safe_target(target: str) -> str:
+    """Validate a redirect target's scheme and HTML-escape it for the stub.
+
+    Raises:
+        ValueError: the target carries a disallowed URL scheme (e.g.
+            ``javascript:``), which must never reach the meta-refresh stub.
+    """
+    scheme = urlsplit(target).scheme
+    if scheme not in _ALLOWED_TARGET_SCHEMES:
+        msg = f"redirect target has disallowed scheme: {target!r}"
+        raise ValueError(msg)
+    return html.escape(target, quote=True)
 
 
 def main() -> int:
     """Write a redirect stub for every ``redirect_maps`` entry into ``site_dir``."""
-    config = _load_config()
+    try:
+        config = _load_config()
+    except (OSError, TypeError) as exc:
+        print(
+            f"error: could not load mkdocs.yml: {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
+        return 1
+    except yaml.YAMLError as exc:
+        print(f"error: mkdocs.yml is not valid YAML: {exc}", file=sys.stderr)
+        return 1
+
     maps = _redirect_maps(config)
     if not maps:
         print("no redirect_maps in mkdocs.yml; nothing to do")
@@ -117,18 +163,29 @@ def main() -> int:
     site_dir_value = config.get("site_dir", "_site/docs")
     site_dir = _REPO_ROOT / str(site_dir_value)
     if not site_dir.is_dir():
-        print(f"error: site_dir {site_dir} does not exist (run the docs build first)")
+        print(
+            f"error: site_dir {site_dir} does not exist (run the docs build first)",
+            file=sys.stderr,
+        )
         return 1
 
     prefix = _url_path_prefix(config)
     written = 0
     for old_path, new_path in maps.items():
-        target = _doc_to_url(new_path, prefix)
-        stub_dir = _doc_to_stub_dir(site_dir, old_path)
-        stub_dir.mkdir(parents=True, exist_ok=True)
-        (stub_dir / "index.html").write_text(
-            _STUB_TEMPLATE.format(target=target), encoding="utf-8"
-        )
+        try:
+            target = _safe_target(_doc_to_url(new_path, prefix))
+            stub_dir = _doc_to_stub_dir(site_dir, old_path)
+            stub_dir.mkdir(parents=True, exist_ok=True)
+            (stub_dir / "index.html").write_text(
+                _STUB_TEMPLATE.format(target=target), encoding="utf-8"
+            )
+        except (OSError, ValueError) as exc:
+            print(
+                f"error: could not write redirect stub for {old_path!r}: "
+                f"{type(exc).__name__}: {exc}",
+                file=sys.stderr,
+            )
+            return 1
         written += 1
         print(f"wrote redirect stub: {old_path} -> {target}")
 

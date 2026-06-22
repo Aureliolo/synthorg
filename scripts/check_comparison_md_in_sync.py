@@ -70,17 +70,22 @@ def main() -> int:
         committed = _OUTPUT_FILE.read_text(encoding="utf-8")
     except OSError as exc:
         print(
-            f"error: could not read {_OUTPUT_FILE}: {type(exc).__name__}",
+            f"error: could not read {_OUTPUT_FILE}: {type(exc).__name__}: {exc}",
             file=sys.stderr,
         )
         return 1
 
+    # A gate must fail with a clean diagnostic, never a raw traceback. The
+    # generator opens data/competitors.yaml (OSError/yaml.YAMLError on a bad
+    # read) and is reached via untyped module attributes (AttributeError if its
+    # private API is renamed), so catch broadly and map every failure to exit 1.
     try:
         gen_mod = _load_generator()
         expected = _expected_markdown(gen_mod)
-    except (RuntimeError, FileNotFoundError, ValueError, TypeError) as exc:
+    except Exception as exc:
         print(
-            f"error: could not generate expected comparison page: {exc}",
+            f"error: could not generate expected comparison page: "
+            f"{type(exc).__name__}: {exc}",
             file=sys.stderr,
         )
         return 1
