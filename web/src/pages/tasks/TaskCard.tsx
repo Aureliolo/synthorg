@@ -1,4 +1,4 @@
-import { useEffect, useRef, type Ref } from 'react'
+import { memo, useEffect, useRef, type Ref } from 'react'
 import { Clock, GitBranch } from 'lucide-react'
 import { cn, FOCUS_RING } from '@/lib/utils'
 import { Avatar } from '@/components/ui/avatar'
@@ -25,7 +25,7 @@ export interface TaskCardProps {
   currency?: string | undefined
 }
 
-export function TaskCard({
+export const TaskCard = memo(function TaskCard({
   task,
   onSelect,
   isDragging,
@@ -78,7 +78,7 @@ export function TaskCard({
       <TaskCardFooter task={task} currency={currency} />
     </div>
   )
-}
+})
 
 interface TaskCardHeaderProps {
   title: string

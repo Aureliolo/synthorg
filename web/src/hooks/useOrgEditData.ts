@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import { useCompanyStore } from '@/stores/company'
+import { useFreshnessGate } from '@/hooks/useFreshnessGate'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
 import type { AgentConfig } from '@/api/types/agents'
@@ -114,10 +115,13 @@ export function useOrgEditData(): UseOrgEditDataReturn {
   const saveError = useCompanyStore((s) => s.saveError)
   const mutations = useCompanyMutations()
 
+  // Polling gated so a live WS push skips the next redundant poll (matches the
+  // other WS-backed data hooks).
+  const { skipIfFresh, markFresh } = useFreshnessGate()
   const pollFn = useCallback(async () => {
     await useCompanyStore.getState().fetchDepartmentHealths()
   }, [])
-  const polling = usePolling(pollFn, ORG_EDIT_POLL_INTERVAL)
+  const polling = usePolling(pollFn, ORG_EDIT_POLL_INTERVAL, { skipIfFresh })
   useCompanyInitialFetch(polling.start, polling.stop)
 
   const bindings: ChannelBinding[] = useMemo(
@@ -126,9 +130,10 @@ export function useOrgEditData(): UseOrgEditDataReturn {
         channel,
         handler: (event) => {
           useCompanyStore.getState().updateFromWsEvent(event)
+          markFresh()
         },
       })),
-    [],
+    [markFresh],
   )
   const { connected: wsConnected, setupError: wsSetupError } = useWebSocket({ bindings })
 

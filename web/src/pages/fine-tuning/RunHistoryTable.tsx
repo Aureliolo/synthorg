@@ -1,5 +1,4 @@
 import { memo } from 'react'
-import { useShallow } from 'zustand/react/shallow'
 
 import type { FineTuneRun, FineTuneStage } from '@/api/endpoints/fine-tuning'
 import { ACTIVE_STAGES } from '@/api/endpoints/fine-tuning'
@@ -68,7 +67,7 @@ const RunRow = memo(function RunRow({ run }: { run: FineTuneRun }) {
 })
 
 export function RunHistoryTable() {
-  const { runs } = useFineTuningStore(useShallow((s) => ({ runs: s.runs })))
+  const runs = useFineTuningStore((s) => s.runs)
   const pagination = useListPagination({ items: runs, namespace: 'fine-tuning-runs' })
 
   if (runs.length === 0) {

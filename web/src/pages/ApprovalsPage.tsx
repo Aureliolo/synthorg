@@ -122,8 +122,8 @@ function ApprovalGroups({ ctrl }: { ctrl: ApprovalsPageController }) {
           onDeselectAll={data.deselectAllInGroup}
           onToggleSelect={data.toggleSelection}
           onSelect={url.handleSelectApproval}
-          onApprove={(id) => void ctrl.handleApproveOne(id)}
-          onReject={(id) => ctrl.handleRejectOne(id)}
+          onApprove={ctrl.handleApproveOne}
+          onReject={ctrl.handleRejectOne}
         />
       ))}
     </>
