@@ -1,0 +1,29 @@
+# Judged brief: self-improvement evolution analysis.
+#
+# Exercises the engine evolution analyser: given a recurring failure pattern,
+# the org must analyse the root cause and propose a targeted, non-speculative
+# improvement. A degraded run proposes a vague or speculative change, or
+# misdiagnoses the cause. Graded on the calibrated ``default-bench`` rubric.
+brief_id: evolution-analysis
+schema_version: 1
+kind: judged
+title: "evolution analysis"
+description: >-
+  Analyse a recurring failure pattern, diagnose its root cause, and propose a
+  targeted, non-speculative improvement.
+priority: medium
+estimated_complexity: 3
+acceptance_criteria:
+  - "The analysis diagnoses the actual root cause of the recurring failure."
+  - "The proposed improvement is targeted and grounded, not speculative."
+limits:
+  max_total_cost_usd: 7.0
+  max_wall_clock_seconds: 180
+  max_turns: 8
+rubric:
+  rubric_id: default-bench
+  reference_answer_path: "references/default-bench.md"
+  dimensions:
+    - name: correctness
+      weight: 1.0
+      grade_type: score

@@ -32,8 +32,8 @@ from synthorg.meta.mcp.handlers.common_logging import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
-from synthorg.persistence.research_protocol import ResearchRunFilter
 from synthorg.research.errors import ResearchRunNotFoundError
+from synthorg.research.models import ResearchRunFilter
 from synthorg.research.service import ResearchService
 from synthorg.research.state import ResearchStateSlice
 from synthorg.research.tool import build_research_brief, derive_research_ids

@@ -29,6 +29,7 @@ from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.meta._ids import new_opaque_id
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.enums import (
     ConversationInviteStatus,
@@ -61,19 +62,6 @@ from synthorg.persistence.conversation_participant_protocol import (
 logger = get_logger(__name__)
 
 _ACTION_TYPE = NotBlankStr("conversational:invite_agent")
-
-
-def _new_id() -> NotBlankStr:
-    """Return a fresh opaque ``NotBlankStr`` id for the approval queue.
-
-    Entity primary keys mint their own ``UUID`` via ``default_factory``;
-    this serves the ``NotBlankStr``-typed ``approval_id`` that ties an
-    invite to its approval item.
-
-    Returns:
-        ``NotBlankStr`` instance.
-    """
-    return NotBlankStr(str(uuid.uuid4()))
 
 
 def _parse_invite(raw: object) -> InviteRequest | None:
@@ -372,7 +360,7 @@ class GroupInviteCoordinator:
         Returns:
             The parked invite summary, or ``None`` on park failure.
         """
-        approval_id = _new_id()
+        approval_id = new_opaque_id()
         target_agent_id = str(target.id)
         invite = ConversationInvite(
             conversation_id=conversation_id,

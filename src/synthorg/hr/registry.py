@@ -204,6 +204,47 @@ class AgentRegistryService:
         async with self._lock:
             return self._agents.get(str(agent_id))
 
+    async def get_by_ids(
+        self,
+        agent_ids: tuple[NotBlankStr, ...],
+    ) -> dict[str, AgentIdentity]:
+        """Batch lookup by id, acquiring the registry lock exactly once.
+
+        Fanning out N separate ``get`` calls (the old pattern) requires N
+        lock acquisitions serialised under the shared lock; this batch
+        method reduces that to a single acquisition. Mirrors
+        :meth:`get_by_names`.
+
+        Args:
+            agent_ids: Agent ids to resolve. Duplicates collapse to one
+                entry in the result.
+
+        Returns:
+            Mapping of id string to identity for every id that resolves;
+            ids with no registered agent are omitted (callers treat a
+            missing key as "not found").
+
+        Raises:
+            ValueError: If ``len(agent_ids)`` exceeds
+                ``MAX_BATCH_NAMES_LOOKUP``; the registry lock must not be
+                held for an unbounded scan.
+        """
+        if not agent_ids:
+            return {}
+        if len(agent_ids) > MAX_BATCH_NAMES_LOOKUP:
+            msg = (
+                f"get_by_ids batch of {len(agent_ids)} exceeds "
+                f"MAX_BATCH_NAMES_LOOKUP={MAX_BATCH_NAMES_LOOKUP}"
+            )
+            raise ValueError(msg)
+        async with self._lock:
+            resolved: dict[str, AgentIdentity] = {}
+            for agent_id in agent_ids:
+                identity = self._agents.get(str(agent_id))
+                if identity is not None:
+                    resolved[str(agent_id)] = identity
+            return resolved
+
     async def get_by_name(self, name: NotBlankStr) -> AgentIdentity | None:
         """Retrieve an agent identity by name.
 

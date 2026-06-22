@@ -238,6 +238,7 @@ class ContextInjectionStrategy:
             and self._hierarchical_retriever is not None
         ):
             ranked = await self._execute_hierarchical_pipeline(
+                retriever=self._hierarchical_retriever,
                 agent_id=agent_id,
                 query_text=query_text,
                 categories=categories,
@@ -275,6 +276,7 @@ class ContextInjectionStrategy:
         if self._config.query_specific_rerank_enabled and self._reranker is not None:
             try:
                 ranked = await self._apply_reranking(
+                    reranker=self._reranker,
                     query_text=query_text,
                     agent_id=agent_id,
                     ranked=ranked,
@@ -318,11 +320,19 @@ class ContextInjectionStrategy:
     async def _execute_hierarchical_pipeline(
         self,
         *,
+        retriever: HierarchicalRetriever,
         agent_id: NotBlankStr,
         query_text: NotBlankStr,
         categories: frozenset[MemoryCategory] | None,
     ) -> tuple[ScoredMemory, ...]:
         """Delegate to hierarchical retriever and convert results.
+
+        Args:
+            retriever: The wired hierarchical retriever, narrowed non-``None``
+                by the caller's config + presence guard.
+            agent_id: Owning agent for the retrieval query.
+            query_text: The query string.
+            categories: Optional category filter.
 
         Returns:
             Tuple of ``ScoredMemory``.
@@ -333,7 +343,7 @@ class ContextInjectionStrategy:
             categories=categories,
             max_results=self._config.max_memories,
         )
-        result = await self._hierarchical_retriever.retrieve(query)  # type: ignore[union-attr]
+        result = await retriever.retrieve(query)
         return tuple(
             ScoredMemory(
                 entry=c.entry,
@@ -348,11 +358,19 @@ class ContextInjectionStrategy:
     async def _apply_reranking(
         self,
         *,
+        reranker: QuerySpecificReranker,
         query_text: NotBlankStr,
         agent_id: NotBlankStr,
         ranked: tuple[ScoredMemory, ...],
     ) -> tuple[ScoredMemory, ...]:
         """Apply query-specific re-ranking to scored memories.
+
+        Args:
+            reranker: The wired re-ranker, narrowed non-``None`` by the
+                caller's config + presence guard.
+            query_text: The query string.
+            agent_id: Owning agent for the retrieval query.
+            ranked: Pre-rerank scored memories.
 
         Returns:
             Tuple of ``ScoredMemory``.
@@ -369,7 +387,7 @@ class ContextInjectionStrategy:
             )
             for s in ranked
         )
-        reranked = await self._reranker.rerank(query, candidates)  # type: ignore[union-attr]
+        reranked = await reranker.rerank(query, candidates)
         return tuple(
             ScoredMemory(
                 entry=c.entry,

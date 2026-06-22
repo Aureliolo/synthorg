@@ -8,11 +8,9 @@ fine-tune, checkpoint, and entry handler modules.
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.memory.fine_tune_plan import MemoryBackendUnsupportedError
 from synthorg.memory.service import MemoryService
 from synthorg.memory.state import MemoryStateSlice, memory_service_of
-from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.settings.state import SettingsStateSlice
 
 if TYPE_CHECKING:
@@ -30,38 +28,21 @@ _WHY_MEMORY_SERVICE_NOT_WIRED = (
     "unavailable on backends that do not support fine-tune repositories"
 )
 
-_WHY_BACKEND_NO_FINE_TUNE = (
-    "fine-tune repositories are not exposed by the active persistence "
-    "backend; ensure the backend is connected and exposes "
-    "fine_tune_runs + fine_tune_checkpoints (both SQLite and Postgres "
-    "do today)"
-)
-
 
 def _service(app_state: AppState) -> MemoryService:
     """Return the injected :class:`MemoryService` facade.
 
-    Handlers route through ``app_state.memory_service`` exclusively
-    (CLAUDE.md persistence-boundary rule). For app_states that have
-    adopted the wired-service pattern, :attr:`has_memory_service`
-    short-circuits the lookup. As a fallback for stripped-down test
-    app-states that expose only a raw ``persistence`` backend, we try
-    to construct a service on the fly from
-    ``persistence.fine_tune_checkpoints`` / ``.fine_tune_runs``.
-
-    Every failure mode raises :class:`MemoryBackendUnsupportedError` so the
-    calling handler returns a uniform ``not_supported`` envelope:
-
-    * No wired service **and** the raw backend is absent / doesn't expose
-      fine-tune repos.
-    * The backend's fine-tune property raises ``NotImplementedError``
-      (legacy / partial backend).
-    * The backend is not yet connected and the property's
-      ``_require_connected`` guard raises
-      :class:`~synthorg.core.persistence_errors.PersistenceConnectionError`.
+    Handlers route through the wired :class:`MemoryService` exclusively
+    (CLAUDE.md persistence-boundary rule): reaching into the raw
+    ``PersistenceStateSlice.backend`` to assemble fine-tune repositories
+    from a meta-layer handler crosses that boundary, so the only honoured
+    paths are a service attached as a plain attribute (stripped-down test
+    app-states) or one published on :class:`MemoryStateSlice`. When neither
+    is present the handler returns a uniform ``not_supported`` envelope.
 
     Raises:
-        MemoryBackendUnsupportedError: In any of the above cases.
+        MemoryBackendUnsupportedError: When no :class:`MemoryService` is
+            wired (attribute-attached or sliced).
 
     Returns:
         ``MemoryService`` instance.
@@ -83,29 +64,7 @@ def _service(app_state: AppState) -> MemoryService:
     if slice_fn is not None and slice_fn(MemoryStateSlice).service is not None:
         attached: MemoryService = memory_service_of(app_state)
         return attached
-    backend = app_state.slice(PersistenceStateSlice).backend
-    if backend is None:
-        raise MemoryBackendUnsupportedError(_WHY_MEMORY_SERVICE_NOT_WIRED)
-    try:
-        checkpoint_repo = backend.fine_tune_checkpoints
-        run_repo = backend.fine_tune_runs
-    except (
-        NotImplementedError,
-        PersistenceConnectionError,
-        AttributeError,
-    ) as exc:
-        # ``AttributeError`` covers partial backends that simply lack
-        # the property altogether; without catching it here the handler
-        # would surface a generic 500 instead of the contract-stipulated
-        # ``not_supported`` envelope.
-        raise MemoryBackendUnsupportedError(_WHY_BACKEND_NO_FINE_TUNE) from exc
-    settings_service = app_state.slice(SettingsStateSlice).settings_service
-    return MemoryService(
-        checkpoint_repo=checkpoint_repo,
-        run_repo=run_repo,
-        settings_service=settings_service,
-        memory_backend=app_state.slice(MemoryStateSlice).backend,
-    )
+    raise MemoryBackendUnsupportedError(_WHY_MEMORY_SERVICE_NOT_WIRED)
 
 
 def _delete_entry_service(app_state: AppState) -> MemoryService:

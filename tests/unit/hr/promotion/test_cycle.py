@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import TaskMetricRecord
@@ -148,3 +149,39 @@ async def test_empty_registry_returns_nothing(
     service = build_promotion_service(registry=registry, tracker=tracker)
 
     assert await run_promotion_cycle(service) == ()
+
+
+async def test_cycle_does_not_refetch_identity_per_evaluation(
+    registry: AgentRegistryService,
+    tracker: PerformanceTracker,
+) -> None:
+    """The sweep threads the ``list_active`` identity into the evaluation.
+
+    The read-only evaluation step reuses the pre-loaded identity rather than
+    re-fetching per agent. The request and apply steps each perform their own
+    authoritative ``registry.get`` by design (they persist/mutate state, so
+    they must not act on a possibly-stale snapshot).
+    """
+    identity = make_agent_identity(name="promotable", level=SeniorityLevel.JUNIOR)
+    await registry.register(identity)
+    await _seed_metrics(tracker, str(identity.id), quality=8.0)
+    service = build_promotion_service(registry=registry, tracker=tracker)
+
+    get_calls = 0
+    original_get = registry.get
+
+    async def _counting_get(agent_id: NotBlankStr) -> AgentIdentity | None:
+        nonlocal get_calls
+        get_calls += 1
+        return await original_get(agent_id)
+
+    registry.get = _counting_get  # type: ignore[method-assign]
+    try:
+        applied = await run_promotion_cycle(service)
+    finally:
+        registry.get = original_get  # type: ignore[method-assign]
+
+    assert len(applied) == 1
+    # The evaluation reuses the pre-loaded snapshot (no refetch); the
+    # request and the under-lock apply each re-read authoritatively.
+    assert get_calls == 2

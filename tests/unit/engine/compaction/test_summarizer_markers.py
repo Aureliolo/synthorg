@@ -36,7 +36,6 @@ class TestBuildSummaryMarkers:
         )
         summary = _build_summary(
             messages,
-            execution_id="test-exec",
             preserve_markers=True,
             task_complexity=Complexity.COMPLEX,
         )
@@ -48,7 +47,6 @@ class TestBuildSummaryMarkers:
         messages = (_msg(MessageRole.ASSISTANT, "Wait, I need to reconsider this."),)
         summary = _build_summary(
             messages,
-            execution_id="test-exec",
             preserve_markers=True,
             task_complexity=Complexity.COMPLEX,
         )
@@ -62,7 +60,6 @@ class TestBuildSummaryMarkers:
         messages = (_msg(MessageRole.ASSISTANT, "Hmm, let me verify this."),)
         summary = _build_summary(
             messages,
-            execution_id="test-exec",
             preserve_markers=True,
             task_complexity=Complexity.EPIC,
         )
@@ -74,7 +71,6 @@ class TestBuildSummaryMarkers:
         messages = (_msg(MessageRole.ASSISTANT, "Wait, I see the issue."),)
         summary = _build_summary(
             messages,
-            execution_id="test-exec",
             preserve_markers=True,
             task_complexity=Complexity.SIMPLE,
         )
@@ -93,7 +89,6 @@ class TestBuildSummaryMarkers:
         )
         summary = _build_summary(
             messages,
-            execution_id="test-exec",
             preserve_markers=True,
             task_complexity=Complexity.SIMPLE,
         )
@@ -106,7 +101,6 @@ class TestBuildSummaryMarkers:
         messages = (_msg(MessageRole.ASSISTANT, "Hmm, perhaps we should try again."),)
         summary = _build_summary(
             messages,
-            execution_id="test-exec",
             preserve_markers=True,
             task_complexity=Complexity.MEDIUM,
         )
@@ -124,7 +118,6 @@ class TestBuildSummaryMarkers:
         )
         summary = _build_summary(
             messages,
-            execution_id="test-exec",
             preserve_markers=False,
             task_complexity=Complexity.COMPLEX,
         )
@@ -141,7 +134,6 @@ class TestBuildSummaryMarkers:
         )
         summary = _build_summary(
             messages,
-            execution_id="test-exec",
             preserve_markers=True,
             task_complexity=Complexity.COMPLEX,
         )
@@ -163,7 +155,6 @@ class TestBuildSummaryMarkers:
         )
         summary = _build_summary(
             messages,
-            execution_id="test-exec",
             preserve_markers=True,
             task_complexity=Complexity.COMPLEX,
         )
@@ -182,7 +173,6 @@ class TestBuildSummaryMarkers:
         )
         summary = _build_summary(
             messages,
-            execution_id="test-exec",
             preserve_markers=True,
             task_complexity=Complexity.COMPLEX,
         )
@@ -202,7 +192,6 @@ class TestBuildSummaryMarkers:
         )
         summary = _build_summary(
             messages,
-            execution_id="test-exec",
             preserve_markers=True,
             task_complexity=Complexity.COMPLEX,
         )
@@ -218,7 +207,6 @@ class TestBuildSummaryMarkers:
         )
         summary = _build_summary(
             messages,
-            execution_id="test-exec",
             preserve_markers=True,
             task_complexity=Complexity.COMPLEX,
         )
@@ -234,7 +222,6 @@ class TestBuildSummaryMarkers:
         )
         summary = _build_summary(
             messages,
-            execution_id="test-exec",
             preserve_markers=True,
             task_complexity=Complexity.COMPLEX,
         )
@@ -250,7 +237,6 @@ class TestBuildSummaryMarkers:
         )
         summary = _build_summary(
             messages,
-            execution_id="test-exec",
             preserve_markers=True,
             task_complexity=Complexity.COMPLEX,
         )
@@ -265,7 +251,6 @@ class TestBuildSummaryMarkers:
         messages = (_msg(MessageRole.ASSISTANT, long_content),)
         summary = _build_summary(
             messages,
-            execution_id="test-exec",
             preserve_markers=True,
             task_complexity=Complexity.COMPLEX,
         )

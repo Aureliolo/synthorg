@@ -1,0 +1,29 @@
+# Judged brief: onboarding training-source curation.
+#
+# Exercises the HR training curation prompt: onboarding a new mid-level
+# engineer, the org must curate a source set that is relevant to the role and
+# non-redundant. A degraded run curates off-role or duplicative material. Graded
+# on the calibrated ``default-bench`` correctness rubric.
+brief_id: training-curation
+schema_version: 1
+kind: judged
+title: "training curation"
+description: >-
+  Onboard a new mid-level engineer by curating a training-source set that is
+  relevant to the role and free of redundant near-duplicates.
+priority: medium
+estimated_complexity: 3
+acceptance_criteria:
+  - "The curated sources are relevant to the new hire's role and level."
+  - "The set avoids redundant near-duplicate sources."
+limits:
+  max_total_cost_usd: 6.0
+  max_wall_clock_seconds: 180
+  max_turns: 8
+rubric:
+  rubric_id: default-bench
+  reference_answer_path: "references/default-bench.md"
+  dimensions:
+    - name: correctness
+      weight: 1.0
+      grade_type: score

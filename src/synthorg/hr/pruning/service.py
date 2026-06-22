@@ -405,30 +405,39 @@ class PruningService:
         Returns:
             List of ``tuple[AgentIdentity, PruningEvaluation]``.
         """
-        eligible: list[tuple[AgentIdentity, PruningEvaluation]] = []
-        for agent in agents:
+
+        # Evaluate agents concurrently: each agent's policy chain is
+        # independent, so a serial loop needlessly serialises N x M async
+        # policy calls. Each task captures its own outcome (eligible
+        # evaluation, or the caught exception) so the result iteration below
+        # preserves the deterministic per-agent ordering of the old loop;
+        # criticals re-raise to surface through the TaskGroup.
+        async def _eval_one(
+            agent: AgentIdentity,
+        ) -> tuple[AgentIdentity, PruningEvaluation | None, Exception | None]:
             try:
                 evaluation = await self._evaluate_agent(
                     NotBlankStr(str(agent.id)),
                     now=now,
                 )
-                if evaluation.eligible:
-                    eligible.append((agent, evaluation))
-                    logger.info(
-                        HR_PRUNING_AGENT_ELIGIBLE,
-                        agent_id=str(agent.id),
-                        policy=str(evaluation.policy_name),
-                    )
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
-                # The ``errors`` list lands on
-                # ``PruningJobRun.errors`` and is later
-                # logged/persisted, so we must scrub the same way
-                # the warning below does. Raw ``str(exc)`` here
-                # would smuggle secret-bearing exception text past
-                # the log scrub via the persistence boundary.
-                # ``safe_error_description`` already returns
-                # ``"{ExcType}: {scrubbed}"`` so we don't prefix the
+                return (agent, None, exc)
+            return (agent, evaluation, None)
+
+        async with asyncio.TaskGroup() as tg:
+            tasks = [tg.create_task(_eval_one(agent)) for agent in agents]
+
+        eligible: list[tuple[AgentIdentity, PruningEvaluation]] = []
+        for task in tasks:
+            agent, evaluation, exc = task.result()
+            if exc is not None:
+                # The ``errors`` list lands on ``PruningJobRun.errors`` and
+                # is later logged/persisted, so we scrub the same way the
+                # warning below does. Raw ``str(exc)`` would smuggle
+                # secret-bearing exception text past the log scrub via the
+                # persistence boundary. ``safe_error_description`` already
+                # returns ``"{ExcType}: {scrubbed}"`` so we don't prefix the
                 # type name a second time.
                 errors.append(NotBlankStr(f"{agent.id}: {safe_error_description(exc)}"))
                 logger.warning(
@@ -436,6 +445,14 @@ class PruningService:
                     agent_id=str(agent.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
+                )
+                continue
+            if evaluation is not None and evaluation.eligible:
+                eligible.append((agent, evaluation))
+                logger.info(
+                    HR_PRUNING_AGENT_ELIGIBLE,
+                    agent_id=str(agent.id),
+                    policy=str(evaluation.policy_name),
                 )
         return eligible
 
@@ -706,6 +723,10 @@ class PruningService:
             action_type=_ACTION_TYPE,
             status=ApprovalStatus.APPROVED,
         )
+        # Resolve every linked identity in a single batch read rather than
+        # one ``registry.get`` per approval (the N+1 the audit flagged):
+        # one lock acquisition for the whole approved queue.
+        approved_identities = await self._resolve_approval_identities(approved_items)
         for item in approved_items:
             if self._already_processed_durably(item):
                 self._processed_approval_ids.add(str(item.id))
@@ -713,7 +734,18 @@ class PruningService:
             if not await self._try_claim(str(item.id)):
                 continue
             try:
-                await self._handle_approved(item)
+                agent_id = item.metadata.get("agent_id")
+                # ``pop`` (not ``get``): once a pre-resolved identity is
+                # consumed for an agent, later approved items sharing that
+                # agent_id receive ``None`` and re-read authoritatively,
+                # rather than reusing a stale snapshot that would re-trigger
+                # the non-idempotent offboarding path.
+                identity = (
+                    approved_identities.pop(agent_id, None)
+                    if isinstance(agent_id, str)
+                    else None
+                )
+                await self._handle_approved(item, identity=identity)
             finally:
                 await self._release_claim(str(item.id))
 
@@ -731,6 +763,42 @@ class PruningService:
                 await self._handle_rejected(item)
             finally:
                 await self._release_claim(str(item.id))
+
+    async def _resolve_approval_identities(
+        self,
+        items: tuple[ApprovalItem, ...],
+    ) -> dict[str, AgentIdentity]:
+        """Batch-resolve the agent identities linked to approval items.
+
+        Returns:
+            Mapping of agent-id string to identity for every linked agent
+            that still resolves in the registry; missing agents are omitted.
+        """
+        # Deduplicate (order-preserving): multiple approvals for one agent
+        # must collapse to a single id so a busy queue cannot push the batch
+        # past the registry's ``get_by_ids`` ceiling and abort the loop.
+        agent_ids = tuple(
+            dict.fromkeys(
+                NotBlankStr(raw)
+                for item in items
+                if isinstance(raw := item.metadata.get("agent_id"), str) and raw
+            )
+        )
+        if not agent_ids:
+            return {}
+        # ``get_by_ids`` raises ``ValueError`` above its batch ceiling. A
+        # large distinct-agent approved queue must not abort the entire sweep
+        # before any item is handled, so fall back to per-agent reads when the
+        # batch is oversized.
+        try:
+            return await self._registry.get_by_ids(agent_ids)
+        except ValueError:
+            resolved: dict[str, AgentIdentity] = {}
+            for agent_id in agent_ids:
+                identity = await self._registry.get(agent_id)
+                if identity is not None:
+                    resolved[str(agent_id)] = identity
+            return resolved
 
     async def _try_claim(self, approval_id: str) -> bool:
         """Atomically claim an approval id for handling.
@@ -756,8 +824,20 @@ class PruningService:
         async with self._processing_lock:
             self._in_flight_approvals.discard(approval_id)
 
-    async def _handle_approved(self, item: ApprovalItem) -> None:
-        """Execute offboarding after approval."""
+    async def _handle_approved(
+        self,
+        item: ApprovalItem,
+        *,
+        identity: AgentIdentity | None = None,
+    ) -> None:
+        """Execute offboarding after approval.
+
+        Args:
+            item: The approved approval item.
+            identity: Pre-loaded identity from the batch resolve in
+                ``_process_decided_approvals``; when supplied the per-item
+                ``registry.get`` round-trip is skipped.
+        """
         agent_id = item.metadata.get("agent_id")
         if not agent_id:
             logger.error(
@@ -768,7 +848,9 @@ class PruningService:
             await self._mark_processed(item)
             return
 
-        agent = await self._registry.get(NotBlankStr(agent_id))
+        agent = identity
+        if agent is None:
+            agent = await self._registry.get(NotBlankStr(agent_id))
         if agent is None:
             logger.warning(
                 HR_PRUNING_POLICY_ERROR,

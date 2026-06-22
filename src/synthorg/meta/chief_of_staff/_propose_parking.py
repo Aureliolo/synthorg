@@ -8,7 +8,6 @@ before re-raising. The conversational turn pipeline that produces a
 park / unwind mechanics.
 """
 
-import uuid
 from datetime import datetime
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
@@ -18,6 +17,7 @@ from synthorg.communication.conversation.enums import (
 )
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.meta._ids import new_opaque_id
 from synthorg.meta.chief_of_staff._intake_parking import (
     build_work_approval_item,
     build_work_item,
@@ -57,19 +57,6 @@ from synthorg.persistence.conversational_proposal_protocol import (
 )
 
 logger = get_logger(__name__)
-
-
-def _new_id() -> NotBlankStr:
-    """Return a fresh opaque ``NotBlankStr`` id for the approval queue.
-
-    Entity primary keys mint their own ``UUID`` via ``default_factory``;
-    this serves the ``NotBlankStr``-typed ``approval_id`` that ties a
-    proposal to its approval item.
-
-    Returns:
-        ``NotBlankStr`` instance.
-    """
-    return NotBlankStr(str(uuid.uuid4()))
 
 
 def _summarise_decision(
@@ -272,7 +259,7 @@ class ProposeParkingMixin:
         Raises:
             Exception: Raised on the corresponding failure path.
         """
-        approval_id = _new_id()
+        approval_id = new_opaque_id()
         work_item = build_work_item(conversation, args, proposed, project, now)
         proposal = ConversationalProposal(
             conversation_id=str(conversation.id),

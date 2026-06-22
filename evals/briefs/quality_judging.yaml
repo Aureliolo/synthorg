@@ -1,0 +1,29 @@
+# Judged brief: deliverable quality appraisal.
+#
+# Exercises the HR quality judge: the org must review a deliverable that is
+# polished on the surface but carries a subtle correctness flaw. A competent run
+# appraises it accurately and flags the flaw; a degraded run is fooled by the
+# polish and signs it off. Graded on the calibrated ``default-bench`` rubric.
+brief_id: quality-judging
+schema_version: 1
+kind: judged
+title: "quality judging"
+description: >-
+  Review a deliverable that looks strong but hides a subtle correctness flaw;
+  appraise it accurately rather than being swayed by surface polish.
+priority: medium
+estimated_complexity: 3
+acceptance_criteria:
+  - "The review identifies the subtle correctness flaw."
+  - "The verdict reflects real quality, not surface polish."
+limits:
+  max_total_cost_usd: 7.0
+  max_wall_clock_seconds: 180
+  max_turns: 8
+rubric:
+  rubric_id: default-bench
+  reference_answer_path: "references/default-bench.md"
+  dimensions:
+    - name: correctness
+      weight: 1.0
+      grade_type: score

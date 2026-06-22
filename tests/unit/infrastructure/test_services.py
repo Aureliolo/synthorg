@@ -17,7 +17,9 @@ import pytest
 from typeguard import suppress_type_checks
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
+from synthorg.idempotency import IdempotencyService
 from synthorg.infrastructure.services import (
     ProjectFacadeService,
     RequestsFacadeService,
@@ -25,6 +27,12 @@ from synthorg.infrastructure.services import (
     SimulationFacadeService,
     TemplatePackFacadeService,
 )
+from synthorg.infrastructure.state import (
+    FacadesStateSlice,
+    mcp_idempotency_service_of,
+)
+from synthorg.persistence.idempotency_protocol import IdempotencyRepository
+from tests._shared import FakeClock, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -308,3 +316,75 @@ class TestSimulationFacadeService:
         service = SimulationFacadeService(state=SimpleNamespace())  # type: ignore[arg-type]
         with pytest.raises(CapabilityNotSupportedError):
             await service.create_simulation()
+
+
+# ── mcp_idempotency_service_of ─────────────────────────────────────
+
+
+class _FakeSliceState:
+    """Minimal slice-reader double for the lazy idempotency accessor.
+
+    Implements only the three touch-points the accessor uses: ``slice``
+    (Facades vs persistence), ``wire_if_field_absent`` (counts installs),
+    and a backend that ``persistence_of`` reads.
+    """
+
+    def __init__(self, *, facades: SimpleNamespace, backend: object) -> None:
+        self._facades = facades
+        self._backend = backend
+        self.wire_calls = 0
+
+    def slice(self, kind: object) -> object:
+        if kind is FacadesStateSlice:
+            return self._facades
+        return SimpleNamespace(backend=self._backend)
+
+    def wire_if_field_absent(self, _kind: object, field: str, value: object) -> None:
+        self.wire_calls += 1
+        if getattr(self._facades, field) is None:
+            setattr(self._facades, field, value)
+
+
+class TestMcpIdempotencyServiceOf:
+    @pytest.fixture(autouse=True)
+    def _suppress_typeguard(self) -> Iterator[None]:
+        """Suppress typeguard: the accessor takes ``AppStateSliceMixin``.
+
+        The test drives it with a ``_FakeSliceState`` double exposing only
+        the three slice-reader methods the accessor calls.
+        """
+        with suppress_type_checks():
+            yield
+
+    async def test_returns_wired_service_without_touching_persistence(self) -> None:
+        existing = IdempotencyService(
+            mock_of[IdempotencyRepository](), clock=FakeClock()
+        )
+        state = _FakeSliceState(
+            facades=SimpleNamespace(idempotency_service=existing),
+            backend=None,  # a persistence read here would 503
+        )
+        result = mcp_idempotency_service_of(state, clock=FakeClock())  # type: ignore[arg-type]
+        assert result is existing
+        assert state.wire_calls == 0
+
+    async def test_lazily_builds_then_caches(self) -> None:
+        facades = SimpleNamespace(idempotency_service=None)
+        state = _FakeSliceState(
+            facades=facades,
+            backend=SimpleNamespace(idempotency_keys=SimpleNamespace()),
+        )
+        first = mcp_idempotency_service_of(state, clock=FakeClock())  # type: ignore[arg-type]
+        assert facades.idempotency_service is first
+        second = mcp_idempotency_service_of(state, clock=FakeClock())  # type: ignore[arg-type]
+        assert second is first
+        # Only the first call lazily wired; the second is a pure cache hit.
+        assert state.wire_calls == 1
+
+    async def test_raises_503_when_persistence_absent(self) -> None:
+        state = _FakeSliceState(
+            facades=SimpleNamespace(idempotency_service=None),
+            backend=None,
+        )
+        with pytest.raises(ServiceUnavailableError):
+            mcp_idempotency_service_of(state, clock=FakeClock())  # type: ignore[arg-type]

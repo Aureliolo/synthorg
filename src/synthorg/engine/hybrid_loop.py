@@ -696,7 +696,6 @@ class HybridLoop:
         plan = truncate_plan(
             plan,
             self._config.max_plan_steps,
-            ctx.execution_id,
         )
         logger.info(
             EXECUTION_PLAN_CREATED,
@@ -767,7 +766,6 @@ class HybridLoop:
                 self._stagnation_detector,
                 turns[step_start_idx:],
                 step_corrections,
-                execution_id=ctx.execution_id,
                 step_number=step.step_number,
             )
             if isinstance(stag_outcome, ExecutionResult):
@@ -836,9 +834,7 @@ class HybridLoop:
             return cancel_result
         # Adopt pending steering directives before the LLM call so the
         # operator's constraint is in context for this step's turn.
-        steered = await check_steering(
-            ctx, self._steering_inbox, execution_id=ctx.execution_id
-        )
+        steered = await check_steering(ctx, self._steering_inbox)
         if steered is not None:
             ctx = steered
 

@@ -98,7 +98,9 @@ class TestClarification:
                 created_by=NotBlankStr("user-1"),
             )
         )
-        sent = provider.received_messages[0][0].content or ""
+        # The fenced human conversation rides in the USER message (index 1);
+        # the SYSTEM message (index 0) carries the directive + identity.
+        sent = provider.received_messages[0][1].content or ""
         assert "<task-data>" in sent
         assert "</task-data>" in sent
         # The breakout attempt is neutralised by wrap_untrusted.

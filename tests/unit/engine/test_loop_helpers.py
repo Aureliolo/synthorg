@@ -845,7 +845,6 @@ class TestCheckStagnation:
             None,
             [],
             0,
-            execution_id="exec-1",
         )
         assert result is None
 
@@ -861,7 +860,6 @@ class TestCheckStagnation:
             detector,  # type: ignore[arg-type]
             [_stagnation_turn(1, ("a:1234567890123456",))],
             0,
-            execution_id="exec-1",
         )
         assert result is None
 
@@ -885,7 +883,6 @@ class TestCheckStagnation:
             detector,  # type: ignore[arg-type]
             [_stagnation_turn(1, ("a:1234567890123456",))],
             0,
-            execution_id="exec-1",
         )
         assert isinstance(result, ExecutionResult)
         assert result.termination_reason == TerminationReason.STAGNATION
@@ -911,7 +908,6 @@ class TestCheckStagnation:
             detector,  # type: ignore[arg-type]
             [_stagnation_turn(1, ("a:1234567890123456",))],
             0,
-            execution_id="exec-1",
             step_number=3,
         )
         assert isinstance(result, ExecutionResult)
@@ -937,7 +933,6 @@ class TestCheckStagnation:
             detector,  # type: ignore[arg-type]
             [_stagnation_turn(1, ("a:1234567890123456",))],
             2,
-            execution_id="exec-1",
         )
         assert isinstance(result, tuple)
         ctx, corrections = result
@@ -956,7 +951,6 @@ class TestCheckStagnation:
                 detector,  # type: ignore[arg-type]
                 [],
                 0,
-                execution_id="exec-1",
             )
 
     async def test_recursion_error_propagates(
@@ -970,7 +964,6 @@ class TestCheckStagnation:
                 detector,  # type: ignore[arg-type]
                 [],
                 0,
-                execution_id="exec-1",
             )
 
     async def test_generic_exception_returns_none(
@@ -983,7 +976,6 @@ class TestCheckStagnation:
             detector,  # type: ignore[arg-type]
             [],
             0,
-            execution_id="exec-1",
         )
         assert result is None
 

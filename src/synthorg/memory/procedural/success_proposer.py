@@ -134,6 +134,7 @@ class SuccessMemoryProposer:
         self._completion_config = CompletionConfig(
             temperature=config.temperature,
             max_tokens=config.max_tokens,
+            top_p=config.top_p,
         )
         logger.debug(
             PROCEDURAL_MEMORY_PROPOSER_INIT,

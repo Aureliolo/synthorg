@@ -15,13 +15,12 @@ from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handlers.common import err
-from synthorg.meta.mcp.handlers.common_args import get_optional_str, require_arg
+from synthorg.meta.mcp.handlers.common_args import require_arg
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_CAPABILITY_GAP
 
 logger = get_logger(__name__)
 
-_TY_STRING = "non-blank string"
 _TY_UUID = "UUID string"
 _ARG_ARGUMENTS = "arguments"
 
@@ -66,21 +65,6 @@ def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
         capability=exc.capability,
     )
     return err(exc, domain_code=exc.domain_code)
-
-
-def _require_str(arguments: dict[str, object], key: str) -> NotBlankStr:
-    """Extract a required non-blank string or raise ``ArgumentValidationError``.
-
-    Returns:
-        ``NotBlankStr`` instance.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    value = get_optional_str(arguments, key)
-    if value is None:
-        raise ArgumentValidationError(key, _TY_STRING)
-    return value
 
 
 def _require_uuid(arguments: dict[str, object], key: str) -> NotBlankStr:

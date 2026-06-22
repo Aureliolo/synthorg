@@ -38,6 +38,11 @@ class ExternalBenchmark(Protocol):
         """License identifier (e.g. 'MIT', 'CC-BY-4.0')."""
         ...
 
+    # Declared ``def`` (not ``async def``) on purpose: an async-generator
+    # implementation's call returns an ``AsyncIterator`` directly with no
+    # ``await``, so the protocol member is a plain callable returning
+    # ``AsyncIterator``. ``async def`` here would type the call as a
+    # coroutine and force every ``async for`` caller to ``await`` it first.
     def load_test_cases(
         self,
         *,

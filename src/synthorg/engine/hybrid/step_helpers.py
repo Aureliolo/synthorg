@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.execution_identity import current_execution_identity
 from synthorg.engine.context import AgentContext
 from synthorg.engine.hybrid_models import HybridLoopConfig
 from synthorg.engine.loop_helpers import (
@@ -60,23 +61,26 @@ logger = get_logger(__name__)
 def truncate_plan(
     plan: ExecutionPlan,
     max_steps: int,
-    execution_id: str,
 ) -> ExecutionPlan:
     """Truncate plan to *max_steps* if it exceeds the limit.
+
+    The run id for the truncation log is read from the ambient
+    ``current_execution_identity()`` (bound at the engine run boundary)
+    rather than threaded in as a parameter.
 
     Args:
         plan: The execution plan to potentially truncate.
         max_steps: Maximum allowed number of steps.
-        execution_id: Execution ID for logging.
 
     Returns:
         The original plan if within limit, otherwise a truncated copy.
     """
     if len(plan.steps) <= max_steps:
         return plan
+    identity = current_execution_identity()
     logger.warning(
         EXECUTION_HYBRID_PLAN_TRUNCATED,
-        execution_id=execution_id,
+        execution_id=identity.execution_id if identity is not None else None,
         original_steps=len(plan.steps),
         truncated_to=max_steps,
     )

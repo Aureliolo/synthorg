@@ -73,7 +73,7 @@ from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.resilience.errors import RetryExhaustedError
 
 if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
+    from synthorg.budget.tracker_protocol import CostTrackerProtocol
 
 logger = get_logger(__name__)
 
@@ -95,7 +95,7 @@ class LLMRubricGrader:
         provider: CompletionProvider,
         model_id: NotBlankStr,
         min_confidence_override: float | None = None,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         """Store dependencies and validate override bounds.
 

@@ -12,7 +12,6 @@ use by external code such as ``workers/claim.py``.
 import asyncio
 import base64
 from typing import Final, NoReturn
-from urllib.parse import urlparse
 
 from synthorg.communication.bus._nats_state import _NatsState
 from synthorg.communication.errors import (
@@ -21,6 +20,7 @@ from synthorg.communication.errors import (
     NotSubscribedError,
 )
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.url_redaction import redact_url as _redact_url
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
     COMM_BUS_NOT_RUNNING,
@@ -80,26 +80,14 @@ def redact_url(url: str) -> str:
     """Strip credentials from a NATS URL for safe logging.
 
     ``nats://user:pass@host:port`` -> ``nats://***@host:port``.
-    Non-URL strings pass through unchanged (best effort).
+    Non-URL strings pass through unchanged (best effort). Thin adapter
+    over :func:`synthorg.core.url_redaction.redact_url` pinning the bus
+    policy: userinfo masked as ``***@``, query dropped.
 
     Returns:
         The URL with any userinfo credentials masked.
     """
-    try:
-        parsed = urlparse(url)
-    except ValueError:
-        return url
-    if not parsed.hostname:
-        return url
-    authority = parsed.hostname
-    if parsed.port is not None:
-        authority = f"{authority}:{parsed.port}"
-    has_creds = parsed.username is not None or parsed.password is not None
-    if has_creds:
-        authority = f"***@{authority}"
-    scheme = parsed.scheme or "nats"
-    rest = parsed.path or ""
-    return f"{scheme}://{authority}{rest}"
+    return _redact_url(url, mask_userinfo=True, query="strip")
 
 
 def raise_channel_not_found(channel_name: str) -> NoReturn:

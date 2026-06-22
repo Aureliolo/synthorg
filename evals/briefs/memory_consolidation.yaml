@@ -1,0 +1,31 @@
+# Judged brief: cross-session memory consolidation.
+#
+# Exercises the memory consolidation compressor: the brief is split across two
+# work sessions, and the second session can only succeed cheaply if the
+# strategic lesson from the first was consolidated and retrievable. A competent
+# run carries the hard-won approach forward; a degraded run re-derives it (or
+# repeats the first session's mistake). Graded on the calibrated
+# ``default-bench`` correctness rubric.
+brief_id: memory-consolidation
+schema_version: 1
+kind: judged
+title: "memory consolidation"
+description: >-
+  Across two sessions, consolidate the strategic lesson learned in the first so
+  the second session reuses the approach instead of re-deriving it.
+priority: medium
+estimated_complexity: 3
+acceptance_criteria:
+  - "The second session reuses the first session's consolidated approach."
+  - "The deliverable names the retained lesson and where it applied."
+limits:
+  max_total_cost_usd: 8.0
+  max_wall_clock_seconds: 240
+  max_turns: 10
+rubric:
+  rubric_id: default-bench
+  reference_answer_path: "references/default-bench.md"
+  dimensions:
+    - name: correctness
+      weight: 1.0
+      grade_type: score

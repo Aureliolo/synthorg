@@ -178,6 +178,108 @@ class TestAgentRegistryService:
         with pytest.raises(ValueError, match="exceeds"):
             await registry.get_by_names(names)
 
+    async def test_get_by_ids_resolves_present_and_omits_missing(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """Batch id lookup maps present ids and omits unregistered ones."""
+        from synthorg.core.types import NotBlankStr
+
+        alice = make_agent_identity(name="Alice")
+        bob = make_agent_identity(name="Bob")
+        await registry.register(alice)
+        await registry.register(bob)
+
+        resolved = await registry.get_by_ids(
+            (
+                NotBlankStr(str(alice.id)),
+                NotBlankStr("missing-id"),
+                NotBlankStr(str(bob.id)),
+            ),
+        )
+        assert set(resolved) == {str(alice.id), str(bob.id)}
+        assert resolved[str(alice.id)].name == "Alice"
+        assert resolved[str(bob.id)].name == "Bob"
+
+    async def test_get_by_ids_empty_input(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """Empty batch returns an empty dict without touching the lock."""
+        assert await registry.get_by_ids(()) == {}
+
+    async def test_get_by_ids_dedups_repeated_id(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """A repeated id collapses to a single entry in the result."""
+        from synthorg.core.types import NotBlankStr
+
+        alice = make_agent_identity(name="Alice")
+        await registry.register(alice)
+
+        resolved = await registry.get_by_ids(
+            (NotBlankStr(str(alice.id)), NotBlankStr(str(alice.id))),
+        )
+        assert resolved == {str(alice.id): alice}
+
+    async def test_get_by_ids_acquires_lock_once(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """Batch id lookup must acquire the registry lock exactly once."""
+        import asyncio
+
+        from synthorg.core.types import NotBlankStr
+
+        alice = make_agent_identity(name="Alice")
+        bob = make_agent_identity(name="Bob")
+        await registry.register(alice)
+        await registry.register(bob)
+
+        real_lock = registry._lock
+        acquire_count = 0
+
+        class CountingLock:
+            async def __aenter__(self) -> None:
+                nonlocal acquire_count
+                await real_lock.acquire()
+                acquire_count += 1
+
+            async def __aexit__(self, *args: object) -> None:
+                real_lock.release()
+
+        registry._lock = CountingLock()  # type: ignore[assignment]
+        try:
+            resolved = await registry.get_by_ids(
+                (
+                    NotBlankStr(str(alice.id)),
+                    NotBlankStr(str(bob.id)),
+                    NotBlankStr("missing"),
+                ),
+            )
+        finally:
+            registry._lock = real_lock
+
+        assert acquire_count == 1
+        assert set(resolved) == {str(alice.id), str(bob.id)}
+        assert isinstance(real_lock, asyncio.Lock)
+        assert not real_lock.locked()
+
+    async def test_get_by_ids_rejects_oversized_batch(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """Exceeding ``MAX_BATCH_NAMES_LOOKUP`` must raise ``ValueError``."""
+        from synthorg.core.types import NotBlankStr
+        from synthorg.hr.registry import MAX_BATCH_NAMES_LOOKUP
+
+        ids = tuple(
+            NotBlankStr(f"agent-{i}") for i in range(MAX_BATCH_NAMES_LOOKUP + 1)
+        )
+        with pytest.raises(ValueError, match="exceeds"):
+            await registry.get_by_ids(ids)
+
     async def test_list_active_filters_status(
         self,
         registry: AgentRegistryService,

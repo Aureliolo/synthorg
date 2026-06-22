@@ -2,7 +2,9 @@
 
 import ipaddress
 from typing import Final
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse
+
+from synthorg.core.url_redaction import redact_url as _redact_url
 
 LOCALHOST_ALIASES: Final[frozenset[str]] = frozenset(
     {
@@ -52,8 +54,9 @@ def is_self_url(url: str, *, backend_port: int) -> bool:
 def redact_url(url: str) -> str:
     """Strip userinfo and query parameters from a URL for safe logging.
 
-    Handles IPv6 literal hosts (brackets preserved) and malformed
-    ports (silently ignored) so this never raises during logging.
+    Thin adapter over :func:`synthorg.core.url_redaction.redact_url` that
+    pins the providers policy: userinfo stripped, a present query replaced
+    with ``<redacted>``.
 
     Args:
         url: URL to redact.
@@ -62,16 +65,4 @@ def redact_url(url: str) -> str:
         URL with userinfo stripped and query replaced with
         ``<redacted>`` (if present).
     """
-    parsed = urlparse(url)
-    hostname = parsed.hostname or ""
-    # Bracket IPv6 literals so the netloc is unambiguous.
-    if ":" in hostname:
-        hostname = f"[{hostname}]"
-    # parsed.port raises ValueError on malformed ports -- treat as absent.
-    try:
-        port = parsed.port
-    except ValueError:
-        port = None
-    safe_netloc = f"{hostname}:{port}" if port else hostname
-    redacted_query = "<redacted>" if parsed.query else ""
-    return urlunparse(parsed._replace(netloc=safe_netloc, query=redacted_query))
+    return _redact_url(url, query="redact")

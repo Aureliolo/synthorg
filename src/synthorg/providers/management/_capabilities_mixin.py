@@ -9,9 +9,9 @@ the contract for mypy strict.
 """
 
 import asyncio
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import date, datetime
-from typing import Protocol
+from typing import Protocol, cast
 
 from pydantic import JsonValue
 
@@ -142,6 +142,16 @@ class _ServiceProtocol(Protocol):
         """Validate + persist + hot-reload providers (provided by host)."""
         ...
 
+    async def _audit(
+        self,
+        *,
+        provider_name: str,
+        event_type: ProviderAuditEventType,
+        payload: Mapping[str, JsonValue] | None = None,
+    ) -> None:
+        """Emit one provider audit event (provided by the mixin via MRO)."""
+        ...
+
 
 class ProviderCapabilitiesMixin:
     """Mutations for audit / rate-limits / credentials rotate / model add+sync.
@@ -157,7 +167,7 @@ class ProviderCapabilitiesMixin:
         *,
         provider_name: str,
         event_type: ProviderAuditEventType,
-        payload: dict[str, JsonValue] | None = None,
+        payload: Mapping[str, JsonValue] | None = None,
     ) -> None:
         """Emit one provider audit event if the audit service is wired.
 
@@ -246,7 +256,7 @@ class ProviderCapabilitiesMixin:
         # is released; audit-row I/O must not extend the critical
         # section for every concurrent provider mutation.  Mirrors
         # the pattern in ``sync_models``.
-        await self._audit(  # type: ignore[attr-defined]
+        await self._audit(
             provider_name=name,
             event_type="model_added",
             payload={"model_id": new_model.id, "alias": new_model.alias},
@@ -385,7 +395,7 @@ class ProviderCapabilitiesMixin:
             updated_count=len(updated),
             replace_existing=request.replace_existing,
         )
-        await self._audit(  # type: ignore[attr-defined]
+        await self._audit(
             provider_name=name,
             event_type="models_synced",
             payload={
@@ -497,12 +507,12 @@ class ProviderCapabilitiesMixin:
             reason=reason,
             flagged_count=len(flagged),
         )
-        await self._audit(  # type: ignore[attr-defined]
+        await self._audit(
             provider_name=name,
             event_type="model_flagged_stale",
             payload={
                 "reason": reason,
-                "model_ids": sorted(flagged),
+                "model_ids": cast("list[JsonValue]", sorted(flagged)),
             },
         )
         return updated
@@ -587,7 +597,7 @@ class ProviderCapabilitiesMixin:
         # Audit out of the critical section: rotation has already
         # been persisted and hot-reloaded by the time we get here;
         # the audit row must not extend lock contention.
-        await self._audit(  # type: ignore[attr-defined]
+        await self._audit(
             provider_name=name,
             event_type="provider_credentials_rotated",
             payload={
@@ -669,11 +679,11 @@ class ProviderCapabilitiesMixin:
         # ``rotate_credentials`` and ``add_model``: the change is
         # durably persisted by here, and audit-row I/O should not
         # extend the critical section.
-        await self._audit(  # type: ignore[attr-defined]
+        await self._audit(
             provider_name=name,
             event_type="provider_rate_limits_updated",
             payload={
-                "fields_changed": sorted(updates.keys()),
+                "fields_changed": cast("list[JsonValue]", sorted(updates.keys())),
                 **updates,
             },
         )

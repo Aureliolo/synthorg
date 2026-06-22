@@ -115,10 +115,25 @@ whether to rollback or adjust the change.
 
 # ── Advanced capability prompts ───────────────────────────────────
 
-# Proposal explanation prompt template.
-PROPOSAL_EXPLANATION_PROMPT = """\
+# Proposal explanation prompt. Static framing + the untrusted-content
+# directive ride in the SYSTEM message so the directive runs at system
+# priority; the fenced attacker-controllable fields go in the USER message.
+PROPOSAL_EXPLANATION_SYSTEM = """\
 You are the Chief of Staff explaining an improvement proposal.
 
+## Instructions
+
+Explain in plain language:
+1. What problem this proposal addresses
+2. Why the rule fired (what signals indicated the issue)
+3. What change is proposed and why it should help
+4. How to verify if it worked
+
+Be conversational and concise. Cite specific signal values.
+
+""" + untrusted_content_directive((TAG_CONFIG_VALUE, TAG_TASK_DATA))
+
+PROPOSAL_EXPLANATION_USER = """\
 ## Proposal
 
 Title: {proposal_title}
@@ -138,32 +153,12 @@ Severity: {rule_severity}
 ## Historical Approval Context
 
 {approval_context}
+"""
 
-## Instructions
-
-Explain in plain language:
-1. What problem this proposal addresses
-2. Why the rule fired (what signals indicated the issue)
-3. What change is proposed and why it should help
-4. How to verify if it worked
-
-Be conversational and concise. Cite specific signal values.
-
-""" + untrusted_content_directive((TAG_CONFIG_VALUE, TAG_TASK_DATA))
-
-# Alert explanation prompt template.
-ALERT_EXPLANATION_PROMPT = """\
+# Alert explanation prompt. SYSTEM carries framing + directive; USER
+# carries the fenced alert metadata and signal context.
+ALERT_EXPLANATION_SYSTEM = """\
 You are the Chief of Staff explaining a sudden alert.
-
-## Alert Details
-
-Type: {alert_type}
-Severity: {alert_severity}
-Affected Domains: {affected_domains}
-
-## What Changed
-
-{signal_context}
 
 ## Instructions
 
@@ -176,6 +171,18 @@ Explain:
 Be direct and actionable.
 
 """ + untrusted_content_directive((TAG_CONFIG_VALUE, TAG_TASK_DATA))
+
+ALERT_EXPLANATION_USER = """\
+## Alert Details
+
+Type: {alert_type}
+Severity: {alert_severity}
+Affected Domains: {affected_domains}
+
+## What Changed
+
+{signal_context}
+"""
 
 # Signal correlation prompt template.
 SIGNAL_CORRELATION_PROMPT = """\
@@ -196,11 +203,20 @@ Return a structured analysis in plain language.
 
 """ + untrusted_content_directive((TAG_TASK_DATA,))
 
-# Free-form chat query prompt template.
-CHAT_QUERY_PROMPT = """\
+# Free-form chat query prompt. SYSTEM carries the assistant framing +
+# directive; USER carries the fenced snapshot, recent context, and question.
+CHAT_QUERY_SYSTEM = """\
 You are the Chief of Staff assistant. Answer questions about
 organizational signals, proposals, and alerts.
 
+## Instructions
+
+Answer based on the data provided. If uncertain, say so.
+Be specific and cite which signals support your answer.
+
+""" + untrusted_content_directive((TAG_TASK_DATA,))
+
+CHAT_QUERY_USER = """\
 ## Current Org State
 
 {snapshot_summary}
@@ -212,24 +228,20 @@ organizational signals, proposals, and alerts.
 ## User Question
 
 {user_question}
+"""
 
-## Instructions
-
-Answer based on the data provided. If uncertain, say so.
-Be specific and cite which signals support your answer.
-
-""" + untrusted_content_directive((TAG_TASK_DATA,))
-
-# Clarify-or-propose prompt template. The model must return STRICT
-# JSON matching the ProposeDecision schema and nothing else.
+# Clarify-or-propose prompt. The model must return STRICT JSON matching
+# the ProposeDecision schema and nothing else.
 #
 # ``{responder_identity}`` is the identity preamble: the literal
 # ``"You are the Chief of Staff."`` for the generic responder, or a role
 # agent's persona body (via ``render_agent_persona_body``) when the turn
-# is concern-routed. Parametrising it -- rather than prepending a second
-# ``system`` message -- keeps a single, non-contradictory identity claim
-# in the prompt so a routed turn actually answers in the role's voice.
-CONVERSATIONAL_PROPOSE_PROMPT = """\
+# is concern-routed. It rides in the SYSTEM message together with the task
+# framing, output contract, and the untrusted-content directive so the
+# directive runs at system priority; the fenced human conversation goes in
+# the USER message. A single SYSTEM identity claim keeps a routed turn
+# answering in the role's voice without contradiction.
+CONVERSATIONAL_PROPOSE_SYSTEM = """\
 {responder_identity}
 
 A human is asking the organisation to do
@@ -245,10 +257,6 @@ work, in natural language. Your job for THIS turn is exactly one of:
 
 You never execute anything yourself: proposed items go to a human
 approval queue and run only after a human approves them.
-
-## Conversation so far (oldest first)
-
-{conversation_history}
 
 ## Output contract (STRICT)
 
@@ -295,24 +303,25 @@ Rules:
 
 """ + untrusted_content_directive((TAG_TASK_DATA,))
 
-# Concern-routing classifier prompt. Picks the single best-fit role for
-# the latest human message from the live candidate roster. The model
-# must return STRICT JSON matching the ConcernClassification schema and
-# nothing else. ``{candidate_roles}`` is system-controlled (the active
-# agent roster) and is NOT fenced; ``{conversation_history}`` is human
-# content and MUST be wrapped via ``wrap_untrusted(TAG_TASK_DATA, ...)``.
-CONCERN_ROUTING_PROMPT = """\
-You are a routing classifier for a synthetic organisation. Read the
-conversation so far and decide which ONE role is best suited to answer
-the latest human message. Do not answer the message yourself.
-
-## Candidate roles
-
-{candidate_roles}
-
+CONVERSATIONAL_PROPOSE_USER = """\
 ## Conversation so far (oldest first)
 
 {conversation_history}
+"""
+
+# Concern-routing classifier prompt. Picks the single best-fit role for
+# the latest human message from the live candidate roster. The model must
+# return STRICT JSON matching the ConcernClassification schema and nothing
+# else. The classifier instructions, output contract, and the
+# untrusted-content directive ride in the SYSTEM message so the directive
+# runs at system priority. ``{candidate_roles}`` is system-controlled (the
+# active agent roster) and ``{conversation_history}`` (human content, fenced
+# via ``wrap_untrusted(TAG_TASK_DATA, ...)``) are the per-call data, carried
+# in the USER message.
+CONCERN_ROUTING_SYSTEM = """\
+You are a routing classifier for a synthetic organisation. Read the
+conversation so far and decide which ONE role is best suited to answer
+the latest human message. Do not answer the message yourself.
 
 ## Output contract (STRICT)
 
@@ -321,7 +330,7 @@ exactly this shape:
 
 {{
   "topic": <short concern label, e.g. "budget", "strategy", "technical">,
-  "role": <one role name copied EXACTLY from a candidate above>,
+  "role": <one role name copied EXACTLY from the candidate list>,
   "confidence": <number between 0.0 and 1.0>
 }}
 
@@ -333,6 +342,16 @@ Rules:
   confidence so the request falls back to the Chief of Staff.
 
 """ + untrusted_content_directive((TAG_TASK_DATA,))
+
+CONCERN_ROUTING_USER = """\
+## Candidate roles
+
+{candidate_roles}
+
+## Conversation so far (oldest first)
+
+{conversation_history}
+"""
 
 # Group-chat per-agent contribution prompt. This is the USER-content
 # half of the turn; the agent's persona + the untrusted-content
@@ -410,20 +429,19 @@ they are present. Most contributions need no invite -- leave it null.
 
 # Run-narrative prose prompt (documentary mode). The structured record of
 # decisions, contributions, outcomes, and metrics is assembled
-# deterministically from the project brain and the flight recorder and
-# is supplied as fenced untrusted content; the model writes ONLY the
-# connective narration and must never invent a fact or a number.
-RUN_NARRATIVE_PROSE_PROMPT = """\
+# deterministically from the project brain and the flight recorder and is
+# supplied as fenced untrusted content; the model writes ONLY the
+# connective narration and must never invent a fact or a number. The
+# narrator framing, JSON output contract, and the untrusted-content
+# directive ride in the SYSTEM message (system priority); the fenced
+# ``brief_title`` and ``record`` go in the USER message.
+RUN_NARRATIVE_PROSE_SYSTEM = """\
 You are the Chief of Staff writing the run narrative for a completed
-brief: "{brief_title}" (final status: {final_status}). An executive will
-read it and an auditor will check it, so every fact must come from the
-record below. You write ONLY the connective prose; the decisions, who
-did what, the outcomes, and the metrics are already recorded and will be
-rendered verbatim beside your narration.
-
-## The run record
-
-{record}
+brief. An executive will read it and an auditor will check it, so every
+fact must come from the supplied run record. You write ONLY the
+connective prose; the decisions, who did what, the outcomes, and the
+metrics are already recorded and will be rendered verbatim beside your
+narration.
 
 ## Instructions
 
@@ -443,3 +461,11 @@ Rules:
 - Write in British English, neutral and factual.
 
 """ + untrusted_content_directive((TAG_TASK_DATA,))
+
+RUN_NARRATIVE_PROSE_USER = """\
+Brief: {brief_title} (final status: {final_status})
+
+## The run record
+
+{record}
+"""

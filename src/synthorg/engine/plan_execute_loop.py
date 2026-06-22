@@ -425,7 +425,6 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
                 self._stagnation_detector,
                 turns[step_start_idx:],
                 step_corrections,
-                execution_id=ctx.execution_id,
                 step_number=step.step_number,
             )
             if isinstance(stag_outcome, ExecutionResult):

@@ -107,7 +107,7 @@ class TestCheckSteering:
     async def test_none_inbox_returns_none(
         self, sample_agent_context: AgentContext
     ) -> None:
-        result = await check_steering(sample_agent_context, None, execution_id="e1")
+        result = await check_steering(sample_agent_context, None)
         assert result is None
 
     async def test_no_scope_returns_none(
@@ -115,13 +115,13 @@ class TestCheckSteering:
     ) -> None:
         ctx = AgentContext.from_identity(sample_agent_with_personality)
         inbox = _StubInbox((_directive(),))
-        assert await check_steering(ctx, inbox, execution_id="e1") is None
+        assert await check_steering(ctx, inbox) is None
 
     async def test_redirect_injects_and_sets_replan(
         self, sample_agent_context: AgentContext
     ) -> None:
         inbox = _StubInbox((_directive(kind=InterventionKind.REDIRECT),))
-        updated = await check_steering(sample_agent_context, inbox, execution_id="e1")
+        updated = await check_steering(sample_agent_context, inbox)
         assert updated is not None
         assert len(updated.conversation) == len(sample_agent_context.conversation) + 1
         assert updated.conversation[-1].role is MessageRole.USER
@@ -132,7 +132,7 @@ class TestCheckSteering:
         self, sample_agent_context: AgentContext
     ) -> None:
         inbox = _StubInbox((_directive(kind=InterventionKind.HINT),))
-        updated = await check_steering(sample_agent_context, inbox, execution_id="e1")
+        updated = await check_steering(sample_agent_context, inbox)
         assert updated is not None
         assert "d1" in updated.adopted_steering_ids
         assert updated.pending_steering_replan_id is None
@@ -149,7 +149,7 @@ class TestCheckSteering:
                 _directive(entry_id="d2", kind=InterventionKind.REDIRECT),
             )
         )
-        updated = await check_steering(sample_agent_context, inbox, execution_id="e1")
+        updated = await check_steering(sample_agent_context, inbox)
         assert updated is not None
         assert updated.adopted_steering_ids >= frozenset({"d1", "d2"})
         assert len(updated.conversation) == len(sample_agent_context.conversation) + 2
@@ -159,24 +159,20 @@ class TestCheckSteering:
         self, sample_agent_context: AgentContext
     ) -> None:
         inbox = _StubInbox(())
-        assert (
-            await check_steering(sample_agent_context, inbox, execution_id="e1") is None
-        )
+        assert await check_steering(sample_agent_context, inbox) is None
 
     async def test_consume_once_across_calls(
         self, sample_agent_context: AgentContext
     ) -> None:
         inbox = _StubInbox((_directive(),))
-        first = await check_steering(sample_agent_context, inbox, execution_id="e1")
+        first = await check_steering(sample_agent_context, inbox)
         assert first is not None
-        second = await check_steering(first, inbox, execution_id="e1")
+        second = await check_steering(first, inbox)
         assert second is None
         assert inbox.calls[-1] == frozenset({"d1"})
 
     async def test_inbox_failure_is_best_effort(
         self, sample_agent_context: AgentContext
     ) -> None:
-        result = await check_steering(
-            sample_agent_context, _BoomInbox(), execution_id="e1"
-        )
+        result = await check_steering(sample_agent_context, _BoomInbox())
         assert result is None

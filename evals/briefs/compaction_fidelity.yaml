@@ -1,0 +1,31 @@
+# Judged brief: context-compaction fidelity.
+#
+# Exercises the engine compaction summariser: the brief deliberately spans
+# more turns than fit one context window, so the run must compact earlier
+# turns. A competent run preserves the phase-1 architectural decision through
+# compaction and honours it in phase 3; a degraded run loses the decision in
+# the summary and contradicts it later. Graded on the calibrated
+# ``default-bench`` correctness rubric.
+brief_id: compaction-fidelity
+schema_version: 1
+kind: judged
+title: "compaction fidelity"
+description: >-
+  Deliver a three-phase change where phase 3 must honour an architectural
+  decision fixed in phase 1, across enough turns to force context compaction.
+priority: medium
+estimated_complexity: 4
+acceptance_criteria:
+  - "Phase 3 honours the architectural decision recorded in phase 1."
+  - "The deliverable explains how the early decision constrained later phases."
+limits:
+  max_total_cost_usd: 8.0
+  max_wall_clock_seconds: 240
+  max_turns: 12
+rubric:
+  rubric_id: default-bench
+  reference_answer_path: "references/default-bench.md"
+  dimensions:
+    - name: correctness
+      weight: 1.0
+      grade_type: score

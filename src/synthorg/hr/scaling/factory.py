@@ -101,6 +101,9 @@ def create_scaling_strategies(
                 defer_during_evolution=(
                     config.performance_pruning.defer_during_evolution
                 ),
+                evolution_check_timeout_seconds=(
+                    config.performance_pruning.evolution_check_timeout_seconds
+                ),
             ),
         )
 

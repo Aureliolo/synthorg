@@ -9,9 +9,8 @@ from synthorg.core.completion_enums import FinishReason
 from synthorg.knowledge.enums import SourceType
 from synthorg.knowledge.models import Citation, KnowledgeHit, WebLocator
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence.research_protocol import ResearchRunFilter
 from synthorg.providers.models import CompletionResponse, TokenUsage
-from synthorg.research.models import ResearchRun
+from synthorg.research.models import ResearchRun, ResearchRunFilter
 from synthorg.research.retrieval.providers import AcademicResult, CodeResult
 from synthorg.tools.web.web_search import SearchResult
 

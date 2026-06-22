@@ -37,7 +37,10 @@ from synthorg.meta.chief_of_staff.models import (
     ProposeDecision,
     ProposeResult,
 )
-from synthorg.meta.chief_of_staff.prompts import CONVERSATIONAL_PROPOSE_PROMPT
+from synthorg.meta.chief_of_staff.prompts import (
+    CONVERSATIONAL_PROPOSE_SYSTEM,
+    CONVERSATIONAL_PROPOSE_USER,
+)
 from synthorg.meta.chief_of_staff.responder import (
     Responder,
     RoutingDecision,
@@ -363,14 +366,19 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
             ConversationalProposeResponseInvalidError: Provider
                 response failed validation.
         """
-        prompt = CONVERSATIONAL_PROPOSE_PROMPT.format(
+        system = CONVERSATIONAL_PROPOSE_SYSTEM.format(
             responder_identity=responder.persona,
+            max_proposals=self._config.propose_max_proposals_per_turn,
+        )
+        user = CONVERSATIONAL_PROPOSE_USER.format(
             conversation_history=wrap_untrusted(
                 TAG_TASK_DATA, render_turns_transcript(history)
             ),
-            max_proposals=self._config.propose_max_proposals_per_turn,
         )
-        messages = [ChatMessage(role=MessageRole.USER, content=prompt)]
+        messages = [
+            ChatMessage(role=MessageRole.SYSTEM, content=system),
+            ChatMessage(role=MessageRole.USER, content=user),
+        ]
         completion_config = CompletionConfig(
             temperature=self._config.propose_temperature,
             max_tokens=self._config.propose_max_tokens,

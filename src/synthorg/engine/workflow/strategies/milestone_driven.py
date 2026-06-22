@@ -16,6 +16,10 @@ hooks (``milestone_assign`` / ``milestone_unassign`` events).
 
 from collections.abc import Mapping
 
+from pydantic import BaseModel, ConfigDict, ValidationError
+
+from synthorg.core.boundary import parse_typed
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.ceremony_context import CeremonyEvalContext
 from synthorg.engine.workflow.ceremony_policy import (
     CeremonyStrategyType,
@@ -35,7 +39,7 @@ from synthorg.engine.workflow.strategies._milestone_driven_config import (
     validate_transition_milestone,
 )
 from synthorg.engine.workflow.velocity_types import VelocityCalcType
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workflow import (
     SPRINT_AUTO_TRANSITION_MILESTONE,
     SPRINT_CEREMONY_MILESTONE_ASSIGNED,
@@ -50,6 +54,23 @@ from synthorg.observability.events.workflow import (
 logger = get_logger(__name__)
 
 _MAX_TASKS_PER_MILESTONE: int = 1000
+
+
+class MilestoneEventPayload(BaseModel):
+    """Typed ``(task_id, milestone)`` payload for milestone assign events.
+
+    The assign/unassign event payload is documented as carrying exactly
+    ``task_id`` and ``milestone``; routing it through this model
+    (``NotBlankStr`` + ``extra="forbid"``) rejects a blank field or an
+    unexpected shape so the strategy skips the event rather than acting on
+    half-parsed data.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    task_id: NotBlankStr
+    milestone: NotBlankStr
+
 
 # -- External event names ------------------------------------------------------
 
@@ -424,21 +445,20 @@ class MilestoneDrivenStrategy:
         Returns:
             Stripped ``(task_id, milestone)`` or ``None`` if invalid.
         """
-        task_id = payload.get("task_id")
-        milestone = payload.get("milestone")
-        if (
-            not isinstance(task_id, str)
-            or not task_id.strip()
-            or not isinstance(milestone, str)
-            or not milestone.strip()
-        ):
+        try:
+            parsed = parse_typed(
+                "workflow.milestone_event", payload, MilestoneEventPayload
+            )
+        except ValidationError as exc:
             logger.debug(
                 SPRINT_CEREMONY_SKIPPED,
                 reason=f"invalid_milestone_{event_kind}_payload",
                 strategy="milestone_driven",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
-        return task_id.strip(), milestone.strip()
+        return parsed.task_id.strip(), parsed.milestone.strip()
 
     def _add_task_to_milestone(
         self,

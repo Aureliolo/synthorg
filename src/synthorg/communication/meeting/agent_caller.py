@@ -23,13 +23,13 @@ from typing import ClassVar
 
 from synthorg.budget.call_category import LLMCallCategory
 
-# ``CostTracker``, ``AgentRegistryService``, ``ProviderRegistry`` and
-# ``AgentCaller`` are part of the public ``build_meeting_agent_caller``
+# ``CostTrackerProtocol``, ``AgentRegistryService``, ``ProviderRegistry``
+# and ``AgentCaller`` are part of the public ``build_meeting_agent_caller``
 # signature so they must resolve at runtime when downstream tooling
 # evaluates type hints (DI containers, doc generators).  Importing at
 # module top -- not under ``TYPE_CHECKING`` -- keeps the names in
 # module globals.
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.communication.meeting.models import AgentResponse
 from synthorg.communication.meeting.protocol import AgentCaller
 from synthorg.core.agent import AgentIdentity
@@ -77,7 +77,7 @@ def build_meeting_agent_caller(
     *,
     agent_registry: AgentRegistryProtocol,
     provider_registry: ProviderRegistry,
-    cost_tracker: CostTracker | None = None,
+    cost_tracker: CostTrackerProtocol | None = None,
 ) -> AgentCaller:
     """Construct a meeting :data:`AgentCaller` backed by real services.
 

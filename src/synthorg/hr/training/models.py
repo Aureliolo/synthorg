@@ -6,6 +6,7 @@ and results. All models use the standard frozen ConfigDict with
 validation time.
 """
 
+from datetime import datetime
 from enum import StrEnum
 from typing import Self
 from uuid import UUID, uuid4
@@ -302,6 +303,59 @@ class TrainingPlan(BaseModel):
             msg = "executed_at must be None when status is PENDING"
             raise ValueError(msg)
         return self
+
+    @classmethod
+    def build(  # noqa: PLR0913 -- typed builder mirrors the model's onboarding fields
+        cls,
+        *,
+        new_agent_id: str,
+        new_agent_role: str,
+        new_agent_level: SeniorityLevel,
+        created_at: datetime,
+        new_agent_department: str | None = None,
+        override_sources: tuple[NotBlankStr, ...] = (),
+        skip_training: bool = False,
+        volume_caps: tuple[tuple[ContentType, int], ...] | None = None,
+    ) -> TrainingPlan:
+        """Construct a plan from typed onboarding inputs.
+
+        Typed constructor seam for callers that assemble a plan from
+        loosely-typed identity fields (``str`` ids / role / department).
+        Keeps the dynamic ``TrainingPlan(**kwargs)`` boundary off the call
+        sites so mypy validates each field instead of widening to
+        ``object``. ``volume_caps=None`` keeps the model's default caps.
+
+        Args:
+            new_agent_id: Target agent being trained.
+            new_agent_role: Role of the new hire.
+            new_agent_level: Seniority level of the new hire.
+            created_at: Plan creation timestamp.
+            new_agent_department: Department of the new hire, or ``None``.
+            override_sources: Explicit source agent IDs (bypasses selector).
+            skip_training: Hard off-switch for training.
+            volume_caps: Per-content-type hard limits; ``None`` keeps the
+                model default.
+
+        Returns:
+            A validated ``TrainingPlan``.
+        """
+        # Route through ``model_validate`` to accept the assembled ``dict``
+        # while still triggering every ``@model_validator`` (volume-cap
+        # positivity, content-type / executed-at invariants); the typed
+        # parameters above give callers field-level checking the raw
+        # ``dict`` boundary would lose.
+        data: dict[str, object] = {
+            "new_agent_id": new_agent_id,
+            "new_agent_role": new_agent_role,
+            "new_agent_level": new_agent_level,
+            "new_agent_department": new_agent_department,
+            "override_sources": override_sources,
+            "skip_training": skip_training,
+            "created_at": created_at,
+        }
+        if volume_caps is not None:
+            data["volume_caps"] = volume_caps
+        return cls.model_validate(data)
 
 
 class TrainingApprovalHandle(BaseModel):

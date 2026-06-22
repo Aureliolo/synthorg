@@ -15,7 +15,7 @@ from synthorg.budget.call_category import LLMCallCategory
 # These types appear in ``LlmSemanticAnalyzer.__init__`` and ``analyze``
 # annotations and must resolve at runtime when downstream tooling
 # evaluates type hints (DI containers, doc generators).
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workspace.config import SemanticAnalysisConfig
@@ -69,7 +69,7 @@ class LlmSemanticAnalyzer:
         provider: CompletionProvider,
         model: str,
         config: SemanticAnalysisConfig | None = None,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         if not model or not model.strip():
             msg = "model must be a non-blank string"

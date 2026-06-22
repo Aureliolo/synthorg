@@ -9,7 +9,6 @@ approved charter is dispatched into the work pipeline by
 ``CharterDispatcher`` via the dedicated approve endpoint.
 """
 
-import uuid
 from datetime import datetime
 
 from synthorg.communication.conversation.enums import (
@@ -18,6 +17,7 @@ from synthorg.communication.conversation.enums import (
 )
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
+from synthorg.meta._ids import new_opaque_id
 from synthorg.meta.charter._charter_crud import CharterCrudMixin
 from synthorg.meta.charter.config import CharterConfig
 from synthorg.meta.charter.enums import CharterStatus
@@ -60,15 +60,6 @@ _CAP_MESSAGE: NotBlankStr = NotBlankStr(
     " charter. Closing this interview -- please open a new one with a"
     " sharper starting brief."
 )
-
-
-def _new_id() -> NotBlankStr:
-    """Return a fresh opaque identifier.
-
-    Returns:
-        ``NotBlankStr`` instance.
-    """
-    return NotBlankStr(str(uuid.uuid4()))
 
 
 def _summarise_draft(draft: CharterDraft) -> NotBlankStr:
@@ -390,7 +381,7 @@ class CharterInterviewService(CharterCrudMixin):
         Returns:
             ``ProjectCharter`` instance.
         """
-        charter_id = existing.id if existing is not None else _new_id()
+        charter_id = existing.id if existing is not None else new_opaque_id()
         version = existing.version + 1 if existing is not None else 1
         created_at = existing.created_at if existing is not None else now
         return ProjectCharter(

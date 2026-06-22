@@ -12,10 +12,10 @@ from pydantic import ValidationError
 
 from synthorg.budget.call_category import LLMCallCategory
 
-# ``CostTracker`` is part of ``SeparateAnalyzerProposer.__init__``'s
-# public annotation, so it must resolve at runtime when downstream
-# tooling evaluates type hints (DI containers, doc generators).
-from synthorg.budget.tracker import CostTracker
+# ``CostTrackerProtocol`` is part of ``SeparateAnalyzerProposer.__init__``'s
+# public annotation, so it must resolve at runtime when downstream tooling
+# evaluates type hints (DI containers, doc generators).
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.types import NotBlankStr
@@ -277,7 +277,7 @@ class SeparateAnalyzerProposer:
         temperature: float = _DEFAULT_TEMPERATURE,
         max_tokens: int = _DEFAULT_MAX_TOKENS,
         summary_cap: int = _DEFAULT_SUMMARY_CAP,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         if summary_cap < 0:
             msg = f"summary_cap must be non-negative; got {summary_cap}"

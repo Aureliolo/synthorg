@@ -18,7 +18,10 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.meta.charter.config import CharterConfig
 from synthorg.meta.charter.models import InterviewDecision
-from synthorg.meta.charter.prompts import CHARTER_INTERVIEW_PROMPT
+from synthorg.meta.charter.prompts import (
+    CHARTER_INTERVIEW_SYSTEM,
+    CHARTER_INTERVIEW_USER,
+)
 from synthorg.meta.chief_of_staff.models import ConversationTurn
 from synthorg.meta.errors import CharterInterviewResponseInvalidError
 from synthorg.observability import (
@@ -130,14 +133,21 @@ class LLMCharterInterviewer:
             CharterInterviewResponseInvalidError: Provider response
                 failed validation.
         """
-        prompt = CHARTER_INTERVIEW_PROMPT.format(
+        system = CHARTER_INTERVIEW_SYSTEM.format(
+            project_hint=wrap_untrusted(
+                TAG_TASK_DATA, _render_project_hint(project_id)
+            ),
+            currency=wrap_untrusted(TAG_TASK_DATA, currency),
+        )
+        user = CHARTER_INTERVIEW_USER.format(
             conversation_history=wrap_untrusted(
                 TAG_TASK_DATA, _render_history(history)
             ),
-            project_hint=_render_project_hint(project_id),
-            currency=currency,
         )
-        messages = [ChatMessage(role=MessageRole.USER, content=prompt)]
+        messages = [
+            ChatMessage(role=MessageRole.SYSTEM, content=system),
+            ChatMessage(role=MessageRole.USER, content=user),
+        ]
         completion_config = CompletionConfig(
             temperature=self._config.interview_temperature,
             max_tokens=self._config.interview_max_tokens,

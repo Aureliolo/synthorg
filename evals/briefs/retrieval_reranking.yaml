@@ -1,0 +1,30 @@
+# Judged brief: query-specific retrieval re-ranking.
+#
+# Exercises the memory re-ranker: the working set holds many near-duplicate
+# prior lessons, only one of which actually applies to the current task. A
+# competent run surfaces and applies the single relevant lesson; a degraded run
+# is misled by a superficially-similar but wrong neighbour. Graded on the
+# calibrated ``default-bench`` correctness rubric.
+brief_id: retrieval-reranking
+schema_version: 1
+kind: judged
+title: "retrieval reranking"
+description: >-
+  Complete a task resembling a past failure; success depends on surfacing the
+  one relevant prior lesson among many near-duplicate distractors.
+priority: medium
+estimated_complexity: 3
+acceptance_criteria:
+  - "The run applies the single relevant prior lesson, not a near-duplicate."
+  - "The deliverable identifies which prior lesson it reused and why."
+limits:
+  max_total_cost_usd: 8.0
+  max_wall_clock_seconds: 240
+  max_turns: 10
+rubric:
+  rubric_id: default-bench
+  reference_answer_path: "references/default-bench.md"
+  dimensions:
+    - name: correctness
+      weight: 1.0
+      grade_type: score

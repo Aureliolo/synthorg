@@ -30,6 +30,11 @@ _ACTION_TYPES = frozenset({ScalingActionType.PRUNE})
 # Confidence stamped on an emitted prune decision.
 _PRUNE_ACTION_CONFIDENCE: Final[float] = 0.8
 
+# Fallback per-agent evolution-check timeout when the strategy is built
+# without an explicit value (the factory always threads the configured
+# ``PerformancePruningConfig.evolution_check_timeout_seconds``).
+_DEFAULT_EVOLUTION_CHECK_TIMEOUT_SECONDS: Final[float] = 30.0
+
 
 def _benchmark_regressing(context: ScalingContext) -> bool:
     """Return whether the benchmark regression signal is set in *context*.
@@ -64,6 +69,9 @@ class PerformancePruningStrategy:
             golden benchmark's latest run regressed. A measured org-wide
             quality drop is the wrong moment to shed capacity, so the strategy
             holds the team until the benchmark recovers.
+        evolution_check_timeout_seconds: Per-agent timeout for the evolution
+            deferral check. A checker that hangs is treated as a per-agent
+            error so it cannot stall the whole concurrent fan-out.
     """
 
     def __init__(
@@ -73,11 +81,15 @@ class PerformancePruningStrategy:
         evolution_checker: EvolutionChecker | None = None,
         defer_during_evolution: bool = True,
         defer_during_benchmark_regression: bool = True,
+        evolution_check_timeout_seconds: float = (
+            _DEFAULT_EVOLUTION_CHECK_TIMEOUT_SECONDS
+        ),
     ) -> None:
         self._policy = policy
         self._evolution_checker = evolution_checker
         self._defer_during_evolution = defer_during_evolution
         self._defer_during_benchmark_regression = defer_during_benchmark_regression
+        self._evolution_check_timeout_seconds = evolution_check_timeout_seconds
 
     @property
     def name(self) -> NotBlankStr:
@@ -131,6 +143,18 @@ class PerformancePruningStrategy:
         agents_deferred = 0
         agents_error = 0
 
+        # Resolve evolution-deferral status for every agent that has a
+        # snapshot in one concurrent fan-out rather than a serial
+        # ``_evolution_checker`` call per agent inside the loop.
+        candidate_ids = tuple(
+            agent_id
+            for agent_id in context.agent_ids
+            if snapshots.get(str(agent_id)) is not None
+        )
+        evolution_deferred, evolution_errored = await self._load_evolution_deferrals(
+            candidate_ids,
+        )
+
         for agent_id in context.agent_ids:
             agent_key = str(agent_id)
             snapshot = snapshots.get(agent_key)
@@ -138,20 +162,26 @@ class PerformancePruningStrategy:
                 agents_skipped += 1
                 continue
 
-            try:
-                # Check evolution deferral.
-                if self._defer_during_evolution and self._evolution_checker is not None:
-                    is_adapting = await self._evolution_checker(agent_id)
-                    if is_adapting:
-                        agents_deferred += 1
-                        logger.debug(
-                            HR_SCALING_STRATEGY_EVALUATED,
-                            strategy="performance_pruning",
-                            agent_id=agent_key,
-                            reason="deferred_evolution_active",
-                        )
-                        continue
+            if agent_key in evolution_errored:
+                agents_error += 1
+                logger.error(
+                    HR_SCALING_STRATEGY_EVALUATED,
+                    strategy="performance_pruning",
+                    agent_id=agent_key,
+                    action="per_agent_error",
+                )
+                continue
+            if evolution_deferred.get(agent_key, False):
+                agents_deferred += 1
+                logger.debug(
+                    HR_SCALING_STRATEGY_EVALUATED,
+                    strategy="performance_pruning",
+                    agent_id=agent_key,
+                    reason="deferred_evolution_active",
+                )
+                continue
 
+            try:
                 evaluation = await self._policy.evaluate(agent_id, snapshot)
 
                 if evaluation.eligible:
@@ -207,3 +237,54 @@ class PerformancePruningStrategy:
             agents_error=agents_error,
         )
         return tuple(decisions)
+
+    async def _load_evolution_deferrals(
+        self,
+        agent_ids: tuple[NotBlankStr, ...],
+    ) -> tuple[dict[str, bool], set[str]]:
+        """Batch-resolve evolution-deferral status for the given agents.
+
+        Replaces the per-agent serial ``_evolution_checker`` call with one
+        concurrent fan-out. Each task captures its own outcome so a single
+        agent's checker failure does not abort the batch; criticals re-raise
+        through the ``TaskGroup``.
+
+        Args:
+            agent_ids: Agents (with snapshots) to check.
+
+        Returns:
+            ``(deferred_by_key, errored_keys)``: ``deferred_by_key`` maps an
+            agent-id string to its adaptation flag; ``errored_keys`` holds
+            the ids whose checker raised (caller treats these as per-agent
+            errors, preserving the old in-loop behaviour).
+        """
+        checker = self._evolution_checker
+        if not self._defer_during_evolution or checker is None or not agent_ids:
+            return ({}, set())
+
+        timeout = self._evolution_check_timeout_seconds
+
+        async def _check_one(
+            agent_id: NotBlankStr,
+        ) -> tuple[str, bool | None, Exception | None]:
+            try:
+                flag = await asyncio.wait_for(checker(agent_id), timeout=timeout)
+                return (str(agent_id), flag, None)
+            except TimeoutError as exc:
+                return (str(agent_id), None, exc)
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                return (str(agent_id), None, exc)
+
+        async with asyncio.TaskGroup() as tg:
+            tasks = [tg.create_task(_check_one(aid)) for aid in agent_ids]
+
+        deferred: dict[str, bool] = {}
+        errored: set[str] = set()
+        for task in tasks:
+            key, flag, exc = task.result()
+            if exc is not None:
+                errored.add(key)
+            elif flag is not None:
+                deferred[key] = flag
+        return (deferred, errored)

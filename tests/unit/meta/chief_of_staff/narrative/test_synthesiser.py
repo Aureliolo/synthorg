@@ -17,6 +17,7 @@ from synthorg.meta.chief_of_staff.narrative.models import (
     RunMetric,
 )
 from synthorg.meta.chief_of_staff.narrative.synthesiser import NarrativeSynthesiser
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import CompletionResponse, TokenUsage
 from synthorg.providers.protocol import CompletionProvider
 from tests._shared import mock_of
@@ -110,7 +111,11 @@ class TestWriteProse:
         synth = NarrativeSynthesiser(provider=provider, config=ChiefOfStaffConfig())
         await synth.write_prose(_run())
         messages = provider.complete.await_args.args[0]
-        content = messages[0].content
+        # Fenced brief title + record ride in the USER message (index 1);
+        # the SYSTEM message (index 0) carries the directive.
+        assert messages[0].role is MessageRole.SYSTEM
+        assert messages[1].role is MessageRole.USER
+        content = messages[1].content
         assert wrap_untrusted(TAG_TASK_DATA, "Ship checkout") in content
         # The decision rationale (agent-authored) flows through the fenced
         # record block, so it appears in the prompt too.

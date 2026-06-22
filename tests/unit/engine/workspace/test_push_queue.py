@@ -136,6 +136,51 @@ class TestPushQueueCoordinator:
             await coord.stop()
         assert r2.success
 
+    async def test_stop_drain_timeout_marks_unrestartable(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # A worker hung on a never-returning git operation must not hold
+        # teardown forever: stop() bounds the drain, cancels the worker,
+        # and marks the coordinator unrestartable so a racing start() cannot
+        # spawn a second worker on a stale queue.
+        from synthorg.engine.workspace import push_queue as pq_mod
+        from synthorg.engine.workspace.errors import PushQueueUnrestartableError
+
+        monkeypatch.setattr(pq_mod, "_DRAIN_TIMEOUT_SECONDS", 0.05)
+
+        entered = asyncio.Event()
+        release = asyncio.Event()  # never set -> the merge hangs
+
+        async def _merge(*, workspace: Workspace) -> MergeResult:
+            entered.set()
+            await release.wait()
+            return _ok_merge(workspace.workspace_id, workspace.branch_name)
+
+        strategy = mock_of[WorkspaceIsolationStrategy]()
+        strategy.merge_workspace.side_effect = _merge
+        git_backend = mock_of[GitBackend]()
+
+        coord = _coordinator(strategy, git_backend)
+        await coord.start()
+        enqueue_task = asyncio.create_task(
+            coord.enqueue_merge_push(workspace=_workspace("w1", "b1")),
+        )
+        # Wait until the worker is actually blocked inside the merge.
+        await asyncio.wait_for(entered.wait(), timeout=1.0)
+
+        # Drain exceeds the (patched) deadline -> times out, does not hang.
+        await coord.stop()
+
+        with pytest.raises(PushQueueUnrestartableError):
+            await coord.start()
+
+        # The in-flight caller is abandoned with the hard teardown; cancel
+        # its task so the test loop does not leak it.
+        enqueue_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await enqueue_task
+
     async def test_critical_error_completes_future_before_worker_dies(self) -> None:
         # A critical error (MemoryError) raised inside the worker must
         # resolve the dequeued item's future before the worker re-raises

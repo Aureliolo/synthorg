@@ -100,17 +100,22 @@ async def rate_limited_call[**P, T](
         RateLimitError: Re-raised after pausing the limiter with the
             provider's ``retry_after``.
     """
-    acquired = False
+    # ``held`` is the acquired limiter this call owns the release for;
+    # ``None`` means no slot is held (unthrottled call, or ownership has
+    # been transferred to the streaming wrapper). Carrying the narrowed
+    # non-``None`` reference -- rather than a separate ``acquired`` bool --
+    # lets mypy prove every ``release()`` site has a real limiter.
+    held: RateLimiter | None = None
     if rate_limiter is not None:
         await rate_limiter.acquire()
-        acquired = True
-    streaming_owns_release = False
+        held = rate_limiter
     try:
         result = await func(*args, **kwargs)
-        if acquired and isinstance(result, AsyncIterator):
+        if held is not None and isinstance(result, AsyncIterator):
             # Transfer slot ownership to a wrapper generator so the
             # concurrency slot is held until the stream is exhausted.
-            streaming_owns_release, acquired = True, False
+            stream_limiter = held
+            held = None
 
             async def _hold_slot_for_stream(
                 inner: AsyncIterator[object],
@@ -125,7 +130,7 @@ async def rate_limited_call[**P, T](
                     # the underlying connection to the pool deterministically
                     # rather than waiting for garbage collection.
                     await aclose_quietly(inner, model=model_label)
-                    rate_limiter.release()  # type: ignore[union-attr]
+                    stream_limiter.release()
 
             return _hold_slot_for_stream(result)  # type: ignore[return-value]
     except RateLimitError as exc:
@@ -135,5 +140,5 @@ async def rate_limited_call[**P, T](
     else:
         return result
     finally:
-        if acquired and not streaming_owns_release:
-            rate_limiter.release()  # type: ignore[union-attr]
+        if held is not None:
+            held.release()

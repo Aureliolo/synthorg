@@ -90,3 +90,16 @@ FALLBACK_SUMMARY: Final[str] = (
     "contributions, and outcomes below are drawn directly from the "
     "project record."
 )
+
+
+def clip_text(text: str, limit: int) -> str:
+    """Truncate ``text`` to at most ``limit`` characters.
+
+    Single source of truth for the bounded-text slice the reducer and
+    assembler each apply with their own per-section limit (label, bullet,
+    decision-text) so a rich field cannot overflow its block bound.
+
+    Returns:
+        ``text`` truncated to ``limit`` characters.
+    """
+    return text[:limit]

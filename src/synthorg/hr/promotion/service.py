@@ -25,6 +25,8 @@ from synthorg.hr.errors import (
 )
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.promotion._approval_ops import create_approval, verify_approval
+from synthorg.hr.promotion._identity_guard import checked_identity
+from synthorg.hr.promotion._levels import next_level, prev_level
 from synthorg.hr.promotion.approval_protocol import PromotionApprovalStrategy
 from synthorg.hr.promotion.config import PromotionConfig
 from synthorg.hr.promotion.criteria_protocol import PromotionCriteriaStrategy
@@ -35,7 +37,6 @@ from synthorg.hr.promotion.models import (
     PromotionRequest,
 )
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import HR_AGENT_STATUS_TRANSITIONED
 from synthorg.observability.events.promotion import (
@@ -64,32 +65,6 @@ PromotionNotificationCallback = Callable[
     ["PromotionRecord"],
     "Awaitable[None]",
 ]
-
-
-def _next_level(level: SeniorityLevel) -> SeniorityLevel | None:
-    """Get the next higher seniority level, or None at top.
-
-    Returns:
-        The resulting ``SeniorityLevel``, or ``None`` when unavailable.
-    """
-    members = list(SeniorityLevel)
-    idx = members.index(level)
-    if idx + 1 >= len(members):
-        return None
-    return members[idx + 1]
-
-
-def _prev_level(level: SeniorityLevel) -> SeniorityLevel | None:
-    """Get the next lower seniority level, or None at bottom.
-
-    Returns:
-        The resulting ``SeniorityLevel``, or ``None`` when unavailable.
-    """
-    members = list(SeniorityLevel)
-    idx = members.index(level)
-    if idx <= 0:
-        return None
-    return members[idx - 1]
 
 
 class PromotionService:
@@ -146,19 +121,29 @@ class PromotionService:
     async def evaluate_promotion(
         self,
         agent_id: NotBlankStr,
+        *,
+        identity: AgentIdentity | None = None,
     ) -> PromotionEvaluation:
         """Evaluate whether an agent qualifies for promotion.
 
         Args:
             agent_id: Agent to evaluate.
+            identity: Pre-loaded identity from a batch read (e.g. the
+                promotion cycle's ``list_active``); when supplied the
+                per-agent ``registry.get`` round-trip is skipped.
 
         Returns:
             Promotion evaluation result.
 
         Raises:
-            PromotionError: If the agent cannot be promoted.
+            PromotionError: If the agent cannot be promoted, or a preloaded
+                identity does not match ``agent_id``.
         """
-        identity = await self._registry.get(agent_id)
+        identity = checked_identity(
+            agent_id=agent_id, identity=identity, event=PROMOTION_EVALUATE_FAILED
+        )
+        if identity is None:
+            identity = await self._registry.get(agent_id)
         if identity is None:
             msg = f"Agent {agent_id!r} not found"
             logger.warning(
@@ -168,7 +153,7 @@ class PromotionService:
             )
             raise PromotionError(msg)
 
-        target = _next_level(identity.level)
+        target = next_level(identity.level)
         if target is None:
             msg = f"Agent {agent_id!r} is already at maximum seniority"
             logger.warning(
@@ -205,19 +190,28 @@ class PromotionService:
     async def evaluate_demotion(
         self,
         agent_id: NotBlankStr,
+        *,
+        identity: AgentIdentity | None = None,
     ) -> PromotionEvaluation:
         """Evaluate whether an agent should be demoted.
 
         Args:
             agent_id: Agent to evaluate.
+            identity: Pre-loaded identity from a batch read; when supplied
+                the per-agent ``registry.get`` round-trip is skipped.
 
         Returns:
             Demotion evaluation result.
 
         Raises:
-            PromotionError: If the agent cannot be demoted.
+            PromotionError: If the agent cannot be demoted, or a preloaded
+                identity does not match ``agent_id``.
         """
-        identity = await self._registry.get(agent_id)
+        identity = checked_identity(
+            agent_id=agent_id, identity=identity, event=PROMOTION_EVALUATE_FAILED
+        )
+        if identity is None:
+            identity = await self._registry.get(agent_id)
         if identity is None:
             msg = f"Agent {agent_id!r} not found"
             logger.warning(
@@ -227,7 +221,7 @@ class PromotionService:
             )
             raise PromotionError(msg)
 
-        target = _prev_level(identity.level)
+        target = prev_level(identity.level)
         if target is None:
             msg = f"Agent {agent_id!r} is already at minimum seniority"
             logger.warning(
@@ -261,6 +255,7 @@ class PromotionService:
         evaluation: PromotionEvaluation,
         *,
         initiated_by: NotBlankStr = _SYSTEM_INITIATOR,
+        identity: AgentIdentity | None = None,
     ) -> PromotionRequest:
         """Create a promotion/demotion request.
 
@@ -271,14 +266,20 @@ class PromotionService:
             agent_id: Agent to promote/demote.
             evaluation: The evaluation result.
             initiated_by: Who initiated the request.
+            identity: Pre-loaded identity from a batch read; when supplied
+                the per-agent ``registry.get`` round-trip is skipped.
 
         Returns:
             Promotion request.
 
         Raises:
             PromotionCooldownError: If in cooldown period.
-            PromotionError: If agent not found.
+            PromotionError: If agent not found, or a preloaded identity does
+                not match ``agent_id``.
         """
+        identity = checked_identity(
+            agent_id=agent_id, identity=identity, event=PROMOTION_REQUESTED
+        )
         if not evaluation.eligible:
             msg = f"Agent {agent_id!r} is not eligible for {evaluation.direction.value}"
             logger.warning(
@@ -299,7 +300,8 @@ class PromotionService:
             )
             raise PromotionCooldownError(msg)
 
-        identity = await self._registry.get(agent_id)
+        if identity is None:
+            identity = await self._registry.get(agent_id)
         if identity is None:
             msg = f"Agent {agent_id!r} not found"
             logger.warning(

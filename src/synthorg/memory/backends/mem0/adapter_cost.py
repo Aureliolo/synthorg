@@ -86,10 +86,11 @@ class Mem0AdapterCostMixin:
             timestamp=datetime.now(UTC),
             call_category=LLMCallCategory.EMBEDDING,
         )
-        await self._record_cost(record, agent_id, operation, model)
+        await self._record_cost(self._cost_tracker, record, agent_id, operation, model)
 
     async def _record_cost(
         self,
+        cost_tracker: CostTracker,
         record: CostRecord,
         agent_id: str,
         operation: str,
@@ -97,13 +98,21 @@ class Mem0AdapterCostMixin:
     ) -> None:
         """Persist a CostRecord via the tracker (best-effort).
 
+        Args:
+            cost_tracker: The wired tracker, narrowed non-``None`` by the
+                caller's enabled + presence guard.
+            record: The cost record to persist.
+            agent_id: Owning agent for the embedding operation.
+            operation: The embedding operation label.
+            model: The embedding model identifier.
+
         Raises:
             MemoryError: If the related operation fails.
             RecursionError: If the related operation fails.
             CancelledError: If the related operation fails.
         """
         try:
-            await self._cost_tracker.record(record)  # type: ignore[union-attr]
+            await cost_tracker.record(record)
             logger.debug(
                 BUDGET_EMBEDDING_COST_RECORDED,
                 agent_id=agent_id,

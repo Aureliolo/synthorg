@@ -6,31 +6,12 @@ connections, webhooks, tunnel).
 """
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
-from synthorg.core.types import NotBlankStr
-from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handlers.common import err
-from synthorg.meta.mcp.handlers.common_args import get_optional_str, require_dict
+from synthorg.meta.mcp.handlers.common_args import require_dict
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_CAPABILITY_GAP
 
 logger = get_logger(__name__)
-
-_TY_STRING = "non-blank string"
-
-
-def _require_str(arguments: dict[str, object], key: str) -> NotBlankStr:
-    """Extract a required non-blank string or raise ``ArgumentValidationError``.
-
-    Returns:
-        ``NotBlankStr`` instance.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    value = get_optional_str(arguments, key)
-    if value is None:
-        raise ArgumentValidationError(key, _TY_STRING)
-    return value
 
 
 def _get_dict(arguments: dict[str, object], key: str) -> dict[str, str] | None:

@@ -9,20 +9,17 @@ requests, setup, simulations, template-packs, integration-health).
 from uuid import UUID
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
-from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.errors import ArgumentValidationError
-from synthorg.meta.mcp.handlers.common import err
-from synthorg.meta.mcp.handlers.common_args import (
-    get_optional_str,
-    require_arg,
-    require_dict,
+from synthorg.meta.mcp.handlers._mcp_handler_common import (
+    _to_jsonable as _canonical_to_jsonable,
 )
+from synthorg.meta.mcp.handlers.common import err
+from synthorg.meta.mcp.handlers.common_args import require_arg, require_dict
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_CAPABILITY_GAP
 
 logger = get_logger(__name__)
 
-_TY_STRING = "non-blank string"
 _TY_UUID = "UUID string"
 _TY_BACKUP_TRIGGER = "BackupTrigger string"
 _ARG_TRIGGER = "trigger"
@@ -43,21 +40,6 @@ def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
         capability=exc.capability,
     )
     return err(exc, domain_code=exc.domain_code)
-
-
-def _require_str(arguments: dict[str, object], key: str) -> NotBlankStr:
-    """Extract a required non-blank string or raise ``ArgumentValidationError``.
-
-    Returns:
-        ``NotBlankStr`` instance.
-
-    Raises:
-        ArgumentValidationError: Raised on the corresponding failure path.
-    """
-    value = get_optional_str(arguments, key)
-    if value is None:
-        raise ArgumentValidationError(key, _TY_STRING)
-    return value
 
 
 def _get_dict(arguments: dict[str, object], key: str) -> dict[str, str] | None:
@@ -90,16 +72,14 @@ def _require_uuid(arguments: dict[str, object], key: str) -> str:
 
 
 def _to_jsonable(value: object) -> object:
-    """Best-effort JSON-safe serialisation for facade returns.
+    """Coerce a facade return into a JSON-serialisable form.
 
-    Pydantic models are dumped via ``model_dump``; other values pass
-    through.  Keeps handlers thin when the underlying primitive
-    returns a non-uniform shape.
+    Thin adapter over the canonical
+    :func:`synthorg.meta.mcp.handlers._mcp_handler_common._to_jsonable`
+    so the infrastructure handlers keep importing serialisation from this
+    shared module while the coercion logic lives in one place.
 
     Returns:
-        ``Any`` instance.
+        JSON-serialisable representation of ``value``.
     """
-    dump_fn = getattr(value, "model_dump", None)
-    if callable(dump_fn):
-        return dump_fn(mode="json")
-    return value
+    return _canonical_to_jsonable(value)

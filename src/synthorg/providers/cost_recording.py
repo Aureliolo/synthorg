@@ -32,11 +32,12 @@ from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 
-# ``CostTracker`` and ``CompletionResponse`` appear in public
+# ``CostTrackerProtocol`` and ``CompletionResponse`` appear in public
 # annotations on ``cost_recording_scope`` / ``resolve_currency`` /
 # ``emit_cost_record_from_context``, so they must resolve at runtime
-# when downstream tooling evaluates type hints.
-from synthorg.budget.tracker import CostTracker
+# when downstream tooling evaluates type hints. The chokepoint depends on
+# the record/aggregate Protocol surface, never the concrete ``CostTracker``.
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -71,7 +72,7 @@ class CostRecordingContext(BaseModel):
         extra="forbid",
     )
 
-    cost_tracker: CostTracker = Field(description="CostTracker reference")
+    cost_tracker: CostTrackerProtocol = Field(description="CostTracker reference")
     agent_id: NotBlankStr = Field(description="Agent attribution")
     task_id: NotBlankStr = Field(description="Task attribution")
     project_id: NotBlankStr | None = Field(
@@ -86,26 +87,25 @@ class CostRecordingContext(BaseModel):
     @field_validator("cost_tracker", mode="before")
     @classmethod
     def _validate_cost_tracker(cls, value: object) -> object:
-        """Validate that ``cost_tracker`` is a ``CostTracker`` instance.
+        """Validate that ``cost_tracker`` satisfies ``CostTrackerProtocol``.
 
         Runs in ``before`` mode so the explicit rejection fires ahead of
         Pydantic's core ``is_instance_of`` check. Raises ``ValueError`` so
         Pydantic wraps it into a ``ValidationError`` with a field path; a
         bare ``TypeError`` would escape the model-construction call
-        uncaught.
+        uncaught. The check is structural (the ``@runtime_checkable``
+        Protocol's record/aggregate surface), not concrete-class identity.
 
         Returns:
-            The validated ``CostTracker`` value.
+            The validated cost-tracker value.
 
         Raises:
-            ValueError: If *value* is not a ``CostTracker`` instance.
+            ValueError: If *value* does not satisfy ``CostTrackerProtocol``.
         """
-        from synthorg.budget.tracker import CostTracker  # noqa: PLC0415
-
-        if not isinstance(value, CostTracker):
+        if not isinstance(value, CostTrackerProtocol):
             msg = (
-                f"cost_tracker must be a CostTracker instance, got "
-                f"{type(value).__name__}"
+                f"cost_tracker must be a CostTracker (CostTrackerProtocol) "
+                f"instance, got {type(value).__name__}"
             )
             raise ValueError(msg)  # noqa: TRY004 -- Pydantic needs ValueError
         return value
@@ -145,7 +145,7 @@ def current_cost_context() -> CostRecordingContext | None:
 @asynccontextmanager
 async def cost_recording_scope(  # noqa: PLR0913
     *,
-    cost_tracker: CostTracker | None,
+    cost_tracker: CostTrackerProtocol | None,
     agent_id: NotBlankStr,
     task_id: NotBlankStr,
     project_id: NotBlankStr | None = None,
@@ -206,7 +206,7 @@ async def cost_recording_scope(  # noqa: PLR0913
         _cost_context.reset(token)
 
 
-def resolve_currency(cost_tracker: CostTracker) -> CurrencyCode:
+def resolve_currency(cost_tracker: CostTrackerProtocol) -> CurrencyCode:
     """Return the currency to stamp on records from ``cost_tracker``.
 
     Reads ``budget_config.currency`` when a budget config is attached;

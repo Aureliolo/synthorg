@@ -7,6 +7,7 @@ configurable threshold.
 
 from typing import Final
 
+from synthorg.core.execution_identity import current_execution_identity
 from synthorg.core.task_enums import Complexity
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.compaction.epistemic import (
@@ -150,14 +151,12 @@ async def _do_compaction_phase2(  # noqa: PLR0913 -- ctx + config + estimator + 
     if summarizer is not None and config.llm_summarizer_enabled:
         summary_text = await summarizer.summarize(
             archivable,
-            execution_id=ctx.execution_id,
             fallback_text=summary_text,
         )
     if offloader is not None and config.memory_offload_enabled:
         await offloader.offload(
             agent_id=NotBlankStr(str(ctx.identity.id)),
             archivable=archivable,
-            execution_id=ctx.execution_id,
         )
     return _finalise(ctx, head, archivable, recent, estimator, summary_text)
 
@@ -218,7 +217,6 @@ def _build_phase1_summary(
     task_complexity = _extract_task_complexity(ctx)
     return _build_summary(
         archivable,
-        ctx.execution_id,
         preserve_markers=config.preserve_epistemic_markers,
         task_complexity=task_complexity,
     )
@@ -362,7 +360,6 @@ def _extract_task_complexity(ctx: AgentContext) -> Complexity:
 
 def _build_summary(
     messages: tuple[ChatMessage, ...],
-    execution_id: str,
     *,
     preserve_markers: bool,
     task_complexity: Complexity,
@@ -372,11 +369,11 @@ def _build_summary(
     When ``preserve_markers`` is True, assistant messages with
     epistemic markers (hedging, reconsideration, etc.) are preserved
     as marker-containing sentences instead of being sanitized down
-    to 100-char snippets.
+    to 100-char snippets. The run id for the fallback log is read from
+    the ambient ``current_execution_identity()``.
 
     Args:
         messages: The archived messages to summarize.
-        execution_id: Execution identifier for log correlation.
         preserve_markers: Whether to preserve epistemic markers.
         task_complexity: Task complexity for marker thresholds.
 
@@ -415,9 +412,10 @@ def _build_summary(
     # Drop useless "details redacted" placeholders.
     useful = [s for s in snippets if s != "details redacted"]
     if not useful:
+        identity = current_execution_identity()
         logger.debug(
             CONTEXT_BUDGET_COMPACTION_FALLBACK,
-            execution_id=execution_id,
+            execution_id=identity.execution_id if identity is not None else None,
             reason="no_useful_assistant_content_for_summary",
             archived_count=len(messages),
         )

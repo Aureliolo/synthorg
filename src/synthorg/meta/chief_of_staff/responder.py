@@ -28,7 +28,7 @@ from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 
 # Identity preamble for the generic responder. Reproduces the v1 opening
-# line of CONVERSATIONAL_PROPOSE_PROMPT verbatim so the routing-off path
+# line of CONVERSATIONAL_PROPOSE_SYSTEM verbatim so the routing-off path
 # is behaviourally unchanged.
 GENERIC_RESPONDER_PERSONA: NotBlankStr = NotBlankStr("You are the Chief of Staff.")
 

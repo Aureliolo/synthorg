@@ -92,19 +92,16 @@ class TrainingOnboardingBridge:
             str(identity.department) if identity.department is not None else None
         )
 
-        plan_kwargs: dict[str, object | None] = {
-            "new_agent_id": str(identity.id),
-            "new_agent_role": str(identity.role),
-            "new_agent_level": identity.level,
-            "new_agent_department": department,
-            "override_sources": override_sources,
-            "skip_training": skip_training,
-            "created_at": datetime.now(UTC),
-        }
-        if volume_caps is not None:
-            plan_kwargs["volume_caps"] = volume_caps
-
-        plan = TrainingPlan(**plan_kwargs)  # type: ignore[arg-type]
+        plan = TrainingPlan.build(
+            new_agent_id=str(identity.id),
+            new_agent_role=str(identity.role),
+            new_agent_level=identity.level,
+            new_agent_department=department,
+            override_sources=override_sources,
+            skip_training=skip_training,
+            created_at=datetime.now(UTC),
+            volume_caps=volume_caps,
+        )
 
         logger.info(
             HR_TRAINING_PLAN_CREATED,

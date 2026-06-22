@@ -14,7 +14,7 @@ from tests.evals.prompt._harness import (
 class TestNarrativeSynthesiserPromptContract:
     """Guard rails for the narrative synthesiser prompt surface."""
 
-    PINNED_FP = "083730125b1adf3f"
+    PINNED_FP = "c54193a357e19243"
 
     def test_temperature_is_config_sourced(self) -> None:
         """Narrative temperature must be drawn from config, not a literal."""
@@ -27,10 +27,18 @@ class TestNarrativeSynthesiserPromptContract:
         )
 
     def test_prompt_fingerprint_is_pinned(self) -> None:
-        """Detect silent drift of the run-narrative prose template."""
-        from synthorg.meta.chief_of_staff.prompts import RUN_NARRATIVE_PROSE_PROMPT
+        """Detect silent drift of the run-narrative prose SYSTEM + USER prompt."""
+        from synthorg.meta.chief_of_staff.prompts import (
+            RUN_NARRATIVE_PROSE_SYSTEM,
+            RUN_NARRATIVE_PROSE_USER,
+        )
 
-        fp = fingerprint_prompt(RUN_NARRATIVE_PROSE_PROMPT)
+        fp = fingerprint_prompt(
+            "[SYSTEM]\n"
+            + RUN_NARRATIVE_PROSE_SYSTEM
+            + "\n[USER]\n"
+            + RUN_NARRATIVE_PROSE_USER
+        )
         assert fp == self.PINNED_FP, (
             f"run narrative prose prompt drifted: {fp!r} != "
             f"{self.PINNED_FP!r}. Update the pin if intentional."

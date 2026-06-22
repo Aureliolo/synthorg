@@ -16,7 +16,7 @@ from synthorg.budget.coordination_config import (
     DetectionScope,
     ErrorCategory,
 )
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.classification.budget_tracker import (
     ClassificationBudgetTracker,
@@ -236,7 +236,7 @@ class _BaseSemanticDetector(ABC):
         budget_tracker: ClassificationBudgetTracker | None = None,
         temperature: float = 0.0,
         max_tokens: int = _DEFAULT_MAX_TOKENS,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         self._provider = provider
         self._model_id = model_id

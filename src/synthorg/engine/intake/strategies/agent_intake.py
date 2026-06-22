@@ -6,7 +6,7 @@ from typing import Final
 from pydantic import ValidationError
 
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.client.models import (
     ClientRequest,
     TaskRequirement,
@@ -64,7 +64,7 @@ class AgentIntake:
         persona: str = _DEFAULT_PERSONA,
         temperature: float = 0.0,
         max_tokens: int = _DEFAULT_MAX_TOKENS,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         """Initialize the agent intake strategy.
 

@@ -188,9 +188,7 @@ class ReactLoop:
 
             # Adopt any pending steering directives before the LLM call so
             # the operator's constraint is in context for this turn.
-            steered = await check_steering(
-                ctx, self._steering_inbox, execution_id=ctx.execution_id
-            )
+            steered = await check_steering(ctx, self._steering_inbox)
             if steered is not None:
                 ctx = steered
 
@@ -237,7 +235,6 @@ class ReactLoop:
                 self._stagnation_detector,
                 turns,
                 corrections_injected,
-                execution_id=ctx.execution_id,
             )
             if isinstance(stag_outcome, ExecutionResult):
                 return stag_outcome

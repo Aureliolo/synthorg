@@ -15,8 +15,11 @@ from synthorg.engine.prompt_safety import (
 # JSON matching the InterviewDecision schema and nothing else: either a
 # single elicitation question, or a complete charter draft once every
 # facet (goals, constraints, success criteria, scope, budget/time
-# envelope, project) is sufficiently specified.
-CHARTER_INTERVIEW_PROMPT = """\
+# envelope, project) is sufficiently specified. The CEO identity, charter
+# facets, system-controlled project hint, output contract, and the
+# untrusted-content directive ride in the SYSTEM message (system priority);
+# the fenced human conversation transcript goes in the USER message.
+CHARTER_INTERVIEW_SYSTEM = """\
 You are the CEO of an autonomous product studio running a structured
 requirements-elicitation interview with a human who has a product idea.
 Your job for THIS turn is exactly one of:
@@ -44,10 +47,6 @@ project run begin.
 ## Project hint
 
 {project_hint}
-
-## Conversation so far (oldest first)
-
-{conversation_history}
 
 ## Output contract (STRICT)
 
@@ -91,4 +90,10 @@ Rules:
 
 """ + untrusted_content_directive((TAG_TASK_DATA,))
 
-__all__ = ["CHARTER_INTERVIEW_PROMPT"]
+CHARTER_INTERVIEW_USER = """\
+## Conversation so far (oldest first)
+
+{conversation_history}
+"""
+
+__all__ = ["CHARTER_INTERVIEW_SYSTEM", "CHARTER_INTERVIEW_USER"]

@@ -41,7 +41,10 @@ from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import compare_seniority
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import ConversationTurn
-from synthorg.meta.chief_of_staff.prompts import CONCERN_ROUTING_PROMPT
+from synthorg.meta.chief_of_staff.prompts import (
+    CONCERN_ROUTING_SYSTEM,
+    CONCERN_ROUTING_USER,
+)
 from synthorg.meta.chief_of_staff.responder import (
     RoutingDecision,
     responder_for_identity,
@@ -327,13 +330,16 @@ class LlmConcernRouter:
         Returns:
             The parsed classification, or ``None`` to fall back.
         """
-        prompt = CONCERN_ROUTING_PROMPT.format(
+        user = CONCERN_ROUTING_USER.format(
             candidate_roles=_render_candidate_roles(active),
             conversation_history=wrap_untrusted(
                 TAG_TASK_DATA, render_turns_transcript(history)
             ),
         )
-        messages = [ChatMessage(role=MessageRole.USER, content=prompt)]
+        messages = [
+            ChatMessage(role=MessageRole.SYSTEM, content=CONCERN_ROUTING_SYSTEM),
+            ChatMessage(role=MessageRole.USER, content=user),
+        ]
         completion_config = CompletionConfig(
             temperature=self._temperature,
             max_tokens=self._max_tokens,

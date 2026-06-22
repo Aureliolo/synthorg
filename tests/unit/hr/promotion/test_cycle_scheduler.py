@@ -39,11 +39,11 @@ def _service_running_cycles(event: asyncio.Event) -> AsyncMock:
     return service
 
 
-async def test_interval_is_floored() -> None:
-    """An interval below the floor is raised to the 60s minimum."""
+async def test_rejects_sub_minute_interval() -> None:
+    """An interval below the 60s minimum is rejected at construction."""
     service = AsyncMock(spec=PromotionService)
-    scheduler = PromotionCycleScheduler(service, interval_seconds=5.0)
-    assert scheduler._interval == 60.0
+    with pytest.raises(ValueError, match="interval_seconds must be"):
+        PromotionCycleScheduler(service, interval_seconds=5.0)
 
 
 async def test_start_runs_one_cycle_then_stop() -> None:
