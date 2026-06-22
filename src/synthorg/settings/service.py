@@ -43,6 +43,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_VERSION_CONFLICT,
 )
 from synthorg.observability.metrics_hub import record_settings_mutation
+from synthorg.observability.tracing.instrumentation import get_tracer
 from synthorg.persistence.settings_protocol import SettingRow, SettingsRepository
 from synthorg.settings.encryption import SettingsEncryptor
 from synthorg.settings.enums import SettingsImportSource, SettingSource
@@ -57,6 +58,7 @@ from synthorg.settings.registry import SettingsRegistry
 from synthorg.settings.type_validators import validate_by_type
 
 logger = get_logger(__name__)
+_tracer = get_tracer(__name__)
 
 _SENSITIVE_MASK = "********"
 
@@ -709,6 +711,38 @@ class SettingsService:
         expected_updated_at: str | None = None,
         import_source: SettingsImportSource = SettingsImportSource.DIRECT_SET,
     ) -> SettingEntry:
+        """Span-wrapped public entry point for a setting write.
+
+        SEC-1: the ``settings.set`` span carries only namespace/key,
+        never the value (which may be a secret); record_exception /
+        set_status are off so exception frame-locals are not serialised.
+
+        Returns:
+            The persisted ``SettingEntry`` from :meth:`_set`.
+        """
+        with _tracer.start_as_current_span(
+            "settings.set",
+            attributes={"settings.namespace": namespace, "settings.key": key},
+            record_exception=False,
+            set_status_on_exception=False,
+        ):
+            return await self._set(
+                namespace,
+                key,
+                value,
+                expected_updated_at=expected_updated_at,
+                import_source=import_source,
+            )
+
+    async def _set(
+        self,
+        namespace: str,
+        key: str,
+        value: str,
+        *,
+        expected_updated_at: str | None = None,
+        import_source: SettingsImportSource = SettingsImportSource.DIRECT_SET,
+    ) -> SettingEntry:
         """Validate, encrypt, and persist a setting value with optional CAS.
 
         Pass ``expected_updated_at=""`` for first-write semantics.
@@ -807,6 +841,34 @@ class SettingsService:
         )
 
     async def set_many(
+        self,
+        items: Sequence[tuple[str, str, str]],
+        *,
+        expected_updated_at_map: Mapping[tuple[str, str], str],
+        import_source: SettingsImportSource = SettingsImportSource.DIRECT_SET,
+    ) -> str:
+        """Span-wrapped public entry point for a batch setting write.
+
+        SEC-1: the ``settings.set_many`` span carries only the batch
+        size, never namespaces / keys / values; record_exception /
+        set_status are off so exception frame-locals are not serialised.
+
+        Returns:
+            The shared ``updated_at`` ISO string from :meth:`_set_many`.
+        """
+        with _tracer.start_as_current_span(
+            "settings.set_many",
+            attributes={"settings.batch_size": len(items)},
+            record_exception=False,
+            set_status_on_exception=False,
+        ):
+            return await self._set_many(
+                items,
+                expected_updated_at_map=expected_updated_at_map,
+                import_source=import_source,
+            )
+
+    async def _set_many(
         self,
         items: Sequence[tuple[str, str, str]],
         *,
@@ -1036,29 +1098,38 @@ class SettingsService:
         Raises:
             SettingNotFoundError: If the key is not in the registry.
         """
-        definition = self._registry.get(namespace, key)
-        if definition is None:
-            logger.warning(SETTINGS_NOT_FOUND, namespace=namespace, key=key)
-            msg = f"Unknown setting: {namespace}/{key}"
-            raise SettingNotFoundError(msg)
+        # SEC-1: the span carries only namespace/key (never the value,
+        # which may be a secret). record_exception/set_status are off so
+        # an exception's frame-locals are not serialised into the span.
+        with _tracer.start_as_current_span(
+            "settings.delete",
+            attributes={"settings.namespace": namespace, "settings.key": key},
+            record_exception=False,
+            set_status_on_exception=False,
+        ):
+            definition = self._registry.get(namespace, key)
+            if definition is None:
+                logger.warning(SETTINGS_NOT_FOUND, namespace=namespace, key=key)
+                msg = f"Unknown setting: {namespace}/{key}"
+                raise SettingNotFoundError(msg)
 
-        _reject_if_read_only(definition, action="delete")
+            _reject_if_read_only(definition, action="delete")
 
-        await self._repository.delete(
-            (NotBlankStr(namespace), NotBlankStr(key)),
-        )
+            await self._repository.delete(
+                (NotBlankStr(namespace), NotBlankStr(key)),
+            )
 
-        self._invalidate_cache(namespace, key)
+            self._invalidate_cache(namespace, key)
 
-        logger.info(
-            SETTINGS_VALUE_DELETED,
-            namespace=namespace,
-            key=key,
-        )
-        record_settings_mutation(namespace=namespace)
-        _emit_security_setting_changed(namespace, key=key, action_type="delete")
+            logger.info(
+                SETTINGS_VALUE_DELETED,
+                namespace=namespace,
+                key=key,
+            )
+            record_settings_mutation(namespace=namespace)
+            _emit_security_setting_changed(namespace, key=key, action_type="delete")
 
-        await self._publish_change(namespace, key, definition)
+            await self._publish_change(namespace, key, definition)
 
     async def delete_namespace(self, namespace: str) -> int:
         """Delete every DB override under *namespace*.
