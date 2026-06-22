@@ -10,7 +10,7 @@ import re
 from typing import Final
 
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
@@ -67,7 +67,7 @@ class LlmJudgedRoutingPolicy:
         provider: CompletionProvider,
         model: str,
         fallback: WorkRoutingPolicy,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         if not model or not model.strip():
             msg = "model must be a non-blank string"

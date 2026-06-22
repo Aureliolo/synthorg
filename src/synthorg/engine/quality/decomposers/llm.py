@@ -21,10 +21,10 @@ from pydantic import JsonValue
 
 from synthorg.budget.call_category import LLMCallCategory
 
-# ``CostTracker`` is part of ``LLMCriteriaDecomposer.__init__``'s public
-# annotation, so it must resolve at runtime when downstream tooling
+# ``CostTrackerProtocol`` is part of ``LLMCriteriaDecomposer.__init__``'s
+# public annotation, so it must resolve at runtime when downstream tooling
 # evaluates type hints (DI containers, doc generators).
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.task import AcceptanceCriterion
@@ -243,7 +243,7 @@ class LLMCriteriaDecomposer:
         provider: CompletionProvider,
         model_id: NotBlankStr,
         max_probes_per_criterion: int = _DEFAULT_MAX_PROBES_PER_CRITERION,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         """Store dependencies and enforce a positive cap.
 

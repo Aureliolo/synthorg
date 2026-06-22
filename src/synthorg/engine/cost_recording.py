@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -26,7 +26,7 @@ from synthorg.observability.metrics_hub import record_provider_usage
 logger = get_logger(__name__)
 
 
-def resolve_tracker_currency(tracker: CostTracker | None) -> CurrencyCode:
+def resolve_tracker_currency(tracker: CostTrackerProtocol | None) -> CurrencyCode:
     """Resolve the currency code from a CostTracker's BudgetConfig.
 
     Falls back to ``DEFAULT_CURRENCY`` when no tracker is wired or its
@@ -52,7 +52,7 @@ async def record_execution_costs(  # noqa: PLR0913
     agent_id: str,
     task_id: str,
     *,
-    tracker: CostTracker | None,
+    tracker: CostTrackerProtocol | None,
     project_id: NotBlankStr | None = None,
 ) -> None:
     """Record per-turn costs to the CostTracker if available.
@@ -187,7 +187,7 @@ async def _submit_cost_record(
     agent_id: str,
     task_id: str,
     *,
-    tracker: CostTracker,
+    tracker: CostTrackerProtocol,
 ) -> bool:
     """Submit a cost record to the tracker, logging failures.
 

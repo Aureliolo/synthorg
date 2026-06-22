@@ -12,7 +12,7 @@ silent.
 from typing import Protocol, runtime_checkable
 
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
@@ -81,7 +81,7 @@ class LLMSummarizer:
         model: str,
         temperature: float,
         max_tokens: int,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         self._provider = provider
         self._model = model

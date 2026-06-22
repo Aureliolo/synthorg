@@ -8,6 +8,11 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
+
+# Concrete ``CostTracker`` (not ``CostTrackerProtocol``): this factory
+# threads the tracker into ``security`` components (``LlmSecurityEvaluator``,
+# ``SafetyClassifier``, ``UncertaintyChecker``) whose constructors are typed
+# against the concrete class, so the boundary here stays concrete.
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.agent import AgentIdentity
 from synthorg.engine.errors import ExecutionStateError

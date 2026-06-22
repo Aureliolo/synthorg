@@ -6,7 +6,7 @@ strategy; ``leaf-threshold`` is the shipped safe default.
 
 from typing import TYPE_CHECKING, Final
 
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.engine.pipeline.errors import WorkRoutingUndecidableError
 from synthorg.engine.pipeline.policy.always_team import AlwaysTeamRoutingPolicy
 from synthorg.engine.pipeline.policy.llm_judged import LlmJudgedRoutingPolicy
@@ -43,7 +43,7 @@ def build_work_routing_policy(
     threshold: int,
     provider: CompletionProvider | None = None,
     model: str | None = None,
-    cost_tracker: CostTracker | None = None,
+    cost_tracker: CostTrackerProtocol | None = None,
 ) -> WorkRoutingPolicy:
     """Construct the configured routing policy.
 

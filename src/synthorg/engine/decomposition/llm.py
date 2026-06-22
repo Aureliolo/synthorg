@@ -8,13 +8,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.budget.call_category import LLMCallCategory
 
-# ``CostTracker``, ``CompletionProvider``, ``Task``,
+# ``CostTrackerProtocol``, ``CompletionProvider``, ``Task``,
 # ``DecompositionContext``, ``DecompositionPlan``, and
 # ``CompletionResponse`` appear in public annotations of
 # ``LlmDecompositionStrategy`` (constructor + ``decompose``), so they
 # must resolve at runtime when downstream tooling evaluates type hints
 # (DI containers, doc generators).
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.llm_prompt import (
@@ -97,7 +97,7 @@ class LlmDecompositionStrategy:
         provider: CompletionProvider,
         model: str,
         config: LlmDecompositionConfig | None = None,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         """Initialize the LLM decomposition strategy.
 

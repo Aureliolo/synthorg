@@ -13,7 +13,7 @@ import re
 from typing import Final, Protocol, runtime_checkable
 
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
@@ -94,7 +94,7 @@ class LLMSupersessionProposer:
         provider: CompletionProvider,
         *,
         model: str,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         self._provider = provider
         self._model = model
@@ -230,7 +230,7 @@ def build_supersession_proposer(
     *,
     model: str | None = None,
     enabled: bool = True,
-    cost_tracker: CostTracker | None = None,
+    cost_tracker: CostTrackerProtocol | None = None,
 ) -> SteeringSupersessionProposer:
     """Select the supersession proposer implementation.
 

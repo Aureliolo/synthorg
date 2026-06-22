@@ -7,7 +7,7 @@ switch) and the symbol the ghost-wiring manifest enforces.
 
 from typing import TYPE_CHECKING
 
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.clock import Clock
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.intake.engine import IntakeEngine
@@ -40,7 +40,7 @@ def build_work_pipeline(  # noqa: PLR0913 -- keyword-only dependency injection
     leaf_threshold: int,
     provider: CompletionProvider | None = None,
     decomposition_model: str | None = None,
-    cost_tracker: CostTracker | None = None,
+    cost_tracker: CostTrackerProtocol | None = None,
     clock: Clock | None = None,
 ) -> DefaultWorkPipeline:
     """Construct the fully-wired default work pipeline.
