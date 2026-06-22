@@ -130,7 +130,7 @@ function AgentDetailContent({ ctrl }: CtrlProps) {
         <QualityScoreOverride agentId={agent.id} />
       </ErrorBoundary>
       <ErrorBoundary level="section">
-        <PromotionPanel agentId={agent.id} />
+        <PromotionPanel key={agent.id} agentId={agent.id} />
       </ErrorBoundary>
       <ErrorBoundary level="section">
         <CollaborationPanel agentId={agent.id} />

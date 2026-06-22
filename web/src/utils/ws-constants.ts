@@ -68,7 +68,7 @@ export const SSE_MAX_RECONNECT_ATTEMPTS = 10
  * Application-level exponential-backoff bounds (ms) for the SSE fallback. The
  * browser's native `EventSource` reconnect is a flat cadence with no backoff,
  * so a prolonged outage hammers the backend; the client instead closes the
- * source on error and re-opens after `min(BASE * 2**attempt, MAX)`, mirroring
+ * source on error and re-opens after `min(BASE * 2**(attempt - 1), MAX)`, mirroring
  * the WS `WS_RECONNECT_BASE_DELAY` / `WS_RECONNECT_MAX_DELAY` pair.
  */
 export const SSE_RECONNECT_BASE_DELAY = 1000

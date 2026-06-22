@@ -46,11 +46,20 @@ export function usePromotionPanel(agentId: string): PromotionPanelController {
   const [pendingDirection, setPendingDirection] = useState<PromotionDirection | null>(null)
 
   // Load history for the active agent and clear the singleton store on unmount
-  // / agent change so a stale evaluation cannot leak across agents.
+  // / agent change so a stale evaluation cannot leak across agents. The
+  // confirmation-local state (drawerOpen / pendingDirection) is reset by the
+  // ``key={agent.id}`` remount at the call site rather than syncing it here.
   useEffect(() => {
     void fetchHistory(agentId)
     return () => reset()
   }, [agentId, fetchHistory, reset])
+
+  // Clear the pending direction whenever the drawer closes so a stale
+  // confirmation cannot be applied after the operator dismisses it.
+  const handleDrawerOpen = useCallback((open: boolean) => {
+    setDrawerOpen(open)
+    if (!open) setPendingDirection(null)
+  }, [])
 
   const checkEligibility = useCallback(
     async (direction: PromotionDirection) => {
@@ -80,10 +89,13 @@ export function usePromotionPanel(agentId: string): PromotionPanelController {
     historyError,
     applying,
     drawerOpen,
-    setDrawerOpen,
+    setDrawerOpen: handleDrawerOpen,
     pendingDirection,
     requestApply: setPendingDirection,
-    cancelApply: () => setPendingDirection(null),
+    cancelApply: () => {
+      setDrawerOpen(false)
+      setPendingDirection(null)
+    },
     checkEligibility,
     confirmApply,
     retryHistory,

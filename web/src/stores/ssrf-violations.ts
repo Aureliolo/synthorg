@@ -54,7 +54,17 @@ function buildFilters(get: Get): ListSsrfViolationsFilters {
 
 async function fetchViolationsImpl(set: Set, get: Get): Promise<void> {
   const token = ++listRequestToken
-  set({ violations: [], nextCursor: null, hasMore: false, loading: true, error: null })
+  // Clear loadingMore too: a fetchMore in flight when this full refetch starts
+  // exits on the token mismatch without resetting its own flag, so without this
+  // reset loadingMore could stay true and permanently lock pagination.
+  set({
+    violations: [],
+    nextCursor: null,
+    hasMore: false,
+    loading: true,
+    loadingMore: false,
+    error: null,
+  })
   try {
     const page = await apiListViolations(buildFilters(get))
     if (token !== listRequestToken) return
@@ -63,11 +73,12 @@ async function fetchViolationsImpl(set: Set, get: Get): Promise<void> {
       nextCursor: page.nextCursor,
       hasMore: page.hasMore,
       loading: false,
+      loadingMore: false,
     })
   } catch (err) {
     log.warn('Failed to fetch SSRF violations', sanitizeForLog(getErrorMessage(err)))
     if (token !== listRequestToken) return
-    set({ loading: false, error: getErrorMessage(err) })
+    set({ loading: false, loadingMore: false, error: getErrorMessage(err) })
   }
 }
 
@@ -88,7 +99,15 @@ async function fetchMoreViolationsImpl(set: Set, get: Get): Promise<void> {
   } catch (err) {
     log.warn('Failed to fetch more SSRF violations', sanitizeForLog(getErrorMessage(err)))
     if (token !== listRequestToken) return
-    set({ loadingMore: false, error: getErrorMessage(err) })
+    // Unlike the primary fetch, a load-more failure must NOT set the page-level
+    // ``error``: that field hides the already-loaded list and shows a full
+    // banner. Surface it as a toast so the loaded violations stay visible.
+    set({ loadingMore: false })
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, 'Failed to load more violations'),
+      description: getErrorMessage(err),
+    })
   }
 }
 

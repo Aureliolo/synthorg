@@ -6,6 +6,7 @@ import type {
   ExecutedToolCall,
 } from '@/api/types'
 import { useMetaStore } from '@/stores/meta'
+import { resolveScopedRetryContent } from './scoped-retry'
 
 export interface ActMessage {
   id: number
@@ -35,7 +36,7 @@ export interface MetaActState {
   selectAgent: (id: string) => void
   setInput: (value: string) => void
   triggerSend: () => void
-  retryLast: () => void
+  retryLast: (beforeMsgId?: number) => void
 }
 
 export function useMetaActState(): MetaActState {
@@ -93,9 +94,12 @@ export function useMetaActState(): MetaActState {
     void sendInstruction(instruction)
   }, [input, sendInstruction])
 
-  const retryLast = useCallback(() => {
-    const lastHuman = [...messages].reverse().find((m) => m.kind === 'human')
-    if (lastHuman) void sendInstruction(lastHuman.content)
+  // Retry the human instruction that precedes the clicked error bubble (see
+  // ``resolveScopedRetryContent``); an unscoped retry would replay the
+  // transcript tail rather than the instruction the operator clicked on.
+  const retryLast = useCallback((beforeMsgId?: number) => {
+    const content = resolveScopedRetryContent(messages, beforeMsgId)
+    if (content !== null) void sendInstruction(content)
   }, [messages, sendInstruction])
 
   return {

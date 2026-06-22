@@ -237,7 +237,7 @@ export function MetaGroup() {
               msg={msg}
               resolvingInvites={ctrl.resolvingInvites}
               onResolveInvite={ctrl.resolveInvite}
-              onRetry={ctrl.retryLast}
+              onRetry={() => ctrl.retryLast(msg.id)}
             />
           ))}
           {ctrl.loading && (

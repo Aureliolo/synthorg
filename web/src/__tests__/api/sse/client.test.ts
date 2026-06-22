@@ -200,6 +200,63 @@ describe('openSseFallback', () => {
     }
   })
 
+  it('re-arms the disconnect notice only after a stable reconnect', () => {
+    vi.useFakeTimers()
+    try {
+      const errors: Error[] = []
+      const handle = openSseFallback({
+        onEvent: () => {},
+        onError: (err) => errors.push(err),
+      })
+      // Initial source never stabilises (onopen never fires): first error is
+      // reported, and a second error in the same outage stays silent.
+      lastEventSource!.onerror?.(new Event('error'))
+      expect(errors).toHaveLength(1)
+      vi.advanceTimersByTime(SSE_RECONNECT_BASE_DELAY)
+      lastEventSource!.onerror?.(new Event('error'))
+      expect(errors).toHaveLength(1)
+      // The next source opens and stays up past the stability threshold, which
+      // re-arms both the attempt budget and the disconnect notice, so the
+      // following error is treated as a fresh outage and reported again.
+      vi.advanceTimersByTime(SSE_RECONNECT_BASE_DELAY * 2)
+      lastEventSource!.onopen?.(new Event('open'))
+      vi.advanceTimersByTime(SSE_RECONNECT_MAX_DELAY)
+      lastEventSource!.onerror?.(new Event('error'))
+      expect(errors).toHaveLength(2)
+      handle.close()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not refill the reconnect budget on a short-lived open', () => {
+    vi.useFakeTimers()
+    try {
+      let exhausted = false
+      const handle = openSseFallback({
+        onEvent: () => {},
+        onError: () => {},
+        onExhausted: () => {
+          exhausted = true
+        },
+      })
+      // Each reconnect opens briefly then immediately errors. A flap shorter
+      // than SSE_RECONNECT_MAX_DELAY must NOT reset the budget, so the client
+      // still exhausts after SSE_MAX_RECONNECT_ATTEMPTS.
+      for (let i = 0; i < SSE_MAX_RECONNECT_ATTEMPTS; i++) {
+        lastEventSource!.onopen?.(new Event('open'))
+        lastEventSource!.onerror?.(new Event('error'))
+        vi.advanceTimersByTime(SSE_RECONNECT_MAX_DELAY)
+      }
+      lastEventSource!.onopen?.(new Event('open'))
+      lastEventSource!.onerror?.(new Event('error'))
+      expect(exhausted).toBe(true)
+      handle.close()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('close() tears down the EventSource', () => {
     const closeSpy = vi.spyOn(FakeEventSource.prototype, 'close')
     const handle = openSseFallback({

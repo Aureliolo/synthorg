@@ -13,6 +13,7 @@ import type {
   PromotionRecordDTO,
 } from '@/api/types'
 import type { PromotionDirection } from '@/api/types/enum-values.gen'
+import { PromotionDirectionIcon } from './PromotionDirectionIcon'
 import { usePromotionPanel, type PromotionPanelController } from './usePromotionPanel'
 
 interface PromotionPanelProps {
@@ -64,11 +65,17 @@ function PromotionActions({ ctrl }: { ctrl: PromotionPanelController }) {
 }
 
 function EligibilityDrawer({ ctrl }: { ctrl: PromotionPanelController }) {
+  const drawerTitle =
+    ctrl.evaluation?.direction === 'demotion'
+      ? 'Demotion eligibility'
+      : ctrl.evaluation?.direction === 'promotion'
+        ? 'Promotion eligibility'
+        : 'Eligibility'
   return (
     <Drawer
       open={ctrl.drawerOpen}
       onClose={() => ctrl.setDrawerOpen(false)}
-      title="Promotion eligibility"
+      title={drawerTitle}
       width="narrow"
     >
       {ctrl.evaluating ? (
@@ -169,12 +176,15 @@ function PromotionHistory({ ctrl }: { ctrl: PromotionPanelController }) {
 }
 
 function PromotionRecordRow({ record }: { record: PromotionRecordDTO }) {
-  const Icon = record.direction === 'promotion' ? TrendingUp : TrendingDown
   const tone = record.direction === 'promotion' ? 'text-success' : 'text-warning'
   return (
     <li className="flex items-center justify-between gap-3 text-sm">
       <span className="flex items-center gap-2">
-        <Icon className={`size-3.5 ${tone}`} aria-hidden="true" />
+        <PromotionDirectionIcon
+          direction={record.direction}
+          className={`size-3.5 ${tone}`}
+          aria-hidden="true"
+        />
         <span className="text-foreground">
           {record.old_level} -&gt; {record.new_level}
         </span>

@@ -96,6 +96,9 @@ export const usePromotionStore = create<PromotionState>((set, get) => ({
   },
 
   apply: async (agentId, direction) => {
+    // Guard re-entry: a rapid double-invocation before the UI disable
+    // propagates would otherwise send duplicate non-idempotent mutations.
+    if (get().applying) return null
     set({ applying: true })
     try {
       const result = await applyPromotion(agentId, direction)
@@ -125,6 +128,9 @@ export const usePromotionStore = create<PromotionState>((set, get) => ({
   },
 
   runCycle: async () => {
+    // Guard re-entry: a rapid double-invocation before the UI disable
+    // propagates would otherwise trigger duplicate cluster-wide cycles.
+    if (get().cycleRunning) return false
     set({ cycleRunning: true })
     try {
       const records = await runPromotionCycle()

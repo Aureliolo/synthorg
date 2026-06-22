@@ -12,8 +12,10 @@ import { clickButton, fillForm } from '../helpers/interactions'
  * round-trip and its result preview. The wizard's persisted store
  * (localStorage, key ``synthorg-setup-wizard-v1``) is seeded so the
  * quick-mode flow lands on the company step with its prerequisites
- * (mode + providers) already complete, which is how the app itself
- * rehydrates a partially-finished wizard -- no internal API is poked.
+ * (mode + providers) already complete. Because the store clears the
+ * Providers completion flag when the non-persisted ``providers`` map
+ * rehydrates empty, the seed also injects a live map (mirroring an
+ * in-session provider creation) -- no internal API is poked.
  */
 
 test.describe('Setup wizard critical flow', () => {
@@ -63,16 +65,41 @@ function ok(data: unknown) {
 }
 
 /**
+ * A non-empty ``providers`` map mirroring the in-memory state after a user
+ * configures a provider. ``providers`` is NOT persisted by the store's
+ * ``partialize``, but the persist ``merge`` spreads the rehydrated payload
+ * over the slice defaults, so injecting it here populates the live map the
+ * same way an in-session provider creation would. ``mergePersistedSetupState``
+ * clears ``stepsCompleted.providers`` (and gates downstream steps) whenever the
+ * rehydrated map is empty, so seeding ``stepsCompleted.providers: true`` alone
+ * is no longer enough to pass ``canNavigateTo`` -- a live map must accompany
+ * it. The fields are the ones ``SetupSummary`` reads to render the connected
+ * provider (``models``, ``auth_type``, ``has_api_key``).
+ */
+const SEEDED_PROVIDERS = {
+  'example-provider': {
+    name: 'example-provider',
+    auth_type: 'api_key',
+    has_api_key: true,
+    has_oauth_credentials: false,
+    has_custom_header: false,
+    has_subscription_token: false,
+    models: [],
+  },
+}
+
+/**
  * Seed the wizard's persisted store so a quick-mode wizard rehydrates on
  * the company step with mode + providers already complete. This is the
  * exact shape the persist middleware writes (``{ state, version }``,
  * version 3); ``buildStepsCompleted`` overlays only ``true`` entries, so
- * the unlisted steps stay incomplete. ``providers`` is not persisted by
- * the store, so marking the step complete here is what lets
- * ``canNavigateTo('company')`` pass without driving the provider picker.
+ * the unlisted steps stay incomplete. The non-empty ``providers`` map keeps
+ * ``stepsCompleted.providers`` from being cleared on rehydration (see
+ * {@link SEEDED_PROVIDERS}), which is what lets ``canNavigateTo('company')``
+ * pass without driving the provider picker.
  */
 async function seedWizardOnCompanyStep(page: Page): Promise<void> {
-  await page.addInitScript(() => {
+  await page.addInitScript((providers) => {
     window.localStorage.setItem(
       'synthorg-setup-wizard-v1',
       JSON.stringify({
@@ -80,6 +107,7 @@ async function seedWizardOnCompanyStep(page: Page): Promise<void> {
         state: {
           currentStep: 'company',
           wizardMode: 'quick',
+          providers,
           stepsCompleted: {
             account: false,
             mode: true,
@@ -93,7 +121,7 @@ async function seedWizardOnCompanyStep(page: Page): Promise<void> {
         },
       }),
     )
-  })
+  }, SEEDED_PROVIDERS)
 }
 
 test.describe('Setup wizard company submit', () => {
@@ -157,10 +185,13 @@ test.describe('Setup wizard company submit', () => {
  * Seed the wizard's persisted store on the FINAL ``complete`` step with
  * every prerequisite quick-mode step done and a non-null
  * ``companyResponse`` (without which ``CompleteStep`` renders the
- * skip-wizard fallback instead of the review + complete UI).
+ * skip-wizard fallback instead of the review + complete UI). The non-empty
+ * ``providers`` map keeps ``stepsCompleted.providers`` from being cleared on
+ * rehydration (see {@link SEEDED_PROVIDERS}); without it the merge would gate
+ * the Complete step and snap the wizard back to Providers.
  */
 async function seedWizardOnCompleteStep(page: Page): Promise<void> {
-  await page.addInitScript(() => {
+  await page.addInitScript((providers) => {
     window.localStorage.setItem(
       'synthorg-setup-wizard-v1',
       JSON.stringify({
@@ -168,6 +199,7 @@ async function seedWizardOnCompleteStep(page: Page): Promise<void> {
         state: {
           currentStep: 'complete',
           wizardMode: 'quick',
+          providers,
           stepsCompleted: {
             account: false,
             mode: true,
@@ -189,7 +221,7 @@ async function seedWizardOnCompleteStep(page: Page): Promise<void> {
         },
       }),
     )
-  })
+  }, SEEDED_PROVIDERS)
 }
 
 test.describe('Setup wizard complete step', () => {

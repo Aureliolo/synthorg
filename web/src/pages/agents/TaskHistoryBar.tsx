@@ -23,6 +23,9 @@ const TYPE_COLORS: Record<TaskType, string> = {
 function effectiveEndMs(task: Task): number {
   if (!task.created_at) return 0
   const createdMs = new Date(task.created_at).getTime()
+  // A non-empty but invalid created_at still yields NaN, which would cascade
+  // into 'NaN%' widths and malformed duration text downstream.
+  if (Number.isNaN(createdMs)) return 0
   if (!task.updated_at) return createdMs
   const updatedMs = new Date(task.updated_at).getTime()
   if (Number.isNaN(updatedMs) || updatedMs < createdMs) return createdMs

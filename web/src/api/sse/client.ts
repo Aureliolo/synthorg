@@ -140,6 +140,14 @@ function processSseFrame(
  * only. If server-side replay is ever added, the cursor would need to be
  * threaded into the reconnect request here (e.g. a query parameter).
  */
+/** Exponential backoff (ms) for the Nth reconnect attempt, capped at MAX. */
+function computeReconnectDelay(attempt: number): number {
+  return Math.min(
+    SSE_RECONNECT_BASE_DELAY * 2 ** (attempt - 1),
+    SSE_RECONNECT_MAX_DELAY,
+  )
+}
+
 export function openSseFallback(callbacks: SseClientCallbacks): SseClient {
   const url = SSE_STREAM_PATH
   // The server names every SSE frame with its AG-UI event type (the
@@ -157,6 +165,10 @@ export function openSseFallback(callbacks: SseClientCallbacks): SseClient {
   // interruption does not flood the operator with toasts; reset on re-open.
   let reportedDisconnect = false
   let lastEventId = ''
+  // Wall-clock of the last successful open; 0 while disconnected. Used to
+  // distinguish a stable connection (open for at least SSE_RECONNECT_MAX_DELAY)
+  // from a short-lived flap so the attempt budget is only reset for the former.
+  let openedAt = 0
 
   const handleFrame = (event: MessageEvent): void => {
     processSseFrame(event, callbacks.onEvent, (id) => {
@@ -187,14 +199,10 @@ export function openSseFallback(callbacks: SseClientCallbacks): SseClient {
   }
 
   function scheduleReconnect(): void {
-    const delay = Math.min(
-      SSE_RECONNECT_BASE_DELAY * 2 ** (attempt - 1),
-      SSE_RECONNECT_MAX_DELAY,
-    )
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null
       if (!closed) connect()
-    }, delay)
+    }, computeReconnectDelay(attempt))
   }
 
   function connect(): void {
@@ -202,8 +210,11 @@ export function openSseFallback(callbacks: SseClientCallbacks): SseClient {
     detachSource()
     source = new EventSource(url, { withCredentials: true })
     source.onopen = () => {
-      attempt = 0
-      reportedDisconnect = false
+      // Do NOT reset the attempt budget here: a server that accepts the stream
+      // and immediately closes it would otherwise let the client retry forever
+      // at the base delay. The budget is only reset in ``onerror`` once a
+      // connection has stayed open long enough to count as stable.
+      openedAt = Date.now()
       if (lastEventId) {
         log.debug('SSE fallback (re)connected', sanitizeForLog({ lastEventId }))
       }
@@ -214,6 +225,13 @@ export function openSseFallback(callbacks: SseClientCallbacks): SseClient {
     }
     source.onerror = () => {
       if (closed) return
+      const wasStableOpen =
+        openedAt > 0 && Date.now() - openedAt >= SSE_RECONNECT_MAX_DELAY
+      openedAt = 0
+      if (wasStableOpen) {
+        attempt = 0
+        reportedDisconnect = false
+      }
       attempt += 1
       if (attempt > SSE_MAX_RECONNECT_ATTEMPTS) {
         log.error('SSE fallback exhausted its reconnect budget; closing')

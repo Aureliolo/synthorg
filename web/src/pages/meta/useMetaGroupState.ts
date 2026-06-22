@@ -7,6 +7,7 @@ import type {
 } from '@/api/types'
 import { useApprovalsStore } from '@/stores/approvals'
 import { useMetaStore } from '@/stores/meta'
+import { resolveScopedRetryContent } from './scoped-retry'
 
 export interface GroupMessage {
   id: number
@@ -51,7 +52,7 @@ export interface MetaGroupState {
   toggleParticipant: (id: string) => void
   setInput: (value: string) => void
   triggerSend: () => void
-  retryLast: () => void
+  retryLast: (beforeMsgId?: number) => void
   /** Resolve an agent-initiated invite in context (approve or decline). */
   resolveInvite: (msgId: number, approvalId: string, accept: boolean) => void
 }
@@ -183,9 +184,12 @@ export function useMetaGroupState(): MetaGroupState {
     void sendMessage(message)
   }, [input, sendMessage])
 
-  const retryLast = useCallback(() => {
-    const lastHuman = [...messages].reverse().find((m) => m.kind === 'human')
-    if (lastHuman) void sendMessage(lastHuman.content)
+  // Retry the human message that precedes the clicked error bubble (see
+  // ``resolveScopedRetryContent``); an unscoped retry would resend the wrong
+  // turn when multiple failures exist.
+  const retryLast = useCallback((beforeMsgId?: number) => {
+    const content = resolveScopedRetryContent(messages, beforeMsgId)
+    if (content !== null) void sendMessage(content)
   }, [messages, sendMessage])
 
   const { resolvingInvites, resolveInvite } = useInviteResolution(setMessages)

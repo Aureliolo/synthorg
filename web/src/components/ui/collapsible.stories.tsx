@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { Button } from './button'
 import { Collapsible } from './collapsible'
 import { SkeletonText } from './skeleton'
 
@@ -73,13 +74,14 @@ function ControlledCollapsible() {
   const [open, setOpen] = useState(false)
   return (
     <div className="flex flex-col gap-2">
-      <button
-        type="button"
-        className="self-start rounded-md border border-border px-2 py-1 text-xs"
+      <Button
+        size="sm"
+        variant="outline"
+        className="self-start"
         onClick={() => setOpen((prev) => !prev)}
       >
         {open ? 'Collapse from parent' : 'Expand from parent'}
-      </button>
+      </Button>
       <Collapsible title="Controlled section" open={open} onOpenChange={setOpen}>
         Toggled by the parent.
       </Collapsible>

@@ -48,11 +48,14 @@ export function useMetaChatState(): MetaChatState {
   )
 
   const triggerSend = useCallback(() => {
+    // Mirror sendMessage's loading guard before clearing the input, so a send
+    // blocked by an in-flight turn does not discard the user's composed text.
+    if (chatLoading) return
     const question = input.trim()
     if (!question) return
     setInput('')
     void sendMessage(question)
-  }, [input, sendMessage])
+  }, [chatLoading, input, sendMessage])
 
   const retryLast = useCallback(() => {
     const lastUser = [...messages].reverse().find((m) => m.role === 'user')

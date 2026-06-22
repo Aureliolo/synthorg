@@ -8,15 +8,15 @@ export interface MetaProposeMessage {
   role: 'user' | 'assistant'
   content: string
   /** Role of the routed agent that answered, when concern-routed. */
-  responderRole?: string
+  responderRole?: string | undefined
   /** Display name of the routed agent, when concern-routed. */
-  responderName?: string
+  responderName?: string | undefined
   /** Concern topic that selected the role, when routed. */
-  routedTopic?: string
+  routedTopic?: string | undefined
   /** Titles of parked work items, on the "proposed" branch. */
-  proposals?: readonly string[]
+  proposals?: readonly string[] | undefined
   /** Renders as a distinct error notice (not a normal assistant reply). */
-  isError?: boolean
+  isError?: boolean | undefined
 }
 
 export interface MetaProposeState {

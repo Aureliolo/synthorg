@@ -105,9 +105,9 @@ export interface SkipWizardFormProps {
    * wording; the guided wizard's Complete-step fallback overrides it so the
    * operator is not told to "skip the wizard" while already in its final step.
    */
-  heading?: string
+  heading?: string | undefined
   /** Sub-heading copy paired with {@link heading}. */
-  description?: string
+  description?: string | undefined
 }
 
 export function SkipWizardForm({

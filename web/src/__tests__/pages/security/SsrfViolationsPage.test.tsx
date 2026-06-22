@@ -112,6 +112,34 @@ describe('SsrfViolationsPage', () => {
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
   })
 
+  it('toasts and keeps the loaded list when loading more fails', async () => {
+    server.use(
+      http.get('/api/v1/providers/ssrf-violations/', ({ request }) => {
+        const cursor = new URL(request.url).searchParams.get('cursor')
+        // First page advertises more; the follow-up page (with a cursor) 500s.
+        if (cursor === null) {
+          return HttpResponse.json(
+            pageEnvelope([buildSsrfViolation()], { nextCursor: 'cursor-1' }),
+          )
+        }
+        return HttpResponse.json(apiError('boom'), { status: 500 })
+      }),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    await screen.findByText('metadata.internal')
+    await user.click(screen.getByRole('button', { name: /load more/i }))
+
+    await waitFor(() => {
+      expect(useToastStore.getState().toasts.some((t) => t.variant === 'error')).toBe(true)
+    })
+    // The already-loaded violation stays visible: a load-more failure must not
+    // wipe the list or raise the page-level error banner.
+    expect(screen.getByText('metadata.internal')).toBeInTheDocument()
+    expect(screen.queryByText('Could not load SSRF violations')).not.toBeInTheDocument()
+  })
+
   it('hides allow/deny actions for roles that cannot manage violations', async () => {
     authMock.userRole = 'developer'
     server.use(
