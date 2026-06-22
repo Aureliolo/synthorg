@@ -305,8 +305,8 @@ class TestPromptTemplates:
 class TestSec1TemplatesCarryDirective:
     """The directive rides in the SYSTEM template, not the USER one.
 
-    The SEC-1 invariant is that the untrusted-content directive runs at
-    system priority. The fenced data lives in the USER template, which must
+    The prompt-safety invariant is that the untrusted-content directive runs
+    at system priority. The fenced data lives in the USER template, which must
     NOT carry the directive (otherwise the split would be cosmetic).
     """
 

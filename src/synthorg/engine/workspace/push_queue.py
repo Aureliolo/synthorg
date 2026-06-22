@@ -18,11 +18,11 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
-    PushQueueUnrestartableError,
     WorkspaceError,
     WorkspaceMergeError,
     WorkspacePushError,
 )
+from synthorg.engine.workspace.errors import PushQueueUnrestartableError
 from synthorg.engine.workspace.git_backend import GitBackend
 from synthorg.engine.workspace.models import MergeResult, Workspace
 from synthorg.engine.workspace.protocol import WorkspaceIsolationStrategy

@@ -144,8 +144,8 @@ class TestPushQueueCoordinator:
         # teardown forever: stop() bounds the drain, cancels the worker,
         # and marks the coordinator unrestartable so a racing start() cannot
         # spawn a second worker on a stale queue.
-        from synthorg.engine.errors import PushQueueUnrestartableError
         from synthorg.engine.workspace import push_queue as pq_mod
+        from synthorg.engine.workspace.errors import PushQueueUnrestartableError
 
         monkeypatch.setattr(pq_mod, "_DRAIN_TIMEOUT_SECONDS", 0.05)
 

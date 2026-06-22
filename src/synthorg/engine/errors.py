@@ -178,15 +178,6 @@ class WorkspacePushError(WorkspaceError):
     default_message: ClassVar[str] = "Failed to push workspace to git backend"
 
 
-class PushQueueUnrestartableError(WorkspaceError):
-    """Raised when ``start()`` is called after a ``stop()`` drain timed out.
-
-    A drain timeout means a worker (typically a hung git push) was cancelled
-    without confirming it released the FIFO single-writer position, so the
-    coordinator stays down rather than risk a second concurrent worker.
-    """
-
-
 class ProjectWorkspaceError(EngineError):
     """Base exception for persistent project-workspace failures."""
 
