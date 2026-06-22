@@ -1,5 +1,5 @@
 import type { TaskStatus } from '@/api/types/enums'
-import { NAMESPACE_DISPLAY_NAMES, NAMESPACE_ORDER } from '@/pages/settings/settings-constants'
+import { HIDDEN_SETTINGS, NAMESPACE_DISPLAY_NAMES, NAMESPACE_ORDER } from '@/pages/settings/settings-constants'
 import {
   DEFAULT_PAGE_SIZE,
   LOGIN_LOCKOUT_MS,
@@ -117,9 +117,20 @@ describe('constants', () => {
   })
 
   describe('NAMESPACE_ORDER', () => {
-    it('excludes company and providers (they have dedicated pages)', () => {
-      expect(NAMESPACE_ORDER).not.toContain('company')
+    it('surfaces company (Org Edit only covers the company REST API)', () => {
+      // The dedicated Org Edit page covers name / autonomy / budget via the
+      // company REST API; the registry-only keys (description, name_locales)
+      // are only reachable through the generic panel, so company is included.
+      expect(NAMESPACE_ORDER).toContain('company')
+    })
+
+    it('excludes providers (the dedicated Providers page covers every key)', () => {
       expect(NAMESPACE_ORDER).not.toContain('providers')
+    })
+
+    it('hides the structural company JSON blobs from the generic panel', () => {
+      expect(HIDDEN_SETTINGS.has('company/agents')).toBe(true)
+      expect(HIDDEN_SETTINGS.has('company/departments')).toBe(true)
     })
 
     it('every namespace in order has a display name', () => {

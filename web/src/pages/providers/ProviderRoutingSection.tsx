@@ -32,6 +32,10 @@ const ROUTING_KEYS: readonly string[] = [
   'model_refresh_auto_apply_within_family',
   'cassette_mode',
   'cassette_path',
+  // The full provider config blob. Marked sensitive in the registry, so
+  // SettingRow renders it redacted; surfaced here so operators can confirm a
+  // value is set and paste a corrected blob without leaving the dashboard.
+  'configs',
 ]
 
 interface RoutingState {
