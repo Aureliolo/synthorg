@@ -14,6 +14,7 @@ from typing import Protocol, runtime_checkable
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.execution_identity import current_execution_identity
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
@@ -95,14 +96,16 @@ class LLMSummarizer:
         self,
         archivable: tuple[ChatMessage, ...],
         *,
-        execution_id: str,
         fallback_text: str,
     ) -> str:
         """Summarise the archived batch, falling back to ``fallback_text``.
 
+        The run id (used for log correlation AND the cost-record
+        ``task_id``) is read from the ambient ``current_execution_identity()``
+        bound at the engine run boundary.
+
         Args:
             archivable: The conversation messages being archived.
-            execution_id: Execution id for log correlation.
             fallback_text: The Phase-1 text summary used on any failure.
 
         Returns:
@@ -112,6 +115,10 @@ class LLMSummarizer:
         transcript = _build_transcript(archivable)
         if not transcript:
             return fallback_text
+        identity = current_execution_identity()
+        execution_id = (
+            identity.execution_id if identity is not None else NotBlankStr("unknown")
+        )
         messages = [
             ChatMessage(role=MessageRole.SYSTEM, content=_SYSTEM_PROMPT),
             ChatMessage(role=MessageRole.USER, content=transcript),

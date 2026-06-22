@@ -462,7 +462,7 @@ async def do_replan(  # noqa: PLR0913
     if isinstance(result, ExecutionResult):
         return result
     ctx, plan = result
-    plan = truncate_plan(plan, config.max_plan_steps, ctx.execution_id)
+    plan = truncate_plan(plan, config.max_plan_steps)
     logger.info(
         EXECUTION_PLAN_REPLAN_COMPLETE,
         execution_id=ctx.execution_id,

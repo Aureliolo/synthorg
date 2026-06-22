@@ -100,9 +100,7 @@ class PlanExecuteStepMixin:
             return cancel_result
         # Adopt pending steering directives before the LLM call so the
         # operator's constraint is in context for this step's turn.
-        steered = await check_steering(
-            ctx, self._steering_inbox, execution_id=ctx.execution_id
-        )
+        steered = await check_steering(ctx, self._steering_inbox)
         if steered is not None:
             ctx = steered
 

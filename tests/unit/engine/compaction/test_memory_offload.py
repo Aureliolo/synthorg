@@ -46,13 +46,37 @@ class TestMemoryOffload:
         await offloader.offload(
             agent_id=NotBlankStr("agent-1"),
             archivable=_archivable(),
-            execution_id="exec-1",
         )
         backend.store.assert_awaited_once()
         request = backend.store.await_args.args[1]
         assert isinstance(request, MemoryStoreRequest)
         assert request.category is MemoryCategory.PROCEDURAL
         assert OFFLOAD_TAG in request.metadata.tags
+
+    async def test_offload_tags_execution_from_context(self) -> None:
+        """The ``execution:<id>`` tag is read from the ambient identity."""
+        from synthorg.core.execution_identity import (
+            ExecutionIdentity,
+            execution_identity_scope,
+        )
+
+        backend = mock_of[MemoryBackend](
+            store=AsyncMock(
+                spec=MemoryBackend.store, return_value=NotBlankStr("mem-1")
+            ),
+        )
+        offloader = MemoryOffloader(backend=backend)
+        identity = ExecutionIdentity(
+            execution_id=NotBlankStr("exec-42"),
+            task_id=NotBlankStr("task-1"),
+        )
+        with execution_identity_scope(identity):
+            await offloader.offload(
+                agent_id=NotBlankStr("agent-1"),
+                archivable=_archivable(),
+            )
+        request = backend.store.await_args.args[1]
+        assert NotBlankStr("execution:exec-42") in request.metadata.tags
 
     async def test_offload_empty_batch_is_noop(self) -> None:
         backend = mock_of[MemoryBackend](
@@ -62,7 +86,6 @@ class TestMemoryOffload:
         await offloader.offload(
             agent_id=NotBlankStr("agent-1"),
             archivable=(ChatMessage(role=MessageRole.ASSISTANT, content="   "),),
-            execution_id="exec-1",
         )
         backend.store.assert_not_awaited()
 
@@ -77,7 +100,6 @@ class TestMemoryOffload:
         await offloader.offload(
             agent_id=NotBlankStr("agent-1"),
             archivable=_archivable(),
-            execution_id="exec-1",
         )
 
     async def test_rehydrate_returns_offloaded_entries(self) -> None:

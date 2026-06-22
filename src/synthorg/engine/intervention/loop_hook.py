@@ -94,19 +94,17 @@ def resolve_steering_scope(
 async def check_steering(
     ctx: AgentContext,
     steering_inbox: SteeringInbox | None,
-    *,
-    execution_id: str,
 ) -> AgentContext | None:
     """Adopt pending steering directives at a safe boundary.
 
     Best-effort: an inbox failure is logged and skipped so steering never
     interrupts an otherwise-healthy loop (``MemoryError`` / ``RecursionError``
-    propagate).
+    propagate). The run id for log correlation is read from
+    ``ctx.execution_id``.
 
     Args:
         ctx: Current agent context.
         steering_inbox: The steering inbox; ``None`` disables steering.
-        execution_id: Execution identifier for structured logging.
 
     Returns:
         The updated context when one or more directives were injected (with
@@ -131,7 +129,7 @@ async def check_steering(
         reraise_critical(exc)
         logger.warning(
             STEERING_INBOX_READ_FAILED,
-            execution_id=execution_id,
+            execution_id=ctx.execution_id,
             project_id=project_id,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
@@ -147,7 +145,7 @@ async def check_steering(
         updated = updated.with_steering_adopted(directive.entry_id)
         logger.info(
             STEERING_DIRECTIVE_ADOPTED,
-            execution_id=execution_id,
+            execution_id=ctx.execution_id,
             project_id=project_id,
             task_id=task_id,
             agent_id=agent_id,
@@ -164,7 +162,7 @@ async def check_steering(
             updated = updated.with_pending_replan(directive.entry_id)
             logger.info(
                 STEERING_REPLAN_TRIGGERED,
-                execution_id=execution_id,
+                execution_id=ctx.execution_id,
                 directive_id=directive.entry_id,
             )
     return updated

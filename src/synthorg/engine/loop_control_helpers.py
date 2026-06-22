@@ -157,19 +157,19 @@ def check_budget(
     return None
 
 
-async def check_stagnation(  # noqa: PLR0913
+async def check_stagnation(
     ctx: AgentContext,
     stagnation_detector: StagnationDetector | None,
     turns: list[TurnRecord],
     corrections_injected: int,
     *,
-    execution_id: str,
     step_number: int | None = None,
 ) -> tuple[AgentContext, int] | ExecutionResult | None:
     """Run stagnation detection and handle the verdict.
 
     Stagnation detection is advisory -- detector failures are logged
-    and skipped so they never interrupt an otherwise-healthy loop.
+    and skipped so they never interrupt an otherwise-healthy loop. The
+    run id for log correlation is read from ``ctx.execution_id``.
 
     Args:
         ctx: Current agent context.
@@ -178,7 +178,6 @@ async def check_stagnation(  # noqa: PLR0913
         turns: Accumulated turn records from the current scope.
         corrections_injected: Number of corrective prompts already
             injected in this execution scope.
-        execution_id: Execution identifier for structured logging.
         step_number: Optional step number for plan-and-execute loops
             (included in log entries and termination metadata).
 
@@ -204,7 +203,7 @@ async def check_stagnation(  # noqa: PLR0913
         reraise_critical(exc)
         logger.warning(
             EXECUTION_LOOP_ERROR,
-            execution_id=execution_id,
+            execution_id=ctx.execution_id,
             turn=ctx.turn_count,
             note="stagnation_check_failed",
             error_type=type(exc).__name__,
@@ -217,28 +216,25 @@ async def check_stagnation(  # noqa: PLR0913
         stag,
         turns,
         corrections_injected,
-        execution_id=execution_id,
         step_number=step_number,
     )
 
 
-def _handle_stagnation_verdict(  # noqa: PLR0913
+def _handle_stagnation_verdict(
     ctx: AgentContext,
     stag: StagnationResult,
     turns: list[TurnRecord],
     corrections_injected: int,
     *,
-    execution_id: str,
     step_number: int | None = None,
 ) -> tuple[AgentContext, int] | ExecutionResult | None:
     """Dispatch on the stagnation verdict.
 
     Args:
-        ctx: Current agent context.
+        ctx: Current agent context (carries ``execution_id`` for logs).
         stag: Result from the stagnation detector.
         turns: Accumulated turn records from the current scope.
         corrections_injected: Corrections already injected.
-        execution_id: Execution identifier for structured logging.
         step_number: Optional step number for plan-and-execute loops.
 
     Returns:
@@ -250,7 +246,7 @@ def _handle_stagnation_verdict(  # noqa: PLR0913
             metadata["step_number"] = step_number
         logger.warning(
             STAGNATION_TERMINATED,
-            execution_id=execution_id,
+            execution_id=ctx.execution_id,
             step_number=step_number,
             repetition_ratio=stag.repetition_ratio,
             cycle_length=stag.cycle_length,
@@ -266,7 +262,7 @@ def _handle_stagnation_verdict(  # noqa: PLR0913
     if stag.verdict == StagnationVerdict.INJECT_PROMPT:
         logger.info(
             STAGNATION_CORRECTION_INJECTED,
-            execution_id=execution_id,
+            execution_id=ctx.execution_id,
             step_number=step_number,
             repetition_ratio=stag.repetition_ratio,
             correction_number=corrections_injected + 1,

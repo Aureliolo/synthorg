@@ -12,6 +12,7 @@ never blocks the compaction itself.
 from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.execution_identity import current_execution_identity
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import (
@@ -55,16 +56,21 @@ class MemoryOffloader:
         *,
         agent_id: NotBlankStr,
         archivable: tuple[ChatMessage, ...],
-        execution_id: str,
     ) -> None:
         """Store the archived batch as a tagged PROCEDURAL memory entry.
 
         Best-effort: a backend failure is logged and swallowed so
-        compaction is never blocked by the offload.
+        compaction is never blocked by the offload. The run id (used for
+        the durable ``execution:{id}`` rehydration tag AND log correlation)
+        is read from the ambient ``current_execution_identity()``.
         """
         content = _serialise_batch(archivable)
         if not content:
             return
+        identity = current_execution_identity()
+        execution_id = (
+            identity.execution_id if identity is not None else NotBlankStr("unknown")
+        )
         if len(content) > _MAX_OFFLOAD_CHARS:
             content = content[:_MAX_OFFLOAD_CHARS]
             logger.debug(
