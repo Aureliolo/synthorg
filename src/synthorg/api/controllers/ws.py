@@ -685,9 +685,33 @@ async def _authenticate_ws(
             reason="Too many pending connections",
         )
         return None
+    # Bound the WHOLE first-message auth (frame read AND ticket
+    # validation) under the operator-tuned auth budget. The read alone
+    # is already bounded inside ``_read_auth_message``, but the ticket
+    # ``validate_and_consume`` round-trip is not; without this an
+    # accepted socket whose validation hangs would hold its pre-auth
+    # slot until the per-IP cap rather than releasing it on a budget.
+    auth_timeout = socket.app.state["app_state"].ws_auth_limits.auth_timeout_seconds
     try:
         await socket.accept()
-        user = await _auth_from_first_message(socket)
+        user = await asyncio.wait_for(
+            _auth_from_first_message(socket),
+            timeout=auth_timeout,
+        )
+    except TimeoutError:
+        logger.warning(
+            API_WS_AUTH_STAGE,
+            stage="first_message_auth_timeout",
+            client=str(socket.client),
+        )
+        try:
+            await socket.close(
+                code=_WS_CLOSE_POLICY_VIOLATION,
+                reason="Auth timeout",
+            )
+        except Exception:  # noqa: BLE001 -- best-effort close on a hung socket
+            logger.debug(API_WS_SEND_FAILED, reason="close_after_auth_timeout")
+        return None
     finally:
         await _release_preauth_slot(client_ip)
     if user is None:

@@ -12,6 +12,7 @@ import pytest
 from litestar.datastructures import State
 
 from synthorg.api.controllers.model_refresh import ModelRefreshController
+from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.providers.management.refresh_config import RefreshMode
 from synthorg.providers.management.refresh_state import ModelRefreshStateSlice
@@ -88,3 +89,21 @@ async def test_get_status_reports_resolved_config() -> None:
     assert result.data.mode is RefreshMode.MANUAL_ONLY
     assert result.data.interval_seconds == 3600.0
     assert result.data.auto_apply_within_family is True
+
+
+def test_controller_read_guard_lets_reads_through() -> None:
+    # The controller-level guard must be read access (not write) so an
+    # OBSERVER / BOARD_MEMBER can GET recommendations + status. The GET
+    # handlers add no role guard of their own.
+    assert ModelRefreshController.guards == (require_read_access,)
+    assert not ModelRefreshController.list_recommendations.guards
+    assert not ModelRefreshController.get_status.guards
+
+
+def test_mutating_posts_require_ceo_or_manager() -> None:
+    for handler in (
+        ModelRefreshController.approve_recommendation,
+        ModelRefreshController.reject_recommendation,
+        ModelRefreshController.trigger_refresh,
+    ):
+        assert require_ceo_or_manager in (handler.guards or [])
