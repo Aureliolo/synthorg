@@ -106,7 +106,7 @@ class LLMSummarizer:
 
         Args:
             archivable: The conversation messages being archived.
-            fallback_text: The Phase-1 text summary used on any failure.
+            fallback_text: The text summary used on any failure.
 
         Returns:
             The LLM summary text, or ``fallback_text`` when the provider
