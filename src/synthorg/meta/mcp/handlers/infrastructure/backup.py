@@ -193,17 +193,9 @@ async def _backup_create(
             )
             return _to_jsonable(manifest)
 
-        # ``meta`` cannot import ``api.services`` (layering contract), so the
-        # handler constructs the service over the neutral repository instead
-        # of reaching for the api-side ``idempotency_service_of`` accessor;
-        # the dedup state lives in the shared repo, so a per-call instance is
-        # equivalent. The app clock seam threads an injected FakeClock so the
-        # in-flight poll honours test time rather than waiting in real time.
-        service = IdempotencyService(
-            persistence_of(app_state).idempotency_keys,
-            clock=app_state.clock,
-        )
-        outcome = await service.run_idempotent(
+        outcome = await mcp_idempotency_service_of(
+            app_state, clock=app_state.clock
+        ).run_idempotent(
             scope="mcp:backup_create",
             key=_create_idempotency_key(args.idempotency_key),
             callback=_create,
