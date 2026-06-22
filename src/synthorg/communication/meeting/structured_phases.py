@@ -13,6 +13,7 @@ thin coordinator (``__init__`` / ``get_protocol_type`` / ``run``).
 
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from typing import Protocol, runtime_checkable
 
 from synthorg.communication.meeting._parsing import (
     parse_action_items,
@@ -43,12 +44,57 @@ from synthorg.communication.meeting.protocol import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.meeting import (
     MEETING_BUDGET_EXHAUSTED,
+    MEETING_CONSENSUS_VELOCITY_FORCED,
     MEETING_PHASE_COMPLETED,
     MEETING_PHASE_STARTED,
+    MEETING_PREMORTEM_APPENDED,
     MEETING_TOKENS_RECORDED,
 )
 
 logger = get_logger(__name__)
+
+#: Heading the premortem section is folded under when appended to the
+#: synthesis summary so action-item / decision parsing still scans it.
+_PREMORTEM_SECTION_HEADING: str = "## Premortem Analysis"
+
+
+@runtime_checkable
+class ConsensusVelocityHook(Protocol):
+    """Premature-consensus check over the gathered input positions.
+
+    Structurally typed in the meeting package so the strategy
+    subsystem (``engine.strategy.consensus``) can be injected without
+    ``communication.meeting`` importing ``engine.strategy`` (which would
+    close an import cycle: the strategy package already depends on the
+    meeting package). The api layer binds the concrete
+    ``ConsensusVelocityDetector`` + its config behind this signature.
+    """
+
+    def __call__(self, positions: tuple[str, ...]) -> bool:
+        """Return whether the positions show premature consensus."""
+        ...
+
+
+@runtime_checkable
+class PremortemHook(Protocol):
+    """Premortem analysis over the synthesis summary.
+
+    Returns the rendered premortem section text (empty when no failure
+    modes / assumptions surfaced). Structurally typed for the same
+    cycle-avoidance reason as :class:`ConsensusVelocityHook`.
+    """
+
+    async def __call__(
+        self,
+        *,
+        synthesis_text: str,
+        participant_ids: tuple[str, ...],
+        agent_caller: AgentCaller,
+        token_budget: int,
+        context_id: str,
+    ) -> str:
+        """Run premortem and return the rendered section (or empty)."""
+        ...
 
 
 class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
@@ -64,15 +110,29 @@ class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
             responses. When ``None``, ``build_conflict_detector(config)``
             dispatches by ``config.conflict_detector`` so the runtime
             choice tracks the configured enum.
+        consensus_hook: Optional premature-consensus check run over the
+            gathered input positions. When it fires, the discussion
+            (devil's-advocate) round is forced even if the leader's
+            conflict check found none. Absent -> no velocity check.
+        premortem_hook: Optional premortem analysis run over the
+            synthesis summary; its rendered section is folded into the
+            summary. Absent -> no premortem phase.
     """
 
-    __slots__ = ("_config", "_conflict_detector")
+    __slots__ = (
+        "_config",
+        "_conflict_detector",
+        "_consensus_hook",
+        "_premortem_hook",
+    )
 
     def __init__(
         self,
         config: StructuredPhasesConfig,
         *,
         conflict_detector: ConflictDetector | None = None,
+        consensus_hook: ConsensusVelocityHook | None = None,
+        premortem_hook: PremortemHook | None = None,
     ) -> None:
         self._config = config
         self._conflict_detector: ConflictDetector = (
@@ -80,6 +140,8 @@ class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
             if conflict_detector is not None
             else build_conflict_detector(config)
         )
+        self._consensus_hook = consensus_hook
+        self._premortem_hook = premortem_hook
 
     def get_protocol_type(self) -> MeetingProtocolType:
         """Return the protocol type."""
@@ -146,6 +208,15 @@ class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
         )
         turn_number = len(participant_ids)
 
+        # Consensus-velocity check: when the gathered positions have
+        # converged prematurely the discussion round is forced so a
+        # devil's-advocate pass surfaces the suppressed disagreement,
+        # even if the leader's own conflict check would skip it.
+        force_discussion = self._detect_premature_consensus(
+            meeting_id=meeting_id,
+            inputs=inputs,
+        )
+
         # Discussion (conditional on conflicts).
         discussion_contributions: list[MeetingContribution] = []
         discussion_pairs: list[tuple[str, str]] = []
@@ -167,6 +238,7 @@ class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
                 inputs=inputs,
                 turn_number=turn_number,
                 lens_assignments=lens_assignments,
+                force_discussion=force_discussion,
             )
         else:
             logger.warning(
@@ -187,6 +259,17 @@ class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
             inputs=inputs,
             discussion=discussion_pairs,
             turn_number=turn_number,
+        )
+
+        # Premortem: fold a failure-mode / assumption analysis of the
+        # synthesised decision into the summary so decisions / action
+        # items parsed below also scan it.
+        summary = await self._maybe_append_premortem(
+            meeting_id=meeting_id,
+            summary=summary,
+            participant_ids=participant_ids,
+            agent_caller=agent_caller,
+            tracker=tracker,
         )
 
         contributions = (
@@ -230,3 +313,75 @@ class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
             started_at=started_at,
             ended_at=ended_at,
         )
+
+    def _detect_premature_consensus(
+        self,
+        *,
+        meeting_id: str,
+        inputs: list[tuple[str, str]],
+    ) -> bool:
+        """Run the consensus-velocity hook over the gathered positions.
+
+        Returns:
+            ``True`` when the hook is wired AND it flags the input
+            positions as prematurely converged (so the discussion round
+            should be forced); ``False`` otherwise.
+        """
+        if self._consensus_hook is None:
+            return False
+        positions = tuple(content for _, content in inputs)
+        detected = self._consensus_hook(positions)
+        if detected:
+            logger.info(
+                MEETING_CONSENSUS_VELOCITY_FORCED,
+                meeting_id=meeting_id,
+                position_count=len(positions),
+            )
+        return detected
+
+    async def _maybe_append_premortem(
+        self,
+        *,
+        meeting_id: str,
+        summary: str,
+        participant_ids: tuple[str, ...],
+        agent_caller: AgentCaller,
+        tracker: TokenTracker,
+    ) -> str:
+        """Fold a premortem analysis section into the synthesis summary.
+
+        No-op (returns ``summary`` unchanged) when no premortem hook is
+        wired, the token budget is exhausted, or the analysis surfaced
+        nothing.
+
+        Returns:
+            The summary, with a premortem section appended when one was
+            produced.
+        """
+        if self._premortem_hook is None or tracker.is_exhausted:
+            return summary
+        logger.info(
+            MEETING_PHASE_STARTED,
+            meeting_id=meeting_id,
+            phase=MeetingPhase.PREMORTEM,
+        )
+        section = await self._premortem_hook(
+            synthesis_text=summary,
+            participant_ids=participant_ids,
+            agent_caller=agent_caller,
+            token_budget=tracker.remaining,
+            context_id=meeting_id,
+        )
+        logger.info(
+            MEETING_PHASE_COMPLETED,
+            meeting_id=meeting_id,
+            phase=MeetingPhase.PREMORTEM,
+        )
+        if not section.strip():
+            return summary
+        logger.info(
+            MEETING_PREMORTEM_APPENDED,
+            meeting_id=meeting_id,
+            section_length=len(section),
+        )
+        return f"{summary}\n\n{_PREMORTEM_SECTION_HEADING}\n\n{section}"

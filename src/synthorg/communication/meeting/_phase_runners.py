@@ -216,6 +216,7 @@ class StructuredPhaseRunnersMixin:
         inputs: list[tuple[str, str]],
         turn_number: int,
         lens_assignments: Mapping[str, str] | None = None,
+        force_discussion: bool = False,
     ) -> tuple[
         bool,
         int,
@@ -223,6 +224,11 @@ class StructuredPhaseRunnersMixin:
         list[tuple[str, str]],
     ]:
         """Run conflict detection and optional discussion phase.
+
+        ``force_discussion`` runs the discussion round regardless of the
+        conflict check / skip configuration: the consensus-velocity path
+        sets it to force a devil's-advocate round on prematurely-
+        converged input.
 
         Returns:
             Tuple of (conflicts_detected, updated_turn_number,
@@ -273,8 +279,10 @@ class StructuredPhaseRunnersMixin:
             conflicts_found=conflicts_detected,
         )
 
-        should_discuss = conflicts_detected or (
-            not self._config.skip_discussion_if_no_conflicts
+        should_discuss = (
+            conflicts_detected
+            or force_discussion
+            or (not self._config.skip_discussion_if_no_conflicts)
         )
 
         discussion_pairs: list[tuple[str, str]] = []

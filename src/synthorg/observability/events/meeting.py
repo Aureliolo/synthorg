@@ -26,6 +26,14 @@ MEETING_CONTRIBUTION_RECORDED: Final[str] = "meeting.contribution.recorded"
 # Conflict detection
 MEETING_CONFLICT_DETECTED: Final[str] = "meeting.conflict.detected"
 
+# Strategy dispatch (premortem / consensus-velocity)
+MEETING_CONSENSUS_VELOCITY_FORCED: Final[str] = "meeting.consensus_velocity.forced"
+"""Premature-consensus detection on the gathered input positions forced
+the discussion (devil's-advocate) round to run even though the leader's
+conflict check found none."""
+MEETING_PREMORTEM_APPENDED: Final[str] = "meeting.premortem.appended"
+"""A premortem analysis section was folded into the synthesis summary."""
+
 # Output generation
 MEETING_SUMMARY_GENERATED: Final[str] = "meeting.summary.generated"
 MEETING_ACTION_ITEM_EXTRACTED: Final[str] = "meeting.action_item.extracted"
@@ -75,6 +83,9 @@ MEETING_TASKS_CAPPED: Final[str] = "meeting.task.capped"
 
 # Strategy integration
 MEETING_LENS_ASSIGNMENT_FAILED: Final[str] = "meeting.strategy.lens_assignment_failed"
+MEETING_BUDGET_SCALED: Final[str] = "meeting.strategy.budget_scaled"
+"""The progressive-tier budget scaler adjusted a meeting type's static
+``duration_tokens`` to a tier-resolved token budget."""
 
 # API-level meeting events
 MEETING_NOT_FOUND: Final[str] = "meeting.api.not_found"
