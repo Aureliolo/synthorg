@@ -52,7 +52,7 @@ class DispatchResult(BaseModel):
         errors: Error descriptions from failed handlers.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     message_id: UUID
     handlers_succeeded: int = Field(ge=0)

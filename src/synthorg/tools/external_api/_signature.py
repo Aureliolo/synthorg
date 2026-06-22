@@ -11,6 +11,8 @@ import json
 
 from pydantic import BaseModel, ConfigDict
 
+from synthorg.core.types import NotBlankStr
+
 _SIGNATURE_METADATA_KEY = "external_api_signature"
 
 
@@ -35,9 +37,9 @@ class ApprovalSignature(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    connection: str
-    method: str
-    resolved_url: str
+    connection: NotBlankStr
+    method: NotBlankStr
+    resolved_url: NotBlankStr
     body_hash: str
     headers_hash: str
 

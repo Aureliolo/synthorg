@@ -43,11 +43,11 @@ class ConversationalActArgs(BaseModel):
     agent: NotBlankStr = Field(
         description="Acting agent identifier or name (resolved via the registry)",
     )
-    conversation_id: str | None = Field(
+    conversation_id: NotBlankStr | None = Field(
         default=None,
         description="Optional conversation id for correlation",
     )
-    requested_by: str | None = Field(
+    requested_by: NotBlankStr | None = Field(
         default=None,
         description="The human operator who directed the action (audit)",
     )
@@ -60,7 +60,7 @@ class ConversationalActResult(BaseModel):
 
     agent_id: NotBlankStr = Field(description="Id of the agent that acted")
     agent_name: NotBlankStr = Field(description="Name of the agent that acted")
-    conversation_id: str | None = Field(
+    conversation_id: NotBlankStr | None = Field(
         default=None,
         description="The correlated conversation id, if supplied",
     )

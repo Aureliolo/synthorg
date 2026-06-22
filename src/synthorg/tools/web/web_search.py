@@ -41,7 +41,7 @@ class SearchResult(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     title: NotBlankStr
-    url: str
+    url: NotBlankStr
     snippet: str
 
 

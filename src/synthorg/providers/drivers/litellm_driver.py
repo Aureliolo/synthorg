@@ -611,7 +611,7 @@ class LiteLLMDriver(BaseCompletionProvider):
             finish_reason=finish,
             usage=usage,
             model=model_config.id,
-            provider_request_id=getattr(response, "id", None),
+            provider_request_id=getattr(response, "id", None) or None,
         )
 
     # ── Streaming ────────────────────────────────────────────────
