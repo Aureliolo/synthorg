@@ -459,7 +459,10 @@ class SQLiteProjectCostAggregateRepository:
 
         seen_at = normalize_utc(now)
         expires_at = seen_at + timedelta(seconds=ttl_seconds)
-        upsert_now = format_iso_utc(datetime.now(UTC))
+        # Stamp last_updated from the same injected clock as seen_at so the
+        # dedup claim and the aggregate row share one deterministic instant
+        # (and tests can drive both with a FakeClock).
+        upsert_now = format_iso_utc(seen_at)
         project_lock = await self._project_lock(project_id)
         async with project_lock:
             pinned = self._pinned_currencies.get(project_id)

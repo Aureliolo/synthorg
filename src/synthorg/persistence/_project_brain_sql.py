@@ -51,10 +51,15 @@ def _like_array_contains(column: str, ph: str, value: str) -> tuple[str, object]
     quoted-substring match. Postgres injects a ``jsonb_exists`` predicate
     against the native JSONB array instead.
 
+    The value is JSON-encoded before LIKE-escaping so the pattern matches
+    the element exactly as ``json.dumps`` stored it -- quotes, backslashes,
+    and non-ASCII characters are encoded identically on both sides, which a
+    bare ``"<value>"`` wrapper would miss.
+
     Returns:
         ``(sql_fragment, bound_param)``.
     """
-    return f"{column} LIKE {ph} ESCAPE '\\'", f'%"{escape_like(value)}"%'
+    return f"{column} LIKE {ph} ESCAPE '\\'", f"%{escape_like(json.dumps(value))}%"
 
 
 def row_to_entry(

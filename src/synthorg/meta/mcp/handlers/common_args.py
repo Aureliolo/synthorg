@@ -29,7 +29,7 @@ import copy
 from datetime import UTC, datetime
 from typing import Final, cast, overload
 
-from synthorg.core.iso_datetime import parse_iso_utc
+from synthorg.core.iso_datetime import is_valid_iso_datetime, parse_iso_utc
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.errors import ArgumentValidationError
 
@@ -307,9 +307,16 @@ def _parse_iso_datetime(raw: object, arg_name: str) -> datetime:
     """
     if not isinstance(raw, str) or not raw.strip():
         raise ArgumentValidationError(arg_name, _TY_ISO_DT)
+    if not is_valid_iso_datetime(raw):
+        # Unparseable shape (e.g. "not-a-date") is a format error, not a
+        # timezone one; report the precise type so callers can fix the
+        # right thing.
+        raise ArgumentValidationError(arg_name, _TY_ISO_DT)
     try:
         return parse_iso_utc(raw)
     except ValueError as exc:
+        # The string parsed (probe above passed), so the only remaining
+        # ``parse_iso_utc`` failure is a naive (offset-less) datetime.
         raise ArgumentValidationError(arg_name, _TY_TZ_AWARE) from exc
 
 

@@ -1,6 +1,7 @@
 """Unit tests for :mod:`synthorg.project_brain.query` helpers."""
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -21,6 +22,7 @@ from synthorg.project_brain.models import (
 from synthorg.project_brain.query import (
     _parse_history_line,
     build_filter_spec,
+    build_git_history,
     entry_to_search_hit,
     entry_to_summary,
 )
@@ -140,3 +142,16 @@ def test_parse_history_line_extracts_revision_from_subject() -> None:
 )
 def test_parse_history_line_rejects_malformed(line: str) -> None:
     assert _parse_history_line(line) is None
+
+
+async def test_build_git_history_rejects_negative_offset() -> None:
+    # A tampered / miscomputed cursor must fail loudly before reaching
+    # ``git log --skip`` rather than silently yielding an empty window.
+    with pytest.raises(ValueError, match="offset must be non-negative"):
+        await build_git_history(
+            repo_root=Path("/nonexistent"),
+            rel_path="brain/e-1.json",
+            branch=NotBlankStr("docs"),
+            limit=10,
+            offset=-1,
+        )

@@ -148,7 +148,15 @@ async def build_git_history(
     Returns:
         The entry's git versions newest-first; empty when the file has no
         history on the branch (never committed, or the branch is absent).
+
+    Raises:
+        ValueError: If ``offset`` is negative -- a tampered or miscomputed
+            cursor must fail loudly rather than feed ``git log --skip`` a
+            negative value that silently yields an empty (or wrong) window.
     """
+    if offset < 0:
+        msg = f"offset must be non-negative, got {offset}"
+        raise ValueError(msg)
     rc, stdout, _ = await run_git_subprocess(
         repo_root,
         "log",

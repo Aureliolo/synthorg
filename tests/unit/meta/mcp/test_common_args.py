@@ -283,10 +283,12 @@ class TestParseTimeWindow:
         assert until == fixed
 
     def test_raises_on_naive_since(self) -> None:
-        with pytest.raises(ArgumentValidationError):
+        with pytest.raises(ArgumentValidationError) as ei:
             parse_time_window(
                 {"since": "2026-04-01T00:00:00", "until": self._UNTIL},
             )
+        # A parseable-but-naive value is a timezone error, not a format one.
+        assert ei.value.expected == "timezone-aware ISO 8601"
 
     def test_raises_on_naive_until(self) -> None:
         with pytest.raises(ArgumentValidationError):
@@ -310,10 +312,12 @@ class TestParseTimeWindow:
             )
 
     def test_raises_on_malformed_since(self) -> None:
-        with pytest.raises(ArgumentValidationError):
+        with pytest.raises(ArgumentValidationError) as ei:
             parse_time_window(
                 {"since": "not-a-date", "until": self._UNTIL},
             )
+        # An unparseable shape is a format error, not a timezone one.
+        assert ei.value.expected == "ISO 8601 datetime string"
 
     def test_raises_on_non_string_until(self) -> None:
         with pytest.raises(ArgumentValidationError):

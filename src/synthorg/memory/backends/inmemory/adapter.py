@@ -65,7 +65,7 @@ class InMemoryBackend:
             msg = f"max_memories_per_agent must be >= 1, got {max_memories_per_agent}"
             raise ValueError(msg)
         self._max_memories_per_agent = max_memories_per_agent
-        self._clock = clock or SystemClock()
+        self._clock = clock if clock is not None else SystemClock()
         self._store: dict[str, dict[str, MemoryEntry]] = {}
         self._connected = False
         self._connect_lock = asyncio.Lock()

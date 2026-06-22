@@ -577,21 +577,33 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         inflate cardinality with one series per agent (and orphan ids
         forever). Per-agent task breakdowns are served by the REST task API.
         """
-        self._tasks_total.clear()
         if app_state.slice(EngineStateSlice).task_engine is None:
+            # No engine means there are no tasks to report; clear so a
+            # previously-populated gauge family doesn't keep phantom
+            # status labels alive after the engine is removed.
+            self._tasks_total.clear()
             return
         try:
-            tasks, _ = await task_engine_of(app_state).list_tasks()
-            counts: Counter[str] = Counter()
-            for task in tasks:
-                counts[str(task.status)] += 1
-            for status, count in counts.items():
-                self._tasks_total.labels(status=status).set(count)
+            # ``include_total=False`` skips the extra ``count_tasks``
+            # round-trip: the scrape only needs the rows, never the total.
+            tasks, _ = await task_engine_of(app_state).list_tasks(
+                include_total=False,
+            )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
+            # Keep the prior gauge values intact so the dashboard doesn't
+            # drop to "0 tasks" on a transient task-fetch failure.
             logger.warning(
                 METRICS_SCRAPE_FAILED,
                 component="task_engine",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            return
+        # Successful fetch: clear stale labels first, then re-set.
+        self._tasks_total.clear()
+        counts: Counter[str] = Counter()
+        for task in tasks:
+            counts[str(task.status)] += 1
+        for status, count in counts.items():
+            self._tasks_total.labels(status=status).set(count)

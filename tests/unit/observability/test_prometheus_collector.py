@@ -339,6 +339,36 @@ class TestPrometheusCollectorRefresh:
         output = generate_latest(collector.registry).decode()
         assert "synthorg_tasks_total" in output
 
+    async def test_task_engine_error_preserves_prior_task_gauge(self) -> None:
+        """A transient list_tasks failure keeps the prior gauge values
+        instead of dropping the dashboard to zero."""
+        collector = PrometheusCollector()
+        tasks = (_make_task(status="in_progress"),)
+        state = _mock_app_state(has_task_engine=True, tasks=tasks)
+        # First refresh populates the gauge.
+        await collector.refresh(state)
+        assert 'status="in_progress"' in generate_latest(collector.registry).decode()
+        # A subsequent transient fetch failure must NOT clear the gauge.
+        cast(
+            AsyncMock, state.slice(EngineStateSlice).task_engine
+        ).list_tasks = AsyncMock(
+            side_effect=RuntimeError("engine down"),
+        )
+        await collector.refresh(state)
+        assert 'status="in_progress"' in generate_latest(collector.registry).decode()
+
+    async def test_task_scrape_skips_count_round_trip(self) -> None:
+        """The scrape fetches rows only -- never the extra count_tasks
+        round-trip -- so it passes include_total=False."""
+        collector = PrometheusCollector()
+        tasks = (_make_task(status="created"),)
+        state = _mock_app_state(has_task_engine=True, tasks=tasks)
+        await collector.refresh(state)
+        list_tasks = cast(
+            AsyncMock, state.slice(EngineStateSlice).task_engine
+        ).list_tasks
+        list_tasks.assert_awaited_once_with(include_total=False)
+
 
 @pytest.mark.unit
 class TestPrometheusCollectorSecurityVerdicts:

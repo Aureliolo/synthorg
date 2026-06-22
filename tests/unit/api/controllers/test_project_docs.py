@@ -279,7 +279,7 @@ class TestProjectDocsController:
     async def test_history_rejects_tampered_cursor(
         self, async_test_client: LoopAsyncClient
     ) -> None:
-        """A forged history cursor fails the HMAC check and 422s."""
+        """A forged history cursor fails the HMAC check and 400s."""
         with _with_docs_service(async_test_client, _FakeDocsService()):
             resp = await async_test_client.get(
                 "/api/v1/projects/proj-1/docs/q2-status/history",

@@ -848,8 +848,8 @@
     },
     "src/synthorg/meta/mcp/handlers/common_args.py": {
       "cap": 500,
-      "loc": 470,
-      "ratio": 0.94,
+      "loc": 472,
+      "ratio": 0.944,
       "tier": "code"
     },
     "src/synthorg/meta/mcp/handlers/tasks.py": {
@@ -914,8 +914,8 @@
     },
     "src/synthorg/observability/prometheus_collector.py": {
       "cap": 600,
-      "loc": 500,
-      "ratio": 0.833,
+      "loc": 504,
+      "ratio": 0.84,
       "tier": "service"
     },
     "src/synthorg/observability/prometheus_labels.py": {
@@ -1640,7 +1640,7 @@
     },
     "synthorg.observability.prometheus_collector:PrometheusCollector": {
       "lcom4": 1,
-      "loc": 445
+      "loc": 449
     },
     "synthorg.persistence.postgres._backend_accessors:_PostgresBackendRepositoryAccessors": {
       "lcom4": 1,
