@@ -170,8 +170,8 @@ runs:
           t="${full_tag#${REPO}:}"
 
           # `docker manifest create` re-resolves each `@sha256:` source
-          # member against the registry (a GET on the per-arch manifest /
-          # blob), so it hits the same transient GHCR failure surface
+          # member against the registry (a GET on the per-arch image
+          # manifest), so it hits the same transient GHCR failure surface
           # (`i/o timeout`, 5xx, connection reset) the push and
           # manifest-push calls already retry. Wrap it in the same helper:
           # `--amend` makes re-runs idempotent (the local manifest store

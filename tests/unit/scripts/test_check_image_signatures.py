@@ -511,7 +511,49 @@ class TestRequestWithRetry:
         monkeypatch.setattr(gate.time, "sleep", slept.append)
         status, _, _ = gate._request_with_retry("GET", "https://x", {})
         assert status == gate.HTTP_OK
-        assert len(slept) == 1
+        assert slept == [gate.REGISTRY_RETRY_BACKOFF_SECONDS]
+
+    def test_raw_oserror_retried_then_succeeds(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A raw OSError (not a URLError subclass) is also transient and
+        # retried -- _request documents that bare socket errors propagate.
+        results: list[object] = [
+            ConnectionResetError("connection reset by peer"),
+            (gate.HTTP_OK, {}, b""),
+        ]
+
+        def fake_request(
+            _method: str, _url: str, _headers: dict[str, str]
+        ) -> tuple[int, dict[str, str], bytes]:
+            item = results.pop(0)
+            if isinstance(item, Exception):
+                raise item
+            return item  # type: ignore[return-value]
+
+        slept: list[float] = []
+        monkeypatch.setattr(gate, "_request", fake_request)
+        monkeypatch.setattr(gate.time, "sleep", slept.append)
+        status, _, _ = gate._request_with_retry("GET", "https://x", {})
+        assert status == gate.HTTP_OK
+        assert slept == [gate.REGISTRY_RETRY_BACKOFF_SECONDS]
+
+    def test_persistent_raw_oserror_reraises(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        original = ConnectionResetError("connection reset by peer")
+
+        def fake_request(
+            _method: str, _url: str, _headers: dict[str, str]
+        ) -> tuple[int, dict[str, str], bytes]:
+            raise original
+
+        slept: list[float] = []
+        monkeypatch.setattr(gate, "_request", fake_request)
+        monkeypatch.setattr(gate.time, "sleep", slept.append)
+        with pytest.raises(ConnectionResetError):
+            gate._request_with_retry("GET", "https://x", {})
+        assert len(slept) == gate.REGISTRY_RETRY_ATTEMPTS - 1
 
     def test_persistent_network_error_reraises(
         self, monkeypatch: pytest.MonkeyPatch
@@ -548,11 +590,31 @@ class TestResolveDigest:
         ) -> tuple[int, dict[str, str], bytes]:
             return next(statuses)
 
+        slept: list[float] = []
         monkeypatch.setattr(gate, "_request", fake_request)
-        monkeypatch.setattr(gate.time, "sleep", lambda _s: None)
+        monkeypatch.setattr(gate.time, "sleep", slept.append)
         resolved, err = gate.resolve_digest("aureliolo/synthorg-backend", "dev", {})
         assert err is None
         assert resolved == digest
+        assert slept == [gate.REGISTRY_RETRY_BACKOFF_SECONDS]
+
+    def test_persistent_5xx_raises_not_tag_missing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A 5xx that outlasts the budget is a registry outage, not a missing
+        # tag: it must raise (surfaced as a network error) rather than return
+        # a misleading "tag does not resolve" verdict.
+        def fake_request(
+            _method: str, _url: str, _headers: dict[str, str]
+        ) -> tuple[int, dict[str, str], bytes]:
+            return 503, {}, b""
+
+        slept: list[float] = []
+        monkeypatch.setattr(gate, "_request", fake_request)
+        monkeypatch.setattr(gate.time, "sleep", slept.append)
+        with pytest.raises(urllib.error.URLError):
+            gate.resolve_digest("aureliolo/synthorg-backend", "dev", {})
+        assert len(slept) == gate.REGISTRY_RETRY_ATTEMPTS - 1
 
     def test_genuine_404_fails_without_long_retry(
         self, monkeypatch: pytest.MonkeyPatch
@@ -566,12 +628,31 @@ class TestResolveDigest:
             calls.append(url)
             return gate.HTTP_NOT_FOUND, {}, b""
 
+        slept: list[float] = []
+        monkeypatch.setattr(gate, "_request", fake_request)
+        monkeypatch.setattr(gate.time, "sleep", slept.append)
+        resolved, err = gate.resolve_digest("aureliolo/synthorg-backend", "dev", {})
+        assert resolved is None
+        assert err is not None
+        assert len(calls) == 1
+        assert slept == []
+
+    def test_200_without_digest_header_reports_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A 200 lacking docker-content-digest is registry corruption / an
+        # unexpected proxy response: report it, do not raise.
+        def fake_request(
+            _method: str, _url: str, _headers: dict[str, str]
+        ) -> tuple[int, dict[str, str], bytes]:
+            return gate.HTTP_OK, {"content-type": "application/json"}, b""
+
         monkeypatch.setattr(gate, "_request", fake_request)
         monkeypatch.setattr(gate.time, "sleep", lambda _s: None)
         resolved, err = gate.resolve_digest("aureliolo/synthorg-backend", "dev", {})
         assert resolved is None
         assert err is not None
-        assert len(calls) == 1
+        assert "docker-content-digest" in err
 
 
 @pytest.mark.unit
@@ -593,10 +674,12 @@ class TestMintPullToken:
         ) -> tuple[int, dict[str, str], bytes]:
             return next(results_it)
 
+        slept: list[float] = []
         monkeypatch.setattr(gate, "_request", fake_request)
-        monkeypatch.setattr(gate.time, "sleep", lambda _s: None)
+        monkeypatch.setattr(gate.time, "sleep", slept.append)
         token = gate.mint_pull_token("aureliolo/synthorg-backend", "gh-token")
         assert token == "deadbeef"
+        assert slept == [gate.REGISTRY_RETRY_BACKOFF_SECONDS]
 
     def test_persistent_non_200_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def fake_request(
@@ -604,10 +687,34 @@ class TestMintPullToken:
         ) -> tuple[int, dict[str, str], bytes]:
             return 502, {}, b""
 
+        slept: list[float] = []
         monkeypatch.setattr(gate, "_request", fake_request)
-        monkeypatch.setattr(gate.time, "sleep", lambda _s: None)
+        monkeypatch.setattr(gate.time, "sleep", slept.append)
         with pytest.raises(urllib.error.URLError):
             gate.mint_pull_token("aureliolo/synthorg-backend", "gh-token")
+        assert len(slept) == gate.REGISTRY_RETRY_ATTEMPTS - 1
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            b'{"access_token": "x"}',  # right shape, wrong key
+            b'{"token": 42}',  # token present but not a string
+            b"{}",  # empty object
+        ],
+    )
+    def test_200_without_string_token_returns_none(
+        self, monkeypatch: pytest.MonkeyPatch, body: bytes
+    ) -> None:
+        # A 200 whose body carries no usable string token degrades to None;
+        # the caller then proceeds anonymously rather than with a bad header.
+        def fake_request(
+            _method: str, _url: str, _headers: dict[str, str]
+        ) -> tuple[int, dict[str, str], bytes]:
+            return gate.HTTP_OK, {}, body
+
+        monkeypatch.setattr(gate, "_request", fake_request)
+        monkeypatch.setattr(gate.time, "sleep", lambda _s: None)
+        assert gate.mint_pull_token("aureliolo/synthorg-backend", "gh-token") is None
 
 
 @pytest.mark.unit
