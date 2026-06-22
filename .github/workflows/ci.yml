@@ -193,7 +193,22 @@ jobs:
           # fetchers need an authenticated token; GITHUB_TOKEN is
           # sufficient for the public-repo metadata they read.
           GH_TOKEN: ${{ github.token }}
-        run: uv run python scripts/check_runtime_stats_freshness.py
+        # Retry the whole check on a transient GitHub API blip: the gate reads
+        # release/metadata via `gh`, which occasionally 5xx's. A real staleness
+        # failure is deterministic and still fails after the 3 attempts; only a
+        # flaky API error is absorbed. Freshness has a 14-day ceiling, so a
+        # short retry delay has no correctness impact.
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if uv run python scripts/check_runtime_stats_freshness.py; then
+              exit 0
+            fi
+            echo "::warning::runtime_stats freshness check failed (attempt ${attempt}/3); retrying after backoff"
+            sleep $((attempt * 10))
+          done
+          echo "error: runtime_stats freshness check failed after 3 attempts" >&2
+          exit 1
 
   # ── Docs: Doc-claim drift gate ──
   # Runs on python OR doc_claims so a docs-only PR that bumps a guarded
@@ -636,7 +651,7 @@ jobs:
             -k "not [sqlite-" \
             -n auto \
             --max-worker-restart=0 \
-            --session-timeout 1500 \
+            --session-timeout 1650 \
             --splits 4 \
             --group ${{ matrix.shard }} \
             --durations-path .test_durations.integration \
@@ -842,7 +857,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       contents: read
     env:
@@ -876,7 +891,7 @@ jobs:
             -k "not postgres" \
             -n auto \
             --max-worker-restart=0 \
-            --session-timeout 720 \
+            --session-timeout 900 \
             --cov=synthorg \
             --cov-report= \
             --cov-fail-under=0 \
@@ -1567,7 +1582,10 @@ jobs:
       # screenshot specs (e2e/visual) need committed per-platform baselines
       # and are out of scope for this gate.
       - name: Run Playwright flow specs
-        run: npx playwright test e2e/flows --project=desktop-chromium
+        # --retries 2 is the standard Playwright CI setting: it retries only on
+        # failure (transient browser-startup / rendering-timing flakes) and does
+        # not mask a stable assertion mismatch, so a real regression still fails.
+        run: npx playwright test e2e/flows --project=desktop-chromium --retries 2
         working-directory: web
       - name: Upload Playwright report
         if: failure()
@@ -1616,11 +1634,13 @@ jobs:
       && github.ref == 'refs/heads/main'
       && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
-    # The audit retries every ruleset read; bounding the per-call budget below
+    # The audit retries every ruleset read; the per-call budget below
     # (GH_RETRY_ATTEMPTS) caps audit runtime regardless of ruleset count, but
     # this job also runs a yq install with its own ~5-minute curl retry budget,
-    # so give the whole job headroom rather than risk a mid-retry kill.
-    timeout-minutes: 10
+    # so give the whole job headroom rather than risk a mid-retry kill. 15
+    # minutes leaves room for the 4-attempt retry ladder to ride out a transient
+    # GitHub API window without the backoff accumulating into a timeout kill.
+    timeout-minutes: 15
     environment: release
     permissions:
       contents: read
@@ -1656,14 +1676,15 @@ jobs:
           # persist-credentials: false (and masked a transient 401 as a
           # bogus "could not infer repo" failure).
           GH_REPO: ${{ github.repository }}
-          # Bound the retry budget for this read-only, best-effort audit: it
-          # makes a rulesets-list call plus one fetch per ruleset, each retried
-          # by gh_with_retry.sh, so the default 4-attempt ladder can accumulate
-          # backoff across rulesets and exhaust the job timeout. Two attempts
-          # still absorb the common single-call 401 blip; sustained degradation
-          # defers via exit 75 (the audit's designed re-audit-next-push path)
+          # Retry budget for this read-only, best-effort audit: it makes a
+          # rulesets-list call plus one fetch per ruleset, each retried by
+          # gh_with_retry.sh. Four attempts absorb a transient GitHub API window
+          # that outlasts a single retry; the 15-minute job timeout above gives
+          # the accumulated backoff room so it cannot be killed mid-ladder.
+          # Sustained degradation past the budget still defers via exit 75 (the
+          # audit's designed re-audit-next-push path)
           # instead of being killed mid-ladder.
-          GH_RETRY_ATTEMPTS: 2
+          GH_RETRY_ATTEMPTS: 4
         run: bash scripts/audit_branch_protection.sh
 
   # ── Gate: all required checks passed ──

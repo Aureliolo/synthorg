@@ -154,9 +154,10 @@ repos:
         args: [--config, .markdownlint.json]
         # Top-level + docs/ + cli/ + web/ Markdown is in scope.
         files: ^(README|CLAUDE|cli/CLAUDE|web/CLAUDE)\.md$|^docs/.*\.md$
-        # No explicit ``stages:`` -> runs at every installed hook type
-        # (pre-commit + commit-msg + pre-push) and in CI via the all-files
-        # gate job, so docs are linted at commit time AND on every push.
+        # Markdown lint is a prose convention, not a code-correctness gate, so
+        # it runs at pre-push alongside vale / lychee (and in CI via the
+        # all-files gate job) to keep commits fast.
+        stages: [pre-push]
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1
@@ -217,6 +218,9 @@ repos:
         args: [run, python, scripts/check_no_em_dashes.py]
         language: system
         types: [text]
+        # Punctuation convention, not a correctness check: run at pre-push with
+        # the other prose gates rather than on every commit.
+        stages: [pre-push]
 
       - id: no-redundant-timeout
         name: no redundant pytest.mark.timeout(30)
@@ -236,7 +240,9 @@ repos:
         # weakening edit cannot bypass it.
         files: ^(.*\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
-        stages: [pre-commit, pre-push]
+        # Anti-workaround review check; pre-push catches it before code leaves
+        # the machine without slowing every commit.
+        stages: [pre-push]
 
       - id: timeout-interval-default-drift
         name: timeout-check interval boot fallback matches registered default
@@ -245,7 +251,9 @@ repos:
         language: system
         pass_filenames: false
         files: ^src/synthorg/(api/lifecycle_helpers/boot_resolvers\.py|settings/definitions/security\.py)$
-        stages: [pre-commit, pre-push]
+        # Settings/config gate; lives at the pre-push boundary with the other
+        # bootstrap-config gates.
+        stages: [pre-push]
 
       - id: no-synthorg-any-override
         name: no synthorg.* mypy override may lift disallow_any_explicit (#2056)
@@ -443,6 +451,10 @@ repos:
         # and parses each claim file end-to-end on every run.
         files: ^(docs/design/observability\.md|docs/design/agent-execution\.md|docs/research/(control-plane-audit|acg-formalism-evaluation)\.md|src/synthorg/observability/events/.*\.py|scripts/check_doc_drift_counts\.py)$
         pass_filenames: false
+        # Documentation-consistency gate (enumerates the events package and
+        # parses each claim file end-to-end); runs at pre-push with the other
+        # doc gates, matching doc-numeric-macros below.
+        stages: [pre-push]
 
       - id: doc-numeric-macros
         name: doc numeric macros (no bare claims in public docs)
@@ -507,6 +519,20 @@ repos:
         # weakens the gate by editing the script) cannot bypass the
         # check.
         files: ^(data/runtime_stats\.yaml|scripts/(check_runtime_stats_freshness|generate_runtime_stats)\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: comparison-md-in-sync
+        name: comparison.md matches data/competitors.yaml
+        entry: uv
+        args: [run, python, scripts/check_comparison_md_in_sync.py]
+        language: system
+        # Trigger on any edit to the source YAML, the rendered Markdown,
+        # the generator, the gate itself, or this config so a PR that
+        # drifts the comparison page (or weakens the gate) cannot bypass
+        # the check. Pre-push only: the generator is offline-pure so the
+        # check is cheap, but it is not needed on every local commit.
+        files: ^(data/competitors\.yaml|docs/reference/comparison\.md|scripts/(check_comparison_md_in_sync|generate_comparison)\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]
 

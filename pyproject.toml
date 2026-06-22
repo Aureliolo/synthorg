@@ -153,8 +153,6 @@ dev = [
     "sqlglot==30.11.0",
     "types-pyyaml==6.0.12.20260518",
     "types-defusedxml==0.7.0.20260504",
-    "bandit==1.9.4",
-    "pytest-randomly==4.1.0",
     # Second type-checker. Runs as a CI artefact via
     # .github/workflows/pyright.yml (continue-on-error: true). No
     # pre-push gate. Mypy remains authoritative.
@@ -645,7 +643,6 @@ DEP002 = [
     "tree-sitter",
     "tree-sitter-language-pack",
     "pip-audit",
-    "pytest-randomly",
     "polyfactory",
     "pytest-codspeed",
     "pytest-cov",
@@ -657,7 +654,6 @@ DEP002 = [
     "pytest-asyncio",
     "respx",
     "hypothesis",
-    "bandit",
     "commitizen",
     "pre-commit",
     "nats-py",
@@ -788,8 +784,6 @@ addopts = [
     "--tb=short",
     "--dist=loadfile",
     "-n=8",
-    "-p",
-    "no:randomly",
     "-p",
     "no:unraisableexception",
     # Runtime type-check calls in the instrumented ``synthorg`` packages against
