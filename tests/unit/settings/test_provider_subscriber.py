@@ -152,6 +152,30 @@ class TestProviderSubscriberRebuild:
         assert state.slice(ProvidersStateSlice).registry is cassette_registry
         resolver.get_int.assert_not_awaited()
 
+    async def test_registry_rebuild_failure_preserves_old_registry(self) -> None:
+        """A rebuild error re-raises and leaves the live registry untouched."""
+        cfg = RootConfig(company_name="test")
+        resolver = mock_of[ConfigResolver](
+            get_int=AsyncMock(return_value=7),
+            get_provider_configs=AsyncMock(side_effect=RuntimeError("db down")),
+        )
+        old_registry = ProviderRegistry({})
+        state = make_app_state(
+            config=cfg,
+            approval_store=ApprovalStore(),
+            model_router=ModelRouter(cfg.routing, dict(cfg.providers)),
+            config_resolver=resolver,
+            provider_registry=old_registry,
+        )
+        sub = ProviderSettingsSubscriber(
+            config=cfg,
+            app_state=state,
+            settings_service=mock_of[SettingsService](),
+        )
+        with pytest.raises(RuntimeError, match="db down"):
+            await sub.on_settings_changed("providers", "retry_max_attempts")
+        assert state.slice(ProvidersStateSlice).registry is old_registry
+
     async def test_settings_service_failure_preserves_old_router(self) -> None:
         """When SettingsService.get() fails, old router stays in place."""
         svc = AsyncMock()

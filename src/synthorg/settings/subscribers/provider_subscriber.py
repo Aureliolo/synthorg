@@ -180,6 +180,21 @@ class ProviderSettingsSubscriber:
                 connection_catalog=provider_credential_catalog_of(self._app_state),
                 retry_max_attempts=retry_max_attempts,
             )
+            # Re-read after the awaits: a concurrent setup-complete reinit may
+            # have installed a cassette-bound registry while we were resolving
+            # configs. Swapping over it would silently route recorded-LLM
+            # traffic to the live provider, so bail and let the cap apply on
+            # the next restart instead.
+            live = self._app_state.slice(ProvidersStateSlice).registry
+            if live is not None and live.cassette_session is not None:
+                logger.info(
+                    SETTINGS_SUBSCRIBER_NOTIFIED,
+                    subscriber=self.subscriber_name,
+                    namespace="providers",
+                    key="retry_max_attempts",
+                    note="cassette became active during rebuild -- skipped swap",
+                )
+                return
             self._app_state.swap_provider_registry(new_registry)
         except Exception as exc:
             reraise_critical(exc)

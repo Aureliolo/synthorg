@@ -30,6 +30,7 @@ from synthorg.providers.management._helpers import serialize_provider_envelope
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.routing.router import ModelRouter
 from synthorg.settings.enums import SettingSource
+from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 
@@ -113,10 +114,14 @@ async def resolve_retry_max_attempts(
     untouched) on a corrupt value rather than blocking the provider change.
 
     Returns:
-        The resolved retry cap, or ``None`` on resolution failure.
+        The resolved retry cap, or ``None`` when the setting is unregistered
+        (benign) or resolution fails on a corrupt value (logged WARNING).
     """
     try:
         return await config_resolver.get_int("providers", "retry_max_attempts")
+    except SettingNotFoundError:
+        # Setting not registered -- leave each provider's own retry untouched.
+        return None
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(

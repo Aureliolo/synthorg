@@ -11,6 +11,7 @@ from typing import Self
 
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.resilience_config import RetryConfig
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.observability import (
     get_logger,
@@ -342,16 +343,25 @@ def _apply_global_retry_default(
     """Apply the org-wide retry-attempt default to a provider config.
 
     The ``providers.retry_max_attempts`` setting is the company-wide cap on
-    transient-error retries. It applies only when *config* did not carry an
-    explicit ``retry`` block (detected via ``model_fields_set``), so a
-    per-provider YAML ``retry`` always wins over the global default.
+    transient-error retries. It applies only when the provider left
+    ``retry.max_retries`` at the :class:`RetryConfig` default, so a provider
+    that tuned its own retry budget always wins over the global default.
+
+    The default-comparison is used rather than ``model_fields_set`` because the
+    hot-reload path reconstructs each ``ProviderConfig`` from a persisted blob
+    via ``model_validate``, which marks every field as "set" and would make the
+    global silently never apply. Comparing the materialised value is stable
+    across both the fresh-YAML and DB-round-trip paths.
 
     Returns:
-        *config* unchanged when no global is supplied or the provider set
-        ``retry`` explicitly; otherwise a copy whose ``retry.max_retries``
+        *config* unchanged when no global is supplied or the provider tuned
+        ``retry.max_retries``; otherwise a copy whose ``retry.max_retries``
         is the global default.
     """
-    if retry_max_attempts is None or "retry" in config.model_fields_set:
+    if (
+        retry_max_attempts is None
+        or config.retry.max_retries != RetryConfig().max_retries
+    ):
         return config
     return config.model_copy(
         update={
