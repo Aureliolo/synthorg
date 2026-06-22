@@ -1,4 +1,4 @@
-import { apiClient, unwrap, unwrapPaginated, unwrapVoid } from '../client'
+import { apiClient, paginateAll, unwrap, unwrapPaginated, unwrapVoid } from '../client'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 // -- Types -------------------------------------------------------------------
@@ -78,9 +78,17 @@ export interface PreviewResult {
 
 const BASE = '/meta/custom-rules'
 
-export async function listCustomRules(): Promise<CustomRule[]> {
-  const response = await apiClient.get<ApiResponse<CustomRule[]>>(BASE)
-  return unwrap(response)
+export async function listCustomRules(): Promise<readonly CustomRule[]> {
+  // Backend returns ``PaginatedResponse[CustomRule]`` (it collects all rules
+  // server-side before paginating). Walk every cursor page rather than
+  // unwrapping the first page only, so large installations are not truncated.
+  return paginateAll<CustomRule>((cursor) =>
+    apiClient
+      .get<PaginatedResponse<CustomRule>>(BASE, {
+        params: cursor !== null ? { cursor } : undefined,
+      })
+      .then(unwrapPaginated<CustomRule>),
+  )
 }
 
 export async function getCustomRule(id: string): Promise<CustomRule> {

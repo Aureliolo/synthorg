@@ -32,6 +32,8 @@ export {
   apiPaginatedError,
   apiSuccess,
   emptyPage,
+  emptyPageEnvelope,
+  pageEnvelope,
   paginatedFor,
   successFor,
   voidSuccess,

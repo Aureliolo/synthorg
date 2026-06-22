@@ -6,7 +6,6 @@ import type {
   getAgentHistory,
   getAgentPerformance,
   getAutonomy,
-  listActiveAgents,
   listAgents,
   rollbackAgentIdentity,
   setAutonomy,
@@ -17,9 +16,10 @@ import type {
   VersionSnapshot,
 } from '@/api/endpoints/version-history'
 import type { AgentHealthResponse, AgentIdentity, AgentIdentityDiff } from '@/api/types'
+import type { ActiveAgentSummary } from '@/api/types'
 import type { AgentConfig, AgentPerformanceSummary } from '@/api/types/agents'
 import type { AutonomyLevel } from '@/api/types/enums'
-import { apiError, apiSuccess, emptyPage, paginatedFor, successFor } from './helpers'
+import { apiError, apiSuccess, emptyPage, emptyPageEnvelope, paginatedFor, successFor } from './helpers'
 
 const ALLOWED_AUTONOMY_LEVELS: readonly AutonomyLevel[] = [
   'full',
@@ -187,7 +187,10 @@ export const agentsHandlers = [
   // Registered BEFORE ``/agents/:agentId`` so the literal ``active`` path
   // is not captured as an agent id (MSW matches in registration order).
   http.get('/api/v1/agents/active', () =>
-    HttpResponse.json(successFor<typeof listActiveAgents>([])),
+    // Backend returns a ``PaginatedResponse``; the endpoint walks pages via
+    // ``paginateAll`` and returns a flat array, so the wire envelope must stay
+    // paginated even when empty.
+    HttpResponse.json(emptyPageEnvelope<ActiveAgentSummary>()),
   ),
   http.get('/api/v1/agents/:agentId', ({ params }) =>
     HttpResponse.json(

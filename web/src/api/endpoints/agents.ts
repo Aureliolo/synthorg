@@ -1,4 +1,4 @@
-import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
+import { apiClient, paginateAll, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
 import type { VersionDiffResponse } from './version-history'
 import type {
   ActiveAgentSummary,
@@ -26,10 +26,17 @@ export async function listAgents(params?: PaginationParams): Promise<PaginatedRe
 // config-sourced ``listAgents`` now carries the same id, so both
 // surfaces address agents by one UUID. Backs the group-chat
 // participant picker, which sends the selected ids to /meta/chat/group.
+// The backend returns a ``PaginatedResponse`` (default page limit 50), so walk
+// every cursor page rather than unwrapping the first page only -- otherwise the
+// picker silently drops agents beyond the first page.
 export async function listActiveAgents(): Promise<readonly ActiveAgentSummary[]> {
-  const response =
-    await apiClient.get<ApiResponse<readonly ActiveAgentSummary[]>>('/agents/active')
-  return unwrap(response)
+  return paginateAll<ActiveAgentSummary>((cursor) =>
+    apiClient
+      .get<PaginatedResponse<ActiveAgentSummary>>('/agents/active', {
+        params: cursor !== null ? { cursor } : undefined,
+      })
+      .then(unwrapPaginated<ActiveAgentSummary>),
+  )
 }
 
 /**
