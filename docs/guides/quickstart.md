@@ -80,9 +80,11 @@ synthorg init
 The wizard's primary screen prompts for the infrastructure choices that shape the deployment:
 
 1. **Data directory**: where SynthOrg stores its data (default: platform-appropriate path).
-2. **Database backend**: Postgres or SQLite (default: Postgres).
-3. **Message bus backend**: NATS or the in-process internal bus (default: NATS).
+2. **Database backend**: Postgres or SQLite (interactive default: Postgres).
+3. **Message bus backend**: NATS or the in-process internal bus (interactive default: NATS).
 4. **Fine-tuning**: enable the optional fine-tuning toolchain.
+
+The defaults above apply to the interactive wizard, which targets a production-style multi-node deployment. The non-interactive path (`synthorg init` with the required flags supplied, omitting `--persistence-backend` / `--bus-backend`) instead defaults to the single-node **SQLite + internal bus** pair, matching the programmatic `DefaultState`.
 
 An **Advanced settings** section (collapsed by default) holds the backend API port (default: 3001), web dashboard port (default: 3000), the agent code sandbox toggle, and secret encryption; leave it at the defaults unless you need to change a port or the sandbox. Press the expander to reveal it, then **Continue**.
 

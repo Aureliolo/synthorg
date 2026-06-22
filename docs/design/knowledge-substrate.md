@@ -67,6 +67,7 @@ flowchart LR
 src/synthorg/knowledge/
   models.py          KnowledgeSource, KnowledgeChunk, ProvenanceLocator union,
                      Citation, KnowledgeHit, RawDocument / RawUnit
+  enums.py           SourceType + retrieval / chunker enums
   config.py          KnowledgeConfig + loader / chunker discriminators
   constants.py       namespace, system agent id, tag prefixes, chunk budgets
   errors.py          KnowledgeError family (DomainError subclasses)
@@ -89,6 +90,8 @@ src/synthorg/knowledge/
   service.py         KnowledgeService
   factory.py         build_knowledge_service -> KnowledgeRuntime
   tool_factory.py    KnowledgeToolFactory (per-task agent tools)
+  state.py           KnowledgeStateSlice (AppState wiring)
+  feature.py         feature manifest (construction wirer, MCP contribution)
 ```
 
 ## Data model
@@ -280,8 +283,8 @@ Agent tools (in-process, per-task binding):
 
 MCP handlers (operator-driven, `meta/mcp/domains/knowledge.py`):
 
-- `knowledge:search` (read capability)
-- `knowledge:ingest`, `knowledge:reindex` (admin capability, guardrail triple)
+- `knowledge:search`, `knowledge:list`, `knowledge:get` (read capability)
+- `knowledge:ingest`, `knowledge:reindex`, `knowledge:delete` (admin capability, guardrail triple)
 
 ## Configuration
 

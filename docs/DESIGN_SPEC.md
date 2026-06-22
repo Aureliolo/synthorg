@@ -13,6 +13,7 @@ The design specification has been split into focused documentation pages for bet
 | [Design Overview](design/index.md) | Vision, Core Concepts | What SynthOrg is, design principles, glossary |
 | [Agents](design/agents.md) | Agent Identity | Identity card, personality (OCEAN + behavioural enums), skill model, tool namespaces, identity versioning |
 | [HR & Agent Lifecycle](design/hr-lifecycle.md) | HR | Seniority, role catalog, hiring (templates + LLM), pruning, dynamic scaling, firing, performance, evaluation, promotions, evolution, five-pillar framework, client agents |
+| [Evaluation Loop](design/evaluation-loop.md) | Closed-loop agent evaluation | Trace capture, behaviour tagging, five-pillar enrichment, targeted-fix proposals layered on performance tracking and trajectory scoring |
 | [Organisation & Templates](design/organization.md) | Company Structure, Templates | Company types, hierarchy, departments, template system |
 | [Communication](design/communication.md) | Communication Architecture | Message bus transport, patterns, message format, config and lifecycle |
 | [Communication A2A Gateway](design/communication-a2a.md) | External Federation | Optional gateway, agent cards, concept mapping, SSE streaming, outbound client |
@@ -38,7 +39,9 @@ The design specification has been split into focused documentation pages for bet
 | [Semantic Ontology](design/ontology.md) | Entity Definitions, Versioning, Drift | Shared vocabulary, decorator, backend, bootstrap, drift detection |
 | [Providers](design/providers.md) | Provider abstraction, routing | LLM provider layer, LiteLLM integration, multi-provider resolution |
 | [Budget & Cost](design/budget.md) | Budget hierarchy, cost tracking, CFO, reporting | Per-agent cost enforcement, quota degradation, risk budget, PTE |
+| [LLM Call Analytics & Coordination Metrics](design/coordination-metrics.md) | Per-call tracking, orchestration ratio, coordination error taxonomy | Call categorisation, the coordination metrics suite, and the multi-agent tuning signals complementing budget controls |
 | [Tools & Capabilities](design/tools.md) | Tool categories, sandboxing, MCP, trust | Layered sandbox, progressive disclosure, action types, access levels |
+| [Toolsmith (Self-Extending Toolkit)](design/toolsmith.md) | Runtime MCP tool-surface extension | Capability-gap detection, governed proposal/apply cycle, human-approval gating for new tools |
 | [Integrations](design/integrations.md) | OAuth flows, MCP catalog, webhooks, tunnel, health | External service integrations: OAuth provider connections, MCP server catalog + install, outbound webhooks, ngrok-style tunnel, integration-health rollups |
 | [A2A Protocol](design/a2a-protocol.md) | Agent-to-agent transport | Agent Card discovery, capability negotiation, signed envelope, well-known JWKS, gateway authentication |
 | [Security & Approval](design/security.md) | Approval workflow, autonomy, output scanning, policy engine | Fail-closed rule engine, review gates, credential isolation, A2A auth |
