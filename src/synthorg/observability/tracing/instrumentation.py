@@ -106,9 +106,20 @@ async def llm_span(
             raise
         finally:
             if output_tokens_callback is not None:
-                resolved = output_tokens_callback()
-                if resolved is not None:
-                    span.set_attribute("gen_ai.usage.output_tokens", resolved)
+                # Instrumentation must never alter the request outcome: a
+                # callback that raises here would mask the original failure
+                # (or turn a success into an error) by escaping the
+                # ``finally``. Record the callback failure on the span and
+                # swallow it instead, keeping the in-flight exception (if any)
+                # intact. Critical errors still propagate via ``reraise_critical``.
+                try:
+                    resolved = output_tokens_callback()
+                    if resolved is not None:
+                        span.set_attribute("gen_ai.usage.output_tokens", resolved)
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                    reraise_critical(exc)
+                    span.set_attribute("exception.type", type(exc).__name__)
+                    span.set_attribute("exception.message", safe_error_description(exc))
 
 
 @asynccontextmanager

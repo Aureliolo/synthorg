@@ -151,6 +151,8 @@ interface WebhookActivity {
   loading: boolean
   error: string | null
   reload: () => Promise<void>
+  loadMore: () => Promise<void>
+  hasMore: boolean
   retryableIds: string[]
 }
 
@@ -158,6 +160,8 @@ function useWebhookActivity(selected: string, selection: WebhookSelection): Webh
   const [entries, setEntries] = useState<readonly WebhookReceipt[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [hasMore, setHasMore] = useState(false)
 
   const requestSeqRef = useRef(0)
   const latestSelectedRef = useRef<string>(selected)
@@ -177,6 +181,8 @@ function useWebhookActivity(selected: string, selection: WebhookSelection): Webh
       const page = await listWebhookActivity(requestedFor)
       if (isStale()) return
       setEntries(page.data)
+      setNextCursor(page.nextCursor)
+      setHasMore(page.hasMore)
     } catch (err) {
       if (isStale()) return
       const message = getErrorMessage(err)
@@ -190,11 +196,45 @@ function useWebhookActivity(selected: string, selection: WebhookSelection): Webh
     }
   }, [selected])
 
+  // Follow the opaque cursor to append the next page, mirroring the
+  // ProjectBrainPage load-more pattern. The retained ``nextCursor`` /
+  // ``hasMore`` from the prior fetch drive the control; an early return
+  // covers the already-drained case.
+  const loadMore = useCallback(async () => {
+    if (!selected || !hasMore || nextCursor === null) return
+    const requestedFor = selected
+    requestSeqRef.current += 1
+    const requestId = requestSeqRef.current
+    setLoading(true)
+    function isStale(): boolean {
+      return requestId !== requestSeqRef.current || latestSelectedRef.current !== requestedFor
+    }
+    try {
+      const page = await listWebhookActivity(requestedFor, { cursor: nextCursor })
+      if (isStale()) return
+      setEntries((prev) => [...prev, ...page.data])
+      setNextCursor(page.nextCursor)
+      setHasMore(page.hasMore)
+    } catch (err) {
+      if (isStale()) return
+      const message = getErrorMessage(err)
+      log.error('listWebhookActivity load-more failed', {
+        connectionName: sanitizeForLog(requestedFor),
+        error: sanitizeForLog(message),
+      })
+      setError(message)
+    } finally {
+      if (!isStale()) setLoading(false)
+    }
+  }, [selected, hasMore, nextCursor])
+
   useEffect(() => {
     let cancelled = false
     void Promise.resolve().then(() => {
       if (cancelled) return
       setEntries([])
+      setNextCursor(null)
+      setHasMore(false)
       selection.clear()
     })
     return () => {
@@ -212,7 +252,7 @@ function useWebhookActivity(selected: string, selection: WebhookSelection): Webh
     [entries],
   )
 
-  return { entries, loading, error, reload, retryableIds }
+  return { entries, loading, error, reload, loadMore, hasMore, retryableIds }
 }
 
 function useWebhookRetry({
@@ -349,6 +389,8 @@ interface WebhookReceiptsContentProps {
   selected: string
   selection: WebhookSelection
   retryableIds: string[]
+  hasMore: boolean
+  onLoadMore: () => void
 }
 
 function WebhookReceiptsContent({
@@ -358,6 +400,8 @@ function WebhookReceiptsContent({
   selected,
   selection,
   retryableIds,
+  hasMore,
+  onLoadMore,
 }: WebhookReceiptsContentProps) {
   if (loading && entries.length === 0) {
     return (
@@ -388,7 +432,23 @@ function WebhookReceiptsContent({
       />
     )
   }
-  return <WebhookReceiptsTable entries={entries} selection={selection} retryableIds={retryableIds} />
+  return (
+    <div className="space-y-section-gap">
+      <WebhookReceiptsTable entries={entries} selection={selection} retryableIds={retryableIds} />
+      {hasMore && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onLoadMore}
+          disabled={loading}
+          className="gap-1"
+        >
+          <RefreshCw className={`size-3.5 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
+          {loading ? 'Loading more…' : 'Load more'}
+        </Button>
+      )}
+    </div>
+  )
 }
 
 export default function WebhookReceiptsPage() {
@@ -396,7 +456,10 @@ export default function WebhookReceiptsPage() {
   const toast = useToastStore((s) => s.add)
   const selection = useBulkSelection()
   const { selected, setSelected, options } = useWebhookConnectionSelect(connections)
-  const { entries, loading, error, reload, retryableIds } = useWebhookActivity(selected, selection)
+  const { entries, loading, error, reload, loadMore, hasMore, retryableIds } = useWebhookActivity(
+    selected,
+    selection,
+  )
   const { retrying, handleBulkRetry } = useWebhookRetry({ retryableIds, selection, reload, toast })
 
   return (
@@ -426,6 +489,8 @@ export default function WebhookReceiptsPage() {
         selected={selected}
         selection={selection}
         retryableIds={retryableIds}
+        hasMore={hasMore}
+        onLoadMore={() => void loadMore()}
       />
 
       <AnimatePresence mode="wait">

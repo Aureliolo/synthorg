@@ -492,7 +492,7 @@
             }
           ],
           "fieldConfig": {"defaults": {"unit": "short"}},
-          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 34}
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 34}
         },
         {
           "type": "timeseries",

@@ -1,3 +1,4 @@
+# module-kind: code
 """Resolve the operator-configured display currency with a safe fallback.
 
 Centralises the ``config_resolver.get_str("budget", "currency")`` read plus

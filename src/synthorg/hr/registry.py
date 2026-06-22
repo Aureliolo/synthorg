@@ -841,23 +841,25 @@ class AgentRegistryService:
                     saved_by=saved_by,
                 )
                 raise AgentNotFoundError(msg)
+            prior_level = live.autonomy_level
             previous_level = (
-                live.autonomy_level
-                if live.autonomy_level is not None
-                else AutonomyLevel.SUPERVISED
+                prior_level if prior_level is not None else AutonomyLevel.SUPERVISED
             )
             applied = live.model_copy(update={"autonomy_level": level})
             self._agents[key] = applied
         await self._snapshot(applied, saved_by=saved_by)
         # Mirror ``apply_autonomy_level``: record a transition only on a real
-        # level change (the snapshotted write succeeded above), so the atomic
-        # promote / demote path appears in the
-        # ``hr.agent.autonomy_level_transitioned`` stream like the non-atomic one.
-        if previous_level != level:
+        # level change from a concrete prior level (the snapshotted write
+        # succeeded above), so the atomic promote / demote path appears in the
+        # ``hr.agent.autonomy_level_transitioned`` stream like the non-atomic
+        # one. A first write (``prior_level is None``) is not a real transition,
+        # even though the returned ``previous_level`` still coerces to
+        # SUPERVISED so the caller always has a concrete level to stamp.
+        if prior_level is not None and prior_level != level:
             logger.info(
                 HR_AGENT_AUTONOMY_LEVEL_TRANSITIONED,
                 agent_id=key,
-                from_level=previous_level.value,
+                from_level=prior_level.value,
                 to_level=level.value,
                 saved_by=saved_by,
             )

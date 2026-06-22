@@ -1,3 +1,4 @@
+# module-kind: code
 """Bounded label vocabularies that fold unknown values to a sentinel.
 
 These labels arrive from attacker-controllable or open-vocabulary sources

@@ -54,6 +54,52 @@ describe('WebhookReceiptsPage', () => {
     expect(await screen.findByText('Recent receipts')).toBeInTheDocument()
   })
 
+  it('appends the next page when Load more is clicked', async () => {
+    connections = [makeConnection('slack-app')]
+    const pageOne: WebhookReceipt = {
+      id: '00000000-0000-0000-0000-0000000000a1',
+      connection_name: 'slack-app',
+      event_type: 'page-one.event',
+      status: 'completed',
+      received_at: '2026-04-30T10:00:00Z',
+      processed_at: '2026-04-30T10:00:01Z',
+      payload_json: '{}',
+      error: null,
+    }
+    const pageTwo: WebhookReceipt = {
+      ...pageOne,
+      id: '00000000-0000-0000-0000-0000000000a2',
+      event_type: 'page-two.event',
+    }
+    server.use(
+      http.get('/api/v1/webhooks/:connectionName/activity', ({ request }) => {
+        const cursor = new URL(request.url).searchParams.get('cursor')
+        if (cursor === 'cursor-2') {
+          return HttpResponse.json(
+            paginatedFor<typeof listWebhookActivity>({
+              ...emptyPage<WebhookReceipt>(),
+              data: [pageTwo],
+            }),
+          )
+        }
+        return HttpResponse.json(
+          paginatedFor<typeof listWebhookActivity>({
+            ...emptyPage<WebhookReceipt>(),
+            data: [pageOne],
+            nextCursor: 'cursor-2',
+            hasMore: true,
+          }),
+        )
+      }),
+    )
+    renderPage()
+    expect(await screen.findByText('page-one.event')).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: /Load more/ }))
+    // The second page appends to (does not replace) the first.
+    expect(await screen.findByText('page-two.event')).toBeInTheDocument()
+    expect(screen.getByText('page-one.event')).toBeInTheDocument()
+  })
+
   it('shows the no-deliveries empty state when activity is empty', async () => {
     connections = [makeConnection('slack-app')]
     server.use(

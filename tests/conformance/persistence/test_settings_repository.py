@@ -368,7 +368,7 @@ class TestSettingsListAndDelete:
 
 @pytest.mark.integration
 class TestSettingsSetMany:
-    """Conformance for the transactional multi-row CAS upsert (ADR-0001 D7).
+    """Conformance for the transactional multi-row CAS upsert.
 
     Exhaustive CAS-edge coverage lives in the integration suite; these two
     cases give ``check_dual_backend_test_parity.py``'s coverage pass a

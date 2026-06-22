@@ -224,6 +224,26 @@ class TestBuildAppliers:
         assert len(appliers) == 3
         assert ProposalAltitude.CODE_MODIFICATION not in appliers
 
+    def test_skips_code_applier_when_project_root_relative(self) -> None:
+        """Fail closed: a relative project_root would resolve against the
+        process CWD and validate the wrong checkout, so the applier is
+        skipped rather than silently scoped to whatever tree the worker
+        started in."""
+        from synthorg.meta.config import CodeModificationConfig
+
+        cfg = SelfImprovementConfig(
+            enabled=True,
+            code_modification_enabled=True,
+            code_modification=CodeModificationConfig(
+                github_token="test-token",
+                github_repo="test/repo",
+                project_root=".",
+            ),
+        )
+        appliers = build_appliers(cfg)
+        assert len(appliers) == 3
+        assert ProposalAltitude.CODE_MODIFICATION not in appliers
+
 
 class TestBuildRegressionDetector:
     """Regression detector factory tests."""

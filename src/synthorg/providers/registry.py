@@ -193,9 +193,10 @@ class ProviderRegistry:
             retry_max_attempts: Org-wide default cap on transient-error
                 retries (the resolved ``providers.retry_max_attempts``
                 setting). Applied as each driver's ``retry.max_retries``
-                only when that provider's config did not explicitly carry a
-                ``retry`` block, so a per-provider YAML ``retry`` still wins.
-                ``None`` leaves every provider's own retry config untouched.
+                only when that provider left ``retry.max_retries`` at the
+                ``RetryConfig`` default value, so a per-provider YAML
+                ``retry`` that tuned ``max_retries`` still wins. ``None``
+                leaves every provider's own retry config untouched.
 
         Returns:
             A new ``ProviderRegistry`` with all providers registered.
@@ -383,9 +384,9 @@ def _build_driver(  # noqa: PLR0913 -- build modifiers, all internal
     """Instantiate a single driver from config and factories.
 
     Applies the org-wide ``retry_max_attempts`` default (when supplied and
-    the provider did not set its own ``retry`` block) before constructing
-    the driver, so the driver's :class:`RetryHandler` is built from the
-    effective retry config.
+    the provider left ``retry.max_retries`` at the ``RetryConfig`` default
+    value) before constructing the driver, so the driver's
+    :class:`RetryHandler` is built from the effective retry config.
 
     Returns:
         A concrete ``BaseCompletionProvider`` driver instance for the

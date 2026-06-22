@@ -1,3 +1,4 @@
+# module-kind: code
 """Pure transformation helpers for the docs engine service.
 
 Map persistence / memory / git-log records onto the public DTOs

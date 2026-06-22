@@ -1,3 +1,4 @@
+# module-kind: code
 """Postgres-native binding adapters for the project-brain repository.
 
 Thin wrappers that bind the backend-agnostic ``_project_brain_sql`` builders

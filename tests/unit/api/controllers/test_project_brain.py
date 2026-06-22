@@ -178,7 +178,7 @@ class TestProjectBrainController:
     async def test_history_rejects_tampered_cursor(
         self, async_test_client: LoopAsyncClient
     ) -> None:
-        """A forged cursor fails the HMAC check and 422s, never trusting
+        """A forged cursor fails the HMAC check and 400s, never trusting
 
         the attacker-supplied offset that backs the git ``--skip`` window.
         """
