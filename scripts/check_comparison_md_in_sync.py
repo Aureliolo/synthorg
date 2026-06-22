@@ -96,6 +96,11 @@ def main() -> int:
         print(f"OK: {_OUTPUT_FILE.relative_to(REPO_ROOT)} matches the generator.")
         return 0
 
+    return _report_drift(committed, expected)
+
+
+def _report_drift(committed: str, expected: str) -> int:
+    """Print a unified diff of generated vs committed Markdown; return exit 1."""
     diff = difflib.unified_diff(
         expected.splitlines(),
         committed.splitlines(),

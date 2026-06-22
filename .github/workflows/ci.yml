@@ -118,6 +118,13 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+          # Full history: the comparison-md sync gate regenerates
+          # docs/reference/comparison.md, whose "Last updated" line is
+          # auto-derived from `git log -1 -- data/competitors.yaml`. A
+          # shallow checkout cannot see that file's last-touch commit when
+          # comparison.md is regenerated in a later commit, so the generator
+          # falls back to today's date and the gate reports a false drift.
+          fetch-depth: "0"
       - uses: ./.github/actions/setup-python-uv
 
       # Local <-> CI parity: every pre-commit / pre-push hook must have a CI

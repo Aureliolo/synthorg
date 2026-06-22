@@ -170,6 +170,11 @@ def main() -> int:
         return 1
 
     prefix = _url_path_prefix(config)
+    return _write_redirect_stubs(maps, site_dir, prefix)
+
+
+def _write_redirect_stubs(maps: dict[str, str], site_dir: Path, prefix: str) -> int:
+    """Write a redirect stub per ``maps`` entry; return 0 on success, 1 on error."""
     written = 0
     for old_path, new_path in maps.items():
         try:

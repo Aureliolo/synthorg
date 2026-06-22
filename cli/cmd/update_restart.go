@@ -35,36 +35,11 @@ func performRestart(ctx context.Context, out io.Writer, info docker.Info, safeDi
 		}
 	}()
 
-	sp := uiOut.StartSpinner("Stopping containers...")
-	if err := composeRunQuiet(ctx, info, safeDir, "down"); err != nil {
-		sp.Error("Failed to stop containers")
-		return false, fmt.Errorf("stopping containers: %w", err)
+	if err := stopAndVerifyDown(ctx, uiOut, info, safeDir); err != nil {
+		return false, err
 	}
-	// Assert the project is fully down before bringing it back up. `compose
-	// down` can report success while a container lingers (slow stop, an
-	// external replica); a subsequent `up -d` against a partially-live
-	// project races the leftover container and can leave a stale instance
-	// bound to the published ports. A non-empty `ps -q` here is a hard error
-	// so the operator clears the stragglers rather than starting a
-	// split-brain stack.
-	psOut, psErr := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "-q")
-	if psErr != nil {
-		// Fail closed: a ps query error means the stack state is unknown, so
-		// we cannot confirm it is down. Proceeding to `up -d` here would risk
-		// a split-brain stack, exactly what this assertion guards against.
-		sp.Error("Could not verify containers stopped")
-		return false, fmt.Errorf("verifying compose is fully stopped: %w", psErr)
-	}
-	if strings.TrimSpace(psOut) != "" {
-		sp.Error("Containers still running after stop")
-		return false, fmt.Errorf(
-			"compose down reported success but containers are still running; " +
-				"stop them before restarting",
-		)
-	}
-	sp.Success("Containers stopped")
 
-	sp = uiOut.StartSpinner("Starting containers...")
+	sp := uiOut.StartSpinner("Starting containers...")
 	if err := composeRunQuiet(ctx, info, safeDir, "up", "-d"); err != nil {
 		sp.Error("Failed to start containers")
 		return false, fmt.Errorf("restarting containers: %w", err)
@@ -72,6 +47,38 @@ func performRestart(ctx context.Context, out io.Writer, info docker.Info, safeDi
 	sp.Success("Containers started")
 
 	return waitAndAnnounceRestart(ctx, uiOut, state), nil
+}
+
+// stopAndVerifyDown brings the compose project down and asserts it is fully
+// stopped before the caller restarts it. `compose down` can report success
+// while a container lingers (slow stop, an external replica); a subsequent
+// `up -d` against a partially-live project races the leftover container and
+// can leave a stale instance bound to the published ports, so a non-empty
+// `ps -q` here is a hard error that makes the operator clear the stragglers
+// rather than starting a split-brain stack.
+func stopAndVerifyDown(ctx context.Context, uiOut *ui.UI, info docker.Info, safeDir string) error {
+	sp := uiOut.StartSpinner("Stopping containers...")
+	if err := composeRunQuiet(ctx, info, safeDir, "down"); err != nil {
+		sp.Error("Failed to stop containers")
+		return fmt.Errorf("stopping containers: %w", err)
+	}
+	psOut, psErr := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "-q")
+	if psErr != nil {
+		// Fail closed: a ps query error means the stack state is unknown, so
+		// we cannot confirm it is down. Proceeding to `up -d` here would risk
+		// a split-brain stack, exactly what this assertion guards against.
+		sp.Error("Could not verify containers stopped")
+		return fmt.Errorf("verifying compose is fully stopped: %w", psErr)
+	}
+	if strings.TrimSpace(psOut) != "" {
+		sp.Error("Containers still running after stop")
+		return fmt.Errorf(
+			"compose down reported success but containers are still running; " +
+				"stop them before restarting",
+		)
+	}
+	sp.Success("Containers stopped")
+	return nil
 }
 
 // restartHealthTimeout resolves the post-restart readiness budget from the

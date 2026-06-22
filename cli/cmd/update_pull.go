@@ -25,22 +25,7 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 
 	// Back up existing compose.yml for rollback on failure.
 	composePath := filepath.Join(safeDir, "compose.yml")
-	backup, backupErr := os.ReadFile(composePath) //nolint:gosec // G304: composePath is <data-dir>/compose.yml under the SecurePath-cleaned data dir
-	backupExists := backupErr == nil
-
-	rollback := func() {
-		if backupExists {
-			if wErr := os.WriteFile(composePath, backup, 0o600); wErr != nil { //nolint:gosec // G304: composePath is <data-dir>/compose.yml under the SecurePath-cleaned data dir
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
-					"Warning: failed to restore compose.yml backup: %v\n", wErr)
-			}
-		} else {
-			if rErr := os.Remove(composePath); rErr != nil && !errors.Is(rErr, os.ErrNotExist) {
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
-					"Warning: failed to clean up compose.yml: %v\n", rErr)
-			}
-		}
-	}
+	rollback := composeRollback(cmd, composePath)
 
 	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 
@@ -79,6 +64,28 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 		return state, fmt.Errorf("saving config: %w", err)
 	}
 	return updatedState, nil
+}
+
+// composeRollback snapshots the existing compose.yml and returns a closure that
+// restores it (or removes a freshly-written one when no prior file existed) so a
+// failed verify/pull never leaves a half-applied compose.yml behind.
+func composeRollback(cmd *cobra.Command, composePath string) func() {
+	backup, backupErr := os.ReadFile(composePath) //nolint:gosec // G304: composePath is <data-dir>/compose.yml under the SecurePath-cleaned data dir
+	backupExists := backupErr == nil
+
+	return func() {
+		if backupExists {
+			if wErr := os.WriteFile(composePath, backup, 0o600); wErr != nil { //nolint:gosec // G304: composePath is <data-dir>/compose.yml under the SecurePath-cleaned data dir
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+					"Warning: failed to restore compose.yml backup: %v\n", wErr)
+			}
+		} else {
+			if rErr := os.Remove(composePath); rErr != nil && !errors.Is(rErr, os.ErrNotExist) {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+					"Warning: failed to clean up compose.yml: %v\n", rErr)
+			}
+		}
+	}
 }
 
 // mergeVerifiedDigests overlays fresh pins on top of existing ones, returning
