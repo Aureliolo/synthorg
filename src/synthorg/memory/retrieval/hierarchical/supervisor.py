@@ -6,16 +6,19 @@ and whether to retry with corrected queries when results are poor.
 
 import builtins
 import json
-from typing import Final
+from typing import Final, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from synthorg.budget.call_category import LLMCallCategory
 
-# ``CostTracker``, ``CompletionProvider``, ``RetrievalQuery`` and
+# ``CostTrackerProtocol``, ``CompletionProvider``, ``RetrievalQuery`` and
 # ``FinalRetrievalResult`` are part of ``SupervisorRouter``'s public
 # annotation surface (constructor + ``route`` + ``evaluate_for_retry``)
 # so they must resolve at runtime when downstream tooling evaluates
 # type hints (DI containers, doc generators).
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
+from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
@@ -90,6 +93,59 @@ _DEFAULT_MAX_RETRY_COUNT: Final[int] = 2
 _ROUTING_COMPLETION_CONFIG = CompletionConfig(temperature=0.0)
 
 
+class _LlmRoutingResponse(
+    BaseModel
+):  # lint-allow: frozen-extra-forbid -- LLM JSON may carry extra keys; only routing fields are read  # noqa: E501
+    """Validated shape of the routing model's JSON response.
+
+    Lenient by design: an absent ``workers`` defaults to empty (the
+    caller filters against the worker allowlist and falls back when
+    nothing valid remains), and ``extra="ignore"`` tolerates any
+    commentary keys the model emits.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="ignore")
+
+    workers: list[str] = Field(default_factory=list)
+    reason: str = "LLM routing decision"
+
+
+class _LlmRetryResponse(
+    BaseModel
+):  # lint-allow: frozen-extra-forbid -- LLM JSON may carry extra keys; only retry fields are read  # noqa: E501
+    """Validated shape of the retry-evaluation model's JSON response.
+
+    Lenient by design (defaults + ``extra="ignore"``): a malformed
+    response degrades to ``retry=False`` rather than raising on the
+    retry-evaluation path.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="ignore")
+
+    retry: bool = False
+    corrected_query: str | None = None
+    alternative_strategy: Literal["semantic_only", "episodic_only", "skip"] | None = (
+        None
+    )
+    reason: str = "LLM suggested retry"
+
+    @field_validator("alternative_strategy", mode="before")
+    @classmethod
+    def _nullify_unknown_strategy(cls, value: object) -> object:
+        """Coerce an unrecognised strategy to ``None`` rather than rejecting.
+
+        Keeps the retry response usable when the model proposes a
+        strategy outside the supported set: the correction proceeds with
+        its ``corrected_query`` and no alternative strategy.
+
+        Returns:
+            The value when it is a supported strategy, else ``None``.
+        """
+        if value in {"semantic_only", "episodic_only", "skip"}:
+            return value
+        return None
+
+
 class SupervisorRouter:
     """LLM-based routing supervisor for hierarchical retrieval.
 
@@ -112,7 +168,7 @@ class SupervisorRouter:
         reflective_retry_enabled: bool = True,
         max_retry_count: int = _DEFAULT_MAX_RETRY_COUNT,
         quality_threshold: float = _DEFAULT_QUALITY_THRESHOLD,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         self._provider = provider
         self._model = model
@@ -270,12 +326,13 @@ class SupervisorRouter:
                 error=safe_error_description(exc),
             )
             raise
-        workers = tuple(
-            w for w in parsed.get("workers", ["semantic"]) if w in _VALID_WORKERS
-        )[: self._max_workers]
+        routing = parse_typed("memory.routing", parsed, _LlmRoutingResponse)
+        workers = tuple(w for w in routing.workers if w in _VALID_WORKERS)[
+            : self._max_workers
+        ]
         if not workers:
             workers = _DEFAULT_FALLBACK_WORKERS
-        reason = parsed.get("reason", "LLM routing decision")
+        reason = routing.reason
         logger.info(
             MEMORY_HIERARCHICAL_ROUTING,
             action="decided",
@@ -346,11 +403,12 @@ class SupervisorRouter:
                 error=safe_error_description(exc),
             )
             return None
-        if not parsed.get("retry", False):
+        retry = parse_typed("memory.retry", parsed, _LlmRetryResponse)
+        if not retry.retry:
             return None
 
         corrected_query = None
-        corrected_text = parsed.get("corrected_query")
+        corrected_text = retry.corrected_query
         if corrected_text:
             try:
                 corrected_query = type(query).model_validate(
@@ -369,15 +427,8 @@ class SupervisorRouter:
                 )
                 corrected_query = None
 
-        alt_strategy = parsed.get("alternative_strategy")
-        if alt_strategy and alt_strategy not in {
-            "semantic_only",
-            "episodic_only",
-            "skip",
-        }:
-            alt_strategy = None
-
-        reason = parsed.get("reason", "LLM suggested retry")
+        alt_strategy = retry.alternative_strategy
+        reason = retry.reason
         logger.info(
             MEMORY_HIERARCHICAL_RETRY,
             action="correction",

@@ -789,6 +789,18 @@ repos:
         pass_filenames: false
         stages: [pre-commit, pre-push]
 
+      - id: backend-enums-ts-in-sync
+        name: backend-enums-ts-in-sync gate (web/src/api/types/backend-enums.gen.ts matches the Python enum sources)
+        entry: uv run python scripts/check_backend_enums_ts_in_sync.py
+        language: system
+        # Trigger on the three source enums (WsEventType,
+        # NotificationSeverity, LogLevel), the generator, the gate, the
+        # generated mirror, and this config so a backend enum change
+        # that does not regenerate the frontend mirror cannot land.
+        files: ^(src/synthorg/api/ws_models\.py|src/synthorg/notifications/models\.py|src/synthorg/observability/enums\.py|scripts/generate_backend_enums_ts\.py|scripts/check_backend_enums_ts_in_sync\.py|web/src/api/types/backend-enums\.gen\.ts|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
+
       - id: ws-protocol-version-in-sync
         name: ws-protocol-version-in-sync gate (WS_PROTOCOL_VERSION in Python and TypeScript agree)
         entry: uv run python scripts/check_ws_protocol_version_in_sync.py

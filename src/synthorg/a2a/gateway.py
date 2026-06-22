@@ -834,18 +834,16 @@ def _validate_task_ownership(
 
     Tasks created by the A2A gateway carry ``created_by =
     "a2a-gateway"`` and are associated with the requesting peer
-    via the ``a2a-inbound`` project.  For now, all A2A tasks are
-    accessible to any authenticated peer (the peer allowlist is
-    the authorization boundary).  A stricter per-peer ownership
-    model can be layered on when multi-peer isolation is needed.
+    via the ``a2a-inbound`` project.  All A2A tasks are accessible
+    to any authenticated peer: the peer allowlist is the
+    authorization boundary.
 
     Args:
         task: The task to check.
         peer_name: Authenticated peer name.
     """
-    # All authenticated peers currently share the a2a task namespace.
-    # Per-peer isolation (task.metadata["a2a_peer"] == peer_name)
-    # is a follow-up once task metadata propagation is wired.
+    # All authenticated peers share the a2a task namespace; the peer
+    # allowlist is the authorization boundary.
 
 
 async def _handle_message_send(

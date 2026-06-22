@@ -87,7 +87,6 @@ class CostTrackerSummaryMixin:
         Returns:
             Result of type ``SpendingSummary``.
         """
-        self._log_retention_window(start)
         snapshot = await self._snapshot()
         return self.build_summary_from_records(
             snapshot,
@@ -124,6 +123,7 @@ class CostTrackerSummaryMixin:
         )
 
         _validate_time_range(start, end)
+        self._log_retention_window(start)
         snapshot = tuple(records)
         filtered = _filter_records(snapshot, start=start, end=end)
         totals = _aggregate(filtered)

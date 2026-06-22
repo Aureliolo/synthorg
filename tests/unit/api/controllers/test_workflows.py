@@ -520,7 +520,7 @@ class TestWorkflowControllerErrorEnvelope:
         body = resp.json()
         assert body["success"] is False
         detail = body["error_detail"]
-        assert detail["error_code"] == ErrorCode.REQUEST_VALIDATION_ERROR
+        assert detail["error_code"] == ErrorCode.WORKFLOW_TYPE_INVALID
         assert detail["error_category"] == ErrorCategory.VALIDATION
         assert detail["retryable"] is False
 
@@ -556,7 +556,7 @@ class TestWorkflowControllerErrorEnvelope:
         body = resp.json()
         assert body["success"] is False
         detail = body["error_detail"]
-        assert detail["error_code"] == ErrorCode.REQUEST_VALIDATION_ERROR
+        assert detail["error_code"] == ErrorCode.WORKFLOW_DEFINITION_VALIDATION_FAILED
         assert detail["error_category"] == ErrorCategory.VALIDATION
         assert detail["retryable"] is False
         assert "Invalid workflow definition." in body["error"]
@@ -629,7 +629,7 @@ class TestWorkflowControllerErrorEnvelope:
         body = resp.json()
         assert body["success"] is False
         detail = body["error_detail"]
-        assert detail["error_code"] == ErrorCode.REQUEST_VALIDATION_ERROR
+        assert detail["error_code"] == ErrorCode.WORKFLOW_DEFINITION_VALIDATION_FAILED
         assert detail["error_category"] == ErrorCategory.VALIDATION
         assert detail["retryable"] is False
 
@@ -664,7 +664,7 @@ class TestWorkflowControllerErrorEnvelope:
         body = resp.json()
         assert body["success"] is False
         detail = body["error_detail"]
-        assert detail["error_code"] == ErrorCode.REQUEST_VALIDATION_ERROR
+        assert detail["error_code"] == ErrorCode.WORKFLOW_YAML_EXPORT_FAILED
         assert detail["error_category"] == ErrorCategory.VALIDATION
         assert detail["retryable"] is False
         assert "Export failed" in body["error"]
@@ -774,7 +774,7 @@ class TestWorkflowControllerErrorEnvelope:
         body = resp.json()
         assert body["success"] is False
         detail = body["error_detail"]
-        assert detail["error_code"] == ErrorCode.REQUEST_VALIDATION_ERROR
+        assert detail["error_code"] == ErrorCode.WORKFLOW_DEFINITION_VALIDATION_FAILED
         assert detail["error_category"] == ErrorCategory.VALIDATION
         assert detail["retryable"] is False
         assert "Invalid nodes field in request." in body["error"]
@@ -820,7 +820,7 @@ class TestWorkflowControllerErrorEnvelope:
         body = resp.json()
         assert body["success"] is False
         detail = body["error_detail"]
-        assert detail["error_code"] == ErrorCode.REQUEST_VALIDATION_ERROR
+        assert detail["error_code"] == ErrorCode.WORKFLOW_DEFINITION_VALIDATION_FAILED
         assert detail["error_category"] == ErrorCategory.VALIDATION
         assert detail["retryable"] is False
         assert "Invalid workflow definition." in body["error"]

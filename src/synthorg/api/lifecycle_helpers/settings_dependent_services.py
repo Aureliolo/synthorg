@@ -24,7 +24,9 @@ from synthorg.providers.management.preset_override_service import (
 )
 from synthorg.providers.management.service import ProviderManagementService
 from synthorg.providers.state import ProvidersStateSlice
+from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
+from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.settings.state import SettingsStateSlice
@@ -123,11 +125,17 @@ def compose_settings_dependent_services(
         if preset_override_repo is not None and audit_service is not None
         else None
     )
+    # Resolve the API bind port here (bootstrap) and inject it so the
+    # service performs no env read of its own.
+    backend_port = int(
+        resolve_init_value(SettingNamespace.API, "server_port", parse=int).value
+    )
     management = ProviderManagementService(
         settings_service=settings_service,
         config_resolver=resolver,
         app_state=app_state,
         config=config,
+        backend_port=backend_port,
         audit_service=audit_service,
         cost_tracker=cost_tracker,
     )

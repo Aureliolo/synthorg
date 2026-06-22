@@ -25,7 +25,7 @@ from synthorg.observability.events.provider import PROVIDER_VALIDATION_FAILED
 from synthorg.providers._auth_type_descriptor import AUTH_TYPE_DESCRIPTORS
 from synthorg.providers.enums import AuthType
 from synthorg.providers.errors import ProviderValidationError
-from synthorg.providers.management._helpers import apply_update
+from synthorg.providers.management._config_transforms import apply_update
 from synthorg.providers.management.dtos import UpdateProviderRequest
 
 logger = get_logger(__name__)

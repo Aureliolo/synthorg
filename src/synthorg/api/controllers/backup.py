@@ -28,7 +28,6 @@ from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.backup.errors import (
-    BackupInProgressError,
     BackupNotFoundError,
     ManifestError,
     RestoreError,
@@ -479,18 +478,6 @@ class BackupController(Controller):
             # detail stays in the warning log.
             msg = "Invalid backup manifest"
             raise ValidationError(msg) from exc
-        except BackupInProgressError as exc:
-            # Use BACKUP_RESTORE_FAILED (not BACKUP_FAILED) so restore
-            # failures are tracked separately from create-backup
-            # failures in the audit stream and dashboards.
-            logger.warning(
-                BACKUP_RESTORE_FAILED,
-                backup_id=data.backup_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            msg_in_progress = "A backup operation is already in progress"
-            raise ConflictError(msg_in_progress) from exc
         except RestoreError as exc:
             # Re-raise the domain error directly so ``handle_domain_error``
             # surfaces ``ErrorCode.BACKUP_RESTORE_FAILED`` instead of the

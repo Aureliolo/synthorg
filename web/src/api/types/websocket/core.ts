@@ -68,6 +68,7 @@ import type {
   WsSteeringSupersessionProposedPayload,
   WsSteeringTasksSupersededPayload,
 } from './cockpit'
+import type { WsEventType } from '../backend-enums.gen'
 
 // Synchronised with channel constants in `src/synthorg/api/channels.py`.
 // Admin-only channels (#dissent, #webhooks, #ratelimit) are not exposed
@@ -86,34 +87,11 @@ export const WS_CHANNELS = [
 
 export type WsChannel = typeof WS_CHANNELS[number]
 
-// Synchronised with `WsEventType` in `src/synthorg/api/ws_models.py`;
-// both lists must match value-for-value.
-export const WS_EVENT_TYPE_VALUES = [
-  'task.created', 'task.updated', 'task.status_changed', 'task.assigned',
-  'agent.hired', 'agent.fired', 'agent.status_changed',
-  'agent.created', 'agent.updated', 'agent.deleted', 'agents.reordered',
-  'company.updated',
-  'department.created', 'department.updated', 'department.deleted', 'departments.reordered',
-  'personality.trimmed',
-  'budget.record_added', 'budget.alert',
-  'message.sent',
-  'system.error', 'system.startup', 'system.shutdown',
-  'approval.submitted', 'approval.approved', 'approval.rejected', 'approval.expired',
-  'coordination.started', 'coordination.phase_completed', 'coordination.completed', 'coordination.failed',
-  'meeting.started', 'meeting.completed', 'meeting.failed',
-  'artifact.created', 'artifact.deleted', 'artifact.content_uploaded',
-  'project.created', 'project.deleted', 'project.status_changed',
-  'memory.fine_tune.progress', 'memory.fine_tune.stage_changed', 'memory.fine_tune.completed', 'memory.fine_tune.failed',
-  'client.created', 'client.updated', 'client.deactivated', 'client.deleted',
-  'request.submitted', 'request.scoped', 'request.approved', 'request.task_created', 'request.rejected', 'request.status_changed',
-  'simulation.started', 'simulation.running', 'simulation.paused', 'simulation.cancelled', 'simulation.completed', 'simulation.failed',
-  'review.stage_completed', 'review.stage_decided', 'review.pipeline_completed',
-  'interrupt.created', 'interrupt.resumed',
-  'dissent.published',
-  'steering.directive.issued', 'steering.supersession.proposed', 'steering.tasks.superseded',
-] as const
-
-export type WsEventType = (typeof WS_EVENT_TYPE_VALUES)[number]
+// `WS_EVENT_TYPE_VALUES` + `WsEventType` are generated from
+// `WsEventType` in `src/synthorg/api/ws_models.py` by
+// `scripts/generate_backend_enums_ts.py` (drift-gated at pre-push).
+export { WS_EVENT_TYPE_VALUES } from '../backend-enums.gen'
+export type { WsEventType }
 
 export interface WsEvent {
   /**

@@ -5,12 +5,12 @@ to determine if the candidate supersedes, conflicts with, or
 partially overlaps the existing one.
 """
 
-import re
 from enum import StrEnum
 from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.text_similarity import tokenize_word_chars, word_overlap
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.procedural.models import ProceduralMemoryProposal
 from synthorg.observability import get_logger
@@ -27,8 +27,6 @@ _OVERLAP_THRESHOLD: float = 0.5
 
 # Minimum word overlap ratio for conditions to be a "superset".
 _SUPERSET_THRESHOLD: float = 0.8
-
-_WORD_RE = re.compile(r"\w+")
 
 
 class SupersessionVerdict(StrEnum):
@@ -74,27 +72,16 @@ class SupersessionResult(BaseModel):
 _MIN_TOKEN_LENGTH: int = 2
 
 
-def _tokenize(text: str) -> set[str]:
-    """Extract lowercase alphanumeric word tokens from text.
+def _tokenize(text: str) -> frozenset[str]:
+    """Extract lowercase word tokens of at least the minimum length.
 
     Returns:
-        Set of ``str``.
+        Distinct lowercased word-character tokens.
     """
-    return {w.lower() for w in _WORD_RE.findall(text) if len(w) >= _MIN_TOKEN_LENGTH}
+    return tokenize_word_chars(text, min_length=_MIN_TOKEN_LENGTH)
 
 
-def _overlap_ratio(a: set[str], b: set[str]) -> float:
-    """Fraction of b's tokens present in a (0.0-1.0).
-
-    Returns:
-        Result of type ``float``.
-    """
-    if not b:
-        return 1.0
-    return len(a & b) / len(b)
-
-
-def _similarity(a: set[str], b: set[str]) -> float:
+def _similarity(a: frozenset[str], b: frozenset[str]) -> float:
     """Jaccard similarity between two token sets.
 
     Returns:
@@ -187,7 +174,7 @@ def evaluate_supersession(
     act_candidate = _tokenize(candidate.action)
     act_existing = _tokenize(existing.action)
 
-    condition_coverage = _overlap_ratio(cond_candidate, cond_existing)
+    condition_coverage = word_overlap(cond_candidate, cond_existing, empty_b=1.0)
     condition_similarity = _similarity(cond_candidate, cond_existing)
     action_similarity = _similarity(act_candidate, act_existing)
 

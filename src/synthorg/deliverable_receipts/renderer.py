@@ -10,6 +10,7 @@ heading onward) is stripped before the fresh section is appended.
 
 from typing import Final
 
+from synthorg.core.text_clipping import clip_text
 from synthorg.core.types import NotBlankStr
 from synthorg.deliverable_receipts.models import (
     DeliverableReceipt,
@@ -36,15 +37,6 @@ RECEIPT_AUTHOR: NotBlankStr = NotBlankStr("_system:deliverable-receipts")
 
 _BULLET_LIMIT: Final[int] = 1024
 _COST_DECIMALS: Final[int] = 4
-
-
-def _clip(text: str, limit: int) -> str:
-    """Truncate *text* to *limit* characters (block payload caps).
-
-    Returns:
-        The text truncated to at most ``limit`` characters.
-    """
-    return text[:limit]
 
 
 class ReceiptRenderer:
@@ -124,7 +116,8 @@ def _sources_blocks(receipt: DeliverableReceipt) -> list[DocBlock]:
     if not receipt.sources:
         return []
     items = tuple(
-        _clip(f"{s.title} ({s.source_id[:12]})", _BULLET_LIMIT) for s in receipt.sources
+        clip_text(f"{s.title} ({s.source_id[:12]})", _BULLET_LIMIT)
+        for s in receipt.sources
     )
     return [
         HeadingBlock(level=3, text="Sources used"),

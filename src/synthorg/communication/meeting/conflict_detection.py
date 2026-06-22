@@ -23,8 +23,6 @@ from synthorg.observability.events.strategy import (
     STRATEGY_CONFLICT_PARSE_FAILED,
 )
 
-CONFLICT_PARSE_FAILED = STRATEGY_CONFLICT_PARSE_FAILED
-
 logger = get_logger(__name__)
 
 # Default cosine similarity threshold below which two leader positions
@@ -128,7 +126,7 @@ class StructuredComparisonDetector:
             return self._has_field_conflicts(positions)
         except TypeError, ValueError:
             logger.debug(
-                CONFLICT_PARSE_FAILED,
+                STRATEGY_CONFLICT_PARSE_FAILED,
                 detector="StructuredComparisonDetector",
             )
             return False
@@ -243,7 +241,7 @@ class LlmJudgeDetector:
                         return bool(re.search(r"\bconflicts?\b", normalized))
         except TypeError, ValueError:
             logger.debug(
-                CONFLICT_PARSE_FAILED,
+                STRATEGY_CONFLICT_PARSE_FAILED,
                 detector="LlmJudgeDetector",
             )
 

@@ -279,6 +279,20 @@ class TestAgentConfig:
         assert a.level == SeniorityLevel.SENIOR
         assert a.personality == {"traits": ["analytical"]}
 
+    def test_raw_dicts_deep_copied_from_source(self) -> None:
+        personality: dict[str, JsonValue] = {"traits": ["analytical"]}
+        a = AgentConfig(
+            name="Alice",
+            role="Backend Developer",
+            department="Engineering",
+            personality=personality,
+        )
+        # Mutating the source list inside the raw dict must not bleed in.
+        traits = personality["traits"]
+        assert isinstance(traits, list)
+        traits.append("tampered")
+        assert a.personality == {"traits": ["analytical"]}
+
     def test_non_json_value_in_raw_field_rejected(self) -> None:
         """A non-JSON value in a raw-config field is rejected.
 

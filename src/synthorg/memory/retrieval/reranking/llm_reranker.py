@@ -49,12 +49,12 @@ class RankingLLMResponse(BaseModel):
     ranking: tuple[int, ...]
 
 
-# ``CostTracker``, ``CompletionProvider``, ``RerankerCache``,
+# ``CostTrackerProtocol``, ``CompletionProvider``, ``RerankerCache``,
 # ``RetrievalQuery`` and ``RetrievalCandidate`` are part of
 # ``LLMQuerySpecificReranker.__init__`` and ``rerank``'s public
 # annotation, so they must resolve at runtime when downstream tooling
 # evaluates type hints (DI containers, doc generators).
-from synthorg.budget.tracker import CostTracker  # noqa: E402
+from synthorg.budget.tracker_protocol import CostTrackerProtocol  # noqa: E402
 from synthorg.memory.retrieval.models import (  # noqa: E402
     RetrievalCandidate,
     RetrievalQuery,
@@ -114,7 +114,7 @@ class LLMQuerySpecificReranker:
         provider: CompletionProvider,
         model: NotBlankStr,
         cache: RerankerCache | None = None,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         self._provider = provider
         self._model = model

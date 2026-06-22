@@ -24,7 +24,7 @@ from pydantic import JsonValue
 
 from synthorg.api.state import AppState
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.config.schema import (
     LocalModelParams,
     ProviderConfig,
@@ -73,6 +73,10 @@ from synthorg.providers.errors import (
 from synthorg.providers.management._capabilities_mixin import (
     ProviderCapabilitiesMixin,
 )
+from synthorg.providers.management._config_transforms import (
+    apply_update,
+    build_provider_config,
+)
 from synthorg.providers.management._credential_helpers import (
     apply_update_with_credential,
     delete_provider_credential,
@@ -80,10 +84,8 @@ from synthorg.providers.management._credential_helpers import (
     rollback_credential,
     store_provider_api_key,
 )
-from synthorg.providers.management._helpers import (
-    apply_update,
+from synthorg.providers.management._discovery_auth import (
     build_discovery_headers,
-    build_provider_config,
     infer_preset_hint,
 )
 from synthorg.providers.management._persistence import apply_provider_change
@@ -244,6 +246,9 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         config_resolver: Typed config accessor.
         app_state: Application state for hot-reload swaps.
         config: Root company configuration.
+        backend_port: The resolved API server bind port, injected from the
+            wiring site so the service performs no bootstrap env read.
+            Used to detect self-referential discovery URLs.
         audit_service: Optional provider mutation audit log writer.
             ``None`` when the persistence backend has not been wired
             (legacy bootstrap paths, in-memory test rigs); each
@@ -263,15 +268,11 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         config_resolver: ConfigResolver,
         app_state: AppState,
         config: RootConfig,
+        backend_port: int,
         audit_service: ProviderAuditService | None = None,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
         clock: Clock | None = None,
     ) -> None:
-        from synthorg.settings.bootstrap_resolver import (  # noqa: PLC0415
-            resolve_init_value,
-        )
-        from synthorg.settings.enums import SettingNamespace  # noqa: PLC0415
-
         self._settings_service = settings_service
         self._config_resolver = config_resolver
         self._app_state = app_state
@@ -279,15 +280,10 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         self._audit_service = audit_service
         self._cost_tracker = cost_tracker
         self._clock: Clock = clock if clock is not None else SystemClock()
-        # api.server_port is read_only_post_init; the resolved value
-        # is stable for the process lifetime so we cache it once.
-        self._backend_port = int(
-            resolve_init_value(
-                SettingNamespace.API,
-                "server_port",
-                parse=int,
-            ).value
-        )
+        # Resolved once at the wiring site (bootstrap) and injected so the
+        # service stays free of bootstrap env reads; used to detect
+        # self-referential discovery URLs.
+        self._backend_port = backend_port
         self._lock = asyncio.Lock()
         self._allowlist = DiscoveryAllowlistManager(
             settings_service=settings_service,

@@ -5,8 +5,7 @@ plug in with a single ``elif`` here -- the rest of the codebase
 never sees the concrete handler class.
 """
 
-from urllib.parse import urlsplit, urlunsplit
-
+from synthorg.core.url_redaction import redact_url
 from synthorg.observability import get_logger
 from synthorg.observability.events.tracing import (
     TRACE_CONFIG_UNSUPPORTED_VARIANT,
@@ -23,32 +22,6 @@ from synthorg.observability.tracing.protocol import (
 )
 
 logger = get_logger(__name__)
-
-
-def _redact_endpoint(endpoint: str) -> str:
-    """Strip credentials and query params from *endpoint* before logging.
-
-    OTLP endpoints occasionally embed API tokens in ``userinfo`` or
-    ``?token=...`` query parameters. Returning only
-    ``scheme://host[:port]/path`` keeps the log useful for operators
-    without leaking secrets.
-
-    Returns:
-        The endpoint reduced to ``scheme://host[:port]/path`` (no
-        userinfo or query), or ``"<unparseable>"`` when the URL cannot
-        be parsed.
-    """
-    try:
-        parts = urlsplit(endpoint)
-        host = parts.hostname or ""
-        # ``parts.port`` can raise ``ValueError`` on a malformed port
-        # (e.g. ``http://host:bad``) -- resolve it inside the guard so
-        # an unparseable port doesn't surface through the caller.
-        if parts.port is not None:
-            host = f"{host}:{parts.port}"
-        return urlunsplit((parts.scheme, host, parts.path, "", ""))
-    except ValueError:
-        return "<unparseable>"
 
 
 def build_trace_handler(config: TraceConfig) -> TraceHandler:
@@ -87,7 +60,7 @@ def build_trace_handler(config: TraceConfig) -> TraceHandler:
             TRACE_HANDLER_INITIALIZED,
             component="trace",
             kind=config.kind,
-            endpoint=_redact_endpoint(config.endpoint),
+            endpoint=redact_url(config.endpoint, query="strip"),
         )
         return OtlpTraceHandler(config)
     msg = f"Unsupported TraceConfig variant: {type(config).__name__}"  # type: ignore[unreachable]

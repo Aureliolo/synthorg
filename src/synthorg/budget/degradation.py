@@ -7,6 +7,7 @@ quota check fails and degradation resolution is needed.
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import NoReturn
 
@@ -133,22 +134,27 @@ async def resolve_degradation(
     """
     strategy = degradation_config.strategy
 
-    if strategy == DegradationAction.FALLBACK:
-        return await _resolve_fallback(
+    # Dispatch table keyed by action, replacing a hand-rolled if-chain.
+    # Each closure binds the per-handler argument shape; ALERT has no
+    # handler and falls through to the default raise below.
+    handlers: dict[DegradationAction, Callable[[], Awaitable[DegradationResult]]] = {
+        DegradationAction.FALLBACK: lambda: _resolve_fallback(
             provider_name=provider_name,
             degradation_config=degradation_config,
             quota_tracker=quota_tracker,
             estimated_tokens=estimated_tokens,
-        )
-
-    if strategy == DegradationAction.QUEUE:
-        return await _resolve_queue(
+        ),
+        DegradationAction.QUEUE: lambda: _resolve_queue(
             provider_name=provider_name,
             quota_result=quota_result,
             degradation_config=degradation_config,
             quota_tracker=quota_tracker,
             estimated_tokens=estimated_tokens,
-        )
+        ),
+    }
+    handler = handlers.get(strategy)
+    if handler is not None:
+        return await handler()
 
     # ALERT (default) -- raise immediately
     logger.warning(

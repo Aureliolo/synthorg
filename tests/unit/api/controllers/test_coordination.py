@@ -265,8 +265,11 @@ class TestCoordinationControllerErrors:
             f"/api/v1/tasks/{task_id}/coordinate",
             json={},
         )
-        assert resp.status_code == 422
-        assert "coordination failed at phase" in resp.json()["error"].lower()
+        # A coordination-phase runtime fault is a 500 ENGINE_ERROR, not a
+        # 422; the upstream message is scrubbed on 5xx (the phase detail
+        # rides the COORDINATION_FAILED WS event instead).
+        assert resp.status_code == 500
+        assert resp.json()["success"] is False
 
 
 @pytest.mark.unit

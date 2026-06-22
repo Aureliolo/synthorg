@@ -15,7 +15,7 @@ from synthorg.config.schema import ProviderConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import PROVIDER_MODEL_ABSENT
-from synthorg.providers.management._helpers import models_from_litellm
+from synthorg.providers.management._litellm_parser import models_from_litellm
 
 logger = get_logger(__name__)
 

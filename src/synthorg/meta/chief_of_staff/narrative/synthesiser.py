@@ -12,7 +12,7 @@ deterministic fallback so the structured facts still ship.
 import asyncio
 
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.types import NotBlankStr
@@ -52,7 +52,7 @@ class NarrativeSynthesiser:
         *,
         provider: CompletionProvider,
         config: ChiefOfStaffConfig,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         self._provider = provider
         self._config = config

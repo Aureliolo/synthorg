@@ -542,7 +542,7 @@ async def _on_event(  # noqa: PLR0913
     if event is None:
         return
 
-    channel = event.get("channel", "")
+    channel = event.channel
     if channel not in subscribed:
         return
     if not channel_allowed(channel, conn_user):
@@ -550,13 +550,12 @@ async def _on_event(  # noqa: PLR0913
 
     channel_filters = filters.get(channel)
     if channel_filters and not matches_filters(
-        event,
-        channel,
+        event.payload,
         channel_filters,
     ):
         return
 
-    event_type = event.get("event_type", "")
+    event_type = event.event_type
 
     try:
         queue.put_nowait(event_data)

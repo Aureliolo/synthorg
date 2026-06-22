@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.ontology.errors import OntologyDuplicateError, OntologyNotFoundError
 from synthorg.ontology.models import (
     EntityDefinition,
@@ -135,7 +136,7 @@ class TestCreateEntity:
         assert resp.json()["data"]["name"] == "NewEntity"
         assert resp.json()["data"]["tier"] == "user"
 
-    async def test_duplicate_returns_400(
+    async def test_duplicate_returns_409(
         self,
         async_test_client: LoopAsyncClient,
     ) -> None:
@@ -146,7 +147,10 @@ class TestCreateEntity:
             "/api/v1/ontology/entities",
             json={"name": "Task"},
         )
-        assert resp.status_code == 422
+        # The faithful 409 ONTOLOGY_DUPLICATE propagates rather than being
+        # collapsed to a generic 422 validation error.
+        assert resp.status_code == 409
+        assert resp.json()["error_detail"]["error_code"] == ErrorCode.ONTOLOGY_DUPLICATE
 
 
 @pytest.mark.unit

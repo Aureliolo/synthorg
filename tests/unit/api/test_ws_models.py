@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from synthorg.api.ws_models import WsEvent, WsEventType
+from synthorg.api.ws_models import WsEvent, WsEventType, WsOutboundEnvelope
 
 _TASK_CREATED_PAYLOAD: dict[str, object] = {
     "task_id": "task-001",
@@ -126,4 +126,48 @@ class TestWsModels:
                 channel="tasks",
                 timestamp=datetime(2026, 3, 1, tzinfo=UTC),
                 payload={**_TASK_CREATED_PAYLOAD, "unknown_field": "value"},
+            )
+
+
+@pytest.mark.unit
+class TestWsOutboundEnvelope:
+    """The lenient read-only envelope used on the fan-out delivery path."""
+
+    def test_reads_routing_fields_and_payload(self) -> None:
+        env = WsOutboundEnvelope.model_validate(
+            {
+                "channel": "tasks",
+                "event_type": "task.created",
+                "payload": {"task_id": "task-001"},
+            }
+        )
+        assert env.channel == "tasks"
+        assert env.event_type == "task.created"
+        assert env.payload == {"task_id": "task-001"}
+
+    def test_tolerates_unknown_event_type(self) -> None:
+        # Reserved / future event types the strict union does not cover
+        # must still be forwarded, not dropped.
+        env = WsOutboundEnvelope.model_validate(
+            {"channel": "scaling", "event_type": "hr.scaling.triggered"}
+        )
+        assert env.event_type == "hr.scaling.triggered"
+        assert env.payload == {}
+
+    def test_ignores_version_and_timestamp_envelope_fields(self) -> None:
+        env = WsOutboundEnvelope.model_validate(
+            {
+                "version": 1,
+                "channel": "tasks",
+                "event_type": "task.created",
+                "timestamp": "2026-03-01T00:00:00Z",
+                "payload": {},
+            }
+        )
+        assert env.channel == "tasks"
+
+    def test_non_dict_payload_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            WsOutboundEnvelope.model_validate(
+                {"channel": "tasks", "event_type": "task.created", "payload": "nope"}
             )

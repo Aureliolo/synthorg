@@ -32,9 +32,9 @@ class CoordinationConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     max_concurrency_per_wave: int | None = Field(
-        default=None,
+        default=5,
         ge=1,
-        description="Max parallel agents per wave (None = unlimited)",
+        description="Max parallel agents per wave (default 5; None disables the cap)",
     )
     fail_fast: bool = Field(
         default=False,

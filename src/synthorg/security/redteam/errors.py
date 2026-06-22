@@ -53,7 +53,7 @@ class RedTeamReportValidationError(RedTeamError):
     """
 
     status_code: ClassVar[int] = 422
-    error_code: ClassVar[ErrorCode] = ErrorCode.REQUEST_VALIDATION_ERROR
+    error_code: ClassVar[ErrorCode] = ErrorCode.RED_TEAM_REPORT_INVALID
     error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
     default_message: ClassVar[str] = (
         "Red-team report payload failed structural validation"

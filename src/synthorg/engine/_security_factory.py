@@ -8,12 +8,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
-
-# Concrete ``CostTracker`` (not ``CostTrackerProtocol``): this factory
-# threads the tracker into ``security`` components (``LlmSecurityEvaluator``,
-# ``SafetyClassifier``, ``UncertaintyChecker``) whose constructors are typed
-# against the concrete class, so the boundary here stays concrete.
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.agent import AgentIdentity
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.observability import get_logger
@@ -61,7 +56,7 @@ def make_security_interceptor(  # noqa: PLR0913
     provider_registry: ProviderRegistry | None = None,
     provider_configs: Mapping[str, ProviderConfig] | None = None,
     model_resolver: ModelResolver | None = None,
-    cost_tracker: CostTracker | None = None,
+    cost_tracker: CostTrackerProtocol | None = None,
 ) -> SecurityInterceptionStrategy | None:
     """Build the SecOps security interceptor if configured.
 

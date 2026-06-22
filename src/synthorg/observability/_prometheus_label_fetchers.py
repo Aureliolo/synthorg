@@ -62,9 +62,9 @@ async def fetch_workflow_definitions(
         wf_repo = getattr(persistence, "workflow_definitions", None)
         if wf_repo is None:
             return frozenset()
-        from synthorg.core.pagination import paginate  # noqa: PLC0415
-        from synthorg.persistence._generics import (  # noqa: PLC0415
+        from synthorg.core.pagination import (  # noqa: PLC0415
             DEFAULT_PAGE_SIZE,
+            paginate,
         )
         from synthorg.persistence.workflow_definition_protocol import (  # noqa: PLC0415
             WorkflowDefinitionFilterSpec,

@@ -17,7 +17,7 @@ from synthorg.approval.protocol import (
     ApprovalStoreProtocol,
 )
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.communication.conversation.enums import (
     ConversationRole,
     ConversationStatus,
@@ -133,7 +133,7 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         proposal_repo: ConversationalProposalRepository,
         approval_store: ApprovalStoreProtocol,
         clock: Clock | None = None,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
         role_router: RoleRouter | None = None,
         provider_registry: ProviderRegistry | None = None,
     ) -> None:
@@ -180,8 +180,8 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
             turn (no data corruption; the next turn picks up where
             the cancelled one left off). Atomic two-turn append would
             require a bespoke ``append_pair`` on the turn repo (ADR-0001
-            D7) and is deferred to a follow-up when cancellation rate
-            warrants it.
+            D7); single-turn append is sufficient while the cancellation
+            rate stays low.
         """
         now = self._clock.now()
         conversation = await self._resolve_conversation(args, now)

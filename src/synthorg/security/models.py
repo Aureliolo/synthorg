@@ -4,6 +4,7 @@ Defines the value objects used by the SecOps service: security
 verdicts, evaluation contexts, audit entries, and output scan results.
 """
 
+import copy
 from enum import StrEnum
 from typing import Annotated, Literal
 
@@ -147,6 +148,20 @@ class SecurityContext(BaseModel):
     agent_id: NotBlankStr | None = None
     task_id: NotBlankStr | None = None
     agent_provider_name: NotBlankStr | None = None
+
+    @model_validator(mode="after")
+    def _deep_copy_arguments(self) -> SecurityContext:
+        """Deep-copy ``arguments`` so a retained source dict cannot mutate it.
+
+        ``arguments`` is a mutable ``dict`` reference inside a frozen
+        model; without this guard a caller holding the original dict
+        could mutate the security context's view after construction.
+
+        Returns:
+            The context with an owned deep copy of ``arguments``.
+        """
+        object.__setattr__(self, "arguments", copy.deepcopy(self.arguments))
+        return self
 
     @model_validator(mode="after")
     def _check_action_type_format(self) -> SecurityContext:

@@ -18,9 +18,9 @@ class TestCoordinationSectionConfigDefaults:
         cfg = CoordinationSectionConfig()
         assert cfg.topology == CoordinationTopology.AUTO
 
-    def test_default_max_concurrency_is_none(self) -> None:
+    def test_default_max_concurrency_is_five(self) -> None:
         cfg = CoordinationSectionConfig()
-        assert cfg.max_concurrency_per_wave is None
+        assert cfg.max_concurrency_per_wave == 5
 
     def test_default_fail_fast_is_false(self) -> None:
         cfg = CoordinationSectionConfig()
@@ -79,7 +79,7 @@ class TestCoordinationSectionConfigToCoordinationConfig:
         cfg = CoordinationSectionConfig()
         result = cfg.to_coordination_config()
         assert isinstance(result, CoordinationConfig)
-        assert result.max_concurrency_per_wave is None
+        assert result.max_concurrency_per_wave == 5
         assert result.fail_fast is False
         assert result.enable_workspace_isolation is True
         assert result.base_branch == "main"

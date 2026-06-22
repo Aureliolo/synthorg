@@ -17,7 +17,9 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
+from synthorg.budget.category_analytics import OrchestrationRatio
 from synthorg.budget.config import BudgetConfig
+from synthorg.budget.coordination_config import OrchestrationAlertThresholds
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.spending_summary import SpendingSummary
 from synthorg.core.pagination import DEFAULT_LIST_LIMIT, collect_all
@@ -104,6 +106,18 @@ class CostTrackerProtocol(Protocol):
         end: datetime,
     ) -> SpendingSummary:
         """Build a spending summary from a pre-fetched records snapshot."""
+        ...
+
+    async def get_orchestration_ratio(
+        self,
+        *,
+        agent_id: str | None = None,
+        task_id: str | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        thresholds: OrchestrationAlertThresholds | None = None,
+    ) -> OrchestrationRatio:
+        """Compute the orchestration overhead ratio for the window."""
         ...
 
     def track_pending_record(self, task: asyncio.Task[None]) -> None:

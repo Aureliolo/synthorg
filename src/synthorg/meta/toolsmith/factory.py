@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.budget.tracker import CostTracker
+    from synthorg.budget.tracker_protocol import CostTrackerProtocol
     from synthorg.meta.config import SelfImprovementConfig
     from synthorg.meta.signal_models import OrgSignalSnapshot
     from synthorg.meta.toolsmith.protocol import (
@@ -68,7 +68,7 @@ def build_toolsmith(  # noqa: PLR0913 -- explicit DI of the toolsmith collaborat
     overflow_handler: ToolCreationOverflowHandler | None = None,
     snapshot_provider: SnapshotProvider | None = None,
     existing_capabilities: tuple[NotBlankStr, ...] = (),
-    cost_tracker: CostTracker | None = None,
+    cost_tracker: CostTrackerProtocol | None = None,
     clock: Clock | None = None,
 ) -> ToolsmithRuntime:
     """Wire the toolsmith pipeline from config and runtime dependencies.
@@ -151,7 +151,7 @@ def _build_overflow_handler(
     *,
     si_config: SelfImprovementConfig,
     provider: BaseCompletionProvider,
-    cost_tracker: CostTracker | None,
+    cost_tracker: CostTrackerProtocol | None,
     snapshot_provider: SnapshotProvider | None,
 ) -> ToolCreationOverflowHandler | None:
     """Build the code-modification overflow handler when that altitude is on.

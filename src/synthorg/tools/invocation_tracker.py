@@ -10,6 +10,7 @@ from collections import deque
 from datetime import datetime
 from typing import Final
 
+from synthorg.core.datetime_guards import validate_time_range
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import (
     TOOL_INVOCATION_EVICTED,
@@ -108,7 +109,7 @@ class ToolInvocationTracker:
             ValueError: If both *start* and *end* are given and
                 ``start >= end``.
         """
-        _validate_time_range(start, end)
+        validate_time_range(start, end, event=TOOL_INVOCATION_TIME_RANGE_INVALID)
         logger.debug(
             TOOL_INVOCATIONS_QUERIED,
             agent_id=agent_id,
@@ -124,25 +125,3 @@ class ToolInvocationTracker:
             and (start is None or r.timestamp >= start)
             and (end is None or r.timestamp < end)
         )
-
-
-# ── Module-level pure helpers ────────────────────────────────────
-
-
-def _validate_time_range(
-    start: datetime | None,
-    end: datetime | None,
-) -> None:
-    """Raise ``ValueError`` if *start* >= *end* when both are given.
-
-    Raises:
-        ValueError: If an argument fails domain validation.
-    """
-    if start is not None and end is not None and start >= end:
-        logger.warning(
-            TOOL_INVOCATION_TIME_RANGE_INVALID,
-            start=start.isoformat(),
-            end=end.isoformat(),
-        )
-        msg = f"start ({start.isoformat()}) must be before end ({end.isoformat()})"
-        raise ValueError(msg)

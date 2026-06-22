@@ -13,7 +13,7 @@ from pydantic import BaseModel, JsonValue
 from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.prompt_safety import TAG_BRAIN_STATE, wrap_untrusted
+from synthorg.engine.prompt_safety import TAG_BRAIN_STATE
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -24,9 +24,9 @@ from synthorg.observability.events.project_brain import (
     BRAIN_SEARCH_FAILED,
     BRAIN_SEARCH_START,
 )
-from synthorg.project_brain.models import BrainSearchHit
 from synthorg.project_brain.service import ProjectBrainService
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
+from synthorg.tools._search_hit_formatting import format_scored_hits
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.brain._args import SearchBrainArgs
 
@@ -120,33 +120,22 @@ class SearchBrainTool(BaseTool):
             }
             for h in hits
         ]
+        # The chunk body is attacker-influenceable (an upstream agent may
+        # have been prompt-injected when it authored the entry), so each is
+        # fenced under TAG_BRAIN_STATE before it reaches the agent's
+        # context, matching the transparent retrieval path on
+        # ProjectAwareMemoryFacade.
         return ToolExecutionResult(
-            content=_format_hits(hits),
+            content=format_scored_hits(
+                (
+                    (h.entry_kind.value, h.entry_id, h.relevance_score, h.chunk_text)
+                    for h in hits
+                ),
+                empty_msg="No matching brain entries for this project.",
+                wrap_tag=TAG_BRAIN_STATE,
+            ),
             metadata={"hit_count": len(hits), "hits": hit_dicts},
         )
-
-
-def _format_hits(hits: tuple[BrainSearchHit, ...]) -> str:
-    """Render search hits to agent-readable text.
-
-    The chunk body is attacker-influenceable (an upstream agent may have been
-    prompt-injected when it authored the entry), so each one is fenced under
-    ``TAG_BRAIN_STATE`` before it reaches the agent's context, matching the
-    transparent retrieval path on :class:`ProjectAwareMemoryFacade`.
-
-    Returns:
-        A formatted multi-line summary, or a no-results notice.
-    """
-    if not hits:
-        return "No matching brain entries for this project."
-    lines: list[str] = []
-    for h in hits:
-        lines.append(
-            f"[{h.entry_kind.value}] {h.entry_id} (score={h.relevance_score:.2f}):"
-        )
-        lines.append(wrap_untrusted(TAG_BRAIN_STATE, h.chunk_text))
-        lines.append("")
-    return "\n".join(lines).rstrip()
 
 
 __all__ = ["SearchBrainTool"]

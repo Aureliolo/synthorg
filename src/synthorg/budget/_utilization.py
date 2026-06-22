@@ -11,12 +11,12 @@ from datetime import datetime
 
 from synthorg.budget.billing import billing_period_start
 from synthorg.budget.config import BudgetConfig
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 
 
 async def compute_monthly_cost(
     config: BudgetConfig,
-    cost_tracker: CostTracker,
+    cost_tracker: CostTrackerProtocol,
     *,
     now: datetime | None = None,
 ) -> float:

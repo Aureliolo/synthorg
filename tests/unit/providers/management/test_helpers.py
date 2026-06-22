@@ -10,11 +10,13 @@ from synthorg.api.dto_providers import UpdateProviderRequest
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
 from synthorg.providers.enums import AuthType
-from synthorg.providers.management._helpers import (
+from synthorg.providers.management._config_transforms import (
     _apply_credential_updates,
-    _coerce_cost,
     apply_update,
-    build_discovery_headers,
+)
+from synthorg.providers.management._discovery_auth import build_discovery_headers
+from synthorg.providers.management._litellm_parser import (
+    _coerce_cost,
     models_from_litellm,
 )
 
@@ -111,7 +113,7 @@ class TestApplyCredentialUpdates:
         request = UpdateProviderRequest(tos_accepted=True)
         frozen = datetime(2026, 3, 27, 12, 0, 0, tzinfo=UTC)
         with patch(
-            "synthorg.providers.management._helpers.datetime",
+            "synthorg.providers.management._config_transforms.datetime",
         ) as mock_dt:
             mock_dt.now.return_value = frozen
             mock_dt.side_effect = datetime
@@ -194,8 +196,9 @@ class TestApplyUpdateAuthTransitions:
             clear_subscription_token=False,
             tos_accepted=False,
         )
+        logger_target = "synthorg.providers.management._config_transforms.logger"
         with (
-            patch("synthorg.providers.management._helpers.logger") as mock_logger,
+            patch(logger_target) as mock_logger,
             pytest.raises(ValidationError),
         ):
             apply_update(existing, request)

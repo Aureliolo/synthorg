@@ -7,7 +7,9 @@ instances, failing loudly on unknown values so misconfiguration never
 silently falls through to a no-op default.
 """
 
+from collections.abc import Callable, Mapping
 from pathlib import Path
+from types import MappingProxyType
 from typing import ClassVar, NoReturn
 
 from synthorg.client.adapters import (
@@ -49,7 +51,7 @@ logger = get_logger(__name__)
 # annotations -- e.g. ``typing.get_type_hints(...)`` from API docs
 # generators or DI containers.  Keep them out of the ``TYPE_CHECKING``
 # block so the names are present in module globals.
-from synthorg.budget.tracker import CostTracker  # noqa: E402
+from synthorg.budget.tracker_protocol import CostTrackerProtocol  # noqa: E402
 from synthorg.client.config import (  # noqa: E402
     ClientPoolConfig,
     FeedbackConfig,
@@ -171,7 +173,7 @@ def _build_llm_generator(
     *,
     provider: CompletionProvider | None,
     model: NotBlankStr | None,
-    cost_tracker: CostTracker | None,
+    cost_tracker: CostTrackerProtocol | None,
 ) -> RequirementGenerator:
     if provider is None:
         logger.warning(
@@ -230,7 +232,7 @@ def build_requirement_generator(
     *,
     provider: CompletionProvider | None = None,
     model: NotBlankStr | None = None,
-    cost_tracker: CostTracker | None = None,
+    cost_tracker: CostTrackerProtocol | None = None,
 ) -> RequirementGenerator:
     """Construct a ``RequirementGenerator`` from ``config.strategy``.
 
@@ -271,6 +273,51 @@ def build_requirement_generator(
     )
 
 
+def _build_binary_feedback(
+    config: FeedbackConfig, client_id: NotBlankStr
+) -> FeedbackStrategy:
+    return BinaryFeedback(
+        client_id=client_id,
+        strictness_multiplier=config.strictness_multiplier,
+    )
+
+
+def _build_scored_feedback(
+    config: FeedbackConfig, client_id: NotBlankStr
+) -> FeedbackStrategy:
+    return ScoredFeedback(
+        client_id=client_id,
+        passing_score=config.passing_score,
+        strictness_multiplier=config.strictness_multiplier,
+    )
+
+
+def _build_criteria_check_feedback(
+    _config: FeedbackConfig, client_id: NotBlankStr
+) -> FeedbackStrategy:
+    return CriteriaCheckFeedback(client_id=client_id)
+
+
+def _build_adversarial_feedback(
+    _config: FeedbackConfig, client_id: NotBlankStr
+) -> FeedbackStrategy:
+    return AdversarialFeedback(client_id=client_id)
+
+
+# Dispatch table keyed by ``config.strategy``, replacing a hand-rolled
+# if-chain. Each builder shares the ``(config, client_id)`` signature.
+_FEEDBACK_FACTORIES: Mapping[
+    str, Callable[[FeedbackConfig, NotBlankStr], FeedbackStrategy]
+] = MappingProxyType(
+    {
+        "binary": _build_binary_feedback,
+        "scored": _build_scored_feedback,
+        "criteria_check": _build_criteria_check_feedback,
+        "adversarial": _build_adversarial_feedback,
+    }
+)
+
+
 def build_feedback_strategy(
     config: FeedbackConfig,
     *,
@@ -293,32 +340,27 @@ def build_feedback_strategy(
             feedback strategy.
     """
     strategy = str(config.strategy)
-    if strategy == "binary":
-        return BinaryFeedback(
-            client_id=client_id,
-            strictness_multiplier=config.strictness_multiplier,
+    factory = _FEEDBACK_FACTORIES.get(strategy)
+    if factory is None:
+        _raise_unknown_strategy(
+            label="feedback",
+            factory="feedback_strategy",
+            strategy=strategy,
+            expected=_FEEDBACK_STRATEGIES,
         )
-    if strategy == "scored":
-        return ScoredFeedback(
-            client_id=client_id,
-            passing_score=config.passing_score,
-            strictness_multiplier=config.strictness_multiplier,
-        )
-    if strategy == "criteria_check":
-        return CriteriaCheckFeedback(client_id=client_id)
-    if strategy == "adversarial":
-        return AdversarialFeedback(client_id=client_id)
-    logger.warning(
-        CLIENT_FACTORY_UNKNOWN_STRATEGY,
-        factory="feedback_strategy",
-        strategy=strategy,
-        expected=sorted(_FEEDBACK_STRATEGIES),
-    )
-    msg = (
-        f"unknown feedback strategy {strategy!r}; "
-        f"expected one of {sorted(_FEEDBACK_STRATEGIES)}"
-    )
-    raise UnknownStrategyError(msg)
+    return factory(config, client_id)
+
+
+# Dispatch table keyed by ``config.strategy``; all report strategies are
+# zero-argument constructors.
+_REPORT_FACTORIES: Mapping[str, Callable[[], ReportStrategy]] = MappingProxyType(
+    {
+        "summary": SummaryReport,
+        "detailed": DetailedReport,
+        "json_export": JsonExportReport,
+        "metrics_only": MetricsOnlyReport,
+    }
+)
 
 
 def build_report_strategy(config: ReportConfig) -> ReportStrategy:
@@ -335,25 +377,26 @@ def build_report_strategy(config: ReportConfig) -> ReportStrategy:
             report strategy.
     """
     strategy = str(config.strategy)
-    if strategy == "summary":
-        return SummaryReport()
-    if strategy == "detailed":
-        return DetailedReport()
-    if strategy == "json_export":
-        return JsonExportReport()
-    if strategy == "metrics_only":
-        return MetricsOnlyReport()
-    logger.warning(
-        CLIENT_FACTORY_UNKNOWN_STRATEGY,
-        factory="report_strategy",
-        strategy=strategy,
-        expected=sorted(_REPORT_STRATEGIES),
-    )
-    msg = (
-        f"unknown report strategy {strategy!r}; "
-        f"expected one of {sorted(_REPORT_STRATEGIES)}"
-    )
-    raise UnknownStrategyError(msg)
+    factory = _REPORT_FACTORIES.get(strategy)
+    if factory is None:
+        _raise_unknown_strategy(
+            label="report",
+            factory="report_strategy",
+            strategy=strategy,
+            expected=_REPORT_STRATEGIES,
+        )
+    return factory()
+
+
+# Dispatch table keyed by ``config.selection_strategy``; all pool
+# strategies are zero-argument constructors.
+_POOL_FACTORIES: Mapping[str, Callable[[], ClientPoolStrategy]] = MappingProxyType(
+    {
+        "round_robin": RoundRobinStrategy,
+        "weighted_random": WeightedRandomStrategy,
+        "domain_matched": DomainMatchedStrategy,
+    }
+)
 
 
 def build_client_pool_strategy(
@@ -372,23 +415,15 @@ def build_client_pool_strategy(
             known pool strategy.
     """
     strategy = str(config.selection_strategy)
-    if strategy == "round_robin":
-        return RoundRobinStrategy()
-    if strategy == "weighted_random":
-        return WeightedRandomStrategy()
-    if strategy == "domain_matched":
-        return DomainMatchedStrategy()
-    logger.warning(
-        CLIENT_FACTORY_UNKNOWN_STRATEGY,
-        factory="client_pool_strategy",
-        strategy=strategy,
-        expected=sorted(_POOL_STRATEGIES),
-    )
-    msg = (
-        f"unknown pool selection strategy {strategy!r}; "
-        f"expected one of {sorted(_POOL_STRATEGIES)}"
-    )
-    raise UnknownStrategyError(msg)
+    factory = _POOL_FACTORIES.get(strategy)
+    if factory is None:
+        _raise_unknown_strategy(
+            label="pool selection",
+            factory="client_pool_strategy",
+            strategy=strategy,
+            expected=_POOL_STRATEGIES,
+        )
+    return factory()
 
 
 def build_entry_point_strategy(
@@ -444,7 +479,7 @@ def _build_agent_intake(
     *,
     task_engine: TaskEngine,
     provider: CompletionProvider | None,
-    cost_tracker: CostTracker | None,
+    cost_tracker: CostTrackerProtocol | None,
     default_project: NotBlankStr,
 ) -> IntakeStrategy:
     """Build the LLM-triage ``AgentIntake`` (needs provider + model).
@@ -488,7 +523,7 @@ def build_intake_strategy(
     task_engine: TaskEngine,
     default_project: NotBlankStr,
     provider: CompletionProvider | None = None,
-    cost_tracker: CostTracker | None = None,
+    cost_tracker: CostTrackerProtocol | None = None,
 ) -> IntakeStrategy:
     """Construct an ``IntakeStrategy`` from ``config.strategy``.
 

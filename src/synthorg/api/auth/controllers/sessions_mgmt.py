@@ -6,16 +6,18 @@ from litestar.datastructures import State
 
 from synthorg.api.api_core_state import session_store_of
 from synthorg.api.auth.controller_dtos import SessionResponse
-from synthorg.api.auth.controller_helpers import extract_jti
+from synthorg.api.auth.controller_helpers import (
+    extract_jti,
+    require_authenticated_user,
+)
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
-from synthorg.core.auth.models import AuthenticatedUser
+from synthorg.core.auth.predicates import is_owner_or_ceo
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.domain_errors import (
     NotFoundError,
-    UnauthorizedError,
     ValidationError,
 )
 from synthorg.observability import get_logger
@@ -62,14 +64,9 @@ class AuthSessionsController(Controller):
             UnauthorizedError: Raised on the corresponding failure path.
             ValidationError: Raised on the corresponding failure path.
         """
-        auth_user = request.scope.get("user")
-        if not isinstance(auth_user, AuthenticatedUser):
-            logger.warning(
-                SECURITY_AUTH_FAILED,
-                reason="unauthenticated_session_list",
-            )
-            msg = "Authentication required"
-            raise UnauthorizedError(msg)
+        auth_user = require_authenticated_user(
+            request, reason="unauthenticated_session_list"
+        )
 
         if scope not in _VALID_SCOPES:
             msg = f"Invalid scope: {scope!r}. Valid: own, all"
@@ -133,14 +130,9 @@ class AuthSessionsController(Controller):
             UnauthorizedError: Raised on the corresponding failure path.
             NotFoundError: Raised on the corresponding failure path.
         """
-        auth_user = request.scope.get("user")
-        if not isinstance(auth_user, AuthenticatedUser):
-            logger.warning(
-                SECURITY_AUTH_FAILED,
-                reason="unauthenticated_session_revoke",
-            )
-            msg = "Authentication required"
-            raise UnauthorizedError(msg)
+        auth_user = require_authenticated_user(
+            request, reason="unauthenticated_session_revoke"
+        )
 
         app_state = request.app.state["app_state"]
         store = session_store_of(app_state)
@@ -150,7 +142,7 @@ class AuthSessionsController(Controller):
             msg = "Session not found"
             raise NotFoundError(msg)
         # Return 404 for not-owned (prevents session ID enum).
-        if session.user_id != auth_user.user_id and auth_user.role != HumanRole.CEO:
+        if not is_owner_or_ceo(auth_user, session.user_id):
             logger.warning(
                 SECURITY_AUTH_FAILED,
                 reason="session_not_owned",

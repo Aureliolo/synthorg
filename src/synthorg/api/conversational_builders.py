@@ -17,7 +17,7 @@ from synthorg.observability.events.api import API_APP_STARTUP
 
 if TYPE_CHECKING:
     from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.budget.tracker import CostTracker
+    from synthorg.budget.tracker_protocol import CostTrackerProtocol
     from synthorg.core.clock import Clock
     from synthorg.engine.agent_engine import AgentEngine
     from synthorg.hr.registry import AgentRegistryService
@@ -40,7 +40,7 @@ def build_group_chat_service(  # noqa: PLR0913 -- DI builder seam
     provider_registry: ProviderRegistry,
     agent_registry: AgentRegistryService,
     repositories: ConversationalRepositories | None,
-    cost_tracker: CostTracker | None,
+    cost_tracker: CostTrackerProtocol | None,
     approval_store: ApprovalStoreProtocol | None = None,
     clock: Clock | None = None,
 ) -> GroupChatService | None:

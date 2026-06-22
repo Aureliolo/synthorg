@@ -6,6 +6,7 @@ import pytest
 
 from synthorg.core.datetime_guards import (
     validate_datetime_range,
+    validate_time_range,
     validate_time_window,
 )
 
@@ -40,6 +41,27 @@ class TestValidateDatetimeRange:
     def test_custom_labels_in_message(self) -> None:
         with pytest.raises(ValueError, match=r"from .* must be before to"):
             validate_datetime_range(_LATE, _EARLY, start_label="from", end_label="to")
+
+
+@pytest.mark.unit
+class TestValidateTimeRange:
+    """``validate_time_range`` logs the event then rejects an inversion."""
+
+    def test_ordered_range_passes(self) -> None:
+        validate_time_range(_EARLY, _LATE, event="test.event")
+
+    def test_open_bounds_pass(self) -> None:
+        validate_time_range(None, _LATE, event="test.event")
+        validate_time_range(_EARLY, None, event="test.event")
+        validate_time_range(None, None, event="test.event")
+
+    def test_inverted_range_raises_with_matching_message(self) -> None:
+        with pytest.raises(ValueError, match="must be before"):
+            validate_time_range(_LATE, _EARLY, event="test.event")
+
+    def test_equal_bounds_raise(self) -> None:
+        with pytest.raises(ValueError, match="must be before"):
+            validate_time_range(_EARLY, _EARLY, event="test.event")
 
 
 @pytest.mark.unit

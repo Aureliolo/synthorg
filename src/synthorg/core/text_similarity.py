@@ -9,6 +9,40 @@ providers, not this module.
 """
 
 import math
+import re
+from typing import Final
+
+_WORD_CHARS_RE: Final[re.Pattern[str]] = re.compile(r"\w+")
+
+
+def split_word_chars(text: str) -> list[str]:
+    """Lowercase *text* and extract word-character runs in source order.
+
+    Unlike :func:`split_words` (whitespace split), this strips
+    punctuation so ``"hello, world!"`` yields ``["hello", "world"]``.
+    Use when membership should ignore surrounding punctuation.
+
+    Args:
+        text: Raw input string.
+
+    Returns:
+        Lowercased word-character tokens in source order.
+    """
+    return _WORD_CHARS_RE.findall(text.lower())
+
+
+def tokenize_word_chars(text: str, *, min_length: int = 1) -> frozenset[str]:
+    """Distinct lowercased word-character tokens, dropping short ones.
+
+    Args:
+        text: Raw input string.
+        min_length: Minimum token length to retain (default keeps all).
+
+    Returns:
+        Distinct lowercased word-character tokens of at least
+        ``min_length`` characters.
+    """
+    return frozenset(t for t in split_word_chars(text) if len(t) >= min_length)
 
 
 def split_words(text: str) -> list[str]:
@@ -38,23 +72,30 @@ def tokenize_words(text: str) -> frozenset[str]:
     return frozenset(split_words(text))
 
 
-def word_overlap(a: frozenset[str], b: frozenset[str]) -> float:
+def word_overlap(
+    a: frozenset[str],
+    b: frozenset[str],
+    *,
+    empty_b: float = 0.0,
+) -> float:
     """Fraction of *b*'s tokens that also appear in *a*.
 
     Asymmetric by design (``|a & b| / |b|``): the existing callers ask
-    "how much of the reference text *b* is covered by *a*". Returns
-    ``0.0`` when *b* is empty so an empty reference never yields a
-    misleading perfect score.
+    "how much of the reference text *b* is covered by *a*".
 
     Args:
         a: Candidate token set.
         b: Reference token set the ratio is normalised against.
+        empty_b: Value returned when *b* is empty. Defaults to ``0.0`` so
+            an empty reference never yields a misleading perfect score;
+            supersession passes ``1.0`` (an absent reference is vacuously
+            covered).
 
     Returns:
         Overlap ratio in ``[0.0, 1.0]``.
     """
     if not b:
-        return 0.0
+        return empty_b
     return len(a & b) / len(b)
 
 

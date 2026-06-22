@@ -27,10 +27,11 @@ from synthorg.persistence.checkpoint_protocol import (
 )
 
 if TYPE_CHECKING:
-    # CostTracker / ApprovalGate are concrete services faked in tests; a runtime
-    # import would make typeguard enforce a nominal isinstance the fakes fail.
+    # ApprovalGate is a concrete service faked in tests; a runtime import would
+    # make typeguard enforce a nominal isinstance the fakes fail.
     # security.protocol would cycle (security imports engine.prompt_safety).
-    from synthorg.budget.tracker import CostTracker
+    # CostTrackerProtocol is structural, grouped here as an annotation-only name.
+    from synthorg.budget.tracker_protocol import CostTrackerProtocol
     from synthorg.engine.approval_gate import ApprovalGate
     from synthorg.security.protocol import SecurityInterceptionStrategy
 
@@ -224,7 +225,7 @@ class CostRecordingMiddleware(BaseAgentMiddleware):
     def __init__(
         self,
         *,
-        tracker: CostTracker | None = None,
+        tracker: CostTrackerProtocol | None = None,
         **_kwargs: object,
     ) -> None:
         super().__init__(name="cost_recording")

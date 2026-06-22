@@ -8,6 +8,7 @@ re-verification and trust decay on idle/error conditions.
 from datetime import UTC, datetime, timedelta
 from typing import Final
 
+from synthorg.core.time_window import parse_window_days
 from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import AgentPerformanceSnapshot
@@ -29,22 +30,6 @@ from synthorg.security.trust.models import TrustEvaluationResult, TrustState
 logger = get_logger(__name__)
 
 _RE_VERIFY_QUALITY_MIN: Final[float] = 7.0
-_WINDOW_DAYS_SUFFIX: Final[str] = "d"
-
-
-def _parse_window_days(window_size: str) -> int | None:
-    """Extract day count from a window-size label like '7d'.
-
-    Returns:
-        The day count, or ``None`` if the label does not match the
-        expected ``<N>d`` format.
-    """
-    if window_size.endswith(_WINDOW_DAYS_SUFFIX):
-        try:
-            return int(window_size[: -len(_WINDOW_DAYS_SUFFIX)])
-        except ValueError:
-            return None
-    return None
 
 
 class MilestoneTrustStrategy:
@@ -229,7 +214,7 @@ class MilestoneTrustStrategy:
                 # Only check windows whose period fits within the
                 # required clean-history duration (e.g. skip the 90d
                 # window when clean_history_days=7).
-                window_days = _parse_window_days(str(window.window_size))
+                window_days = parse_window_days(str(window.window_size))
                 if (
                     window_days is not None
                     and window_days > milestone.clean_history_days

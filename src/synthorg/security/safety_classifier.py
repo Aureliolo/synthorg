@@ -29,7 +29,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -70,6 +70,7 @@ from synthorg.providers.models import (
     ToolDefinition,
 )
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.security._model_selection import select_security_eval_model
 from synthorg.security._shared_patterns import CONTROL_CHAR_RE
 from synthorg.security.config import SafetyClassifierConfig
 from synthorg.security.information_stripper import InformationStripper
@@ -263,7 +264,7 @@ class SafetyClassifier:
         provider_registry: ProviderRegistry,
         provider_configs: Mapping[str, ProviderConfig],
         config: SafetyClassifierConfig,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._registry = provider_registry
@@ -459,23 +460,12 @@ class SafetyClassifier:
             The configured model alias or id; falls back to the provider
             name when no model is configured.
         """
-        if self._config.model is not None:
-            return self._config.model
-
-        config = self._configs.get(provider_name)
-        if config is not None and config.models:
-            first = config.models[0]
-            return first.alias or first.id
-
-        logger.warning(
-            SECURITY_SAFETY_CLASSIFY_ERROR,
-            note=(
-                f"No model configured for provider {provider_name!r}, "
-                "using provider name as model hint"
-            ),
-            provider_name=provider_name,
+        return select_security_eval_model(
+            self._config.model,
+            self._configs,
+            provider_name,
+            event=SECURITY_SAFETY_CLASSIFY_ERROR,
         )
-        return provider_name
 
     def _build_messages(
         self,

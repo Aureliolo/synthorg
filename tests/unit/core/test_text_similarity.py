@@ -4,7 +4,9 @@ import pytest
 
 from synthorg.core.text_similarity import (
     cosine_word_similarity,
+    split_word_chars,
     split_words,
+    tokenize_word_chars,
     tokenize_words,
     word_overlap,
 )
@@ -35,9 +37,36 @@ class TestTokenizeWords:
 
 
 @pytest.mark.unit
+class TestSplitWordChars:
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("", []),
+            ("Hello, World!", ["hello", "world"]),
+            ("a-b_c", ["a", "b_c"]),
+            ("one  two", ["one", "two"]),
+        ],
+    )
+    def test_split_word_chars(self, text: str, expected: list[str]) -> None:
+        assert split_word_chars(text) == expected
+
+
+@pytest.mark.unit
+class TestTokenizeWordChars:
+    def test_strips_punctuation_and_dedupes(self) -> None:
+        assert tokenize_word_chars("Cat, cat; dog!") == frozenset({"cat", "dog"})
+
+    def test_min_length_filter(self) -> None:
+        assert tokenize_word_chars("a it be", min_length=2) == frozenset({"it", "be"})
+
+
+@pytest.mark.unit
 class TestWordOverlap:
     def test_empty_reference_is_zero(self) -> None:
         assert word_overlap(frozenset({"a"}), frozenset()) == 0.0
+
+    def test_empty_reference_honours_empty_b_override(self) -> None:
+        assert word_overlap(frozenset({"a"}), frozenset(), empty_b=1.0) == 1.0
 
     def test_full_coverage(self) -> None:
         assert word_overlap(frozenset({"a", "b", "c"}), frozenset({"a", "b"})) == 1.0

@@ -1,10 +1,9 @@
 """Cross-cutting controller response helpers.
 
-Many controllers used to hand-roll the same ``if resource is None:
-log + raise NotFoundError`` block.  This module centralises that
-pattern so the log-then-raise ordering, the structured kwargs, and
-the domain-specific :class:`NotFoundError` subclass selection are
-owned by one helper that every controller reuses.
+This module centralises the ``if resource is None: log + raise
+NotFoundError`` pattern so the log-then-raise ordering, the structured
+kwargs, and the domain-specific :class:`NotFoundError` subclass
+selection are owned by one helper that every controller reuses.
 """
 
 from collections.abc import Mapping

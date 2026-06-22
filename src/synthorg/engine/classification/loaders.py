@@ -10,7 +10,7 @@ from typing import Final
 from synthorg.budget.coordination_config import DetectionScope
 from synthorg.communication.delegation.models import DelegationRequest
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.pagination import paginate
+from synthorg.core.pagination import DEFAULT_PAGE_SIZE, paginate
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.classification.protocol import DetectionContext
@@ -20,7 +20,6 @@ from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.classification import (
     CONTEXT_LOADER_ERROR,
 )
-from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence.task_protocol import TaskFilterSpec, TaskRepository
 
 logger = get_logger(__name__)

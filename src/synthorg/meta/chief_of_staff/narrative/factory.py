@@ -8,7 +8,7 @@ no-op rather than failing.
 """
 
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.docs_engine.service import DocsService
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.narrative.reader import NarrativeReader
@@ -35,7 +35,7 @@ def build_chief_of_staff_narrator(  # noqa: PLR0913 -- keyword-only DI of every 
     brain_service: ProjectBrainService | None,
     frames: FlightRecorderFrameRepository | None,
     task_repo: TaskRepository | None,
-    cost_tracker: CostTracker | None = None,
+    cost_tracker: CostTrackerProtocol | None = None,
     currency: CurrencyCode = DEFAULT_CURRENCY,
 ) -> ChiefOfStaffNarrator | None:
     """Construct the run narrator, or ``None`` when it cannot be wired.

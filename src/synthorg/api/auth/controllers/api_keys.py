@@ -11,37 +11,15 @@ from synthorg.api.auth.controller_dtos import (
     CreateApiKeyRequest,
     CreatedApiKeyResponse,
 )
+from synthorg.api.auth.controller_helpers import require_authenticated_user
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
-from synthorg.core.auth.models import AuthenticatedUser
-from synthorg.core.domain_errors import UnauthorizedError
 from synthorg.observability import get_logger
-from synthorg.observability.events.security import SECURITY_AUTH_FAILED
 
 logger = get_logger(__name__)
-
-
-def _require_auth(request: Request[object, object, State]) -> AuthenticatedUser:
-    """Return the authenticated user or raise 401.
-
-    The class guard already enforces a read role; this resolves the
-    concrete identity for ownership / role-ceiling decisions.
-
-    Returns:
-        The authenticated user.
-
-    Raises:
-        UnauthorizedError: When no authenticated user is on the request.
-    """
-    auth_user = request.scope.get("user")
-    if not isinstance(auth_user, AuthenticatedUser):
-        logger.warning(SECURITY_AUTH_FAILED, reason="api_key_unauthenticated")
-        msg = "Authentication required"
-        raise UnauthorizedError(msg)
-    return auth_user
 
 
 def _to_response(view: ApiKeyView) -> ApiKeyResponse:
@@ -89,7 +67,9 @@ class AuthApiKeysController(Controller):
             ForbiddenError: When the requested role exceeds the caller's.
         """
         app_state: AppState = state.app_state
-        auth_user = _require_auth(request)
+        auth_user = require_authenticated_user(
+            request, reason="api_key_unauthenticated"
+        )
         issued: IssuedApiKey = await api_key_service_of(app_state).issue(
             owner=auth_user,
             name=data.name,
@@ -121,7 +101,9 @@ class AuthApiKeysController(Controller):
             UnauthorizedError: When the caller is not authenticated.
         """
         app_state: AppState = state.app_state
-        auth_user = _require_auth(request)
+        auth_user = require_authenticated_user(
+            request, reason="api_key_unauthenticated"
+        )
         views = await api_key_service_of(app_state).list_for_user(auth_user.user_id)
         return ApiResponse(data=[_to_response(v) for v in views])
 
@@ -145,7 +127,9 @@ class AuthApiKeysController(Controller):
                 the caller (404, never 403, to prevent enumeration).
         """
         app_state: AppState = state.app_state
-        auth_user = _require_auth(request)
+        auth_user = require_authenticated_user(
+            request, reason="api_key_unauthenticated"
+        )
         await api_key_service_of(app_state).revoke(
             key_id=key_id,
             requester=auth_user,

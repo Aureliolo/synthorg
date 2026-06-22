@@ -26,7 +26,9 @@ from synthorg.providers.errors import (
     ProviderSerializationError,
     ProviderValidationError,
 )
-from synthorg.providers.management._helpers import serialize_provider_envelope
+from synthorg.providers.management._config_transforms import (
+    serialize_provider_envelope,
+)
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.routing.router import ModelRouter
 from synthorg.settings.enums import SettingSource

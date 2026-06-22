@@ -52,7 +52,7 @@ class TestRedTeamReportValidationError:
     def test_attributes(self) -> None:
         err = RedTeamReportValidationError("bad payload")
         assert err.status_code == 422
-        assert err.error_code is ErrorCode.REQUEST_VALIDATION_ERROR
+        assert err.error_code is ErrorCode.RED_TEAM_REPORT_INVALID
         assert err.error_category is ErrorCategory.VALIDATION
 
 

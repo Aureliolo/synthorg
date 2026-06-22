@@ -87,7 +87,7 @@ from synthorg.observability.events.memory import (
 if TYPE_CHECKING:
     from qdrant_client import QdrantClient
 
-    from synthorg.budget.tracker import CostTracker
+    from synthorg.budget.tracker_protocol import CostTrackerProtocol
 
 
 logger = get_logger(__name__)
@@ -110,7 +110,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
         *,
         mem0_config: Mem0BackendConfig,
         max_memories_per_agent: int = _DEFAULT_MAX_MEMORIES_PER_AGENT,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         if max_memories_per_agent < 1:
             msg = f"max_memories_per_agent must be >= 1, got {max_memories_per_agent}"

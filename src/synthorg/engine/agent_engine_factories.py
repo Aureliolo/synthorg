@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 
     from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.budget.enforcer import BudgetEnforcer
-    from synthorg.budget.tracker import CostTracker
+    from synthorg.budget.tracker_protocol import CostTrackerProtocol
     from synthorg.communication.event_stream.interrupt import InterruptStore
     from synthorg.communication.event_stream.stream import EventStreamHub
     from synthorg.config.schema import ProviderConfig
@@ -108,7 +108,7 @@ class AgentEngineFactoriesMixin:
     _security_config: SecurityConfig | None
     _budget_enforcer: BudgetEnforcer | None
     _audit_log: AuditLog
-    _cost_tracker: CostTracker | None
+    _cost_tracker: CostTrackerProtocol | None
 
     def _make_approval_gate(self) -> ApprovalGate | None:
         """Build an ApprovalGate if an approval store is configured.

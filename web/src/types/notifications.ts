@@ -8,13 +8,17 @@
  * is shared 1:1 between backend and frontend.
  */
 
+import type { NotificationSeverity } from '@/api/types/backend-enums.gen'
 import type { ToastVariant } from '@/stores/toast'
 
 // ---------------------------------------------------------------------------
 // Core types
 // ---------------------------------------------------------------------------
 
-export type NotificationSeverity = 'info' | 'warning' | 'error' | 'critical'
+// `NotificationSeverity` is generated from
+// `synthorg.notifications.models.NotificationSeverity` by
+// `scripts/generate_backend_enums_ts.py` (drift-gated at pre-push).
+export type { NotificationSeverity }
 
 export type NotificationCategory =
   | 'approvals.pending'

@@ -29,7 +29,7 @@ injection defence.
 import asyncio
 from datetime import datetime
 
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.communication.conversation.enums import (
     ConversationRole,
     ConversationStatus,
@@ -127,7 +127,7 @@ class GroupChatService:
         participant_repo: ConversationParticipantRepository,
         clock: Clock | None = None,
         authority_guard: AuthorityDeferenceGuard | None = None,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
         invite_coordinator: GroupInviteCoordinator | None = None,
     ) -> None:
         self._agent_caller = agent_caller

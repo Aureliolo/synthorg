@@ -132,6 +132,8 @@ async def make_session_cookies(  # noqa: PLR0913
 
 def require_authenticated_user(
     request: Request[object, object, State],
+    *,
+    reason: str | None = None,
 ) -> AuthenticatedUser:
     """Return the authenticated user bound to the request scope or 401.
 
@@ -145,6 +147,11 @@ def require_authenticated_user(
 
     Args:
         request: The inbound Litestar request.
+        reason: Optional per-handler security reason. When set, the 401
+            logs a ``SECURITY_AUTH_FAILED`` event with this reason and the
+            request path (the signal the auth/identity/session/credential
+            endpoints carry); when ``None`` it logs the generic
+            ``API_REQUEST_ERROR``.
 
     Returns:
         The authenticated user.
@@ -154,7 +161,14 @@ def require_authenticated_user(
     """
     user = request.scope.get("user")
     if not isinstance(user, AuthenticatedUser):
-        logger.warning(API_REQUEST_ERROR, reason="request_unauthenticated")
+        if reason is None:
+            logger.warning(API_REQUEST_ERROR, reason="request_unauthenticated")
+        else:
+            logger.warning(
+                SECURITY_AUTH_FAILED,
+                reason=reason,
+                path=str(request.url.path),
+            )
         msg = "Authentication required"
         raise UnauthorizedError(msg)
     return user

@@ -16,7 +16,6 @@ Design invariants:
 
 import asyncio
 import math
-import re
 from collections import Counter
 from itertools import combinations
 from typing import Final
@@ -25,13 +24,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.budget.call_category import LLMCallCategory
 
-# ``CostTracker``, ``ProviderRegistry``, and ``ModelResolver`` are
-# part of ``UncertaintyChecker.__init__``'s public annotation, so
+# ``CostTrackerProtocol``, ``ProviderRegistry``, and ``ModelResolver``
+# are part of ``UncertaintyChecker.__init__``'s public annotation, so
 # they must resolve at runtime when downstream tooling evaluates
 # type hints (DI containers, doc generators).
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.text_similarity import split_word_chars, tokenize_word_chars
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
@@ -55,9 +55,6 @@ from synthorg.providers.routing.resolver import ModelResolver
 from synthorg.security.config import UncertaintyCheckConfig
 
 logger = get_logger(__name__)
-
-# Word tokenization: split on non-alphanumeric characters.
-_WORD_RE: Final[re.Pattern[str]] = re.compile(r"[a-z0-9]+")
 
 # Token ceiling for each cross-provider confirmation completion.
 _UNCERTAINTY_MAX_TOKENS: Final[int] = 512
@@ -107,7 +104,7 @@ def _tokenize(text: str) -> set[str]:
     Returns:
         The set of lowercased word tokens found in ``text``.
     """
-    return set(_WORD_RE.findall(text.lower()))
+    return set(tokenize_word_chars(text))
 
 
 def _compute_keyword_overlap(responses: list[str]) -> float:
@@ -156,7 +153,7 @@ def _compute_tfidf_cosine_similarity(responses: list[str]) -> float:
         return 1.0
 
     # Build term frequency per document.
-    tf_docs = [Counter(_WORD_RE.findall(r.lower())) for r in responses]
+    tf_docs = [Counter(split_word_chars(r)) for r in responses]
 
     # Build vocabulary.
     vocab: set[str] = set()
@@ -236,7 +233,7 @@ class UncertaintyChecker:
         provider_registry: ProviderRegistry,
         model_resolver: ModelResolver,
         config: UncertaintyCheckConfig,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._registry = provider_registry

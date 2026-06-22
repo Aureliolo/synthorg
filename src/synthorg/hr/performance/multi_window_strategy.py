@@ -5,11 +5,11 @@ Returns None for aggregate values when data points < min_data_points.
 """
 
 import math
-import re
 from datetime import datetime, timedelta
 from typing import Final
 
 from synthorg.budget.currency import assert_currencies_match
+from synthorg.core.time_window import parse_window_days_strict
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import TaskMetricRecord, WindowMetrics
 from synthorg.observability import get_logger
@@ -17,28 +17,6 @@ from synthorg.observability.events.performance import PERF_WINDOW_INSUFFICIENT_D
 
 logger = get_logger(__name__)
 _DEFAULT_MIN_DATA_POINTS: Final[int] = 5
-
-# Pattern for parsing window size strings (e.g. '7d', '30d', '90d').
-_WINDOW_PATTERN = re.compile(r"^(\d+)d$")
-
-
-def _parse_window_days(window_size: str) -> int:
-    """Parse a window size string into number of days.
-
-    Args:
-        window_size: Window label like '7d', '30d', '90d'.
-
-    Returns:
-        Number of days.
-
-    Raises:
-        ValueError: If the format is not recognized.
-    """
-    match = _WINDOW_PATTERN.match(window_size)
-    if not match:
-        msg = f"Unrecognized window size format: {window_size!r}. Expected '<N>d'."
-        raise ValueError(msg)
-    return int(match.group(1))
 
 
 class MultiWindowStrategy:
@@ -89,7 +67,7 @@ class MultiWindowStrategy:
         """
         results: list[WindowMetrics] = []
         for window_label in self._windows:
-            days = _parse_window_days(window_label)
+            days = parse_window_days_strict(window_label)
             cutoff = now - timedelta(days=days)
             window_records = tuple(r for r in records if r.completed_at >= cutoff)
             metrics = self._compute_single_window(

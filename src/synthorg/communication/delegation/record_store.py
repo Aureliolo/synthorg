@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Final
 
 from synthorg.communication.delegation.models import DelegationRecord
+from synthorg.core.datetime_guards import validate_time_range
 from synthorg.observability import get_logger
 from synthorg.observability.events.delegation import (
     DELEGATION_RECORD_EVICTED,
@@ -212,20 +213,16 @@ def _validate_time_range(
     start: datetime | None,
     end: datetime | None,
 ) -> None:
-    """Raise ``ValueError`` if *start* >= *end* when both are given.
+    """Reject an inverted query range, logging the delegation event first.
+
+    Binds the delegation warning event to the shared
+    :func:`~synthorg.core.datetime_guards.validate_time_range`.
 
     Raises:
         ValueError: If both bounds are given and ``start`` is not before
             ``end``.
     """
-    if start is not None and end is not None and start >= end:
-        logger.warning(
-            DELEGATION_TIME_RANGE_INVALID,
-            start=start.isoformat(),
-            end=end.isoformat(),
-        )
-        msg = f"start ({start.isoformat()}) must be before end ({end.isoformat()})"
-        raise ValueError(msg)
+    validate_time_range(start, end, event=DELEGATION_TIME_RANGE_INVALID)
 
 
 def _filter(

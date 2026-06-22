@@ -196,6 +196,7 @@ def service(audit_service: ProviderAuditService) -> ProviderManagementService:
         config_resolver=config_resolver,
         app_state=app_state,
         config=config,
+        backend_port=3001,
         audit_service=audit_service,
     )
 
@@ -408,6 +409,7 @@ class TestRotateCredentialsAllAuthTypes:
             config_resolver=config_resolver,
             app_state=app_state,
             config=config,
+            backend_port=3001,
             audit_service=audit_service,
         )
 

@@ -11,7 +11,7 @@ from typing import Protocol, runtime_checkable
 from pydantic import ValidationError
 
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.types import NotBlankStr
@@ -110,7 +110,7 @@ class LLMCharterInterviewer:
         *,
         provider: CompletionProvider,
         config: CharterConfig,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         self._provider = provider
         self._config = config

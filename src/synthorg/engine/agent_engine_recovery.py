@@ -40,7 +40,7 @@ from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
     from synthorg.budget.enforcer import BudgetEnforcer
-    from synthorg.budget.tracker import CostTracker
+    from synthorg.budget.tracker_protocol import CostTrackerProtocol
     from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine._agent_engine_callables import (
         MakeLoopWithCallback,
@@ -72,7 +72,7 @@ class AgentEngineRecoveryMixin:
     _provider: CompletionProvider
     _make_tool_invoker: MakeToolInvoker
     _shutdown_checker: ShutdownChecker | None
-    _cost_tracker: CostTracker | None
+    _cost_tracker: CostTrackerProtocol | None
     _task_engine: TaskEngine | None
     _checkpoint_repo: CheckpointRepository | None
     _heartbeat_repo: HeartbeatRepository | None

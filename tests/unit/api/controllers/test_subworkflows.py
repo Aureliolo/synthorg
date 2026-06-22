@@ -408,7 +408,7 @@ class TestSubworkflowControllerErrorEnvelope:
         body = resp.json()
         assert body["success"] is False
         detail = body["error_detail"]
-        assert detail["error_code"] == ErrorCode.REQUEST_VALIDATION_ERROR
+        assert detail["error_code"] == ErrorCode.WORKFLOW_DEFINITION_VALIDATION_FAILED
         assert detail["error_category"] == ErrorCategory.VALIDATION
         assert detail["retryable"] is False
 

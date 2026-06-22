@@ -21,7 +21,7 @@ Design invariants:
 
 import asyncio
 
-# ``Mapping``, ``CostTracker``, ``ProviderConfig`` and
+# ``Mapping``, ``CostTrackerProtocol``, ``ProviderConfig`` and
 # ``ProviderRegistry`` are part of ``LlmSecurityEvaluator.__init__``'s
 # public annotation, so they must resolve at runtime when downstream
 # tooling evaluates type hints (DI containers, doc generators).
@@ -32,7 +32,7 @@ from typing import Final
 
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.config.schema import ProviderConfig
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -159,7 +159,7 @@ class LlmSecurityEvaluator(_LlmEvaluatorSupportMixin):
         provider_registry: ProviderRegistry,
         provider_configs: Mapping[str, ProviderConfig],
         config: LlmFallbackConfig,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._registry = provider_registry

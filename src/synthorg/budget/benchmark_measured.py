@@ -15,10 +15,10 @@ distinguishes measured rows from stub fallbacks.
 from collections.abc import Mapping
 
 from synthorg.budget.benchmark_protocol import BenchmarkScore, BenchmarkScoreProvider
+from synthorg.core.pagination import DEFAULT_PAGE_SIZE
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.budget import BUDGET_BENCHMARK_SCORE_FALLBACK
-from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence.benchmark_score_protocol import BenchmarkScoreRepository
 
 logger = get_logger(__name__)

@@ -26,8 +26,10 @@ from synthorg.budget._cost_window import (
 )
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.currency import assert_currencies_match
-from synthorg.budget.tracker import CostTracker
-from synthorg.budget.tracker_protocol import collect_all_records
+from synthorg.budget.tracker_protocol import (
+    CostTrackerProtocol,
+    collect_all_records,
+)
 from synthorg.core.normalization import normalize_identifier
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger
@@ -69,7 +71,7 @@ class CostTrackerHistoryLookup:
         self,
         *,
         registry: AgentRegistryService,
-        cost_tracker: CostTracker,
+        cost_tracker: CostTrackerProtocol,
         clock: ClockFn | None = None,
         window_days: int = COST_WINDOW_DAYS,
     ) -> None:

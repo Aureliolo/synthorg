@@ -12,7 +12,7 @@ poisoning startup.
 from typing import TYPE_CHECKING
 
 from synthorg.api.state import AppState
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.observability import get_logger, safe_error_description
@@ -37,7 +37,7 @@ async def _wire_charter_engine(
     *,
     provider_registry: ProviderRegistry | None,
     persistence: PersistenceBackend | None,
-    cost_tracker: CostTracker | None,
+    cost_tracker: CostTrackerProtocol | None,
     si_config: SelfImprovementConfig,
 ) -> None:
     """Wire the deep CEO-interview charter engine behind a provider + persistence."""
@@ -91,7 +91,7 @@ async def _build_charter_interview(
     *,
     provider_registry: ProviderRegistry,
     persistence: PersistenceBackend,
-    cost_tracker: CostTracker | None,
+    cost_tracker: CostTrackerProtocol | None,
     si_config: SelfImprovementConfig,
 ) -> (
     tuple[CharterInterviewService, CharterRepository, ConversationalRepositories] | None

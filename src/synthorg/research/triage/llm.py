@@ -12,7 +12,7 @@ from typing import Final
 
 from pydantic import ValidationError
 
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.boundary import parse_typed
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
@@ -57,7 +57,7 @@ class LlmCredibilityTriage:
         provider: CompletionProvider,
         model: str,
         batch_size: int = RESEARCH_TRIAGE_BATCH_SIZE,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         if batch_size < 1:
             msg = "batch_size must be >= 1"

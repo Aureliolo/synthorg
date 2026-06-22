@@ -25,6 +25,7 @@ from synthorg.api.ws_control_models import (
     WsSubscribeMessage,
     WsUnsubscribeMessage,
 )
+from synthorg.api.ws_models import WsOutboundEnvelope
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.boundary import parse_typed
@@ -52,8 +53,7 @@ _MAX_WS_MESSAGE_BYTES: int = 4096
 
 
 def matches_filters(
-    event: dict[str, object],
-    channel: str,
+    payload: dict[str, object],
     channel_filters: dict[str, str],
 ) -> bool:
     """Check whether the event payload matches the active channel filters.
@@ -68,15 +68,6 @@ def matches_filters(
     Returns:
         ``True`` or ``False`` reflecting the condition.
     """
-    payload = event.get("payload", {})
-    if not isinstance(payload, dict):
-        logger.warning(
-            API_WS_INVALID_MESSAGE,
-            channel=channel,
-            reason="payload_not_dict",
-            payload_type=type(payload).__name__,
-        )
-        return False
     for key, expected in channel_filters.items():
         if key not in payload:
             return False
@@ -106,8 +97,8 @@ def channel_allowed(
     return True
 
 
-def parse_event_payload(event_data: bytes) -> dict[str, object] | None:
-    """Decode the raw channel payload into a dict, logging+dropping on errors.
+def parse_event_payload(event_data: bytes) -> WsOutboundEnvelope | None:
+    """Decode the raw channel payload into a typed envelope, dropping on error.
 
     Enforce UTF-8 explicitly before ``json.loads``: Python's JSON
     codec infers encoding from a BOM (UTF-16/UTF-32 bytes round-trip
@@ -116,8 +107,13 @@ def parse_event_payload(event_data: bytes) -> dict[str, object] | None:
     on the same bytes. Decoding here first catches both cases with a
     single ``UnicodeDecodeError``.
 
+    The decoded object is validated against :class:`WsOutboundEnvelope`
+    so the routing fields (``channel`` / ``event_type``) and the filter
+    ``payload`` are typed rather than read off a raw ``dict``.
+
     Returns:
-        The ``dict[str, object]`` value when present, ``None`` otherwise.
+        The validated :class:`WsOutboundEnvelope` when present, ``None``
+        otherwise.
     """
     try:
         text = (
@@ -149,7 +145,11 @@ def parse_event_payload(event_data: bytes) -> dict[str, object] | None:
             reason="not_a_dict",
         )
         return None
-    return event
+    try:
+        return parse_typed("ws.outbound", event, WsOutboundEnvelope)
+    except ValidationError:
+        # parse_typed already logged the structured boundary failure.
+        return None
 
 
 def _parse_ws_message(data: str) -> dict[str, object] | str:

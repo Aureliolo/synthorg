@@ -10,12 +10,12 @@ from typing import Final
 
 from synthorg.budget.call_category import LLMCallCategory
 
-# ``CostTracker`` is part of ``AbstractiveSummarizer.__init__``'s public
-# annotation, so it must resolve at runtime when downstream tooling
+# ``CostTrackerProtocol`` is part of ``AbstractiveSummarizer.__init__``'s
+# public annotation, so it must resolve at runtime when downstream tooling
 # evaluates type hints (DI containers, doc generators).  Importing at
 # module top -- not under ``TYPE_CHECKING`` -- keeps the name in module
 # globals.
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
@@ -85,7 +85,7 @@ class AbstractiveSummarizer:
         model: NotBlankStr,
         max_summary_tokens: int = _DEFAULT_MAX_SUMMARY_TOKENS,
         temperature: float = _DEFAULT_TEMPERATURE,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         if not model or not model.strip():
             msg = "model must be a non-blank string"

@@ -15,7 +15,7 @@ from pydantic import ValidationError
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.currency import format_cost
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
@@ -105,7 +105,7 @@ class CodeModificationStrategy:
         config: SelfImprovementConfig,
         provider: BaseCompletionProvider,
         scope_validator: ScopeValidator,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         self._config = config
         self._cost_tracker = cost_tracker

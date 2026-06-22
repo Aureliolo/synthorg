@@ -306,13 +306,13 @@ class TestWorkflowExecutionControllerErrorEnvelope:
                 lambda: _import_engine_error("WorkflowDefinitionInvalidError")(
                     "definition rejected at activation",
                 ),
-                "REQUEST_VALIDATION_ERROR",
+                "WORKFLOW_DEFINITION_INVALID",
             ),
             (
                 lambda: _import_engine_error("WorkflowConditionEvalError")(
                     "condition expression failed",
                 ),
-                "REQUEST_VALIDATION_ERROR",
+                "WORKFLOW_CONDITION_EVAL_FAILED",
             ),
         ],
         ids=["invalid_definition", "condition_eval"],

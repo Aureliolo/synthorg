@@ -74,7 +74,7 @@ if TYPE_CHECKING:
     from synthorg.budget.coordination_collector import CoordinationMetricsCollector
     from synthorg.budget.coordination_config import ErrorTaxonomyConfig
     from synthorg.budget.enforcer import BudgetEnforcer
-    from synthorg.budget.tracker import CostTracker
+    from synthorg.budget.tracker_protocol import CostTrackerProtocol
     from synthorg.communication.event_stream.interrupt import InterruptStore
     from synthorg.communication.event_stream.stream import EventStreamHub
     from synthorg.config.schema import ProviderConfig
@@ -178,7 +178,7 @@ class AgentEngine(
         provider: CompletionProvider,
         execution_loop: ExecutionLoop | None = None,
         tool_registry: ToolRegistry | None = None,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
         recovery_strategy: RecoveryStrategy | None = _DEFAULT_RECOVERY_STRATEGY,
         shutdown_checker: ShutdownChecker | None = None,
         error_taxonomy_config: ErrorTaxonomyConfig | None = None,
@@ -309,7 +309,7 @@ class AgentEngine(
         self._checkpoint_repo = checkpoint_repo
         self._heartbeat_repo = heartbeat_repo
         self._checkpoint_config = checkpoint_config or CheckpointConfig()
-        self._cost_tracker: CostTracker | None
+        self._cost_tracker: CostTrackerProtocol | None
         if budget_enforcer is not None:
             if (
                 cost_tracker is not None

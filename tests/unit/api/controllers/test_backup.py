@@ -347,7 +347,10 @@ class TestRestoreBackup:
             confirm=True,
         )
         ctrl = _controller()
-        with pytest.raises(ConflictError) as exc_info:
+        # The faithful BackupInProgressError (409 BACKUP_IN_PROGRESS)
+        # propagates rather than being collapsed to a generic ConflictError,
+        # matching the create/delete paths.
+        with pytest.raises(BackupInProgressError) as exc_info:
             await ctrl.restore_backup.fn(
                 ctrl, state=state, data=request, idempotency_key="restore-key"
             )

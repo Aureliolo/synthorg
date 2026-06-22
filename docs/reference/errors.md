@@ -64,6 +64,15 @@ This page is the developer-oriented reference for the problem-type URIs and the 
 | 2014 | `STEERING_DIRECTIVE_FIELD_BLANK` | Steering directive required field blank |
 | 2015 | `STEERING_TASK_PROJECT_MISMATCH` | Steering task does not belong to the project |
 | 2016 | `ESCALATION_DECISION_INVALID` | Human-supplied escalation decision is invalid or not accepted by the active processor |
+| 2017 | `GIT_BACKEND_CONFIG_INVALID` | Git-backend configuration invalid for the selected strategy |
+| 2018 | `ENVIRONMENT_CONFIG_INVALID` | Reproducible-environment configuration invalid for the selected strategy |
+| 2019 | `WORKFLOW_DEFINITION_INVALID` | Workflow definition failed validation at activation time |
+| 2020 | `WORKFLOW_CONDITION_EVAL_FAILED` | Workflow condition expression could not be evaluated |
+| 2021 | `SUBWORKFLOW_IO_INVALID` | Subworkflow input/output binding is invalid |
+| 2022 | `WORKFLOW_TYPE_INVALID` | Request specified an unknown `workflow_type` value |
+| 2023 | `WORKFLOW_DEFINITION_VALIDATION_FAILED` | Workflow definition failed structural checks on create/update |
+| 2024 | `WORKFLOW_YAML_EXPORT_FAILED` | Workflow definition could not be serialised to YAML |
+| 2025 | `RED_TEAM_REPORT_INVALID` | Red-team report payload failed structural validation |
 
 ## Not Found (3xxx)
 

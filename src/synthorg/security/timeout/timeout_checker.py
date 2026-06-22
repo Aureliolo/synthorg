@@ -5,7 +5,9 @@ whether pending approval items have exceeded their timeout thresholds
 and apply the configured ``TimeoutPolicy``.
 """
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
+from types import MappingProxyType
 
 from synthorg.approval.enums import ApprovalStatus
 from synthorg.core.approval import ApprovalItem
@@ -25,6 +27,15 @@ from synthorg.security.timeout.protocol import TimeoutPolicy
 logger = get_logger(__name__)
 
 TIMEOUT_POLICY_DECIDER: str = "timeout_policy"
+
+# Timeout actions that resolve the item, mapped to the status to set.
+# WAIT / ESCALATE are absent: they leave the item PENDING.
+_DECISION_STATUS: Mapping[TimeoutActionType, ApprovalStatus] = MappingProxyType(
+    {
+        TimeoutActionType.APPROVE: ApprovalStatus.APPROVED,
+        TimeoutActionType.DENY: ApprovalStatus.REJECTED,
+    }
+)
 
 
 class TimeoutChecker:
@@ -127,26 +138,17 @@ class TimeoutChecker:
         """
         action = await self.check(item)
 
-        if action.action == TimeoutActionType.APPROVE:
-            updated = item.model_copy(
-                update={
-                    "status": ApprovalStatus.APPROVED,
-                    "decided_at": datetime.now(UTC),
-                    "decided_by": TIMEOUT_POLICY_DECIDER,
-                    "decision_reason": action.reason,
-                },
-            )
-            return updated, action
+        decided_status = _DECISION_STATUS.get(action.action)
+        if decided_status is None:
+            # WAIT / ESCALATE leave the item PENDING.
+            return item, action
 
-        if action.action == TimeoutActionType.DENY:
-            updated = item.model_copy(
-                update={
-                    "status": ApprovalStatus.REJECTED,
-                    "decided_at": datetime.now(UTC),
-                    "decided_by": TIMEOUT_POLICY_DECIDER,
-                    "decision_reason": action.reason,
-                },
-            )
-            return updated, action
-
-        return item, action
+        updated = item.model_copy(
+            update={
+                "status": decided_status,
+                "decided_at": datetime.now(UTC),
+                "decided_by": TIMEOUT_POLICY_DECIDER,
+                "decision_reason": action.reason,
+            },
+        )
+        return updated, action

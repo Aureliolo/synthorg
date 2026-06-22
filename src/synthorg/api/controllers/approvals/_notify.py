@@ -21,8 +21,6 @@ from synthorg.api.channels import CHANNEL_APPROVALS, get_channels_plugin
 from synthorg.api.controllers._approval_review_gate import (
     preflight_review_gate,
     signal_resume_intent,
-    try_mid_execution_resume,
-    try_review_gate_transition,
 )
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEvent, WsEventType
@@ -184,7 +182,7 @@ def _log_approval_decision(
     """Log the approval decision for observability.
 
     Context resumption and review-gate transitions are handled
-    separately by ``_signal_resume_intent``.
+    separately by ``signal_resume_intent``.
     """
     event = SECURITY_APPROVAL_APPROVED if approved else SECURITY_APPROVAL_REJECTED
     logger.info(
@@ -192,15 +190,6 @@ def _log_approval_decision(
         approval_id=approval_id,
         decided_by=decided_by,
     )
-
-
-# Review-gate flow helpers live in a sibling module to keep this file
-# under the 800-line limit.  Re-aliased with leading underscore here to
-# preserve the internal API shape for the controller's callers.
-_try_mid_execution_resume = try_mid_execution_resume
-_preflight_review_gate = preflight_review_gate
-_try_review_gate_transition = try_review_gate_transition
-_signal_resume_intent = signal_resume_intent
 
 
 async def _run_review_gate_preflight(
@@ -228,7 +217,7 @@ async def _run_review_gate_preflight(
     """
     review_gate = app_state.slice(ApprovalStateSlice).review_gate
     if review_gate is not None and updated.task_id is not None:
-        await _preflight_review_gate(
+        await preflight_review_gate(
             review_gate,
             approval_id,
             updated.task_id,
@@ -345,7 +334,7 @@ async def _save_decision_and_notify(  # noqa: PLR0913
         approved=approved,
         decided_by=decided_by,
     )
-    await _signal_resume_intent(
+    await signal_resume_intent(
         app_state,
         approval_id,
         approved=approved,

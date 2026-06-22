@@ -1,6 +1,6 @@
 """Task engine configuration model."""
 
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -63,7 +63,7 @@ class TaskEngineConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _apply_mirrors(cls, data: Any) -> Any:  # type: ignore[explicit-any]
+    def _apply_mirrors(cls, data: object) -> object:
         """Populate unset mirror fields from the settings registry.
 
         Returns:

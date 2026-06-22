@@ -41,7 +41,7 @@ from synthorg.budget.quota import (
 from synthorg.budget.quota_tracker import QuotaTracker
 from synthorg.budget.risk_enforcer import BudgetEnforcerRiskMixin
 from synthorg.budget.risk_tracker import RiskTracker
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
@@ -140,7 +140,7 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
         self,
         *,
         budget_config: BudgetConfig,
-        cost_tracker: CostTracker,
+        cost_tracker: CostTrackerProtocol,
         model_resolver: ModelResolver | None = None,
         quota_tracker: QuotaTracker | None = None,
         degradation_configs: Mapping[str, DegradationConfig] | None = None,
@@ -187,7 +187,7 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
         await self._background_tasks.drain(timeout_sec=timeout_sec)
 
     @property
-    def cost_tracker(self) -> CostTracker:
+    def cost_tracker(self) -> CostTrackerProtocol:
         """The underlying cost tracker."""
         return self._cost_tracker
 

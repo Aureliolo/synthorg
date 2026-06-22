@@ -111,6 +111,7 @@ def service(
         config_resolver=config_resolver_of(app_state),
         app_state=app_state,
         config=root_config,
+        backend_port=3001,
     )
 
 

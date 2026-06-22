@@ -57,7 +57,7 @@ from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.backup.factory import build_backup_service
 from synthorg.backup.service import BackupService
 from synthorg.budget.coordination_store import CoordinationMetricsStore
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.communication.bus import InMemoryMessageBus
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.conflict_resolution.escalation.factory import (
@@ -109,7 +109,7 @@ class ConstructionResult:
 
     app_state: AppState
     message_bus: MessageBus | None
-    cost_tracker: CostTracker | None
+    cost_tracker: CostTrackerProtocol | None
     task_engine: TaskEngine | None
     provider_registry: ProviderRegistry | None
     meeting_scheduler: MeetingScheduler | None

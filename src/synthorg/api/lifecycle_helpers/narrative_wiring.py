@@ -8,7 +8,7 @@ already-built work pipeline; it is best-effort and idempotent.
 """
 
 from synthorg.api.state import AppState
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.observability import get_logger, safe_error_description
@@ -23,7 +23,7 @@ async def wire_run_narrator(
     app_state: AppState,
     *,
     provider_registry: ProviderRegistry | None,
-    cost_tracker: CostTracker | None,
+    cost_tracker: CostTrackerProtocol | None,
     si_config: SelfImprovementConfig,
 ) -> None:
     """Attach the post-run narrator to the pipeline behind narrative_enabled.
@@ -86,7 +86,7 @@ def _attach_narrator(
     *,
     config: ChiefOfStaffConfig,
     provider_registry: ProviderRegistry,
-    cost_tracker: CostTracker | None,
+    cost_tracker: CostTrackerProtocol | None,
 ) -> None:
     """Build the narrator and attach it to the work pipeline.
 

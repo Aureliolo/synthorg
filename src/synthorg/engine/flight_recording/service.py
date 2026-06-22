@@ -10,10 +10,10 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.pagination import DEFAULT_PAGE_SIZE
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.cockpit import FLIGHT_RECORDER_SEEK
-from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrame,
     FlightRecorderFrameFilterSpec,

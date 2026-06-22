@@ -12,7 +12,7 @@ from synthorg.budget.currency import format_cost
 # (constructor + ``explain_proposal`` / ``explain_alert`` / ``ask``)
 # so they must resolve at runtime when downstream tooling evaluates
 # type hints (DI containers, doc generators).
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
@@ -72,7 +72,7 @@ class ChiefOfStaffChat:
         provider: CompletionProvider,
         config: ChiefOfStaffConfig,
         outcome_store: OutcomeStore | None = None,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         self._provider = provider
         self._config = config

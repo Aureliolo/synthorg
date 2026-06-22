@@ -6,13 +6,11 @@ It connects to NATS JetStream for claim delivery and to the backend
 HTTP API for task transitions, preserving the ``TaskEngine``
 single-writer invariant: workers never write to persistence directly.
 
-The execution path is intentionally minimal in this initial
-implementation: the worker fetches a claim, calls an injected
-``executor`` callable with the claim's ``task_id``, and surfaces the
-outcome back to the backend. The executor is the seam where future
-work plugs in the real agent runtime; today it is a callable the
-caller provides (typically ``synthorg.engine.agent_engine`` in a
-follow-up PR).
+The execution path is deliberately minimal: the worker fetches a claim,
+calls an injected ``executor`` callable with the claim's ``task_id``, and
+surfaces the outcome back to the backend. The executor is the seam the
+agent runtime plugs into; the caller provides it (typically
+``synthorg.engine.agent_engine``).
 """
 
 import asyncio

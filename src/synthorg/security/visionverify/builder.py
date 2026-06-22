@@ -8,7 +8,7 @@ ReviewGateService short-circuits as if the gate were absent.
 from collections.abc import Callable
 from pathlib import Path
 
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.clock import Clock
 from synthorg.core.types import ModelTier
 from synthorg.providers.protocol import CompletionProvider
@@ -26,7 +26,7 @@ def build_vision_verifier_gate(  # noqa: PLR0913 -- verifier deps are intrinsic
     workspace: Path,
     provider: CompletionProvider | None = None,
     tier_resolver: TierResolver | None = None,
-    cost_tracker: CostTracker | None = None,
+    cost_tracker: CostTrackerProtocol | None = None,
     clock: Clock | None = None,
 ) -> VisionVerifierGate | None:
     """Build the vision gate, or ``None`` when the subsystem is disabled.

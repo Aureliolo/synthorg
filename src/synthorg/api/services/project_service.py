@@ -8,6 +8,7 @@ audit logging, mirroring the structure of :class:`UserService` and
 """
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.pagination import DEFAULT_PAGE_SIZE
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.types import NotBlankStr
@@ -19,7 +20,6 @@ from synthorg.observability.events.api import (
     API_PROJECT_LISTED,
     API_PROJECT_UPDATED,
 )
-from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence.project_protocol import ProjectFilterSpec, ProjectRepository
 
 logger = get_logger(__name__)

@@ -47,6 +47,7 @@ def _make_service_with_tracker(
         config_resolver=config_resolver_of(app_state),
         app_state=app_state,
         config=app_state.config,
+        backend_port=3001,
         cost_tracker=cost_tracker,
     )
 

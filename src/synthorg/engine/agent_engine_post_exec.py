@@ -52,7 +52,7 @@ if TYPE_CHECKING:
     from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.budget.coordination_collector import CoordinationMetricsCollector
     from synthorg.budget.coordination_config import ErrorTaxonomyConfig
-    from synthorg.budget.tracker import CostTracker
+    from synthorg.budget.tracker_protocol import CostTrackerProtocol
     from synthorg.core.clock import Clock
     from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine._agent_engine_callables import ApplyRecovery
@@ -84,7 +84,7 @@ _CANCEL_GRACE_SECONDS: Final[float] = 2.0
 class AgentEnginePostExecMixin:
     """Mixin providing post-execution, timeout wrapper, and result builder."""
 
-    _cost_tracker: CostTracker | None
+    _cost_tracker: CostTrackerProtocol | None
     _task_engine: TaskEngine | None
     _approval_store: ApprovalStoreProtocol | None
     _apply_recovery: ApplyRecovery

@@ -195,10 +195,8 @@ class MirrorField:
             keeps its declared default. Use this when the Pydantic
             field's default sentinel carries meaning the registry
             default would overwrite (``None`` = "inherit from parent"
-            on CeremonyPolicyConfig, ``None`` = "unlimited" on
-            ``CoordinationSectionConfig.max_concurrency_per_wave``,
-            ``None`` = "auto-derive from API prefix" on
-            ``AuthConfig.exclude_paths``).
+            on CeremonyPolicyConfig, ``None`` = "auto-derive from API
+            prefix" on ``AuthConfig.exclude_paths``).
     """
 
     field: str

@@ -38,7 +38,7 @@ from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
+    from synthorg.budget.tracker_protocol import CostTrackerProtocol
 
 logger = get_logger(__name__)
 
@@ -126,7 +126,7 @@ class SuccessMemoryProposer:
         *,
         provider: CompletionProvider,
         config: ProceduralMemoryConfig,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         self._provider = provider
         self._config = config

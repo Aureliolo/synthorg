@@ -10,11 +10,11 @@ from typing import Final
 
 from synthorg.budget.call_category import LLMCallCategory
 
-# ``CostTracker`` and ``CompletionProvider`` are part of
+# ``CostTrackerProtocol`` and ``CompletionProvider`` are part of
 # ``LLMCurated.__init__``'s public annotation, so they must resolve
 # at runtime when downstream tooling evaluates type hints (DI
 # containers, doc generators).
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_UNTRUSTED_ARTIFACT,
@@ -76,7 +76,7 @@ class LLMCurated:
         model: str = "example-small-001",
         temperature: float = _DEFAULT_TEMPERATURE,
         top_k: int = _DEFAULT_TOP_K,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         if top_k <= 0:
             msg = f"top_k must be a positive integer, got {top_k}"

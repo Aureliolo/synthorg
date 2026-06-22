@@ -213,7 +213,7 @@ class GitBackendConfigError(GitBackendError):
     """
 
     status_code: ClassVar[int] = 422
-    error_code: ClassVar[ErrorCode] = ErrorCode.REQUEST_VALIDATION_ERROR
+    error_code: ClassVar[ErrorCode] = ErrorCode.GIT_BACKEND_CONFIG_INVALID
     error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
     default_message: ClassVar[str] = "Git backend configuration invalid"
 
@@ -328,7 +328,7 @@ class EnvironmentConfigError(ProjectEnvironmentError):
     """
 
     status_code: ClassVar[int] = 422
-    error_code: ClassVar[ErrorCode] = ErrorCode.REQUEST_VALIDATION_ERROR
+    error_code: ClassVar[ErrorCode] = ErrorCode.ENVIRONMENT_CONFIG_INVALID
     error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
     default_message: ClassVar[str] = "Environment configuration invalid"
 
@@ -499,15 +499,17 @@ class WorkflowExecutionError(EngineError):
 class WorkflowDefinitionInvalidError(WorkflowExecutionError):
     """Raised when a workflow definition fails validation at activation time.
 
-    422 + ``REQUEST_VALIDATION_ERROR``: a definition that fails activation-time
-    structural checks is a caller-side validation failure surfaced after the
-    request reached the engine, not an internal fault. Aligns with
-    :class:`WorkflowDefinitionValidationError` (the create/update path) so
-    every "invalid workflow definition" surface emits the same 422 envelope.
+    422 + ``WORKFLOW_DEFINITION_INVALID``: a definition that fails
+    activation-time structural checks is a caller-side validation failure
+    surfaced after the request reached the engine, not an internal fault.
+    Distinct from :class:`WorkflowDefinitionValidationError` (the
+    create/update path, ``WORKFLOW_DEFINITION_VALIDATION_FAILED``) so a
+    client can tell an activation-time rejection from a create/update one;
+    both stay in the 422 VALIDATION category.
     """
 
     status_code: ClassVar[int] = 422
-    error_code: ClassVar[ErrorCode] = ErrorCode.REQUEST_VALIDATION_ERROR
+    error_code: ClassVar[ErrorCode] = ErrorCode.WORKFLOW_DEFINITION_INVALID
     error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
     default_message: ClassVar[str] = "Invalid workflow definition for activation"
 
@@ -515,13 +517,14 @@ class WorkflowDefinitionInvalidError(WorkflowExecutionError):
 class WorkflowConditionEvalError(WorkflowExecutionError):
     """Raised when a condition expression cannot be evaluated.
 
-    422 + ``REQUEST_VALIDATION_ERROR``: a condition expression that fails
-    evaluation is authored by the caller as part of the workflow definition,
-    so the failure is a request-shape problem rather than an engine fault.
+    422 + ``WORKFLOW_CONDITION_EVAL_FAILED``: a condition expression that
+    fails evaluation is authored by the caller as part of the workflow
+    definition, so the failure is a request-shape problem rather than an
+    engine fault.
     """
 
     status_code: ClassVar[int] = 422
-    error_code: ClassVar[ErrorCode] = ErrorCode.REQUEST_VALIDATION_ERROR
+    error_code: ClassVar[ErrorCode] = ErrorCode.WORKFLOW_CONDITION_EVAL_FAILED
     error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
     default_message: ClassVar[str] = "Workflow condition evaluation failed"
 
@@ -618,7 +621,7 @@ class SubworkflowIOError(WorkflowExecutionError):
     """
 
     status_code: ClassVar[int] = 422
-    error_code: ClassVar[ErrorCode] = ErrorCode.REQUEST_VALIDATION_ERROR
+    error_code: ClassVar[ErrorCode] = ErrorCode.SUBWORKFLOW_IO_INVALID
     error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
     default_message: ClassVar[str] = "Subworkflow input/output validation failed"
 
@@ -626,13 +629,13 @@ class SubworkflowIOError(WorkflowExecutionError):
 class WorkflowTypeInvalidError(WorkflowExecutionError):
     """Raised when a request specifies an unknown ``workflow_type`` value.
 
-    Uses ``REQUEST_VALIDATION_ERROR`` (2001) and 400 to align with the
-    other request-shape failures in this module: the value did not parse
-    against the ``WorkflowType`` enum at the API boundary.
+    Uses ``WORKFLOW_TYPE_INVALID`` and 400: the value did not parse
+    against the ``WorkflowType`` enum at the API boundary, a request-shape
+    failure distinct from the workflow-definition validation codes.
     """
 
     status_code: ClassVar[int] = 400
-    error_code: ClassVar[ErrorCode] = ErrorCode.REQUEST_VALIDATION_ERROR
+    error_code: ClassVar[ErrorCode] = ErrorCode.WORKFLOW_TYPE_INVALID
     error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
     default_message: ClassVar[str] = "Invalid workflow type"
 
@@ -647,7 +650,7 @@ class WorkflowDefinitionValidationError(WorkflowExecutionError):
     """
 
     status_code: ClassVar[int] = 422
-    error_code: ClassVar[ErrorCode] = ErrorCode.REQUEST_VALIDATION_ERROR
+    error_code: ClassVar[ErrorCode] = ErrorCode.WORKFLOW_DEFINITION_VALIDATION_FAILED
     error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
     default_message: ClassVar[str] = "Invalid workflow definition."
 
@@ -662,7 +665,7 @@ class WorkflowYamlExportError(WorkflowExecutionError):
     """
 
     status_code: ClassVar[int] = 422
-    error_code: ClassVar[ErrorCode] = ErrorCode.REQUEST_VALIDATION_ERROR
+    error_code: ClassVar[ErrorCode] = ErrorCode.WORKFLOW_YAML_EXPORT_FAILED
     error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
     default_message: ClassVar[str] = "Workflow YAML export failed"
 

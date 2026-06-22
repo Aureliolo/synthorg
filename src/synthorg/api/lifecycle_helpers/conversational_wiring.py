@@ -19,7 +19,7 @@ from synthorg.api.lifecycle_helpers.conversational_reconcile import (
 )
 from synthorg.api.state import AppState
 from synthorg.approval.protocol import ApprovalStoreProtocol
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
@@ -39,7 +39,7 @@ async def wire_group_chat_service(
     *,
     provider_registry: ProviderRegistry | None,
     persistence: PersistenceBackend | None,
-    cost_tracker: CostTracker | None,
+    cost_tracker: CostTrackerProtocol | None,
     si_config: SelfImprovementConfig,
 ) -> None:
     """Wire the multi-agent group chat behind group_chat_enabled + deps.
@@ -248,7 +248,7 @@ def _wire_role_router(
     config: ChiefOfStaffConfig,
     *,
     provider_registry: ProviderRegistry,
-    cost_tracker: CostTracker | None,
+    cost_tracker: CostTrackerProtocol | None,
 ) -> RoleRouter | None:
     """Build + wire the concern role router when an agent registry is present.
 
@@ -290,7 +290,7 @@ async def wire_chief_of_staff_proposer(  # noqa: PLR0913 -- boot wiring deps
     *,
     provider_registry: ProviderRegistry | None,
     persistence: PersistenceBackend | None,
-    cost_tracker: CostTracker | None,
+    cost_tracker: CostTrackerProtocol | None,
     effective_approval_store: ApprovalStoreProtocol,
     si_config: SelfImprovementConfig,
 ) -> None:

@@ -68,7 +68,7 @@ The `EventStreamHub` (`communication/event_stream/stream.py`) is the single
 pub/sub source. Both the AG-UI dashboard and the A2A gateway consume
 from this hub, each applying their own projection layer.
 
-## Interrupt / Resume Protocol
+## Interrupt and Resume Protocol
 
 Two blocking interrupt types:
 

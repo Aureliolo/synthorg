@@ -29,7 +29,7 @@ from typing import Protocol, runtime_checkable
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.communication.conversation.enums import ConversationRole
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
@@ -255,7 +255,7 @@ class LlmConcernRouter:
         temperature: float,
         max_tokens: int,
         timeout_seconds: float,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         self._provider = provider
         self._model = model
@@ -475,7 +475,7 @@ def build_role_router(
     config: ChiefOfStaffConfig,
     provider_registry: ProviderRegistry,
     agent_registry: AgentRegistryService,
-    cost_tracker: CostTracker | None = None,
+    cost_tracker: CostTrackerProtocol | None = None,
 ) -> RoleRouter | None:
     """Build the configured :class:`RoleRouter`, or ``None`` when off.
 

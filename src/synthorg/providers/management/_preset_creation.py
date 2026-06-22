@@ -15,7 +15,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.provider import PROVIDER_VALIDATION_FAILED
 from synthorg.providers.enums import AuthType
 from synthorg.providers.errors import ProviderValidationError
-from synthorg.providers.management._helpers import models_from_litellm
+from synthorg.providers.management._litellm_parser import models_from_litellm
 from synthorg.providers.management.dtos import (
     CreateFromPresetRequest,
     CreateProviderRequest,

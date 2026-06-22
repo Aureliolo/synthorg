@@ -157,6 +157,12 @@ def _to_posix(path: str) -> str:
 def _redact_url(url: str) -> str:
     """Return scheme prefix only, dropping host / credentials / path.
 
+    Deliberately stricter than ``core.url_redaction.redact_url``: a DB
+    connection string's host and database name are themselves sensitive
+    in migration logs, so everything after the scheme is dropped. The
+    canonical redactor preserves the host, so routing through it here
+    would leak it.
+
     Returns:
         Result of type ``str``.
     """
