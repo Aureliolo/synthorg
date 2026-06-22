@@ -21,6 +21,17 @@ export const RemovedWithSuccessor: Story = {
   },
 }
 
+export const RemovedNoSuccessor: Story = {
+  args: {
+    stale: {
+      reason: 'removed_from_catalog',
+      flagged_at: '2026-06-01T12:00:00+00:00',
+      last_seen: '2026-05-30',
+      successor_model_id: null,
+    },
+  },
+}
+
 export const Deprecated: Story = {
   args: {
     stale: {

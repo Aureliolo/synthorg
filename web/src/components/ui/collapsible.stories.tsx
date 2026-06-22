@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { Collapsible } from './collapsible'
 import { SkeletonText } from './skeleton'
@@ -64,4 +65,30 @@ export const LoadingBody: Story = {
     title: 'Live activity',
     children: <SkeletonText lines={3} />,
   },
+}
+
+// Controlled mode: a parent owns the open state (e.g. derived from a URL
+// param), wiring the `open` + `onOpenChange` pair instead of `defaultOpen`.
+function ControlledCollapsible() {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="flex flex-col gap-2">
+      <button
+        type="button"
+        className="self-start rounded-md border border-border px-2 py-1 text-xs"
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        {open ? 'Collapse from parent' : 'Expand from parent'}
+      </button>
+      <Collapsible title="Controlled section" open={open} onOpenChange={setOpen}>
+        Toggled by the parent.
+      </Collapsible>
+    </div>
+  )
+}
+
+export const Controlled: Story = {
+  args: { title: 'Controlled section', children: 'Toggled by the parent.' },
+  render: () => <ControlledCollapsible />,
+  parameters: { controls: { disable: true } },
 }

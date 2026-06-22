@@ -41,3 +41,14 @@ export const Failed: Story = {
 export const Empty: Story = {
   args: { frames: [], currentIndex: 0, onSeek: () => {} },
 }
+
+// A non-default `label` sets the scrubber's accessible name; required when
+// several timelines share a page so each has a distinct aria-label.
+export const CustomLabel: Story = {
+  args: {
+    frames: FRAMES,
+    currentIndex: 2,
+    onSeek: () => {},
+    label: 'Flight recorder scrubber',
+  },
+}

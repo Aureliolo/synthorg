@@ -42,6 +42,18 @@ export const WithPulse: Story = {
   args: { status: 'error', pulse: true },
 }
 
+export const Animated: Story = {
+  args: { status: 'active', animated: true },
+}
+
+export const Decorative: Story = {
+  args: { status: 'active', decorative: true },
+}
+
+export const CustomAriaLabel: Story = {
+  args: { status: 'active', label: true, ariaLabel: 'Alice Smith - Active' },
+}
+
 export const AllStatuses: Story = {
   args: { status: 'active' },
   render: () => (
