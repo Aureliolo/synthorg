@@ -62,11 +62,11 @@ new ``dict[str, object]`` field is added it MUST live in this
 allowlist; reach for a typed nested model first.
 """
 
-from datetime import datetime
 from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
 
+from synthorg.core.iso_datetime import parse_iso_utc
 from synthorg.core.types import NotBlankStr
 
 
@@ -87,13 +87,10 @@ def _validate_iso_8601_aware_datetime(value: str) -> str:
         ValueError: Raised on the corresponding failure path.
     """
     try:
-        parsed = datetime.fromisoformat(value)
+        parse_iso_utc(value)
     except ValueError as exc:
-        msg = "value is not a valid ISO 8601 datetime"
+        msg = "value must be a valid ISO 8601 timezone-aware datetime"
         raise ValueError(msg) from exc
-    if parsed.tzinfo is None:
-        msg = "value must include a timezone (e.g. ``+00:00`` or ``Z``)"
-        raise ValueError(msg)
     return value
 
 

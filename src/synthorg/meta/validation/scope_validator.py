@@ -5,10 +5,17 @@ ensuring generated code changes target only permitted areas of
 the framework.
 """
 
+import re
 from fnmatch import fnmatch
 from pathlib import PurePosixPath
 
 from synthorg.meta.models import CodeChange
+
+# A Windows drive-absolute path ("C:\foo" -> "C:/foo" after slash
+# normalisation) is NOT reported absolute by PurePosixPath, so the
+# drive-letter and UNC roots are rejected explicitly to close a
+# path-traversal gap on Windows hosts.
+_WINDOWS_DRIVE_ROOT = re.compile(r"^[A-Za-z]:")
 
 
 class ScopeValidator:
@@ -45,9 +52,15 @@ class ScopeValidator:
             True if the path is allowed, False otherwise.
         """
         normalized = file_path.replace("\\", "/")
-        # Reject path traversal and absolute paths.
+        # Reject path traversal and absolute paths (POSIX-absolute, Windows
+        # drive-absolute "C:/...", and UNC "//server/share").
         resolved = PurePosixPath(normalized)
-        if resolved.is_absolute() or ".." in resolved.parts:
+        if (
+            resolved.is_absolute()
+            or normalized.startswith("//")
+            or _WINDOWS_DRIVE_ROOT.match(normalized) is not None
+            or ".." in resolved.parts
+        ):
             return False
         for pattern in self._forbidden:
             if fnmatch(normalized, pattern):

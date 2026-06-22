@@ -3,6 +3,7 @@
 import pytest
 import structlog.testing
 
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.errors import AgentAlreadyRegisteredError, AgentNotFoundError
 from synthorg.hr.registry import AgentRegistryService
@@ -380,6 +381,55 @@ class TestAgentRegistryService:
         assert entry["from_status"] == "active"
         assert entry["to_status"] == "on_leave"
         assert entry["agent_id"] == str(identity.id)
+
+    async def test_apply_autonomy_update_atomic_emits_transition(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """The atomic autonomy update logs HR_AGENT_AUTONOMY_LEVEL_TRANSITIONED
+        on a real level change, mirroring the non-atomic apply path."""
+        identity = make_agent_identity(
+            name="alice", autonomy_level=AutonomyLevel.SUPERVISED
+        )
+        await registry.register(identity)
+        with structlog.testing.capture_logs() as events:
+            await registry.apply_autonomy_update_atomic(
+                str(identity.id),
+                AutonomyLevel.FULL,
+                saved_by="operator",
+            )
+        transition_events = [
+            e
+            for e in events
+            if e.get("event") == "hr.agent.autonomy_level_transitioned"
+        ]
+        assert len(transition_events) == 1
+        assert transition_events[0]["from_level"] == AutonomyLevel.SUPERVISED.value
+        assert transition_events[0]["to_level"] == AutonomyLevel.FULL.value
+        assert transition_events[0]["agent_id"] == str(identity.id)
+
+    async def test_apply_autonomy_update_atomic_first_write_skips_transition(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """A first write (no concrete prior level) is not a real transition, so
+        the atomic path emits no event even though the returned previous level
+        coerces to SUPERVISED for the caller's audit stamp."""
+        identity = make_agent_identity(name="alice", autonomy_level=None)
+        await registry.register(identity)
+        with structlog.testing.capture_logs() as events:
+            previous_level, _ = await registry.apply_autonomy_update_atomic(
+                str(identity.id),
+                AutonomyLevel.FULL,
+                saved_by="operator",
+            )
+        transition_events = [
+            e
+            for e in events
+            if e.get("event") == "hr.agent.autonomy_level_transitioned"
+        ]
+        assert transition_events == []
+        assert previous_level == AutonomyLevel.SUPERVISED
 
     async def test_update_status_noop_skips_transition_event(
         self,

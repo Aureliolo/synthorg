@@ -244,6 +244,9 @@ def _wire_webhook_request_services(
     from synthorg.integrations.webhooks.activity_service import (  # noqa: PLC0415
         WebhookActivityService,
     )
+    from synthorg.integrations.webhooks.receipt_service import (  # noqa: PLC0415
+        WebhookReceiptService,
+    )
     from synthorg.integrations.webhooks.replay_protection import (  # noqa: PLC0415
         ReplayProtector,
     )
@@ -274,6 +277,25 @@ def _wire_webhook_request_services(
         logger.info(
             API_SERVICE_AUTO_WIRED,
             service="webhook_activity_service",
+            backend=type(persistence).__name__,
+        )
+    if (
+        slice_.webhook_receipt_service is None
+        and persistence is not None
+        and getattr(persistence, "is_connected", False)
+        and hasattr(persistence, "webhook_receipts")
+    ):
+        app_state.wire_if_field_absent(
+            IntegrationsStateSlice,
+            "webhook_receipt_service",
+            WebhookReceiptService(
+                receipts_repo=persistence.webhook_receipts,
+                clock=app_state.clock,
+            ),
+        )
+        logger.info(
+            API_SERVICE_AUTO_WIRED,
+            service="webhook_receipt_service",
             backend=type(persistence).__name__,
         )
 

@@ -2,10 +2,10 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter } from 'react-router'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { apiError, buildConnection, successFor } from '@/mocks/handlers'
+import { apiError, buildConnection, emptyPage, paginatedFor, successFor } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import type { Connection } from '@/api/types/integrations'
-import type { listWebhookActivity } from '@/api/endpoints/webhooks'
+import type { listWebhookActivity, WebhookReceipt } from '@/api/endpoints/webhooks'
 import { retryWebhookReceipt } from '@/api/endpoints/webhooks'
 
 let connections: readonly Connection[]
@@ -54,11 +54,59 @@ describe('WebhookReceiptsPage', () => {
     expect(await screen.findByText('Recent receipts')).toBeInTheDocument()
   })
 
+  it('appends the next page when Load more is clicked', async () => {
+    connections = [makeConnection('slack-app')]
+    const pageOne: WebhookReceipt = {
+      id: '00000000-0000-0000-0000-0000000000a1',
+      connection_name: 'slack-app',
+      event_type: 'page-one.event',
+      status: 'completed',
+      received_at: '2026-04-30T10:00:00Z',
+      processed_at: '2026-04-30T10:00:01Z',
+      payload_json: '{}',
+      error: null,
+    }
+    const pageTwo: WebhookReceipt = {
+      ...pageOne,
+      id: '00000000-0000-0000-0000-0000000000a2',
+      event_type: 'page-two.event',
+    }
+    server.use(
+      http.get('/api/v1/webhooks/:connectionName/activity', ({ request }) => {
+        const cursor = new URL(request.url).searchParams.get('cursor')
+        if (cursor === 'cursor-2') {
+          return HttpResponse.json(
+            paginatedFor<typeof listWebhookActivity>({
+              ...emptyPage<WebhookReceipt>(),
+              data: [pageTwo],
+            }),
+          )
+        }
+        return HttpResponse.json(
+          paginatedFor<typeof listWebhookActivity>({
+            ...emptyPage<WebhookReceipt>(),
+            data: [pageOne],
+            nextCursor: 'cursor-2',
+            hasMore: true,
+          }),
+        )
+      }),
+    )
+    renderPage()
+    expect(await screen.findByText('page-one.event')).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: /Load more/ }))
+    // The second page appends to (does not replace) the first.
+    expect(await screen.findByText('page-two.event')).toBeInTheDocument()
+    expect(screen.getByText('page-one.event')).toBeInTheDocument()
+  })
+
   it('shows the no-deliveries empty state when activity is empty', async () => {
     connections = [makeConnection('slack-app')]
     server.use(
       http.get('/api/v1/webhooks/:connectionName/activity', () =>
-        HttpResponse.json(successFor<typeof listWebhookActivity>([])),
+        HttpResponse.json(
+          paginatedFor<typeof listWebhookActivity>(emptyPage<WebhookReceipt>()),
+        ),
       ),
     )
     renderPage()
@@ -74,7 +122,7 @@ describe('WebhookReceiptsPage', () => {
           successFor<typeof retryWebhookReceipt>({
             status: 'accepted',
             event_type: 'workflow.executed',
-            receipt_id: 'whr-000000000002',
+            receipt_id: '00000000-0000-0000-0000-000000000002',
           }),
         )
       }),
@@ -82,11 +130,11 @@ describe('WebhookReceiptsPage', () => {
     connections = [makeConnection('slack-app')]
     renderPage()
     // The default activity handler returns one failed (retryable) receipt.
-    const checkbox = await screen.findByLabelText('Select receipt whr-000000000002')
+    const checkbox = await screen.findByLabelText('Select receipt 00000000-0000-0000-0000-000000000002')
     fireEvent.click(checkbox)
     fireEvent.click(await screen.findByRole('button', { name: /Retry selected/ }))
     await waitFor(() => {
-      expect(retriedId).toBe('whr-000000000002')
+      expect(retriedId).toBe('00000000-0000-0000-0000-000000000002')
     })
   })
 

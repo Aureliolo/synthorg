@@ -29,11 +29,13 @@ from synthorg.idempotency import (
     IdempotencyService,
 )
 from synthorg.integrations.connections.models import WebhookReceipt
+from synthorg.integrations.state import IntegrationsStateSlice
+from synthorg.integrations.webhooks.receipt_service import WebhookReceiptService
 from synthorg.observability.events.integrations import (
     WEBHOOK_RECEIPT_STATUS_TRANSITIONED,
 )
-from synthorg.persistence.protocol import PersistenceBackend
-from tests._shared import as_pk, make_app_state, mock_of, sid
+from synthorg.persistence.connection_protocol import WebhookReceiptRepository
+from tests._shared import FakeClock, as_pk, make_app_state, mock_of, sid
 
 _RCPT_ID = sid("rcpt-retry")
 
@@ -117,18 +119,22 @@ def _build_state(
     cas_mock = AsyncMock(return_value=cas_result)
     plain_mock = AsyncMock(side_effect=plain_results)
 
-    class _WebhookReceipts:
-        get = get_mock
-        update_status = plain_mock
-        update_status_if_current = cas_mock
-
+    receipts_repo = mock_of[WebhookReceiptRepository](
+        get=get_mock,
+        update_status=plain_mock,
+        update_status_if_current=cas_mock,
+    )
     app_state = make_app_state(
-        persistence=mock_of[PersistenceBackend](webhook_receipts=_WebhookReceipts()),
         message_bus=mock_of[MessageBus](),
         slices={
             ApiCoreStateSlice: {
                 "idempotency_service": mock_of[IdempotencyService](
                     run_idempotent=_passthrough_run_idempotent,
+                ),
+            },
+            IntegrationsStateSlice: {
+                "webhook_receipt_service": WebhookReceiptService(
+                    receipts_repo=receipts_repo,
                 ),
             },
         },
@@ -514,3 +520,33 @@ class TestRetryReceiptErrorPaths:
         # short-circuits before any persistence call.
         cas_mock.assert_not_awaited()
         plain_mock.assert_not_awaited()
+
+
+@pytest.mark.unit
+class TestWebhookReceiptServiceClockSeam:
+    """The receipt service stamps transition timestamps from its Clock seam."""
+
+    async def test_received_transition_stamps_processed_at_from_clock(self) -> None:
+        instant = datetime(2026, 6, 22, 9, 30, 0, tzinfo=UTC)
+        receipt = _make_receipt(status="failed")
+        plain_mock = AsyncMock(return_value=True)
+        repo = mock_of[WebhookReceiptRepository](
+            get=AsyncMock(return_value=receipt),
+            update_status=plain_mock,
+            update_status_if_current=AsyncMock(return_value=True),
+        )
+        service = WebhookReceiptService(
+            receipts_repo=repo,
+            clock=FakeClock(start=instant),
+        )
+
+        async def publish() -> dict[str, object]:
+            return {"status": "accepted"}
+
+        await service.retry_and_publish(receipt, publish=publish)
+
+        # The retrying -> received transition is the plain update_status call;
+        # its processed_at must come from the injected clock, not wall time.
+        plain_mock.assert_awaited_once()
+        assert plain_mock.await_args is not None
+        assert plain_mock.await_args.kwargs["processed_at"] == instant

@@ -539,6 +539,25 @@ outgoing stop never waits on.
     instance (along with any callers it is wired into) and build a
     fresh one via the factory.
 
+### Observability
+
+Each task carries a per-task ``task.run`` OTel span for its whole
+lifetime, managed by ``TaskSpanTracker``. The span opens on
+``apply_create`` (kept open across mutation calls -- create and the
+terminal transition arrive on separate processing-loop turns, so it is
+deliberately not a ``with``-scoped current span) and ends on a
+truly-terminal transition (COMPLETED / CANCELLED / REJECTED), on
+cancellation, and on FAILED (a failed task may be reassigned, but the
+span represents this run, so a retry opens a fresh one). The
+``agent.execution`` span runs in a worker on a separate turn and does
+not auto-nest under ``task.run``; parenting it would require propagating
+the span context through the work queue (W3C ``traceparent``), so
+``task.run`` stands as a self-contained task-lifetime span keyed by
+``task.id``. Like the version / timing trackers, the span tracker is
+volatile single-writer state owned by the processing loop and resets on
+restart. All wall-clock reads in the apply path flow through an injected
+``Clock`` so duration metrics are deterministic under ``FakeClock``.
+
 ### AgentEngine <-> TaskEngine Incremental Sync
 
 `AgentEngine` syncs task status transitions to `TaskEngine` incrementally at

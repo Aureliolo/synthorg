@@ -561,6 +561,37 @@ class TestListTasksPushDownPagination:
         finally:
             await eng.stop(timeout=2.0)
 
+    async def test_include_total_false_skips_count_on_full_fetch(
+        self,
+        persistence: FakePersistence,
+    ) -> None:
+        """``limit=None`` + ``include_total=False`` still avoids count_tasks.
+
+        The full-fetch path computes a pre-cap total for the safety-cap
+        warning, but that authoritative count is only needed when the
+        caller wants the total. The metrics scrape uses exactly this
+        combination, so the extra round-trip must not fire.
+        """
+        from unittest.mock import AsyncMock
+
+        eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
+        await eng.start()
+        try:
+            await eng.create_task(make_create_data(), requested_by="alice")
+            count_spy = AsyncMock(
+                spec=persistence.tasks.count,
+                wraps=persistence.tasks.count,
+            )
+            persistence.tasks.count = count_spy  # type: ignore[method-assign]
+
+            tasks, total = await eng.list_tasks(include_total=False)
+
+            assert len(tasks) == 1
+            assert total is None
+            assert count_spy.await_count == 0
+        finally:
+            await eng.stop(timeout=2.0)
+
     async def test_zero_limit_returns_empty(
         self,
         persistence: FakePersistence,

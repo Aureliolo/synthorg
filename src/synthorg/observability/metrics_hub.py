@@ -181,6 +181,42 @@ def record_task_run(*, outcome: str, duration_sec: float | None) -> None:
     collector.record_task_run(outcome=outcome, duration_sec=duration_sec)
 
 
+@_safe_record(METRICS_RECORD_FAILED, "record_task_transition")
+def record_task_transition(*, from_status: str, to_status: str) -> None:
+    """Forward to :meth:`PrometheusCollector.record_task_transition`.
+
+    No-op when no collector is registered.
+    """
+    collector = _active()
+    if collector is None:
+        return
+    collector.record_task_transition(from_status=from_status, to_status=to_status)
+
+
+@_safe_record(METRICS_RECORD_FAILED, "record_auth_failure")
+def record_auth_failure(*, reason: str) -> None:
+    """Forward to :meth:`PrometheusCollector.record_auth_failure`.
+
+    No-op when no collector is registered.
+    """
+    collector = _active()
+    if collector is None:
+        return
+    collector.record_auth_failure(reason=reason)
+
+
+@_safe_record(METRICS_RECORD_FAILED, "record_auth_lockout")
+def record_auth_lockout() -> None:
+    """Forward to :meth:`PrometheusCollector.record_auth_lockout`.
+
+    No-op when no collector is registered.
+    """
+    collector = _active()
+    if collector is None:
+        return
+    collector.record_auth_lockout()
+
+
 @_safe_record(METRICS_RECORD_FAILED, "record_security_verdict")
 def record_security_verdict(verdict: str) -> None:
     """Forward to :meth:`PrometheusCollector.record_security_verdict`."""

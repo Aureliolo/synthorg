@@ -58,6 +58,27 @@ class PushMetrics:
             registry=registry,
         )
 
+        self.provider_tokens_per_call = Histogram(
+            f"{prefix}_provider_tokens_per_call",
+            "Tokens per single provider call, by provider, model, and direction",
+            ["provider", "model", "direction"],
+            buckets=(128, 512, 2048, 8192, 32768, 65536, 131072),
+            registry=registry,
+        )
+
+        # -- Auth counters -------------------------------------------
+        self.auth_failures = PromCounter(
+            f"{prefix}_auth_failures_total",
+            "Authentication failures by bounded reason",
+            ["reason"],
+            registry=registry,
+        )
+        self.auth_lockouts = PromCounter(
+            f"{prefix}_auth_lockouts_total",
+            "Account lockouts triggered by repeated auth failures",
+            registry=registry,
+        )
+
         # -- API request histogram -----------------------------------
         self.api_request_duration = Histogram(
             f"{prefix}_api_request_duration_seconds",
@@ -91,6 +112,12 @@ class PushMetrics:
             "Task execution duration by outcome",
             ["outcome"],
             buckets=(0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 60.0, 300.0, 600.0),
+            registry=registry,
+        )
+        self.task_transitions = PromCounter(
+            f"{prefix}_task_transitions_total",
+            "Task status transitions by from_status and to_status",
+            ["from_status", "to_status"],
             registry=registry,
         )
 

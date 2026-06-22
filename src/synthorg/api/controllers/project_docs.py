@@ -195,22 +195,33 @@ class ProjectDocsController(Controller):
         state: State,
         project_id: PathId,
         slug: PathId,
+        cursor: CursorParam = None,
         limit: CursorLimit = DOCS_HISTORY_DEFAULT_LIMIT,
-    ) -> Response[ApiResponse[tuple[DocVersion, ...]]]:
-        """Return the git commit history for one doc.
+    ) -> PaginatedResponse[DocVersion]:
+        """Return the git commit history for one doc (newest-first, paginated).
 
-        ``limit`` caps the returned commits (default 50, max 200); the
-        previous fixed 50-commit cap was invisible to callers.
+        Long-lived docs accumulate many revisions, so the endpoint pages with an
+        opaque HMAC cursor (``cursor`` + ``limit``) through the full git log
+        rather than truncating at the first ``limit`` commits.
 
         Returns:
-            Result matching the declared return annotation.
+            A page of :class:`DocVersion` rows plus cursor metadata.
         """
+        offset = (
+            0
+            if cursor is None
+            else decode_cursor(cursor, secret=cursor_secret_of(state.app_state))
+        )
         versions = await _docs_service(state).history(
             project_id=NotBlankStr(project_id),
             slug=NotBlankStr(slug),
+            limit=limit + 1,
+            offset=offset,
+        )
+        meta = encode_countless_seek_meta(
+            offset=offset,
+            fetched_rows=len(versions),
             limit=limit,
+            secret=cursor_secret_of(state.app_state),
         )
-        return Response(
-            content=ApiResponse[tuple[DocVersion, ...]](data=versions),
-            status_code=200,
-        )
+        return PaginatedResponse(data=tuple(versions[:limit]), pagination=meta)

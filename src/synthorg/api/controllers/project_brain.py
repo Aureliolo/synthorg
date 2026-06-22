@@ -237,23 +237,33 @@ class ProjectBrainController(Controller):
         state: State,
         project_id: PathId,
         entry_id: PathId,
+        cursor: CursorParam = None,
         limit: CursorLimit = BRAIN_HISTORY_DEFAULT_LIMIT,
-    ) -> Response[ApiResponse[tuple[BrainEntryVersion, ...]]]:
-        """Return the git-versioned snapshot history for one entry.
+    ) -> PaginatedResponse[BrainEntryVersion]:
+        """Return the git-versioned snapshot history for one entry (paginated).
 
-        ``limit`` caps the returned revisions (default 50, max 200); the
-        previous fixed 50-revision cap was invisible to callers.
+        Long-lived entries accumulate many revisions, so the endpoint pages with
+        an opaque HMAC cursor (``cursor`` + ``limit``) through the full commit
+        log rather than truncating at the first ``limit`` revisions.
 
         Returns:
-            An :class:`ApiResponse` wrapping the entry's git versions,
-            newest-first.
+            A page of the entry's git versions (newest-first) plus cursor
+            metadata.
         """
+        secret = cursor_secret_of(state.app_state)
+        offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
         versions = await _brain_service(state).git_history(
             project_id=NotBlankStr(project_id),
             entry_id=NotBlankStr(entry_id),
-            limit=limit,
+            limit=limit + 1,
+            offset=offset,
         )
-        return Response(
-            content=ApiResponse[tuple[BrainEntryVersion, ...]](data=versions),
-            status_code=200,
+        meta = encode_countless_seek_meta(
+            offset=offset,
+            fetched_rows=len(versions),
+            limit=limit,
+            secret=secret,
+        )
+        return PaginatedResponse[BrainEntryVersion](
+            data=tuple(versions[:limit]), pagination=meta
         )

@@ -2,7 +2,7 @@
 
 import contextlib
 import sqlite3
-from datetime import UTC, datetime
+from datetime import datetime
 
 import aiosqlite
 from pydantic import ValidationError
@@ -59,9 +59,7 @@ class SQLiteHeartbeatRepository:
                 data = heartbeat.model_dump(mode="json")
                 # Normalize to UTC so lexicographic comparisons in
                 # get_stale() work correctly regardless of input timezone.
-                data["last_heartbeat_at"] = heartbeat.last_heartbeat_at.astimezone(
-                    UTC
-                ).isoformat()
+                data["last_heartbeat_at"] = format_iso_utc(heartbeat.last_heartbeat_at)
                 await self._db.execute(
                     """\
 INSERT OR REPLACE INTO heartbeats (

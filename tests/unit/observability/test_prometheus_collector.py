@@ -118,7 +118,13 @@ def _make_agent(
     status: str = "active",
     access_level: str = "standard",
 ) -> MagicMock:
-    """Build a mock AgentIdentity with status and trust level."""
+    """Build a mock AgentIdentity with status and trust level.
+
+    Bare MagicMock (spec=None) is load-bearing: the agent flows through the
+    collector's typeguard-instrumented boundary, which a SimpleNamespace /
+    partially-spec'd double would fail. The mock-spec gate exempts this read
+    path; do not "tighten" to mock_of here.
+    """
     agent = MagicMock()
     agent.status = status
     agent.tools.access_level = access_level
@@ -131,7 +137,11 @@ def _make_task(
     status: str = "created",
     assigned_to: str | None = None,
 ) -> MagicMock:
-    """Build a mock Task with a given status and optional agent."""
+    """Build a mock Task with a given status and optional agent.
+
+    Bare MagicMock is load-bearing here for the same typeguard reason as
+    :func:`_make_agent`.
+    """
     task = MagicMock()
     task.status = status
     task.assigned_to = assigned_to
@@ -328,6 +338,36 @@ class TestPrometheusCollectorRefresh:
         await collector.refresh(state)
         output = generate_latest(collector.registry).decode()
         assert "synthorg_tasks_total" in output
+
+    async def test_task_engine_error_preserves_prior_task_gauge(self) -> None:
+        """A transient list_tasks failure keeps the prior gauge values
+        instead of dropping the dashboard to zero."""
+        collector = PrometheusCollector()
+        tasks = (_make_task(status="in_progress"),)
+        state = _mock_app_state(has_task_engine=True, tasks=tasks)
+        # First refresh populates the gauge.
+        await collector.refresh(state)
+        assert 'status="in_progress"' in generate_latest(collector.registry).decode()
+        # A subsequent transient fetch failure must NOT clear the gauge.
+        cast(
+            AsyncMock, state.slice(EngineStateSlice).task_engine
+        ).list_tasks = AsyncMock(
+            side_effect=RuntimeError("engine down"),
+        )
+        await collector.refresh(state)
+        assert 'status="in_progress"' in generate_latest(collector.registry).decode()
+
+    async def test_task_scrape_skips_count_round_trip(self) -> None:
+        """The scrape fetches rows only -- never the extra count_tasks
+        round-trip -- so it passes include_total=False."""
+        collector = PrometheusCollector()
+        tasks = (_make_task(status="created"),)
+        state = _mock_app_state(has_task_engine=True, tasks=tasks)
+        await collector.refresh(state)
+        list_tasks = cast(
+            AsyncMock, state.slice(EngineStateSlice).task_engine
+        ).list_tasks
+        list_tasks.assert_awaited_once_with(include_total=False)
 
 
 @pytest.mark.unit
@@ -568,211 +608,6 @@ class TestPrometheusCollectorDailyBudget:
 
 
 @pytest.mark.unit
-class TestPrometheusCollectorAgentCost:
-    """Tests for per-agent cost and budget utilization metrics."""
-
-    async def test_agent_cost_total_per_agent(self) -> None:
-        """Each active agent gets its own cost_total gauge."""
-        collector = PrometheusCollector()
-        agents = (
-            _make_agent(name="alice"),
-            _make_agent(name="bob"),
-        )
-        state = _mock_app_state(
-            has_cost_tracker=True,
-            has_agent_registry=True,
-            agents=agents,
-            agent_costs={"alice": 12.5, "bob": 3.0},
-            budget_total_monthly=100.0,
-        )
-        await collector.refresh(state)
-        output = generate_latest(collector.registry).decode()
-        assert 'synthorg_agent_cost_total{agent_id="alice"}' in output
-        assert 'synthorg_agent_cost_total{agent_id="bob"}' in output
-        assert "12.5" in output
-        assert "3.0" in output
-
-    async def test_agent_budget_percent_per_agent(self) -> None:
-        """Per-agent daily cost / per_agent_daily_limit * 100."""
-        collector = PrometheusCollector()
-        agents = (_make_agent(name="alice"),)
-        state = _mock_app_state(
-            has_cost_tracker=True,
-            has_agent_registry=True,
-            agents=agents,
-            agent_daily_costs={"alice": 4.0},
-            budget_total_monthly=100.0,
-            per_agent_daily_limit=10.0,
-        )
-        await collector.refresh(state)
-        output = generate_latest(collector.registry).decode()
-        assert 'synthorg_agent_budget_used_percent{agent_id="alice"} 40.0' in output
-
-    async def test_agent_cost_clears_stale_labels(self) -> None:
-        """Agents that disappear drop from the gauge."""
-        collector = PrometheusCollector()
-        # First scrape: two agents.
-        agents_v1 = (
-            _make_agent(name="alice"),
-            _make_agent(name="bob"),
-        )
-        state_v1 = _mock_app_state(
-            has_cost_tracker=True,
-            has_agent_registry=True,
-            agents=agents_v1,
-            agent_costs={"alice": 1.0, "bob": 2.0},
-            budget_total_monthly=100.0,
-        )
-        await collector.refresh(state_v1)
-        output_v1 = generate_latest(collector.registry).decode()
-        assert 'agent_id="bob"' in output_v1
-
-        # Second scrape: only alice.
-        agents_v2 = (_make_agent(name="alice"),)
-        state_v2 = _mock_app_state(
-            has_cost_tracker=True,
-            has_agent_registry=True,
-            agents=agents_v2,
-            agent_costs={"alice": 1.0},
-            budget_total_monthly=100.0,
-        )
-        await collector.refresh(state_v2)
-        output_v2 = generate_latest(collector.registry).decode()
-        cost_lines = [
-            ln
-            for ln in output_v2.splitlines()
-            if ln.startswith("synthorg_agent_cost_total{")
-        ]
-        assert len(cost_lines) > 0
-        assert all('agent_id="alice"' in ln for ln in cost_lines)
-        assert not any('agent_id="bob"' in ln for ln in cost_lines)
-
-    async def test_agent_cost_skipped_when_no_agents(self) -> None:
-        collector = PrometheusCollector()
-        state = _mock_app_state(
-            has_cost_tracker=True,
-            has_agent_registry=False,
-            budget_total_monthly=100.0,
-        )
-        await collector.refresh(state)
-        output = generate_latest(collector.registry).decode()
-        assert "synthorg_agent_cost_total{" not in output
-
-    async def test_agent_cost_skipped_when_no_cost_tracker(self) -> None:
-        collector = PrometheusCollector()
-        agents = (_make_agent(name="alice"),)
-        state = _mock_app_state(
-            has_cost_tracker=False,
-            has_agent_registry=True,
-            agents=agents,
-        )
-        await collector.refresh(state)
-        output = generate_latest(collector.registry).decode()
-        assert "synthorg_agent_cost_total{" not in output
-
-    async def test_agent_budget_percent_skipped_when_no_limit(self) -> None:
-        """No per_agent_daily_limit -> cost_total set, budget_percent not."""
-        collector = PrometheusCollector()
-        agents = (_make_agent(name="alice"),)
-        state = _mock_app_state(
-            has_cost_tracker=True,
-            has_agent_registry=True,
-            agents=agents,
-            agent_costs={"alice": 5.0},
-            agent_daily_costs={"alice": 2.0},
-            budget_total_monthly=100.0,
-            per_agent_daily_limit=0.0,
-        )
-        await collector.refresh(state)
-        output = generate_latest(collector.registry).decode()
-        assert 'synthorg_agent_cost_total{agent_id="alice"}' in output
-        budget_lines = [
-            ln
-            for ln in output.splitlines()
-            if ln.startswith("synthorg_agent_budget_used_percent{")
-        ]
-        assert len(budget_lines) == 0
-
-    async def test_agent_cost_skipped_when_agents_empty(self) -> None:
-        """Empty agents tuple with both services available still skips."""
-        collector = PrometheusCollector()
-        state = _mock_app_state(
-            has_cost_tracker=True,
-            has_agent_registry=True,
-            agents=(),
-            budget_total_monthly=100.0,
-        )
-        await collector.refresh(state)
-        output = generate_latest(collector.registry).decode()
-        assert "synthorg_agent_cost_total{" not in output
-
-    async def test_agent_cost_error_clears_gauges(self) -> None:
-        """Exception during agent cost fetch clears both gauges."""
-        collector = PrometheusCollector()
-        agents = (_make_agent(name="alice"),)
-        state = _mock_app_state(
-            has_cost_tracker=True,
-            has_agent_registry=True,
-            agents=agents,
-            agent_costs={"alice": 5.0},
-            budget_total_monthly=100.0,
-        )
-        # Successful first scrape.
-        await collector.refresh(state)
-        output_v1 = generate_latest(collector.registry).decode()
-        assert 'synthorg_agent_cost_total{agent_id="alice"}' in output_v1
-
-        # Second scrape: agent cost query fails.
-        cast(
-            AsyncMock, state.slice(BudgetStateSlice).cost_tracker
-        ).get_agent_cost = AsyncMock(
-            side_effect=RuntimeError("db error"),
-        )
-        await collector.refresh(state)
-        output_v2 = generate_latest(collector.registry).decode()
-        cost_lines = [
-            ln
-            for ln in output_v2.splitlines()
-            if ln.startswith("synthorg_agent_cost_total{")
-        ]
-        # Gauges were cleared before the error; no labels remain.
-        assert len(cost_lines) == 0
-
-    async def test_agent_cost_clears_on_empty_agents_second_scrape(
-        self,
-    ) -> None:
-        """Gauges cleared when agents disappear between scrapes."""
-        collector = PrometheusCollector()
-        agents = (_make_agent(name="alice"),)
-        state_v1 = _mock_app_state(
-            has_cost_tracker=True,
-            has_agent_registry=True,
-            agents=agents,
-            agent_costs={"alice": 5.0},
-            budget_total_monthly=100.0,
-        )
-        await collector.refresh(state_v1)
-        output_v1 = generate_latest(collector.registry).decode()
-        assert 'synthorg_agent_cost_total{agent_id="alice"}' in output_v1
-
-        # Second scrape: no agents.
-        state_v2 = _mock_app_state(
-            has_cost_tracker=True,
-            has_agent_registry=True,
-            agents=(),
-            budget_total_monthly=100.0,
-        )
-        await collector.refresh(state_v2)
-        output_v2 = generate_latest(collector.registry).decode()
-        cost_lines = [
-            ln
-            for ln in output_v2.splitlines()
-            if ln.startswith("synthorg_agent_cost_total{")
-        ]
-        assert len(cost_lines) == 0
-
-
-@pytest.mark.unit
 class TestPrometheusCollectorErrorPaths:
     """Each metric fetcher swallows non-critical failures so one broken
     source does not abort the whole scrape."""
@@ -791,6 +626,9 @@ class TestPrometheusCollectorErrorPaths:
 
     def test_pg_pool_stats_failure_logs_redacted_context(self) -> None:
         collector = PrometheusCollector()
+        # Bare MagicMock fakes the postgres backend's private ``_pool`` so the
+        # ``get_stats`` failure path is exercised through the typeguard
+        # boundary that a SimpleNamespace would not satisfy.
         backend = MagicMock()
         backend.kind = "postgres"
         pool = MagicMock()

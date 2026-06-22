@@ -42,11 +42,13 @@ export async function getProjectDoc(
 export async function getProjectDocHistory(
   projectId: string,
   slug: string,
-): Promise<readonly DocVersion[]> {
-  const response = await apiClient.get<ApiResponse<readonly DocVersion[]>>(
+  params?: { cursor?: string | null; limit?: number },
+): Promise<PaginatedResult<DocVersion>> {
+  const response = await apiClient.get<PaginatedResponse<DocVersion>>(
     `/projects/${encodeURIComponent(projectId)}/docs/${encodeURIComponent(slug)}/history`,
+    { params },
   )
-  return unwrap(response)
+  return unwrapPaginated<DocVersion>(response)
 }
 
 export async function searchProjectDocs(

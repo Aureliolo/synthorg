@@ -17,6 +17,7 @@ read path await-free.
 import asyncio
 from collections.abc import Awaitable, Callable
 
+from synthorg.core.normalization import normalize_identifier
 from synthorg.engine.strategy.active_principle import (
     ActivePrinciple,
     ActivePrincipleProvider,
@@ -31,15 +32,6 @@ logger = get_logger(__name__)
 
 #: Async loader returning the full active-principle snapshot.
 ActivePrincipleLoader = Callable[[], Awaitable[tuple[ActivePrinciple, ...]]]
-
-
-def _normalise(value: str | None) -> str | None:
-    """Lower-case and strip a scope name for case-insensitive matching.
-
-    Returns:
-        The normalised name, or ``None`` when *value* is ``None``.
-    """
-    return None if value is None else value.strip().casefold()
 
 
 def _in_scope(
@@ -57,7 +49,7 @@ def _in_scope(
     """
     if principle.scope_kind is ScopeKind.ALL:
         return True
-    scope_key = _normalise(principle.scope)
+    scope_key = normalize_identifier(principle.scope)
     if principle.scope_kind is ScopeKind.ROLE:
         return role_key is not None and scope_key == role_key
     return dept_key is not None and scope_key == dept_key
@@ -106,8 +98,8 @@ class CachedActivePrincipleProvider:
         Returns:
             The in-scope principles, in snapshot (newest-first) order.
         """
-        role_key = _normalise(role)
-        dept_key = _normalise(department)
+        role_key = normalize_identifier(role) if role is not None else None
+        dept_key = normalize_identifier(department) if department is not None else None
         return tuple(
             principle
             for principle in self._snapshot

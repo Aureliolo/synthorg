@@ -185,9 +185,9 @@ function useBrainHistory(
     controllerRef.current?.abort()
     const controller = new AbortController()
     controllerRef.current = controller
-    getProjectBrainHistory(projectId, entryId, controller.signal)
-      .then((versions) => {
-        setResult({ entryId, versions, error: null })
+    getProjectBrainHistory(projectId, entryId, undefined, controller.signal)
+      .then((page) => {
+        setResult({ entryId, versions: page.data, error: null })
       })
       .catch((err: unknown) => {
         if (isAxiosError(err) && err.code === 'ERR_CANCELED') return

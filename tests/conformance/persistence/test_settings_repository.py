@@ -364,3 +364,78 @@ class TestSettingsListAndDelete:
         """An empty namespace returns an empty tuple, never raises."""
         removed = await backend.settings.delete_namespace_returning_keys(NS)
         assert removed == ()
+
+
+@pytest.mark.integration
+class TestSettingsSetMany:
+    """Conformance for the transactional multi-row CAS upsert.
+
+    Exhaustive CAS-edge coverage lives in the integration suite; these two
+    cases give ``check_dual_backend_test_parity.py``'s coverage pass a
+    ``backend.settings.set_many`` usage so the method is gated on both
+    backends, not just exercised via the concrete-backend integration suite.
+    """
+
+    async def test_set_many_writes_all_rows(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        ok = await backend.settings.set_many(
+            [
+                SettingRow(
+                    namespace=NS,
+                    key=NotBlankStr("a"),
+                    value="1",
+                    updated_at=_ts(2026, 1, 1),
+                ),
+                SettingRow(
+                    namespace=NS,
+                    key=NotBlankStr("b"),
+                    value="2",
+                    updated_at=_ts(2026, 1, 1),
+                ),
+            ],
+        )
+        assert ok is True
+        row_a = await backend.settings.get((NS, NotBlankStr("a")))
+        row_b = await backend.settings.get((NS, NotBlankStr("b")))
+        assert row_a is not None
+        assert row_a.value == "1"
+        assert row_b is not None
+        assert row_b.value == "2"
+
+    async def test_set_many_cas_conflict_rolls_back(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        await backend.settings.set_if_unchanged(
+            SettingRow(
+                namespace=NS,
+                key=NotBlankStr("c"),
+                value="orig",
+                updated_at=_ts(2026, 1, 1),
+            ),
+            expected_updated_at="",
+        )
+        ok = await backend.settings.set_many(
+            [
+                SettingRow(
+                    namespace=NS,
+                    key=NotBlankStr("c"),
+                    value="new",
+                    updated_at=_ts(2026, 2, 1),
+                ),
+                SettingRow(
+                    namespace=NS,
+                    key=NotBlankStr("d"),
+                    value="new",
+                    updated_at=_ts(2026, 2, 1),
+                ),
+            ],
+            expected_updated_at_map={(NS, NotBlankStr("c")): _ts(2020, 1, 1)},
+        )
+        assert ok is False
+        row_c = await backend.settings.get((NS, NotBlankStr("c")))
+        assert row_c is not None
+        assert row_c.value == "orig"
+        assert await backend.settings.get((NS, NotBlankStr("d"))) is None

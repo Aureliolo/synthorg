@@ -24,6 +24,7 @@ from synthorg.observability.events.setup import (
     SETUP_PROVIDER_RELOAD_FAILED,
 )
 from synthorg.persistence.state import PersistenceStateSlice
+from synthorg.providers.management._persistence import resolve_retry_max_attempts
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
@@ -61,10 +62,18 @@ async def post_setup_reinit(app_state: AppState) -> None:
 
     # 1. Reload provider registry from persisted config.
     try:
-        provider_configs = await config_resolver_of(app_state).get_provider_configs()
+        from synthorg.integrations.state import (  # noqa: PLC0415
+            provider_credential_catalog_of,
+        )
+
+        resolver = config_resolver_of(app_state)
+        provider_configs = await resolver.get_provider_configs()
         if provider_configs:
+            retry_max_attempts = await resolve_retry_max_attempts(resolver)
             new_registry = ProviderRegistry.from_config(
                 provider_configs,
+                connection_catalog=provider_credential_catalog_of(app_state),
+                retry_max_attempts=retry_max_attempts,
             )
             app_state.swap_provider_registry(new_registry)
     except Exception as exc:

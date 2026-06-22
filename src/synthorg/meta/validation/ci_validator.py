@@ -12,6 +12,7 @@ from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.meta.models import CIValidationResult
+from synthorg.meta.validation.scope_validator import ScopeValidator
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_CI_VALIDATION_FAILED,
@@ -32,29 +33,47 @@ class LocalCIValidator:
     Each step runs as an async subprocess. Steps short-circuit on
     failure: if lint fails, type-check and tests are skipped.
 
+    The validator owns its ``project_root`` (validated absolute at
+    construction, never a process-CWD default that could point the
+    subprocess at the wrong checkout) and the same :class:`ScopeValidator`
+    envelope the strategy enforces, so an LLM-authored ``changed_files``
+    entry resolving outside the modification scope is never forwarded into
+    the ruff / mypy / pytest argv.
+
     Args:
+        project_root: Absolute path to the project checkout.
+        scope_validator: The modification-scope envelope; changed files
+            outside it are excluded from every subprocess.
         timeout_seconds: Maximum wall-clock time for each subprocess.
+
+    Raises:
+        ValueError: When ``project_root`` is not an absolute path.
     """
 
     def __init__(
         self,
         *,
+        project_root: Path,
+        scope_validator: ScopeValidator,
         timeout_seconds: int = _DEFAULT_TIMEOUT_SECONDS,
         clock: Clock | None = None,
     ) -> None:
+        if not project_root.is_absolute():
+            msg = f"project_root must be an absolute path, got {project_root!r}"
+            raise ValueError(msg)
+        self._project_root = project_root
+        self._scope_validator = scope_validator
         self._timeout = timeout_seconds
         self._clock = clock or SystemClock()
 
     async def validate(
         self,
         *,
-        project_root: Path,
         changed_files: tuple[str, ...],
     ) -> CIValidationResult:
         """Run lint, type-check, and tests against changed files.
 
         Args:
-            project_root: Absolute path to the project root.
             changed_files: Relative paths of files that changed.
 
         Returns:
@@ -68,13 +87,12 @@ class LocalCIValidator:
         errors: list[str] = []
 
         # Step 1: Lint.
-        lint_ok = await self._run_lint(project_root, changed_files, errors)
+        lint_ok = await self._run_lint(changed_files, errors)
 
         # Step 2: Type-check (skip if lint failed).
         typecheck_ok = False
         if lint_ok:
             typecheck_ok = await self._run_typecheck(
-                project_root,
                 changed_files,
                 errors,
             )
@@ -83,7 +101,6 @@ class LocalCIValidator:
         tests_ok = False
         if lint_ok and typecheck_ok:
             tests_ok = await self._run_tests(
-                project_root,
                 changed_files,
                 errors,
             )
@@ -114,7 +131,6 @@ class LocalCIValidator:
 
     async def _run_lint(
         self,
-        project_root: Path,
         changed_files: tuple[str, ...],
         errors: list[str],
     ) -> bool:
@@ -123,20 +139,21 @@ class LocalCIValidator:
         Returns:
             ``True`` or ``False`` reflecting the condition.
         """
-        py_files = _existing_py_files(project_root, changed_files)
+        py_files = _existing_py_files(
+            self._project_root, changed_files, self._scope_validator
+        )
         if not py_files:
             return True
         cmd = ["uv", "run", "ruff", "check", *py_files]
         return await self._run_subprocess(
             cmd,
-            project_root,
+            self._project_root,
             "lint",
             errors,
         )
 
     async def _run_typecheck(
         self,
-        project_root: Path,
         changed_files: tuple[str, ...],
         errors: list[str],
     ) -> bool:
@@ -145,20 +162,21 @@ class LocalCIValidator:
         Returns:
             ``True`` or ``False`` reflecting the condition.
         """
-        py_files = _existing_py_files(project_root, changed_files)
+        py_files = _existing_py_files(
+            self._project_root, changed_files, self._scope_validator
+        )
         if not py_files:
             return True
         cmd = ["uv", "run", "mypy", *py_files]
         return await self._run_subprocess(
             cmd,
-            project_root,
+            self._project_root,
             "typecheck",
             errors,
         )
 
     async def _run_tests(
         self,
-        project_root: Path,
         changed_files: tuple[str, ...],
         errors: list[str],
     ) -> bool:
@@ -169,7 +187,9 @@ class LocalCIValidator:
         """
         # Discover test files: for each src file, look for a
         # corresponding test file in the tests/ directory.
-        test_files = _discover_test_files(project_root, changed_files)
+        test_files = _discover_test_files(
+            self._project_root, changed_files, self._scope_validator
+        )
         if not test_files:
             # Fail closed: generated code without matching tests must
             # not pass the CI gate silently.
@@ -196,7 +216,7 @@ class LocalCIValidator:
         ]
         return await self._run_subprocess(
             cmd,
-            project_root,
+            self._project_root,
             "tests",
             errors,
         )
@@ -354,20 +374,28 @@ def _is_safe_ci_path(project_root: Path, rel: str) -> bool:
 def _existing_py_files(
     project_root: Path,
     changed_files: tuple[str, ...],
+    scope_validator: ScopeValidator,
 ) -> list[str]:
-    """Filter changed files to existing, injection-safe Python files.
+    """Filter changed files to existing, injection-safe, in-scope Python files.
 
     Args:
         project_root: Absolute path to the project root.
         changed_files: Relative paths of changed files.
+        scope_validator: Modification-scope envelope; a file outside it is
+            excluded so the subprocess never lints / type-checks a path the
+            strategy was never permitted to touch.
 
     Returns:
-        Resolved absolute paths of changed .py files that exist on disk
-        and pass :func:`_is_safe_ci_path`.
+        Resolved absolute paths of changed .py files that exist on disk,
+        pass :func:`_is_safe_ci_path`, and fall within the allowed scope.
     """
     safe: list[str] = []
     for f in changed_files:
-        if not (_is_safe_ci_path(project_root, f) and (project_root / f).exists()):
+        if not (
+            _is_safe_ci_path(project_root, f)
+            and scope_validator.is_path_allowed(f)
+            and (project_root / f).exists()
+        ):
             continue
         # Forward the validated, fully-resolved absolute path so the
         # subprocess opens exactly the file the safety check approved,
@@ -380,6 +408,7 @@ def _existing_py_files(
 def _discover_test_files(
     project_root: Path,
     changed_files: tuple[str, ...],
+    scope_validator: ScopeValidator,
 ) -> list[str]:
     """Map changed source files to their test file paths.
 
@@ -387,9 +416,16 @@ def _discover_test_files(
     ``tests/unit/meta/test_bar.py`` or
     ``tests/unit/meta/foo/test_bar.py``.
 
+    Test paths are derived from -- not supplied alongside -- the source
+    files, so they are trusted by construction once the source they derive
+    from is in scope; the envelope check is therefore applied to the source
+    file, not the ``tests/`` path (which the allowlist never covers).
+
     Args:
         project_root: Absolute path to the project root.
         changed_files: Relative paths of changed source files.
+        scope_validator: Modification-scope envelope; a source file outside
+            it derives no test target.
 
     Returns:
         List of test file paths that exist on disk.
@@ -399,6 +435,8 @@ def _discover_test_files(
     for src in changed_files:
         parts = Path(src).parts
         if not parts or not parts[-1].endswith(".py"):
+            continue
+        if not scope_validator.is_path_allowed(src):
             continue
         stem = parts[-1]
         test_name = f"test_{stem}"

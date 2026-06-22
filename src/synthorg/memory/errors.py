@@ -69,6 +69,16 @@ class FineTuneDependencyError(MemoryError):
     """
 
 
+class MemoryEmbedderUnavailableError(MemoryError):
+    """Raised when a neural text embedder's optional extra is not installed.
+
+    The ``sentence_transformer`` embedder backs the optional
+    ``sentence-transformers`` extra; this signals the extra is absent so a
+    caller can degrade to the dependency-free hashing embedder (or surface
+    its own layer-specific error).
+    """
+
+
 class FineTuneCancelledError(MemoryError):
     """Raised when a fine-tuning pipeline run is cancelled."""
 

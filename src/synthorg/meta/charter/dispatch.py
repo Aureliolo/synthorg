@@ -52,6 +52,10 @@ from synthorg.observability.events.charter import (
     CHARTER_NOT_FOUND,
     CHARTER_PROJECT_ALREADY_EXISTS,
     CHARTER_STATE_INCONSISTENT,
+    CHARTER_STATUS_TRANSITIONED,
+)
+from synthorg.observability.events.chief_of_staff import (
+    COS_CONVERSATION_STATUS_TRANSITIONED,
 )
 from synthorg.persistence.charter_protocol import CharterRepository
 from synthorg.persistence.conversation_protocol import ConversationRepository
@@ -440,6 +444,17 @@ class CharterDispatcher:
             approved_by=approved_by,
             task_id=task_id,
         )
+        # Emit the generic status-transition event too (the CAS write above
+        # succeeded), so a charter approval appears in the
+        # ``charter.status_transitioned`` stream like cancellations do.
+        # CHARTER_APPROVED stays for the dispatch-specific observers.
+        logger.info(
+            CHARTER_STATUS_TRANSITIONED,
+            charter_id=charter.id,
+            from_state=CharterStatus.DRAFTED.value,
+            to_state=CharterStatus.APPROVED.value,
+            decided_by=approved_by,
+        )
 
     async def _close_conversation(
         self, conversation_id: NotBlankStr, now: datetime
@@ -453,12 +468,19 @@ class CharterDispatcher:
         see the dispatch attempt, then return.
         """
         try:
-            await self._conversation_repo.transition_if(
+            closed = await self._conversation_repo.transition_if(
                 conversation_id,
                 from_state=ConversationStatus.ACTIVE,
                 to_state=ConversationStatus.CLOSED,
                 updated_at=now.isoformat(),
             )
+            if closed:
+                logger.info(
+                    COS_CONVERSATION_STATUS_TRANSITIONED,
+                    conversation_id=conversation_id,
+                    from_state=ConversationStatus.ACTIVE.value,
+                    to_state=ConversationStatus.CLOSED.value,
+                )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(

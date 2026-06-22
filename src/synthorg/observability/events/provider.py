@@ -72,6 +72,7 @@ PROVIDER_CONFIG_SERIALIZE_FAILED: Final[str] = (
 )
 PROVIDER_CONFIG_PERSIST_FAILED: Final[str] = "provider.management.config_persist_failed"
 PROVIDER_HOT_RELOAD_FAILED: Final[str] = "provider.management.hot_reload_failed"
+PROVIDER_RETRY_RESOLVE_FAILED: Final[str] = "provider.management.retry_resolve_failed"
 PROVIDER_AUDIT_WRITE_FAILED: Final[str] = "provider.audit.write_failed"
 PROVIDER_MODEL_ADDED: Final[str] = "provider.management.model_added"
 PROVIDER_MODELS_SYNCED: Final[str] = "provider.management.models_synced"

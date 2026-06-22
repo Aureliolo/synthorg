@@ -186,8 +186,7 @@ class TestClientIp:
 
     def test_cached_networks_tuple_is_preferred(self) -> None:
         # When app.state carries the pre-parsed tuple, the helper uses
-        # it directly and skips on-the-fly parsing -- the perf fix for
-        # Gemini's "parse per request" finding.
+        # it directly and skips re-parsing the networks on every request.
         cached = parse_trusted_networks(frozenset({"10.0.0.0/8"}))
         conn = _connection(
             peer="10.0.0.1",

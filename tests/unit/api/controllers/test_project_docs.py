@@ -88,13 +88,23 @@ class _PaginatingDocsService:
     on every request, so this fake (which honours the offset) surfaces the bug.
     """
 
-    def __init__(self, items: tuple[DocSummary, ...]) -> None:
+    def __init__(
+        self,
+        items: tuple[DocSummary, ...],
+        versions: tuple[DocVersion, ...] = (),
+    ) -> None:
         self._items = items
+        self._versions = versions
 
     async def list_docs(
         self, *, limit: int, offset: int = 0, **_: object
     ) -> tuple[DocSummary, ...]:
         return self._items[offset : offset + limit]
+
+    async def history(
+        self, *, limit: int, offset: int = 0, **_: object
+    ) -> tuple[DocVersion, ...]:
+        return self._versions[offset : offset + limit]
 
 
 def _as_docs_service(fake: object) -> DocsService | None:
@@ -227,3 +237,52 @@ class TestProjectDocsController:
         second_body = second.json()
         assert [d["slug"] for d in second_body["data"]] == ["doc-2", "doc-3"]
         assert second_body["pagination"]["has_more"] is True
+
+    async def test_history_pagination_reaches_second_page(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """Following the history cursor returns the next git revisions.
+
+        Structurally identical to the brain history guard: a controller that
+        drops the decoded offset would silently re-read the first revisions on
+        every page and report ``has_more`` forever.
+        """
+        versions = tuple(
+            DocVersion(
+                commit_sha=NotBlankStr(f"{i:040d}"),
+                author_agent_id=NotBlankStr("docs_engine"),
+                committed_at=_NOW,
+                summary=NotBlankStr(f"rev {i}"),
+            )
+            for i in range(5)
+        )
+        with _with_docs_service(
+            async_test_client, _PaginatingDocsService((), versions)
+        ):
+            first = await async_test_client.get(
+                "/api/v1/projects/proj-1/docs/q2-status/history",
+                params={"limit": 2},
+            )
+            assert first.status_code == 200
+            first_body = first.json()
+            assert [v["summary"] for v in first_body["data"]] == ["rev 0", "rev 1"]
+            assert first_body["pagination"]["has_more"] is True
+            cursor = first_body["pagination"]["next_cursor"]
+            assert cursor is not None
+            second = await async_test_client.get(
+                "/api/v1/projects/proj-1/docs/q2-status/history",
+                params={"limit": 2, "cursor": cursor},
+            )
+        assert second.status_code == 200
+        assert [v["summary"] for v in second.json()["data"]] == ["rev 2", "rev 3"]
+
+    async def test_history_rejects_tampered_cursor(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """A forged history cursor fails the HMAC check and 400s."""
+        with _with_docs_service(async_test_client, _FakeDocsService()):
+            resp = await async_test_client.get(
+                "/api/v1/projects/proj-1/docs/q2-status/history",
+                params={"cursor": "not-a-real-cursor"},
+            )
+        assert resp.status_code == 400

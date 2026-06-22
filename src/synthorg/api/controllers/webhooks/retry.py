@@ -6,11 +6,7 @@ from litestar.datastructures import State
 
 from synthorg._core.features import require_service
 from synthorg.api.api_core_state import idempotency_service_of
-from synthorg.api.controllers.webhooks._retry_helpers import (
-    _assert_receipt_retryable,
-    _load_payload_from_receipt,
-    _retry_publish_and_transition,
-)
+from synthorg.api.controllers.webhooks import _shared
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_write_access
 from synthorg.api.path_params import PathId
@@ -18,10 +14,10 @@ from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.errors import WebhookProcessingError
+from synthorg.integrations.state import webhook_receipt_service_of
 from synthorg.observability import get_logger
 from synthorg.observability.events.idempotency import IDEMPOTENCY_CLAIM_IN_FLIGHT
 from synthorg.observability.events.integrations import WEBHOOK_RECEIPT_NOT_FOUND
-from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)
 
@@ -58,10 +54,10 @@ class WebhooksRetryController(Controller):
         idempotency cache instead of attempting a second transition
         that the CAS guard would reject anyway.
 
-        Heavy lifting lives in module-level helpers
-        (``_load_payload_from_receipt``, ``_assert_receipt_retryable``,
-        ``_transition_webhook_receipt_status``) so this orchestrator
-        stays under the repository's 50-line function cap.
+        Heavy lifting lives in :class:`WebhookReceiptService` (receipt
+        lookup, the retryable guard, payload decode, and the CAS transition
+        chain) so this orchestrator only owns the idempotency wrapping and
+        the bus-publish bridge it injects into the service.
 
         Returns:
             ``ApiResponse[dict[str, object]]`` instance.
@@ -72,8 +68,8 @@ class WebhooksRetryController(Controller):
             WebhookProcessingError: If the cached idempotent response is
                 not a JSON object (corrupt cache entry).
         """
-        persistence = persistence_of(state["app_state"])
-        receipt = await persistence.webhook_receipts.get(NotBlankStr(receipt_id))
+        receipt_service = webhook_receipt_service_of(state["app_state"])
+        receipt = await receipt_service.get(NotBlankStr(receipt_id))
         if receipt is None:
             logger.warning(
                 WEBHOOK_RECEIPT_NOT_FOUND,
@@ -95,13 +91,25 @@ class WebhooksRetryController(Controller):
             # claim's cached result rather than getting a 409 from a
             # pre-claim retryability check against the now-mutated row.
             """Return do retry."""
-            _assert_receipt_retryable(receipt)
-            payload = _load_payload_from_receipt(receipt)
-            return await _retry_publish_and_transition(
-                persistence=persistence,
-                bus=bus,
-                receipt=receipt,
-                payload=dict(payload),
+            receipt_service.assert_retryable(receipt)
+            payload = receipt_service.load_payload(receipt)
+
+            async def _publish() -> dict[str, object]:
+                # The bus-publish bridge lives in the API layer; injecting it
+                # keeps the integrations-layer service free of an upward
+                # import. Module-qualified so the ingest and retry paths share
+                # ONE canonical patch target for tests.
+                return await _shared._publish_webhook_event_and_log(  # noqa: SLF001
+                    bus=bus,
+                    connection_name=str(receipt.connection_name),
+                    event_type=receipt.event_type or "",
+                    payload=dict(payload),
+                    dedup_source="manual_retry",
+                )
+
+            return await receipt_service.retry_and_publish(
+                receipt,
+                publish=_publish,
             )
 
         scope = NotBlankStr("webhooks:retry")

@@ -7,10 +7,11 @@ selected by the ``embedder_strategy`` discriminator:
 * ``hashing`` (default): :class:`HashingTextEmbedder`, a dependency-free
   deterministic feature-hashing embedder (numpy only). Lexical rather
   than semantic, but always available and reproducible.
-* ``sentence_transformer``: :class:`SentenceTransformerEmbedder`, a real
-  neural embedder behind the optional ``sentence-transformers`` extra; it
-  raises :class:`MeetingEmbedderUnavailableError` when the extra is
-  absent.
+* ``sentence_transformer``: a real neural embedder behind the optional
+  ``sentence-transformers`` extra. The adapter lives in
+  ``memory.embedding`` (the canonical home for the sentence-transformers
+  integration); the factory here builds it and translates a missing extra
+  into :class:`MeetingEmbedderUnavailableError` for the detector's contract.
 
 The protocol lets operators swap a neural backend in without touching the
 detector, while keeping the default install dependency-light.
@@ -26,7 +27,6 @@ from synthorg.communication.meeting.errors import MeetingEmbedderUnavailableErro
 from synthorg.core.registry.strategy import StrategyRegistry
 
 _HASH_DIMS: Final[int] = 256
-_DEFAULT_ST_MODEL: Final[str] = "all-MiniLM-L6-v2"
 _TOKEN_PATTERN: Final[re.Pattern[str]] = re.compile(r"\w+")
 
 
@@ -101,40 +101,6 @@ class HashingTextEmbedder:
         return tuple((vec / norm).tolist())
 
 
-class SentenceTransformerEmbedder:
-    """Neural embedder backed by the optional ``sentence-transformers`` extra.
-
-    Args:
-        model_name: The sentence-transformers model id to load.
-
-    Raises:
-        MeetingEmbedderUnavailableError: When the ``sentence-transformers``
-            extra is not installed.
-    """
-
-    def __init__(self, *, model_name: str = _DEFAULT_ST_MODEL) -> None:
-        try:
-            from sentence_transformers import (  # noqa: PLC0415
-                SentenceTransformer,
-            )
-        except ImportError as exc:
-            msg = (
-                "sentence-transformers extra not installed; the "
-                "'sentence_transformer' embedder strategy is unavailable"
-            )
-            raise MeetingEmbedderUnavailableError(msg) from exc
-        self._model = SentenceTransformer(model_name)
-
-    def embed(self, text: str) -> tuple[float, ...]:
-        """Embed *text* with the loaded sentence-transformers model.
-
-        Returns:
-            The model's normalised embedding vector.
-        """
-        vector = self._model.encode(text, normalize_embeddings=True)
-        return tuple(vector.tolist())
-
-
 def _build_hashing(**_kwargs: object) -> TextEmbedder:
     """Build the hashing embedder (the dependency-free default).
 
@@ -147,10 +113,28 @@ def _build_hashing(**_kwargs: object) -> TextEmbedder:
 def _build_sentence_transformer(**_kwargs: object) -> TextEmbedder:
     """Build the optional sentence-transformers embedder.
 
+    Imports the shared adapter from ``memory.embedding`` so the SDK is
+    bound at that boundary, not here, and translates a missing extra into
+    the meeting-layer error the detector contract documents.
+
     Returns:
-        A :class:`SentenceTransformerEmbedder`.
+        The shared sentence-transformers embedder.
+
+    Raises:
+        MeetingEmbedderUnavailableError: When the ``sentence-transformers``
+            extra is not installed.
     """
-    return SentenceTransformerEmbedder()
+    from synthorg.memory.embedding.sentence_transformer import (  # noqa: PLC0415
+        SentenceTransformerEmbedder,
+    )
+    from synthorg.memory.errors import (  # noqa: PLC0415
+        MemoryEmbedderUnavailableError,
+    )
+
+    try:
+        return SentenceTransformerEmbedder()
+    except MemoryEmbedderUnavailableError as exc:
+        raise MeetingEmbedderUnavailableError(str(exc)) from exc
 
 
 _EMBEDDER_REGISTRY: StrategyRegistry[TextEmbedder] = StrategyRegistry(

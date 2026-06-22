@@ -4,17 +4,18 @@ import type {
   retryWebhookReceipt,
   WebhookReceipt,
 } from '@/api/endpoints/webhooks'
-import { successFor } from './helpers'
+import { emptyPage, paginatedFor, successFor } from './helpers'
 
 /**
  * Build a happy-path ``WebhookReceipt`` row for stories and tests.
- * Mirrors the backend Pydantic model field-for-field.
+ * Mirrors the backend Pydantic model field-for-field; ``id`` uses the
+ * backend UUID format so tests reflect production receipt identifiers.
  */
 function buildWebhookReceipt(
   overrides: Partial<WebhookReceipt> = {},
 ): WebhookReceipt {
   return {
-    id: 'whr-000000000001',
+    id: '00000000-0000-0000-0000-000000000001',
     connection_name: 'default-connection',
     event_type: 'workflow.executed',
     status: 'completed',
@@ -28,11 +29,11 @@ function buildWebhookReceipt(
 
 const defaultReceipts: WebhookReceipt[] = [
   buildWebhookReceipt({
-    id: 'whr-000000000001',
+    id: '00000000-0000-0000-0000-000000000001',
     status: 'completed',
   }),
   buildWebhookReceipt({
-    id: 'whr-000000000002',
+    id: '00000000-0000-0000-0000-000000000002',
     status: 'failed',
     processed_at: null,
     error: 'connection refused',
@@ -41,7 +42,12 @@ const defaultReceipts: WebhookReceipt[] = [
 
 export const webhooksHandlers = [
   http.get('/api/v1/webhooks/:connectionName/activity', () =>
-    HttpResponse.json(successFor<typeof listWebhookActivity>(defaultReceipts)),
+    HttpResponse.json(
+      paginatedFor<typeof listWebhookActivity>({
+        ...emptyPage<WebhookReceipt>(),
+        data: defaultReceipts,
+      }),
+    ),
   ),
   http.post('/api/v1/webhooks/receipts/:receiptId/retry', ({ params }) =>
     HttpResponse.json(

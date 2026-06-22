@@ -6,6 +6,7 @@ import pytest
 import structlog
 
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
+from synthorg.core.resilience_config import RetryConfig
 from synthorg.observability.events.provider import (
     PROVIDER_DRIVER_NOT_REGISTERED,
     PROVIDER_REGISTRY_BUILT,
@@ -269,6 +270,76 @@ class TestRegistryFromConfig:
 
         driver = registry.get("example-provider")
         assert isinstance(driver, LiteLLMDriver)
+
+
+# ── retry_max_attempts global default ────────────────────────────
+
+
+@pytest.mark.unit
+class TestRegistryRetryMaxAttempts:
+    """The org-wide retry cap applies only when a provider omits ``retry``."""
+
+    def test_global_applies_when_provider_omits_retry(self) -> None:
+        providers = {"test-provider": _make_config(driver="stub")}
+
+        registry = ProviderRegistry.from_config(
+            providers,
+            factory_overrides={"stub": _StubDriver},
+            retry_max_attempts=7,
+        )
+
+        driver = registry.get("test-provider")
+        assert isinstance(driver, _StubDriver)
+        assert driver.config.retry.max_retries == 7
+
+    def test_per_provider_retry_overrides_global(self) -> None:
+        config = _make_config(driver="stub").model_copy(
+            update={"retry": RetryConfig(max_retries=5)},
+        )
+        providers = {"test-provider": config}
+
+        registry = ProviderRegistry.from_config(
+            providers,
+            factory_overrides={"stub": _StubDriver},
+            retry_max_attempts=7,
+        )
+
+        driver = registry.get("test-provider")
+        assert isinstance(driver, _StubDriver)
+        assert driver.config.retry.max_retries == 5
+
+    def test_no_global_leaves_provider_retry_untouched(self) -> None:
+        providers = {"test-provider": _make_config(driver="stub")}
+
+        registry = ProviderRegistry.from_config(
+            providers,
+            factory_overrides={"stub": _StubDriver},
+        )
+
+        driver = registry.get("test-provider")
+        assert isinstance(driver, _StubDriver)
+        assert driver.config.retry.max_retries == RetryConfig().max_retries
+
+    def test_global_applies_to_db_round_tripped_config(self) -> None:
+        """A config reconstructed via ``model_validate`` (hot-reload path)
+
+        marks every field as set, so ``model_fields_set`` would wrongly skip
+        the global. Detection by default-value comparison still applies it.
+        """
+        round_tripped = ProviderConfig.model_validate(
+            _make_config(driver="stub").model_dump(),
+        )
+        assert "retry" in round_tripped.model_fields_set
+
+        registry = ProviderRegistry.from_config(
+            {"test-provider": round_tripped},
+            factory_overrides={"stub": _StubDriver},
+            retry_max_attempts=7,
+        )
+
+        driver = registry.get("test-provider")
+        assert isinstance(driver, _StubDriver)
+        assert driver.config.retry.max_retries == 7
 
 
 # ── Immutability ─────────────────────────────────────────────────

@@ -9,12 +9,14 @@ import pytest
 
 from synthorg.communication.meeting.embedder import (
     HashingTextEmbedder,
-    SentenceTransformerEmbedder,
     build_text_embedder,
     cosine_similarity,
 )
 from synthorg.communication.meeting.errors import MeetingEmbedderUnavailableError
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
+from synthorg.memory.embedding.sentence_transformer import (
+    SentenceTransformerEmbedder,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -71,20 +73,6 @@ def _fake_sentence_transformers() -> types.ModuleType:
     return module
 
 
-class TestSentenceTransformerEmbedder:
-    def test_raises_when_extra_absent(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setitem(sys.modules, "sentence_transformers", None)
-        with pytest.raises(MeetingEmbedderUnavailableError):
-            SentenceTransformerEmbedder()
-
-    def test_embeds_when_extra_present(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setitem(
-            sys.modules, "sentence_transformers", _fake_sentence_transformers()
-        )
-        embedder = SentenceTransformerEmbedder(model_name="fake-model")
-        assert embedder.embed("anything") == (0.1, 0.2, 0.3)
-
-
 class TestBuildTextEmbedder:
     def test_hashing_is_default_backend(self) -> None:
         assert isinstance(build_text_embedder("hashing"), HashingTextEmbedder)
@@ -99,6 +87,14 @@ class TestBuildTextEmbedder:
             build_text_embedder("sentence_transformer"),
             SentenceTransformerEmbedder,
         )
+
+    def test_sentence_transformer_unavailable_raises_meeting_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The factory translates a missing extra into the meeting error."""
+        monkeypatch.setitem(sys.modules, "sentence_transformers", None)
+        with pytest.raises(MeetingEmbedderUnavailableError):
+            build_text_embedder("sentence_transformer")
 
     def test_unknown_strategy_raises(self) -> None:
         with pytest.raises(StrategyFactoryNotFoundError):

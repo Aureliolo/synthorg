@@ -7,6 +7,7 @@ from synthorg.observability.events.metrics import (
     CLIENT_DISCONNECTED,
     METRICS_SCRAPE_FAILED,
 )
+from synthorg.observability.prometheus_label_folds import fold_http_method
 from synthorg.observability.prometheus_labels import (
     VALID_API_ERROR_CATEGORIES,
     VALID_DISCONNECT_REASONS,
@@ -42,7 +43,9 @@ class _ApiRecordingMixin(_RecordingMetricsBase):
         the middleware resolves this via ``scope["route_handler"]``.
 
         Args:
-            method: HTTP method (uppercase, e.g. ``"GET"``).
+            method: HTTP method. An unrecognised verb folds to
+                ``"__other__"`` so an attacker-supplied request line cannot
+                mint an unbounded per-method series.
             route: Route template string; ``"__unmatched__"`` for 404s.
             status_code: Response status code (100-599).
             duration_sec: Wall-clock duration in seconds.
@@ -52,13 +55,14 @@ class _ApiRecordingMixin(_RecordingMetricsBase):
                 1xx-5xx, or ``duration_sec`` is negative, NaN, or
                 infinite.
         """
+        bounded_method = fold_http_method(method)
         sc = status_class(status_code)
         if sc not in VALID_STATUS_CLASSES:
             logger.warning(
                 API_REQUEST_VALIDATION_FAILED,
                 component="api_request",
                 reason="invalid_status_code",
-                method=method,
+                method=bounded_method,
                 route=route,
                 status_code=status_code,
             )
@@ -66,7 +70,7 @@ class _ApiRecordingMixin(_RecordingMetricsBase):
             raise ValueError(msg)
         require_non_negative("record_api_request: duration_sec", duration_sec)
         self._api_request_duration.labels(
-            method=method,
+            method=bounded_method,
             route=route,
             status_class=sc,
         ).observe(duration_sec)

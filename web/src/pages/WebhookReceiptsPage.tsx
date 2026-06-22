@@ -6,11 +6,12 @@
  * and the page surfaces every received event with its status,
  * payload size, and any backend-captured error.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AnimatePresence } from 'motion/react'
 import { useSearchParams } from 'react-router'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronUp, RefreshCw } from 'lucide-react'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
+import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
@@ -27,13 +28,9 @@ import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import { ROUTES } from '@/router/routes'
 import { formatDateTime } from '@/utils/format'
-import { getErrorMessage } from '@/utils/errors'
-import {
-  listWebhookActivity,
-  retryWebhookReceipt,
-  type WebhookReceipt,
-} from '@/api/endpoints/webhooks'
+import { retryWebhookReceipt, type WebhookReceipt } from '@/api/endpoints/webhooks'
 import { WebhookRetryBar } from './webhooks/WebhookRetryBar'
+import { isRetryable, useWebhookActivity } from './webhooks/useWebhookActivity'
 
 const log = createLogger('WebhookReceiptsPage')
 
@@ -60,13 +57,6 @@ function mapWebhookStatus(status: string): AgentRuntimeStatus {
   if (lower === 'failed' || lower === 'error') return 'error'
   if (lower === 'rejected' || lower === 'cancelled') return 'offline'
   return 'idle'
-}
-
-/** Statuses eligible for retry. */
-const RETRYABLE_STATUSES: ReadonlySet<string> = new Set(['failed', 'error', 'rejected'])
-
-function isRetryable(receipt: WebhookReceipt): boolean {
-  return RETRYABLE_STATUSES.has(receipt.status.toLowerCase())
 }
 
 function plural(n: number): string {
@@ -144,75 +134,6 @@ function useWebhookConnectionSelect(connections: ConnectionList): {
   )
 
   return { selected, setSelected, options }
-}
-
-interface WebhookActivity {
-  entries: readonly WebhookReceipt[]
-  loading: boolean
-  error: string | null
-  reload: () => Promise<void>
-  retryableIds: string[]
-}
-
-function useWebhookActivity(selected: string, selection: WebhookSelection): WebhookActivity {
-  const [entries, setEntries] = useState<readonly WebhookReceipt[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const requestSeqRef = useRef(0)
-  const latestSelectedRef = useRef<string>(selected)
-  latestSelectedRef.current = selected
-
-  const reload = useCallback(async () => {
-    if (!selected) return
-    const requestedFor = selected
-    requestSeqRef.current += 1
-    const requestId = requestSeqRef.current
-    setLoading(true)
-    setError(null)
-    function isStale(): boolean {
-      return requestId !== requestSeqRef.current || latestSelectedRef.current !== requestedFor
-    }
-    try {
-      const rows = await listWebhookActivity(requestedFor)
-      if (isStale()) return
-      setEntries(rows)
-    } catch (err) {
-      if (isStale()) return
-      const message = getErrorMessage(err)
-      log.error('listWebhookActivity failed', {
-        connectionName: sanitizeForLog(requestedFor),
-        error: sanitizeForLog(message),
-      })
-      setError(message)
-    } finally {
-      if (!isStale()) setLoading(false)
-    }
-  }, [selected])
-
-  useEffect(() => {
-    let cancelled = false
-    void Promise.resolve().then(() => {
-      if (cancelled) return
-      setEntries([])
-      selection.clear()
-    })
-    return () => {
-      cancelled = true
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- clears state only when `selected` changes; `selection` (memoised by useBulkSelection) changes whenever selectedIds mutates, so listing it would re-run the clear loop after every selection toggle
-  }, [selected])
-
-  useEffect(() => {
-    void reload()
-  }, [reload])
-
-  const retryableIds = useMemo(
-    () => entries.filter(isRetryable).map((row) => row.id),
-    [entries],
-  )
-
-  return { entries, loading, error, reload, retryableIds }
 }
 
 function useWebhookRetry({
@@ -342,6 +263,24 @@ function WebhookReceiptsTable({
   )
 }
 
+function WebhookLoadMore({
+  hasMore,
+  loading,
+  onLoadMore,
+}: {
+  hasMore: boolean
+  loading: boolean
+  onLoadMore: () => void
+}) {
+  if (!hasMore) return null
+  return (
+    <Button variant="outline" size="sm" onClick={onLoadMore} disabled={loading} className="gap-1">
+      <RefreshCw className={`size-3.5 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
+      {loading ? 'Loading more…' : 'Load more'}
+    </Button>
+  )
+}
+
 interface WebhookReceiptsContentProps {
   loading: boolean
   entries: readonly WebhookReceipt[]
@@ -349,6 +288,8 @@ interface WebhookReceiptsContentProps {
   selected: string
   selection: WebhookSelection
   retryableIds: string[]
+  hasMore: boolean
+  onLoadMore: () => void
 }
 
 function WebhookReceiptsContent({
@@ -358,6 +299,8 @@ function WebhookReceiptsContent({
   selected,
   selection,
   retryableIds,
+  hasMore,
+  onLoadMore,
 }: WebhookReceiptsContentProps) {
   if (loading && entries.length === 0) {
     return (
@@ -388,7 +331,12 @@ function WebhookReceiptsContent({
       />
     )
   }
-  return <WebhookReceiptsTable entries={entries} selection={selection} retryableIds={retryableIds} />
+  return (
+    <div className="space-y-section-gap">
+      <WebhookReceiptsTable entries={entries} selection={selection} retryableIds={retryableIds} />
+      <WebhookLoadMore hasMore={hasMore} loading={loading} onLoadMore={onLoadMore} />
+    </div>
+  )
 }
 
 export default function WebhookReceiptsPage() {
@@ -396,7 +344,10 @@ export default function WebhookReceiptsPage() {
   const toast = useToastStore((s) => s.add)
   const selection = useBulkSelection()
   const { selected, setSelected, options } = useWebhookConnectionSelect(connections)
-  const { entries, loading, error, reload, retryableIds } = useWebhookActivity(selected, selection)
+  const { entries, loading, error, reload, loadMore, hasMore, retryableIds } = useWebhookActivity(
+    selected,
+    selection,
+  )
   const { retrying, handleBulkRetry } = useWebhookRetry({ retryableIds, selection, reload, toast })
 
   return (
@@ -426,6 +377,8 @@ export default function WebhookReceiptsPage() {
         selected={selected}
         selection={selection}
         retryableIds={retryableIds}
+        hasMore={hasMore}
+        onLoadMore={() => void loadMore()}
       />
 
       <AnimatePresence mode="wait">

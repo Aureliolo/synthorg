@@ -119,6 +119,23 @@ def strip_trailing_slash(url: str) -> str:
     return url.rstrip("/")
 
 
+def normalize_base_url(url: str) -> str:
+    """Return ``url`` with exactly one trailing slash.
+
+    Canonical form for API base URLs that callers concatenate paths onto:
+    strips every trailing slash then appends exactly one, so ``"https://h"``,
+    ``"https://h/"`` and ``"https://h///"`` all yield ``"https://h/"``. Replaces
+    the inline ``url.rstrip("/") + "/"`` pattern.
+
+    Args:
+        url: Base URL to canonicalise.
+
+    Returns:
+        ``url`` with a single trailing ``/``.
+    """
+    return strip_trailing_slash(url) + "/"
+
+
 def normalize_optional_string(raw: str | None) -> str | None:
     """Strip whitespace; collapse empty-after-strip to ``None``.
 

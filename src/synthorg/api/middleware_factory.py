@@ -25,6 +25,7 @@ from synthorg.api.etag import ETagMiddleware
 from synthorg.api.middleware import RequestLoggingMiddleware
 from synthorg.api.rate_limits import PerOpConcurrencyMiddleware
 from synthorg.core.auth.config import AuthConfig
+from synthorg.core.normalization import parse_comma_list_stripped
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_NETWORK_EXPOSURE_WARNING
 from synthorg.settings.bootstrap_resolver import resolve_init_value
@@ -128,7 +129,7 @@ def _build_unauth_identifier(
         if forwarded:
             # X-Forwarded-For: client, proxy1, proxy2
             # Walk from the right, skip trusted proxies.
-            hops = [h.strip() for h in forwarded.split(",")]
+            hops = parse_comma_list_stripped(forwarded)
             for hop in reversed(hops):
                 if not _ip_is_trusted(hop, networks, addresses):
                     return hop

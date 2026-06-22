@@ -239,6 +239,34 @@ class TestApprovalTimeoutScheduler:
         assert saved_item.id == item.id
         assert saved_action.action == TimeoutActionType.APPROVE
 
+    async def test_approve_emits_status_transition_log(self) -> None:
+        """A resolved approval logs APPROVAL_STATUS_TRANSITIONED post-write."""
+        import structlog.testing
+
+        from synthorg.observability.events.approval_gate import (
+            APPROVAL_STATUS_TRANSITIONED,
+        )
+        from synthorg.security.timeout.timeout_checker import TIMEOUT_POLICY_DECIDER
+
+        item = _make_pending_item()
+        store = _make_mock_store(items=(item,))
+        checker = _make_mock_checker(_make_approve_action())
+        scheduler = ApprovalTimeoutScheduler(
+            approval_store=store,
+            timeout_checker=checker,
+            interval_seconds=60.0,
+        )
+
+        with structlog.testing.capture_logs() as logs:
+            await scheduler._check_pending_approvals()
+
+        transitions = [
+            e for e in logs if e.get("event") == APPROVAL_STATUS_TRANSITIONED
+        ]
+        assert len(transitions) == 1
+        assert transitions[0]["from_status"] == ApprovalStatus.PENDING.value
+        assert transitions[0]["decided_by"] == TIMEOUT_POLICY_DECIDER
+
     async def test_deny_action_saves_and_calls_callback(self) -> None:
         """DENY action persists the resolution and calls callback."""
         item = _make_pending_item()

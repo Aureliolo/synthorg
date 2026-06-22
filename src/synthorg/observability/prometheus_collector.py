@@ -39,11 +39,14 @@ from synthorg.observability.events.metrics import (
     METRICS_SCRAPE_COMPLETED,
     METRICS_SCRAPE_FAILED,
 )
+from synthorg.observability.prometheus_label_folds import (
+    fold_agent_status,
+    fold_trust_level,
+)
 from synthorg.observability.prometheus_labels import (
     _LabelSnapshot,
     _snapshot_for_collector,
     _snapshot_lock_for_collector,
-    is_known_agent_id,
     update_label_snapshot,
 )
 from synthorg.observability.prometheus_push_metrics import PushMetrics
@@ -96,10 +99,13 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         )
 
         # -- Task gauges -------------------------------------------------
+        # Labelled by status only: a per-agent ``agent`` label would be an
+        # unbounded cardinality source. Per-agent task breakdowns live in the
+        # REST task API rather than in metrics.
         self._tasks_total = Gauge(
             f"{prefix}_tasks_total",
-            "Number of tasks by status and agent",
-            ["status", "agent"],
+            "Number of tasks by status",
+            ["status"],
             registry=self.registry,
         )
 
@@ -127,19 +133,10 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             registry=self.registry,
         )
 
-        # -- Per-agent cost gauges ---------------------------------------
-        self._agent_cost_total = Gauge(
-            f"{prefix}_agent_cost_total",
-            "Per-agent accumulated cost in the configured currency",
-            ["agent_id"],
-            registry=self.registry,
-        )
-        self._agent_budget_used_percent = Gauge(
-            f"{prefix}_agent_budget_used_percent",
-            "Per-agent daily cost as percentage of per-agent daily limit",
-            ["agent_id"],
-            registry=self.registry,
-        )
+        # Per-agent cost / budget gauges were removed: an unbounded
+        # ``agent_id`` label is a cardinality bomb. Total cost stays on the
+        # aggregate ``synthorg_cost_total`` gauge; per-agent attribution lives
+        # in the structured cost logs and the REST cost API.
 
         # -- Coordination gauges (push-updated) --------------------------
         self._coordination_efficiency = Gauge(
@@ -255,15 +252,6 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         # registry data is the basis for label validation in the same
         # scrape.
         await self._rebuild_label_snapshot(app_state, agents)
-        # Skip cost-metric rebuild for this scrape if the agent
-        # registry fetch failed (``agents is None``) so per-agent
-        # gauges keep their prior values rather than zeroing out.
-        if agents is not None:
-            await self._refresh_agent_cost_metrics(
-                app_state,
-                agents,
-                utc_midnight,
-            )
         await self._refresh_task_metrics(app_state)
         self._refresh_pg_pool_metrics(app_state)
         logger.debug(METRICS_SCRAPE_COMPLETED)
@@ -572,8 +560,8 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         self._agents_total.clear()
         counts: Counter[tuple[str, str]] = Counter()
         for agent in agents:
-            status = str(agent.status)
-            trust = str(agent.tools.access_level)
+            status = fold_agent_status(str(agent.status))
+            trust = fold_trust_level(str(agent.tools.access_level))
             counts[(status, trust)] += 1
         for (status, trust), count in counts.items():
             self._agents_total.labels(
@@ -582,131 +570,40 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             ).set(count)
         return tuple(agents)
 
-    async def _refresh_agent_cost_metrics(
-        self,
-        app_state: AppState,
-        agents: tuple[AgentIdentity, ...],
-        utc_midnight: datetime,
-    ) -> None:
-        """Update per-agent cost and budget utilization gauges.
-
-        Always clears gauge label series first so disappeared agents
-        are dropped.  Then returns early if *agents* is empty or the
-        cost tracker is unavailable; otherwise queries cumulative and
-        daily costs per agent.
-
-        Args:
-            app_state: The application state containing cost tracker.
-            agents: Pre-fetched active agents from the agent registry.
-            utc_midnight: Start of the current UTC day for daily cost
-                queries.
-        """
-        self._agent_cost_total.clear()
-        self._agent_budget_used_percent.clear()
-        if not agents or app_state.slice(BudgetStateSlice).cost_tracker is None:
-            return
-        try:
-            tracker = cost_tracker_of(app_state)
-            budget_cfg = tracker.budget_config
-            per_agent_limit = (
-                budget_cfg.per_agent_daily_limit
-                if budget_cfg is not None and budget_cfg.total_monthly > 0
-                else 0.0
-            )
-            agent_ids = [str(a.id) for a in agents]
-            # Fan-out cost queries in parallel.
-            total_tasks: dict[str, asyncio.Task[float]] = {}
-            daily_tasks: dict[str, asyncio.Task[float]] = {}
-            async with asyncio.TaskGroup() as tg:
-                for aid in agent_ids:
-                    total_tasks[aid] = tg.create_task(
-                        tracker.get_agent_cost(aid),
-                    )
-                    if per_agent_limit > 0:
-                        daily_tasks[aid] = tg.create_task(
-                            tracker.get_agent_cost(
-                                aid,
-                                start=utc_midnight,
-                            ),
-                        )
-            for aid in agent_ids:
-                self._agent_cost_total.labels(agent_id=aid).set(
-                    total_tasks[aid].result(),
-                )
-                if per_agent_limit > 0:
-                    daily = daily_tasks[aid].result()
-                    pct = min(
-                        100.0,
-                        (daily / per_agent_limit) * 100.0,
-                    )
-                    self._agent_budget_used_percent.labels(
-                        agent_id=aid,
-                    ).set(pct)
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                METRICS_SCRAPE_FAILED,
-                component="agent_cost",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-
     async def _refresh_task_metrics(self, app_state: AppState) -> None:
         """Update task gauges from TaskEngine.
 
-        Tasks whose ``assigned_to`` references an agent that is no
-        longer in the live registry snapshot are dropped from the
-        gauge: keeping them would inflate the ``agent`` label
-        cardinality with orphan ids forever. Unassigned tasks are
-        preserved under the empty-string label as before.
+        Counts tasks by status only -- a per-agent ``agent`` label would
+        inflate cardinality with one series per agent (and orphan ids
+        forever). Per-agent task breakdowns are served by the REST task API.
         """
-        self._tasks_total.clear()
         if app_state.slice(EngineStateSlice).task_engine is None:
+            # No engine means there are no tasks to report; clear so a
+            # previously-populated gauge family doesn't keep phantom
+            # status labels alive after the engine is removed.
+            self._tasks_total.clear()
             return
         try:
-            tasks, _ = await task_engine_of(app_state).list_tasks()
-            counts: Counter[tuple[str, str]] = Counter()
-            # De-duplicate the orphan-agent WARN per scrape: many
-            # tasks can share the same stale ``assigned_to``, and
-            # logging once per task (instead of once per agent id)
-            # would breach the "single WARN per unknown value per
-            # scrape" contract documented in monitoring.md.
-            warned_unknown_agents: set[str] = set()
-            for task in tasks:
-                status = str(task.status)
-                agent = str(task.assigned_to) if task.assigned_to else ""
-                if agent and not is_known_agent_id(agent):
-                    if agent not in warned_unknown_agents:
-                        warned_unknown_agents.add(agent)
-                        # Surface dropped samples so an operator can
-                        # spot an orphan ``task.assigned_to`` ref
-                        # instead of seeing a silently
-                        # lower-than-expected ``synthorg_tasks_total``
-                        # for that status. ``task_id`` is the FIRST
-                        # task that hit this orphan; the WARN is keyed
-                        # by ``rejected_value`` so subsequent tasks
-                        # with the same stale agent are silently
-                        # dropped.
-                        logger.warning(
-                            METRICS_SCRAPE_FAILED,
-                            component="task_metrics",
-                            reason="unknown_agent_id",
-                            rejected_value=agent,
-                            task_id=str(task.id),
-                            task_status=status,
-                        )
-                    continue
-                counts[(status, agent)] += 1
-            for (status, agent), count in counts.items():
-                self._tasks_total.labels(
-                    status=status,
-                    agent=agent,
-                ).set(count)
+            # ``include_total=False`` skips the extra ``count_tasks``
+            # round-trip: the scrape only needs the rows, never the total.
+            tasks, _ = await task_engine_of(app_state).list_tasks(
+                include_total=False,
+            )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
+            # Keep the prior gauge values intact so the dashboard doesn't
+            # drop to "0 tasks" on a transient task-fetch failure.
             logger.warning(
                 METRICS_SCRAPE_FAILED,
                 component="task_engine",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            return
+        # Successful fetch: clear stale labels first, then re-set.
+        self._tasks_total.clear()
+        counts: Counter[str] = Counter()
+        for task in tasks:
+            counts[str(task.status)] += 1
+        for status, count in counts.items():
+            self._tasks_total.labels(status=status).set(count)

@@ -12,6 +12,7 @@ import pytest
 from litestar.datastructures import State
 
 from synthorg.api.controllers.promotion import PromotionController
+from synthorg.api.cursor import CursorSecret
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.core.types import NotBlankStr
@@ -71,6 +72,7 @@ def _state_with(service: PromotionService | None) -> State:
     state = State()
     state.app_state = make_app_state(
         slices={HrStateSlice: {"promotion_service": service}},
+        cursor_secret=CursorSecret.from_key("test-cursor-secret-key-0123456789"),
     )
     return state
 
@@ -119,6 +121,23 @@ async def test_history_reflects_applied_change() -> None:
     )
     assert after.data is not None
     assert len(after.data) == 1
+    # Single record is the terminal page: no further cursor, has_more False.
+    assert after.pagination.has_more is False
+    assert after.pagination.next_cursor is None
+
+
+async def test_history_rejects_tampered_cursor() -> None:
+    """A forged cursor fails the HMAC check before any offset is trusted."""
+    from synthorg.api.cursor import InvalidCursorError
+
+    service, agent_id = await _seeded_service()
+    with pytest.raises(InvalidCursorError):
+        await PromotionController.history.fn(
+            _controller(),
+            state=_state_with(service),
+            agent_id=agent_id,
+            cursor="not-a-real-cursor",
+        )
 
 
 async def test_trigger_cycle_applies_changes() -> None:

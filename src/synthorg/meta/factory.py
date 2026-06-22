@@ -246,39 +246,11 @@ def build_appliers(
         ProposalAltitude.PROMPT_TUNING: PromptApplier(context=prompt_context),
     }
     if config is not None and config.code_modification_enabled:
-        code_cfg = config.code_modification
-        if code_cfg.github_token is None or code_cfg.github_repo is None:
-            logger.warning(
-                META_STRATEGY_REGISTERED,
-                altitude="code_modification_applier",
-                reason="skipped_no_github_credentials",
-            )
-        else:
-            from synthorg.meta.appliers.code_applier import (  # noqa: PLC0415
-                CodeApplier,
-            )
-            from synthorg.meta.appliers.github_client import (  # noqa: PLC0415
-                HttpGitHubClient,
-            )
-            from synthorg.meta.validation.ci_validator import (  # noqa: PLC0415
-                LocalCIValidator,
-            )
+        from synthorg.meta._code_applier_wiring import (  # noqa: PLC0415
+            maybe_install_code_applier,
+        )
 
-            ci_validator = LocalCIValidator(
-                timeout_seconds=code_cfg.ci_timeout_seconds,
-            )
-            github_client = HttpGitHubClient(
-                token=str(code_cfg.github_token),
-                repo=str(code_cfg.github_repo),
-                api_base_url=str(code_cfg.github_api_url),
-                base_branch=str(code_cfg.base_branch),
-                timeout=code_cfg.api_timeout_seconds,
-            )
-            appliers[ProposalAltitude.CODE_MODIFICATION] = CodeApplier(
-                ci_validator=ci_validator,
-                github_client=github_client,
-                code_modification_config=code_cfg,
-            )
+        maybe_install_code_applier(appliers, config.code_modification)
     return MappingProxyType(deepcopy(appliers))
 
 

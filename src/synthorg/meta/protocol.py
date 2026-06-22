@@ -6,7 +6,6 @@ strategies, and regression detection.
 """
 
 from datetime import datetime
-from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
@@ -353,13 +352,15 @@ class CIValidator(Protocol):
     async def validate(
         self,
         *,
-        project_root: Path,
         changed_files: tuple[str, ...],
     ) -> CIValidationResult:
         """Run CI validation against changed files.
 
+        The implementation owns its project root and modification-scope
+        envelope (supplied at construction), so callers pass only the
+        changed-file set.
+
         Args:
-            project_root: Absolute path to the project root.
             changed_files: Relative paths of files that changed.
 
         Returns:

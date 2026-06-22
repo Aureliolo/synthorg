@@ -17,8 +17,9 @@ from synthorg.core.actor_context import ActorIdentity, actor_scope
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.notifications.dispatcher import NotificationDispatcher
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import BackgroundTaskRegistry
+from synthorg.observability.events.approval_gate import APPROVAL_STATUS_TRANSITIONED
 from synthorg.observability.events.notification import NOTIFICATION_ESCALATION_SEND
 from synthorg.observability.events.timeout import (
     TIMEOUT_SCHEDULER_ERROR,
@@ -311,7 +312,9 @@ class ApprovalTimeoutScheduler:
                 reraise_critical(exc)
                 logger.error(
                     TIMEOUT_SCHEDULER_ERROR,
-                    error="Unexpected error in scheduler loop",
+                    note="unexpected error in scheduler loop",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
     async def _check_pending_approvals(self) -> None:
@@ -324,7 +327,9 @@ class ApprovalTimeoutScheduler:
             reraise_critical(exc)
             logger.error(
                 TIMEOUT_SCHEDULER_ERROR,
-                error="Failed to list pending approvals",
+                note="failed to list pending approvals",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return
 
@@ -346,10 +351,12 @@ class ApprovalTimeoutScheduler:
                 updated, action = await self._checker.check_and_resolve(item)
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
-                logger.warning(
+                logger.error(
                     TIMEOUT_SCHEDULER_ERROR,
                     approval_id=str(item.id),
-                    error="Failed to evaluate item",
+                    note="failed to evaluate item",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 return
 
@@ -389,7 +396,9 @@ class ApprovalTimeoutScheduler:
             logger.error(
                 TIMEOUT_SCHEDULER_ERROR,
                 approval_id=str(item.id),
-                error="Failed to persist timeout resolution",
+                note="failed to persist timeout resolution",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return
 
@@ -403,6 +412,17 @@ class ApprovalTimeoutScheduler:
             action=action.action.value,
             reason=action.reason,
         )
+        # State-transition log AFTER the persistence write succeeds, so the
+        # PENDING -> APPROVED / REJECTED hop appears in the
+        # ``approval.status_transitioned`` stream like every other approval
+        # decision, attributed to the timeout policy rather than a reviewer.
+        logger.info(
+            APPROVAL_STATUS_TRANSITIONED,
+            approval_id=str(item.id),
+            from_status=ApprovalStatus.PENDING.value,
+            to_status=saved.status.value,
+            decided_by=TIMEOUT_POLICY_DECIDER,
+        )
 
         if self._on_resolve is not None:
             try:
@@ -412,7 +432,9 @@ class ApprovalTimeoutScheduler:
                 logger.error(
                     TIMEOUT_SCHEDULER_ERROR,
                     approval_id=str(item.id),
-                    error="on_timeout_resolve callback failed",
+                    note="on_timeout_resolve callback failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
     async def _notify_escalation(

@@ -283,10 +283,12 @@ class TestParseTimeWindow:
         assert until == fixed
 
     def test_raises_on_naive_since(self) -> None:
-        with pytest.raises(ArgumentValidationError):
+        with pytest.raises(ArgumentValidationError) as ei:
             parse_time_window(
                 {"since": "2026-04-01T00:00:00", "until": self._UNTIL},
             )
+        # A parseable-but-naive value is a timezone error, not a format one.
+        assert ei.value.expected == "timezone-aware ISO 8601"
 
     def test_raises_on_naive_until(self) -> None:
         with pytest.raises(ArgumentValidationError):
@@ -310,26 +312,31 @@ class TestParseTimeWindow:
             )
 
     def test_raises_on_malformed_since(self) -> None:
-        with pytest.raises(ArgumentValidationError):
+        with pytest.raises(ArgumentValidationError) as ei:
             parse_time_window(
                 {"since": "not-a-date", "until": self._UNTIL},
             )
+        # An unparseable shape is a format error, not a timezone one.
+        assert ei.value.expected == "ISO 8601 datetime string"
 
     def test_raises_on_non_string_until(self) -> None:
         with pytest.raises(ArgumentValidationError):
             parse_time_window({"since": self._SINCE, "until": 123})
 
     def test_accepts_non_utc_tz(self) -> None:
-        # ``timezone-aware`` is the only requirement; arbitrary offsets
-        # are valid input (services normalize internally).
+        # ``timezone-aware`` is the only requirement; arbitrary offsets are
+        # valid input and are normalised to UTC at the parse boundary, so the
+        # same instant is preserved with a zero offset.
         since, until = parse_time_window(
             {
                 "since": "2026-04-01T00:00:00+02:00",
                 "until": "2026-04-02T00:00:00+02:00",
             },
         )
-        assert since.utcoffset() == timedelta(hours=2)
-        assert until.utcoffset() == timedelta(hours=2)
+        assert since.utcoffset() == timedelta(0)
+        assert until.utcoffset() == timedelta(0)
+        assert since == datetime(2026, 3, 31, 22, 0, tzinfo=UTC)
+        assert until == datetime(2026, 4, 1, 22, 0, tzinfo=UTC)
 
 
 class TestParseStrSequence:

@@ -5,8 +5,8 @@
  * model. Field names match the backend exactly so a future schema change
  * lands without a rename pass.
  */
-import { apiClient, unwrap } from '../client'
-import type { ApiResponse } from '../types/http'
+import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
+import type { ApiResponse, PaginatedResponse, PaginationParams } from '../types/http'
 
 /**
  * Mirrors ``synthorg.integrations.connections.models.WebhookReceipt``.
@@ -37,17 +37,20 @@ export interface WebhookReceipt {
 /**
  * GET /webhooks/{connection_name}/activity
  *
- * Backend returns ``ApiResponse[tuple[WebhookReceipt, ...]]`` -- a flat
- * tuple inside ``data``, NOT a ``{ entries: ... }`` wrapper. JSON
- * serialisation flattens the tuple to a list. The unwrap is direct.
+ * Backend returns ``PaginatedResponse[WebhookReceipt]`` (opaque cursor
+ * paging). Pass ``params.cursor`` to fetch a follow-on page and
+ * ``params.limit`` to size it; the returned ``nextCursor`` / ``hasMore``
+ * drive the load-more control.
  */
 export async function listWebhookActivity(
   connectionName: string,
-): Promise<readonly WebhookReceipt[]> {
-  const response = await apiClient.get<ApiResponse<WebhookReceipt[]>>(
+  params?: PaginationParams,
+): Promise<PaginatedResult<WebhookReceipt>> {
+  const response = await apiClient.get<PaginatedResponse<WebhookReceipt>>(
     `/webhooks/${encodeURIComponent(connectionName)}/activity`,
+    { params },
   )
-  return unwrap(response)
+  return unwrapPaginated<WebhookReceipt>(response)
 }
 
 export interface RetryWebhookReceiptResponse {

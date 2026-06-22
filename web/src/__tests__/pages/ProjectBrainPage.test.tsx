@@ -268,12 +268,15 @@ describe('ProjectBrainPage', () => {
       ),
       http.get('/api/v1/projects/:projectId/brain/:entryId/history', () =>
         HttpResponse.json(
-          successFor<typeof getProjectBrainHistory>([
-            version({
-              summary: 'brain(decision): adopt event sourcing',
-              author: 'agent_historian',
-            }),
-          ]),
+          paginatedFor<typeof getProjectBrainHistory>({
+            ...emptyPage<BrainEntryVersion>(),
+            data: [
+              version({
+                summary: 'brain(decision): adopt event sourcing',
+                author: 'agent_historian',
+              }),
+            ],
+          }),
         ),
       ),
     )

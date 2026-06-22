@@ -16,7 +16,6 @@ services in the application bootstrap.
 """
 
 from collections.abc import Mapping
-from datetime import datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
@@ -30,6 +29,7 @@ from synthorg.core.agent import (
 )
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import NotFoundError
+from synthorg.core.iso_datetime import parse_iso_utc
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.state import HrStateSlice, scaling_decision_service_of
 from synthorg.meta.mcp.domains._simple_args import (
@@ -139,9 +139,9 @@ async def _coordination_metrics_list(
         page = typed_args(arguments, CoordinationMetricsListArgs)
         offset, limit = page.offset, page.limit
         # ``since`` / ``until`` are validated as tz-aware ISO 8601 by the
-        # ``IsoDatetimeStr`` boundary, so ``fromisoformat`` is total here.
-        since = datetime.fromisoformat(page.since) if page.since else None
-        until = datetime.fromisoformat(page.until) if page.until else None
+        # ``IsoDatetimeStr`` boundary, so ``parse_iso_utc`` is total here.
+        since = parse_iso_utc(page.since) if page.since else None
+        until = parse_iso_utc(page.until) if page.until else None
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)

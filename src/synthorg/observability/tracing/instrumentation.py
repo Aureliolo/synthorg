@@ -13,7 +13,7 @@ tracing disabled, ``get_tracer`` returns OTel's built-in
 nothing.
 """
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 
 from opentelemetry import trace as _ot_trace
@@ -34,12 +34,28 @@ def get_tracer(name: str = _INSTRUMENTATION_NAME) -> Tracer:
     return _ot_trace.get_tracer(name)
 
 
+def _record_span_exception(span: Span, exc: Exception) -> None:
+    """Record a scrubbed exception on *span* and mark its status ERROR.
+
+    Critical errors (``MemoryError`` / ``RecursionError``) re-raise first. The
+    SDK's auto-exception handler is disabled at span start (to keep frame-locals
+    out of the OTLP exporter), so the OTel-semconv exception attributes are
+    written here from the redaction-safe description instead. See
+    ``docs/reference/sec-prompt-safety.md``.
+    """
+    reraise_critical(exc)
+    span.set_attribute("exception.type", type(exc).__name__)
+    span.set_attribute("exception.message", safe_error_description(exc))
+    span.set_status(Status(StatusCode.ERROR, type(exc).__name__))
+
+
 @asynccontextmanager
 async def llm_span(
     *,
     provider: str,
     model: str,
     input_tokens: int | None = None,
+    output_tokens_callback: Callable[[], int | None] | None = None,
     tracer: Tracer | None = None,
 ) -> AsyncIterator[Span]:
     """Wrap an LLM completion call in a ``chat {model}`` span.
@@ -47,9 +63,21 @@ async def llm_span(
     Attributes set on entry follow OTel's GenAI semantic conventions
     (``gen_ai.system``, ``gen_ai.request.model``, and when known
     ``gen_ai.usage.input_tokens``). Callers should set
-    ``gen_ai.response.model`` / ``gen_ai.usage.output_tokens`` /
-    ``gen_ai.response.finish_reasons`` on the span once the response
-    is available via :meth:`Span.set_attribute`.
+    ``gen_ai.usage.output_tokens`` (and ideally ``gen_ai.response.model``
+    / ``gen_ai.response.finish_reasons``) on the span via
+    :meth:`Span.set_attribute` once the response is available, OR supply
+    *output_tokens_callback* for the streaming drain path (below) where the
+    count is only known after the context exits.
+
+    For the streaming drain path the output-token count is only known
+    after the iterator is exhausted, which can be past the ``yield``;
+    *output_tokens_callback* has the span stamp ``gen_ai.usage.output_tokens``
+    from the callback in the ``finally`` block, so a streamed call records its
+    output tokens even when the caller cannot set the attribute before the
+    context exits. The ``provider.stream`` span in ``providers/base.py``
+    intentionally closes at time-to-first-iterator, so that span never sees the
+    drained count; this callback is the seam that recovers it on the wrapping
+    span.
 
     Exceptions raised inside the context manager are recorded on the
     span and the span status is set to ``ERROR`` before the
@@ -74,14 +102,24 @@ async def llm_span(
         try:
             yield span
         except Exception as exc:
-            reraise_critical(exc)
-            span.set_attribute("exception.type", type(exc).__name__)
-            span.set_attribute(
-                "exception.message",
-                safe_error_description(exc),
-            )
-            span.set_status(Status(StatusCode.ERROR, type(exc).__name__))
+            _record_span_exception(span, exc)
             raise
+        finally:
+            if output_tokens_callback is not None:
+                # Instrumentation must never alter the request outcome: a
+                # callback that raises here would mask the original failure
+                # (or turn a success into an error) by escaping the
+                # ``finally``. Record the callback failure on the span and
+                # swallow it instead, keeping the in-flight exception (if any)
+                # intact. Critical errors still propagate via ``reraise_critical``.
+                try:
+                    resolved = output_tokens_callback()
+                    if resolved is not None:
+                        span.set_attribute("gen_ai.usage.output_tokens", resolved)
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                    reraise_critical(exc)
+                    span.set_attribute("exception.type", type(exc).__name__)
+                    span.set_attribute("exception.message", safe_error_description(exc))
 
 
 @asynccontextmanager
@@ -116,11 +154,5 @@ async def tool_span(
         try:
             yield span
         except Exception as exc:
-            reraise_critical(exc)
-            span.set_attribute("exception.type", type(exc).__name__)
-            span.set_attribute(
-                "exception.message",
-                safe_error_description(exc),
-            )
-            span.set_status(Status(StatusCode.ERROR, type(exc).__name__))
+            _record_span_exception(span, exc)
             raise

@@ -135,6 +135,22 @@ def test_record_api_request_bucketed_by_status_class() -> None:
     )
 
 
+def test_record_api_request_folds_unknown_method() -> None:
+    """An unrecognised HTTP verb folds to ``__other__`` (cardinality guard)."""
+    collector = PrometheusCollector()
+    collector.record_api_request(
+        method="BREW",
+        route="/coffee",
+        status_code=418,
+        duration_sec=0.01,
+    )
+    text = generate_latest(collector.registry).decode()
+    assert (
+        'synthorg_api_request_duration_seconds_count{method="__other__",'
+        'route="/coffee",status_class="4xx"} 1.0' in text
+    )
+
+
 def test_record_api_request_rejects_invalid_status_code() -> None:
     collector = PrometheusCollector()
     with pytest.raises(ValueError, match="invalid status_code"):
@@ -296,10 +312,14 @@ def test_all_new_metric_families_registered() -> None:
     text = generate_latest(collector.registry).decode("utf-8")
     for name in (
         "synthorg_provider_tokens_total",
+        "synthorg_provider_tokens_per_call",
         "synthorg_provider_cost_total",
         "synthorg_api_request_duration_seconds",
+        "synthorg_auth_failures_total",
+        "synthorg_auth_lockouts_total",
         "synthorg_task_runs_total",
         "synthorg_task_duration_seconds",
+        "synthorg_task_transitions_total",
         "synthorg_tool_invocations_total",
         "synthorg_tool_duration_seconds",
         "synthorg_audit_chain_appends_total",
@@ -428,3 +448,75 @@ def test_record_api_error_rejects_unknown_category() -> None:
     collector = PrometheusCollector()
     with pytest.raises(ValueError, match="api error category"):
         collector.record_api_error(category="bogus", status_code=500)
+
+
+# -- Provider token-per-call histogram --------------------------------------
+
+
+def test_record_provider_usage_observes_per_call_histogram() -> None:
+    collector = PrometheusCollector()
+    collector.record_provider_usage(
+        provider="example-provider",
+        model="large",
+        input_tokens=100,
+        output_tokens=20,
+        cost=0.01,
+    )
+    text = generate_latest(collector.registry).decode("utf-8")
+    assert (
+        'synthorg_provider_tokens_per_call_count{direction="input",'
+        'model="large",provider="example-provider"} 1.0' in text
+    )
+    assert (
+        'synthorg_provider_tokens_per_call_count{direction="output",'
+        'model="large",provider="example-provider"} 1.0' in text
+    )
+
+
+# -- Task transition counter -------------------------------------------------
+
+
+def test_record_task_transition_increments_by_status_pair() -> None:
+    collector = PrometheusCollector()
+    collector.record_task_transition(from_status="created", to_status="assigned")
+    collector.record_task_transition(from_status="created", to_status="assigned")
+    parsed = _parse(collector)
+    pairs = {
+        (lbl["from_status"], lbl["to_status"]): val
+        for lbl, val in parsed["synthorg_task_transitions"]
+    }
+    assert pairs[("created", "assigned")] == 2.0
+
+
+def test_record_task_transition_rejects_unknown_from_status() -> None:
+    collector = PrometheusCollector()
+    with pytest.raises(ValueError, match="task transition"):
+        collector.record_task_transition(from_status="bogus", to_status="assigned")
+
+
+def test_record_task_transition_rejects_unknown_to_status() -> None:
+    """``to_status`` is validated independently of ``from_status``."""
+    collector = PrometheusCollector()
+    with pytest.raises(ValueError, match="task transition"):
+        collector.record_task_transition(from_status="created", to_status="bogus")
+
+
+# -- Auth failure / lockout counters -----------------------------------------
+
+
+def test_record_auth_failure_folds_unknown_reason() -> None:
+    collector = PrometheusCollector()
+    collector.record_auth_failure(reason="invalid_password")
+    collector.record_auth_failure(reason="some_new_reason")
+    parsed = _parse(collector)
+    reasons = {lbl["reason"]: val for lbl, val in parsed["synthorg_auth_failures"]}
+    assert reasons["invalid_password"] == 1.0
+    assert reasons["__other__"] == 1.0
+
+
+def test_record_auth_lockout_increments() -> None:
+    collector = PrometheusCollector()
+    collector.record_auth_lockout()
+    collector.record_auth_lockout()
+    parsed = _parse(collector)
+    assert parsed["synthorg_auth_lockouts"][0][1] == 2.0

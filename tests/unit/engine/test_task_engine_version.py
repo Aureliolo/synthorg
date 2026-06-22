@@ -1,9 +1,15 @@
 """Unit tests for VersionTracker."""
 
 import pytest
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
 
 from synthorg.engine.errors import TaskVersionConflictError
-from synthorg.engine.task_engine_version import VersionTracker
+from synthorg.engine.task_engine_version import TaskSpanTracker, VersionTracker
 
 
 @pytest.mark.unit
@@ -104,3 +110,53 @@ class TestVersionTracker:
         vt = VersionTracker()
         with pytest.raises(ValueError, match="must be >= 1"):
             vt.set_initial("task-1", -5)
+
+
+@pytest.mark.unit
+class TestTaskSpanTracker:
+    """Tests for the per-task ``task.run`` span lifecycle tracker."""
+
+    @staticmethod
+    def _tracker_with_exporter() -> tuple[TaskSpanTracker, InMemorySpanExporter]:
+        exporter = InMemorySpanExporter()
+        provider = TracerProvider(resource=Resource.create({"service.name": "test"}))
+        provider.add_span_processor(SimpleSpanProcessor(exporter))
+        tracer = provider.get_tracer("test")
+        return TaskSpanTracker(tracer=tracer), exporter
+
+    def test_start_then_end_emits_task_run_span(self) -> None:
+        tracker, exporter = self._tracker_with_exporter()
+        tracker.start("task-1", task_type="development")
+        # No span finished until end().
+        assert exporter.get_finished_spans() == ()
+        tracker.end("task-1", final_status="completed")
+        spans = exporter.get_finished_spans()
+        assert len(spans) == 1
+        assert spans[0].name == "task.run"
+        attrs = dict(spans[0].attributes or {})
+        assert attrs["task.id"] == "task-1"
+        assert attrs["task.type"] == "development"
+        assert attrs["task.status.final"] == "completed"
+
+    def test_end_unknown_task_is_noop(self) -> None:
+        tracker, exporter = self._tracker_with_exporter()
+        tracker.end("never-started", final_status="completed")
+        assert exporter.get_finished_spans() == ()
+
+    def test_remove_ends_span_without_final_status(self) -> None:
+        tracker, exporter = self._tracker_with_exporter()
+        tracker.start("task-1", task_type="research")
+        tracker.remove("task-1")
+        spans = exporter.get_finished_spans()
+        assert len(spans) == 1
+        assert "task.status.final" not in dict(spans[0].attributes or {})
+
+    def test_restart_ends_orphan_span_before_overwriting(self) -> None:
+        tracker, exporter = self._tracker_with_exporter()
+        tracker.start("task-1", task_type="development")
+        # Re-create before the prior run reached a terminal transition.
+        tracker.start("task-1", task_type="development")
+        # The orphaned first span is ended immediately, not leaked.
+        assert len(exporter.get_finished_spans()) == 1
+        tracker.end("task-1", final_status="completed")
+        assert len(exporter.get_finished_spans()) == 2

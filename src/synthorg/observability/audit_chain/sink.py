@@ -194,10 +194,15 @@ class AuditChainSink(logging.Handler):
     # ``security.*`` constant remains covered without duplicating the
     # tuple literal -- a future narrowing of the allowlist must update
     # exactly this constant and is then visible to the regression test.
+    #
+    # The bare ``config.`` prefix is deliberately excluded: the
+    # ``config.*`` events are high-frequency, read-only load / parse /
+    # validation signals with no security value, and signing them on every
+    # config read wasted the audit chain. Security-relevant configuration
+    # MUTATIONS already ride the audited ``security.`` prefix.
     _AUDITED_PREFIXES: tuple[str, ...] = (
         "security.",
         "tool.registry.integrity.",
-        "config.",
     )
 
     def __init__(

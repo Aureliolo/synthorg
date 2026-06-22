@@ -15,6 +15,7 @@ from uuid import uuid4
 
 from pydantic import ValidationError as PydanticValidationError
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
@@ -42,7 +43,11 @@ from synthorg.engine.task_engine_models import (
     TransitionTaskMutation,
     UpdateTaskMutation,
 )
-from synthorg.engine.task_engine_version import TaskTimingTracker, VersionTracker
+from synthorg.engine.task_engine_version import (
+    TaskSpanTracker,
+    TaskTimingTracker,
+    VersionTracker,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.task_engine import (
@@ -90,10 +95,12 @@ class TaskEngine(TaskEngineLoopsMixin):
         persistence: PersistenceBackend,
         message_bus: MessageBus | None = None,
         config: TaskEngineConfig | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._persistence = persistence
         self._message_bus = message_bus
         self._config = config or TaskEngineConfig()
+        self._clock: Clock = clock if clock is not None else SystemClock()
         # Eager init: ``submit`` may enqueue mutations before the
         # processing task is spawned; the queue must exist for the
         # atomic check-and-put in ``submit`` to work safely.
@@ -102,6 +109,7 @@ class TaskEngine(TaskEngineLoopsMixin):
         # fmt: on
         self._versions = VersionTracker()
         self._timings = TaskTimingTracker()
+        self._spans = TaskSpanTracker()
         self._processing_task: asyncio.Task[None] | None = None
         self._in_flight: _MutationEnvelope | None = None
         self._running = False
@@ -939,12 +947,23 @@ class TaskEngine(TaskEngineLoopsMixin):
         # repo (e.g. test fixture returning more rows than count
         # reports) still surfaces the real pre-cap size.
         if limit is None:
-            count_total = await self._count_tasks_filtered(
-                status=status,
-                assigned_to=assigned_to,
-                project=project,
-            )
-            true_total = max(count_total, len(tasks))
+            # Full-fetch path.  ``count_tasks`` gives the authoritative
+            # pre-cap cardinality, but it is only issued when the caller
+            # wants the total -- ``include_total=False`` callers (e.g. the
+            # metrics scrape) must not pay for the extra round-trip.  The
+            # in-memory truncation still runs either way as defence against
+            # a non-clamping repo; without the count we cap against the
+            # observed list length, which is sufficient since a clamping
+            # repo never returns more than the cap.
+            if include_total:
+                count_total = await self._count_tasks_filtered(
+                    status=status,
+                    assigned_to=assigned_to,
+                    project=project,
+                )
+                true_total = max(count_total, len(tasks))
+            else:
+                true_total = len(tasks)
             if true_total > self._MAX_LIST_RESULTS:
                 logger.warning(
                     TASK_ENGINE_LIST_CAPPED,
@@ -952,17 +971,13 @@ class TaskEngine(TaskEngineLoopsMixin):
                     cap=self._MAX_LIST_RESULTS,
                 )
                 tasks = tasks[: self._MAX_LIST_RESULTS]
-        else:
-            true_total = len(tasks)
-
-        if not include_total:
-            return tasks, None
-
-        if limit is None:
-            # Full-fetch path: ``true_total`` is the authoritative
-            # pre-truncation count from ``count_tasks``.
+            if not include_total:
+                return tasks, None
             return tasks, true_total
 
+        # Repo-bounded window: ``tasks`` is already capped by the repo.
+        if not include_total:
+            return tasks, None
         total = await self._count_tasks_filtered(
             status=status,
             assigned_to=assigned_to,

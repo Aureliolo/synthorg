@@ -230,6 +230,7 @@ class OAuthController(Controller):
                 ),
                 catalog=catalog,
                 config_resolver=resolver,
+                clock=app_state.clock,
             )
         except InvalidStateError as exc:
             raise ValidationError(str(exc)) from exc

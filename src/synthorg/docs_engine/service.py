@@ -15,9 +15,13 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.concurrency import RefcountedLockMap
-from synthorg.core.iso_datetime import parse_git_log_timestamp
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
+from synthorg.docs_engine._mappers import (
+    entry_to_hit,
+    meta_to_summary,
+    parse_history_line,
+)
 from synthorg.docs_engine.chunker import DocChunker
 from synthorg.docs_engine.constants import (
     DOCS_BRANCH_NAME,
@@ -27,8 +31,6 @@ from synthorg.docs_engine.constants import (
     DOCS_PROJECT_TAG_PREFIX,
     DOCS_SEARCH_DEFAULT_LIMIT,
     DOCS_SEARCH_MAX_LIMIT,
-    DOCS_SLUG_TAG_PREFIX,
-    DOCS_TYPE_TAG_PREFIX,
     DOCS_WORKSPACE_SUBDIR,
     SYSTEM_DOCS_AGENT_ID,
 )
@@ -52,7 +54,7 @@ from synthorg.docs_engine.serializer import deserialize_doc
 from synthorg.docs_engine.slug import derive_slug
 from synthorg.docs_engine.writer import DocWriter
 from synthorg.engine.workspace._git_subprocess import run_git_subprocess
-from synthorg.memory.models import MemoryEntry, MemoryQuery
+from synthorg.memory.models import MemoryQuery
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.docs import (
@@ -74,7 +76,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _GIT_CMD_TIMEOUT_SECONDS: float = 30.0
-_HISTORY_FIELDS_PER_LINE: int = 3
 _MIN_SHA_LENGTH: int = 7
 _MAX_SHA_LENGTH: int = 40
 _COMMIT_SHA_RE = re.compile(rf"^[0-9a-fA-F]{{{_MIN_SHA_LENGTH},{_MAX_SHA_LENGTH}}}$")
@@ -316,7 +317,7 @@ class DocsService:
             tag=tag,
         )
         rows = await self._repo.query(spec, limit=limit, offset=offset)
-        return tuple(_meta_to_summary(row) for row in rows)
+        return tuple(meta_to_summary(row) for row in rows)
 
     async def search(
         self,
@@ -360,7 +361,7 @@ class DocsService:
         hits = tuple(
             hit
             for entry in entries
-            if (hit := _entry_to_hit(entry, doc_types=doc_types)) is not None
+            if (hit := entry_to_hit(entry, doc_types=doc_types)) is not None
             and hit.project_id == project_id
         )
         logger.info(
@@ -376,6 +377,7 @@ class DocsService:
         project_id: NotBlankStr,
         slug: NotBlankStr,
         limit: int = DOCS_HISTORY_DEFAULT_LIMIT,
+        offset: int = 0,
     ) -> tuple[DocVersion, ...]:
         """Return commit history for one doc.
 
@@ -383,6 +385,7 @@ class DocsService:
             project_id: Owning project.
             slug: Doc slug.
             limit: Maximum history entries.
+            offset: Number of leading commits to skip, for cursor paging.
 
         Returns:
             Tuple of :class:`DocVersion` ordered newest-first.
@@ -409,6 +412,7 @@ class DocsService:
             "log",
             "--pretty=format:%H%x09%aI%x09%s",
             f"-{limit}",
+            f"--skip={offset}",
             DOCS_BRANCH_NAME,
             "--",
             rel_path,
@@ -431,7 +435,7 @@ class DocsService:
         versions = tuple(
             v
             for line in stdout.splitlines()
-            if (v := _parse_history_line(line)) is not None
+            if (v := parse_history_line(line)) is not None
         )
         logger.debug(
             DOC_HISTORY_READ,
@@ -565,90 +569,3 @@ class DocsService:
             )
             raise DocNotFoundError(msg)
         return stdout_text.encode("utf-8")
-
-
-def _meta_to_summary(meta: DocMetadata) -> DocSummary:
-    return DocSummary(
-        project_id=meta.project_id,
-        slug=meta.slug,
-        title=meta.title,
-        doc_type=meta.doc_type,
-        tags=meta.tags,
-        updated_at=meta.updated_at,
-    )
-
-
-def _entry_to_hit(
-    entry: MemoryEntry,
-    *,
-    doc_types: frozenset[DocType] | None,
-) -> DocSearchHit | None:
-    """Convert a memory entry to a search hit; filter by doc_type if given.
-
-    Returns:
-        A ``DocSearchHit`` for the entry, or ``None`` when it lacks the
-        required tags or its doc type is filtered out.
-    """
-    project_id = _extract_tag(entry, DOCS_PROJECT_TAG_PREFIX)
-    slug = _extract_tag(entry, DOCS_SLUG_TAG_PREFIX)
-    if project_id is None or slug is None:
-        return None
-    doc_type = _extract_doc_type(entry)
-    if doc_type is None:
-        return None
-    if doc_types is not None and doc_type not in doc_types:
-        return None
-    return DocSearchHit(
-        project_id=project_id,
-        doc_slug=slug,
-        doc_type=doc_type,
-        chunk_text=entry.content,
-        relevance_score=entry.relevance_score or 0.0,
-    )
-
-
-def _extract_tag(entry: MemoryEntry, prefix: str) -> NotBlankStr | None:
-    for tag in entry.metadata.tags:
-        if tag.startswith(prefix):
-            suffix = tag[len(prefix) :]
-            if suffix.strip():
-                return NotBlankStr(suffix)
-    return None
-
-
-def _extract_doc_type(entry: MemoryEntry) -> DocType | None:
-    """Pull DocType out of the entry's ``doc_type:<value>`` tag.
-
-    Returns:
-        The parsed ``DocType``, or ``None`` when the tag is missing or
-        not a valid member.
-    """
-    raw = _extract_tag(entry, DOCS_TYPE_TAG_PREFIX)
-    if raw is None:
-        return None
-    try:
-        return DocType(raw)
-    except ValueError:
-        return None
-
-
-def _parse_history_line(line: str) -> DocVersion | None:
-    r"""Parse one ``git log`` row in ``<sha>\\t<author_iso>\\t<subject>`` form.
-
-    Returns:
-        The parsed ``DocVersion``, or ``None`` when the row has the wrong
-        field count or a naive / invalid timestamp.
-    """
-    parts = line.split("\t", 2)
-    if len(parts) != _HISTORY_FIELDS_PER_LINE:
-        return None
-    sha, committed_at_iso, summary = parts
-    committed_at = parse_git_log_timestamp(committed_at_iso)
-    if committed_at is None:
-        return None
-    return DocVersion(
-        commit_sha=NotBlankStr(sha),
-        author_agent_id=NotBlankStr("docs_engine"),
-        committed_at=committed_at,
-        summary=NotBlankStr(summary or "(no message)"),
-    )

@@ -26,6 +26,7 @@ from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.json_parsing import extract_json_from_llm_response
+from synthorg.core.normalization import compare_ci
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.hr.registry import AgentRegistryService
@@ -296,9 +297,8 @@ class GroupInviteCoordinator:
         by_name = await self._agent_registry.get_by_name(NotBlankStr(target))
         if by_name is not None:
             return by_name
-        wanted = target.strip().casefold()
         for identity in await self._agent_registry.list_active():
-            if identity.role.strip().casefold() == wanted:
+            if compare_ci(identity.role, target):
                 return identity
         return None
 

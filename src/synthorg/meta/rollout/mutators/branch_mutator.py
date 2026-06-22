@@ -8,6 +8,7 @@ API client; deleting the branch also closes its associated draft PR.
 
 import asyncio
 
+from synthorg.core.normalization import normalize_base_url
 from synthorg.meta.errors import RollbackMutationDeniedError
 from synthorg.meta.protocol import GitHubAPI
 from synthorg.observability import get_logger, safe_error_description
@@ -27,7 +28,7 @@ class BranchRevertMutator:
 
     def __init__(self, *, github_client: GitHubAPI, branch_prefix: str) -> None:
         self._github = github_client
-        self._branch_namespace = f"{branch_prefix.rstrip('/')}/"
+        self._branch_namespace = normalize_base_url(branch_prefix)
 
     async def delete_branch(self, *, name: str) -> None:
         """Delete the generated remote branch ``name`` (closing its draft PR).

@@ -58,6 +58,18 @@ class _ProviderRecordingMixin(_RecordingMetricsBase):
             model=model_label,
             direction="output",
         ).inc(output_tokens)
+        # Per-call distribution (alongside the monotonic totals above) so
+        # dashboards can chart token-per-call percentiles, not just rates.
+        self._provider_tokens_per_call.labels(
+            provider=provider_label,
+            model=model_label,
+            direction="input",
+        ).observe(input_tokens)
+        self._provider_tokens_per_call.labels(
+            provider=provider_label,
+            model=model_label,
+            direction="output",
+        ).observe(output_tokens)
         self._provider_cost.labels(
             provider=provider_label,
             model=model_label,

@@ -16,11 +16,15 @@ class _RecordingMetricsBase:
     # Attributes populated by PrometheusCollector.__init__:
     _security_evaluations: PromCounter
     _provider_tokens: PromCounter
+    _provider_tokens_per_call: Histogram
     _provider_cost: PromCounter
     _provider_call_duration: Histogram
     _api_request_duration: Histogram
+    _auth_failures: PromCounter
+    _auth_lockouts: PromCounter
     _task_runs: PromCounter
     _task_duration: Histogram
+    _task_transitions: PromCounter
     _tool_invocations: PromCounter
     _tool_duration: Histogram
     _provider_errors: PromCounter
@@ -56,9 +60,11 @@ class _RecordingMetricsBase:
 # ``PrometheusCollector.__init__``. Lives here, next to the attribute
 # declarations the aliases populate, so the inventory stays in one place.
 _PUSH_ALIASED_METRICS: tuple[str, ...] = (
-    "provider_tokens", "provider_cost", "provider_call_duration",
-    "api_request_duration", "task_runs",
-    "task_duration", "tool_invocations", "tool_duration", "audit_chain_appends",
+    "provider_tokens", "provider_tokens_per_call", "provider_cost",
+    "provider_call_duration",
+    "api_request_duration", "auth_failures", "auth_lockouts", "task_runs",
+    "task_duration", "task_transitions",
+    "tool_invocations", "tool_duration", "audit_chain_appends",
     "audit_chain_depth", "audit_chain_last_append_ts", "otlp_export_batches",
     "otlp_export_dropped", "log_sink_events", "escalation_queue_depth",
     "security_audit_log_fill_ratio", "agent_identity_changes",

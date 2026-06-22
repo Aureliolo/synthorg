@@ -28,6 +28,7 @@ from synthorg.budget.call_analytics_models import AnalyticsAggregation
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY, assert_currencies_match
+from synthorg.budget.currency_resolver import resolve_currency
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.budget.tracker_protocol import collect_all_records
@@ -354,7 +355,7 @@ class BudgetController(Controller):
             Paginated cost records with daily and period summaries.
         """
         app_state: AppState = state.app_state
-        currency = await config_resolver_of(app_state).get_str("budget", "currency")
+        currency = await resolve_currency(config_resolver_of(app_state))
         records = await collect_all_records(
             require_service(
                 app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
@@ -447,7 +448,7 @@ class BudgetController(Controller):
             Agent spending envelope.
         """
         app_state: AppState = state.app_state
-        currency = await config_resolver_of(app_state).get_str("budget", "currency")
+        currency = await resolve_currency(config_resolver_of(app_state))
         total = await require_service(
             app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
         ).get_agent_cost(agent_id)
