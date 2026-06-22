@@ -1,0 +1,38 @@
+# Hand-scored calibration anchors for the ``compaction-fidelity`` rubric.
+#
+# Five anchors with distinct context_fidelity scores span the degraded ->
+# competent range so the judge's ordering can be calibrated (Spearman
+# rho >= 0.7) before the eval emits a number.
+rubric_id: compaction-fidelity
+anchor_set_version: 1
+items:
+  - anchor_id: anchor-lost
+    output: >-
+      Phase 3 contradicts the phase-1 decision outright; the summary dropped
+      it and no later turn recovers it.
+    hand_scores:
+      context_fidelity: 0.0
+  - anchor_id: anchor-garbled
+    output: >-
+      Phase 3 references the phase-1 decision but misremembers its substance,
+      applying a constraint the team never agreed.
+    hand_scores:
+      context_fidelity: 0.25
+  - anchor_id: anchor-partial
+    output: >-
+      The decision survives compaction in outline, but phase 3 honours only
+      part of it and silently relaxes the rest.
+    hand_scores:
+      context_fidelity: 0.5
+  - anchor_id: anchor-faithful
+    output: >-
+      Phase 3 honours the phase-1 decision and cites it, with one minor detail
+      of the original rationale blurred by the summary.
+    hand_scores:
+      context_fidelity: 0.75
+  - anchor_id: anchor-exact
+    output: >-
+      Phase 3 honours the phase-1 decision exactly and explains how the
+      preserved rationale constrained the later work.
+    hand_scores:
+      context_fidelity: 1.0

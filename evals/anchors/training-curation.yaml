@@ -1,0 +1,35 @@
+# Hand-scored calibration anchors for the ``training-curation`` rubric.
+#
+# Five anchors spanning degraded -> competent curation_relevance.
+rubric_id: training-curation
+anchor_set_version: 1
+items:
+  - anchor_id: anchor-offrole
+    output: >-
+      The curated set is mostly off-role material the new hire will never use.
+    hand_scores:
+      curation_relevance: 0.0
+  - anchor_id: anchor-redundant
+    output: >-
+      The set is on-role but four of six sources are near-duplicates, wasting
+      the onboarding budget.
+    hand_scores:
+      curation_relevance: 0.25
+  - anchor_id: anchor-mixed
+    output: >-
+      The set is relevant overall but includes one off-role source and one
+      redundant pair.
+    hand_scores:
+      curation_relevance: 0.5
+  - anchor_id: anchor-relevant
+    output: >-
+      The set is relevant and largely non-redundant, with a single borderline
+      duplicate.
+    hand_scores:
+      curation_relevance: 0.75
+  - anchor_id: anchor-tailored
+    output: >-
+      The set is tightly tailored to the role and level, with every source
+      distinct and pulling its weight.
+    hand_scores:
+      curation_relevance: 1.0

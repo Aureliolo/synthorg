@@ -1,0 +1,36 @@
+# Hand-scored calibration anchors for the ``rubric-grading`` rubric.
+#
+# Five anchors spanning degraded -> competent grading_fidelity.
+rubric_id: rubric-grading
+anchor_set_version: 1
+items:
+  - anchor_id: anchor-inverted
+    output: >-
+      The grader ranked the verbose, confident-but-wrong solution above the
+      correct one.
+    hand_scores:
+      grading_fidelity: 0.0
+  - anchor_id: anchor-tied
+    output: >-
+      The grader gave both solutions the same score, failing to separate the
+      correct one from the flawed one.
+    hand_scores:
+      grading_fidelity: 0.25
+  - anchor_id: anchor-right-reason-thin
+    output: >-
+      The grader ranked them correctly but justified it by tone and length
+      rather than substance.
+    hand_scores:
+      grading_fidelity: 0.5
+  - anchor_id: anchor-substantive
+    output: >-
+      The grader ranked them correctly and cited the substantive difference,
+      with a small mis-weighting of one dimension.
+    hand_scores:
+      grading_fidelity: 0.75
+  - anchor_id: anchor-faithful
+    output: >-
+      The grader ranked them correctly, weighted the rubric dimensions
+      faithfully, and grounded every point in substance.
+    hand_scores:
+      grading_fidelity: 1.0

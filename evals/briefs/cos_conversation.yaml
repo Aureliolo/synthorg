@@ -1,0 +1,31 @@
+# Judged brief: chief-of-staff conversational proposal + routing.
+#
+# Exercises the conversational org interface (CONVERSATIONAL_PROPOSE +
+# CONCERN_ROUTING + RUN_NARRATIVE prompts): from an ambiguous operator request,
+# the chief-of-staff must propose a correctly-scoped, clarified work item,
+# route it to the right role, and narrate the outcome faithfully. A degraded run
+# mis-scopes, mis-routes, or narrates beyond the record. Judged against the
+# ``cos-conversation`` anchor set.
+brief_id: cos-conversation
+schema_version: 1
+kind: judged
+title: "chief of staff conversation"
+description: >-
+  From an ambiguous operator request, propose a correctly-scoped clarified work
+  item, route it to the most appropriate role, and narrate the result honestly.
+priority: medium
+estimated_complexity: 3
+acceptance_criteria:
+  - "The proposed work item is correctly scoped and clarified."
+  - "It is routed to the most appropriate role and narrated without overreach."
+limits:
+  max_total_cost_usd: 6.0
+  max_wall_clock_seconds: 180
+  max_turns: 8
+rubric:
+  rubric_id: cos-conversation
+  reference_answer_path: "references/cos-conversation.md"
+  dimensions:
+    - name: proposal_clarity
+      weight: 1.0
+      grade_type: score

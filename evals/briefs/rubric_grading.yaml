@@ -1,0 +1,29 @@
+# Judged brief: comparative rubric grading.
+#
+# Exercises the engine rubric grader: the org must grade two candidate
+# solutions where the weaker one is the more verbose and confident. A competent
+# run grades to real quality and ranks them correctly; a degraded run rewards
+# length and confidence. Judged against the ``rubric-grading`` anchor set.
+brief_id: rubric-grading
+schema_version: 1
+kind: judged
+title: "rubric grading"
+description: >-
+  Grade two candidate solutions where the weaker is longer and more confident;
+  the grades must track real quality, not verbosity.
+priority: medium
+estimated_complexity: 3
+acceptance_criteria:
+  - "The stronger solution receives the higher grade."
+  - "The grading rationale cites substance, not length or tone."
+limits:
+  max_total_cost_usd: 7.0
+  max_wall_clock_seconds: 180
+  max_turns: 8
+rubric:
+  rubric_id: rubric-grading
+  reference_answer_path: "references/rubric-grading.md"
+  dimensions:
+    - name: grading_fidelity
+      weight: 1.0
+      grade_type: score

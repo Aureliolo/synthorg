@@ -1,0 +1,37 @@
+# Hand-scored calibration anchors for the ``memory-consolidation`` rubric.
+#
+# Five anchors spanning degraded -> competent strategic_retention give the
+# judge a well-ordered calibration set.
+rubric_id: memory-consolidation
+anchor_set_version: 1
+items:
+  - anchor_id: anchor-amnesia
+    output: >-
+      The second session shows no trace of the first; it repeats the same
+      mistake the first session had already overcome.
+    hand_scores:
+      strategic_retention: 0.0
+  - anchor_id: anchor-noise
+    output: >-
+      The second session recalls a lesson, but it is a low-value detail rather
+      than the strategic approach that mattered.
+    hand_scores:
+      strategic_retention: 0.25
+  - anchor_id: anchor-rederived
+    output: >-
+      The second session reaches the right approach, but re-derives it from
+      scratch at full cost rather than recalling it.
+    hand_scores:
+      strategic_retention: 0.5
+  - anchor_id: anchor-recalled
+    output: >-
+      The second session recalls and applies the consolidated approach, with a
+      small amount of redundant re-checking.
+    hand_scores:
+      strategic_retention: 0.75
+  - anchor_id: anchor-carried
+    output: >-
+      The second session recalls the consolidated lesson immediately, applies
+      it, and names where the first session earned it.
+    hand_scores:
+      strategic_retention: 1.0
