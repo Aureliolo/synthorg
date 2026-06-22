@@ -12,12 +12,13 @@ seam, so a future virtual-branch strategy supplies its own
 
 import asyncio
 from pathlib import Path
-from typing import NamedTuple
+from typing import Final, NamedTuple
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
+    PushQueueUnrestartableError,
     WorkspaceError,
     WorkspaceMergeError,
     WorkspacePushError,
@@ -39,6 +40,13 @@ from synthorg.observability.events.workspace import (
 from synthorg.observability.metrics_hub import record_push_queue_event
 
 logger = get_logger(__name__)
+
+# Hard deadline on the ``stop()`` worker drain. Generous because the
+# in-flight item may be a slow-but-legitimate git push to a remote forge;
+# past this a hung push is cancelled and the coordinator marked
+# unrestartable rather than holding teardown (and the lifecycle lock)
+# indefinitely.
+_DRAIN_TIMEOUT_SECONDS: Final[float] = 60.0
 
 
 class _QueuedMerge(NamedTuple):
@@ -69,6 +77,7 @@ class PushQueueCoordinator:
         "_project_id",
         "_queue",
         "_repo_root",
+        "_stop_failed",
         "_strategy",
         "_worker",
     )
@@ -104,6 +113,11 @@ class PushQueueCoordinator:
         # request instead of appending behind the sentinel (where it
         # would hang the caller forever).
         self._closing = False
+        # Set when a ``stop()`` drain exceeds ``_DRAIN_TIMEOUT_SECONDS``
+        # (a hung worker was cancelled). ``start()`` then refuses to spawn
+        # a fresh worker so the FIFO single-writer invariant cannot be
+        # violated by two concurrent workers.
+        self._stop_failed = False
 
     async def start(self) -> None:
         """Start the background queue worker (idempotent).
@@ -116,8 +130,19 @@ class PushQueueCoordinator:
         worker takes the new queue; ``stop()``'s reset is guarded by
         ``self._worker is worker`` so it cannot clobber it, and the old
         worker drains its own captured queue to the sentinel independently.
+
+        Raises:
+            PushQueueUnrestartableError: A prior ``stop()`` drain timed out,
+                so the coordinator is permanently down (a hung worker may
+                still hold the single-writer position).
         """
         async with self._lifecycle_lock:
+            if self._stop_failed:
+                msg = (
+                    f"PushQueueCoordinator for project {self._project_id!r} "
+                    "is unrestartable after a stop() drain timeout"
+                )
+                raise PushQueueUnrestartableError(msg)
             if self._worker is None or self._worker.done() or self._closing:
                 self._queue = asyncio.Queue()
                 self._closing = False
@@ -129,10 +154,14 @@ class PushQueueCoordinator:
         Closure is signalled (and the sentinel enqueued) under the
         lifecycle lock, but the worker drain is awaited OUTSIDE the lock so
         the network-bound git pushes the worker runs cannot block a
-        concurrent ``start()`` on the lock for the whole drain. The
-        ``_worker`` / ``_queue`` reset re-acquires the lock and only fires
-        when the worker is still the one this call drained, so a fresh
-        ``start()`` that interleaves is not clobbered.
+        concurrent ``start()`` on the lock for the whole drain. The drain
+        is bounded by ``_DRAIN_TIMEOUT_SECONDS``: a hung git push is
+        cancelled and the coordinator marked unrestartable so a racing
+        ``start()`` cannot spawn a second worker on a stale queue (which
+        would break the FIFO single-writer invariant). The ``_worker`` /
+        ``_queue`` reset re-acquires the lock and only fires when the worker
+        is still the one this call drained, so a fresh ``start()`` that
+        interleaves is not clobbered.
         """
         async with self._lifecycle_lock:
             worker = self._worker
@@ -147,7 +176,18 @@ class PushQueueCoordinator:
                 await queue.put(None)
 
         try:
-            await worker
+            # No ``asyncio.shield``: cancelling a hung git-push worker on
+            # timeout is the correct escalation. ``wait_for`` cancels the
+            # worker and awaits its cancellation before raising, so the
+            # worker's ``finally`` still fails every pending item's future.
+            await asyncio.wait_for(worker, timeout=_DRAIN_TIMEOUT_SECONDS)
+        except TimeoutError:
+            self._stop_failed = True
+            logger.error(
+                WORKSPACE_PUSH_QUEUE_FAILED,
+                project_id=self._project_id,
+                reason="stop_drain_timeout",
+            )
         finally:
             async with self._lifecycle_lock:
                 if self._worker is worker:
