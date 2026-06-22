@@ -27,6 +27,9 @@ from synthorg.observability.events.charter import (
     CHARTER_STATE_INCONSISTENT,
     CHARTER_STATUS_TRANSITIONED,
 )
+from synthorg.observability.events.chief_of_staff import (
+    COS_CONVERSATION_STATUS_TRANSITIONED,
+)
 from synthorg.persistence.charter_protocol import CharterFilterSpec, CharterRepository
 from synthorg.persistence.conversation_protocol import ConversationRepository
 
@@ -271,9 +274,16 @@ class CharterCrudMixin:
         self, conversation_id: NotBlankStr, now: datetime
     ) -> None:
         """Best-effort close of the interview conversation (idempotent)."""
-        await self._conversation_repo.transition_if(
+        closed = await self._conversation_repo.transition_if(
             conversation_id,
             from_state=ConversationStatus.ACTIVE,
             to_state=ConversationStatus.CLOSED,
             updated_at=now.isoformat(),
         )
+        if closed:
+            logger.info(
+                COS_CONVERSATION_STATUS_TRANSITIONED,
+                conversation_id=conversation_id,
+                from_state=ConversationStatus.ACTIVE.value,
+                to_state=ConversationStatus.CLOSED.value,
+            )

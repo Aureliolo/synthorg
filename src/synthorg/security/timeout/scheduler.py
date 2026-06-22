@@ -19,6 +19,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import get_logger
 from synthorg.observability.background_tasks import BackgroundTaskRegistry
+from synthorg.observability.events.approval_gate import APPROVAL_STATUS_TRANSITIONED
 from synthorg.observability.events.notification import NOTIFICATION_ESCALATION_SEND
 from synthorg.observability.events.timeout import (
     TIMEOUT_SCHEDULER_ERROR,
@@ -402,6 +403,17 @@ class ApprovalTimeoutScheduler:
             approval_id=str(item.id),
             action=action.action.value,
             reason=action.reason,
+        )
+        # State-transition log AFTER the persistence write succeeds, so the
+        # PENDING -> APPROVED / REJECTED hop appears in the
+        # ``approval.status_transitioned`` stream like every other approval
+        # decision, attributed to the timeout policy rather than a reviewer.
+        logger.info(
+            APPROVAL_STATUS_TRANSITIONED,
+            approval_id=str(item.id),
+            from_status=ApprovalStatus.PENDING.value,
+            to_status=saved.status.value,
+            decided_by=TIMEOUT_POLICY_DECIDER,
         )
 
         if self._on_resolve is not None:

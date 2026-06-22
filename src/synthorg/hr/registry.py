@@ -848,6 +848,18 @@ class AgentRegistryService:
             applied = live.model_copy(update={"autonomy_level": level})
             self._agents[key] = applied
         await self._snapshot(applied, saved_by=saved_by)
+        # Mirror ``apply_autonomy_level``: record a transition only on a real
+        # level change (the snapshotted write succeeded above), so the atomic
+        # promote / demote path appears in the
+        # ``hr.agent.status_transitioned`` stream like the non-atomic one.
+        if previous_level != level:
+            logger.info(
+                HR_AGENT_STATUS_TRANSITIONED,
+                agent_id=key,
+                from_status=previous_level.value,
+                to_status=level.value,
+                saved_by=saved_by,
+            )
         return previous_level, applied
 
     async def agent_count(self) -> int:

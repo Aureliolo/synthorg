@@ -320,6 +320,23 @@ class TestApprove:
         assert result.charter.task_id == "task-1"
         assert result.charter.forecast_id is not None
 
+    async def test_approve_emits_status_transition_log(self) -> None:
+        """Approval logs charter.status_transitioned (DRAFTED -> APPROVED)."""
+        from structlog.testing import capture_logs
+
+        dispatcher, _, _, _ = _dispatcher(_charter())
+        with capture_logs() as logs:
+            await dispatcher.approve(
+                NotBlankStr("charter-1"), approved_by=NotBlankStr("user-1")
+            )
+        transitions = [
+            e for e in logs if e.get("event") == "charter.status_transitioned"
+        ]
+        assert len(transitions) == 1
+        assert transitions[0]["from_state"] == CharterStatus.DRAFTED.value
+        assert transitions[0]["to_state"] == CharterStatus.APPROVED.value
+        assert transitions[0]["decided_by"] == "user-1"
+
     async def test_existing_project_path(self) -> None:
         existing = Project(id=as_uuid("proj-x"), name=NotBlankStr("X"))
         charter = _charter(project_id=sid("proj-x"), proposed_project_name=None)
