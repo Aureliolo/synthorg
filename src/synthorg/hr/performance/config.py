@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import ClassVar, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.settings.enums import SettingNamespace
@@ -32,9 +32,10 @@ class PerformanceConfig(BaseModel):
         quality_judge_provider: Provider name for LLM quality judge
             (None = auto from model ref). Requires quality_judge_model.
         quality_ci_weight: Weight for CI signal in composite quality
-            score (default 0.4).
-        quality_llm_weight: Weight for LLM judge in composite quality
-            score (default 0.6).
+            score (default 0.4). The LLM-judge weight is its complement.
+        quality_llm_weight: Derived LLM-judge weight
+            (``1 - quality_ci_weight``); the composite weights always
+            sum to 1.0 by construction.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -44,6 +45,12 @@ class PerformanceConfig(BaseModel):
             field="llm_sampling_rate",
             namespace=SettingNamespace.HR,
             key="performance_llm_sampling_rate",
+            parse=parse_float,
+        ),
+        MirrorField(
+            field="quality_ci_weight",
+            namespace=SettingNamespace.HR,
+            key="performance_quality_ci_weight",
             parse=parse_float,
         ),
     )
@@ -102,21 +109,22 @@ class PerformanceConfig(BaseModel):
         ge=0.0,
         le=1.0,
         description=(
-            "Weight for CI signal in composite quality score. "
-            "Together with quality_llm_weight, must sum to 1.0."
-        ),
-    )
-    quality_llm_weight: float = Field(
-        default=0.6,
-        ge=0.0,
-        le=1.0,
-        description=(
-            "Weight for LLM judge in composite quality score. "
-            "Together with quality_ci_weight, must sum to 1.0."
+            "Weight for the CI signal in the composite quality score."
+            " The LLM-judge weight is its complement"
+            " (1 - quality_ci_weight)."
         ),
     )
 
-    _WEIGHT_TOLERANCE: ClassVar[float] = 1e-6
+    @computed_field
+    @property
+    def quality_llm_weight(self) -> float:
+        """LLM-judge weight, the complement of the CI weight.
+
+        Returns:
+            ``1.0 - quality_ci_weight`` so the composite quality weights
+            always sum to 1.0 by construction.
+        """
+        return 1.0 - self.quality_ci_weight
 
     @model_validator(mode="before")
     @classmethod
@@ -157,26 +165,6 @@ class PerformanceConfig(BaseModel):
             msg = (
                 f"improving_threshold ({self.improving_threshold}) must be "
                 f"> declining_threshold ({self.declining_threshold})"
-            )
-            raise ValueError(msg)
-        return self
-
-    @model_validator(mode="after")
-    def _validate_quality_weights_sum(self) -> Self:
-        """Ensure quality weights sum to 1.0 (within tolerance).
-
-        Returns:
-            Result of type ``Self``.
-
-        Raises:
-            ValueError: If an argument fails domain validation.
-        """
-        total = self.quality_ci_weight + self.quality_llm_weight
-        if abs(total - 1.0) > self._WEIGHT_TOLERANCE:
-            msg = (
-                f"quality_ci_weight ({self.quality_ci_weight}) + "
-                f"quality_llm_weight ({self.quality_llm_weight}) = "
-                f"{total}, must sum to 1.0"
             )
             raise ValueError(msg)
         return self

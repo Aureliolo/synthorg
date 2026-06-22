@@ -29,8 +29,7 @@ performance:
   declining_threshold: -0.05      # Slope threshold for declining trend
   quality_judge_model: null       # Model ID for LLM quality judge (null = disabled)
   quality_judge_provider: null    # Provider name (null = auto from first available)
-  quality_ci_weight: 0.4          # Weight for CI signal in composite score
-  quality_llm_weight: 0.6         # Weight for LLM judge in composite score
+  quality_ci_weight: 0.4          # Weight for CI signal; LLM weight is its complement
   llm_sampling_rate: 0.01         # Fraction of events sampled by LLM calibration
   llm_sampling_model: null        # Model for calibration sampling (null = disabled)
   collaboration_weights: null      # Custom weights for collaboration scoring (null = defaults)
@@ -41,8 +40,8 @@ performance:
 |-------|------|---------|-------------|
 | `quality_judge_model` | `string` or `null` | `null` | Model ID for quality LLM judge. `null` disables the judge. |
 | `quality_judge_provider` | `string` or `null` | `null` | Provider name for the judge. Requires `quality_judge_model`. |
-| `quality_ci_weight` | `float` | `0.4` | Weight for CI signal (0.0--1.0). Must sum to 1.0 with `quality_llm_weight`. |
-| `quality_llm_weight` | `float` | `0.6` | Weight for LLM judge (0.0--1.0). Must sum to 1.0 with `quality_ci_weight`. |
+| `quality_ci_weight` | `float` | `0.4` | Weight for CI signal (0.0--1.0). The LLM-judge weight is the derived complement. |
+| `quality_llm_weight` | `float` (derived) | `0.6` | Read-only complement `1 - quality_ci_weight`; not set directly. |
 | `min_data_points` | `int` | `5` | Minimum data points for meaningful metric aggregation. |
 | `windows` | `list[string]` | `["7d", "30d", "90d"]` | Time window labels for rolling metrics (at least one required). |
 | `improving_threshold` | `float` | `0.05` | Slope above which a metric trend is classified as "improving". |
@@ -53,7 +52,7 @@ performance:
 | `calibration_retention_days` | `int` | `90` | Days to retain calibration records before expiry. |
 
 !!! note "Validation Rules"
-    - `quality_ci_weight + quality_llm_weight` must equal `1.0` (tolerance: 1e-6)
+    - `quality_llm_weight` is derived as `1 - quality_ci_weight`, so the composite weights always sum to `1.0`
     - `improving_threshold` must be strictly greater than `declining_threshold`
     - `quality_judge_provider` requires `quality_judge_model` to be set
 

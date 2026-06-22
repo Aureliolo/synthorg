@@ -181,6 +181,23 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.HR,
+        key="performance_quality_ci_weight",
+        type=SettingType.FLOAT,
+        default="0.4",
+        description=(
+            "Weight of the CI signal in the composite quality score."
+            " The LLM-judge weight is its complement (1 - this value)."
+        ),
+        group="Performance",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+        max_value=1.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.HR,
         key="evaluation_quality_enabled",
         type=SettingType.BOOLEAN,
         default="true",
