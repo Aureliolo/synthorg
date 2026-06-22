@@ -25,7 +25,9 @@ from synthorg.engine.pipeline.factory import build_work_pipeline
 from synthorg.engine.routing.scorer import AgentTaskScorer, RoutingScorerConfig
 from synthorg.engine.state import task_engine_of
 from synthorg.engine.workspace.config import WorkspaceIsolationConfig
+from synthorg.engine.workspace.disk_quota import DiskQuotaWatcher
 from synthorg.engine.workspace.git_worktree import PlannerWorktreeStrategy
+from synthorg.engine.workspace.semantic_analyzer import AstSemanticAnalyzer
 from synthorg.engine.workspace.state import (
     WorkspaceStateSlice,
     agent_workspace_root_of,
@@ -89,6 +91,10 @@ async def _build_workspace_strategy(
         config=ws_config.planner_worktrees,
         repo_root=agent_workspace_root_of(app_state),
         cmd_timeout=git_timeout,
+        semantic_analyzer=AstSemanticAnalyzer(
+            config=ws_config.planner_worktrees.semantic_analysis,
+        ),
+        disk_quota_watcher=DiskQuotaWatcher(ws_config.planner_worktrees),
         clock=app_state.clock,
     )
     return strategy, ws_config

@@ -14,6 +14,7 @@ from typing import Final
 from uuid import uuid4
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.errors import (
     WorkspaceCleanupError,
     WorkspaceError,
@@ -23,6 +24,7 @@ from synthorg.engine.errors import (
 )
 from synthorg.engine.workspace._git_subprocess import run_git_subprocess
 from synthorg.engine.workspace.config import PlannerWorktreesConfig
+from synthorg.engine.workspace.disk_quota import DiskQuotaWatcher
 from synthorg.engine.workspace.enums import ConflictType
 from synthorg.engine.workspace.models import (
     MergeConflict,
@@ -32,9 +34,10 @@ from synthorg.engine.workspace.models import (
 )
 from synthorg.engine.workspace.semantic_analyzer import SemanticAnalyzer
 from synthorg.engine.workspace.semantic_git_ops import run_semantic_analysis
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import (
     WORKSPACE_CONFIG_INVALID,
+    WORKSPACE_DISK_CHECK_ERROR,
     WORKSPACE_LIMIT_REACHED,
     WORKSPACE_MERGE_ABORT_FAILED,
     WORKSPACE_MERGE_COMPLETE,
@@ -116,18 +119,20 @@ class PlannerWorktreeStrategy:
         "_clock",
         "_cmd_timeout",
         "_config",
+        "_disk_quota_watcher",
         "_lock",
         "_repo_root",
         "_semantic_analyzer",
     )
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         config: PlannerWorktreesConfig,
         repo_root: Path,
         cmd_timeout: float,
         semantic_analyzer: SemanticAnalyzer | None = None,
+        disk_quota_watcher: DiskQuotaWatcher | None = None,
         clock: Clock | None = None,
     ) -> None:
         """Initialize the strategy.
@@ -140,6 +145,10 @@ class PlannerWorktreeStrategy:
                 ``ConfigResolver.get_float("tools",
                 "git_command_timeout_seconds")`` at the call site.
             semantic_analyzer: Optional semantic conflict analyzer.
+            disk_quota_watcher: Optional per-worktree disk-quota monitor.
+                When supplied, a worktree's size is checked before it is
+                merged so a ballooned worktree emits warning/exceeded
+                observability events.
             clock: Injectable time source; defaults to ``SystemClock``.
 
         Raises:
@@ -169,6 +178,7 @@ class PlannerWorktreeStrategy:
         self._active_workspaces: dict[str, Workspace] = {}
         self._lock = asyncio.Lock()
         self._semantic_analyzer = semantic_analyzer
+        self._disk_quota_watcher = disk_quota_watcher
 
     def _effective_root(
         self,
@@ -415,6 +425,9 @@ class PlannerWorktreeStrategy:
             event=WORKSPACE_MERGE_FAILED,
             error_cls=WorkspaceMergeError,
         )
+        # Signal disk-quota warning/exceeded for a ballooned worktree
+        # before merging it back (observability only; non-fatal).
+        await self._check_disk_quota(workspace)
         # Merge under lock.
         result, pre_merge_sha = await self._merge_under_lock(
             workspace=workspace,
@@ -839,6 +852,30 @@ class PlannerWorktreeStrategy:
                     ),
                 )
         return tuple(conflicts)
+
+    async def _check_disk_quota(self, workspace: Workspace) -> None:
+        """Emit disk-quota events for a worktree before it merges.
+
+        No-op when no watcher is wired. Non-fatal: the watcher only
+        signals (it never removes a worktree), so a quota-check failure
+        must not block the merge.
+
+        Args:
+            workspace: The workspace about to be merged.
+        """
+        watcher = self._disk_quota_watcher
+        if watcher is None:
+            return
+        try:
+            await watcher.check_worktree(Path(workspace.worktree_path))
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                WORKSPACE_DISK_CHECK_ERROR,
+                workspace_id=workspace.workspace_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def _run_semantic_analysis(
         self,

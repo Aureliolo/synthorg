@@ -9,6 +9,10 @@ from synthorg.engine.workspace.config import (
     SemanticAnalysisConfig,
     WorkspaceIsolationConfig,
 )
+from synthorg.engine.workspace.disk_quota import (
+    DiskQuotaStatus,
+    DiskQuotaWatcher,
+)
 from synthorg.engine.workspace.git_worktree import (
     PlannerWorktreeStrategy,
 )
@@ -38,6 +42,8 @@ from synthorg.engine.workspace.service import (
 __all__ = [
     "AstSemanticAnalyzer",
     "CompositeSemanticAnalyzer",
+    "DiskQuotaStatus",
+    "DiskQuotaWatcher",
     "LlmSemanticAnalyzer",
     "MergeConflict",
     "MergeOrchestrator",
