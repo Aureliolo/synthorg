@@ -106,6 +106,37 @@ func TestCancelledContextIsNotErrLocked(t *testing.T) {
 	}
 }
 
+func TestParentDeadlineSurfacesDeadlineExceeded(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	// Hold the lock, then try to acquire with a parent context whose own
+	// deadline fires well before the wait budget. The error must surface as
+	// context.DeadlineExceeded (the caller's deadline drove the abort), NOT
+	// ErrLocked -- otherwise a caller cannot distinguish "my deadline elapsed"
+	// from "another operation is genuinely in progress".
+	held, err := Acquire(context.Background(), dir, shortWaitOpts()...)
+	if err != nil {
+		t.Fatalf("prelock Acquire: %v", err)
+	}
+	t.Cleanup(func() { _ = held.Release() })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	// Wait budget far exceeds the parent deadline, so the parent deadline is
+	// what fires first.
+	lock, err := Acquire(ctx, dir, WithWaitTimeout(5*time.Second), WithRetryInterval(5*time.Millisecond))
+	if lock != nil {
+		t.Fatalf("Acquire returned a non-nil lock on an expired parent deadline")
+	}
+	if errors.Is(err, ErrLocked) {
+		t.Fatalf("parent deadline surfaced ErrLocked, want context.DeadlineExceeded: %v", err)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Acquire err = %v, want context.DeadlineExceeded", err)
+	}
+}
+
 func TestReleaseIsNilAndDoubleSafe(t *testing.T) {
 	t.Parallel()
 	var nilLock *Lock

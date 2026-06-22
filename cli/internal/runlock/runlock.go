@@ -104,23 +104,36 @@ func Acquire(ctx context.Context, safeDir string, opts ...Option) (*Lock, error)
 
 	locked, err := fl.TryLockContext(lockCtx, cfg.retryInterval)
 	if err != nil {
-		// The lock-context deadline firing means a competing holder never
-		// released within the budget; surface the actionable ErrLocked.
-		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, ErrLocked
-		}
-		// A cancelled parent ctx (e.g. Ctrl+C) is an operator abort, not a lock
-		// conflict; surfacing ErrLocked here would falsely claim another
-		// operation is running.
-		if errors.Is(err, context.Canceled) {
-			return nil, fmt.Errorf("lifecycle lock acquisition cancelled: %w", err)
-		}
-		return nil, fmt.Errorf("acquiring lifecycle lock %s: %w", fl.Path(), err)
+		return nil, classifyAcquireError(ctx, fl.Path(), err)
 	}
 	if !locked {
 		return nil, ErrLocked
 	}
 	return &Lock{fl: fl}, nil
+}
+
+// classifyAcquireError maps a TryLockContext failure to the caller-facing error.
+//
+// lockCtx in Acquire derives from the parent ctx via WithTimeout, so a parent
+// cancellation OR a caller-supplied parent deadline both surface as the same
+// context error from TryLockContext. The parent ctx.Err() is therefore checked
+// FIRST: an operator abort (Ctrl+C) propagates as a cancellation error and a
+// caller deadline as context.DeadlineExceeded, so callers can act on each --
+// mapping either to ErrLocked would falsely claim another operation is running
+// and would make a caller's context.DeadlineExceeded handling unreachable. Only
+// when the parent is still live did the wait-budget child deadline fire, meaning
+// a competing holder never released within waitTimeout: the actionable ErrLocked.
+func classifyAcquireError(ctx context.Context, lockFilePath string, err error) error {
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return fmt.Errorf("lifecycle lock acquisition cancelled: %w", ctx.Err())
+	}
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return fmt.Errorf("lifecycle lock acquisition deadline exceeded: %w", ctx.Err())
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return ErrLocked
+	}
+	return fmt.Errorf("acquiring lifecycle lock %s: %w", lockFilePath, err)
 }
 
 // Release unlocks the advisory lock. It is safe to call on a nil *Lock and safe
