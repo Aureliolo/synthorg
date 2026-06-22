@@ -112,59 +112,59 @@ def make_security_interceptor(  # noqa: PLR0913
     cfg = security_config
     rule_engine = _build_rule_engine(cfg)
 
-    # Build optional LLM-based services when provider infrastructure
-    # is available.
-    has_providers = provider_registry is not None and provider_configs is not None
-
-    # Warn when LLM-based features are configured but providers are
-    # not available -- the features will be silently disabled.
-    if not has_providers:
-        _warn_disabled_features(cfg)
-
+    # Build optional LLM-based services when provider infrastructure is
+    # available. Both halves are narrowed together inside the ``else`` so
+    # every constructor below sees non-``None`` provider infrastructure.
     llm_evaluator = None
-    if has_providers and cfg.llm_fallback.enabled:
-        from synthorg.security.llm_evaluator import (  # noqa: PLC0415
-            LlmSecurityEvaluator,
-        )
-
-        llm_evaluator = LlmSecurityEvaluator(
-            provider_registry=provider_registry,  # type: ignore[arg-type]
-            provider_configs=provider_configs,  # type: ignore[arg-type]
-            config=cfg.llm_fallback,
-        )
-
     safety_classifier = None
     denial_tracker = None
-    if has_providers and cfg.safety_classifier.enabled:
-        from synthorg.security.denial_tracker import (  # noqa: PLC0415
-            DenialTracker,
-        )
-        from synthorg.security.safety_classifier import (  # noqa: PLC0415
-            SafetyClassifier,
-        )
-
-        safety_classifier = SafetyClassifier(
-            provider_registry=provider_registry,  # type: ignore[arg-type]
-            provider_configs=provider_configs,  # type: ignore[arg-type]
-            config=cfg.safety_classifier,
-        )
-        denial_tracker = DenialTracker(
-            max_consecutive=cfg.safety_classifier.max_consecutive_denials,
-            max_total=cfg.safety_classifier.max_total_denials,
-        )
-
     uncertainty_checker = None
-    if has_providers and model_resolver is not None and cfg.uncertainty_check.enabled:
-        from synthorg.security.uncertainty import (  # noqa: PLC0415
-            UncertaintyChecker,
-        )
 
-        uncertainty_checker = UncertaintyChecker(
-            provider_registry=provider_registry,  # type: ignore[arg-type]
-            model_resolver=model_resolver,
-            config=cfg.uncertainty_check,
-            cost_tracker=cost_tracker,
-        )
+    if provider_registry is None or provider_configs is None:
+        # Warn when LLM-based features are configured but providers are
+        # not available -- the features will be silently disabled.
+        _warn_disabled_features(cfg)
+    else:
+        if cfg.llm_fallback.enabled:
+            from synthorg.security.llm_evaluator import (  # noqa: PLC0415
+                LlmSecurityEvaluator,
+            )
+
+            llm_evaluator = LlmSecurityEvaluator(
+                provider_registry=provider_registry,
+                provider_configs=provider_configs,
+                config=cfg.llm_fallback,
+            )
+
+        if cfg.safety_classifier.enabled:
+            from synthorg.security.denial_tracker import (  # noqa: PLC0415
+                DenialTracker,
+            )
+            from synthorg.security.safety_classifier import (  # noqa: PLC0415
+                SafetyClassifier,
+            )
+
+            safety_classifier = SafetyClassifier(
+                provider_registry=provider_registry,
+                provider_configs=provider_configs,
+                config=cfg.safety_classifier,
+            )
+            denial_tracker = DenialTracker(
+                max_consecutive=cfg.safety_classifier.max_consecutive_denials,
+                max_total=cfg.safety_classifier.max_total_denials,
+            )
+
+        if model_resolver is not None and cfg.uncertainty_check.enabled:
+            from synthorg.security.uncertainty import (  # noqa: PLC0415
+                UncertaintyChecker,
+            )
+
+            uncertainty_checker = UncertaintyChecker(
+                provider_registry=provider_registry,
+                model_resolver=model_resolver,
+                config=cfg.uncertainty_check,
+                cost_tracker=cost_tracker,
+            )
 
     return SecOpsService(
         config=cfg,
