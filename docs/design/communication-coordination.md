@@ -193,11 +193,10 @@ registered and selected per meeting type. Cost bounds are enforced by
       [Authority + Dissent Log resolver](#conflict-resolution-protocol)).
 
     The current synthesizer weights positions equally and does not preserve
-    minority-report positions as first-class output. The planned
-    `EvidenceWeightedSynthesizer` (weight by verifiable-evidence density, cap
-    correlated-source clusters, preserve minority reports in an extended
-    `DissentRecord.minority_evidence` field) mitigates both risks. Tracked as
-    a constraint on [#1251](https://github.com/Aureliolo/synthorg/issues/1251). See
+    minority-report positions as first-class output. A known limitation is that
+    it neither weights by verifiable-evidence density nor caps correlated-source
+    clusters, and minority reports are not surfaced in an extended
+    `DissentRecord.minority_evidence` field. See
     [S1 Multi-Agent Architecture Decision §3](../research/s1-multi-agent-decision.md#section-3-risk-mitigation-register-15-emergent-risks-from-paper-1).
 
 === "Protocol 1: Round-Robin Transcript"

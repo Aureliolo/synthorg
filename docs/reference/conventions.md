@@ -101,6 +101,14 @@ Reference: `PerOpRateLimitConfig._validate_override_tuples` and
 shape-checked. Getting the order wrong means the shape validator runs
 against an empty default and never sees the env override.
 
+### Validator method naming
+
+Every `@model_validator` and `@field_validator` method is named
+`_validate_<constraint>` (leading underscore, verb `validate`, snake-case
+description of the invariant), e.g. `_validate_temporal_order`,
+`_validate_weights_sum`. The one sanctioned exception is `_apply_mirrors`,
+reserved for the settings-mirror `mode="before"` validators described above.
+
 ## 5. Event constant module imports
 
 Every observability event is defined as a `Final[str]` constant under
@@ -147,6 +155,15 @@ References:
 * `src/synthorg/communication/errors.py`: `CommunicationError`
   family.
 * `src/synthorg/engine/errors.py`: `EngineError` family.
+
+### Two-step `raise` form
+
+Every `raise` in `src/synthorg/` assigns the message to a local variable first,
+then raises: `msg = f"..."; raise SomeError(msg)`. Inline string or f-string
+literals in an exception constructor (`raise SomeError(f"...")`) are blocked by
+ruff `EM101` / `EM102` (both in the `extend-select` block in `pyproject.toml`),
+so a new contributor who inlines the message gets a ruff failure. Use the
+two-step form throughout.
 
 ## 7. Module file structure
 
@@ -353,9 +370,9 @@ for an example. `asyncio.CancelledError` is **not** routed through
 `reraise_critical`: it is a `BaseException`, not an `Exception`, so a
 broad `except Exception:` never catches it.
 
-Migration is incremental. Existing `gather(..., return_exceptions=True)`
-sites are being converted as code in their vicinity changes; do not
-preemptively rewrite unrelated modules.
+Do not preemptively rewrite `gather(..., return_exceptions=True)` sites in
+unrelated modules. Convert each site to the structured-error pattern when
+touching its surrounding code.
 
 ## 12. Time injection: the `Clock` seam
 
@@ -382,59 +399,18 @@ virtual time deterministically via `clock.advance(seconds)`,
 (which advances and yields once so awaiters wake up the same way they
 would under `SystemClock`).
 
-### Sanctioned legacy callable shape
+### Grandfathered callable shape
 
 `loop_prevention/{circuit_breaker,dedup,rate_limit}.py` and
-`communication/meeting/scheduler.py` deliberately stay on the older
-`clock: Callable[[], float] = time.monotonic` shape. The migration
-churn there (~30 test sites passing callables) outweighs the <!-- lint-allow: doc-numeric-macros -- clock-migration test-site count, not a build-time stat -->
-testability win. New code uses the `Clock` Protocol; do not add new
-modules to the legacy-callable list without justification.
+`communication/meeting/scheduler.py` deliberately use the
+`clock: Callable[[], float] = time.monotonic` shape rather than the `Clock`
+Protocol: the churn of converting ~30 test sites passing callables <!-- lint-allow: doc-numeric-macros -- clock-migration test-site count, not a build-time stat -->
+outweighs the testability win, so this is a permanent carve-out. New code uses
+the `Clock` Protocol; do not add new modules to this list without justification.
 
 ## 12.1. Test-double ladder
 
-When a test needs to stand in for a real collaborator, prefer the
-narrowest tool that still expresses the contract. The ladder, top to
-bottom:
-
-1. **Protocol fake**: a hand-written class that satisfies a Protocol
-   structurally, with deterministic state. Canonical example:
-   `tests/_shared/fake_clock.py` (`FakeClock` satisfies
-   `synthorg.core.clock.Clock`). Use this when the seam has more than
-   one method, the test asserts on observed effects (sleeps recorded,
-   time advanced), or virtual-time semantics matter.
-2. **`create_autospec` / `mock_of[T]`**: a typed mock built from the
-   real class. Use `mock_of[T](**overrides)` from `tests._shared` for
-   the common case (autospec with `instance=True, spec_set=True`,
-   plus optional kwarg-overrides); reach for raw
-   `create_autospec(T, instance=True, spec_set=True)` when the call site needs the
-   lower-level API. Missing methods raise `AttributeError`; renames
-   in production fail tests immediately.
-3. **`SimpleNamespace`**: a plain attribute bag for scratch data
-   that never crosses a typed boundary. Use when the test only
-   needs `obj.x = 1; obj.y = 2` semantics and does not care about
-   method behaviour.
-4. **Bare `MagicMock` (forbidden at a typed boundary)**: a
-   `MagicMock()` with no `spec=` absorbs any attribute access. The
-   `scripts/check_mock_spec.py` gate blocks substituting a bare
-   mock for a typed parameter, fixture return, or annotated local.
-   Bare mocks remain syntactically allowed for `.return_value =`
-   chains and attribute-bag scratch (rungs 3 and below); the gate
-   does not scan those.
-
-Picking a rung:
-
-| Need                                                       | Use                                |
-| ---------------------------------------------------------- | ---------------------------------- |
-| Wall-clock / monotonic / sleep                             | `FakeClock`                        |
-| Concrete service / repo at a constructor or fn argument    | `mock_of[T](**overrides)`          |
-| Other Protocol with hand-rolled state                      | new Protocol fake under `tests/_shared/` |
-| Throwaway namespace for `obj.x = 1` style                  | `types.SimpleNamespace(x=1, y=2)`  |
-| Inner mock for `parent.method.return_value = ...` chain    | bare `MagicMock()` (not a typed boundary) |
-
-The gate in `scripts/check_mock_spec.py` runs in zero-tolerance mode
-(no baseline file). A new bare `Mock()` substituted for a typed
-parameter fails pre-commit; the fix is one of the three upper rungs.
+The test-double ladder (Protocol fake, `mock_of[T]` / `create_autospec`, `SimpleNamespace`, and why a bare `MagicMock` is forbidden at a typed boundary) has its own focused reference: [Test-Double Ladder](test-doubles.md). It covers the four rungs, a need-to-tool table, and the `scripts/check_mock_spec.py` gate.
 
 ## 13. Observability event-name inventory
 
@@ -803,6 +779,14 @@ wrapper.
 `<resource>` is the persistence-entity noun, not the URL segment, so
 search-as-a-shape stays consistent (`workflow_versions_list`, not
 `workflow_versions_index`).
+
+### Route access guards
+
+Every controller route declares an access guard. Read-only routes (`@get`,
+`@head`) use `guards=[require_read_access]`; every mutating route (`@post`,
+`@patch`, `@put`, `@delete`) uses `guards=[require_write_access]`. Both import
+from `synthorg.api.guards`. There are no unguarded routes; an endpoint that
+mutates state without `require_write_access` is a defect.
 
 ## 29. Request / Response / Snapshot suffix taxonomy
 

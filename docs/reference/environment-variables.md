@@ -24,7 +24,7 @@ into three categories:
 |---|---|---|
 | `SYNTHORG_DATABASE_URL` | unset | Postgres connection URL. Format `postgresql://user:pass@host:port/db`.  No query parameters allowed; use `SYNTHORG_POSTGRES_SSL_MODE` for ssl overrides. |
 | `SYNTHORG_DB_PATH` | unset | SQLite database file path. Mutually exclusive with `SYNTHORG_DATABASE_URL` -- if both are set, Postgres wins. Consumed by `synthorg.api.app:create_app`. |
-| `SYNTHORG_POSTGRES_SSL_MODE` | `require` | Override for the Postgres SSL mode (`disable` / `require` / `verify-ca` / `verify-full`).  Validated at startup; the `require` default refuses an unencrypted connection. |
+| `SYNTHORG_POSTGRES_SSL_MODE` | `require` | Override for the Postgres SSL mode (`disable` / `allow` / `prefer` / `require` / `verify-ca` / `verify-full`).  Validated at startup; the `require` default refuses an unencrypted connection. |
 
 ## Bootstrap secrets (init-time only)
 
@@ -53,7 +53,7 @@ into three categories:
 | `SYNTHORG_FINE_TUNE_IMAGE` | unset | Override for the embedding fine-tune image (CLI publishes `-gpu` and `-cpu` variants). |
 | `SYNTHORG_FINE_TUNE_HEALTH_PORT` | `15002` | Port the fine-tune container's health probe listens on. |
 
-## Telemetry (runtime override)
+## Telemetry (restart required)
 
 | Variable | Default | Registry key | Purpose |
 |---|---|---|---|
@@ -87,7 +87,7 @@ into three categories:
 | Variable | Default | Registry key | Purpose |
 |---|---|---|---|
 | `SYNTHORG_WORKERS` | `1` | `workers/count` (read-only) | Uvicorn worker process count. |
-| `SYNTHORG_WORKER_HTTP_TIMEOUT_SECONDS` | `60.0` | `workers/http_timeout_seconds` (read-only) | HTTP client timeout (seconds) the distributed worker uses when calling the backend task-transition API. Read once at worker-process start; range 1.0-600.0. |
+| `SYNTHORG_WORKER_HTTP_TIMEOUT_SECONDS` | `60.0` | `workers/executor_http_timeout_seconds` (read-only) | HTTP client timeout (seconds) the distributed worker uses when calling the backend task-transition API. Read once at worker-process start; range 1.0-600.0. |
 
 ## Generic registry override
 

@@ -140,7 +140,7 @@ compose any generic category and are documented at the end as "bespoke per D7".
 | 8 | WorkflowDefinitionRepository | persistence/ | IdKeyed + FilteredQuery | `create_if_absent`, `update_if_exists` | CAS variants for distinct audit semantics |
 | 9 | CheckpointRepository | persistence/ | AppendOnly | `get_latest`, `delete_by_execution` | Domain: latest by turn_number; cleanup by execution |
 | 10 | HeartbeatRepository | persistence/ | Singleton (per execution) | `get_stale` | Domain: stale-timeout queries for cleanup |
-| 11 | OrgFactRepository | persistence/ | MVCC | -- | Point-in-time snapshot + operation log |
+| 11 | OrgFactRepository | persistence/ | bespoke (D7) | -- | Standalone `Protocol`, not `MVCCRepository`: composite key + author tracking on `retract`, `snapshot_at()` returns an `OperationLogSnapshot` that does not fit the `MVCCRepository[T, ...]` signature, and org-memory domain optimisations (see `persistence/memory_protocol.py`) |
 | 12 | FineTuneRunRepository | persistence/ | Stateful | `get_active_run`, `mark_interrupted` | Domain: active-run singleton per manager |
 | 13 | SettingsRepository | persistence/ | IdKeyed (composite) | `get_namespace`, `delete_namespace` | Namespace-level bulk operations |
 | 14 | ProviderAuditRepository | persistence/ | AppendOnly | -- | Append-only provider evaluation log |

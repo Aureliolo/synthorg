@@ -136,6 +136,12 @@ nav:
       - Centralized Logging: guides/centralized-logging.md
       - Monitoring: guides/monitoring.md
       - Memory Configuration: guides/memory.md
+      - Project Brain: guides/project-brain.md
+      - Living Documentation: guides/living-documentation.md
+      - Knowledge Substrate: guides/knowledge-substrate.md
+      - Mid-Flight Steering: guides/mid-flight-steering.md
+      - Research Mode: guides/research-mode.md
+      - Brownfield Intake: guides/brownfield-intake.md
       - Settings Reference: guides/settings-reference.md
       - Notifications & Events: guides/notifications-and-events.md
       - Webhook Management: guides/webhook-management.md
@@ -151,6 +157,7 @@ nav:
       - design/index.md
       - Agents: design/agents.md
       - HR & Agent Lifecycle: design/hr-lifecycle.md
+      - Evaluation Loop: design/evaluation-loop.md
       - Organization: design/organization.md
       - Communication: design/communication.md
       - Communication A2A Gateway: design/communication-a2a.md
@@ -174,7 +181,9 @@ nav:
       - Brownfield Intake: design/brownfield-intake.md
       - Providers: design/providers.md
       - Budget & Cost: design/budget.md
+      - Call Analytics & Coordination Metrics: design/coordination-metrics.md
       - Tools & Capabilities: design/tools.md
+      - Toolsmith (Self-Extending Toolkit): design/toolsmith.md
       - Security & Approval: design/security.md
       - Observability: design/observability.md
       - Notifications: design/notifications.md
@@ -239,6 +248,7 @@ nav:
       - Cross-Deployment Privacy: cross-deployment-privacy.md
       - Configuration:
           - Configuration Precedence: reference/configuration-precedence.md
+          - Bootstrap-Wiring Trace: reference/bootstrap-wiring-trace.md
           - Environment Variables: reference/environment-variables.md
           - YAML Schema: reference/yaml-schema.md
           - Regional Defaults: reference/regional-defaults.md
@@ -255,12 +265,15 @@ nav:
           - Persistence Boundary: reference/persistence-boundary.md
           - Pluggable Subsystems: reference/pluggable-subsystems.md
           - Protocols Audit: reference/protocols-audit.md
+          - Protocols Audit Cleanup Log: reference/protocols-audit-log.md
           - Typed Boundaries: reference/typed-boundaries.md
+          - Test-Double Ladder: reference/test-doubles.md
           - Retry Patterns: reference/retry-patterns.md
           - Scaffolding: reference/scaffolding.md
           - Feature Manifest: reference/feature-manifest.md
           - MCP Handler Contract: reference/mcp-handler-contract.md
           - Prompt Safety: reference/sec-prompt-safety.md
+          - Security Coverage and Bounds: reference/security-coverage.md
           - Dead API Endpoints: reference/dead-api-endpoints.md
           - Audit Category Gate Coverage: reference/audit-category-gate-coverage.md
       - Telemetry: reference/telemetry.md

@@ -5,7 +5,7 @@ description: Hire, fire, promote, and customise agents via the REST API. Covers 
 
 # Agent Management
 
-SynthOrg treats agents as real employees: they get hired, promoted, and fired through operator workflows. This guide covers the current lifecycle surface (hire, update, fire via the REST API) plus the planned archival and rehire paths and the manual workarounds that apply until they ship.
+SynthOrg treats agents as real employees: they get hired, promoted, and fired through operator workflows. This guide covers the lifecycle surface the REST API exposes (hire, update, fire), and documents the archival and rehire paths as manual two-step procedures, noting at each point which automation the DELETE flow does not yet invoke.
 
 For the architecture (identity versioning, evolution, five-pillar evaluation), see [Agents](../design/agents.md) and [HR & Agent Lifecycle](../design/hr-lifecycle.md).
 
@@ -97,7 +97,7 @@ Not yet wired into the DELETE flow: automated task reassignment via `TaskReassig
 
 ## Rehiring from archive
 
-A dedicated `POST /api/v1/agents/{agent_name}/rehire` endpoint (which would restore archived memory into a new identity with a fresh hire date and version chain) is not implemented in the agents controller. Rehiring is a manual two-step today: list archived agents via the existing listing, then recreate with `POST /api/v1/agents` using a fresh `CreateAgentOrgRequest` payload; memory restoration is performed out-of-band through the Memory Admin API. The endpoint sits alongside the same lifecycle automation called out in [Firing](#firing); track on the GitHub issue tracker.
+A dedicated `POST /api/v1/agents/{agent_name}/rehire` endpoint (which would restore archived memory into a new identity with a fresh hire date and version chain) is not implemented in the agents controller. Rehiring is a manual two-step today: list archived agents via the existing listing, then recreate with `POST /api/v1/agents` using a fresh `CreateAgentOrgRequest` payload; memory restoration is performed out-of-band through the Memory Admin API. The endpoint sits alongside the same lifecycle automation called out in [Firing](#firing).
 
 ## Lifecycle events (WebSocket)
 

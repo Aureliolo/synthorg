@@ -16,7 +16,7 @@ The longer-term direction for SynthOrg. Items here are either **planned** (sched
 | Community template marketplace | Research |
 | Inter-company communication beyond A2A | Research |
 | Shift system for agents | Research |
-| Self-improving company (meta-loop signal aggregation, staged rollout) | Research |
+| Fully autonomous self-improving company (continuous staged-rollout meta-loop, beyond the manual-approval self-improvement loop already in active development) | Research |
 | Advanced memory architecture (GraphRAG, consistency protocols, RL consolidation) | Research |
 | Kubernetes sandbox backend | Research |
 | Training mode (learn from senior agents) | Research |

@@ -45,7 +45,7 @@ Templates -> Config
 | **core** | Shared domain models: Agent, Task, Role, Company, Project, Approval, Artifact |
 | **client** | Client simulation: profiles, requirements, feedback, AI/human/hybrid clients, requirement generators, feedback strategies, pool strategies |
 | **engine** | Agent orchestration: execution loops (ReAct, Plan-and-Execute), task decomposition, routing, assignment, parallel execution, recovery, shutdown |
-| **engine.intake** | Intake processing: ClientRequest lifecycle, IntakeStrategy protocol, validation |
+| **engine.intake** | Intake processing: `IntakeStrategy` protocol, validation, and lifecycle orchestration for `ClientRequest` objects (the `ClientRequest` type is defined in `client`) |
 | **engine.review** | Review pipeline: ReviewStage protocol, multi-stage review orchestration, verdict tracking |
 | **providers** | LLM provider abstraction: LiteLLM adapter, capability matching, routing strategies (5), retry + rate limiting |
 | **communication** | Inter-agent messaging: bus, dispatcher, delegation, loop prevention, conflict resolution (4 strategies), meeting protocols (3) |
@@ -57,8 +57,16 @@ Templates -> Config
 | **api** | REST + WebSocket API: Litestar controllers, JWT + API key + WS ticket auth, guards, channels, RFC 9457 structured error responses |
 | **config** | Company configuration: YAML schema, loader, validation, defaults |
 | **templates** | Pre-built company templates: personality presets, template builder |
-| **persistence** | Operational data: pluggable backend protocol, SQLite implementation |
+| **persistence** | Operational data: pluggable backend protocol, SQLite and Postgres implementations |
 | **observability** | Structured logging: structlog, event constants, correlation tracking, log sinks |
+| **meta** | Self-extending and self-improving organisation: MCP tool surface, charter, toolsmith, rollout mutators, Chief of Staff |
+| **integrations** | External service connections: OAuth 2.1, webhooks, MCP catalog, rate limiting, tunnel provider |
+| **`organization`** | Company org chart, department records, team management |
+| **coordination** | Multi-agent coordination: ceremony policy, coordination service and state |
+| **research** | Research mode pipeline: query planning, multi-source retrieval, credibility triage, synthesis |
+| **approval** | Approval workflow protocol, models, and decision routing |
+| **notifications** | Operator alert adapters and notification dispatch |
+| **settings** | Settings registry, runtime resolution (DB > env > default), and configuration precedence |
 
 ## Design Principles
 

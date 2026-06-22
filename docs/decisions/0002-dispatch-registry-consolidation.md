@@ -68,9 +68,13 @@ stored string keys (the `StrEnum` `.value`s) sorted, unchanged contract.
   event; `resolve()` maps it to the existing rejection-note path.
 - `TYPE_VALIDATORS` becomes a `StrategyRegistry` keyed by `SettingType`.
   `validate_by_type` is unchanged externally.
-- `settings/models.py::_validate_default_type` consumes the same
-  `SettingType` registry instance (shared module-level singleton), so
-  the validation map and the default-check map cannot drift.
+- `settings/models.py::_validate_default_type` uses a purposely separate,
+  narrower registry (`_DEFAULT_TYPE_CHECK_REGISTRY`, covering only
+  INTEGER / FLOAT / BOOLEAN / JSON) rather than the full
+  `_TYPE_VALIDATOR_REGISTRY` in `settings/type_validators.py`. STRING and
+  ENUM are handled inline to avoid spurious `REGISTRY_FACTORY_NOT_FOUND`
+  ERROR logs at boot. The two registries are independent instances, so a
+  new `SettingType` member must be added to both.
 
 **Phase 2 (this PR)**
 

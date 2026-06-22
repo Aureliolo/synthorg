@@ -128,9 +128,9 @@ tags cover every required tag earn an additional 10% bonus. Proficiency thus dri
 quality-aware routing ("route to the agent with the highest Python proficiency") and
 tags drive multi-faceted matching when callers opt in.
 
-**Maintenance:** Skills will be template-seeded at hire time (company templates provide
+**Maintenance:** Skills are template-seeded at hire time (company templates provide
 default skill sets per role) and human-editable via the REST API. Auto-derivation from
-task completion history is a planned future enhancement.
+task completion history is not yet implemented.
 
 ### Tool Namespaces
 

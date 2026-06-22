@@ -221,6 +221,66 @@ channels you subscribed to deliver events in real time. See the
 [WebSocket Models](../api/layer.md#websocket-models) section of the API reference for
 the full handshake and event-type catalogue.
 
+## 10. Query the project brain
+
+The [project brain](project-brain.md) records a project's decisions, open questions, blockers, risks, dependencies, and plan revisions. The read endpoints are available whenever persistence and a memory backend are wired.
+
+```python
+# Current-state blockers for a project, newest first.
+blockers = client.get(
+    "/api/v1/projects/proj-abc123/brain",
+    params={"entry_kind": "blocker", "status": "blocked", "limit": 20},
+).json()
+
+# Semantic search across all entries.
+hits = client.get(
+    "/api/v1/projects/proj-abc123/brain/search",
+    params={"q": "payment integration risk", "limit": 5},
+).json()
+```
+
+## 11. Steer a running project
+
+[Mid-flight steering](mid-flight-steering.md) injects a hint or redirect into a project without stopping it. A redirect forces affected agents to re-plan at their next safe boundary; `supersede_mode` controls how obsolete tasks are cancelled.
+
+```python
+result = client.post(
+    "/api/v1/cockpit/steering",
+    json={
+        "project_id": "proj-abc123",
+        "kind": "redirect",
+        "text": "Use Postgres instead of MongoDB for all persistence work",
+        "supersede_task_ids": ["task_xyz789"],
+        "supersede_mode": "explicit",
+    },
+).json()
+directive_id = result["data"]["directive_id"]
+```
+
+## 12. Resume a pending interrupt
+
+When an agent pauses for human input (a tool approval or a clarification request), it raises an interrupt. Poll for pending interrupts, then resume one with a decision or a response.
+
+```python
+# List pending interrupts (optionally filter by ``session_id``).
+pending = client.get("/api/v1/interrupts").json()
+interrupt_id = pending["data"][0]["id"]
+
+# Approve a tool-approval interrupt.
+client.post(
+    f"/api/v1/interrupts/{interrupt_id}/resume",
+    json={"decision": "approve", "feedback": "Looks correct, proceed."},
+)
+
+# Or answer an information-request interrupt instead:
+# client.post(
+#     f"/api/v1/interrupts/{interrupt_id}/resume",
+#     json={"response": "Target the EU region."},
+# )
+```
+
+The streaming counterpart to this polling API is the Server-Sent Events stream at `/api/v1/events/stream`; the polling endpoints above are the fallback when a long-lived SSE connection is impractical.
+
 ## Pagination
 
 List endpoints return `PaginatedResponse<T>`:

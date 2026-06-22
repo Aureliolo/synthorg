@@ -103,3 +103,26 @@ to contain the conventional tokens (event constant imports,
 `spec=` on every Mock, `parse_typed` boundary calls, etc.). When a
 project convention changes, fix the template AND update the test in
 the same PR.
+
+## Feature package structure
+
+Every business-domain package under `src/synthorg/` ships a three-file
+structural triple alongside its service / repository / controller modules:
+
+- **`feature.py`** declares a module-level `FEATURE: FeatureModule =
+  FeatureManifest(...)` constant describing the package's full surface:
+  controllers, MCP handlers, lifecycle hooks, the state-slice class, the
+  `construction_wirer`, `ghost_wired_symbols`, and `depends_on`.
+  `ghost_wired_symbols` lists boot-constructed class names that are wired
+  during `_construction.py` but not directly referenced by the manifest's
+  `state_slice` (so the unwired-symbol gates do not flag them).
+- **`state.py`** defines the `<Name>StateSlice(BaseFeatureStateSlice)` frozen
+  Pydantic model and its `<name>_of(app_state)` accessor (see conventions
+  §32).
+- **`_construction.py`** exports
+  `def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:`
+  with that exact signature; the composition root calls it during the
+  construction phase.
+
+Representative example: `src/synthorg/budget/{feature,state,_construction}.py`.
+A new domain package must ship all three.

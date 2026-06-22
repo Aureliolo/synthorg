@@ -7,7 +7,7 @@ description: Operator reference for synthorg subcommands and their flags, with d
 
 Operator reference for the `synthorg` CLI binary. The CLI is Docker-only: `init` provisions the deployment, `start` / `stop` / `update` manage the container lifecycle, `status` / `logs` / `doctor` introspect, `backup` / `wipe` / `cleanup` cover data and image hygiene. Feature work runs in the web dashboard against the REST API.
 
-Defaults shown below are compiled into the binary; tunable defaults are also reachable via `synthorg config set <key> <value>` and the matching `SYNTHORG_*` env var.
+Most defaults shown below are compiled into the binary. Entries written `(omitted -> X)` are *resolved* defaults: the cobra flag itself defaults to empty/zero and `X` is the value applied by the non-interactive `init` flow when the flag is omitted (so `synthorg init --help` reports the empty flag default, not `X`). Tunable defaults are also reachable via `synthorg config set <key> <value>` and the matching `SYNTHORG_*` env var.
 
 ## Lifecycle
 
@@ -18,11 +18,11 @@ Defaults shown below are compiled into the binary; tunable defaults are also rea
 | `init` | `--sandbox` | (prompted) | Mount the Docker socket for the agent code-execution sandbox |
 | `init` | `--log-level` | (prompted) | Backend log level (`debug` / `info` / `warn` / `error`) |
 | `init` | `--image-tag` | (pinned) | Override container image tag |
-| `init` | `--channel` | `stable` | Release channel (`stable` / `dev`) |
-| `init` | `--bus-backend` | `internal` | Communication bus backend (`internal` / `nats`) |
-| `init` | `--persistence-backend` | `sqlite` | Persistence backend (`sqlite` / `postgres`) |
-| `init` | `--postgres-port` | `3002` | Host port when `--persistence-backend=postgres` (1-65535) |
-| `init` | `--encrypt-secrets` | `true` | Encrypt connection secrets at rest via Fernet (`true` / `false`) |
+| `init` | `--channel` | (omitted -> `stable`) | Release channel (`stable` / `dev`) |
+| `init` | `--bus-backend` | (omitted -> `internal`) | Communication bus backend (`internal` / `nats`); interactive `init` defaults to `nats` |
+| `init` | `--persistence-backend` | (omitted -> `sqlite`) | Persistence backend (`sqlite` / `postgres`); interactive `init` defaults to `postgres` |
+| `init` | `--postgres-port` | (omitted -> `3002`) | Host port when `--persistence-backend=postgres` (1-65535) |
+| `init` | `--encrypt-secrets` | (omitted -> `true`) | Encrypt connection secrets at rest via Fernet (`true` / `false`) |
 | `start` | `--no-wait` | `false` | Skip the health check after start |
 | `start` | `--timeout` | `90s` | Health-check timeout (Go duration, e.g. `90s`, `2m`) |
 | `start` | `--no-pull` | `false` | Skip image verification and pull |
@@ -57,6 +57,7 @@ Defaults shown below are compiled into the binary; tunable defaults are also rea
 | `logs` | `--no-log-prefix` | `false` | Suppress the service prefix |
 | `doctor` | `--checks` | `""` | Comma-separated check categories (`environment`, `health`, ...); empty runs all categories |
 | `doctor` | `--fix` | `false` | Auto-fix detected issues where supported |
+| `doctor report` | (none) | n/a | Generate a diagnostic archive and bug-report URL |
 | `version` | `--short` | `false` | Print only the version string |
 
 ## Hygiene

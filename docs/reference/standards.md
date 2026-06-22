@@ -28,9 +28,9 @@ Key integration points:
 
 ## Agent-to-Agent Protocol (A2A)
 
-The A2A protocol defines how autonomous agents discover each other's capabilities and delegate tasks across organisational boundaries. SynthOrg's communication layer is designed to be A2A-compatible for future inter-agent interoperability.
+The A2A protocol defines how autonomous agents discover each other's capabilities and delegate tasks across organisational boundaries.
 
-The framework currently uses an internal message bus for inter-agent communication within a single organisation. A2A support is planned for scenarios where multiple synthetic organisations need to collaborate, or where SynthOrg agents need to interact with agents from other frameworks.
+Within a single organisation, agents communicate over the internal message bus. For cross-organisation and cross-framework interoperability, SynthOrg ships an opt-in A2A gateway (`src/synthorg/a2a/`) that exposes capability discovery via a `.well-known` agent card and accepts delegated tasks from allowlisted peers. The gateway is the authorisation boundary: only peers on the connection allowlist may interact with it.
 
 ---
 

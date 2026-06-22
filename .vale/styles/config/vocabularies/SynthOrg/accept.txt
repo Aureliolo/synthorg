@@ -455,6 +455,7 @@ easily_reversible
 editability
 embedder
 empirics
+enablement
 enqueued
 enqueues
 enum
@@ -845,7 +846,10 @@ unwired
 updated_since
 uppercased
 upserts
+uis
 upstream_contamination
+uri
+uris
 user_or_ip
 userinfo
 utils
