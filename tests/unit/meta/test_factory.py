@@ -191,6 +191,25 @@ class TestBuildAppliers:
             )
 
     def test_builds_4_appliers_with_code_mod_and_creds(self) -> None:
+        from pathlib import Path
+
+        from synthorg.meta.config import CodeModificationConfig
+
+        cfg = SelfImprovementConfig(
+            enabled=True,
+            code_modification_enabled=True,
+            code_modification=CodeModificationConfig(
+                github_token="test-token",
+                github_repo="test/repo",
+                project_root=str(Path.cwd()),
+            ),
+        )
+        appliers = build_appliers(cfg)
+        assert len(appliers) == 4
+        assert ProposalAltitude.CODE_MODIFICATION in appliers
+
+    def test_skips_code_applier_when_project_root_unset(self) -> None:
+        """Fail closed: no absolute checkout means no code applier."""
         from synthorg.meta.config import CodeModificationConfig
 
         cfg = SelfImprovementConfig(
@@ -202,8 +221,8 @@ class TestBuildAppliers:
             ),
         )
         appliers = build_appliers(cfg)
-        assert len(appliers) == 4
-        assert ProposalAltitude.CODE_MODIFICATION in appliers
+        assert len(appliers) == 3
+        assert ProposalAltitude.CODE_MODIFICATION not in appliers
 
 
 class TestBuildRegressionDetector:
