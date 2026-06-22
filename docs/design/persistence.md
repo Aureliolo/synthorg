@@ -245,15 +245,22 @@ across calls. The sort key MUST be **total**; ties on the visible
 sort fields create page-boundary drift (a request for the next page can
 return a row already on the previous page, or skip a row entirely).
 When the natural sort fields are not unique, append the entity's stable
-identifier as a final tie-breaker. Currently paginated endpoints and
-their sort keys:
+identifier as a final tie-breaker. A representative sample of paginated
+endpoints and their sort keys (not exhaustive -- every `list_*` /
+history endpoint pages this way; the controllers calling
+`encode_countless_seek_meta` / `paginate_cursor` are the authoritative
+list):
 
-| Endpoint                              | Sort key                                              |
-|---------------------------------------|-------------------------------------------------------|
-| `GET /api/v1/users`                   | `id` (already unique)                                 |
-| `GET /api/v1/subworkflows`            | `(name, latest_version, subworkflow_id)`              |
-| `GET /api/v1/integrations/health`     | connection name (unique within the catalog)           |
-| `GET /api/v1/settings`                | `(definition.namespace, definition.key)` (unique pair)|
+| Endpoint                                              | Sort key                                              |
+|-------------------------------------------------------|-------------------------------------------------------|
+| `GET /api/v1/users`                                   | `id` (already unique)                                 |
+| `GET /api/v1/subworkflows`                            | `(name, latest_version, subworkflow_id)`              |
+| `GET /api/v1/integrations/health`                     | connection name (unique within the catalog)           |
+| `GET /api/v1/settings`                                | `(definition.namespace, definition.key)` (unique pair)|
+| `GET /api/v1/webhooks/{connection}/activity`          | `received_at DESC` (repo offset window)               |
+| `GET /api/v1/agents/{id}/promotion-history`           | in-memory list order (offset slice)                   |
+| `GET /api/v1/projects/{id}/docs/{slug}/history`       | `git log` order (`--skip` offset)                     |
+| `GET /api/v1/projects/{id}/brain/{entry}/history`     | `git log` order (`--skip` offset)                     |
 
 The integration-health endpoint additionally probes only the
 connections on the current page (a 100-connection catalog stops paying

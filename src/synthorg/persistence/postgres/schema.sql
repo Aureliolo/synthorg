@@ -637,12 +637,16 @@ CREATE TABLE project_brain_entries (
     status TEXT NOT NULL,
     author TEXT NOT NULL,
     recorded_at TIMESTAMPTZ NOT NULL,
-    related_task_ids JSONB NOT NULL DEFAULT '[]'::JSONB,
-    related_entry_ids JSONB NOT NULL DEFAULT '[]'::JSONB,
+    related_task_ids JSONB NOT NULL DEFAULT '[]'::JSONB
+    CHECK (JSONB_TYPEOF(related_task_ids) = 'array'),
+    related_entry_ids JSONB NOT NULL DEFAULT '[]'::JSONB
+    CHECK (JSONB_TYPEOF(related_entry_ids) = 'array'),
     supersedes_entry_id TEXT,
-    tags JSONB NOT NULL DEFAULT '[]'::JSONB,
+    tags JSONB NOT NULL DEFAULT '[]'::JSONB
+    CHECK (JSONB_TYPEOF(tags) = 'array'),
     confidence DOUBLE PRECISION,
-    citations JSONB NOT NULL DEFAULT '[]'::JSONB,
+    citations JSONB NOT NULL DEFAULT '[]'::JSONB
+    CHECK (JSONB_TYPEOF(citations) = 'array'),
     payload JSONB NOT NULL,
     PRIMARY KEY (project_id, entry_id, revision),
     -- Redundant with the PK for per-project lookups, kept deliberately: it
@@ -2015,11 +2019,16 @@ CREATE TABLE project_charters (
     ),
     title TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(title)) > 0),
     brief TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(brief)) > 0),
-    goals JSONB NOT NULL DEFAULT '[]'::JSONB,
-    constraints JSONB NOT NULL DEFAULT '[]'::JSONB,
-    success_criteria JSONB NOT NULL DEFAULT '[]'::JSONB,
-    in_scope JSONB NOT NULL DEFAULT '[]'::JSONB,
-    out_of_scope JSONB NOT NULL DEFAULT '[]'::JSONB,
+    goals JSONB NOT NULL DEFAULT '[]'::JSONB
+    CHECK (JSONB_TYPEOF(goals) = 'array'),
+    constraints JSONB NOT NULL DEFAULT '[]'::JSONB
+    CHECK (JSONB_TYPEOF(constraints) = 'array'),
+    success_criteria JSONB NOT NULL DEFAULT '[]'::JSONB
+    CHECK (JSONB_TYPEOF(success_criteria) = 'array'),
+    in_scope JSONB NOT NULL DEFAULT '[]'::JSONB
+    CHECK (JSONB_TYPEOF(in_scope) = 'array'),
+    out_of_scope JSONB NOT NULL DEFAULT '[]'::JSONB
+    CHECK (JSONB_TYPEOF(out_of_scope) = 'array'),
     envelope_amount DOUBLE PRECISION NOT NULL CHECK (envelope_amount > 0),
     envelope_currency TEXT NOT NULL CHECK (CHAR_LENGTH(envelope_currency) = 3),
     envelope_deadline TIMESTAMPTZ,

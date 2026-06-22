@@ -5,6 +5,10 @@
 -- SQLite keeps TEXT + json.dumps / ISO-8601 (sanctioned native
 -- fallback, documented in the schema header inventory). Existing rows
 -- hold valid ISO-8601 / JSON text, so every USING cast is total.
+--
+-- yoyo wraps each .sql revision in a transaction by default, so a row that
+-- failed a USING cast (or an array-typeof CHECK) rolls the whole file back
+-- rather than leaving a half-promoted table.
 
 -- cost_forecasts: ISO-text timestamps -> TIMESTAMPTZ.
 ALTER TABLE cost_forecasts
@@ -46,6 +50,12 @@ ALTER COLUMN in_scope SET DEFAULT '[]'::JSONB,
 ALTER COLUMN out_of_scope DROP DEFAULT,
 ALTER COLUMN out_of_scope TYPE JSONB USING out_of_scope::JSONB,
 ALTER COLUMN out_of_scope SET DEFAULT '[]'::JSONB;
+ALTER TABLE project_charters
+ADD CHECK (JSONB_TYPEOF(goals) = 'array'),
+ADD CHECK (JSONB_TYPEOF(constraints) = 'array'),
+ADD CHECK (JSONB_TYPEOF(success_criteria) = 'array'),
+ADD CHECK (JSONB_TYPEOF(in_scope) = 'array'),
+ADD CHECK (JSONB_TYPEOF(out_of_scope) = 'array');
 
 -- project_brain_entries: JSON-text columns -> JSONB.
 ALTER TABLE project_brain_entries
@@ -62,6 +72,11 @@ ALTER COLUMN citations DROP DEFAULT,
 ALTER COLUMN citations TYPE JSONB USING citations::JSONB,
 ALTER COLUMN citations SET DEFAULT '[]'::JSONB,
 ALTER COLUMN payload TYPE JSONB USING payload::JSONB;
+ALTER TABLE project_brain_entries
+ADD CHECK (JSONB_TYPEOF(related_task_ids) = 'array'),
+ADD CHECK (JSONB_TYPEOF(related_entry_ids) = 'array'),
+ADD CHECK (JSONB_TYPEOF(tags) = 'array'),
+ADD CHECK (JSONB_TYPEOF(citations) = 'array');
 
 -- Composite / coverage indices for hot list queries.
 CREATE INDEX idx_ct_conversation_sequence

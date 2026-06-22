@@ -10,11 +10,9 @@ only its connection handling.
 """
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from typing import cast
-
-from psycopg.rows import DictRow
 
 from synthorg.persistence._shared import coerce_row_timestamp
 from synthorg.persistence.project_brain_protocol import BrainFilterSpec
@@ -37,7 +35,8 @@ def _json_dumps_default(value: object) -> object:
 
     Object keys are sorted so the stored text is deterministic. Postgres
     injects a :class:`~psycopg.types.json.Jsonb` wrapper instead so the value
-    lands in the native JSONB column (which canonicalises key order itself).
+    lands in the native JSONB column, where ``sort_keys`` is unnecessary
+    (JSONB stores a decomposed binary form and does not preserve key order).
 
     Returns:
         A JSON string.
@@ -59,14 +58,16 @@ def _like_array_contains(column: str, ph: str, value: str) -> tuple[str, object]
 
 
 def row_to_entry(
-    row: DictRow,
+    row: Mapping[str, object],
     *,
     load_json: Callable[[object], object],
 ) -> BrainEntry:
     """Reconstruct a :class:`BrainEntry` from a DB row.
 
     Args:
-        row: The row mapping (``aiosqlite.Row`` or psycopg ``dict_row``).
+        row: The row as a string-keyed mapping. Both repositories pass a
+            ``dict`` (the SQLite repo wraps its ``aiosqlite.Row`` via
+            ``dict(row)``; psycopg's ``dict_row`` is already a ``dict``).
         load_json: Backend JSON decoder (``json.loads`` for SQLite; a
             str-or-pre-parsed tolerant loader for Postgres).
 
@@ -75,8 +76,8 @@ def row_to_entry(
     """
     data = dict(row)
     data.pop("rn", None)
-    data["entry_kind"] = BrainEntryKind(data["entry_kind"])
-    data["status"] = BrainEntryStatus(data["status"])
+    data["entry_kind"] = BrainEntryKind(str(data["entry_kind"]))
+    data["status"] = BrainEntryStatus(str(data["status"]))
     data["tags"] = tuple(cast("list[object]", load_json(data["tags"])))
     data["related_task_ids"] = tuple(
         cast("list[object]", load_json(data["related_task_ids"]))

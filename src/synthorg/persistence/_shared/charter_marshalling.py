@@ -89,16 +89,32 @@ def _encode_str_tuple(values: tuple[str, ...]) -> object:
     return json.dumps(list(values))
 
 
-def as_iso(value: object) -> str | None:
-    """Normalise a timestamp update value to an ISO-8601 UTC string.
+def passthrough_dt(value: datetime) -> object:
+    """Return *value* unchanged: psycopg binds ``datetime`` natively.
 
     Returns:
-        The matching value, or ``None`` when absent.
+        The datetime, for the Postgres serialiser slot.
+    """
+    return value
+
+
+def as_iso(
+    value: object,
+    *,
+    serialize_dt: Callable[[datetime], object] = format_iso_utc,
+) -> object | None:
+    """Normalise a timestamp update value for binding.
+
+    ``serialize_dt`` controls the datetime encoding: ISO-8601 text for SQLite
+    (the default) or native passthrough for Postgres' ``TIMESTAMPTZ`` columns.
+
+    Returns:
+        The serialised value, or ``None`` when absent.
     """
     if value is None:
         return None
     if isinstance(value, datetime):
-        return format_iso_utc(value)
+        return serialize_dt(value)
     return str(value)
 
 
@@ -199,6 +215,7 @@ def charter_save_params(
     entity: ProjectCharter,
     *,
     encode_array: Callable[[tuple[str, ...]], object] = _encode_str_tuple,
+    serialize_dt: Callable[[datetime], object] = format_iso_utc,
 ) -> tuple[object, ...]:
     """Flatten a charter into the positional upsert params.
 
@@ -207,6 +224,9 @@ def charter_save_params(
         encode_array: Serialiser for the JSON-array columns (``json.dumps``
             for SQLite's TEXT columns; a ``Jsonb`` wrapper for Postgres' native
             JSONB columns).
+        serialize_dt: Serialiser for the timestamp columns (ISO-8601 text for
+            SQLite's TEXT columns; native passthrough for Postgres'
+            ``TIMESTAMPTZ`` columns).
 
     Returns:
         The matching collection.
@@ -227,7 +247,7 @@ def charter_save_params(
         float(entity.envelope.amount),
         entity.envelope.currency,
         (
-            format_iso_utc(entity.envelope.deadline)
+            serialize_dt(entity.envelope.deadline)
             if entity.envelope.deadline is not None
             else None
         ),
@@ -235,13 +255,9 @@ def charter_save_params(
         entity.project_id,
         entity.proposed_project_name,
         entity.proposed_project_description,
-        format_iso_utc(entity.created_at),
-        format_iso_utc(entity.updated_at),
-        (
-            format_iso_utc(entity.approved_at)
-            if entity.approved_at is not None
-            else None
-        ),
+        serialize_dt(entity.created_at),
+        serialize_dt(entity.updated_at),
+        (serialize_dt(entity.approved_at) if entity.approved_at is not None else None),
         entity.approved_by,
         (str(entity.forecast_id) if entity.forecast_id is not None else None),
         entity.correlation_id,
@@ -331,6 +347,7 @@ def charter_cas_params(
     *,
     expected_version: int,
     encode_array: Callable[[tuple[str, ...]], object] = _encode_str_tuple,
+    serialize_dt: Callable[[datetime], object] = format_iso_utc,
 ) -> tuple[object, ...]:
     """Positional params for :func:`charter_cas_update_sql`.
 
@@ -338,7 +355,9 @@ def charter_cas_params(
         The SET params (all non-``id`` columns, from ``charter_save_params``)
         followed by the WHERE params ``(id, expected_version, DRAFTED)``.
     """
-    set_params = charter_save_params(entity, encode_array=encode_array)[1:]
+    set_params = charter_save_params(
+        entity, encode_array=encode_array, serialize_dt=serialize_dt
+    )[1:]
     return (
         *set_params,
         entity.id,
@@ -368,6 +387,7 @@ __all__ = [
     "build_charter_where",
     "charter_cas_params",
     "charter_save_params",
+    "passthrough_dt",
     "row_to_charter",
     "validate_charter_update_keys",
 ]

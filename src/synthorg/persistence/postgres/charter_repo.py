@@ -33,6 +33,7 @@ from synthorg.persistence._shared.charter_marshalling import (
     build_charter_where,
     charter_cas_params,
     charter_save_params,
+    passthrough_dt,
     row_to_charter,
     validate_charter_update_keys,
 )
@@ -101,7 +102,9 @@ class PostgresCharterRepository:
             ConstraintViolationError: If a database constraint is violated.
             QueryError: If the database query fails.
         """
-        params = charter_save_params(entity, encode_array=_encode_array_jsonb)
+        params = charter_save_params(
+            entity, encode_array=_encode_array_jsonb, serialize_dt=passthrough_dt
+        )
         try:
             async with self._pool.connection() as conn:
                 await conn.execute(_UPSERT_SQL, params)
@@ -320,8 +323,8 @@ class PostgresCharterRepository:
         forecast_update = updates.get("forecast_id")
         params = (
             to_state.value,
-            as_iso(updates.get("updated_at")),
-            as_iso(updates.get("approved_at")),
+            as_iso(updates.get("updated_at"), serialize_dt=passthrough_dt),
+            as_iso(updates.get("approved_at"), serialize_dt=passthrough_dt),
             updates.get("approved_by"),
             (str(forecast_update) if forecast_update is not None else None),
             updates.get("correlation_id"),
@@ -381,7 +384,10 @@ class PostgresCharterRepository:
             QueryError: If the database query fails.
         """
         params = charter_cas_params(
-            entity, expected_version=expected_version, encode_array=_encode_array_jsonb
+            entity,
+            expected_version=expected_version,
+            encode_array=_encode_array_jsonb,
+            serialize_dt=passthrough_dt,
         )
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
