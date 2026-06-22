@@ -242,7 +242,6 @@ class CodeApplier:
             ci_result = await self._run_ci(
                 proposal,
                 changed_files,
-                project_root,
             )
         finally:
             # Revert only the changes that were actually written. The
@@ -346,14 +345,12 @@ class CodeApplier:
         self,
         proposal: ImprovementProposal,
         changed_files: list[str],
-        project_root: Path,
     ) -> CIValidationResult:
         """Run CI validation against locally written files.
 
         Args:
             proposal: The proposal being validated.
             changed_files: Relative paths of changed files.
-            project_root: Absolute path to project root.
 
         Returns:
             CI validation result.
@@ -366,7 +363,6 @@ class CodeApplier:
         }
         ci_files = tuple(f for f in changed_files if f not in delete_paths)
         ci_result = await self._ci_validator.validate(
-            project_root=project_root,
             changed_files=ci_files,
         )
         if not ci_result.passed:

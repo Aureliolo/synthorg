@@ -39,6 +39,7 @@ from synthorg.integrations.oauth.token_manager import (
 from synthorg.integrations.tunnel.mcp_service import TunnelService
 from synthorg.integrations.tunnel.protocol import TunnelProvider
 from synthorg.integrations.webhooks.activity_service import WebhookActivityService
+from synthorg.integrations.webhooks.receipt_service import WebhookReceiptService
 from synthorg.integrations.webhooks.replay_protection import ReplayProtector
 from synthorg.integrations.webhooks.service import WebhookService
 from synthorg.tools.mcp.factory import MCPToolFactory
@@ -73,6 +74,7 @@ class IntegrationsStateSlice(BaseFeatureStateSlice):
     mcp_bridge_factory: MCPToolFactory | None = None
     health_prober_service: HealthProberService | None = None
     webhook_activity_service: WebhookActivityService | None = None
+    webhook_receipt_service: WebhookReceiptService | None = None
     webhook_replay_protector: ReplayProtector | None = None
 
 
@@ -150,6 +152,20 @@ def webhook_activity_service_of(
     return require_service(
         app_state.slice(IntegrationsStateSlice).webhook_activity_service,
         "Webhook Activity Service",
+    )
+
+
+def webhook_receipt_service_of(
+    app_state: AppStateSliceMixin,
+) -> WebhookReceiptService:
+    """Resolve the webhook receipt lifecycle service, or raise 503.
+
+    Returns:
+        The wired webhook receipt service.
+    """
+    return require_service(
+        app_state.slice(IntegrationsStateSlice).webhook_receipt_service,
+        "Webhook Receipt Service",
     )
 
 

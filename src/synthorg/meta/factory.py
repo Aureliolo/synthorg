@@ -253,7 +253,20 @@ def build_appliers(
                 altitude="code_modification_applier",
                 reason="skipped_no_github_credentials",
             )
+        elif code_cfg.project_root is None:
+            # Fail closed: the CI validator must run against an explicit,
+            # absolute checkout. Defaulting to the process CWD would point
+            # ruff / mypy / pytest at whatever tree the worker happened to
+            # start in, so an unset project_root disables the applier
+            # rather than silently validating the wrong files.
+            logger.warning(
+                META_STRATEGY_REGISTERED,
+                altitude="code_modification_applier",
+                reason="skipped_no_project_root",
+            )
         else:
+            from pathlib import Path  # noqa: PLC0415
+
             from synthorg.meta.appliers.code_applier import (  # noqa: PLC0415
                 CodeApplier,
             )
@@ -265,6 +278,11 @@ def build_appliers(
             )
 
             ci_validator = LocalCIValidator(
+                project_root=Path(str(code_cfg.project_root)).resolve(),
+                scope_validator=ScopeValidator(
+                    allowed_paths=tuple(code_cfg.allowed_paths),
+                    forbidden_paths=tuple(code_cfg.forbidden_paths),
+                ),
                 timeout_seconds=code_cfg.ci_timeout_seconds,
             )
             github_client = HttpGitHubClient(

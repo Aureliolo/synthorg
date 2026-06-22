@@ -11,8 +11,26 @@ from synthorg.meta.validation.ci_validator import (
     _existing_py_files,
     _is_safe_ci_path,
 )
+from synthorg.meta.validation.scope_validator import ScopeValidator
 
 pytestmark = pytest.mark.unit
+
+# Permissive envelope for tests that exercise the safety / discovery logic
+# independently of scope gating; scope-specific behaviour has dedicated tests.
+_ALLOW_ALL = ScopeValidator(allowed_paths=("*",), forbidden_paths=())
+
+
+def _make_validator(
+    *,
+    timeout_seconds: int = 10,
+    scope_validator: ScopeValidator = _ALLOW_ALL,
+) -> LocalCIValidator:
+    """Build a validator rooted at the (absolute) current directory."""
+    return LocalCIValidator(
+        project_root=Path.cwd(),
+        scope_validator=scope_validator,
+        timeout_seconds=timeout_seconds,
+    )
 
 
 class TestCiPathSafety:
@@ -33,9 +51,19 @@ class TestCiPathSafety:
 
     def test_existing_py_files_drops_flag_injection(self, tmp_path: Path) -> None:
         (tmp_path / "real.py").write_text("", encoding="utf-8")
-        result = _existing_py_files(tmp_path, ("real.py", "--plugin=evil.py"))
+        result = _existing_py_files(
+            tmp_path, ("real.py", "--plugin=evil.py"), _ALLOW_ALL
+        )
         # The validated file is forwarded as a resolved absolute path.
         assert result == [str((tmp_path / "real.py").resolve())]
+
+    def test_existing_py_files_drops_out_of_scope(self, tmp_path: Path) -> None:
+        """A safe, existing file outside the modification envelope is excluded."""
+        (tmp_path / "in_scope.py").write_text("", encoding="utf-8")
+        (tmp_path / "out_of_scope.py").write_text("", encoding="utf-8")
+        scope = ScopeValidator(allowed_paths=("in_scope.py",), forbidden_paths=())
+        result = _existing_py_files(tmp_path, ("in_scope.py", "out_of_scope.py"), scope)
+        assert result == [str((tmp_path / "in_scope.py").resolve())]
 
     def test_rejects_del_control_char(self, tmp_path: Path) -> None:
         assert _is_safe_ci_path(tmp_path, "src/mo\x7fd.py") is False
@@ -71,8 +99,15 @@ def _mock_subprocess(
 class TestLocalCIValidator:
     """LocalCIValidator tests."""
 
+    def test_init_rejects_relative_project_root(self) -> None:
+        with pytest.raises(ValueError, match="absolute"):
+            LocalCIValidator(
+                project_root=Path("relative/root"),
+                scope_validator=_ALLOW_ALL,
+            )
+
     async def test_all_steps_pass(self) -> None:
-        validator = LocalCIValidator(timeout_seconds=10)
+        validator = _make_validator()
         mock_proc = _mock_subprocess(returncode=0)
         with (
             patch(
@@ -83,7 +118,6 @@ class TestLocalCIValidator:
             _BYPASS_TEST_DISCOVERY,
         ):
             result = await validator.validate(
-                project_root=Path("/fake/root"),
                 changed_files=_FAKE_FILES,
             )
         assert result.passed
@@ -94,7 +128,7 @@ class TestLocalCIValidator:
         assert result.duration_seconds >= 0.0
 
     async def test_lint_failure_short_circuits(self) -> None:
-        validator = LocalCIValidator(timeout_seconds=10)
+        validator = _make_validator()
         fail_proc = _mock_subprocess(
             returncode=1,
             stdout=b"E501 line too long",
@@ -115,7 +149,6 @@ class TestLocalCIValidator:
             _BYPASS_TEST_DISCOVERY,
         ):
             result = await validator.validate(
-                project_root=Path("/fake/root"),
                 changed_files=_FAKE_FILES,
             )
         assert not result.passed
@@ -128,7 +161,7 @@ class TestLocalCIValidator:
         assert call_count == 1
 
     async def test_typecheck_failure_skips_tests(self) -> None:
-        validator = LocalCIValidator(timeout_seconds=10)
+        validator = _make_validator()
         pass_proc = _mock_subprocess(returncode=0)
         fail_proc = _mock_subprocess(
             returncode=1,
@@ -148,7 +181,6 @@ class TestLocalCIValidator:
             _BYPASS_TEST_DISCOVERY,
         ):
             result = await validator.validate(
-                project_root=Path("/fake/root"),
                 changed_files=_FAKE_FILES,
             )
         assert not result.passed
@@ -159,7 +191,7 @@ class TestLocalCIValidator:
         assert "typecheck" in result.errors[0]
 
     async def test_timeout_captured(self) -> None:
-        validator = LocalCIValidator(timeout_seconds=1)
+        validator = _make_validator(timeout_seconds=1)
 
         async def timeout_create(*args: object, **kwargs: object) -> AsyncMock:
             proc = AsyncMock()
@@ -183,7 +215,6 @@ class TestLocalCIValidator:
             _BYPASS_TEST_DISCOVERY,
         ):
             result = await validator.validate(
-                project_root=Path("/fake/root"),
                 changed_files=_FAKE_FILES,
             )
         assert not result.passed
@@ -191,7 +222,7 @@ class TestLocalCIValidator:
         assert "timed out" in result.errors[0]
 
     async def test_command_not_found(self) -> None:
-        validator = LocalCIValidator(timeout_seconds=10)
+        validator = _make_validator()
 
         async def fnf_create(*args: object, **kwargs: object) -> None:
             raise FileNotFoundError
@@ -205,7 +236,6 @@ class TestLocalCIValidator:
             _BYPASS_TEST_DISCOVERY,
         ):
             result = await validator.validate(
-                project_root=Path("/fake/root"),
                 changed_files=_FAKE_FILES,
             )
         assert not result.passed
@@ -213,7 +243,7 @@ class TestLocalCIValidator:
 
     async def test_no_test_files_fails_closed(self) -> None:
         """When no test files are discovered, CI must fail."""
-        validator = LocalCIValidator(timeout_seconds=10)
+        validator = _make_validator()
         mock_proc = _mock_subprocess(returncode=0)
         with (
             patch(
@@ -227,7 +257,6 @@ class TestLocalCIValidator:
             ),
         ):
             result = await validator.validate(
-                project_root=Path("/fake/root"),
                 changed_files=_FAKE_FILES,
             )
         assert not result.passed
@@ -245,6 +274,7 @@ class TestDiscoverTestFiles:
         found = _discover_test_files(
             tmp_path,
             ("src/synthorg/meta/new.py",),
+            _ALLOW_ALL,
         )
         assert len(found) == 1
         assert "test_new.py" in found[0]
@@ -256,6 +286,7 @@ class TestDiscoverTestFiles:
         found = _discover_test_files(
             tmp_path,
             ("src/synthorg/meta/strategies/algo.py",),
+            _ALLOW_ALL,
         )
         assert len(found) == 1
         assert "strategies" in found[0]
@@ -266,6 +297,7 @@ class TestDiscoverTestFiles:
         found = _discover_test_files(
             tmp_path,
             ("src/synthorg/meta/no_tests.py",),
+            _ALLOW_ALL,
         )
         assert found == []
 
@@ -273,6 +305,23 @@ class TestDiscoverTestFiles:
         found = _discover_test_files(
             tmp_path,
             ("src/synthorg/meta/README.md",),
+            _ALLOW_ALL,
+        )
+        assert found == []
+
+    def test_out_of_scope_source_derives_no_test(self, tmp_path: Path) -> None:
+        """A source outside the envelope yields no derived test target."""
+        test_dir = tmp_path / "tests" / "unit" / "meta"
+        test_dir.mkdir(parents=True)
+        (test_dir / "test_new.py").write_text("# test")
+        scope = ScopeValidator(
+            allowed_paths=("src/synthorg/meta/strategies/*",),
+            forbidden_paths=(),
+        )
+        found = _discover_test_files(
+            tmp_path,
+            ("src/synthorg/meta/new.py",),
+            scope,
         )
         assert found == []
 
@@ -283,5 +332,6 @@ class TestDiscoverTestFiles:
         found = _discover_test_files(
             tmp_path,
             ("src/synthorg/meta/x.py", "src/synthorg/meta/x.py"),
+            _ALLOW_ALL,
         )
         assert len(found) == 1

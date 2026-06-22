@@ -29,10 +29,12 @@ from synthorg.idempotency import (
     IdempotencyService,
 )
 from synthorg.integrations.connections.models import WebhookReceipt
+from synthorg.integrations.state import IntegrationsStateSlice
+from synthorg.integrations.webhooks.receipt_service import WebhookReceiptService
 from synthorg.observability.events.integrations import (
     WEBHOOK_RECEIPT_STATUS_TRANSITIONED,
 )
-from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.connection_protocol import WebhookReceiptRepository
 from tests._shared import as_pk, make_app_state, mock_of, sid
 
 _RCPT_ID = sid("rcpt-retry")
@@ -117,18 +119,22 @@ def _build_state(
     cas_mock = AsyncMock(return_value=cas_result)
     plain_mock = AsyncMock(side_effect=plain_results)
 
-    class _WebhookReceipts:
-        get = get_mock
-        update_status = plain_mock
-        update_status_if_current = cas_mock
-
+    receipts_repo = mock_of[WebhookReceiptRepository](
+        get=get_mock,
+        update_status=plain_mock,
+        update_status_if_current=cas_mock,
+    )
     app_state = make_app_state(
-        persistence=mock_of[PersistenceBackend](webhook_receipts=_WebhookReceipts()),
         message_bus=mock_of[MessageBus](),
         slices={
             ApiCoreStateSlice: {
                 "idempotency_service": mock_of[IdempotencyService](
                     run_idempotent=_passthrough_run_idempotent,
+                ),
+            },
+            IntegrationsStateSlice: {
+                "webhook_receipt_service": WebhookReceiptService(
+                    receipts_repo=receipts_repo,
                 ),
             },
         },
