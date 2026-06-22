@@ -41,7 +41,9 @@ _URL_PORT_ENTRIES: tuple[tuple[str, str, SettingType, str, str], ...] = (
         "notifications",
         "ntfy_default_url",
         SettingType.STRING,
-        "https://ntfy.sh",
+        # Empty by default: an operator must set an explicit endpoint so
+        # topic names are never sent to the public ntfy.sh instance.
+        "",
         "https://ntfy.example.com",
     ),
     (

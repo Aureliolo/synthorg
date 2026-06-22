@@ -87,8 +87,10 @@ class TestApiConfig:
         assert server.ws_ping_timeout == 20.0
 
     def test_cors_credentials_default(self) -> None:
+        # Secure-by-default: credentials are opt-in, so a wildcard origin
+        # never accidentally ships with cookie/auth forwarding enabled.
         cors = CorsConfig()
-        assert cors.allow_credentials is True
+        assert cors.allow_credentials is False
 
     def test_frozen(self) -> None:
         config = ApiConfig()

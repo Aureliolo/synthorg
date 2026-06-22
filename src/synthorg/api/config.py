@@ -59,7 +59,7 @@ class CorsConfig(BaseModel):
         description="Headers permitted in cross-origin requests",
     )
     allow_credentials: bool = Field(
-        default=True,
+        default=False,
         description="Whether credentials (cookies) are allowed",
     )
 

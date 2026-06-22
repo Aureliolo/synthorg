@@ -104,9 +104,9 @@ class NotificationsBridgeConfig(BaseModel):
         default="",
         pattern=r"^(|https://hooks\.slack\.com/services/.+)$",
     )
-    ntfy_default_url: NotBlankStr = Field(
-        default=NotBlankStr("https://ntfy.sh"),
-        pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
+    ntfy_default_url: str = Field(
+        default="",
+        pattern=r"^(|https://[\w.\-:]+(?:/.*)?)$",
     )
 
     @field_validator("slack_default_webhook_url")

@@ -167,6 +167,17 @@ def _create_ntfy_sink(
             default_url=default_url,
         )
     server_url = params.get("server_url") or default_url
+    if not server_url:
+        # ntfy_default_url ships empty: degrade honestly rather than
+        # building a sink with a blank endpoint (which would raise deep
+        # in the adapter). An operator must set notifications.ntfy_default_url
+        # or pass a per-sink server_url.
+        logger.warning(
+            NOTIFICATION_SINK_CONFIG_INVALID,
+            sink_type="ntfy",
+            error="server_url is required (set notifications.ntfy_default_url)",
+        )
+        return None
     token = params.get("token")
     network_policy = _build_network_policy(params)
     if bridge_config is None:
