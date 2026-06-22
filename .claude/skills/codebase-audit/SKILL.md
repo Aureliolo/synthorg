@@ -393,7 +393,7 @@ template).
 error, parse error, "Python 2 syntax", "missing parentheses", "will crash the
 interpreter", or any claim that a file does not compile MUST include the output
 of an actual compile/lint check on that file:
-- Python: `python -m py_compile <file>` or `ruff check <file>` (read-only, no redirects).
+- Python: `uv run python -m py_compile <file>` or `uv run ruff check <file>` (read-only, no redirects). Use `uv run` so the check runs under the project's Python 3.14+ venv -- a bare `python` may be an older interpreter that itself mis-parses PEP 758, manufacturing the very false positive this rule prevents.
 - TypeScript / Go: cite the actual tsc / go vet diagnostic.
 
 If the file compiles clean, the syntax finding is AUTO-VOID -- delete it before
@@ -407,7 +407,7 @@ positive. When in doubt, do not emit the syntax finding at all.
 
 ### Streaming Pool Execution
 
-Maintain a **rolling pool of 5-8 active agents** at all times (default 6). Do not wait for whole batches; as soon as one agent completes, immediately launch the next one in agent-id order to refill the slot. Initial fill: send the first 6 agents in a single message (parallel `run_in_background: true` calls). Then for each completion notification, launch the next pending agent. Continue until all 159 active agents (slots 01-159) have completed.
+Maintain a **rolling pool of 5-8 active agents** at all times (default 6). Do not wait for whole batches; as soon as one agent completes, immediately launch the next one in agent-id order to refill the slot. Initial fill: send `min(6, agents-in-scope)` agents in a single message (parallel `run_in_background: true` calls) -- a scoped run with fewer than 6 agents launches only what the scope contains, never nonexistent slots. Then for each completion notification, launch the next pending agent. Continue until all agents in scope have completed (159 for `full`).
 
 This pipelines I/O and end-to-end runtime: a slow Wave 1 agent never blocks Wave 2-31 from starting, and the model spends notification cycles dispatching new work instead of idling. Skill agents are independent (each writes its own file), so order-of-completion does not matter -- only that the pool stays saturated until the queue drains.
 
@@ -855,8 +855,9 @@ false positives as CRITICAL across multiple runs (2026-05-15 AND 2026-06-21) --
 that syntax is VALID Python 3.14 and DOES NOT crash the interpreter. Syntax
 errors are out of scope for this agent entirely; CI/ruff already catch real
 ones. If you believe you found a syntax error, you MUST first run
-`python -m py_compile <file>` (read-only, no redirects) and paste the output; if
-it compiles clean, the finding is void -- do not write it. NotImplementedError /
+`uv run python -m py_compile <file>` (read-only, no redirects -- `uv run` so it
+uses the project's Python 3.14+ venv, not an older host interpreter) and paste
+the output; if it compiles clean, the finding is void -- do not write it. NotImplementedError /
 pass-only / ellipsis stubs are the ONLY thing this agent reports.
 
 ```
