@@ -103,6 +103,7 @@ async def _wire(
     offboarding = OffboardingService(
         registry=registry,
         org_memory_backend=org_memory_backend_of(app_state),
+        performance_tracker=tracker,
     )
     service = PruningService(
         policies=(),

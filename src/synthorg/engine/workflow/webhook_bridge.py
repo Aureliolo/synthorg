@@ -6,6 +6,7 @@ sprints.
 """
 
 import asyncio
+from collections import OrderedDict
 from collections.abc import Mapping
 from typing import Final
 
@@ -51,6 +52,8 @@ _POLL_TIMEOUT: Final[float] = 1.0
 """Fallback poll timeout used when no resolver is wired in."""
 _MAX_CONSECUTIVE_ERRORS: Final[int] = 30
 """Fallback error budget used when no resolver is wired in."""
+_MAX_SEEN_DELIVERIES: Final[int] = 8192
+"""Bound on the in-memory redelivery-dedup window (FIFO eviction)."""
 
 
 class _WebhookEvent(BaseModel):  # lint-allow: frozen-extra-forbid -- bus metadata
@@ -120,6 +123,12 @@ class WebhookEventBridge:
         self._poll_timeout_fallback_logged: bool = False
         self._max_errors_fallback_logged: bool = False
         self._enabled_fallback_logged: bool = False
+        # Bounded redelivery-dedup window keyed by the stable bus
+        # ``Message.id``. A forward-succeeds-then-ack-fails redelivery
+        # re-runs ``_forward`` on the same message; without this guard the
+        # strategy's ``on_external_event`` would increment its event count
+        # twice for one logical delivery. FIFO-evicted at the cap.
+        self._seen_deliveries: OrderedDict[str, None] = OrderedDict()
 
     def set_config_resolver(self, resolver: ConfigResolver) -> None:
         """Inject the ConfigResolver after construction.
@@ -486,11 +495,38 @@ class WebhookEventBridge:
                 # loop does not tight-spin on a hot error path.
                 await self._clock.sleep(poll_timeout)
 
+    def _record_delivery(self, delivery_id: str) -> None:
+        """Record a forwarded delivery id under the FIFO cap.
+
+        Args:
+            delivery_id: The stable bus ``Message.id`` just forwarded.
+        """
+        self._seen_deliveries[delivery_id] = None
+        while len(self._seen_deliveries) > _MAX_SEEN_DELIVERIES:
+            self._seen_deliveries.popitem(last=False)
+
     async def _forward(self, message: object) -> None:
-        """Extract event data and call on_external_event."""
+        """Extract event data and call on_external_event.
+
+        Idempotent across bus redelivery: a message whose stable
+        ``Message.id`` has already been forwarded is skipped (and still
+        acked by the caller), so a forward-then-ack-failure redelivery
+        does not double-increment the strategy's event count. The id is
+        recorded only AFTER a successful forward, so a transient
+        ``on_external_event`` failure (which leaves the message un-acked)
+        is still retried on the next delivery.
+        """
         from synthorg.communication.message import Message  # noqa: PLC0415
 
         if not isinstance(message, Message):
+            return
+        delivery_id = str(message.id)
+        if delivery_id in self._seen_deliveries:
+            logger.debug(
+                WEBHOOK_BRIDGE_EVENT_FORWARDED,
+                reason="duplicate_delivery_suppressed",
+                delivery_id=delivery_id,
+            )
             return
         strategy, sprint = await self._scheduler.get_active_info()
         if strategy is None or sprint is None:
@@ -526,3 +562,7 @@ class WebhookEventBridge:
                 event_type=event.event_type,
                 connection_name=event.connection_name,
             )
+        # Record only after a successful forward so a transient
+        # ``on_external_event`` failure (message left un-acked) is retried
+        # on redelivery instead of being suppressed as a duplicate.
+        self._record_delivery(delivery_id)

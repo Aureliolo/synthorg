@@ -1,5 +1,7 @@
 """Tests for approvals controller."""
 
+import base64
+import json
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -19,6 +21,11 @@ from synthorg.api.dto import ApproveRequest, RejectRequest
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import ConflictError
+from synthorg.core.evidence import (
+    EvidencePackage,
+    EvidencePackageSignature,
+    RecommendedAction,
+)
 from synthorg.idempotency import IdempotencyResult, IdempotencyService
 from synthorg.settings.resolver import ConfigResolver
 from tests._shared import (
@@ -555,6 +562,78 @@ class TestApprovalUrgencyFields:
         data = resp.json()["data"]
         assert data["urgency_level"] == expected_urgency
         assert data["seconds_remaining"] is not None
+
+
+def _signed_approval(secret: bytes, *, approval_id: str = "sig-001") -> ApprovalItem:
+    """Build an approval carrying an evidence package with one signature."""
+    base = make_approval(approval_id=approval_id, risk_level=ApprovalRiskLevel.HIGH)
+    evidence = EvidencePackage(
+        id="ep-sig-1",
+        title="Signed approval",
+        narrative="Agent requests a signed deploy.",
+        recommended_actions=(
+            RecommendedAction(
+                action_type="approve",
+                label="Approve",
+                description="Approve the deploy",
+            ),
+        ),
+        source_agent_id="agent-eng-001",
+        created_at=base.created_at,
+        risk_level=ApprovalRiskLevel.HIGH,
+        signatures=(
+            EvidencePackageSignature(
+                approver_id="ceo-1",
+                algorithm="ed25519",
+                signature_bytes=secret,
+                signed_at=base.created_at,
+                chain_position=0,
+            ),
+        ),
+    )
+    return base.model_copy(update={"evidence_package": evidence})
+
+
+@pytest.mark.unit
+class TestApprovalSignatureRedaction:
+    """ApprovalResponse must never leak raw audit-chain signature bytes."""
+
+    def test_to_approval_response_omits_signature_bytes(self) -> None:
+        secret = b"\xde\xad\xbe\xef-secret-signature"
+        item = _signed_approval(secret)
+        resp = _to_approval_response(
+            item,
+            now=item.created_at,
+            urgency_critical_seconds=3600.0,
+            urgency_high_seconds=7200.0,
+        )
+        dumped = resp.model_dump(mode="json")
+        evidence = dumped["evidence_package"]
+        assert evidence is not None
+        signature = evidence["signatures"][0]
+        # Raw bytes are gone, auditable metadata is retained.
+        assert "signature_bytes" not in signature
+        assert signature["approver_id"] == "ceo-1"
+        assert signature["algorithm"] == "ed25519"
+        assert signature["chain_position"] == 0
+        # The base64 of the secret must not appear anywhere in the payload.
+        encoded = base64.b64encode(secret).decode()
+        assert encoded not in json.dumps(dumped)
+
+    async def test_get_route_omits_signature_bytes(
+        self,
+        async_test_client: LoopAsyncClient,
+        approval_store: ApprovalStore,
+    ) -> None:
+        secret = b"\xca\xfe\xba\xbe-wire-secret"
+        await approval_store.add(_signed_approval(secret))
+        resp = await async_test_client.get(
+            f"{_BASE}/{sid('sig-001')}", headers=_READ_HEADERS
+        )
+        assert resp.status_code == 200
+        body = resp.text
+        assert "signature_bytes" not in body
+        assert base64.b64encode(secret).decode() not in body
 
 
 @pytest.mark.unit

@@ -1,23 +1,25 @@
 /** Approval queue and HITL evidence types. */
 
 import type { ApprovalRiskLevel, ApprovalStatus } from './enums'
-import type { EvidencePackageSignature } from './dtos.gen'
+import type { SafeEvidencePackageSignature } from './dtos.gen'
 
 export type {
   ApprovalResponse,
   ApproveRequest,
   CreateApprovalRequest,
-  EvidencePackage,
-  EvidencePackageSignature,
   RecommendedAction,
   RejectRequest,
+  // The API redacts the raw audit-chain signature bytes, so the wire
+  // evidence package is the ``Safe*`` variant (no ``signature_bytes``).
+  SafeEvidencePackage,
+  SafeEvidencePackageSignature,
 } from './dtos.gen'
 
 /** Signature algorithm, derived from the generated DTO so it cannot drift
  *  from the backend ``Literal``. The runtime VALUES tuple stays here because
  *  the dashboard's signature pickers and the WS enum sanitiser iterate it; the
  *  `satisfies` keeps it in lockstep with the derived union. */
-export type SignatureAlgorithm = EvidencePackageSignature['algorithm']
+export type SignatureAlgorithm = SafeEvidencePackageSignature['algorithm']
 
 export const SIGNATURE_ALGORITHM_VALUES = [
   'ml-dsa-65',

@@ -25,6 +25,7 @@ from synthorg.hr.errors import (
 )
 from synthorg.hr.full_snapshot_strategy import FullSnapshotStrategy
 from synthorg.hr.models import FiringRequest, OffboardingRecord
+from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.queue_return_strategy import QueueReturnStrategy
 from synthorg.hr.reassignment_protocol import TaskReassignmentStrategy
 from synthorg.hr.registry import AgentRegistryService
@@ -70,6 +71,10 @@ class OffboardingService:
         org_memory_backend: Optional org memory for promotion.
         message_bus: Optional message bus for notifications.
         task_repository: Optional task repository for queries.
+        performance_tracker: Optional in-memory performance tracker.
+            When supplied, the departing agent's accumulated metrics are
+            evicted so the tracker's per-agent dicts do not grow without
+            bound across agent churn.
     """
 
     def __init__(  # noqa: PLR0913
@@ -83,8 +88,10 @@ class OffboardingService:
         org_memory_backend: OrgMemoryBackend | None = None,
         message_bus: MessageBus | None = None,
         task_repository: TaskRepository | None = None,
+        performance_tracker: PerformanceTracker | None = None,
     ) -> None:
         self._registry = registry
+        self._performance_tracker = performance_tracker
         self._reassignment_strategy: TaskReassignmentStrategy = (
             reassignment_strategy
             if reassignment_strategy is not None
@@ -151,6 +158,10 @@ class OffboardingService:
 
         # Step 4: Terminate agent.
         await self._terminate_agent(agent_id)
+
+        # Step 5: Evict the agent's in-memory performance metrics so the
+        # tracker's per-agent dicts do not leak across agent churn.
+        await self._forget_performance_metrics(agent_id)
 
         completed_at = datetime.now(UTC)
         record = OffboardingRecord(
@@ -324,6 +335,20 @@ class OffboardingService:
             return False
         else:
             return True
+
+    async def _forget_performance_metrics(self, agent_id: str) -> None:
+        """Evict the departing agent's in-memory performance metrics.
+
+        Non-fatal: a tracker eviction failure must not abort offboarding,
+        which has already terminated the agent. No tracker wired is a
+        no-op.
+
+        Args:
+            agent_id: The departing agent's ID.
+        """
+        if self._performance_tracker is None:
+            return
+        await self._performance_tracker.forget_agent(agent_id)
 
     async def _terminate_agent(self, agent_id: str) -> None:
         """Terminate an agent in the registry.

@@ -1,7 +1,7 @@
 import { sanitizeWsEnum, sanitizeWsString } from '@/utils/ws-sanitize'
 import type {
   ApprovalResponse,
-  EvidencePackage,
+  SafeEvidencePackage,
 } from '@/api/types/approvals'
 import {
   APPROVAL_RISK_LEVEL_VALUES,
@@ -43,7 +43,9 @@ function isNonNegInt(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0
 }
 
-/** Every signature entry must have id + algo + base64 bytes + timestamp + position. */
+/** Every signature entry must have id + algo + timestamp + position.
+ *  The raw signature bytes are redacted by the API (``SafeEvidencePackage``),
+ *  so they are intentionally absent here. */
 function isSignatureShape(value: unknown): boolean {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return false
@@ -52,7 +54,6 @@ function isSignatureShape(value: unknown): boolean {
   return (
     typeof v['approver_id'] === 'string'
     && typeof v['algorithm'] === 'string'
-    && typeof v['signature_bytes'] === 'string'
     && typeof v['signed_at'] === 'string'
     // ``chain_position`` must be a finite, non-negative integer;
     // reject NaN / Infinity / fractional / negative values that
@@ -183,8 +184,8 @@ export function isApprovalShape(
 }
 
 function sanitizeRecommendedActions(
-  actions: EvidencePackage['recommended_actions'],
-): EvidencePackage['recommended_actions'] {
+  actions: SafeEvidencePackage['recommended_actions'],
+): SafeEvidencePackage['recommended_actions'] {
   return actions.map((a) => ({
     action_type: sanitizeWsString(a.action_type, 128) ?? '',
     label: sanitizeWsString(a.label, 128) ?? '',
@@ -194,8 +195,8 @@ function sanitizeRecommendedActions(
 }
 
 function sanitizeSignatures(
-  signatures: EvidencePackage['signatures'],
-): EvidencePackage['signatures'] {
+  signatures: SafeEvidencePackage['signatures'],
+): SafeEvidencePackage['signatures'] {
   return signatures.map((s) => ({
     approver_id: sanitizeWsString(s.approver_id, 128) ?? '',
     algorithm: sanitizeWsEnum(
@@ -204,7 +205,6 @@ function sanitizeSignatures(
       'ed25519',
       { maxLen: 64, field: 'evidence_package.signatures[].algorithm' },
     ),
-    signature_bytes: sanitizeWsString(s.signature_bytes, 2048) ?? '',
     signed_at: sanitizeWsString(s.signed_at, 64) ?? '',
     chain_position: s.chain_position,
   }))
@@ -239,7 +239,7 @@ function sanitizeReasoningTrace(lines: readonly string[]): string[] {
     .filter((line) => line.length > 0)
 }
 
-function sanitizeEvidenceStrings(pkg: EvidencePackage) {
+function sanitizeEvidenceStrings(pkg: SafeEvidencePackage) {
   return {
     id: sanitizeWsString(pkg.id, 128) ?? '',
     title: sanitizeWsString(pkg.title, 256) ?? '',
@@ -266,8 +266,8 @@ function sanitizeEvidenceStrings(pkg: EvidencePackage) {
  * unchanged (an approval without structured evidence).
  */
 function sanitizeEvidencePackage(
-  pkg: EvidencePackage | null,
-): EvidencePackage | null {
+  pkg: SafeEvidencePackage | null,
+): SafeEvidencePackage | null {
   if (pkg === null) return null
   // ``isEvidencePackageShape`` has already enforced
   // ``Record<string, string>`` via ``isStringStringRecord``, so every

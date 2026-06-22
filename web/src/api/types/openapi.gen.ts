@@ -8051,8 +8051,8 @@ export type components = {
             readonly decided_by: string | null;
             readonly decision_reason: string | null;
             readonly description: string;
-            /** @description Structured evidence for HITL approval */
-            readonly evidence_package: components["schemas"]["EvidencePackage"] | null;
+            /** @description Structured evidence for HITL approval (bytes redacted) */
+            readonly evidence_package: components["schemas"]["SafeEvidencePackage"] | null;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
@@ -10817,72 +10817,6 @@ export type components = {
         /** EventBatch */
         readonly EventBatch: {
             readonly events: readonly components["schemas"]["AnonymizedOutcomeEvent"][];
-        };
-        /** EvidencePackage */
-        readonly EvidencePackage: {
-            /**
-             * Format: date-time
-             * @description Artifact creation timestamp
-             */
-            readonly created_at: string;
-            /** @description Stable evidence package UUID */
-            readonly id: string;
-            /**
-             * @description Whether the required signature threshold has been met.
-             *
-             *     Counts distinct approvers so a single approver cannot be
-             *     counted multiple times.
-             */
-            readonly is_fully_signed: boolean;
-            /** @description Additional key-value metadata */
-            readonly metadata: {
-                readonly [key: string]: unknown;
-            };
-            /** @description Plain-English explanation of the approval context */
-            readonly narrative: string;
-            /**
-             * @description Compressed reasoning steps
-             * @default []
-             */
-            readonly reasoning_trace: readonly string[];
-            /** @description Action options for the approver (1-3) */
-            readonly recommended_actions: readonly components["schemas"]["RecommendedAction"][];
-            readonly risk_level: components["schemas"]["ApprovalRiskLevel"];
-            /**
-             * @description Minimum signatures required before action executes
-             * @default 1
-             */
-            readonly signature_threshold: number;
-            /**
-             * @description Collected approver signatures
-             * @default []
-             */
-            readonly signatures: readonly components["schemas"]["EvidencePackageSignature"][];
-            /** @description Producing agent identifier */
-            readonly source_agent_id: string;
-            /** @description Related task identifier */
-            readonly task_id: string | null;
-            /** @description Short human-readable summary */
-            readonly title: string;
-        };
-        /** EvidencePackageSignature */
-        readonly EvidencePackageSignature: {
-            /**
-             * @description Signature algorithm
-             * @enum {string}
-             */
-            readonly algorithm: "ml-dsa-65" | "ed25519";
-            /** @description Approver identity */
-            readonly approver_id: string;
-            /** @description Position in the append-only audit chain */
-            readonly chain_position: number;
-            /** @description Raw signature bytes */
-            readonly signature_bytes: string;
-            /**
-             * Format: date-time
-             * @description Signature timestamp
-             */
-            readonly signed_at: string;
         };
         /** ExecutedToolCall */
         readonly ExecutedToolCall: {
@@ -15646,6 +15580,70 @@ export type components = {
          * @enum {string}
          */
         readonly RuleSeverity: "info" | "warning" | "critical";
+        /** SafeEvidencePackage */
+        readonly SafeEvidencePackage: {
+            /**
+             * Format: date-time
+             * @description Artifact creation timestamp
+             */
+            readonly created_at: string;
+            /** @description Stable evidence package UUID */
+            readonly id: string;
+            /**
+             * @description Whether the required signature threshold has been met.
+             *
+             *     Counts distinct approvers so a single approver cannot be
+             *     counted multiple times.
+             */
+            readonly is_fully_signed: boolean;
+            /** @description Additional key-value metadata */
+            readonly metadata: {
+                readonly [key: string]: unknown;
+            };
+            /** @description Plain-English explanation of the approval context */
+            readonly narrative: string;
+            /**
+             * @description Compressed reasoning steps
+             * @default []
+             */
+            readonly reasoning_trace: readonly string[];
+            /** @description Action options for the approver (1-3) */
+            readonly recommended_actions: readonly components["schemas"]["RecommendedAction"][];
+            readonly risk_level: components["schemas"]["ApprovalRiskLevel"];
+            /**
+             * @description Minimum signatures required before action executes
+             * @default 1
+             */
+            readonly signature_threshold: number;
+            /**
+             * @description Collected approver signatures (raw bytes redacted)
+             * @default []
+             */
+            readonly signatures: readonly components["schemas"]["SafeEvidencePackageSignature"][];
+            /** @description Producing agent identifier */
+            readonly source_agent_id: string;
+            /** @description Related task identifier */
+            readonly task_id: string | null;
+            /** @description Short human-readable summary */
+            readonly title: string;
+        };
+        /** SafeEvidencePackageSignature */
+        readonly SafeEvidencePackageSignature: {
+            /**
+             * @description Signature algorithm
+             * @enum {string}
+             */
+            readonly algorithm: "ml-dsa-65" | "ed25519";
+            /** @description Approver identity */
+            readonly approver_id: string;
+            /** @description Position in the append-only audit chain */
+            readonly chain_position: number;
+            /**
+             * Format: date-time
+             * @description Signature timestamp
+             */
+            readonly signed_at: string;
+        };
         /** SatisfactionHistory */
         readonly SatisfactionHistory: {
             /** @description Fraction of reviewed tasks accepted (0.0-1.0). */

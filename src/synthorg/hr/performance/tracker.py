@@ -67,6 +67,7 @@ from synthorg.observability.events.inflection import (
     PERF_INFLECTION_EMISSION_FAILED,
 )
 from synthorg.observability.events.performance import (
+    PERF_AGENT_FORGOTTEN,
     PERF_BACKGROUND_TASK_FAILED,
     PERF_INFLECTION_SINK_BIND_REJECTED,
     PERF_INFLECTION_SINK_BOUND,
@@ -364,6 +365,39 @@ class PerformanceTracker:
             collab_metrics_cleared=collab_metrics_cleared,
             contributions_cleared=contributions_cleared,
             trend_cache_cleared=trend_cache_cleared,
+        )
+
+    async def forget_agent(self, agent_id: str) -> None:
+        """Evict all in-memory metrics for a single departed agent.
+
+        Without this hook the per-agent ``_task_metrics`` /
+        ``_collab_metrics`` / ``_contributions`` dicts (and the
+        ``_trend_direction_cache`` keyed on ``agent_id``) accumulate
+        across agent churn for the process lifetime, since records are
+        only ever appended. Offboarding / deregistration calls this so a
+        retired agent's footprint is reclaimed without clearing every
+        other agent's metrics (unlike :meth:`aclear`).
+
+        Args:
+            agent_id: Identifier of the agent to forget.
+        """
+        agent_key = str(agent_id)
+        async with self._metrics_lock:
+            task_cleared = len(self._task_metrics.pop(agent_key, []))
+            collab_cleared = len(self._collab_metrics.pop(agent_key, []))
+            contrib_cleared = len(self._contributions.pop(agent_key, []))
+            stale_trends = [
+                key for key in self._trend_direction_cache if key[0] == agent_key
+            ]
+            for key in stale_trends:
+                del self._trend_direction_cache[key]
+        logger.info(
+            PERF_AGENT_FORGOTTEN,
+            agent_id=agent_key,
+            task_metrics_cleared=task_cleared,
+            collab_metrics_cleared=collab_cleared,
+            contributions_cleared=contrib_cleared,
+            trend_cache_cleared=len(stale_trends),
         )
 
     async def record_task_metric(

@@ -630,14 +630,19 @@ CREATE TABLE project_brain_entries (
     rationale TEXT NOT NULL,
     status TEXT NOT NULL,
     author TEXT NOT NULL,
-    recorded_at TEXT NOT NULL,
-    related_task_ids TEXT NOT NULL DEFAULT '[]',
-    related_entry_ids TEXT NOT NULL DEFAULT '[]',
+    recorded_at TEXT NOT NULL
+    CHECK (recorded_at LIKE '%+00:00' OR recorded_at LIKE '%Z'),
+    related_task_ids TEXT NOT NULL DEFAULT '[]'
+    CHECK (JSON_VALID(related_task_ids) AND JSON_TYPE(related_task_ids) = 'array'),
+    related_entry_ids TEXT NOT NULL DEFAULT '[]'
+    CHECK (JSON_VALID(related_entry_ids) AND JSON_TYPE(related_entry_ids) = 'array'),
     supersedes_entry_id TEXT,
-    tags TEXT NOT NULL DEFAULT '[]',
+    tags TEXT NOT NULL DEFAULT '[]'
+    CHECK (JSON_VALID(tags) AND JSON_TYPE(tags) = 'array'),
     confidence REAL,
-    citations TEXT NOT NULL DEFAULT '[]',
-    payload TEXT NOT NULL,
+    citations TEXT NOT NULL DEFAULT '[]'
+    CHECK (JSON_VALID(citations) AND JSON_TYPE(citations) = 'array'),
+    payload TEXT NOT NULL CHECK (JSON_VALID(payload)),
     PRIMARY KEY (project_id, entry_id, revision),
     -- Redundant with the PK for per-project lookups, kept deliberately: it
     -- enforces a globally unique (entry_id, revision) pair, so a revision is
@@ -2097,11 +2102,16 @@ CREATE TABLE project_charters (
     ),
     title TEXT NOT NULL CHECK (LENGTH(TRIM(title)) > 0),
     brief TEXT NOT NULL CHECK (LENGTH(TRIM(brief)) > 0),
-    goals TEXT NOT NULL DEFAULT '[]',
-    constraints TEXT NOT NULL DEFAULT '[]',
-    success_criteria TEXT NOT NULL DEFAULT '[]',
-    in_scope TEXT NOT NULL DEFAULT '[]',
-    out_of_scope TEXT NOT NULL DEFAULT '[]',
+    goals TEXT NOT NULL DEFAULT '[]'
+    CHECK (JSON_VALID(goals) AND JSON_TYPE(goals) = 'array'),
+    constraints TEXT NOT NULL DEFAULT '[]'
+    CHECK (JSON_VALID(constraints) AND JSON_TYPE(constraints) = 'array'),
+    success_criteria TEXT NOT NULL DEFAULT '[]'
+    CHECK (JSON_VALID(success_criteria) AND JSON_TYPE(success_criteria) = 'array'),
+    in_scope TEXT NOT NULL DEFAULT '[]'
+    CHECK (JSON_VALID(in_scope) AND JSON_TYPE(in_scope) = 'array'),
+    out_of_scope TEXT NOT NULL DEFAULT '[]'
+    CHECK (JSON_VALID(out_of_scope) AND JSON_TYPE(out_of_scope) = 'array'),
     envelope_amount REAL NOT NULL CHECK (envelope_amount > 0),
     envelope_currency TEXT NOT NULL CHECK (LENGTH(envelope_currency) = 3),
     envelope_deadline TEXT
@@ -2331,7 +2341,7 @@ CREATE TABLE ab_tests (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
     name TEXT NOT NULL CHECK (LENGTH(TRIM(name)) > 0),
     status TEXT NOT NULL CHECK (LENGTH(TRIM(status)) > 0),
-    variants TEXT NOT NULL,
+    variants TEXT NOT NULL CHECK (JSON_VALID(variants)),
     created_at TEXT NOT NULL CHECK (created_at LIKE '%+00:00' OR created_at LIKE '%Z'),
     updated_at TEXT NOT NULL CHECK (updated_at LIKE '%+00:00' OR updated_at LIKE '%Z')
 );
@@ -2341,7 +2351,7 @@ CREATE TABLE pruning_requests (
     agent_id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(agent_id)) > 0),
     id TEXT NOT NULL CHECK (LENGTH(TRIM(id)) > 0),
     agent_name TEXT NOT NULL CHECK (LENGTH(TRIM(agent_name)) > 0),
-    evaluation TEXT NOT NULL,
+    evaluation TEXT NOT NULL CHECK (JSON_VALID(evaluation)),
     approval_id TEXT NOT NULL CHECK (LENGTH(TRIM(approval_id)) > 0),
     status TEXT NOT NULL CHECK (LENGTH(TRIM(status)) > 0),
     created_at TEXT NOT NULL CHECK (created_at LIKE '%+00:00' OR created_at LIKE '%Z'),

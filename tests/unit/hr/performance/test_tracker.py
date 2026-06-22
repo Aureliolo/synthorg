@@ -600,3 +600,28 @@ class TestMultipleAgents:
         assert snapshot.overall_quality_score is None
         assert snapshot.windows == ()
         assert snapshot.trends == ()
+
+
+@pytest.mark.unit
+class TestForgetAgent:
+    """PerformanceTracker.forget_agent eviction hook."""
+
+    async def test_forgets_only_the_named_agent(self) -> None:
+        tracker = _make_tracker()
+        await tracker.record_task_metric(
+            make_task_metric(agent_id="agent-001", completed_at=NOW)
+        )
+        await tracker.record_task_metric(
+            make_task_metric(agent_id="agent-002", completed_at=NOW)
+        )
+
+        await tracker.forget_agent("agent-001")
+
+        assert len(tracker.get_task_metrics(agent_id=NotBlankStr("agent-001"))) == 0
+        survivors = tracker.get_task_metrics(agent_id=NotBlankStr("agent-002"))
+        assert len(survivors) == 1
+
+    async def test_forget_unknown_agent_is_noop(self) -> None:
+        tracker = _make_tracker()
+        await tracker.forget_agent("ghost-agent")
+        assert len(tracker.get_task_metrics(agent_id=NotBlankStr("ghost-agent"))) == 0
