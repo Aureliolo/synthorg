@@ -1,14 +1,18 @@
 # module-kind: controller
 """Webhook activity-listing endpoint."""
 
-from typing import Annotated
-
 from litestar import Controller, get
 from litestar.datastructures import State
-from litestar.params import QueryParameter
 
-from synthorg.api.dto import ApiResponse
+from synthorg.api.cursor import decode_cursor
+from synthorg.api.dto import DEFAULT_LIMIT, PaginatedResponse
 from synthorg.api.guards import require_read_access
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    encode_countless_seek_meta,
+)
 from synthorg.api.path_params import PathName
 from synthorg.integrations.connections.models import WebhookReceipt
 from synthorg.integrations.state import webhook_activity_service_of
@@ -29,19 +33,34 @@ class WebhooksActivityController(Controller):
         self,
         state: State,
         connection_name: PathName,
-        limit: Annotated[
-            int,
-            QueryParameter(ge=1, le=500, description="Max results"),
-        ] = 100,  # lint-allow: magic-numbers -- pre-2.22 default preserved
-    ) -> ApiResponse[tuple[WebhookReceipt, ...]]:
-        """List recent webhook receipts for a connection.
+        cursor: CursorParam = None,
+        limit: CursorLimit = DEFAULT_LIMIT,
+    ) -> PaginatedResponse[WebhookReceipt]:
+        """List webhook receipts for a connection, newest-first (paginated).
+
+        Receipts accumulate for the lifetime of a connection, so the endpoint
+        pages with an opaque HMAC cursor (``cursor`` + ``limit``) rather than
+        capping at a fixed window the client cannot advance past.
 
         Returns:
-            ``ApiResponse[tuple[WebhookReceipt, ...]]`` instance.
+            A page of :class:`WebhookReceipt` rows plus cursor metadata.
         """
-        service = webhook_activity_service_of(state["app_state"])
+        app_state = state["app_state"]
+        service = webhook_activity_service_of(app_state)
+        offset = (
+            0
+            if cursor is None
+            else decode_cursor(cursor, secret=cursor_secret_of(app_state))
+        )
         receipts = await service.list_activity(
             connection_name=connection_name,
-            limit=limit,
+            limit=limit + 1,
+            offset=offset,
         )
-        return ApiResponse(data=receipts)
+        meta = encode_countless_seek_meta(
+            offset=offset,
+            fetched_rows=len(receipts),
+            limit=limit,
+            secret=cursor_secret_of(app_state),
+        )
+        return PaginatedResponse(data=tuple(receipts[:limit]), pagination=meta)

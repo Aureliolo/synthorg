@@ -376,6 +376,7 @@ class DocsService:
         project_id: NotBlankStr,
         slug: NotBlankStr,
         limit: int = DOCS_HISTORY_DEFAULT_LIMIT,
+        offset: int = 0,
     ) -> tuple[DocVersion, ...]:
         """Return commit history for one doc.
 
@@ -383,6 +384,7 @@ class DocsService:
             project_id: Owning project.
             slug: Doc slug.
             limit: Maximum history entries.
+            offset: Number of leading commits to skip, for cursor paging.
 
         Returns:
             Tuple of :class:`DocVersion` ordered newest-first.
@@ -409,6 +411,7 @@ class DocsService:
             "log",
             "--pretty=format:%H%x09%aI%x09%s",
             f"-{limit}",
+            f"--skip={offset}",
             DOCS_BRANCH_NAME,
             "--",
             rel_path,

@@ -84,6 +84,21 @@ class _PaginatingBrainService:
     ) -> tuple[BrainSummary, ...]:
         return self._items[offset : offset + limit]
 
+    async def git_history(
+        self, *, limit: int, offset: int = 0, **_: object
+    ) -> tuple[BrainEntryVersion, ...]:
+        versions = tuple(
+            BrainEntryVersion(
+                commit_hash=NotBlankStr(f"{i:040d}"),
+                revision=i + 1,
+                author=NotBlankStr("agent_alice"),
+                committed_at=_NOW,
+                summary=NotBlankStr(f"rev {i}"),
+            )
+            for i in range(len(self._items))
+        )
+        return versions[offset : offset + limit]
+
 
 def _as_brain_service(fake: object) -> ProjectBrainService | None:
     """Wrap a read-path fake as a spec'd ``ProjectBrainService`` double.
@@ -191,3 +206,26 @@ class TestProjectBrainController:
         # drops the offset returns only the single overflow row here.
         assert [e["entry_id"] for e in second_body["data"]] == ["dec-2", "dec-3"]
         assert second_body["pagination"]["has_more"] is True
+
+    async def test_history_pagination_reaches_second_page(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """Following the history cursor returns the next git revisions."""
+        items = tuple(_summary(f"dec-{i}", title=f"Decision {i}") for i in range(5))
+        with _with_brain_service(async_test_client, _PaginatingBrainService(items)):
+            first = await async_test_client.get(
+                "/api/v1/projects/proj-1/brain/dec-1/history", params={"limit": 2}
+            )
+            assert first.status_code == 200
+            first_body = first.json()
+            assert [v["revision"] for v in first_body["data"]] == [1, 2]
+            assert first_body["pagination"]["has_more"] is True
+            cursor = first_body["pagination"]["next_cursor"]
+            assert cursor is not None
+
+            second = await async_test_client.get(
+                "/api/v1/projects/proj-1/brain/dec-1/history",
+                params={"limit": 2, "cursor": cursor},
+            )
+        assert second.status_code == 200
+        assert [v["revision"] for v in second.json()["data"]] == [3, 4]

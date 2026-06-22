@@ -133,6 +133,7 @@ async def build_git_history(
     rel_path: str,
     branch: NotBlankStr,
     limit: int,
+    offset: int = 0,
 ) -> tuple[BrainEntryVersion, ...]:
     """Read the snapshot commit log for one entry and map it to versions.
 
@@ -141,6 +142,8 @@ async def build_git_history(
         rel_path: Path of the entry's JSON snapshot relative to ``repo_root``.
         branch: The docs branch the snapshots commit on.
         limit: Maximum versions to return (newest-first).
+        offset: Number of leading commits to skip (``git log --skip``), for
+            cursor paging through the full commit log.
 
     Returns:
         The entry's git versions newest-first; empty when the file has no
@@ -151,6 +154,7 @@ async def build_git_history(
         "log",
         f"--pretty=format:{_BRAIN_LOG_FORMAT}",
         f"-{limit}",
+        f"--skip={offset}",
         branch,
         "--",
         rel_path,

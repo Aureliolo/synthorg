@@ -507,10 +507,17 @@ class ProjectBrainService:
         project_id: NotBlankStr,
         entry_id: NotBlankStr,
         limit: int = BRAIN_HISTORY_DEFAULT_LIMIT,
+        offset: int = 0,
     ) -> tuple[BrainEntryVersion, ...]:
         """Return one entry's git-versioned snapshot history, newest-first.
 
         Empty when the snapshot was never committed.
+
+        Args:
+            project_id: Owning project.
+            entry_id: Entry whose snapshot history to read.
+            limit: Maximum versions to return (newest-first).
+            offset: Number of leading commits to skip, for cursor paging.
 
         Raises:
             BrainEntryNotFoundError: If the entry does not exist in the store.
@@ -525,6 +532,7 @@ class ProjectBrainService:
             rel_path=rel_path,
             branch=BRAIN_BRANCH_NAME,
             limit=limit,
+            offset=offset,
         )
 
     # ── internals ────────────────────────────────────────────────────

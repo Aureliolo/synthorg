@@ -664,16 +664,24 @@ class PromotionService:
     def get_promotion_history(
         self,
         agent_id: NotBlankStr,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
     ) -> tuple[PromotionRecord, ...]:
-        """Get promotion/demotion history for an agent.
+        """Get promotion/demotion history for an agent (oldest first).
 
         Args:
             agent_id: Agent identifier.
+            offset: Number of leading records to skip (for cursor paging).
+            limit: Maximum records to return; ``None`` returns every record
+                from ``offset`` onward.
 
         Returns:
             Tuple of promotion records.
         """
-        return tuple(self._promotion_history.get(str(agent_id), []))
+        history = self._promotion_history.get(str(agent_id), [])
+        window = history[offset:] if limit is None else history[offset : offset + limit]
+        return tuple(window)
 
     def is_in_cooldown(self, agent_id: NotBlankStr) -> bool:
         """Check whether an agent is in the promotion cooldown period.

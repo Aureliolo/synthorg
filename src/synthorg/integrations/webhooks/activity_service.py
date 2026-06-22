@@ -49,8 +49,9 @@ class WebhookActivityService:
         *,
         connection_name: NotBlankStr,
         limit: int,
+        offset: int = 0,
     ) -> tuple[WebhookReceipt, ...]:
-        """Return the most recent receipts for a connection, newest-first.
+        """Return receipts for a connection, newest-first (paginated).
 
         Args:
             connection_name: Connection to filter on. The receipt repo
@@ -58,12 +59,14 @@ class WebhookActivityService:
                 raises a :class:`ValidationError`.
             limit: Maximum number of receipts to return. Must be in
                 ``[1, 500]``.
+            offset: Number of leading receipts to skip (for cursor paging).
 
         Returns:
             Tuple of :class:`WebhookReceipt` rows ordered newest-first.
 
         Raises:
-            ValidationError: If ``limit`` is outside ``[1, 500]``.
+            ValidationError: If ``limit`` is outside ``[1, 500]`` or ``offset``
+                is negative.
         """
         if limit < _MIN_LIMIT or limit > _MAX_LIMIT:
             logger.warning(
@@ -76,14 +79,25 @@ class WebhookActivityService:
             )
             msg = f"limit must be between {_MIN_LIMIT} and {_MAX_LIMIT}; got {limit}"
             raise ValidationError(msg)
+        if offset < 0:
+            logger.warning(
+                WEBHOOK_ACTIVITY_LISTED,
+                connection_name=str(connection_name),
+                offset=offset,
+                reason="negative_offset",
+            )
+            msg = f"offset must be non-negative; got {offset}"
+            raise ValidationError(msg)
         receipts = await self._receipts_repo.get_by_connection(
             connection_name,
             limit=limit,
+            offset=offset,
         )
         logger.info(
             WEBHOOK_ACTIVITY_LISTED,
             connection_name=str(connection_name),
             limit=limit,
+            offset=offset,
             count=len(receipts),
         )
         return receipts

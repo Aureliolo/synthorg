@@ -14,7 +14,8 @@ from litestar import Controller, get, post
 from litestar.datastructures import State
 from litestar.params import QueryParameter
 
-from synthorg.api.dto import ApiResponse
+from synthorg.api.cursor import decode_cursor
+from synthorg.api.dto import DEFAULT_LIMIT, ApiResponse, PaginatedResponse
 from synthorg.api.dto_promotion import (
     PromotionApplyResultDTO,
     PromotionEvaluationDTO,
@@ -22,6 +23,12 @@ from synthorg.api.dto_promotion import (
     PromotionRequestDTO,
 )
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    encode_countless_seek_meta,
+)
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
@@ -78,22 +85,43 @@ class PromotionController(Controller):
         self,
         state: State,
         agent_id: PathId,
-    ) -> ApiResponse[tuple[PromotionRecordDTO, ...]]:
-        """List an agent's promotion/demotion history.
+        cursor: CursorParam = None,
+        limit: CursorLimit = DEFAULT_LIMIT,
+    ) -> PaginatedResponse[PromotionRecordDTO]:
+        """List an agent's promotion/demotion history (oldest first, paginated).
+
+        Promotion records accumulate for the agent's whole lifetime, so the
+        endpoint pages with an opaque HMAC cursor (``cursor`` + ``limit``) per
+        the dashboard's pagination contract rather than returning the unbounded
+        history in one response.
 
         Args:
             state: Application state.
             agent_id: Agent whose history to read.
+            cursor: Opaque cursor from the previous page, or ``None`` to start.
+            limit: Maximum records to return on this page.
 
         Returns:
-            The agent's promotion records, newest last.
+            A page of the agent's promotion records plus cursor metadata.
         """
         app_state: AppState = state.app_state
         service = promotion_service_of(app_state)
-        records = service.get_promotion_history(NotBlankStr(agent_id))
-        return ApiResponse(
-            data=tuple(PromotionRecordDTO.from_domain(r) for r in records),
+        offset = (
+            0
+            if cursor is None
+            else decode_cursor(cursor, secret=cursor_secret_of(app_state))
         )
+        records = service.get_promotion_history(
+            NotBlankStr(agent_id), offset=offset, limit=limit + 1
+        )
+        meta = encode_countless_seek_meta(
+            offset=offset,
+            fetched_rows=len(records),
+            limit=limit,
+            secret=cursor_secret_of(app_state),
+        )
+        window = tuple(PromotionRecordDTO.from_domain(r) for r in records[:limit])
+        return PaginatedResponse(data=window, pagination=meta)
 
     @post(
         "/{agent_id:str}/apply",

@@ -106,14 +106,27 @@ class TestListActivity:
             )
         repo.get_by_connection.assert_not_called()  # type: ignore[attr-defined]
 
-    async def test_limit_passed_through_to_repo(self) -> None:
+    async def test_limit_and_offset_passed_through_to_repo(self) -> None:
         repo = _make_repo()
         service = WebhookActivityService(receipts_repo=repo)
         await service.list_activity(
             connection_name=NotBlankStr("test-conn"),
             limit=42,
+            offset=84,
         )
         repo.get_by_connection.assert_awaited_once_with(  # type: ignore[attr-defined]
             NotBlankStr("test-conn"),
             limit=42,
+            offset=84,
         )
+
+    async def test_negative_offset_raises_validation_error(self) -> None:
+        repo = _make_repo()
+        service = WebhookActivityService(receipts_repo=repo)
+        with pytest.raises(ValidationError, match="offset must be non-negative"):
+            await service.list_activity(
+                connection_name=NotBlankStr("test-conn"),
+                limit=10,
+                offset=-1,
+            )
+        repo.get_by_connection.assert_not_called()  # type: ignore[attr-defined]

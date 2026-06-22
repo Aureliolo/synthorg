@@ -12,6 +12,7 @@ import pytest
 from litestar.datastructures import State
 
 from synthorg.api.controllers.promotion import PromotionController
+from synthorg.api.cursor import CursorSecret
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.core.types import NotBlankStr
@@ -71,6 +72,7 @@ def _state_with(service: PromotionService | None) -> State:
     state = State()
     state.app_state = make_app_state(
         slices={HrStateSlice: {"promotion_service": service}},
+        cursor_secret=CursorSecret.from_key("test-cursor-secret-key-0123456789"),
     )
     return state
 
