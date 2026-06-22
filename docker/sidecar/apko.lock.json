@@ -218,22 +218,22 @@
       },
       {
         "name": "libnftnl",
-        "url": "https://packages.wolfi.dev/os/x86_64/libnftnl-1.3.1-r2.apk",
-        "version": "1.3.1-r2",
+        "url": "https://packages.wolfi.dev/os/x86_64/libnftnl-1.3.1-r3.apk",
+        "version": "1.3.1-r3",
         "architecture": "x86_64",
         "signature": {
           "range": "",
           "checksum": ""
         },
         "control": {
-          "range": "bytes=0-6005",
-          "checksum": "sha1-d3bdRlZyUCjTvV7+X7eVM8arZ0I="
+          "range": "bytes=0-6673",
+          "checksum": "sha1-zGn9otboJXr17IwtGsFNJju0P3Q="
         },
         "data": {
-          "range": "bytes=6006-434560",
-          "checksum": "sha256-4F7vTlL9Is/2+3kLuJA2iDr72Y31+VmloUisv7RFsuY="
+          "range": "bytes=6674-105898",
+          "checksum": "sha256-xPjNBnZR4YDnruG3OtGrqGbkNyVEXHn1HGVYxq7e+s4="
         },
-        "checksum": "Q1d3bdRlZyUCjTvV7+X7eVM8arZ0I="
+        "checksum": "Q1zGn9otboJXr17IwtGsFNJju0P3Q="
       },
       {
         "name": "iptables",
@@ -446,22 +446,22 @@
       },
       {
         "name": "libnftnl",
-        "url": "https://packages.wolfi.dev/os/aarch64/libnftnl-1.3.1-r2.apk",
-        "version": "1.3.1-r2",
+        "url": "https://packages.wolfi.dev/os/aarch64/libnftnl-1.3.1-r3.apk",
+        "version": "1.3.1-r3",
         "architecture": "aarch64",
         "signature": {
           "range": "",
           "checksum": ""
         },
         "control": {
-          "range": "bytes=0-6050",
-          "checksum": "sha1-hK8JYOU3+dYCo6YS7KDnJ6y3iEE="
+          "range": "bytes=0-6726",
+          "checksum": "sha1-wwIlN0qdfscehgWCl1rSSftoR/c="
         },
         "data": {
-          "range": "bytes=6051-429183",
-          "checksum": "sha256-LgUSJ3DhHvlRzhQssq3uiZVrtSfdVOyq1OiUJH3d5Sw="
+          "range": "bytes=6727-104382",
+          "checksum": "sha256-rs2fFbpGZv22dW6S+ewefc7HKFvGS0kNEtJkJaPnB08="
         },
-        "checksum": "Q1hK8JYOU3+dYCo6YS7KDnJ6y3iEE="
+        "checksum": "Q1wwIlN0qdfscehgWCl1rSSftoR/c="
       },
       {
         "name": "iptables",
