@@ -8,7 +8,10 @@ import httpx
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.integrations.connections.models import OAuthToken
-from synthorg.integrations.errors import TokenExchangeFailedError
+from synthorg.integrations.errors import (
+    OAuthConfigurationError,
+    TokenExchangeFailedError,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     OAUTH_TOKEN_EXCHANGE_FAILED,
@@ -106,6 +109,8 @@ class ClientCredentialsFlow:
 
         Raises:
             TokenExchangeFailedError: If the exchange fails.
+            OAuthConfigurationError: If ``token_url`` is rejected by the
+                SSRF policy (a deterministic, non-retryable misconfig).
         """
         payload: dict[str, str] = {
             "grant_type": "client_credentials",
@@ -144,6 +149,19 @@ class ClientCredentialsFlow:
             )
             msg = f"Client credentials exchange failed: {type(exc).__name__}"
             raise TokenExchangeFailedError(msg) from exc
+        except ValueError as exc:
+            # An SSRF rejection of ``token_url`` raised by
+            # ``resolve_outbound_target`` before any network I/O:
+            # deterministic, so non-retryable. (``json.JSONDecodeError`` is a
+            # ``ValueError`` subclass, so this clause must follow the HTTP
+            # clause above.) Mirrors the authorization-code and device flows.
+            logger.warning(
+                OAUTH_TOKEN_EXCHANGE_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = f"Client credentials exchange rejected: {type(exc).__name__}"
+            raise OAuthConfigurationError(msg) from exc
 
         if not isinstance(data, dict):
             logger.warning(

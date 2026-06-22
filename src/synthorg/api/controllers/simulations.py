@@ -393,7 +393,7 @@ class SimulationController(Controller):
             state: Injected app state.
             simulation_id: Id of the run to report on.
             fmt: Report format -- ``summary`` (default) or
-                ``detailed``. Litestar rejects any other value with 422.
+                ``detailed``. Litestar rejects any other value with 400.
 
         Raises:
             NotFoundError: If the simulation id is not known.

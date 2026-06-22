@@ -430,7 +430,7 @@ _r.register(
         description="How often the quota poller samples provider usage.",
         group="Quota Poller",
         level=SettingLevel.ADVANCED,
-        min_value=0.0,
+        min_value=0.1,
         max_value=3600.0,
     )
 )

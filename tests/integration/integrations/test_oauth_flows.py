@@ -773,6 +773,14 @@ def _authorization_code_ssrf_patch() -> AbstractContextManager[object]:
     )
 
 
+def _client_credentials_ssrf_patch() -> AbstractContextManager[object]:
+    """Patch the client-credentials flow's ``resolve_outbound_target``."""
+    return patch(
+        "synthorg.integrations.oauth.flows.client_credentials.resolve_outbound_target",
+        new=_ssrf_ok,
+    )
+
+
 @pytest.mark.integration
 class TestOAuthLogRedaction:
     """Regression guards for OAuth error-path logging.
@@ -836,6 +844,13 @@ class TestOAuthLogRedaction:
         ssrf_stubs: list[AbstractContextManager[object]] = []
         if scenario.startswith("authorization_code"):
             ssrf_stubs = [_authorization_code_ssrf_patch()]
+        elif scenario == "client_credentials_exchange":
+            # The client-credentials flow now SSRF-validates ``token_url``
+            # before the POST (at parity with the other flows). Stub the
+            # seam so the scenario reaches the mocked leaky HTTP error this
+            # test guards instead of failing at DNS validation of
+            # ``idp.example.com``.
+            ssrf_stubs = [_client_credentials_ssrf_patch()]
 
         with patch(mock_path) as client_cls, ExitStack() as ssrf_stack:
             for stub in ssrf_stubs:

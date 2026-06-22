@@ -162,3 +162,6 @@ WORKERS_EXECUTION_SERVICE_SANDBOX_RELEASED: Final[str] = (
 WORKERS_EXECUTION_SERVICE_SANDBOX_RELEASE_FAILED: Final[str] = (
     "workers.execution_service.sandbox_release_failed"
 )
+WORKERS_EXECUTION_SERVICE_HEALTH_PIPELINE_FAILED: Final[str] = (
+    "workers.execution_service.health_pipeline_failed"
+)

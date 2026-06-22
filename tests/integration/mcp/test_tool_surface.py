@@ -407,11 +407,11 @@ class TestNoServiceFallbackEvents:
 
 
 class TestToolSurfaceCount:
-    """Pin the tool count at 242 to catch accidental add/remove regressions."""
+    """Pin the tool count at 245 to catch accidental add/remove regressions."""
 
-    def test_total_tool_count_is_242(self) -> None:
+    def test_total_tool_count_is_245(self) -> None:
         registry = build_full_registry()
-        assert registry.tool_count == 242
+        assert registry.tool_count == 245
 
     def test_no_orphan_handlers(self) -> None:
         registry = build_full_registry()

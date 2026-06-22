@@ -93,7 +93,9 @@ async def service(tmp_path: Path) -> AsyncIterator[KnowledgeService]:
         yield build_knowledge_service(
             memory_backend=memory,
             persistence=persistence,
-            config=KnowledgeConfig(enabled=True),
+            # Bound filesystem ingestion (REPO/PDF) to ``tmp_path``; the
+            # path-traversal guard fail-closes without a configured root.
+            config=KnowledgeConfig(enabled=True, repo_root=str(tmp_path)),
             html_fetcher=_FakeHtmlFetcher(),
             ticket_fetcher=_FakeTicketFetcher(),
             clock=FakeClock(start=datetime(2026, 5, 21, tzinfo=UTC)),

@@ -28,6 +28,7 @@ from synthorg.observability.events.workers import (
     WORKERS_EXECUTION_SERVICE_AUTONOMY_DEGRADED,
     WORKERS_EXECUTION_SERVICE_COMPLETED,
     WORKERS_EXECUTION_SERVICE_FAILED,
+    WORKERS_EXECUTION_SERVICE_HEALTH_PIPELINE_FAILED,
     WORKERS_EXECUTION_SERVICE_NO_OP,
     WORKERS_EXECUTION_SERVICE_SANDBOX_RELEASE_FAILED,
     WORKERS_EXECUTION_SERVICE_SANDBOX_RELEASED,
@@ -370,20 +371,31 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
         """Run the two-layer agent-health pipeline after a completed run.
 
         Best-effort: skipped when no pipeline is wired or the
-        ``engine.health_monitoring_enabled`` flag is off. The pipeline
-        swallows its own errors, so a failed judge / triage / dispatch
-        never disrupts the task-completion path.
+        ``engine.health_monitoring_enabled`` flag is off. Any failure --
+        the ``_health_enabled`` flag read, or the pipeline itself -- is
+        logged and swallowed so a failed judge / triage / dispatch never
+        disrupts the task-completion path this method runs after.
         """
         if self._health_pipeline is None:
             return
-        if self._health_enabled is not None and not await self._health_enabled():
-            return
-        await self._health_pipeline.process(
-            termination_reason=run_result.termination_reason,
-            agent_id=str(identity.id),
-            task_id=task_id,
-            execution_duration=run_result.duration_seconds,
-        )
+        try:
+            if self._health_enabled is not None and not await self._health_enabled():
+                return
+            await self._health_pipeline.process(
+                termination_reason=run_result.termination_reason,
+                agent_id=str(identity.id),
+                task_id=task_id,
+                execution_duration=run_result.duration_seconds,
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                WORKERS_EXECUTION_SERVICE_HEALTH_PIPELINE_FAILED,
+                task_id=task_id,
+                agent_id=str(identity.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def _resolve_identity(
         self,

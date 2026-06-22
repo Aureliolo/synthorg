@@ -169,6 +169,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "idempotency_key": {
                 "type": "string",
                 "description": "Identical key returns the cached create result.",
+                "maxLength": 255,
             },
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
@@ -212,6 +213,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "idempotency_key": {
                 "type": "string",
                 "description": "Identical key returns the cached restore result.",
+                "maxLength": 255,
             },
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
