@@ -13,6 +13,7 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/completion"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
+	"github.com/Aureliolo/synthorg/cli/internal/runlock"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -172,6 +173,17 @@ func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, dataDir string, 
 	if err != nil {
 		return err
 	}
+	// Serialise teardown against a concurrent `synthorg start`/`update` so a
+	// start cannot bring the stack back up mid-uninstall.
+	lock, lerr := runlock.Acquire(ctx, dataDir)
+	if lerr != nil {
+		return lerr
+	}
+	defer func() {
+		if rerr := lock.Release(); rerr != nil {
+			errUI.Warn(fmt.Sprintf("could not release lifecycle lock: %v", rerr))
+		}
+	}()
 	downArgs := []string{"down"}
 	if removeVolumes {
 		downArgs = append(downArgs, "-v")

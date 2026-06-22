@@ -445,8 +445,8 @@ func TestFilterAllowsService(t *testing.T) {
 }
 
 // errBackendUnreachable is a sentinel error used by TestComputeVerdict
-// to simulate a Phase-0 health.Fetch failure without touching the
-// network. Defined as a package var so other status tests can reuse it.
+// to simulate a health.Fetch failure without touching the network.
+// Defined as a package var so other status tests can reuse it.
 var errBackendUnreachable = &simpleError{msg: "connection refused"}
 
 type simpleError struct{ msg string }

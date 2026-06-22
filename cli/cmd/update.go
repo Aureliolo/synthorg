@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,8 +13,6 @@ import (
 	"charm.land/huh/v2"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
-	"github.com/Aureliolo/synthorg/cli/internal/health"
-	"github.com/Aureliolo/synthorg/cli/internal/runlock"
 	"github.com/Aureliolo/synthorg/cli/internal/selfupdate"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/Aureliolo/synthorg/cli/internal/version"
@@ -683,82 +679,6 @@ func confirmUpdateWithDefault(ctx context.Context, title string, defaultVal bool
 // preserveCompose is true, only image references are patched in the
 // existing compose instead of regenerating from the template.
 // Returns the persisted state with updated ImageTag and VerifiedDigests.
-func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, state config.State, tag, safeDir string, preserveCompose bool) (config.State, error) {
-	opts := GetGlobalOpts(ctx)
-	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
-
-	// Back up existing compose.yml for rollback on failure.
-	composePath := filepath.Join(safeDir, "compose.yml")
-	backup, backupErr := os.ReadFile(composePath) //nolint:gosec // G304: composePath is <data-dir>/compose.yml under the SecurePath-cleaned data dir
-	backupExists := backupErr == nil
-
-	rollback := func() {
-		if backupExists {
-			if wErr := os.WriteFile(composePath, backup, 0o600); wErr != nil { //nolint:gosec // G304: composePath is <data-dir>/compose.yml under the SecurePath-cleaned data dir
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
-					"Warning: failed to restore compose.yml backup: %v\n", wErr)
-			}
-		} else {
-			if rErr := os.Remove(composePath); rErr != nil && !errors.Is(rErr, os.ErrNotExist) {
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
-					"Warning: failed to clean up compose.yml: %v\n", rErr)
-			}
-		}
-	}
-
-	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
-
-	// Verify + write compose atomically: compose.yml is only updated after
-	// verification succeeds (or when --skip-verify explicitly skips it).
-	digestPins, err := verifyAndPinForUpdate(ctx, info, state, tag, safeDir, preserveCompose, out, errOut)
-	if err != nil {
-		rollback()
-		return state, err
-	}
-
-	// Use newly verified digest pins for the pull so standalone images
-	// (sandbox, sidecar, fine-tune) resolve to pinned references. Merge
-	// fresh pins on top of any existing ones (e.g. cached DHI keys when
-	// the verify step hit the DHI cache) so the pull sees the union, not
-	// just the freshly-verified subset.
-	mergedPins := mergeVerifiedDigests(state.VerifiedDigests, digestPins)
-	pullState := state
-	pullState.ImageTag = tag
-	pullState.VerifiedDigests = mergedPins
-	if _, err := pullAllImages(ctx, cmd, info, safeDir, pullState, out); err != nil {
-		rollback()
-		return state, err
-	}
-
-	// Persist config only after successful pull so a failed pull
-	// doesn't leave state claiming images are at the new version.
-	// VerifiedImageTag tracks which tag the SynthOrg pins were verified
-	// against; hasSynthOrgDigests rejects the cache when this drifts.
-	updatedState := state
-	updatedState.ImageTag = tag
-	updatedState.VerifiedDigests = mergedPins
-	updatedState.VerifiedImageTag = tag
-	if err := config.Save(updatedState); err != nil {
-		rollback()
-		return state, fmt.Errorf("saving config: %w", err)
-	}
-	return updatedState, nil
-}
-
-// mergeVerifiedDigests overlays fresh pins on top of existing ones, returning
-// a new map so the caller can assign without aliasing the original. Returns
-// nil only when both inputs are nil/empty (lets compose.ParamsFromState's
-// nil-pin fallback path fire when there is nothing to write).
-func mergeVerifiedDigests(existing, fresh map[string]string) map[string]string {
-	if len(existing) == 0 && len(fresh) == 0 {
-		return nil
-	}
-	out := make(map[string]string, len(existing)+len(fresh))
-	maps.Copy(out, existing)
-	maps.Copy(out, fresh)
-	return out
-}
-
 // verifyAndPinForUpdate runs cache-aware verification of both SynthOrg and
 // DHI images using the new tag, writes the compose file with the verified
 // SynthOrg pins, and returns the merged pin map (SynthOrg bare-name keys
@@ -863,95 +783,4 @@ func restartIfRunning(cmd *cobra.Command, info docker.Info, safeDir string, stat
 		uiOut.HintTip("Run 'synthorg config set auto_restart true' to auto-restart after updates.")
 	}
 	return restarted, restartErr
-}
-
-// performRestart stops, restarts, and health-checks containers.
-func performRestart(ctx context.Context, out io.Writer, info docker.Info, safeDir string, state config.State, uiOpts ui.Options) (bool, error) {
-	uiOut := ui.NewUIWithOptions(out, uiOpts)
-
-	// Hold the lifecycle lock across the whole stop+start so a concurrent
-	// `synthorg start` cannot bring the stack up in the window between this
-	// down and the up below (a split-brain race on the named volumes). The
-	// post-down `ps -q` assertion further down then runs under the lock and is
-	// therefore reliable rather than point-in-time.
-	lock, err := runlock.Acquire(ctx, safeDir)
-	if err != nil {
-		return false, err
-	}
-	defer func() { _ = lock.Release() }()
-
-	sp := uiOut.StartSpinner("Stopping containers...")
-	if err := composeRunQuiet(ctx, info, safeDir, "down"); err != nil {
-		sp.Error("Failed to stop containers")
-		return false, fmt.Errorf("stopping containers: %w", err)
-	}
-	// Assert the project is fully down before bringing it back up. `compose
-	// down` can report success while a container lingers (slow stop, an
-	// external replica); a subsequent `up -d` against a partially-live
-	// project races the leftover container and can leave a stale instance
-	// bound to the published ports. A non-empty `ps -q` here is a hard error
-	// so the operator clears the stragglers rather than starting a
-	// split-brain stack.
-	psOut, psErr := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "-q")
-	if psErr != nil {
-		// Fail closed: a ps query error means the stack state is unknown, so
-		// we cannot confirm it is down. Proceeding to `up -d` here would risk
-		// a split-brain stack, exactly what this assertion guards against.
-		sp.Error("Could not verify containers stopped")
-		return false, fmt.Errorf("verifying compose is fully stopped: %w", psErr)
-	}
-	if strings.TrimSpace(psOut) != "" {
-		sp.Error("Containers still running after stop")
-		return false, fmt.Errorf(
-			"compose down reported success but containers are still running; " +
-				"stop them before restarting",
-		)
-	}
-	sp.Success("Containers stopped")
-
-	sp = uiOut.StartSpinner("Starting containers...")
-	if err := composeRunQuiet(ctx, info, safeDir, "up", "-d"); err != nil {
-		sp.Error("Failed to start containers")
-		return false, fmt.Errorf("restarting containers: %w", err)
-	}
-	sp.Success("Containers started")
-
-	sp = uiOut.StartSpinner("Waiting for backend to become healthy...")
-	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", state.BackendPort)
-	healthTimeout, _ := time.ParseDuration(updateTimeout)
-	if healthTimeout <= 0 {
-		healthTimeout = 90 * time.Second
-	}
-	if err := health.WaitForHealthy(ctx, healthURL, healthTimeout, 2*time.Second, 5*time.Second); err != nil {
-		sp.Warn(fmt.Sprintf("Health check did not pass after restart: %v", err))
-		return false, nil
-	}
-	sp.Success("Backend healthy")
-	uiOut.Blank()
-	// Mirror the "Ready" banner that `start` prints so a post-update restart
-	// surfaces the same dashboard + API endpoints. localhost is correct: the
-	// restarted stack publishes these ports on the operator's own host.
-	readyLines := []string{
-		fmt.Sprintf("%-16s%s", "Dashboard", fmt.Sprintf("http://localhost:%d", state.WebPort)),
-		fmt.Sprintf("%-16s%s", "API", fmt.Sprintf("http://localhost:%d", state.BackendPort)),
-	}
-	uiOut.Box("Ready", readyLines)
-	uiOut.Blank()
-	uiOut.Section(fmt.Sprintf("Open http://localhost:%d", state.WebPort))
-	return true, nil
-}
-
-func confirmRestart() (bool, error) {
-	restart := true // default yes
-	form := huh.NewForm(
-		huh.NewGroup(
-			huh.NewConfirm().
-				Title("Containers are running. Restart with new images?").
-				Value(&restart),
-		),
-	)
-	if err := form.Run(); err != nil {
-		return false, err
-	}
-	return restart, nil
 }

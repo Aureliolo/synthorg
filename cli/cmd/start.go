@@ -94,7 +94,11 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = lock.Release() }()
+	defer func() {
+		if rerr := lock.Release(); rerr != nil {
+			errOut.Warn(fmt.Sprintf("could not release lifecycle lock: %v", rerr))
+		}
+	}()
 	return startContainers(ctx, cmd, state, safeDir, out, errOut, healthTimeout)
 }
 

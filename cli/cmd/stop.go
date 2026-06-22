@@ -71,14 +71,19 @@ func runStop(cmd *cobra.Command, _ []string) error {
 	if _, err := os.Stat(composePath); errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("compose.yml not found in %s", safeDir)
 	}
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 	// Hold the lifecycle lock across the `compose down` so a concurrent start
 	// or update-restart cannot bring the stack back up mid-stop.
 	lock, err := runlock.Acquire(ctx, safeDir)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = lock.Release() }()
-	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+	defer func() {
+		if rerr := lock.Release(); rerr != nil {
+			errOut.Warn(fmt.Sprintf("could not release lifecycle lock: %v", rerr))
+		}
+	}()
 
 	info, err := docker.Detect(ctx)
 	if err != nil {
