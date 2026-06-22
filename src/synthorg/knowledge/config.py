@@ -6,10 +6,9 @@ and behaviour flags. Chunk budgets and namespace/tag constants live in
 RAG-index contract, not operator-tunable knobs.
 """
 
-from pathlib import Path
-from typing import Literal, Self
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 PdfLoaderKind = Literal["pdfplumber"]
 """Discriminator for the PDF loader strategy. ``pdfplumber`` (MIT) is the
@@ -57,20 +56,3 @@ class KnowledgeConfig(BaseModel):
             " until an operator sets an allowed root."
         ),
     )
-
-    @model_validator(mode="after")
-    def _validate_repo_root(self) -> Self:
-        """Reject a non-empty relative ``repo_root``.
-
-        Returns:
-            The validated config.
-
-        Raises:
-            ValueError: If ``repo_root`` is set but not absolute. A
-                relative root resolves against the process CWD, which would
-                make the path-traversal boundary non-deterministic.
-        """
-        if self.repo_root and not Path(self.repo_root).is_absolute():
-            msg = "repo_root must be an absolute path when set"
-            raise ValueError(msg)
-        return self
