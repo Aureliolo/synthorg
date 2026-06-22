@@ -106,12 +106,20 @@ class CockpitController(Controller):
         runaway_cost_percent = await resolver.get_float(
             _COCKPIT_NS, "runaway_cost_threshold_percent"
         )
+        poll_interval_seconds = await resolver.get_float(
+            _COCKPIT_NS, "snapshot_interval_seconds"
+        )
         cockpit = require_service(
             app_state.slice(CockpitStateSlice).cockpit_service, "Cockpit Service"
         )
         snapshot = await cockpit.get_live_snapshot(
             stuck_idle_minutes=stuck_idle_minutes,
             runaway_cost_percent=runaway_cost_percent,
+        )
+        # Stamp the operator-tuned client poll cadence so the dashboard
+        # paces its snapshot polling from settings instead of a hardcode.
+        snapshot = snapshot.model_copy(
+            update={"poll_interval_seconds": poll_interval_seconds}
         )
         return ApiResponse(data=snapshot)
 

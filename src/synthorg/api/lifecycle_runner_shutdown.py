@@ -260,6 +260,13 @@ async def _run_shutdown(  # noqa: PLR0913
             timeout=_AUDIT_RETENTION_SHUTDOWN_SECONDS,
         )
         tasks.audit_retention_task = None
+    if tasks.flight_recorder_retention_task is not None:
+        await _cancel_with_timeout(
+            tasks.flight_recorder_retention_task,
+            service="flight_recorder_retention",
+            timeout=_AUDIT_RETENTION_SHUTDOWN_SECONDS,
+        )
+        tasks.flight_recorder_retention_task = None
     if tasks.webhook_cleanup_task is not None:
         await _cancel_with_timeout(
             tasks.webhook_cleanup_task,

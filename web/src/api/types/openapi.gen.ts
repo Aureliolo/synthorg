@@ -11790,6 +11790,11 @@ export type components = {
              */
             readonly agents: readonly components["schemas"]["AgentActivity"][];
             /**
+             * @description Operator-tuned client poll cadence in seconds (cockpit.snapshot_interval_seconds).
+             * @default 5
+             */
+            readonly poll_interval_seconds: number;
+            /**
              * @description Agent ids flagged runaway
              * @default []
              */

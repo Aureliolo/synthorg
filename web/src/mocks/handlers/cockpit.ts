@@ -34,6 +34,7 @@ export const cockpitHandlers = [
         active_count: 1,
         stuck_agents: [],
         runaway_agents: [],
+        poll_interval_seconds: 5,
       }),
     ),
   ),

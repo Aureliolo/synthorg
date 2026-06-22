@@ -49,6 +49,22 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COCKPIT,
+        key="flight_recorder_retention_loop_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Runtime kill-switch for the daily flight-recorder retention"
+            " purge loop. When false the loop stays resident but inert;"
+            " existing frames are not purged until re-enabled."
+        ),
+        group="Flight Recorder",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COCKPIT,
         key="flight_recorder_summary_max_chars",
         type=SettingType.INTEGER,
         default="2000",

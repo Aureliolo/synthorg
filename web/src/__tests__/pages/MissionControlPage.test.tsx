@@ -76,6 +76,7 @@ describe('MissionControlPage', () => {
             active_count: 1,
             stuck_agents: ['agent-1'],
             runaway_agents: [],
+            poll_interval_seconds: 5,
           }),
         ),
       ),
