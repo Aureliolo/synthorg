@@ -93,7 +93,7 @@ def test_currency_code_skipped_in_block_comment(web_file: Path) -> None:
 
 @pytest.mark.unit
 def test_currency_code_flagged_in_story(web_file: Path) -> None:
-    """Flag currency codes in Storybook stories (per issue #1437).
+    """Flag hardcoded currency codes in Storybook stories.
 
     Stories should reference ``DEFAULT_CURRENCY`` for their default
     args; showcasing a specific variant should do so explicitly in a

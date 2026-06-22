@@ -2,15 +2,15 @@
 """Pre-commit gate: forbid new ``RELEASE_PLEASE_TOKEN`` references.
 
 The fine-grained PAT ``RELEASE_PLEASE_TOKEN`` was retired in favour of the
-``synthorg-repo-bot`` GitHub App (see issue #1555 and
+``synthorg-repo-bot`` GitHub App (see
 ``docs/reference/github-environments.md``). PAT-authored API commits are
 unsigned, which means any workflow resurrecting the PAT would silently
 produce commits that fail branch protection's ``required_signatures``
 rule (or slip through as Unverified if it writes to a PR branch).
 
 This gate blocks any reintroduction of the identifier anywhere under
-``.github/``. There is no baseline file: after #1555 lands, zero
-references should remain, and any new reference is a regression.
+``.github/``. There is no baseline file: zero references should remain,
+and any new reference is a regression.
 
 Why a hard zero rather than a per-file allowlist: the PAT is intended to
 be revoked at the GitHub level after cutover. Once revoked, any workflow
@@ -36,7 +36,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _GITHUB_ROOT = _REPO_ROOT / ".github"
 _FORBIDDEN = "RELEASE_PLEASE_TOKEN"
 _STEERING_MESSAGE = (
-    "RELEASE_PLEASE_TOKEN was retired in #1555. Use the "
+    "RELEASE_PLEASE_TOKEN was retired. Use the "
     "`release-runner-setup` composite (which mints a synthorg-repo-bot "
     "App installation token) or invoke `actions/create-github-app-token` "
     "directly. See docs/reference/github-environments.md#release_bot_app_."

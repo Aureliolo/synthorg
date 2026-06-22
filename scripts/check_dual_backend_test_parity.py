@@ -13,8 +13,7 @@ Three passes over the conformance suite + the persistence package:
 2. **Body** -- a test function body that compares
    ``backend.backend_name`` against a string literal (``== "sqlite"``,
    ``!= "postgres"``, ...) silently turns the test into a one-arm
-   conditional.  Issue #1751 names this as the second recurrence
-   pattern; the gate flags it so deliberate exceptions stay visible.
+   conditional; the gate flags it so deliberate exceptions stay visible.
 3. **Coverage** -- every repository protocol class defined or
    re-exported under ``src/synthorg/persistence/*_protocol.py`` that is
    exposed on ``PersistenceBackend`` (via ``@property`` or method) must
