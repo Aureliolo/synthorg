@@ -188,20 +188,6 @@ func (wc *wipeContext) confirmAndWipe() error {
 		wc.out.HintNextStep("Wipe cancelled.")
 		return nil
 	}
-	// Hold the lifecycle lock across BOTH the compose teardown and the data
-	// directory removal so a concurrent `synthorg start`/`update` cannot bring
-	// the stack back up in the window between stopping the containers and
-	// deleting their volumes' data. The backup phase ran earlier (and may have
-	// intentionally started containers), so the lock is acquired only now.
-	lock, lerr := runlock.Acquire(wc.ctx, wc.safeDir)
-	if lerr != nil {
-		return lerr
-	}
-	defer func() {
-		if rerr := lock.Release(); rerr != nil {
-			wc.errOut.Warn(fmt.Sprintf("could not release lifecycle lock: %v", rerr))
-		}
-	}()
 	if err := wc.stopAndPrune(); err != nil {
 		return err
 	}
@@ -237,9 +223,21 @@ func (wc *wipeContext) stopAndPrune() error {
 		wc.out.Step(msgNothingToStop)
 		return nil
 	}
-	// The lifecycle lock is held by the caller (confirmAndWipe) across the whole
-	// destructive sequence, so this `compose down -v` and the later data-dir
-	// removal run under one continuous lock.
+	// Serialise the destructive `compose down -v` against a concurrent
+	// `synthorg start`/`update`: without the lock a start racing this teardown
+	// could bring the stack back up while its volumes are being deleted. The
+	// lock is released before removeDataDirectory because the lock file
+	// (`synthorg.lock`) lives inside the data dir; holding it across the
+	// directory removal would block RemoveAll on Windows (open file).
+	lock, lerr := runlock.Acquire(wc.ctx, wc.safeDir)
+	if lerr != nil {
+		return lerr
+	}
+	defer func() {
+		if rerr := lock.Release(); rerr != nil {
+			wc.errOut.Warn(fmt.Sprintf("could not release lifecycle lock: %v", rerr))
+		}
+	}()
 	downArgs := []string{"down", "-v"}
 	if !wipeKeepImages {
 		downArgs = append(downArgs, "--rmi", "all")
