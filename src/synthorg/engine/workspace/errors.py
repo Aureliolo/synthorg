@@ -1,3 +1,4 @@
+# module-kind: code
 """Workspace push-queue coordinator lifecycle errors.
 
 The push-queue coordinator owns the FIFO single-writer position for git

@@ -339,10 +339,11 @@ class TrainingPlan(BaseModel):
         Returns:
             A validated ``TrainingPlan``.
         """
-        # Route through ``model_validate`` so every after-validator runs
-        # (volume-cap positivity, content-type / executed-at invariants);
-        # the typed parameters above give callers field-level checking the
-        # raw ``dict`` boundary would lose.
+        # Route through ``model_validate`` to accept the assembled ``dict``
+        # while still triggering every ``@model_validator`` (volume-cap
+        # positivity, content-type / executed-at invariants); the typed
+        # parameters above give callers field-level checking the raw
+        # ``dict`` boundary would lose.
         data: dict[str, object] = {
             "new_agent_id": new_agent_id,
             "new_agent_role": new_agent_role,

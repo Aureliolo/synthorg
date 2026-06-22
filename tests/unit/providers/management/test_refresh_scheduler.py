@@ -116,7 +116,7 @@ class TestModelRefreshScheduler:
         async def _run_cycle(**_kwargs: object) -> RefreshCycleReport:
             started.set()
             try:
-                await asyncio.sleep(10)  # parked until stop() cancels the task
+                await asyncio.Event().wait()  # parked until stop() cancels the task
             finally:
                 # Cancellation-time cleanup that deterministically outlasts the
                 # drain deadline (gated on an Event the test only sets after it

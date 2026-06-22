@@ -103,6 +103,11 @@ def _proposal() -> ImprovementProposal:
 
 
 def _mock_provider(answer: str = "Test explanation") -> AsyncMock:
+    # Bare AsyncMock (not ``mock_of``) so the happy-path tests can introspect
+    # ``provider.complete.call_args`` / ``assert_called_once`` directly; a
+    # spec'd mock types ``complete`` as the protocol method and breaks that
+    # chain under mypy strict. The error-propagation tests below use
+    # ``mock_of[CompletionProvider]`` where no call-args introspection runs.
     provider = AsyncMock()
     provider.complete.return_value = CompletionResponse(
         content=answer,

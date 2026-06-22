@@ -23,6 +23,7 @@ class _CountingScheduler(AsyncCycleScheduler):
         interval_seconds: float = 60.0,
         enabled: bool = True,
         reset_primitives_on_stop: bool = True,
+        drain_timeout_seconds: float = 30.0,
     ) -> None:
         super().__init__(
             interval_seconds=interval_seconds,
@@ -31,6 +32,7 @@ class _CountingScheduler(AsyncCycleScheduler):
             stopped_event=_STOPPED,
             failed_event=_FAILED,
             reset_primitives_on_stop=reset_primitives_on_stop,
+            drain_timeout_seconds=drain_timeout_seconds,
         )
         self._enabled = enabled
         self.cycles = 0
@@ -138,7 +140,7 @@ async def test_stop_drain_timeout_marks_unrestartable() -> None:
         async def _run_cycle_once(self) -> None:
             started.set()
             try:
-                await asyncio.sleep(10)
+                await asyncio.Event().wait()
             finally:
                 await release.wait()
 
@@ -156,14 +158,19 @@ async def test_stop_drain_timeout_marks_unrestartable() -> None:
         await scheduler.start()
 
 
-async def test_run_cycle_once_required() -> None:
-    """The base ``_run_cycle_once`` raises NotImplementedError unless overridden."""
-    scheduler = AsyncCycleScheduler(
-        interval_seconds=60.0,
-        task_name="test-bare-scheduler",
-        started_event=_STARTED,
-        stopped_event=_STOPPED,
-        failed_event=_FAILED,
-    )
-    with pytest.raises(NotImplementedError):
-        await scheduler._run_cycle_once()
+async def test_run_cycle_once_is_abstract() -> None:
+    """The abstract base cannot be instantiated without overriding the hook."""
+    with pytest.raises(TypeError, match="abstract"):
+        AsyncCycleScheduler(  # type: ignore[abstract]
+            interval_seconds=60.0,
+            task_name="test-bare-scheduler",
+            started_event=_STARTED,
+            stopped_event=_STOPPED,
+            failed_event=_FAILED,
+        )
+
+
+async def test_rejects_non_positive_drain_timeout() -> None:
+    """A non-positive drain timeout is rejected at construction."""
+    with pytest.raises(ValueError, match="drain_timeout_seconds must be positive"):
+        _CountingScheduler(drain_timeout_seconds=0)

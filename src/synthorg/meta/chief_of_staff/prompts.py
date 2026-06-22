@@ -330,7 +330,7 @@ exactly this shape:
 
 {{
   "topic": <short concern label, e.g. "budget", "strategy", "technical">,
-  "role": <one role name copied EXACTLY from a candidate above>,
+  "role": <one role name copied EXACTLY from the candidate list>,
   "confidence": <number between 0.0 and 1.0>
 }}
 

@@ -131,9 +131,9 @@ def mcp_idempotency_service_of(
         return existing
     from synthorg.persistence.state import persistence_of  # noqa: PLC0415
 
-    # Concurrent first-readers race here; ``wire_if_field_absent`` makes
-    # the check + install atomic so two simultaneous calls cannot both
-    # construct a service and overwrite each other's wiring.
+    # Concurrent first-readers race here: both may construct a candidate,
+    # but ``wire_if_field_absent`` makes the check + install atomic so only
+    # one is wired and every caller returns that single wired service.
     candidate = IdempotencyService(
         persistence_of(app_state).idempotency_keys,
         clock=clock,

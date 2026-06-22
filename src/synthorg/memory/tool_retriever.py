@@ -428,12 +428,15 @@ class ToolBasedInjectionStrategy(ToolBasedReformulationMixin):
         try:
             parsed = RecallMemoryArgs.model_validate(arguments)
         except ValidationError as exc:
-            # Surface the over-length case distinctly so the caller can
-            # self-correct an oversized id rather than treating it as
-            # "missing"; every other shape (absent / blank / wrong type)
-            # collapses to the required-field message.
-            if any(error.get("type") == "string_too_long" for error in exc.errors()):
+            # Surface the over-length and wrong-type cases distinctly so the
+            # caller can self-correct rather than treating either as
+            # "missing"; absent / blank still collapse to the required
+            # message.
+            error_types = {error.get("type") for error in exc.errors()}
+            if "string_too_long" in error_types:
                 return f"{ERROR_PREFIX} memory_id exceeds the maximum allowed length."
+            if "string_type" in error_types:
+                return f"{ERROR_PREFIX} memory_id must be a string."
             return f"{ERROR_PREFIX} memory_id is required."
         memory_id = parsed.memory_id.strip()
         if not memory_id:

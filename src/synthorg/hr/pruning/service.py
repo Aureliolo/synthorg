@@ -769,10 +769,15 @@ class PruningService:
             Mapping of agent-id string to identity for every linked agent
             that still resolves in the registry; missing agents are omitted.
         """
+        # Deduplicate (order-preserving): multiple approvals for one agent
+        # must collapse to a single id so a busy queue cannot push the batch
+        # past the registry's ``get_by_ids`` ceiling and abort the loop.
         agent_ids = tuple(
-            NotBlankStr(raw)
-            for item in items
-            if isinstance(raw := item.metadata.get("agent_id"), str) and raw
+            dict.fromkeys(
+                NotBlankStr(raw)
+                for item in items
+                if isinstance(raw := item.metadata.get("agent_id"), str) and raw
+            )
         )
         if not agent_ids:
             return {}

@@ -37,6 +37,10 @@ For services whose `stop()` drains across `await` boundaries, wrap the drain in 
 - `PruningService` (`hr/pruning/service.py`)
 - `NgrokAdapter` (`integrations/tunnel/ngrok_adapter.py`): lifecycle lock only; no spawned background task, so the drain timeout / unrestartable flag do not apply.
 
+### Periodic cycle-scheduler base
+
+`AsyncCycleScheduler` (`core/scheduler.py`) packages this entire pattern (deferred loop-bound primitives, lifecycle lock across start/stop, bounded stop-drain marking the scheduler unrestartable, per-tick kill-switch) for periodic background schedulers. New periodic schedulers MUST extend it and supply `_run_cycle_once` (+ optional `_resolve_cycle_enabled` / `_log_cycle_paused`) rather than re-implementing the machinery. Subclasses: `ToolsmithCycleScheduler` (`meta/toolsmith/cycle_scheduler.py`), `PromotionCycleScheduler` (`hr/promotion/cycle_scheduler.py`), `ModelRefreshScheduler` (`providers/management/refresh_scheduler.py`, passes `reset_primitives_on_stop=False`).
+
 ### In-place runner variant
 
 `ContinuousMode` (`client/continuous.py`) is **not** a background-task service: `start()` runs the simulation loop on the calling coroutine and only returns when `stop()` signals the stop event. The lifecycle lock therefore guards only the `_running` flag transition (acquire briefly at the top of `start()` to check-and-set, release before the loop body, re-acquire in the `finally` to clear the flag). Holding the lock across the full body would deadlock a second concurrent caller: it would queue on the lock until the first finished and then enter an empty state. Document this distinction when adding new in-place runners.

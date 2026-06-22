@@ -38,7 +38,7 @@ from synthorg.engine.workflow.strategies._milestone_driven_config import (
     validate_transition_milestone,
 )
 from synthorg.engine.workflow.velocity_types import VelocityCalcType
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workflow import (
     SPRINT_AUTO_TRANSITION_MILESTONE,
     SPRINT_CEREMONY_MILESTONE_ASSIGNED,
@@ -446,11 +446,13 @@ class MilestoneDrivenStrategy:
         """
         try:
             parsed = MilestoneEventPayload.model_validate(dict(payload))
-        except ValidationError:
+        except ValidationError as exc:
             logger.debug(
                 SPRINT_CEREMONY_SKIPPED,
                 reason=f"invalid_milestone_{event_kind}_payload",
                 strategy="milestone_driven",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
         return parsed.task_id.strip(), parsed.milestone.strip()

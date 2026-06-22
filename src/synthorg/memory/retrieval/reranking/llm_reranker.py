@@ -288,9 +288,17 @@ class LLMQuerySpecificReranker:
             )
             return candidates
 
-        parsed = json.loads(response.content)
         try:
+            parsed = json.loads(response.content)
             ranking = RankingLLMResponse.model_validate(parsed).ranking
+        except json.JSONDecodeError as exc:
+            logger.debug(
+                MEMORY_RERANK_FAILED,
+                error="LLM returned non-JSON content",
+                error_type=type(exc).__name__,
+                candidate_count=len(candidates),
+            )
+            return candidates
         except ValidationError as exc:
             logger.debug(
                 MEMORY_RERANK_FAILED,

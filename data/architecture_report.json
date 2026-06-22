@@ -440,8 +440,8 @@
     },
     "src/synthorg/engine/errors.py": {
       "cap": 500,
-      "loc": 503,
-      "ratio": 1.006,
+      "loc": 497,
+      "ratio": 0.994,
       "tier": "code"
     },
     "src/synthorg/engine/evolution/factory.py": {
@@ -590,8 +590,8 @@
     },
     "src/synthorg/engine/workflow/strategies/milestone_driven.py": {
       "cap": 500,
-      "loc": 436,
-      "ratio": 0.872,
+      "loc": 438,
+      "ratio": 0.876,
       "tier": "code"
     },
     "src/synthorg/engine/workflow/strategies/throughput_adaptive.py": {
@@ -788,8 +788,8 @@
     },
     "src/synthorg/memory/tool_retriever.py": {
       "cap": 500,
-      "loc": 428,
-      "ratio": 0.856,
+      "loc": 433,
+      "ratio": 0.866,
       "tier": "code"
     },
     "src/synthorg/meta/appliers/_architecture_validators.py": {
@@ -1409,7 +1409,7 @@
     "synthorg.core.types": 1154,
     "synthorg.engine.context": 39,
     "synthorg.engine.decomposition.models": 28,
-    "synthorg.engine.errors": 85,
+    "synthorg.engine.errors": 86,
     "synthorg.engine.loop_protocol": 46,
     "synthorg.engine.prompt_safety": 71,
     "synthorg.engine.state": 41,
@@ -1594,7 +1594,7 @@
     },
     "synthorg.hr.pruning.service:PruningService": {
       "lcom4": 1,
-      "loc": 779
+      "loc": 781
     },
     "synthorg.hr.registry:AgentRegistryService": {
       "lcom4": 2,

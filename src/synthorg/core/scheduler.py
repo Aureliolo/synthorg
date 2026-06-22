@@ -28,6 +28,8 @@ model-refresh scheduler relies on).
 """
 
 import asyncio
+import contextlib
+from abc import ABC, abstractmethod
 from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
@@ -39,7 +41,7 @@ logger = get_logger(__name__)
 MIN_INTERVAL_SECONDS: Final[float] = 60.0
 
 
-class AsyncCycleScheduler:
+class AsyncCycleScheduler(ABC):
     """Loop-bound periodic driver base for background cycle schedulers.
 
     Owns the lifecycle (primitives, ``start``, ``stop``, ``_run``); a
@@ -75,12 +77,19 @@ class AsyncCycleScheduler:
                 before the scheduler is marked unrestartable.
 
         Raises:
-            ValueError: If ``interval_seconds`` is below the minimum.
+            ValueError: If ``interval_seconds`` is below the minimum or
+                ``drain_timeout_seconds`` is not positive.
         """
         if interval_seconds < MIN_INTERVAL_SECONDS:
             msg = (
                 f"interval_seconds must be >= {MIN_INTERVAL_SECONDS} "
                 f"(got {interval_seconds})"
+            )
+            logger.warning(failed_event, error=msg, note="invalid_config")
+            raise ValueError(msg)
+        if drain_timeout_seconds <= 0:
+            msg = (
+                f"drain_timeout_seconds must be positive (got {drain_timeout_seconds})"
             )
             logger.warning(failed_event, error=msg, note="invalid_config")
             raise ValueError(msg)
@@ -157,6 +166,9 @@ class AsyncCycleScheduler:
     async def stop(self) -> None:
         """Signal the loop to exit and await its completion.
 
+        No-ops when the scheduler was never started or its background task
+        is already gone.
+
         Raises:
             TimeoutError: If the drain exceeds the stop deadline; the
                 scheduler is then marked unrestartable.
@@ -193,9 +205,11 @@ class AsyncCycleScheduler:
                 )
             except TimeoutError:
                 # The shield kept wait_for's cancellation off drain_task;
-                # cancel it explicitly so it cannot outlive stop() as an
-                # orphaned task that logs into a torn-down loop.
+                # cancel it AND await its completion so it cannot outlive
+                # stop() as an orphaned task that logs into a torn-down loop.
                 drain_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await drain_task
                 self._stop_failed = True
                 logger.error(
                     self._failed_event,
@@ -205,10 +219,12 @@ class AsyncCycleScheduler:
                     timeout_seconds=self._drain_timeout,
                 )
                 raise
-            # ``reset_primitives_on_stop=False`` keeps the lifecycle lock +
-            # stop event bound: nulling them while the lock is still held
-            # opens a rebind race; ``start()`` clears the event on restart
-            # and a loop change rebinds via the loop-identity check.
+            # The default (``reset_primitives_on_stop=True``) nulls the
+            # lifecycle lock + stop event here; ``start()`` then rebinds
+            # fresh primitives on restart (clearing the event, rebinding on
+            # a loop change via the loop-identity check). A subclass that
+            # restarts on the SAME loop without the rebind passes
+            # ``reset_primitives_on_stop=False`` to keep them bound.
             self._task = None
             if self._reset_primitives_on_stop:
                 self._stop_event = None
@@ -229,10 +245,27 @@ class AsyncCycleScheduler:
                 self._failed_event,
                 reason="run_without_stop_event",
                 error_type=RuntimeError.__name__,
+                error=msg,
             )
             raise RuntimeError(msg)
+        # lint-allow: long-running-loop-kill-switch -- stop_event + enable re-read
         while not stop_event.is_set():
-            if await self._resolve_cycle_enabled():
+            try:
+                enabled = await self._resolve_cycle_enabled()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                # A broken kill-switch read must not silently kill the loop;
+                # log it and fail safe to enabled so the cycle keeps running.
+                reraise_critical(exc)
+                logger.warning(
+                    self._failed_event,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                    note="cycle_enabled_read_failed",
+                )
+                enabled = True
+            if enabled:
                 try:
                     await self._run_cycle_once()
                 except asyncio.CancelledError:
@@ -265,15 +298,12 @@ class AsyncCycleScheduler:
         """
         return True
 
+    @abstractmethod
     async def _run_cycle_once(self) -> None:
-        """Run one unit of domain work.
-
-        Raises:
-            NotImplementedError: Always, unless a subclass overrides it.
-        """
+        """Run one unit of domain work (abstract; a subclass must override)."""
         raise NotImplementedError
 
-    def _log_cycle_paused(self) -> None:
+    def _log_cycle_paused(self) -> None:  # noqa: B027 -- intentional default no-op hook, not abstract
         """Emit a skipped-tick log when the cycle is disabled (default no-op)."""
 
 
