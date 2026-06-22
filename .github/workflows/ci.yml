@@ -205,7 +205,9 @@ jobs:
               exit 0
             fi
             echo "::warning::runtime_stats freshness check failed (attempt ${attempt}/3); retrying after backoff"
-            sleep $((attempt * 10))
+            # 30/60/90s backoff clears a GitHub secondary-rate-limit window
+            # (~60s); a 10s step would exhaust all 3 attempts inside one window.
+            sleep $((attempt * 30))
           done
           echo "error: runtime_stats freshness check failed after 3 attempts" >&2
           exit 1
@@ -575,7 +577,11 @@ jobs:
     needs: changes
     if: needs.changes.outputs.is_release_please != 'true' # always-run correctness gate (cardinal rule)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # ``--session-timeout 1650`` (27.5 min) is the in-suite watchdog; the
+    # job ceiling sits above it with enough headroom for cold-runner
+    # Postgres image pulls so a slow start cannot pre-empt the named
+    # per-test failure with an opaque job cancellation.
+    timeout-minutes: 35
     permissions:
       contents: read
     strategy:
