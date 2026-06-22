@@ -13,6 +13,7 @@ from litestar.datastructures import State
 from synthorg._core.features import require_service
 from synthorg.api.controllers.connections_models import (
     CreateConnectionRequest,
+    RevealedSecretResponse,
     UpdateConnectionRequest,
 )
 from synthorg.api.dto import ApiResponse, PaginatedResponse
@@ -437,7 +438,7 @@ class ConnectionsController(Controller):
         state: State,
         name: PathName,
         field: PathField,
-    ) -> ApiResponse[dict[str, str]]:
+    ) -> ApiResponse[RevealedSecretResponse]:
         """Return the plaintext value of one credential field.
 
         Scoped to a single field so a reveal action on the OAuth
@@ -510,4 +511,4 @@ class ConnectionsController(Controller):
             connection=name,
             field=field,
         )
-        return ApiResponse(data={"field": field, "value": value})
+        return ApiResponse(data=RevealedSecretResponse(field=field, value=value))

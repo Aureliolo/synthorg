@@ -6879,6 +6879,19 @@ export type components = {
              */
             readonly success: boolean;
         };
+        /** ApiResponse[OAuthInitiationResponse] */
+        readonly ApiResponse_OAuthInitiationResponse_: {
+            readonly data: components["schemas"]["OAuthInitiationResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
         /** ApiResponse[OverrideResponse] */
         readonly ApiResponse_OverrideResponse_: {
             readonly data: components["schemas"]["OverrideResponse"] | null;
@@ -7207,6 +7220,19 @@ export type components = {
         /** ApiResponse[RestoreResponse] */
         readonly ApiResponse_RestoreResponse_: {
             readonly data: components["schemas"]["RestoreResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[RevealedSecretResponse] */
+        readonly ApiResponse_RevealedSecretResponse_: {
+            readonly data: components["schemas"]["RevealedSecretResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /**
@@ -10437,6 +10463,13 @@ export type components = {
             readonly entity_name: string;
             readonly recommendation: components["schemas"]["DriftAction"];
         };
+        /** DriftSummary */
+        readonly DriftSummary: {
+            /** @description Average divergence across all entities */
+            readonly avg_drift_score: number;
+            /** @description Count of entities above drift threshold */
+            readonly entities_with_drift: number;
+        };
         /** EdgeChange */
         readonly EdgeChange: {
             /** @enum {string} */
@@ -10520,6 +10553,35 @@ export type components = {
             readonly description: string;
             readonly name: string;
             readonly type_hint: string;
+        };
+        /** EntityListMeta */
+        readonly EntityListMeta: {
+            readonly core_count: number;
+            /** @description Drift aggregate (None when drift store unavailable) */
+            readonly drift_summary: components["schemas"]["DriftSummary"] | null;
+            readonly total_count: number;
+            readonly user_count: number;
+        };
+        /** EntityListResponse */
+        readonly EntityListResponse: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["EntityResponse"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly meta: components["schemas"]["EntityListMeta"];
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
         };
         /** EntityRelationInput */
         readonly EntityRelationInput: {
@@ -12369,6 +12431,13 @@ export type components = {
                 readonly [key: string]: unknown;
             } | null;
         };
+        /** OAuthInitiationResponse */
+        readonly OAuthInitiationResponse: {
+            /** @description Provider authorization URL the user must visit. */
+            readonly authorization_url: string;
+            /** @description Opaque CSRF state token bound to this flow. */
+            readonly state_token: string;
+        };
         /** OpenQuestionPayload */
         readonly OpenQuestionPayload: {
             /** @description The answer, present once the question is resolved */
@@ -12960,26 +13029,6 @@ export type components = {
         readonly PaginatedResponse_DriftReportResponse_: {
             /** @default [] */
             readonly data: readonly components["schemas"]["DriftReportResponse"][];
-            /**
-             * @description Data sources that failed gracefully (partial data)
-             * @default []
-             */
-            readonly degraded_sources: readonly string[];
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
-            readonly success: boolean;
-        };
-        /** PaginatedResponse[EntityResponse] */
-        readonly PaginatedResponse_EntityResponse_: {
-            /** @default [] */
-            readonly data: readonly components["schemas"]["EntityResponse"][];
             /**
              * @description Data sources that failed gracefully (partial data)
              * @default []
@@ -15368,6 +15417,13 @@ export type components = {
              * @default 0.1
              */
             readonly warn_rate: number;
+        };
+        /** RevealedSecretResponse */
+        readonly RevealedSecretResponse: {
+            /** @description Name of the revealed credential field. */
+            readonly field: string;
+            /** @description Plaintext value of the credential field. */
+            readonly value: string;
         };
         /**
          * ReviewRequirements
@@ -22117,7 +22173,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_str_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_RevealedSecretResponse_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -24683,7 +24739,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_str_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_OAuthInitiationResponse_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -24920,7 +24976,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PaginatedResponse_EntityResponse_"];
+                    readonly "application/json": components["schemas"]["EntityListResponse"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

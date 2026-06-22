@@ -4,6 +4,7 @@ from typing import Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.api.dto import PaginatedResponse
 from synthorg.core.types import NotBlankStr
 from synthorg.ontology.models import (
     DriftAction,
@@ -220,3 +221,14 @@ class EntityListMeta(BaseModel):
         default=None,
         description="Drift aggregate (None when drift store unavailable)",
     )
+
+
+class EntityListResponse(PaginatedResponse[EntityResponse]):
+    """Entity-list page envelope enriched with aggregate count metadata.
+
+    Extends the standard paginated envelope with an :class:`EntityListMeta`
+    so the dashboard can render core/user/total counts (and, when a drift
+    store is wired, a drift aggregate) without a second round trip.
+    """
+
+    meta: EntityListMeta

@@ -137,3 +137,17 @@ class UpdateConnectionRequest(BaseModel):
             msg = "sensitive must be true or false, not null"
             raise ValueError(msg)
         return v
+
+
+class RevealedSecretResponse(BaseModel):
+    """Success payload for ``GET /connections/{name}/secrets/{field}``.
+
+    A named DTO (replacing a bare ``dict[str, str]``) so the single
+    revealed credential field is documented in the OpenAPI schema. The
+    value is logged by field name only, never echoed to logs.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    field: NotBlankStr = Field(description="Name of the revealed credential field.")
+    value: str = Field(description="Plaintext value of the credential field.")

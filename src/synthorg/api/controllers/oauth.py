@@ -73,6 +73,23 @@ class InitiateOAuthFlowRequest(BaseModel):
     )
 
 
+class OAuthInitiationResponse(BaseModel):
+    """Body model for the ``POST /oauth/initiate`` success payload.
+
+    A named DTO (replacing a bare ``dict[str, str]``) so the OpenAPI
+    schema documents the two fields a client must read.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    authorization_url: NotBlankStr = Field(
+        description="Provider authorization URL the user must visit.",
+    )
+    state_token: NotBlankStr = Field(
+        description="Opaque CSRF state token bound to this flow.",
+    )
+
+
 class OAuthController(Controller):
     """OAuth flow management endpoints."""
 
@@ -91,13 +108,13 @@ class OAuthController(Controller):
         self,
         state: State,
         data: InitiateOAuthFlowRequest,
-    ) -> ApiResponse[dict[str, str]]:
+    ) -> ApiResponse[OAuthInitiationResponse]:
         """Initiate an OAuth authorization code flow.
 
         Returns the authorization URL for the user to visit.
 
         Returns:
-            ``ApiResponse[dict[str, str]]`` instance.
+            ``ApiResponse[OAuthInitiationResponse]`` instance.
 
         Raises:
             ValidationError: Raised on the corresponding failure path.
@@ -161,10 +178,10 @@ class OAuthController(Controller):
         )
 
         return ApiResponse(
-            data={
-                "authorization_url": auth_url,
-                "state_token": bound_state.state_token,
-            },
+            data=OAuthInitiationResponse(
+                authorization_url=auth_url,
+                state_token=bound_state.state_token,
+            ),
         )
 
     @get(
