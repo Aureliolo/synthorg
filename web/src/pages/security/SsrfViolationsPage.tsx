@@ -15,6 +15,7 @@ import { SearchFilterSort } from '@/components/ui/search-filter-sort'
 import { SectionCard } from '@/components/ui/section-card'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Skeleton } from '@/components/ui/skeleton'
+import { StatusPill, type StatusPillTone } from '@/components/ui/status-pill'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import type { SsrfViolationDTO } from '@/api/types'
 import type { SsrfViolationStatus } from '@/api/types/enum-values.gen'
@@ -30,19 +31,21 @@ const STATUS_ICON: Record<SsrfViolationStatus, typeof ShieldAlert> = {
   denied: ShieldX,
 }
 
-const STATUS_TONE: Record<SsrfViolationStatus, string> = {
-  pending: 'text-warning',
-  allowed: 'text-success',
-  denied: 'text-danger',
+const STATUS_TONE: Record<SsrfViolationStatus, StatusPillTone> = {
+  pending: 'warning',
+  allowed: 'success',
+  denied: 'danger',
 }
 
+// Cap attacker-controlled URLs so a crafted multi-kilobyte value cannot blow
+// out the card layout; the full value stays available via the title tooltip.
+const MAX_URL_DISPLAY = 200
+
 function StatusIndicator({ status }: { status: SsrfViolationStatus }) {
-  const Icon = STATUS_ICON[status]
   return (
-    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${STATUS_TONE[status]}`}>
-      <Icon className="size-3.5" aria-hidden="true" />
+    <StatusPill tone={STATUS_TONE[status]} icon={STATUS_ICON[status]}>
       {status.charAt(0).toUpperCase() + status.slice(1)}
-    </span>
+    </StatusPill>
   )
 }
 
@@ -51,7 +54,14 @@ function ViolationDetails({ violation }: { violation: SsrfViolationDTO }) {
     <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
       <div className="sm:col-span-2">
         <dt className="text-text-secondary">URL</dt>
-        <dd className="break-all font-mono text-micro text-foreground">{violation.url}</dd>
+        <dd
+          className="break-all font-mono text-micro text-foreground"
+          title={violation.url}
+        >
+          {violation.url.length > MAX_URL_DISPLAY
+            ? `${violation.url.slice(0, MAX_URL_DISPLAY)}...`
+            : violation.url}
+        </dd>
       </div>
       <div>
         <dt className="text-text-secondary">Host</dt>
@@ -138,7 +148,10 @@ function ViolationsBody({ ctrl }: { ctrl: SsrfViolationsController }) {
       </div>
     )
   }
-  if (!ctrl.error && ctrl.violations.length === 0) {
+  if (ctrl.violations.length === 0) {
+    // With an error present the parent already shows an ErrorBanner; render
+    // nothing here rather than an empty <ul>. Otherwise show the empty state.
+    if (ctrl.error !== null) return null
     return ctrl.emptyStateProps !== null ? <EmptyState {...ctrl.emptyStateProps} /> : null
   }
   return (

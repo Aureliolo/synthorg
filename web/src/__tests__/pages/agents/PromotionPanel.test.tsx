@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { apiSuccess, buildPromotionEvaluation } from '@/mocks/handlers'
+import { apiError, apiSuccess, buildPromotionEvaluation } from '@/mocks/handlers'
 import { PromotionPanel } from '@/pages/agents/PromotionPanel'
 import { usePromotionStore } from '@/stores/promotion'
 import { useToastStore } from '@/stores/toast'
@@ -51,6 +51,28 @@ describe('PromotionPanel', () => {
         useToastStore.getState().toasts.some((t) => t.variant === 'success'),
       ).toBe(true)
     })
+  })
+
+  it('surfaces an error toast and keeps the dialog open when apply fails', async () => {
+    server.use(
+      http.post('/api/v1/promotion/:id/apply', () =>
+        HttpResponse.json(apiError('forbidden'), { status: 403 }),
+      ),
+    )
+    const user = userEvent.setup()
+    render(<PromotionPanel agentId="agent-1" />)
+
+    await user.click(screen.getByRole('button', { name: /^promote$/i }))
+    const dialog = await screen.findByRole('alertdialog')
+    await user.click(within(dialog).getByRole('button', { name: /^promote$/i }))
+
+    await waitFor(() => {
+      expect(
+        useToastStore.getState().toasts.some((t) => t.variant === 'error'),
+      ).toBe(true)
+    })
+    // The confirmation dialog stays open so the operator can retry or cancel.
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
   })
 
   it('hides promote/demote actions for roles that cannot manage promotions', () => {

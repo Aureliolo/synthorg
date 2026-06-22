@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, useCallback } from 'react'
 import { Plug } from 'lucide-react'
 import type { Connection, HealthReport } from '@/api/types/integrations'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -35,14 +35,20 @@ const ConnectionGridRow = memo(function ConnectionGridRow({
   onEdit,
   onDelete,
 }: ConnectionGridRowProps) {
+  const handleRunHealthCheck = useCallback(
+    () => onRunHealthCheck(connection.name),
+    [onRunHealthCheck, connection.name],
+  )
+  const handleEdit = useCallback(() => onEdit(connection), [onEdit, connection])
+  const handleDelete = useCallback(() => onDelete(connection), [onDelete, connection])
   return (
     <ConnectionCard
       connection={connection}
       report={report}
       checking={checking}
-      onRunHealthCheck={() => onRunHealthCheck(connection.name)}
-      onEdit={() => onEdit(connection)}
-      onDelete={() => onDelete(connection)}
+      onRunHealthCheck={handleRunHealthCheck}
+      onEdit={handleEdit}
+      onDelete={handleDelete}
     />
   )
 })

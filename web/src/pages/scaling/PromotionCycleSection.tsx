@@ -5,13 +5,12 @@ import { SectionCard } from '@/components/ui/section-card'
 import { useAuth } from '@/hooks/useAuth'
 import { usePromotionStore } from '@/stores/promotion'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
+import { hasPrivilegedRole } from '@/utils/roles'
 import type { PromotionRecordDTO } from '@/api/types'
-
-const PROMOTION_ROLES = ['ceo', 'manager'] as const
 
 export function PromotionCycleSection() {
   const { userRole } = useAuth()
-  const canManage = userRole !== null && (PROMOTION_ROLES as readonly string[]).includes(userRole)
+  const canManage = hasPrivilegedRole(userRole)
   const cycleResult = usePromotionStore((s) => s.cycleResult)
   const cycleRunning = usePromotionStore((s) => s.cycleRunning)
   const runCycle = usePromotionStore((s) => s.runCycle)

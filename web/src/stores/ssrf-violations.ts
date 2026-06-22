@@ -16,6 +16,7 @@ import {
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import type { ResolveSsrfViolationRequest, SsrfViolationDTO } from '@/api/types'
 import type { SsrfViolationStatus } from '@/api/types/enum-values.gen'
 
@@ -64,7 +65,7 @@ async function fetchViolationsImpl(set: Set, get: Get): Promise<void> {
       loading: false,
     })
   } catch (err) {
-    log.warn('Failed to fetch SSRF violations:', getErrorMessage(err))
+    log.warn('Failed to fetch SSRF violations', sanitizeForLog(getErrorMessage(err)))
     if (token !== listRequestToken) return
     set({ loading: false, error: getErrorMessage(err) })
   }
@@ -85,7 +86,7 @@ async function fetchMoreViolationsImpl(set: Set, get: Get): Promise<void> {
       loadingMore: false,
     }))
   } catch (err) {
-    log.warn('Failed to fetch more SSRF violations:', getErrorMessage(err))
+    log.warn('Failed to fetch more SSRF violations', sanitizeForLog(getErrorMessage(err)))
     if (token !== listRequestToken) return
     set({ loadingMore: false, error: getErrorMessage(err) })
   }
@@ -107,11 +108,11 @@ async function resolveViolationImpl(
     set({ resolvingId: null })
     // Refetch so the row leaves the pending view and counts stay accurate.
     get().fetchViolations().catch((err: unknown) => {
-      log.warn('SSRF post-resolve refetch failed', getErrorMessage(err))
+      log.warn('SSRF post-resolve refetch failed', sanitizeForLog(getErrorMessage(err)))
     })
     return true
   } catch (err) {
-    log.warn('Failed to resolve SSRF violation:', getErrorMessage(err))
+    log.warn('Failed to resolve SSRF violation', sanitizeForLog(getErrorMessage(err)))
     useToastStore.getState().add({
       variant: 'error',
       ...getCrudErrorTitle(err, 'Could not resolve violation'),
@@ -137,7 +138,7 @@ export const useSsrfViolationsStore = create<SsrfViolationsState>()((set, get) =
   setStatusFilter: (status) => {
     set({ statusFilter: status })
     get().fetchViolations().catch((err: unknown) => {
-      log.warn('SSRF filter-change refetch failed', getErrorMessage(err))
+      log.warn('SSRF filter-change refetch failed', sanitizeForLog(getErrorMessage(err)))
     })
   },
   resolveViolation: (id, status) => resolveViolationImpl(set, get, id, status),

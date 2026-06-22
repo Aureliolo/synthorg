@@ -6,8 +6,7 @@ import { useSsrfViolationsStore } from '@/stores/ssrf-violations'
 import type { EmptyStateProps } from '@/components/ui/empty-state'
 import type { ResolveSsrfViolationRequest, SsrfViolationDTO } from '@/api/types'
 import type { SsrfViolationStatus } from '@/api/types/enum-values.gen'
-
-const MANAGE_ROLES = ['ceo', 'manager'] as const
+import { hasPrivilegedRole } from '@/utils/roles'
 
 export type StatusFilterValue = SsrfViolationStatus | 'all'
 
@@ -38,14 +37,14 @@ export interface SsrfViolationsController {
   handleStatusChange: (value: StatusFilterValue) => void
   requestResolve: (violation: SsrfViolationDTO, status: ResolveSsrfViolationRequest['status']) => void
   cancelResolve: () => void
-  confirmResolve: () => Promise<void>
+  confirmResolve: () => Promise<boolean>
   loadMore: () => void
   retry: () => void
 }
 
 export function useSsrfViolations(): SsrfViolationsController {
   const { userRole } = useAuth()
-  const canManage = userRole !== null && (MANAGE_ROLES as readonly string[]).includes(userRole)
+  const canManage = hasPrivilegedRole(userRole)
 
   const violations = useSsrfViolationsStore((s) => s.violations)
   const loading = useSsrfViolationsStore((s) => s.loading)
@@ -85,10 +84,11 @@ export function useSsrfViolations(): SsrfViolationsController {
     [setStatusFilter],
   )
 
-  const confirmResolve = useCallback(async () => {
-    if (pending === null) return
-    const ok = await resolveViolation(pending.violation.id, pending.status)
-    if (ok) setPending(null)
+  const confirmResolve = useCallback(async (): Promise<boolean> => {
+    if (pending === null) return false
+    // Returning `false` keeps the confirm dialog open so the operator can
+    // retry; the dialog closes itself on a non-`false` (success) return.
+    return resolveViolation(pending.violation.id, pending.status)
   }, [pending, resolveViolation])
 
   return {

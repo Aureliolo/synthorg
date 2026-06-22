@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { buildSsrfViolation, emptyPageEnvelope, pageEnvelope, successFor } from '@/mocks/handlers'
+import { apiError, buildSsrfViolation, emptyPageEnvelope, pageEnvelope, successFor } from '@/mocks/handlers'
 import SsrfViolationsPage from '@/pages/security/SsrfViolationsPage'
 import { useSsrfViolationsStore } from '@/stores/ssrf-violations'
 import { useToastStore } from '@/stores/toast'
@@ -76,6 +76,40 @@ describe('SsrfViolationsPage', () => {
     await waitFor(() => {
       expect(useToastStore.getState().toasts.some((t) => t.variant === 'success')).toBe(true)
     })
+  })
+
+  it('surfaces an error toast and keeps the dialog open when resolve fails', async () => {
+    server.use(
+      http.get('/api/v1/providers/ssrf-violations/', () =>
+        HttpResponse.json(pageEnvelope([buildSsrfViolation()])),
+      ),
+      http.post('/api/v1/providers/ssrf-violations/:id/resolve', () =>
+        HttpResponse.json(apiError('forbidden'), { status: 403 }),
+      ),
+    )
+    const user = userEvent.setup()
+    renderPage()
+
+    await screen.findByText('metadata.internal')
+    await user.click(screen.getByRole('button', { name: /allow/i }))
+    const dialog = await screen.findByRole('alertdialog')
+    await user.click(within(dialog).getByRole('button', { name: /^allow$/i }))
+
+    await waitFor(() => {
+      expect(useToastStore.getState().toasts.some((t) => t.variant === 'error')).toBe(true)
+    })
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+  })
+
+  it('renders the error banner with a retry when the queue fails to load', async () => {
+    server.use(
+      http.get('/api/v1/providers/ssrf-violations/', () =>
+        HttpResponse.json(apiError('boom'), { status: 500 }),
+      ),
+    )
+    renderPage()
+    expect(await screen.findByText('Could not load SSRF violations')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
   })
 
   it('hides allow/deny actions for roles that cannot manage violations', async () => {

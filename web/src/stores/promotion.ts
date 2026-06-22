@@ -14,6 +14,7 @@ import type { PromotionDirection } from '@/api/types/enum-values.gen'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('promotion')
 
@@ -78,7 +79,7 @@ export const usePromotionStore = create<PromotionState>((set, get) => ({
       const evaluation = await evaluatePromotion(agentId, direction)
       set({ evaluation, evaluating: false })
     } catch (err) {
-      log.error('evaluate:', getErrorMessage(err))
+      log.error('evaluate failed', sanitizeForLog(getErrorMessage(err)))
       set({ evaluating: false, evaluationError: getErrorMessage(err) })
     }
   },
@@ -89,7 +90,7 @@ export const usePromotionStore = create<PromotionState>((set, get) => ({
       const history = await getPromotionHistory(agentId)
       set({ history, historyLoading: false })
     } catch (err) {
-      log.error('fetchHistory:', getErrorMessage(err))
+      log.error('fetchHistory failed', sanitizeForLog(getErrorMessage(err)))
       set({ historyLoading: false, historyError: getErrorMessage(err) })
     }
   },
@@ -112,7 +113,7 @@ export const usePromotionStore = create<PromotionState>((set, get) => ({
       set({ applying: false })
       return result
     } catch (err) {
-      log.error('apply:', getErrorMessage(err))
+      log.error('apply failed', sanitizeForLog(getErrorMessage(err)))
       useToastStore.getState().add({
         variant: 'error',
         ...getCrudErrorTitle(err, 'Could not apply seniority change'),
@@ -135,7 +136,7 @@ export const usePromotionStore = create<PromotionState>((set, get) => ({
       set({ cycleResult: records, cycleRunning: false })
       return true
     } catch (err) {
-      log.error('runCycle:', getErrorMessage(err))
+      log.error('runCycle failed', sanitizeForLog(getErrorMessage(err)))
       useToastStore.getState().add({
         variant: 'error',
         ...getCrudErrorTitle(err, 'Could not run promotion cycle'),

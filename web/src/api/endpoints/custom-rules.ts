@@ -151,9 +151,16 @@ export async function previewRule(
   return unwrap(response)
 }
 
-export async function listAllRules(): Promise<RuleListItem[]> {
-  const response = await apiClient.get<ApiResponse<RuleListItem[]>>(
-    '/meta/rules',
+export async function listAllRules(): Promise<readonly RuleListItem[]> {
+  // Backend returns ``PaginatedResponse[RuleListItem]`` (builtin + custom rules
+  // collected server-side, then paginated). Walk every cursor page rather than
+  // unwrapping the first page only, so installations with >1 page of rules are
+  // not silently truncated.
+  return paginateAll<RuleListItem>((cursor) =>
+    apiClient
+      .get<PaginatedResponse<RuleListItem>>('/meta/rules', {
+        params: cursor !== null ? { cursor } : undefined,
+      })
+      .then(unwrapPaginated<RuleListItem>),
   )
-  return unwrap(response)
 }

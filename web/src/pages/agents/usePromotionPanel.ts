@@ -4,8 +4,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { usePromotionStore } from '@/stores/promotion'
 import type { PromotionEvaluationDTO, PromotionRecordDTO } from '@/api/types'
 import type { PromotionDirection } from '@/api/types/enum-values.gen'
-
-const PROMOTION_ROLES = ['ceo', 'manager'] as const
+import { hasPrivilegedRole } from '@/utils/roles'
 
 export interface PromotionPanelController {
   canManage: boolean
@@ -23,13 +22,13 @@ export interface PromotionPanelController {
   requestApply: (direction: PromotionDirection) => void
   cancelApply: () => void
   checkEligibility: (direction: PromotionDirection) => Promise<void>
-  confirmApply: () => Promise<void>
+  confirmApply: () => Promise<boolean>
   retryHistory: () => Promise<void>
 }
 
 export function usePromotionPanel(agentId: string): PromotionPanelController {
   const { userRole } = useAuth()
-  const canManage = userRole !== null && (PROMOTION_ROLES as readonly string[]).includes(userRole)
+  const canManage = hasPrivilegedRole(userRole)
 
   const evaluation = usePromotionStore((s) => s.evaluation)
   const evaluating = usePromotionStore((s) => s.evaluating)
@@ -61,10 +60,12 @@ export function usePromotionPanel(agentId: string): PromotionPanelController {
     [agentId, evaluate],
   )
 
-  const confirmApply = useCallback(async () => {
-    if (pendingDirection === null) return
+  const confirmApply = useCallback(async (): Promise<boolean> => {
+    if (pendingDirection === null) return false
     const result = await apply(agentId, pendingDirection)
-    if (result !== null) setPendingDirection(null)
+    // Returning `false` keeps the confirm dialog open so the operator can
+    // retry; the dialog closes itself on a non-`false` (success) return.
+    return result !== null
   }, [agentId, apply, pendingDirection])
 
   const retryHistory = useCallback(() => fetchHistory(agentId), [agentId, fetchHistory])

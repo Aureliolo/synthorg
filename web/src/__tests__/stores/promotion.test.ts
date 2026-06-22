@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { usePromotionStore } from '@/stores/promotion'
 import { useToastStore } from '@/stores/toast'
 import { apiError, apiSuccess, buildPromotionEvaluation, buildPromotionRecord } from '@/mocks/handlers'
@@ -8,10 +8,6 @@ import { server } from '@/test-setup'
 beforeEach(() => {
   usePromotionStore.getState().reset()
   useToastStore.getState().dismissAll()
-})
-
-afterEach(() => {
-  usePromotionStore.getState().reset()
 })
 
 describe('promotion store', () => {
@@ -100,5 +96,19 @@ describe('promotion store', () => {
     expect(ok).toBe(true)
     expect(usePromotionStore.getState().cycleResult).toHaveLength(2)
     expect(useToastStore.getState().toasts[0]?.variant).toBe('success')
+  })
+
+  it('returns false, clears cycleRunning, and toasts on a failed cycle run', async () => {
+    server.use(
+      http.post('/api/v1/promotion/cycle', () =>
+        HttpResponse.json(apiError('cycle failed'), { status: 500 }),
+      ),
+    )
+
+    const ok = await usePromotionStore.getState().runCycle()
+
+    expect(ok).toBe(false)
+    expect(usePromotionStore.getState().cycleRunning).toBe(false)
+    expect(useToastStore.getState().toasts[0]?.variant).toBe('error')
   })
 })

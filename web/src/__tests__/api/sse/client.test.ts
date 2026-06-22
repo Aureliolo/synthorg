@@ -147,12 +147,15 @@ describe('openSseFallback', () => {
       onEvent: () => {},
       onError: (err) => errors.push(err),
     })
-    lastEventSource!.onerror?.(new Event('error'))
-    expect(errors).toHaveLength(1)
-    expect(errors[0]!.message).toMatch(/SSE/)
-    // The error scheduled an app-level reconnect timer; close cancels it so
-    // the active-handle gate stays clean.
-    handle.close()
+    try {
+      lastEventSource!.onerror?.(new Event('error'))
+      expect(errors).toHaveLength(1)
+      expect(errors[0]!.message).toMatch(/SSE/)
+    } finally {
+      // The error scheduled an app-level reconnect timer; close cancels it so
+      // the active-handle gate stays clean even if an assertion above throws.
+      handle.close()
+    }
   })
 
   it('reconnects with an application-level backoff timer after an error', () => {

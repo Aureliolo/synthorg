@@ -94,6 +94,9 @@ web/storybook-static/
 web/stats.html
 web/test-results/
 web/playwright-report/
+# Playwright visual baselines are environment-specific (e.g. ``-win32.png``)
+# and regenerated per run; they are not committed.
+web/e2e/**/*-snapshots/
 web/.lhci/
 *.tsbuildinfo
 web/vite.config.d.ts

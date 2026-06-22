@@ -3,9 +3,9 @@ import type {
   createCustomRule,
   CustomRule,
   getCustomRule,
-  listAllRules,
   MetricDescriptor,
   previewRule,
+  RuleListItem,
   toggleCustomRule,
   updateCustomRule,
 } from '@/api/endpoints/custom-rules'
@@ -94,6 +94,6 @@ export const customRulesHandlers = [
     ),
   ),
   http.get('/api/v1/meta/rules', () =>
-    HttpResponse.json(successFor<typeof listAllRules>([])),
+    HttpResponse.json(emptyPageEnvelope<RuleListItem>()),
   ),
 ]
