@@ -488,10 +488,17 @@ def test_record_task_transition_increments_by_status_pair() -> None:
     assert pairs[("created", "assigned")] == 2.0
 
 
-def test_record_task_transition_rejects_unknown_status() -> None:
+def test_record_task_transition_rejects_unknown_from_status() -> None:
     collector = PrometheusCollector()
     with pytest.raises(ValueError, match="task transition"):
         collector.record_task_transition(from_status="bogus", to_status="assigned")
+
+
+def test_record_task_transition_rejects_unknown_to_status() -> None:
+    """``to_status`` is validated independently of ``from_status``."""
+    collector = PrometheusCollector()
+    with pytest.raises(ValueError, match="task transition"):
+        collector.record_task_transition(from_status="created", to_status="bogus")
 
 
 # -- Auth failure / lockout counters -----------------------------------------

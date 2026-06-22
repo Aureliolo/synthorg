@@ -118,7 +118,13 @@ def _make_agent(
     status: str = "active",
     access_level: str = "standard",
 ) -> MagicMock:
-    """Build a mock AgentIdentity with status and trust level."""
+    """Build a mock AgentIdentity with status and trust level.
+
+    Bare MagicMock (spec=None) is load-bearing: the agent flows through the
+    collector's typeguard-instrumented boundary, which a SimpleNamespace /
+    partially-spec'd double would fail. The mock-spec gate exempts this read
+    path; do not "tighten" to mock_of here.
+    """
     agent = MagicMock()
     agent.status = status
     agent.tools.access_level = access_level
@@ -131,7 +137,11 @@ def _make_task(
     status: str = "created",
     assigned_to: str | None = None,
 ) -> MagicMock:
-    """Build a mock Task with a given status and optional agent."""
+    """Build a mock Task with a given status and optional agent.
+
+    Bare MagicMock is load-bearing here for the same typeguard reason as
+    :func:`_make_agent`.
+    """
     task = MagicMock()
     task.status = status
     task.assigned_to = assigned_to
@@ -586,6 +596,9 @@ class TestPrometheusCollectorErrorPaths:
 
     def test_pg_pool_stats_failure_logs_redacted_context(self) -> None:
         collector = PrometheusCollector()
+        # Bare MagicMock fakes the postgres backend's private ``_pool`` so the
+        # ``get_stats`` failure path is exercised through the typeguard
+        # boundary that a SimpleNamespace would not satisfy.
         backend = MagicMock()
         backend.kind = "postgres"
         pool = MagicMock()

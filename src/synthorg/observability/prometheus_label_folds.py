@@ -33,7 +33,8 @@ VALID_TRUST_LEVELS: Final[frozenset[str]] = frozenset(
 )
 AGENT_LABEL_OTHER: Final[str] = "other"
 
-# Bounded HTTP-method vocabulary for ``synthorg_api_requests_total``. The
+# Bounded HTTP-method vocabulary for ``synthorg_api_request_duration_seconds``.
+# The
 # method arrives from the request line (attacker-controllable), so an
 # unrecognised verb folds to :data:`HTTP_METHOD_OTHER` rather than minting an
 # unbounded per-method series.

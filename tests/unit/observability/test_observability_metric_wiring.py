@@ -127,6 +127,10 @@ def test_is_known_agent_id_rejects_after_seed() -> None:
 
 
 def _stub_agent(agent_id: str) -> MagicMock:
+    # Bare MagicMock (spec=None) is load-bearing: the agent flows through the
+    # collector's typeguard-instrumented boundary, which a SimpleNamespace /
+    # partially-spec'd double would fail. The mock-spec gate exempts this read
+    # path; do not "tighten" to mock_of here.
     agent = MagicMock()
     agent.id = agent_id
     agent.status = "active"

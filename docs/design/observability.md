@@ -442,11 +442,12 @@ The `/metrics` endpoint exposes business and infrastructure metrics under the `s
 - `synthorg_ws_connection_lifetime_seconds{transport}`: histogram; WebSocket connection lifetime by transport (buckets `1s` … `4h`). A collapsing p95 flags clients dropping shortly after auth.
 - `synthorg_ws_revalidation_total{outcome}`: counter; per-frame WS revalidation outcomes. `outcome` ∈ `pass` / `fail` / `budget_exhausted` (bounded via `VALID_WS_REVALIDATION_OUTCOMES`). A sustained `budget_exhausted` rate is the revalidation-saturation signal (saturated peers close with 4011).
 
-**Snapshot-backed registry-bound labels.** Five push-time label names (`agent_id`, `agent`, `department`, `workflow_definition_id`, `tool_name`) are validated against a process-global `_LabelSnapshot` rebuilt on every async pre-scrape `PrometheusCollector.refresh()`. `tool_name` is registry-bound too (not free-form): the snapshot's `tool_names` frozenset (with its own `tool_names_seeded` flag) backs `validate_tool_name`, and the MCP-handler `tool` label folds any unregistered name to `__unknown__` via `normalize_mcp_tool_label` (fail-closed while the registry is empty). Sync `record_*` callers consult the snapshot via `validate_<label>` / `is_known_agent_id`; unknown values drop the sample with a `metrics.scrape.failed` WARN log (and `metrics.record.failed` at the metrics-hub wrapper level). Concurrency is guaranteed by atomic module-global rebinding (single bytecode op under the GIL) plus a capture-before-read pattern in every validator: the validator reads the module global once into a local before consulting the per-source `*_seeded` flags and the frozenset, so a concurrent `update_label_snapshot()` either swaps in the new snapshot before the local capture or after it -- never producing a torn `(*_seeded, frozenset)` pair. The collector additionally serialises the read/merge/write critical section in `_rebuild_label_snapshot` with a per-instance `asyncio.Lock` so two overlapping `refresh()` calls cannot clobber a partial-failure carry-forward. See `src/synthorg/observability/prometheus_labels.py`.
+**Snapshot-backed registry-bound labels.** Six push-time label names (`agent_id`, `department`, `workflow_definition_id`, `tool_name`, `provider`, `model_id`) are validated against a process-global `_LabelSnapshot` rebuilt on every async pre-scrape `PrometheusCollector.refresh()`. `tool_name` is registry-bound too (not free-form): the snapshot's `tool_names` frozenset (with its own `tool_names_seeded` flag) backs `validate_tool_name`, and the MCP-handler `tool` label folds any unregistered name to `__unknown__` via `normalize_mcp_tool_label` (fail-closed while the registry is empty). Sync `record_*` callers consult the snapshot via `validate_<label>` / `is_known_agent_id`; unknown values drop the sample with a `metrics.scrape.failed` WARN log (and `metrics.record.failed` at the metrics-hub wrapper level). Concurrency is guaranteed by atomic module-global rebinding (single bytecode op under the GIL) plus a capture-before-read pattern in every validator: the validator reads the module global once into a local before consulting the per-source `*_seeded` flags and the frozenset, so a concurrent `update_label_snapshot()` either swaps in the new snapshot before the local capture or after it -- never producing a torn `(*_seeded, frozenset)` pair. The collector additionally serialises the read/merge/write critical section in `_rebuild_label_snapshot` with a per-instance `asyncio.Lock` so two overlapping `refresh()` calls cannot clobber a partial-failure carry-forward. See `src/synthorg/observability/prometheus_labels.py`.
 
 **Cost + tokens**
 
 - `synthorg_provider_tokens_total{provider, model, direction}`: counter; input/output token consumption.
+- `synthorg_provider_tokens_per_call{provider, model, direction}`: histogram; per-call token distribution (token-count buckets `128` … `131072`, not seconds). Observed alongside the cumulative counter on every `record_provider_usage` call so dashboards can chart per-request prompt / completion size rather than only the running total.
 - `synthorg_provider_cost_total{provider, model}`: counter; accumulated cost in the configured currency.
 
 **Provider errors**
@@ -461,11 +462,17 @@ The `/metrics` endpoint exposes business and infrastructure metrics under the `s
 
 - `synthorg_api_request_duration_seconds{method, route, status_class}`: histogram; per-route HTTP handler duration. Its auto-emitted `_count` series doubles as a request counter.
 - `synthorg_task_duration_seconds{outcome}` + `synthorg_task_runs_total{outcome}`: task execution.
+- `synthorg_task_transitions_total{from_status, to_status}`: counter; every persisted task status hop (not just terminal outcomes). Both labels are bounded by `VALID_TASK_STATUSES` (derived from the `TaskStatus` enum); an out-of-vocabulary value folds to the sentinel. Use it to chart intermediate-state flow (e.g. `created` → `in_progress`) that `task_runs_total` (terminal-only) cannot show.
 - `synthorg_tool_duration_seconds{tool_name, outcome}` + `synthorg_tool_invocations_total{tool_name, outcome}`: tool invocation.
 
 **API errors**
 
 - `synthorg_api_error_classification_total{category, status_class}`: counter; emitted from the structured-error builder on every 4xx/5xx response. `category` is derived from the `ErrorCategory` enum (`auth`, `validation`, `not_found`, `conflict`, `rate_limit`, `budget_exhausted`, `provider_error`, `internal`) with no parallel allowlist.
+
+**Auth**
+
+- `synthorg_auth_failures_total{reason}`: counter; authentication rejections. `reason` is bounded by `VALID_AUTH_FAILURE_REASONS` (`invalid_password`, `hash_verification_error`, `jwt_secret_missing`, `token_expired`, `token_invalid`, `refresh_rejected`, `account_locked`, `unauthenticated`); an out-of-vocabulary reason folds to `__other__` via `fold_auth_failure_reason` so a new log reason cannot mint an unbounded series. A sustained rate on `invalid_password` / `refresh_rejected` is a brute-force / credential-stuffing signal.
+- `synthorg_auth_lockouts_total`: counter; account lockouts triggered by repeated failed logins. Any sustained rate is alertable.
 
 **Audit chain + OTLP health**
 
