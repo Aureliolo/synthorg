@@ -14,7 +14,7 @@ from tests.evals.prompt._harness import (
 class TestCosProposePromptContract:
     """Guard rails for the chief-of-staff proposer prompt surface."""
 
-    PINNED_FP = "4f9dffc84a2601aa"
+    PINNED_FP = "f499ae83356491df"
 
     def test_temperature_is_config_sourced(self) -> None:
         """Propose temperature must be drawn from config, not a literal."""
@@ -27,10 +27,15 @@ class TestCosProposePromptContract:
         )
 
     def test_prompt_fingerprint_is_pinned(self) -> None:
-        """Detect silent drift of the conversational-propose template."""
-        from synthorg.meta.chief_of_staff.prompts import CONVERSATIONAL_PROPOSE_PROMPT
+        """Detect silent drift of the conversational-propose SYSTEM + USER."""
+        from synthorg.meta.chief_of_staff.prompts import (
+            CONVERSATIONAL_PROPOSE_SYSTEM,
+            CONVERSATIONAL_PROPOSE_USER,
+        )
 
-        fp = fingerprint_prompt(CONVERSATIONAL_PROPOSE_PROMPT)
+        fp = fingerprint_prompt(
+            CONVERSATIONAL_PROPOSE_SYSTEM + CONVERSATIONAL_PROPOSE_USER
+        )
         assert fp == self.PINNED_FP, (
             f"conversational propose prompt drifted: {fp!r} != "
             f"{self.PINNED_FP!r}. Update the pin if intentional."

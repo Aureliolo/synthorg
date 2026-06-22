@@ -27,9 +27,12 @@ from synthorg.meta.chief_of_staff.models import (
     ChatResponse,
 )
 from synthorg.meta.chief_of_staff.prompts import (
-    ALERT_EXPLANATION_PROMPT,
-    CHAT_QUERY_PROMPT,
-    PROPOSAL_EXPLANATION_PROMPT,
+    ALERT_EXPLANATION_SYSTEM,
+    ALERT_EXPLANATION_USER,
+    CHAT_QUERY_SYSTEM,
+    CHAT_QUERY_USER,
+    PROPOSAL_EXPLANATION_SYSTEM,
+    PROPOSAL_EXPLANATION_USER,
 )
 from synthorg.meta.chief_of_staff.protocol import OutcomeStore
 from synthorg.meta.models import (
@@ -108,7 +111,7 @@ class ChiefOfStaffChat:
                     f"({stats.approved_count}/{stats.total_proposals} "
                     f"proposals approved)"
                 )
-        prompt = PROPOSAL_EXPLANATION_PROMPT.format(
+        user = PROPOSAL_EXPLANATION_USER.format(
             proposal_title=wrap_untrusted(TAG_CONFIG_VALUE, proposal.title),
             proposal_description=wrap_untrusted(
                 TAG_CONFIG_VALUE,
@@ -132,7 +135,11 @@ class ChiefOfStaffChat:
             ),
             approval_context=wrap_untrusted(TAG_TASK_DATA, approval_ctx),
         )
-        return await self._call_llm(prompt, sources=("performance", "budget"))
+        return await self._call_llm(
+            PROPOSAL_EXPLANATION_SYSTEM,
+            user,
+            sources=("performance", "budget"),
+        )
 
     async def explain_alert(
         self,
@@ -155,7 +162,7 @@ class ChiefOfStaffChat:
             query_type="alert_explanation",
             alert_id=str(alert.id),
         )
-        prompt = ALERT_EXPLANATION_PROMPT.format(
+        user = ALERT_EXPLANATION_USER.format(
             alert_type=wrap_untrusted(TAG_CONFIG_VALUE, alert.alert_type),
             # severity is a typed enum -- trusted.
             alert_severity=alert.severity.value,
@@ -169,7 +176,11 @@ class ChiefOfStaffChat:
             ),
         )
         sources = tuple(alert.affected_domains)
-        return await self._call_llm(prompt, sources=sources)
+        return await self._call_llm(
+            ALERT_EXPLANATION_SYSTEM,
+            user,
+            sources=sources,
+        )
 
     async def ask(
         self,
@@ -209,7 +220,7 @@ class ChiefOfStaffChat:
                     for o in recent
                 ]
                 recent_context = "Recent outcomes:\n" + "\n".join(lines)
-        prompt = CHAT_QUERY_PROMPT.format(
+        user = CHAT_QUERY_USER.format(
             snapshot_summary=wrap_untrusted(
                 TAG_TASK_DATA,
                 _format_snapshot(snapshot),
@@ -217,18 +228,24 @@ class ChiefOfStaffChat:
             recent_context=wrap_untrusted(TAG_TASK_DATA, recent_context),
             user_question=wrap_untrusted(TAG_TASK_DATA, query.question),
         )
-        return await self._call_llm(prompt, sources=())
+        return await self._call_llm(CHAT_QUERY_SYSTEM, user, sources=())
 
     async def _call_llm(
         self,
-        prompt: str,
+        system: str,
+        user: str,
         *,
         sources: tuple[str, ...],
     ) -> ChatResponse:
         """Call the LLM and wrap the response.
 
+        The untrusted-content directive is carried by ``system`` so it runs
+        at system priority; ``user`` holds only the fenced attacker-controllable
+        fields, keeping the directive's authority above the fenced data.
+
         Args:
-            prompt: Formatted prompt string.
+            system: SYSTEM-role framing + untrusted-content directive.
+            user: USER-role message with the fenced data fields.
             sources: Signal domains referenced.
 
         Returns:
@@ -237,7 +254,10 @@ class ChiefOfStaffChat:
         Raises:
             Exception: Raised on the corresponding failure path.
         """
-        messages = [ChatMessage(role=MessageRole.USER, content=prompt)]
+        messages = [
+            ChatMessage(role=MessageRole.SYSTEM, content=system),
+            ChatMessage(role=MessageRole.USER, content=user),
+        ]
         config = CompletionConfig(
             temperature=self._config.chat_temperature,
             max_tokens=self._config.chat_max_tokens,

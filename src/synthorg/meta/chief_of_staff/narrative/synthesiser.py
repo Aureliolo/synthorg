@@ -20,7 +20,10 @@ from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.narrative.constants import FALLBACK_SUMMARY
 from synthorg.meta.chief_of_staff.narrative.models import NarrativeProse, ReducedRun
-from synthorg.meta.chief_of_staff.prompts import RUN_NARRATIVE_PROSE_PROMPT
+from synthorg.meta.chief_of_staff.prompts import (
+    RUN_NARRATIVE_PROSE_SYSTEM,
+    RUN_NARRATIVE_PROSE_USER,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.chief_of_staff import COS_NARRATIVE_PROSE_FALLBACK
 from synthorg.providers.cost_recording import cost_recording_scope
@@ -100,12 +103,15 @@ class NarrativeSynthesiser:
             The provider response, or ``None`` when the call fails (the
             caller degrades to the deterministic fallback).
         """
-        prompt = RUN_NARRATIVE_PROSE_PROMPT.format(
+        user = RUN_NARRATIVE_PROSE_USER.format(
             brief_title=wrap_untrusted(TAG_TASK_DATA, reduced.brief_title),
             final_status=reduced.final_status.value,
             record=wrap_untrusted(TAG_TASK_DATA, _format_record(reduced)),
         )
-        messages = [ChatMessage(role=MessageRole.USER, content=prompt)]
+        messages = [
+            ChatMessage(role=MessageRole.SYSTEM, content=RUN_NARRATIVE_PROSE_SYSTEM),
+            ChatMessage(role=MessageRole.USER, content=user),
+        ]
         config = CompletionConfig(
             temperature=self._config.narrative_temperature,
             max_tokens=self._config.narrative_max_tokens,

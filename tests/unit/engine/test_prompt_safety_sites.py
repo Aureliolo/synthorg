@@ -400,27 +400,32 @@ class TestLlmEvaluatorToolArgumentsFence:
 
 @pytest.mark.unit
 class TestChiefOfStaffTemplatesFence:
-    """Chief-of-Staff templates declare fences in their text."""
+    """Chief-of-Staff SYSTEM templates declare fences + the directive.
+
+    The directive (and the fence-name declaration) ride in the SYSTEM
+    template so they run at system priority; the USER template carries only
+    the fenced data.
+    """
 
     def test_proposal_template_has_fence_names(self) -> None:
-        from synthorg.meta.chief_of_staff.prompts import PROPOSAL_EXPLANATION_PROMPT
+        from synthorg.meta.chief_of_staff.prompts import PROPOSAL_EXPLANATION_SYSTEM
 
-        assert "<config-value>" in PROPOSAL_EXPLANATION_PROMPT
-        assert "<task-data>" in PROPOSAL_EXPLANATION_PROMPT
-        assert "untrusted" in PROPOSAL_EXPLANATION_PROMPT.lower()
+        assert "<config-value>" in PROPOSAL_EXPLANATION_SYSTEM
+        assert "<task-data>" in PROPOSAL_EXPLANATION_SYSTEM
+        assert "untrusted" in PROPOSAL_EXPLANATION_SYSTEM.lower()
 
     def test_alert_template_has_fence_names(self) -> None:
-        from synthorg.meta.chief_of_staff.prompts import ALERT_EXPLANATION_PROMPT
+        from synthorg.meta.chief_of_staff.prompts import ALERT_EXPLANATION_SYSTEM
 
-        assert "<config-value>" in ALERT_EXPLANATION_PROMPT
-        assert "<task-data>" in ALERT_EXPLANATION_PROMPT
-        assert "untrusted" in ALERT_EXPLANATION_PROMPT.lower()
+        assert "<config-value>" in ALERT_EXPLANATION_SYSTEM
+        assert "<task-data>" in ALERT_EXPLANATION_SYSTEM
+        assert "untrusted" in ALERT_EXPLANATION_SYSTEM.lower()
 
     def test_chat_query_template_has_fence_names(self) -> None:
-        from synthorg.meta.chief_of_staff.prompts import CHAT_QUERY_PROMPT
+        from synthorg.meta.chief_of_staff.prompts import CHAT_QUERY_SYSTEM
 
-        assert "<task-data>" in CHAT_QUERY_PROMPT
-        assert "untrusted" in CHAT_QUERY_PROMPT.lower()
+        assert "<task-data>" in CHAT_QUERY_SYSTEM
+        assert "untrusted" in CHAT_QUERY_SYSTEM.lower()
 
 
 @pytest.mark.unit

@@ -10,9 +10,12 @@ from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import Alert, ChatQuery
 from synthorg.meta.chief_of_staff.prompts import (
-    ALERT_EXPLANATION_PROMPT,
-    CHAT_QUERY_PROMPT,
-    PROPOSAL_EXPLANATION_PROMPT,
+    ALERT_EXPLANATION_SYSTEM,
+    ALERT_EXPLANATION_USER,
+    CHAT_QUERY_SYSTEM,
+    CHAT_QUERY_USER,
+    PROPOSAL_EXPLANATION_SYSTEM,
+    PROPOSAL_EXPLANATION_USER,
 )
 from synthorg.meta.models import (
     ConfigChange,
@@ -31,6 +34,7 @@ from synthorg.meta.models import (
     RollbackPlan,
     RuleSeverity,
 )
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import CompletionResponse, TokenUsage
 from synthorg.providers.protocol import CompletionProvider
 from tests._shared import mock_of
@@ -262,7 +266,7 @@ class TestAsk:
 
 
 class TestPromptTemplates:
-    """Verify prompt templates have required placeholders."""
+    """Verify USER templates have the data placeholders."""
 
     def test_proposal_explanation_placeholders(self) -> None:
         for placeholder in (
@@ -275,7 +279,7 @@ class TestPromptTemplates:
             "{signal_context}",
             "{approval_context}",
         ):
-            assert placeholder in PROPOSAL_EXPLANATION_PROMPT, placeholder
+            assert placeholder in PROPOSAL_EXPLANATION_USER, placeholder
 
     def test_alert_explanation_placeholders(self) -> None:
         for placeholder in (
@@ -284,7 +288,7 @@ class TestPromptTemplates:
             "{affected_domains}",
             "{signal_context}",
         ):
-            assert placeholder in ALERT_EXPLANATION_PROMPT, placeholder
+            assert placeholder in ALERT_EXPLANATION_USER, placeholder
 
     def test_chat_query_placeholders(self) -> None:
         for placeholder in (
@@ -292,28 +296,82 @@ class TestPromptTemplates:
             "{snapshot_summary}",
             "{recent_context}",
         ):
-            assert placeholder in CHAT_QUERY_PROMPT, placeholder
+            assert placeholder in CHAT_QUERY_USER, placeholder
 
 
 # -- Prompt-injection fence ------------------------------------------------
 
 
 class TestSec1TemplatesCarryDirective:
-    """Every template declares its untrusted-content fences to the model."""
+    """The directive rides in the SYSTEM template, not the USER one.
 
-    def test_proposal_explanation_declares_directive(self) -> None:
-        assert "untrusted input from external sources" in PROPOSAL_EXPLANATION_PROMPT
-        assert "<config-value>" in PROPOSAL_EXPLANATION_PROMPT
-        assert "<task-data>" in PROPOSAL_EXPLANATION_PROMPT
+    The SEC-1 invariant is that the untrusted-content directive runs at
+    system priority. The fenced data lives in the USER template, which must
+    NOT carry the directive (otherwise the split would be cosmetic).
+    """
 
-    def test_alert_explanation_declares_directive(self) -> None:
-        assert "untrusted input from external sources" in ALERT_EXPLANATION_PROMPT
-        assert "<config-value>" in ALERT_EXPLANATION_PROMPT
-        assert "<task-data>" in ALERT_EXPLANATION_PROMPT
+    def test_proposal_explanation_declares_directive_in_system(self) -> None:
+        assert "untrusted input from external sources" in PROPOSAL_EXPLANATION_SYSTEM
+        assert "<config-value>" in PROPOSAL_EXPLANATION_SYSTEM
+        assert "<task-data>" in PROPOSAL_EXPLANATION_SYSTEM
+        assert "untrusted input from external sources" not in PROPOSAL_EXPLANATION_USER
 
-    def test_chat_query_declares_directive(self) -> None:
-        assert "untrusted input from external sources" in CHAT_QUERY_PROMPT
-        assert "<task-data>" in CHAT_QUERY_PROMPT
+    def test_alert_explanation_declares_directive_in_system(self) -> None:
+        assert "untrusted input from external sources" in ALERT_EXPLANATION_SYSTEM
+        assert "<config-value>" in ALERT_EXPLANATION_SYSTEM
+        assert "<task-data>" in ALERT_EXPLANATION_SYSTEM
+        assert "untrusted input from external sources" not in ALERT_EXPLANATION_USER
+
+    def test_chat_query_declares_directive_in_system(self) -> None:
+        assert "untrusted input from external sources" in CHAT_QUERY_SYSTEM
+        assert "<task-data>" in CHAT_QUERY_SYSTEM
+        assert "untrusted input from external sources" not in CHAT_QUERY_USER
+
+
+class TestSec1MessageRoleSplit:
+    """Each builder emits a SYSTEM message (directive) then a USER message."""
+
+    async def test_explain_proposal_splits_roles(self) -> None:
+        provider = _mock_provider()
+        chat = ChiefOfStaffChat(provider=provider, config=ChiefOfStaffConfig())
+        await chat.explain_proposal(_proposal(), _snap())
+
+        messages = provider.complete.call_args.args[0]
+        assert messages[0].role is MessageRole.SYSTEM
+        assert messages[1].role is MessageRole.USER
+        assert messages[0].content is not None
+        assert "untrusted input from external sources" in messages[0].content
+        assert messages[1].content is not None
+        assert "untrusted input from external sources" not in messages[1].content
+
+    async def test_explain_alert_splits_roles(self) -> None:
+        provider = _mock_provider()
+        chat = ChiefOfStaffChat(provider=provider, config=ChiefOfStaffConfig())
+        alert = Alert(
+            severity=RuleSeverity.WARNING,
+            alert_type="inflection",
+            description="Budget",
+            affected_domains=("budget",),
+            emitted_at=_NOW,
+        )
+        await chat.explain_alert(alert, _snap())
+
+        messages = provider.complete.call_args.args[0]
+        assert messages[0].role is MessageRole.SYSTEM
+        assert messages[1].role is MessageRole.USER
+        assert messages[0].content is not None
+        assert "untrusted input from external sources" in messages[0].content
+
+    async def test_ask_splits_roles(self) -> None:
+        provider = _mock_provider()
+        chat = ChiefOfStaffChat(provider=provider, config=ChiefOfStaffConfig())
+        await chat.ask(ChatQuery(question="status?"), _snap())
+
+        messages = provider.complete.call_args.args[0]
+        assert messages[0].role is MessageRole.SYSTEM
+        assert messages[1].role is MessageRole.USER
+        assert messages[0].content is not None
+        assert "untrusted input from external sources" in messages[0].content
 
 
 class TestSec1ExplainProposalFences:
@@ -324,7 +382,7 @@ class TestSec1ExplainProposalFences:
         chat = ChiefOfStaffChat(provider=provider, config=ChiefOfStaffConfig())
         await chat.explain_proposal(_proposal(), _snap())
 
-        captured = provider.complete.call_args.args[0][0].content
+        captured = provider.complete.call_args.args[0][1].content
         # Config-value fence for admin/rule-driven metadata.
         assert "<config-value>" in captured
         assert "</config-value>" in captured
@@ -360,7 +418,7 @@ class TestSec1ExplainProposalFences:
         )
         await chat.explain_proposal(hacked, _snap())
 
-        captured = provider.complete.call_args.args[0][0].content
+        captured = provider.complete.call_args.args[0][1].content
         # The literal closing tag is escaped -- attacker cannot break out.
         assert "<\\/config-value>" in captured
 
@@ -381,7 +439,7 @@ class TestSec1ExplainAlertFences:
         )
         await chat.explain_alert(alert, _snap())
 
-        captured = provider.complete.call_args.args[0][0].content
+        captured = provider.complete.call_args.args[0][1].content
         assert "<config-value>" in captured
         assert "<task-data>" in captured
 
@@ -403,7 +461,7 @@ class TestSec1ExplainAlertFences:
         )
         await chat.explain_alert(alert, _snap())
 
-        captured = provider.complete.call_args.args[0][0].content
+        captured = provider.complete.call_args.args[0][1].content
         assert "<\\/task-data>" in captured
 
     async def test_completion_config_pinned(self) -> None:
@@ -441,7 +499,7 @@ class TestSec1AskFences:
             ChatQuery(question="what is org health?"),
             _snap(),
         )
-        captured = provider.complete.call_args.args[0][0].content
+        captured = provider.complete.call_args.args[0][1].content
         assert "<task-data>" in captured
         assert "</task-data>" in captured
         assert "what is org health?" in captured
@@ -455,7 +513,7 @@ class TestSec1AskFences:
             ),
             _snap(),
         )
-        captured = provider.complete.call_args.args[0][0].content
+        captured = provider.complete.call_args.args[0][1].content
         assert "<\\/task-data>" in captured
 
     async def test_completion_config_pinned(self) -> None:
