@@ -161,3 +161,23 @@ class TestListActivityRoutesThroughService:
         # controller body has a single canonical import. Pin the wire so an
         # accidental rename in the integrations state module is caught here.
         assert hasattr(webhooks_activity, "webhook_activity_service_of")
+
+    async def test_list_activity_rejects_tampered_cursor(self) -> None:
+        """A forged cursor 400s before the repo offset window is trusted."""
+        from litestar.datastructures import State
+
+        from synthorg.api.cursor import CursorSecret, InvalidCursorError
+
+        service = mock_of[WebhookActivityService]()
+        app_state = make_app_state(
+            slices={IntegrationsStateSlice: {"webhook_activity_service": service}},
+            cursor_secret=CursorSecret.from_key("test-cursor-secret-key-0123456789"),
+        )
+        controller = WebhooksActivityController(owner=None)  # type: ignore[arg-type]
+        with pytest.raises(InvalidCursorError):
+            await controller.list_activity.fn(
+                controller,
+                state=State({"app_state": app_state}),
+                connection_name="conn-a",
+                cursor="not-a-real-cursor",
+            )

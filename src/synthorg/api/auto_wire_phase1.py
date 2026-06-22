@@ -215,6 +215,15 @@ def resolve_retry_max_attempts() -> int | None:
         try:
             return int(raw)
         except ValueError:
+            logger.warning(
+                API_APP_STARTUP,
+                action="retry_max_attempts_parse_failed",
+                key="providers.retry_max_attempts",
+                note=(
+                    "value is not a valid integer; retry cap not applied, "
+                    "each provider keeps its own retry config"
+                ),
+            )
             return None
 
     resolved = resolve_init_value(

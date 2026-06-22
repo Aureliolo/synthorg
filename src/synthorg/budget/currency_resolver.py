@@ -23,9 +23,10 @@ logger = get_logger(__name__)
 async def resolve_currency(resolver: ConfigResolver | None) -> str:
     """Resolve ``budget.currency``, falling back to ``DEFAULT_CURRENCY``.
 
-    A ``None`` resolver (service not wired) or any non-critical failure
-    yields ``DEFAULT_CURRENCY`` after a WARNING; critical errors
-    (``MemoryError`` / ``RecursionError``) re-raise.
+    A ``None`` resolver (service not wired yet) yields ``DEFAULT_CURRENCY``
+    after a DEBUG log -- an expected early-startup state, not an error. Any
+    non-critical resolve failure yields ``DEFAULT_CURRENCY`` after a WARNING;
+    critical errors (``MemoryError`` / ``RecursionError``) re-raise.
 
     Args:
         resolver: The settings resolver, or ``None`` when unavailable.
@@ -34,6 +35,11 @@ async def resolve_currency(resolver: ConfigResolver | None) -> str:
         The configured ISO 4217 currency code, or ``DEFAULT_CURRENCY``.
     """
     if resolver is None:
+        logger.debug(
+            BUDGET_CURRENCY_RESOLVE_FAILED,
+            reason="resolver_not_wired",
+            fallback=DEFAULT_CURRENCY,
+        )
         return DEFAULT_CURRENCY
     try:
         return await resolver.get_str("budget", "currency")

@@ -62,12 +62,17 @@ async def post_setup_reinit(app_state: AppState) -> None:
 
     # 1. Reload provider registry from persisted config.
     try:
+        from synthorg.integrations.state import (  # noqa: PLC0415
+            provider_credential_catalog_of,
+        )
+
         resolver = config_resolver_of(app_state)
         provider_configs = await resolver.get_provider_configs()
         if provider_configs:
             retry_max_attempts = await resolve_retry_max_attempts(resolver)
             new_registry = ProviderRegistry.from_config(
                 provider_configs,
+                connection_catalog=provider_credential_catalog_of(app_state),
                 retry_max_attempts=retry_max_attempts,
             )
             app_state.swap_provider_registry(new_registry)

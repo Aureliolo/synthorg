@@ -75,6 +75,26 @@ class TestIsPathAllowed:
     def test_backslash_normalized(self) -> None:
         assert _validator().is_path_allowed("src\\synthorg\\meta\\strategies\\new.py")
 
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "C:\\Windows\\System32\\drivers\\etc\\hosts",
+            "C:/Windows/System32/config",
+            "d:\\secrets\\key.py",
+            "\\\\server\\share\\payload.py",
+            "//server/share/payload.py",
+        ],
+    )
+    def test_windows_absolute_and_unc_paths_rejected(self, path: str) -> None:
+        """Drive-absolute / UNC paths must be rejected.
+
+        After backslash normalisation ``PurePosixPath`` does not flag a
+        Windows drive root absolute, so the guard checks the drive-letter /
+        UNC roots explicitly to close the traversal gap on Windows hosts.
+        """
+        v = ScopeValidator(allowed_paths=("**/*", "*"), forbidden_paths=())
+        assert not v.is_path_allowed(path)
+
     def test_empty_allowed_rejects_all(self) -> None:
         v = ScopeValidator(allowed_paths=(), forbidden_paths=())
         assert not v.is_path_allowed("src/any/path.py")

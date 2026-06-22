@@ -98,6 +98,10 @@ def _extract_doc_type(entry: MemoryEntry) -> DocType | None:
 def parse_history_line(line: str) -> DocVersion | None:
     r"""Parse one ``git log`` row in ``<sha>\\t<author_iso>\\t<subject>`` form.
 
+    The second field is the git author date (``%aI``); it is stored on the
+    ``DocVersion.committed_at`` field (the docs engine commits as a single
+    system author, so author and committer dates coincide).
+
     Returns:
         The parsed ``DocVersion``, or ``None`` when the row has the wrong
         field count or a naive / invalid timestamp.

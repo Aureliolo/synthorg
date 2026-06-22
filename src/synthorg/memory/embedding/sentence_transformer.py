@@ -1,12 +1,14 @@
 # module-kind: adapter
 """Neural text embedder backed by the optional ``sentence-transformers`` extra.
 
-This is the canonical home for the sentence-transformers integration: every
-neural-embedding consumer (the meeting conflict detector, future semantic
-search) builds its embedder from here rather than importing the SDK directly,
-so the optional dependency is bound at one boundary. The default install stays
-dependency-light -- the embedder raises :class:`MemoryEmbedderUnavailableError`
-when the extra is absent and callers degrade to a dependency-free embedder.
+This is the embedder facade for inference consumers: the meeting conflict
+detector (and future semantic search) builds its embedder from here rather
+than importing the SDK directly, so the optional dependency is bound at one
+boundary. (Fine-tuning data prep in ``memory/embedding/fine_tune.py`` imports
+``sentence_transformers`` directly for its training-side API, a separate
+concern.) The default install stays dependency-light -- the embedder raises
+:class:`MemoryEmbedderUnavailableError` when the extra is absent and callers
+degrade to a dependency-free embedder.
 """
 
 from typing import Final

@@ -1,15 +1,14 @@
 # module-kind: service
 """WebhookReceiptService: owns webhook-receipt lifecycle transitions.
 
-The retry endpoint previously reached into
-``state["app_state"].persistence.webhook_receipts`` (read + compare-and-set
-writes) straight from the controller / its helper module, expanding the
-controller-to-repository contact surface. This service owns that persistence
-access: the receipt lookup, the ``failed -> retrying -> received`` (or
-``-> failed``) compare-and-set transitions, and the publish-and-transition
-orchestration. The bus publish itself stays in the API layer and is injected
-as a callback, so this integrations-layer service never reaches up into
-``api`` to reach the message bus.
+This service is the single owner of webhook-receipt persistence access: the
+receipt lookup, the ``failed -> retrying -> received`` (or ``-> failed``)
+compare-and-set transitions, and the publish-and-transition orchestration. The
+``api`` layer reaches it through the service rather than touching
+``persistence.webhook_receipts`` directly, keeping the controller free of
+repository internals. The bus publish itself stays in the API layer and is
+injected as a callback, so this integrations-layer service never reaches up
+into ``api`` to reach the message bus.
 
 Timestamps come from an injected :class:`Clock` so the transition instants are
 deterministic under test.
@@ -118,21 +117,20 @@ class WebhookReceiptService:
     def load_payload(receipt: WebhookReceipt) -> dict[str, object]:
         """Decode the stored ``payload_json`` into a publish-ready dict.
 
-        Falls back to ``{"raw": <bytes>}`` when the stored payload is not
-        valid JSON (the original webhook may have been a binary or non-UTF8
-        body the verifier accepted but the JSON decoder cannot re-parse) and
-        to ``{"data": <value>}`` when the JSON parses to a non-mapping (lists
-        / scalars). An empty ``payload_json`` (``""`` -- a webhook captured
-        with a zero-byte body) flows through the ``json.loads`` failure path
-        to ``{"raw": ""}`` so retries preserve the same envelope shape
-        ``receive_webhook`` produced on the original delivery.
+        Falls back to ``{"raw": <payload_json>}`` when the stored text is not
+        valid JSON, and to ``{"data": <value>}`` when the JSON parses to a
+        non-mapping (lists / scalars). An empty ``payload_json`` (``""`` -- a
+        webhook captured with a zero-byte body) flows through the
+        ``json.loads`` failure path to ``{"raw": ""}`` so retries preserve the
+        same envelope shape ``receive_webhook`` produced on the original
+        delivery.
 
         Returns:
             Mapping with the declared key/value types.
         """
         try:
             raw_payload = json.loads(receipt.payload_json)
-        except json.JSONDecodeError, UnicodeDecodeError:
+        except json.JSONDecodeError:
             raw_payload = {"raw": receipt.payload_json}
         if isinstance(raw_payload, dict):
             return dict(raw_payload)
@@ -176,13 +174,17 @@ class WebhookReceiptService:
             # CancelledError is a BaseException, so the broad ``except
             # Exception`` below never sees it. Without this branch a cancelled
             # retry leaves the receipt stuck in ``retrying``; mark it failed,
-            # then propagate the cancellation.
-            await self._transition(
-                receipt,
-                new_status=_RECEIPT_STATUS_FAILED,
-                previous=_RECEIPT_STATUS_RETRYING,
-                processed_at=self._clock.now(),
-                error=safe_error_description(exc),
+            # then propagate the cancellation. The cleanup write is shielded so
+            # the still-pending cancellation cannot re-interrupt it mid-write
+            # and re-strand the receipt in ``retrying``.
+            await asyncio.shield(
+                self._transition(
+                    receipt,
+                    new_status=_RECEIPT_STATUS_FAILED,
+                    previous=_RECEIPT_STATUS_RETRYING,
+                    processed_at=self._clock.now(),
+                    error=safe_error_description(exc),
+                )
             )
             raise
         except Exception as exc:
@@ -195,20 +197,28 @@ class WebhookReceiptService:
                 connection_name=str(receipt.connection_name),
                 reason="retry_publish_failed",
             )
-            await self._transition(
-                receipt,
-                new_status=_RECEIPT_STATUS_FAILED,
-                previous=_RECEIPT_STATUS_RETRYING,
-                processed_at=self._clock.now(),
-                error=safe_error_description(exc),
+            # Shielded so a cancellation delivered during this cleanup write
+            # cannot interrupt it and leave the receipt stuck in ``retrying``.
+            await asyncio.shield(
+                self._transition(
+                    receipt,
+                    new_status=_RECEIPT_STATUS_FAILED,
+                    previous=_RECEIPT_STATUS_RETRYING,
+                    processed_at=self._clock.now(),
+                    error=safe_error_description(exc),
+                )
             )
             raise
-        await self._transition(
-            receipt,
-            new_status=_RECEIPT_STATUS_RECEIVED,
-            previous=_RECEIPT_STATUS_RETRYING,
-            processed_at=self._clock.now(),
-            error=None,
+        # The publish already succeeded; shield the success transition so a
+        # cancellation here cannot leave a delivered webhook marked ``retrying``.
+        await asyncio.shield(
+            self._transition(
+                receipt,
+                new_status=_RECEIPT_STATUS_RECEIVED,
+                previous=_RECEIPT_STATUS_RETRYING,
+                processed_at=self._clock.now(),
+                error=None,
+            )
         )
         return {**result, "receipt_id": str(receipt.id)}
 
