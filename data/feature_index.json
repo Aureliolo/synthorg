@@ -581,6 +581,7 @@
         "artifact_facade_service",
         "audit_read_service",
         "backup_facade_service",
+        "idempotency_service",
         "client_facade_service",
         "events_read_service",
         "integration_health_facade_service",
@@ -1291,6 +1292,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-22T12:53:39.335864Z",
+  "generated_at": "2026-06-22T13:04:29.336619Z",
   "schema_version": 1
 }
