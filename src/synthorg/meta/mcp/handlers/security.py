@@ -151,12 +151,16 @@ async def _list_overrides(
         JSON-encoded MCP envelope string.
     """
     tool_name = "synthorg_security_risk_override_list"
-    # Narrow the wire payload once at the boundary even though the read-only
-    # list args carry no fields (MCP typed-args contract).
-    typed_args(arguments, RiskOverrideListArgs)
     _ = actor
     try:
+        # Narrow the wire payload once at the boundary even though the
+        # read-only list args carry no fields (MCP typed-args contract); a
+        # malformed payload surfaces as a well-formed error envelope.
+        typed_args(arguments, RiskOverrideListArgs)
         active = risk_override_service_of(app_state).list_active()
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid(tool_name, exc)
+        return err(exc)
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(tool_name, exc)

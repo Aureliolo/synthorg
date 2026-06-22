@@ -51,7 +51,7 @@ class TestHealthMonitoringPipeline:
         return HealthMonitoringPipeline(
             judge=HealthJudge(),
             triage=TriageFilter(),
-            notification_dispatcher=dispatcher,  # type: ignore[arg-type]
+            notification_dispatcher=dispatcher,
         )
 
     async def test_stagnation_escalated_and_notified(
@@ -162,7 +162,7 @@ class TestHealthMonitoringPipeline:
         pipeline = HealthMonitoringPipeline(
             judge=HealthJudge(),
             triage=TriageFilter(),
-            notification_dispatcher=_FailingDispatcher(),  # type: ignore[arg-type]
+            notification_dispatcher=_FailingDispatcher(),
         )
         # Should not raise.
         ticket = await pipeline.process(
