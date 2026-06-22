@@ -25,6 +25,7 @@ from synthorg.engine.task_engine_models import (
     UpdateTaskMutation,
 )
 from synthorg.engine.task_engine_version import TaskTimingTracker, VersionTracker
+from tests._shared import FakeClock
 from tests.unit.engine.task_engine_helpers import FakePersistence, make_create_data
 
 
@@ -639,13 +640,9 @@ class TestRecordTaskRunWiring:
         )
         frozen_now = datetime(2026, 4, 29, 0, 0, 0, tzinfo=UTC)
         timings.record_creation(task_id, frozen_now - timedelta(seconds=12.5))
-        with (
-            patch(
-                "synthorg.engine.task_engine_apply.record_task_run",
-            ) as mock_record,
-            patch("synthorg.engine.task_engine_apply_helpers.datetime") as mock_dt,
-        ):
-            mock_dt.now.return_value = frozen_now
+        with patch(
+            "synthorg.engine.task_engine_apply.record_task_run",
+        ) as mock_record:
             await apply_transition(
                 TransitionTaskMutation(
                     request_id="req-f",
@@ -657,6 +654,7 @@ class TestRecordTaskRunWiring:
                 persistence,  # type: ignore[arg-type]
                 versions,
                 timings,
+                clock=FakeClock(start=frozen_now),
             )
         mock_record.assert_called_once()
         kwargs = mock_record.call_args.kwargs
@@ -715,13 +713,9 @@ class TestRecordTaskRunWiring:
         task_id = await self._create_and_assign(persistence, versions, timings)
         frozen_now = datetime(2026, 4, 29, 0, 0, 0, tzinfo=UTC)
         timings.record_creation(task_id, frozen_now - timedelta(seconds=7.25))
-        with (
-            patch(
-                "synthorg.engine.task_engine_apply.record_task_run",
-            ) as mock_record,
-            patch("synthorg.engine.task_engine_apply_helpers.datetime") as mock_dt,
-        ):
-            mock_dt.now.return_value = frozen_now
+        with patch(
+            "synthorg.engine.task_engine_apply.record_task_run",
+        ) as mock_record:
             await apply_cancel(
                 CancelTaskMutation(
                     request_id="req-x",
@@ -732,6 +726,7 @@ class TestRecordTaskRunWiring:
                 persistence,  # type: ignore[arg-type]
                 versions,
                 timings,
+                clock=FakeClock(start=frozen_now),
             )
         mock_record.assert_called_once()
         kwargs = mock_record.call_args.kwargs

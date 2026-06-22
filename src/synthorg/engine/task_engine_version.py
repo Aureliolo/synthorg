@@ -189,9 +189,11 @@ class TaskSpanTracker:
     span on ``apply_create`` (kept open across mutation calls -- it is
     deliberately NOT a ``with``-scoped current span, since create and the
     terminal transition arrive on separate processing-loop turns) and
-    ends it on the truly-terminal transition / cancellation. With tracing
-    disabled, :func:`get_tracer` yields a ``NoOpTracer`` so every operation
-    here is effectively free.
+    ends it on a truly-terminal transition (COMPLETED / CANCELLED /
+    REJECTED), on cancellation, and on FAILED (a failed task may be
+    reassigned, but the span represents this run, so it is closed and a
+    retry opens a fresh one). With tracing disabled, :func:`get_tracer`
+    yields a ``NoOpTracer`` so every operation here is effectively free.
 
     **Child-nesting limitation:** the ``agent.execution`` span runs in a
     worker on a separate turn (and, in distributed mode, a separate
@@ -212,12 +214,19 @@ class TaskSpanTracker:
         self._tracer = tracer
 
     def start(self, task_id: str, *, task_type: str) -> None:
-        """Open a ``task.run`` span for *task_id* (overwrites any prior).
+        """Open a ``task.run`` span for *task_id*.
+
+        Any span still open for *task_id* (a re-create before the prior run
+        reached a terminal transition) is ended first so it is not leaked as a
+        never-closed dangling span.
 
         Args:
             task_id: Task identifier (also set as the ``task.id`` attribute).
             task_type: Task-type label set as ``task.type``.
         """
+        orphan = self._spans.pop(task_id, None)
+        if orphan is not None:
+            orphan.end()
         tracer = self._tracer or get_tracer()
         span = tracer.start_span("task.run")
         span.set_attribute("task.id", task_id)

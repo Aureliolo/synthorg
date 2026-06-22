@@ -4,18 +4,18 @@ Each ``apply_*`` function takes the mutation, a persistence backend,
 and a :class:`VersionTracker`, returning a :class:`TaskMutationResult`.
 """
 
-from collections.abc import Mapping
-from datetime import UTC, datetime
-from types import MappingProxyType
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from pydantic import ValidationError as PydanticValidationError
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.errors import TaskVersionConflictError
 from synthorg.engine.task_engine_apply_helpers import (
+    RECORDED_STATUS_OUTCOME,
+    TRULY_TERMINAL_STATUSES,
     compute_task_duration_sec,
     format_validation_error,
     not_found_result,
@@ -51,57 +51,31 @@ if TYPE_CHECKING:
 
 _tracer = get_tracer(__name__)
 
-# Mapping from recorded TaskStatus values to the bounded outcome
-# vocabulary expected by ``synthorg_task_runs_total`` /
-# ``synthorg_task_duration_seconds`` (``VALID_TASK_OUTCOMES``).
-# Wrapped in MappingProxyType so a misbehaving import-site cannot
-# mutate the registry at runtime.
-#
-# Includes both truly terminal statuses (COMPLETED / CANCELLED /
-# REJECTED) and the non-terminal FAILED hop. FAILED is recorded
-# because a failed task can be reassigned and re-run, and operator
-# dashboards want to see every failure event (a rate-of-failures
-# query should see every failure, not just the last). REJECTED can
-# only fire from CREATED (per ``task_transitions.py``) but is still
-# a meaningful outcome to count.
-#
-# Naming note: this map is "recorded outcomes for the task-run
-# metric", NOT "task statuses that mean the task is done forever".
-# Use ``_TRULY_TERMINAL_STATUSES`` below when you need the latter
-# (e.g. for deciding whether to clear the timing tracker).
-_RECORDED_STATUS_OUTCOME: Mapping[TaskStatus, str] = MappingProxyType(
-    {
-        TaskStatus.COMPLETED: "succeeded",
-        TaskStatus.FAILED: "failed",
-        TaskStatus.CANCELLED: "cancelled",
-        TaskStatus.REJECTED: "rejected",
-    },
-)
-# Statuses where the creation-timestamp entry can be safely dropped
-# from ``TaskTimingTracker``. ``FAILED`` is excluded because the
-# engine may retry a failed task; the retry's duration metric should
-# still be measured from the original creation, not from "now -
-# nothing" (which would degrade to the missing-timestamp WARN
-# fallback every retry).
-_TRULY_TERMINAL_STATUSES: frozenset[TaskStatus] = frozenset(
-    {TaskStatus.COMPLETED, TaskStatus.CANCELLED, TaskStatus.REJECTED},
-)
-
-
 logger = get_logger(__name__)
 
 
 # ── Dispatch ─────────────────────────────────────────────────────
 
 
-async def dispatch(
+async def dispatch(  # noqa: PLR0913 -- engine mutation-apply collaborators
     mutation: TaskMutation,
     persistence: PersistenceBackend,
     versions: VersionTracker,
     timings: TaskTimingTracker,
     spans: TaskSpanTracker | None = None,
+    *,
+    clock: Clock | None = None,
 ) -> TaskMutationResult:
     """Dispatch and apply a mutation by type.
+
+    Args:
+        mutation: The mutation to apply.
+        persistence: Backend for task storage.
+        versions: Version tracker for optimistic concurrency.
+        timings: Creation-time tracker for duration metrics.
+        spans: Optional ``task.run`` span tracker.
+        clock: Clock seam for creation / duration timestamps; defaults to
+            :class:`SystemClock`. Tests inject a ``FakeClock``.
 
     Returns:
         The :class:`TaskMutationResult` produced by the per-type
@@ -110,19 +84,24 @@ async def dispatch(
     Raises:
         TypeError: If the mutation type is unrecognised.
     """
+    effective_clock = clock if clock is not None else SystemClock()
     match mutation:
         case CreateTaskMutation():
-            return await apply_create(mutation, persistence, versions, timings, spans)
+            return await apply_create(
+                mutation, persistence, versions, timings, spans, clock=effective_clock
+            )
         case UpdateTaskMutation():
             return await apply_update(mutation, persistence, versions)
         case TransitionTaskMutation():
             return await apply_transition(
-                mutation, persistence, versions, timings, spans
+                mutation, persistence, versions, timings, spans, clock=effective_clock
             )
         case DeleteTaskMutation():
             return await apply_delete(mutation, persistence, versions, timings, spans)
         case CancelTaskMutation():
-            return await apply_cancel(mutation, persistence, versions, timings, spans)
+            return await apply_cancel(
+                mutation, persistence, versions, timings, spans, clock=effective_clock
+            )
         case _:
             msg = f"Unknown mutation type: {type(mutation).__name__}"  # type: ignore[unreachable]
             raise TypeError(msg)
@@ -131,12 +110,14 @@ async def dispatch(
 # ── Apply methods ────────────────────────────────────────────────
 
 
-async def apply_create(
+async def apply_create(  # noqa: PLR0913 -- engine mutation-apply collaborators
     mutation: CreateTaskMutation,
     persistence: PersistenceBackend,
     versions: VersionTracker,
     timings: TaskTimingTracker,
     spans: TaskSpanTracker | None = None,
+    *,
+    clock: Clock | None = None,
 ) -> TaskMutationResult:
     """Create a new task.
 
@@ -145,11 +126,13 @@ async def apply_create(
         persistence: Backend for task storage.
         versions: Version tracker for optimistic concurrency.
         timings: Creation-time tracker; stamps ``task_id`` with the
-            current UTC time so terminal transitions can compute
-            duration for ``synthorg_task_runs_total`` /
+            current time (from *clock*) so terminal transitions can
+            compute duration for ``synthorg_task_runs_total`` /
             ``synthorg_task_duration_seconds``.
         spans: Optional ``task.run`` span tracker; opens the per-task
             span on create. ``None`` skips span tracking.
+        clock: Clock seam for the creation timestamp; defaults to
+            :class:`SystemClock`.
 
     Returns:
         Result with the created task on success, or a validation
@@ -187,9 +170,10 @@ async def apply_create(
             error=error_msg,
             error_code="validation",
         )
+    effective_clock = clock if clock is not None else SystemClock()
     await persistence.tasks.save(task)
     versions.set_initial(task_id, 1)
-    timings.record_creation(task_id, datetime.now(UTC))
+    timings.record_creation(task_id, effective_clock.now())
     if spans is not None:
         spans.start(task_id, task_type=data.type.value)
 
@@ -298,12 +282,14 @@ async def apply_update(
     )
 
 
-async def apply_transition(
+async def apply_transition(  # noqa: PLR0913 -- engine mutation-apply collaborators
     mutation: TransitionTaskMutation,
     persistence: PersistenceBackend,
     versions: VersionTracker,
     timings: TaskTimingTracker,
     spans: TaskSpanTracker | None = None,
+    *,
+    clock: Clock | None = None,
 ) -> TaskMutationResult:
     """Perform a task status transition.
 
@@ -317,6 +303,8 @@ async def apply_transition(
             ``synthorg_task_duration_seconds``.
         spans: Optional ``task.run`` span tracker; ends the per-task
             span on a terminal / FAILED hop. ``None`` skips span tracking.
+        clock: Clock seam for the duration computation; defaults to
+            :class:`SystemClock`.
 
     Returns:
         Result with the transitioned task on success, or a failure
@@ -415,7 +403,7 @@ async def apply_transition(
         )
 
     # Emit the recorded-outcome metric only on hops that map to a
-    # bounded outcome (see ``_RECORDED_STATUS_OUTCOME``), so a
+    # bounded outcome (see ``RECORDED_STATUS_OUTCOME``), so a
     # CREATED -> ASSIGNED hop doesn't pollute the counter. The
     # duration baseline is the engine's recorded creation time;
     # tasks created before a process restart have no entry, in which
@@ -423,27 +411,28 @@ async def apply_transition(
     # ``record_task_run`` skips the duration-histogram observation
     # while still incrementing the outcome counter (the histogram
     # is therefore not skewed by spurious 0-second samples).
-    if mutation.target_status in _RECORDED_STATUS_OUTCOME:
+    if mutation.target_status in RECORDED_STATUS_OUTCOME:
         record_task_run(
-            outcome=_RECORDED_STATUS_OUTCOME[mutation.target_status],
+            outcome=RECORDED_STATUS_OUTCOME[mutation.target_status],
             duration_sec=compute_task_duration_sec(
                 timings,
                 mutation.task_id,
                 "transition",
+                clock=clock if clock is not None else SystemClock(),
             ),
         )
         # Free the timing entry only on truly terminal statuses
         # (COMPLETED / CANCELLED / REJECTED). FAILED stays because
         # the engine may retry the task, and the retry's duration
         # should still measure from the original creation.
-        if mutation.target_status in _TRULY_TERMINAL_STATUSES:
+        if mutation.target_status in TRULY_TERMINAL_STATUSES:
             timings.remove(mutation.task_id)
 
     # End the task.run span on any terminal hop (COMPLETED / CANCELLED /
     # REJECTED) plus FAILED: a failed task may be reassigned, but the span
     # represents this run, so close it and let a retry open a fresh one.
     if spans is not None and (
-        mutation.target_status in _TRULY_TERMINAL_STATUSES
+        mutation.target_status in TRULY_TERMINAL_STATUSES
         or mutation.target_status is TaskStatus.FAILED
     ):
         spans.end(mutation.task_id, final_status=mutation.target_status.value)
@@ -500,12 +489,14 @@ async def apply_delete(
     )
 
 
-async def apply_cancel(
+async def apply_cancel(  # noqa: PLR0913 -- engine mutation-apply collaborators
     mutation: CancelTaskMutation,
     persistence: PersistenceBackend,
     versions: VersionTracker,
     timings: TaskTimingTracker,
     spans: TaskSpanTracker | None = None,
+    *,
+    clock: Clock | None = None,
 ) -> TaskMutationResult:
     """Cancel a task (shortcut for transition to CANCELLED).
 
@@ -523,6 +514,8 @@ async def apply_cancel(
             ``synthorg_task_duration_seconds``.
         spans: Optional ``task.run`` span tracker; ends the per-task
             span with a ``cancelled`` status. ``None`` skips span tracking.
+        clock: Clock seam for the duration computation; defaults to
+            :class:`SystemClock`.
 
     Returns:
         Result with the cancelled task on success, or a failure with
@@ -581,6 +574,7 @@ async def apply_cancel(
             timings,
             mutation.task_id,
             "cancel",
+            clock=clock if clock is not None else SystemClock(),
         ),
     )
     timings.remove(mutation.task_id)

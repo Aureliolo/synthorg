@@ -15,6 +15,7 @@ from uuid import uuid4
 
 from pydantic import ValidationError as PydanticValidationError
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
@@ -94,10 +95,12 @@ class TaskEngine(TaskEngineLoopsMixin):
         persistence: PersistenceBackend,
         message_bus: MessageBus | None = None,
         config: TaskEngineConfig | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._persistence = persistence
         self._message_bus = message_bus
         self._config = config or TaskEngineConfig()
+        self._clock: Clock = clock if clock is not None else SystemClock()
         # Eager init: ``submit`` may enqueue mutations before the
         # processing task is spawned; the queue must exist for the
         # atomic check-and-put in ``submit`` to work safely.

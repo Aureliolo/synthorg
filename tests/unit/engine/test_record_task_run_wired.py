@@ -6,7 +6,7 @@ four outcomes (``succeeded`` / ``failed`` / ``cancelled`` /
 ``rejected``). Rather than build a full TaskEngine stack, this test
 pins:
 
-1. The ``_RECORDED_STATUS_OUTCOME`` map covers exactly the four
+1. The ``RECORDED_STATUS_OUTCOME`` map covers exactly the four
    bounded outcomes (extends the project's acceptance label set).
 2. The map is an immutable ``MappingProxyType`` so a typo cannot
    slip a fifth outcome in without going through the gate.
@@ -21,7 +21,7 @@ from types import MappingProxyType
 import pytest
 
 from synthorg.core.task_enums import TaskStatus
-from synthorg.engine.task_engine_apply import _RECORDED_STATUS_OUTCOME
+from synthorg.engine.task_engine_apply_helpers import RECORDED_STATUS_OUTCOME
 
 pytestmark = pytest.mark.unit
 
@@ -36,7 +36,7 @@ _APPLY_MODULE_PATH = (
 
 class TestRecordedStatusOutcomeMap:
     def test_map_covers_four_bounded_outcomes(self) -> None:
-        assert dict(_RECORDED_STATUS_OUTCOME) == {
+        assert dict(RECORDED_STATUS_OUTCOME) == {
             TaskStatus.COMPLETED: "succeeded",
             TaskStatus.FAILED: "failed",
             TaskStatus.CANCELLED: "cancelled",
@@ -44,7 +44,7 @@ class TestRecordedStatusOutcomeMap:
         }
 
     def test_map_is_immutable(self) -> None:
-        assert isinstance(_RECORDED_STATUS_OUTCOME, MappingProxyType)
+        assert isinstance(RECORDED_STATUS_OUTCOME, MappingProxyType)
 
 
 class TestRecordTaskRunWiredAtCallSite:
@@ -75,7 +75,7 @@ class TestRecordTaskRunWiredAtCallSite:
             )
         )
         # The transition branch (``if mutation.target_status in
-        # _RECORDED_STATUS_OUTCOME``) and the cancel branch are the two
+        # RECORDED_STATUS_OUTCOME``) and the cancel branch are the two
         # invocation sites today. Pin the count to catch a silent drop.
         assert invocations >= 2, (
             "expected at least two record_task_run(...) invocations "

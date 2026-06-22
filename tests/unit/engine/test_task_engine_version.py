@@ -150,3 +150,13 @@ class TestTaskSpanTracker:
         spans = exporter.get_finished_spans()
         assert len(spans) == 1
         assert "task.status.final" not in dict(spans[0].attributes or {})
+
+    def test_restart_ends_orphan_span_before_overwriting(self) -> None:
+        tracker, exporter = self._tracker_with_exporter()
+        tracker.start("task-1", task_type="development")
+        # Re-create before the prior run reached a terminal transition.
+        tracker.start("task-1", task_type="development")
+        # The orphaned first span is ended immediately, not leaked.
+        assert len(exporter.get_finished_spans()) == 1
+        tracker.end("task-1", final_status="completed")
+        assert len(exporter.get_finished_spans()) == 2
