@@ -6,7 +6,7 @@ file focused on the Litestar route handlers.
 """
 
 import secrets
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 import jwt
 from litestar import Request
@@ -87,7 +87,7 @@ async def make_session_cookies(  # noqa: PLR0913
 
                 auth_service: AuthService = auth_service_of(app_state)
                 token_hash = auth_service.hash_api_key(refresh_token)
-                refresh_expiry = datetime.now(UTC) + timedelta(
+                refresh_expiry = app_state.clock.now() + timedelta(
                     seconds=refresh_max_age,
                 )
                 store: RefreshStore | None = app_state.slice(
@@ -221,7 +221,7 @@ async def create_session_record(
     """Create a session record after login/setup (non-fatal on failure)."""
     try:
         store = session_store_of(app_state)
-        now = datetime.now(UTC)
+        now = app_state.clock.now()
         client = request.client
         ua = request.headers.get("user-agent", "")[:512]
         session = Session(

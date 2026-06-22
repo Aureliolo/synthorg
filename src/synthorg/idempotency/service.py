@@ -13,7 +13,6 @@ import hashlib
 import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from enum import StrEnum
 
 from synthorg.core.clock import Clock, SystemClock
@@ -226,7 +225,7 @@ class IdempotencyService:
             MemoryError: Raised on the corresponding failure path.
             RecursionError: Raised on the corresponding failure path.
         """
-        now = datetime.now(UTC)
+        now = self._clock.now()
         claim = await self._repo.claim(
             scope=scope,
             key=key,
@@ -479,7 +478,7 @@ class IdempotencyService:
         Returns:
             Resulting integer.
         """
-        removed = await self._repo.cleanup_expired(datetime.now(UTC))
+        removed = await self._repo.cleanup_expired(self._clock.now())
         if removed:
             logger.info(IDEMPOTENCY_CLEANUP, removed=removed)
         return removed

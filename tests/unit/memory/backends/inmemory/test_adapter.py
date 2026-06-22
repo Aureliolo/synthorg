@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from synthorg.core.memory_enums import MemoryCategory
+from synthorg.core.types import NotBlankStr
 from synthorg.memory.backends.inmemory import InMemoryBackend
 from synthorg.memory.errors import MemoryConnectionError, MemoryStoreError
 from synthorg.memory.models import (
@@ -12,6 +13,7 @@ from synthorg.memory.models import (
     MemoryQuery,
     MemoryStoreRequest,
 )
+from tests._shared import FakeClock
 
 
 @pytest.fixture
@@ -40,6 +42,27 @@ def _req(
         content=content,
         metadata=MemoryMetadata(tags=tags),
     )
+
+
+@pytest.mark.unit
+class TestClockSeam:
+    """Entry expiry honours the injected clock, not the wall clock."""
+
+    async def test_get_expires_per_injected_clock(self) -> None:
+        clock = FakeClock(start=datetime(2026, 1, 1, tzinfo=UTC))
+        backend = InMemoryBackend(clock=clock)
+        await backend.connect()
+        request = MemoryStoreRequest(
+            category=MemoryCategory.EPISODIC,
+            namespace="default",
+            content="ephemeral",
+            metadata=MemoryMetadata(),
+            expires_at=clock.now() + timedelta(seconds=60),
+        )
+        memory_id = await backend.store(NotBlankStr("agent-1"), request)
+        assert await backend.get(NotBlankStr("agent-1"), memory_id) is not None
+        clock.advance(120)
+        assert await backend.get(NotBlankStr("agent-1"), memory_id) is None
 
 
 # -- Protocol conformance --------------------------------------------

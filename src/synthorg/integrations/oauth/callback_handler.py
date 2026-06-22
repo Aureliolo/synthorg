@@ -6,6 +6,7 @@ OAuth API controller to process authorization code callbacks.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.catalog import ConnectionCatalog
@@ -88,6 +89,7 @@ async def handle_oauth_callback(  # noqa: PLR0913
     catalog: ConnectionCatalog,
     flow: AuthorizationCodeFlow | None = None,
     config_resolver: ConfigResolver | None = None,
+    clock: Clock | None = None,
 ) -> str:
     """Process an OAuth authorization code callback.
 
@@ -111,6 +113,8 @@ async def handle_oauth_callback(  # noqa: PLR0913
         config_resolver: Optional ConfigResolver used to resolve the
             OAuth HTTP timeout when ``flow`` is not provided. When
             ``None`` the flow's hardcoded default is used.
+        clock: Clock seam for state-expiry and consumed-at timestamps;
+            defaults to ``SystemClock`` (tests inject ``FakeClock``).
 
     Returns:
         The connection name that was updated.
@@ -127,7 +131,7 @@ async def handle_oauth_callback(  # noqa: PLR0913
     """
     logger.info(OAUTH_CALLBACK_RECEIVED, state_prefix=state_param[:8])
 
-    from datetime import UTC, datetime  # noqa: PLC0415
+    effective_clock = clock or SystemClock()
 
     oauth_state = await state_service.get(NotBlankStr(state_param))
     if oauth_state is None:
@@ -154,7 +158,7 @@ async def handle_oauth_callback(  # noqa: PLR0913
         )
         return str(connection_name)
 
-    if oauth_state.expires_at < datetime.now(UTC):
+    if oauth_state.expires_at < effective_clock.now():
         await state_service.expire(NotBlankStr(state_param))
         logger.warning(
             OAUTH_STATE_INVALID,
@@ -312,7 +316,7 @@ async def handle_oauth_callback(  # noqa: PLR0913
     consumed_winner = await state_service.mark_consumed(
         NotBlankStr(state_param),
         connection_name=NotBlankStr(conn.name),
-        consumed_at=datetime.now(UTC),
+        consumed_at=effective_clock.now(),
     )
     if not consumed_winner:
         logger.warning(

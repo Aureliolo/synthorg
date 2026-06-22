@@ -2,7 +2,6 @@
 
 import hashlib
 import hmac as _hmac
-from datetime import UTC, datetime
 from typing import override
 
 import jwt
@@ -411,7 +410,7 @@ async def _resolve_api_key_user(
             path=path,
         )
         return None
-    if api_key.expires_at is not None and api_key.expires_at < datetime.now(UTC):
+    if api_key.expires_at is not None and api_key.expires_at < app_state.clock.now():
         logger.warning(
             SECURITY_AUTH_FAILED,
             reason="api_key_expired",

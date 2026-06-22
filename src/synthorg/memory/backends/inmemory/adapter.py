@@ -9,9 +9,10 @@ backend.
 
 import asyncio
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Final
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.errors import (
@@ -58,11 +59,13 @@ class InMemoryBackend:
         self,
         *,
         max_memories_per_agent: int = _DEFAULT_MAX_MEMORIES_PER_AGENT,
+        clock: Clock | None = None,
     ) -> None:
         if max_memories_per_agent < 1:
             msg = f"max_memories_per_agent must be >= 1, got {max_memories_per_agent}"
             raise ValueError(msg)
         self._max_memories_per_agent = max_memories_per_agent
+        self._clock = clock or SystemClock()
         self._store: dict[str, dict[str, MemoryEntry]] = {}
         self._connected = False
         self._connect_lock = asyncio.Lock()
@@ -187,7 +190,7 @@ class InMemoryBackend:
         """
         self._require_connected()
         memory_id = NotBlankStr(str(uuid.uuid4()))
-        now = datetime.now(UTC)
+        now = self._clock.now()
         entry = MemoryEntry(
             id=memory_id,
             agent_id=agent_id,
@@ -201,7 +204,7 @@ class InMemoryBackend:
         async with self._store_lock:
             agent_store = self._store.setdefault(str(agent_id), {})
             # Prune expired entries before checking quota.
-            _prune_expired(agent_store)
+            _prune_expired(agent_store, now)
             if len(agent_store) >= self._max_memories_per_agent:
                 msg = (
                     f"Agent {agent_id} has reached the memory limit "
@@ -246,7 +249,7 @@ class InMemoryBackend:
             MemoryConnectionError: If not connected.
         """
         self._require_connected()
-        now = datetime.now(UTC)
+        now = self._clock.now()
         async with self._store_lock:
             agent_store = self._store.get(str(agent_id), {})
             matches = [e for e in agent_store.values() if _matches(e, query, now)]
@@ -283,7 +286,7 @@ class InMemoryBackend:
                 str(memory_id),
             )
         if entry is not None:
-            if _is_expired(entry, datetime.now(UTC)):
+            if _is_expired(entry, self._clock.now()):
                 return None
             logger.debug(
                 MEMORY_ENTRY_FETCHED,
@@ -343,7 +346,7 @@ class InMemoryBackend:
             MemoryConnectionError: If not connected.
         """
         self._require_connected()
-        now = datetime.now(UTC)
+        now = self._clock.now()
         async with self._store_lock:
             agent_store = self._store.get(str(agent_id), {})
             if category is None:
@@ -387,9 +390,8 @@ class InMemoryBackend:
 # -- Filter helpers (module-private) ----------------------------------
 
 
-def _prune_expired(store: dict[str, MemoryEntry]) -> None:
-    """Remove expired entries from an agent store in-place."""
-    now = datetime.now(UTC)
+def _prune_expired(store: dict[str, MemoryEntry], now: datetime) -> None:
+    """Remove expired entries from an agent store in-place (clock injected)."""
     expired = [mid for mid, entry in store.items() if _is_expired(entry, now)]
     for mid in expired:
         del store[mid]
