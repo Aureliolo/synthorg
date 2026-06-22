@@ -27,11 +27,8 @@ from synthorg.observability.events.persistence.research_run import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared.pagination import validate_pagination_args
-from synthorg.persistence.research_protocol import (
-    ResearchRunFilter,
-    ResearchRunKey,
-)
-from synthorg.research.models import ResearchRun
+from synthorg.persistence.research_protocol import ResearchRunKey
+from synthorg.research.models import ResearchRun, ResearchRunFilter
 
 logger = get_logger(__name__)
 

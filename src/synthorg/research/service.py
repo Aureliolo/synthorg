@@ -33,10 +33,7 @@ from synthorg.observability.events.research import (
     RESEARCH_SOURCE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence.research_protocol import (
-    ResearchRunFilter,
-    ResearchRunRepository,
-)
+from synthorg.persistence.research_protocol import ResearchRunRepository
 from synthorg.research.constants import RESEARCH_DEFAULT_PER_QUERY_LIMIT
 from synthorg.research.enums import ResearchRunStatus, ResearchSourceType
 from synthorg.research.errors import (
@@ -47,6 +44,7 @@ from synthorg.research.errors import (
 from synthorg.research.models import (
     ResearchBrief,
     ResearchRun,
+    ResearchRunFilter,
     RetrievedItem,
     SourceCredibility,
     SubQuery,

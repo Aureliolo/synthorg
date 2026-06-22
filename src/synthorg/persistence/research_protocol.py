@@ -15,38 +15,16 @@ query).
 
 from typing import Protocol, override, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
-
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence._generics import (
     DEFAULT_PAGE_SIZE,
     FilteredQueryRepository,
     IdKeyedRepository,
 )
-from synthorg.research.enums import ResearchRunStatus
-from synthorg.research.models import ResearchRun
+from synthorg.research.models import ResearchRun, ResearchRunFilter
 
 ResearchRunKey = NotBlankStr
 """Single-string ``run_id`` PK type alias."""
-
-
-class ResearchRunFilter(BaseModel):
-    """Filter spec for :meth:`ResearchRunRepository.query`."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    brief_id: NotBlankStr | None = Field(
-        default=None,
-        description="Restrict to runs of this brief",
-    )
-    project_id: NotBlankStr | None = Field(
-        default=None,
-        description="Restrict to runs in this project",
-    )
-    status: ResearchRunStatus | None = Field(
-        default=None,
-        description="Optional run-status filter",
-    )
 
 
 @runtime_checkable

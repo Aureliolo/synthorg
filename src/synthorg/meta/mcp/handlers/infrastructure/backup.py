@@ -13,8 +13,10 @@ from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError
-from synthorg.idempotency import IdempotencyService
-from synthorg.infrastructure.state import backup_facade_service_of
+from synthorg.infrastructure.state import (
+    backup_facade_service_of,
+    mcp_idempotency_service_of,
+)
 from synthorg.meta.mcp.domains._remaining_args import (
     BackupCreateArgs,
     BackupDeleteArgs,
@@ -54,7 +56,6 @@ from synthorg.observability.events.mcp import (
     MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
-from synthorg.persistence.state import persistence_of
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -268,16 +269,12 @@ async def _backup_restore(
             return dict(result)
 
         # ``meta`` cannot import ``api.services`` (layering contract), so
-        # the handler constructs the service over the neutral repository
-        # instead of reaching for the api-side ``idempotency_service_of``
-        # accessor; the dedup state lives in the shared repo, so a
-        # per-call instance is equivalent.
-        # Thread the app clock seam so the in-flight poll honours an
-        # injected FakeClock in tests rather than waiting in real time.
-        service = IdempotencyService(
-            persistence_of(app_state).idempotency_keys,
-            clock=app_state.clock,
-        )
+        # the handler reads the lazily-cached idempotency service off the
+        # meta-reachable facades slice rather than assembling one over the
+        # raw persistence repo. The persistence reach lives in the
+        # infrastructure-layer accessor; the clock seam is threaded so the
+        # in-flight poll honours an injected FakeClock in tests.
+        service = mcp_idempotency_service_of(app_state, clock=app_state.clock)
         outcome = await service.run_idempotent(
             scope="mcp:backup_restore",
             key=_restore_idempotency_key(backup_id, args.idempotency_key),

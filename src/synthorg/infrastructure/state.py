@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
+from synthorg.core.clock import Clock
 from synthorg.docs_engine.retrieval_facade import (
     ProjectAwareMemoryFacade,
 )
@@ -21,6 +22,7 @@ from synthorg.engine.quality.mcp_services import (
     QualityFacadeService,
     ReviewFacadeService,
 )
+from synthorg.idempotency import IdempotencyService
 from synthorg.infrastructure.services import (
     AuditReadService,
     BackupFacadeService,
@@ -54,6 +56,7 @@ class FacadesStateSlice(BaseFeatureStateSlice):
     artifact_facade_service: ArtifactFacadeService | None = None
     audit_read_service: AuditReadService | None = None
     backup_facade_service: BackupFacadeService | None = None
+    idempotency_service: IdempotencyService | None = None
     client_facade_service: ClientFacadeService | None = None
     events_read_service: EventsReadService | None = None
     integration_health_facade_service: IntegrationHealthFacadeService | None = None
@@ -102,6 +105,41 @@ def backup_facade_service_of(app_state: AppStateSliceMixin) -> BackupFacadeServi
         app_state.slice(FacadesStateSlice).backup_facade_service,
         "Backup Facade Service",
     )
+
+
+def mcp_idempotency_service_of(
+    app_state: AppStateSliceMixin,
+    *,
+    clock: Clock,
+) -> IdempotencyService:
+    """Resolve the MCP-side idempotency service, lazily wrapping the repo.
+
+    Mirrors the api-side ``idempotency_service_of`` but caches on the
+    meta-reachable :class:`FacadesStateSlice` so an MCP handler reads a
+    wired service instead of assembling one over a raw persistence repo
+    (the persistence reach lives here, in the infrastructure layer, not in
+    the meta handler). Raises 503 via :func:`persistence_of` when
+    persistence is absent: idempotency must survive restart, so there is no
+    in-memory fallback. ``clock`` threads the seam so the in-flight poll
+    honours an injected ``FakeClock`` in tests.
+
+    Returns:
+        The wired or lazily-composed idempotency service.
+    """
+    existing = app_state.slice(FacadesStateSlice).idempotency_service
+    if existing is not None:
+        return existing
+    from synthorg.persistence.state import persistence_of  # noqa: PLC0415
+
+    # Concurrent first-readers race here; ``wire_if_field_absent`` makes
+    # the check + install atomic so two simultaneous calls cannot both
+    # construct a service and overwrite each other's wiring.
+    candidate = IdempotencyService(
+        persistence_of(app_state).idempotency_keys,
+        clock=clock,
+    )
+    app_state.wire_if_field_absent(FacadesStateSlice, "idempotency_service", candidate)
+    return app_state.slice(FacadesStateSlice).idempotency_service or candidate
 
 
 def events_read_service_of(app_state: AppStateSliceMixin) -> EventsReadService:

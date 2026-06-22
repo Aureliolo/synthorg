@@ -14,7 +14,6 @@ import pytest
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.protocol import PersistenceBackend
-from synthorg.persistence.research_protocol import ResearchRunFilter
 from synthorg.research.enums import ClaimType, ResearchRunStatus, ResearchSourceType
 from synthorg.research.models import (
     ResearchBrief,
@@ -23,6 +22,7 @@ from synthorg.research.models import (
     ResearchQueryPlan,
     ResearchReport,
     ResearchRun,
+    ResearchRunFilter,
     RetrievedItem,
     SourceCredibility,
     SubQuery,

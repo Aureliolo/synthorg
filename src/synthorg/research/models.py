@@ -558,3 +558,28 @@ class ResearchRun(BaseModel):
             msg = "status=FAILED requires error and completed_at to be set"
             raise ValueError(msg)
         return self
+
+
+class ResearchRunFilter(BaseModel):
+    """Filter spec for querying persisted research runs.
+
+    A domain query DTO: the research service and the MCP handlers build it,
+    and the persistence layer consumes it via the ``ResearchRunRepository``
+    protocol. It lives in the domain layer (not the persistence protocol)
+    so callers above persistence do not import a persistence-module symbol.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    brief_id: NotBlankStr | None = Field(
+        default=None,
+        description="Restrict to runs of this brief",
+    )
+    project_id: NotBlankStr | None = Field(
+        default=None,
+        description="Restrict to runs in this project",
+    )
+    status: ResearchRunStatus | None = Field(
+        default=None,
+        description="Optional run-status filter",
+    )
