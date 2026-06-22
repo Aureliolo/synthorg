@@ -65,14 +65,14 @@ export const WS_PROTOCOL_VERSION = 1
 export const SSE_MAX_RECONNECT_ATTEMPTS = 10
 
 /**
- * Debounce window (ms) for counting SSE transport errors against the
- * `SSE_MAX_RECONNECT_ATTEMPTS` budget. A single transient outage can fire
- * `onerror` several times in quick succession while `EventSource` shifts back
- * to `CONNECTING`; without a window each blip would burn an attempt and exhaust
- * the budget prematurely. Errors within this window of the last counted error
- * collapse to one attempt, so the budget tracks genuine reconnect cycles.
+ * Application-level exponential-backoff bounds (ms) for the SSE fallback. The
+ * browser's native `EventSource` reconnect is a flat cadence with no backoff,
+ * so a prolonged outage hammers the backend; the client instead closes the
+ * source on error and re-opens after `min(BASE * 2**attempt, MAX)`, mirroring
+ * the WS `WS_RECONNECT_BASE_DELAY` / `WS_RECONNECT_MAX_DELAY` pair.
  */
-export const SSE_RECONNECT_WINDOW_MS = 1000
+export const SSE_RECONNECT_BASE_DELAY = 1000
+export const SSE_RECONNECT_MAX_DELAY = 30000
 
 /**
  * Consecutive WS wire-version mismatches tolerated before the client flags a

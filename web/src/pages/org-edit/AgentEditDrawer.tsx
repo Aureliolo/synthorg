@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { formatDateOnly } from '@/utils/format'
 import { toRuntimeStatus } from '@/utils/agents'
+import { makeEnumParser } from '@/utils/type-guards'
 import { useDrawerDelete } from './use-drawer-delete'
 
 export interface AgentEditDrawerProps {
@@ -31,6 +32,7 @@ interface AgentFormState {
 }
 
 const LEVEL_OPTIONS = SENIORITY_LEVEL_VALUES.map((l) => ({ value: l, label: l }))
+const parseSeniorityLevel = makeEnumParser<SeniorityLevel>(SENIORITY_LEVEL_VALUES)
 
 /** "provider / model_id" display string for an agent's model config. */
 function agentModelDisplay(agent: AgentConfig): string {
@@ -158,7 +160,10 @@ function AgentEditBody({ agent, saving, form, onClose }: AgentEditBodyProps) {
         label="Level"
         options={LEVEL_OPTIONS}
         value={form.form.level}
-        onChange={(v) => form.setForm((prev) => ({ ...prev, level: v as SeniorityLevel }))}
+        onChange={(v) => {
+          const level = parseSeniorityLevel(v)
+          if (level) form.setForm((prev) => ({ ...prev, level }))
+        }}
       />
 
       <div className="border-t border-border pt-4 space-y-2">

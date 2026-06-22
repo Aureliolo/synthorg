@@ -36,10 +36,11 @@ export function PostureBadge({ posture, className }: PostureBadgeProps) {
       }
     >
       <span
-        // role + tabIndex make the badge a keyboard-focusable trigger so the
-        // posture explanation tooltip is reachable without a pointer and AT
-        // announces it as interactive; the ring gives the focus a visible state.
-        role="button"
+        // tabIndex makes the badge keyboard-focusable so the posture
+        // explanation tooltip is reachable without a pointer; the ring gives
+        // the focus a visible state. No role="button": the badge has no action,
+        // it only reveals descriptive text, and a button role would mislead AT
+        // into announcing it as actionable.
         tabIndex={0}
         className={cn(
           'inline-flex items-center rounded-sm border px-2 py-0.5',

@@ -37,8 +37,9 @@ function buildCompletionSchema(entries: SettingEntry[]): CompletionSchemaInfo {
   for (const entry of entries) {
     const ns = entry.definition.namespace
     nsSet.add(ns)
-    if (!keys.has(ns)) keys.set(ns, [])
-    keys.get(ns)!.push({
+    const nsKeys = keys.get(ns) ?? []
+    if (!keys.has(ns)) keys.set(ns, nsKeys)
+    nsKeys.push({
       key: entry.definition.key,
       type: entry.definition.type,
       description: entry.definition.description,

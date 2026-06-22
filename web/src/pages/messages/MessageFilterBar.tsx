@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import { getMessageTypeLabel } from '@/utils/messages'
 import type { MessagePageFilters } from '@/utils/messages'
 import type { MessagePriority, MessageType } from '@/api/types/messages'
+import { makeEnumParser } from '@/utils/type-guards'
 
 const MESSAGE_TYPES: MessageType[] = [
   'task_update',
@@ -19,6 +20,9 @@ const MESSAGE_TYPES: MessageType[] = [
 ]
 
 const PRIORITIES: MessagePriority[] = ['low', 'normal', 'high', 'urgent']
+
+const parseMessageType = makeEnumParser<MessageType>(MESSAGE_TYPES)
+const parseMessagePriority = makeEnumParser<MessagePriority>(PRIORITIES)
 
 const SELECT_CLASSES = cn(
   'h-7 rounded-md border border-border bg-surface px-2 text-xs text-foreground',
@@ -45,15 +49,13 @@ export function MessageFilterBar({
 }: MessageFilterBarProps) {
   const handleTypeChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
-      const value = e.target.value as MessageType | ''
-      onFiltersChange({ ...filters, type: value || undefined })
+      onFiltersChange({ ...filters, type: parseMessageType(e.target.value) })
     },
     [filters, onFiltersChange],
   )
   const handlePriorityChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
-      const value = e.target.value as MessagePriority | ''
-      onFiltersChange({ ...filters, priority: value || undefined })
+      onFiltersChange({ ...filters, priority: parseMessagePriority(e.target.value) })
     },
     [filters, onFiltersChange],
   )

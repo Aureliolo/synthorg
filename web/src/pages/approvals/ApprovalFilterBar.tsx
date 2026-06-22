@@ -1,19 +1,16 @@
 import { X } from 'lucide-react'
 import { getRiskLevelLabel, getApprovalStatusLabel, type ApprovalPageFilters } from '@/utils/approvals'
 import type { ApprovalRiskLevel, ApprovalStatus } from '@/api/types/enums'
+import { makeEnumParser } from '@/utils/type-guards'
 
 const STATUSES = ['pending', 'approved', 'rejected', 'expired'] as const satisfies readonly ApprovalStatus[]
 const RISK_LEVELS = ['critical', 'high', 'medium', 'low'] as const satisfies readonly ApprovalRiskLevel[]
 
 /** Narrow a raw select value to ``ApprovalStatus`` by membership, else ``undefined``. */
-function parseStatus(value: string): ApprovalStatus | undefined {
-  return (STATUSES as readonly string[]).includes(value) ? (value as ApprovalStatus) : undefined
-}
+const parseStatus = makeEnumParser<ApprovalStatus>(STATUSES)
 
 /** Narrow a raw select value to ``ApprovalRiskLevel`` by membership, else ``undefined``. */
-function parseRiskLevel(value: string): ApprovalRiskLevel | undefined {
-  return (RISK_LEVELS as readonly string[]).includes(value) ? (value as ApprovalRiskLevel) : undefined
-}
+const parseRiskLevel = makeEnumParser<ApprovalRiskLevel>(RISK_LEVELS)
 
 const SELECT_CLASS =
   'h-8 rounded-md border border-border bg-surface px-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-accent'

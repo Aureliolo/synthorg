@@ -25,6 +25,7 @@ import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import { getErrorMessage } from '@/utils/errors'
 import { formatDateTime } from '@/utils/format'
+import { makeEnumParser } from '@/utils/type-guards'
 
 const log = createLogger('AdminAuditLogPage')
 
@@ -45,6 +46,8 @@ const VERDICT_OPTIONS: ReadonlyArray<{ value: VerdictFilter; label: string }> = 
   { value: 'escalate', label: 'Escalate' },
   { value: 'output_scan', label: 'Output scan' },
 ]
+
+const parseVerdictFilter = makeEnumParser(VERDICT_OPTIONS.map((o) => o.value))
 
 interface PageState {
   entries: readonly AuditEntry[]
@@ -205,7 +208,10 @@ function AuditLogFilters({ filters }: { filters: AuditFilters }) {
           <SelectField
             label="Verdict"
             value={filters.verdictFilter}
-            onChange={(value) => filters.setVerdictFilter(value as VerdictFilter)}
+            onChange={(value) => {
+              const v = parseVerdictFilter(value)
+              if (v !== undefined) filters.setVerdictFilter(v)
+            }}
             options={VERDICT_OPTIONS}
           />
         </div>

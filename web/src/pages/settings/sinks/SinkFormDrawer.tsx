@@ -6,6 +6,7 @@ import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { TagInput } from '@/components/ui/tag-input'
 import { ToggleField } from '@/components/ui/toggle-field'
+import { makeEnumParser } from '@/utils/type-guards'
 
 const LOG_LEVELS = [
   { value: 'DEBUG', label: 'Debug' },
@@ -28,14 +29,15 @@ const ROTATION_STRATEGY_VALUES: readonly RotationStrategy[] = ['builtin', 'exter
 const DEFAULT_MAX_BYTES = 10_485_760
 const DEFAULT_BACKUP_COUNT = 5
 
+const parseLogLevel = makeEnumParser<LogLevel>(LOG_LEVEL_VALUES)
+const parseRotationStrategy = makeEnumParser<RotationStrategy>(ROTATION_STRATEGY_VALUES)
+
 function toLogLevel(value: string | null | undefined): LogLevel {
-  return LOG_LEVEL_VALUES.includes(value as LogLevel) ? (value as LogLevel) : 'INFO'
+  return (value != null ? parseLogLevel(value) : undefined) ?? 'INFO'
 }
 
 function toRotationStrategy(value: string | null | undefined): RotationStrategy {
-  return ROTATION_STRATEGY_VALUES.includes(value as RotationStrategy)
-    ? (value as RotationStrategy)
-    : 'none'
+  return (value != null ? parseRotationStrategy(value) : undefined) ?? 'none'
 }
 
 interface SinkFormValues {
@@ -62,7 +64,8 @@ function buildOverridePayload(v: SinkFormValues): SinkPayload {
   // emits non-finite numbers).
   const rotation = buildSaveRotation(v)
   if (rotation !== null) override['rotation'] = rotation
-  return { sink_overrides: JSON.stringify({ [v.sink!.identifier]: override }), custom_sinks: '[]' }
+  if (!v.sink) return { sink_overrides: '{}', custom_sinks: '[]' }
+  return { sink_overrides: JSON.stringify({ [v.sink.identifier]: override }), custom_sinks: '[]' }
 }
 
 function buildCustomPayload(v: SinkFormValues): SinkPayload | null {
@@ -96,7 +99,7 @@ function buildSaveRotation(v: SinkFormValues): SinkInfo['rotation'] {
 }
 
 function buildSinkInfo(v: SinkFormValues): SinkInfo {
-  const identifier = v.isConsole ? '__console__' : v.isNew ? v.filePath.trim() : v.sink!.identifier
+  const identifier = v.isConsole ? '__console__' : v.isNew ? v.filePath.trim() : v.sink?.identifier ?? ''
   return {
     identifier,
     sink_type: v.isConsole ? 'console' : 'file',
@@ -267,7 +270,10 @@ function SinkFormFields({ form }: { form: SinkForm }) {
             label="Level"
             options={LOG_LEVELS}
             value={values.level}
-            onChange={(v) => form.setLevel(v as LogLevel)}
+            onChange={(v) => {
+              const level = parseLogLevel(v)
+              if (level) form.setLevel(level)
+            }}
           />
         </div>
         <ToggleField label="Enabled" checked={values.enabled} onChange={form.setEnabled} />

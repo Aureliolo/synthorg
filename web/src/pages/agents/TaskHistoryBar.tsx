@@ -21,7 +21,8 @@ const TYPE_COLORS: Record<TaskType, string> = {
 
 /** Parse updated_at safely; fall back to created_at if unparseable or earlier. */
 function effectiveEndMs(task: Task): number {
-  const createdMs = new Date(task.created_at!).getTime()
+  if (!task.created_at) return 0
+  const createdMs = new Date(task.created_at).getTime()
   if (!task.updated_at) return createdMs
   const updatedMs = new Date(task.updated_at).getTime()
   if (Number.isNaN(updatedMs) || updatedMs < createdMs) return createdMs

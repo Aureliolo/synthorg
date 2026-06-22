@@ -11,6 +11,7 @@ import {
   VELOCITY_CALC_LABELS,
   VELOCITY_CALC_TYPES,
 } from '@/stores/ceremony-policy-constants'
+import { makeEnumParser } from '@/utils/type-guards'
 
 const STRATEGY_OPTIONS = CEREMONY_STRATEGY_TYPES.map((s) => ({
   value: s,
@@ -21,6 +22,9 @@ const VELOCITY_OPTIONS = VELOCITY_CALC_TYPES.map((v) => ({
   value: v,
   label: VELOCITY_CALC_LABELS[v],
 }))
+
+const parseCeremonyStrategy = makeEnumParser<CeremonyStrategyType>(CEREMONY_STRATEGY_TYPES)
+const parseVelocityCalc = makeEnumParser<VelocityCalcType>(VELOCITY_CALC_TYPES)
 
 const THRESHOLD_MIN = 0.01
 const THRESHOLD_MAX = 1.0
@@ -98,14 +102,20 @@ function CeremonyPolicyFields({ policy, onChange, onStrategyChange, disabled }: 
         label="Strategy"
         options={STRATEGY_OPTIONS}
         value={strategy}
-        onChange={(v) => onStrategyChange(v as CeremonyStrategyType)}
+        onChange={(v) => {
+          const s = parseCeremonyStrategy(v)
+          if (s) onStrategyChange(s)
+        }}
         disabled={disabled}
       />
       <SelectField
         label="Velocity Calculator"
         options={VELOCITY_OPTIONS}
         value={velocityCalc}
-        onChange={(v) => onChange({ ...policy, velocity_calculator: v as VelocityCalcType })}
+        onChange={(v) => {
+          const calc = parseVelocityCalc(v)
+          if (calc) onChange({ ...policy, velocity_calculator: calc })
+        }}
         disabled={disabled}
       />
       <AutoTransitionRow policy={policy} onChange={onChange} disabled={disabled} />

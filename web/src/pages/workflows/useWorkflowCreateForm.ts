@@ -138,8 +138,9 @@ async function submitWorkflow(
   selectedBlueprint: string | null,
 ) {
   if (mode === 'blueprint') {
+    if (selectedBlueprint === null) return null
     return useWorkflowsStore.getState().createFromBlueprint({
-      blueprint_name: selectedBlueprint!,
+      blueprint_name: selectedBlueprint,
       name: form.name.trim(),
       ...(form.description.trim() ? { description: form.description.trim() } : {}),
     })

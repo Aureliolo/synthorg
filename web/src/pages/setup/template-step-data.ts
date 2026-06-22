@@ -7,6 +7,7 @@ import {
   deriveCategoryFromTags,
   getCategoryLabel,
 } from '@/utils/template-categories'
+import { makeEnumParser } from '@/utils/type-guards'
 
 export const MAX_COMPARE = 3
 
@@ -23,6 +24,8 @@ export const SIZE_OPTIONS: readonly { value: SizeFilter; label: string }[] = [
   { value: 'medium', label: '4-8 agents' },
   { value: 'large', label: '9+ agents' },
 ]
+
+export const parseSizeFilter = makeEnumParser<SizeFilter>(SIZE_OPTIONS.map((o) => o.value))
 
 function matchesSize(template: TemplateInfoResponse, size: SizeFilter): boolean {
   if (size === 'all') return true

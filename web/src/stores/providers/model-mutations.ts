@@ -12,7 +12,7 @@ import type {
   PresetOverride,
   PresetOverrideUpdateRequest,
   ProviderConfig,
-  RateLimitsConfig,
+  RateLimitsResponse,
   RateLimitsUpdateRequest,
   SyncModelsRequest,
   SyncModelsResponse,
@@ -109,9 +109,9 @@ async function updateRateLimitsImpl(
   get: ProvidersGet,
   name: string,
   data: RateLimitsUpdateRequest,
-): Promise<RateLimitsConfig | null> {
+): Promise<RateLimitsResponse | null> {
   beginMutation(set)
-  let updated: RateLimitsConfig
+  let updated: RateLimitsResponse
   try {
     updated = await apiUpdateRateLimits(name, data)
     emitSuccessToast(`Rate limits updated for "${name}"`)

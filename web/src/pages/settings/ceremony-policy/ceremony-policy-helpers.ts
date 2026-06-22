@@ -97,7 +97,16 @@ export function buildOverridesSnapshot(entries: SettingEntry[]): OverridesSnapsh
   try {
     const parsed: unknown = JSON.parse(raw)
     if (isPlainObject(parsed)) {
-      return { overrides: parsed as Record<string, CeremonyPolicyConfig | null>, overridesParseError: false }
+      const overrides: Record<string, CeremonyPolicyConfig | null> = {}
+      for (const [name, value] of Object.entries(parsed)) {
+        // Each override is null (inherit) or a policy object; the per-field
+        // shape is validated downstream where the override is applied, so we
+        // only confirm the coarse null-or-object shape here.
+        if (value === null || isPlainObject(value)) {
+          overrides[name] = value
+        }
+      }
+      return { overrides, overridesParseError: false }
     }
   } catch {
     /* fall through to error */

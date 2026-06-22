@@ -5,12 +5,15 @@ import {
   CEREMONY_STRATEGY_LABELS,
   CEREMONY_STRATEGY_TYPES,
 } from '@/stores/ceremony-policy-constants'
+import { makeEnumParser } from '@/utils/type-guards'
 import { VelocityUnitIndicator } from './VelocityUnitIndicator'
 
 const STRATEGY_OPTIONS = CEREMONY_STRATEGY_TYPES.map((s) => ({
   value: s,
   label: CEREMONY_STRATEGY_LABELS[s],
 }))
+
+const parseCeremonyStrategy = makeEnumParser<CeremonyStrategyType>(CEREMONY_STRATEGY_TYPES)
 
 export interface StrategyPickerProps {
   value: CeremonyStrategyType
@@ -26,9 +29,8 @@ export function StrategyPicker({ value, onChange, disabled }: StrategyPickerProp
         options={STRATEGY_OPTIONS}
         value={value}
         onChange={(v) => {
-          if (CEREMONY_STRATEGY_TYPES.includes(v as CeremonyStrategyType)) {
-            onChange(v as CeremonyStrategyType)
-          }
+          const strategy = parseCeremonyStrategy(v)
+          if (strategy) onChange(strategy)
         }}
         disabled={disabled}
       />

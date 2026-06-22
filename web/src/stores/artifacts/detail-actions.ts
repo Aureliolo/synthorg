@@ -16,7 +16,7 @@ import type { ArtifactsSet } from './types'
  * ``application/json; charset=utf-8`` still match.
  */
 function isPreviewableText(contentType: string): boolean {
-  const baseType = contentType.split(';')[0]!.trim().toLowerCase()
+  const baseType = (contentType.split(';')[0] ?? contentType).trim().toLowerCase()
   return (
     baseType.startsWith('text/')
     || baseType === 'application/json'

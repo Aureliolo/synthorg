@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openSseFallback } from '@/api/sse/client'
+import {
+  SSE_MAX_RECONNECT_ATTEMPTS,
+  SSE_RECONNECT_BASE_DELAY,
+  SSE_RECONNECT_MAX_DELAY,
+} from '@/utils/ws-constants'
 import type { WsEvent } from '@/api/types/websocket'
 
 type SseListener = (ev: MessageEvent) => void
@@ -138,13 +143,58 @@ describe('openSseFallback', () => {
 
   it('reports transport errors via onError', () => {
     const errors: Error[] = []
-    openSseFallback({
+    const handle = openSseFallback({
       onEvent: () => {},
       onError: (err) => errors.push(err),
     })
     lastEventSource!.onerror?.(new Event('error'))
     expect(errors).toHaveLength(1)
     expect(errors[0]!.message).toMatch(/SSE/)
+    // The error scheduled an app-level reconnect timer; close cancels it so
+    // the active-handle gate stays clean.
+    handle.close()
+  })
+
+  it('reconnects with an application-level backoff timer after an error', () => {
+    vi.useFakeTimers()
+    try {
+      const handle = openSseFallback({ onEvent: () => {}, onError: () => {} })
+      const first = lastEventSource
+      // An error closes the current source and schedules a re-open; no new
+      // EventSource is created synchronously (that would be the native flat
+      // retry we are deliberately replacing).
+      first!.onerror?.(new Event('error'))
+      expect(lastEventSource).toBe(first)
+      vi.advanceTimersByTime(SSE_RECONNECT_BASE_DELAY)
+      expect(lastEventSource).not.toBe(first)
+      handle.close()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('gives up and reports exhaustion after the reconnect budget', () => {
+    vi.useFakeTimers()
+    try {
+      let exhausted = false
+      const handle = openSseFallback({
+        onEvent: () => {},
+        onError: () => {},
+        onExhausted: () => {
+          exhausted = true
+        },
+      })
+      for (let i = 0; i < SSE_MAX_RECONNECT_ATTEMPTS; i++) {
+        lastEventSource!.onerror?.(new Event('error'))
+        vi.advanceTimersByTime(SSE_RECONNECT_MAX_DELAY)
+      }
+      // The attempt that crosses the budget closes the transport.
+      lastEventSource!.onerror?.(new Event('error'))
+      expect(exhausted).toBe(true)
+      handle.close()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('close() tears down the EventSource', () => {

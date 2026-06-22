@@ -53,15 +53,19 @@ export function pasteFromClipboard(
     idMap.set(node.id, `${node.id}-copy-${crypto.randomUUID().slice(0, 8)}`)
   }
 
-  const nodes = clipboard.nodes.map((node) => ({
-    ...node,
-    id: idMap.get(node.id)!,
-    position: {
-      x: node.position.x + PASTE_OFFSET,
-      y: node.position.y + PASTE_OFFSET,
-    },
-    selected: true,
-  }))
+  const nodes = clipboard.nodes.map((node) => {
+    const newId = idMap.get(node.id)
+    if (!newId) throw new Error(`paste: missing id mapping for ${node.id}`)
+    return {
+      ...node,
+      id: newId,
+      position: {
+        x: node.position.x + PASTE_OFFSET,
+        y: node.position.y + PASTE_OFFSET,
+      },
+      selected: true,
+    }
+  })
 
   const edges = clipboard.edges.map((edge) => ({
     ...edge,

@@ -5,6 +5,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { useCustomRulesStore } from '@/stores/custom-rules'
+import { makeEnumParser } from '@/utils/type-guards'
 import type {
   Comparator,
   CreateCustomRuleRequest,
@@ -34,6 +35,9 @@ const SEVERITY_OPTIONS: ReadonlyArray<{ value: RuleSeverity; label: string }> = 
   { value: 'warning', label: 'Warning' },
   { value: 'critical', label: 'Critical' },
 ]
+
+const parseComparator = makeEnumParser<Comparator>(COMPARATOR_OPTIONS.map((o) => o.value))
+const parseRuleSeverity = makeEnumParser<RuleSeverity>(SEVERITY_OPTIONS.map((o) => o.value))
 
 const ALTITUDE_OPTIONS: ReadonlyArray<{ value: ProposalAltitude; label: string }> = [
   { value: 'config_tuning', label: 'Config tuning' },
@@ -147,7 +151,10 @@ function CustomRuleFields({
         <SelectField
           label="Comparator"
           value={form.comparator}
-          onChange={(value) => update('comparator', value as Comparator)}
+          onChange={(value) => {
+            const c = parseComparator(value)
+            if (c) update('comparator', c)
+          }}
           options={COMPARATOR_OPTIONS}
         />
         <InputField
@@ -162,33 +169,46 @@ function CustomRuleFields({
       <SelectField
         label="Severity"
         value={form.severity}
-        onChange={(value) => update('severity', value as RuleSeverity)}
+        onChange={(value) => {
+          const s = parseRuleSeverity(value)
+          if (s) update('severity', s)
+        }}
         options={SEVERITY_OPTIONS}
       />
-      <fieldset className="flex flex-col gap-1">
-        <legend className="text-sm font-medium text-foreground">
-          Target altitudes
-        </legend>
-        <p className="text-xs text-text-secondary">
-          The proposal altitudes this rule's signal can trigger.
-        </p>
-        <div className="mt-1 flex flex-wrap gap-grid-gap">
-          {ALTITUDE_OPTIONS.map((opt) => (
-            <label
-              key={opt.value}
-              className="flex cursor-pointer items-center gap-1 rounded-md border border-border bg-surface px-2 py-1 text-sm text-foreground"
-            >
-              <input
-                type="checkbox"
-                checked={form.altitudes.has(opt.value)}
-                onChange={() => toggleAltitude(opt.value)}
-              />
-              {opt.label}
-            </label>
-          ))}
-        </div>
-      </fieldset>
+      <AltitudeFieldset selected={form.altitudes} onToggle={toggleAltitude} />
     </>
+  )
+}
+
+function AltitudeFieldset({
+  selected,
+  onToggle,
+}: {
+  selected: ReadonlySet<ProposalAltitude>
+  onToggle: (altitude: ProposalAltitude) => void
+}) {
+  return (
+    <fieldset className="flex flex-col gap-1">
+      <legend className="text-sm font-medium text-foreground">Target altitudes</legend>
+      <p className="text-xs text-text-secondary">
+        The proposal altitudes this rule's signal can trigger.
+      </p>
+      <div className="mt-1 flex flex-wrap gap-grid-gap">
+        {ALTITUDE_OPTIONS.map((opt) => (
+          <label
+            key={opt.value}
+            className="flex cursor-pointer items-center gap-1 rounded-md border border-border bg-surface px-2 py-1 text-sm text-foreground"
+          >
+            <input
+              type="checkbox"
+              checked={selected.has(opt.value)}
+              onChange={() => onToggle(opt.value)}
+            />
+            {opt.label}
+          </label>
+        ))}
+      </div>
+    </fieldset>
   )
 }
 

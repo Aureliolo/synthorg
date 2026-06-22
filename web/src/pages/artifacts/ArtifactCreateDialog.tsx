@@ -6,6 +6,7 @@ import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import type { Artifact, CreateArtifactRequest } from '@/api/types/artifacts'
 import type { ArtifactType } from '@/api/types/enums'
+import { makeEnumParser } from '@/utils/type-guards'
 
 import {
   useArtifactCreateForm,
@@ -19,6 +20,8 @@ const TYPE_OPTIONS: ReadonlyArray<{ value: ArtifactType; label: string }> = [
   { value: 'tests', label: 'Tests' },
   { value: 'documentation', label: 'Documentation' },
 ]
+
+const parseArtifactType = makeEnumParser<ArtifactType>(TYPE_OPTIONS.map((o) => o.value))
 
 export interface ArtifactCreateDialogProps {
   open: boolean
@@ -122,7 +125,10 @@ function ArtifactFormFields({ form, errors, updateField }: ArtifactFormFieldsPro
         label="Type"
         options={TYPE_OPTIONS}
         value={form.type}
-        onChange={(value) => updateField('type', value as ArtifactType)}
+        onChange={(value) => {
+          const type = parseArtifactType(value)
+          if (type) updateField('type', type)
+        }}
       />
       <InputField
         label="Path"

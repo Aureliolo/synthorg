@@ -20,6 +20,7 @@ export type {
   ProviderModelConfig,
   ProviderModelResponse,
   PullModelRequest,
+  RateLimitsResponse,
   RateLimitsUpdateRequest,
   RemoveAllowlistEntryRequest,
   SyncModelsRequest,
@@ -38,6 +39,7 @@ import type {
   ProviderAuditEvent as WireProviderAuditEvent,
   ProviderResponse as WireProviderResponse,
 } from './dtos.gen'
+import type { components } from './openapi.gen'
 
 /** Mirrors the inline string union on the wire ProviderAuditEvent.event_type
  *  (openapi-typescript inlines anonymous unions rather than emitting a named
@@ -45,20 +47,15 @@ import type {
  *  without hand-editing this file. */
 export type ProviderAuditEventType = WireProviderAuditEvent['event_type']
 
-/** Discriminated-union rotation payload keyed by ``auth_type``. The
- *  wire validates this via a server-side discriminated model; OpenAPI
- *  emits the variants inline rather than as a named union. */
+/** Discriminated-union rotation payload keyed by ``auth_type``. Aliased from
+ *  the generated underscore-prefixed component schemas (the generator's
+ *  PascalCase filter excludes them from ``dtos.gen.ts``, so they are pulled
+ *  directly here) to stay in lockstep with the backend rotation models. */
 export type CredentialsRotateRequest =
-  | { auth_type: 'api_key'; api_key: string }
-  | { auth_type: 'subscription'; subscription_token: string; tos_accepted: boolean }
-  | { auth_type: 'custom_header'; custom_header_name: string; custom_header_value: string }
-  | {
-      auth_type: 'oauth'
-      oauth_token_url: string
-      oauth_client_id: string
-      oauth_client_secret: string
-      oauth_scope?: string
-    }
+  | components['schemas']['_ApiKeyRotation']
+  | components['schemas']['_SubscriptionRotation']
+  | components['schemas']['_CustomHeaderRotation']
+  | components['schemas']['_OAuthRotation']
 
 /** Streamed pull progress (Server-Sent Events). The wire frames each
  *  event as JSON without surfacing a named schema. */
@@ -69,13 +66,6 @@ export interface PullProgressEvent {
   completed_bytes: number | null
   error: string | null
   done: boolean
-}
-
-/** Effective rate-limit configuration for one provider. Not surfaced
- *  as a named OpenAPI component schema. */
-export interface RateLimitsConfig {
-  readonly requests_per_minute: number
-  readonly concurrent_requests: number
 }
 
 // Overlay the wire's ``ProviderResponse`` shape: the dashboard treats

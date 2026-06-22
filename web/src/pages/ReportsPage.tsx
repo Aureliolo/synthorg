@@ -24,6 +24,7 @@ import {
 import { createLogger } from '@/lib/logger'
 import { getErrorMessage } from '@/utils/errors'
 import { formatDateTime } from '@/utils/format'
+import { makeEnumParser } from '@/utils/type-guards'
 
 const log = createLogger('ReportsPage')
 
@@ -117,6 +118,8 @@ const PERIOD_SORT_OPTIONS: ReadonlyArray<{ value: PeriodSortKey; label: string }
   { value: 'name-asc', label: 'Name (A-Z)' },
   { value: 'name-desc', label: 'Name (Z-A)' },
 ]
+
+const parsePeriodSortKey = makeEnumParser<PeriodSortKey>(PERIOD_SORT_OPTIONS.map((o) => o.value))
 
 interface ReportPeriodsView {
   periods: readonly ReportPeriod[] | null
@@ -320,7 +323,10 @@ function ReportPeriodsSection({
             <SelectField
               label="Sort by"
               value={view.periodSort}
-              onChange={(value) => view.setPeriodSort(value as PeriodSortKey)}
+              onChange={(value) => {
+                const key = parsePeriodSortKey(value)
+                if (key) view.setPeriodSort(key)
+              }}
               options={PERIOD_SORT_OPTIONS}
             />
           }

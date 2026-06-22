@@ -4,11 +4,14 @@ import { SelectField } from '@/components/ui/select-field'
 import { ToggleField } from '@/components/ui/toggle-field'
 import { PolicySourceBadge } from '@/components/ui/policy-source-badge'
 import { VELOCITY_CALC_LABELS, VELOCITY_CALC_TYPES } from '@/stores/ceremony-policy-constants'
+import { makeEnumParser } from '@/utils/type-guards'
 
 const VELOCITY_OPTIONS = VELOCITY_CALC_TYPES.map((v) => ({
   value: v,
   label: VELOCITY_CALC_LABELS[v],
 }))
+
+const parseVelocityCalc = makeEnumParser<VelocityCalcType>(VELOCITY_CALC_TYPES)
 
 export interface PolicyFieldsPanelProps {
   velocityCalculator: VelocityCalcType
@@ -39,7 +42,10 @@ export function PolicyFieldsPanel({
             label="Velocity Calculator"
             options={VELOCITY_OPTIONS}
             value={velocityCalculator}
-            onChange={(v) => onVelocityCalculatorChange(v as VelocityCalcType)}
+            onChange={(v) => {
+              const calc = parseVelocityCalc(v)
+              if (calc) onVelocityCalculatorChange(calc)
+            }}
             disabled={disabled}
           />
         </div>

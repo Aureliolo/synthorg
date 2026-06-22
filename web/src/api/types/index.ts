@@ -52,5 +52,4 @@ export type {
   ProviderConfig,
   ProviderPreset,
   PullProgressEvent,
-  RateLimitsConfig,
 } from './providers'

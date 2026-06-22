@@ -24,7 +24,8 @@ import { sanitizeForLog } from '@/utils/logging'
 import { sanitizeWsString } from '@/utils/ws-sanitize'
 import {
   SSE_MAX_RECONNECT_ATTEMPTS,
-  SSE_RECONNECT_WINDOW_MS,
+  SSE_RECONNECT_BASE_DELAY,
+  SSE_RECONNECT_MAX_DELAY,
 } from '@/utils/ws-constants'
 import type { WsChannel, WsEvent } from '@/api/types/websocket'
 
@@ -86,117 +87,152 @@ interface SseClient {
   close: () => void
 }
 
+/** Parse one SSE frame, surface its event id, and dispatch the mapped event. */
+function processSseFrame(
+  event: MessageEvent,
+  onEvent: (event: WsEvent) => void,
+  onLastEventId: (id: string) => void,
+): void {
+  if (event.lastEventId) {
+    // Clamp the server-supplied id before we store / log it: it is
+    // attacker-influenced and otherwise uncapped (control chars, bidi
+    // overrides, unbounded length).
+    const sanitizedId = sanitizeWsString(event.lastEventId)
+    if (sanitizedId !== undefined) onLastEventId(sanitizedId)
+  }
+  if (typeof event.data !== 'string') return
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(event.data)
+  } catch (parseErr) {
+    log.warn('Failed to parse SSE frame', sanitizeForLog(parseErr))
+    return
+  }
+  const sseEvent = asSseRaw(parsed)
+  if (sseEvent === null) {
+    log.warn('SSE frame missing required fields, discarding')
+    return
+  }
+  const mapped = mapAgUiToWsEvent(sseEvent)
+  if (mapped === null) return
+  onEvent(mapped)
+}
+
 /**
  * Open an SSE connection to the events stream and dispatch every
  * mappable AG-UI event as an internal `WsEvent`.
  *
- * Returns a handle whose `close()` tears down the EventSource. The
- * caller is responsible for installing reconnect / retry semantics
- * if the SSE stream itself drops; the dashboard's WS transport
- * orchestrator owns that policy.
+ * Reconnection is driven at the application level (close + re-`new
+ * EventSource`) with exponential backoff (`SSE_RECONNECT_BASE_DELAY`
+ * doubling to `SSE_RECONNECT_MAX_DELAY`), mirroring the WS transport's
+ * backoff policy: the browser's native `EventSource` retry is a flat
+ * cadence with no backoff, so a prolonged outage would otherwise hammer
+ * the backend. Returns a handle whose `close()` cancels any pending
+ * reconnect timer and tears down the EventSource.
+ *
+ * NOTE on `Last-Event-ID` replay: because we drive reconnect ourselves
+ * (a fresh `EventSource` each cycle) rather than relying on the browser's
+ * native retry, the `Last-Event-ID` request header is NOT re-sent on
+ * reconnect. This is acceptable: the backend events hub is a live queue
+ * with no backing store and never replays from a cursor, so events
+ * published during an outage are lost on both the native and the
+ * app-level reconnect paths. `lastEventId` is retained for debug logging
+ * only. If server-side replay is ever added, the cursor would need to be
+ * threaded into the reconnect request here (e.g. a query parameter).
  */
 export function openSseFallback(callbacks: SseClientCallbacks): SseClient {
   const url = SSE_STREAM_PATH
-  const source = new EventSource(url, { withCredentials: true })
-  // Dedupe transient reconnect failures. EventSource's built-in
-  // reconnect loop fires ``onerror`` on every transient blip while
-  // it shifts back to ``CONNECTING`` and re-attempts the handshake;
-  // the spec then fires ``onopen`` again on recovery. Reporting each
-  // intermediate ``onerror`` to the caller would flood the operator
-  // with toasts for a single network hiccup. The flag flips to
-  // ``true`` on the first failure of a disconnect cycle and resets
-  // in ``onopen`` so a genuine fresh failure (after a successful
-  // re-open) still surfaces.
-  let reportedDisconnect = false
-  // Counts transport errors so a prolonged outage (EventSource retries
-  // indefinitely on its own) gives up at SSE_MAX_RECONNECT_ATTEMPTS instead
-  // of flooding the backend with reconnect traffic. Reset on a clean re-open.
-  let errorCount = 0
-  // Timestamp (ms) of the last error counted against the budget. Errors
-  // arriving within SSE_RECONNECT_WINDOW_MS of this collapse to a single
-  // attempt so a multi-fire transient outage cannot exhaust prematurely.
-  let lastCountedErrorAt = 0
-  // Last server-sent event id. The browser auto-sends it as `Last-Event-ID`
-  // on reconnect once the server emits `id:` lines, so missed events can be
-  // replayed; we also surface it for debugging.
-  let lastEventId = ''
-
   // The server names every SSE frame with its AG-UI event type (the
   // ``event:`` field), so the unnamed ``onmessage`` handler would never
   // fire. Register the shared handler for each mappable type instead.
   const mappedTypes = Object.keys(AGUI_EVENT_MAP)
 
+  let source: EventSource | null = null
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  let closed = false
+  // Reconnect attempts since the last clean open; drives both the backoff
+  // delay and the SSE_MAX_RECONNECT_ATTEMPTS budget. Reset in ``onopen``.
+  let attempt = 0
+  // Notify the caller of a disconnect only once per outage cycle so a single
+  // interruption does not flood the operator with toasts; reset on re-open.
+  let reportedDisconnect = false
+  let lastEventId = ''
+
+  const handleFrame = (event: MessageEvent): void => {
+    processSseFrame(event, callbacks.onEvent, (id) => {
+      lastEventId = id
+    })
+  }
+
   // Null handlers before closing so closure captures release promptly; some
   // engines do not free EventSource handlers on .close() alone.
-  function teardown(): void {
+  function detachSource(): void {
+    if (!source) return
     source.onopen = null
     source.onerror = null
     for (const aguiType of mappedTypes) {
       source.removeEventListener(aguiType, handleFrame)
     }
     source.close()
+    source = null
   }
 
-  source.onopen = () => {
-    reportedDisconnect = false
-    errorCount = 0
-    if (lastEventId) {
-      log.debug('SSE fallback (re)connected', sanitizeForLog({ lastEventId }))
+  function teardown(): void {
+    closed = true
+    if (reconnectTimer !== null) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
     }
-    callbacks.onOpen?.()
+    detachSource()
   }
 
-  function handleFrame(event: MessageEvent): void {
-    if (event.lastEventId) {
-      // Clamp the server-supplied id before we store / log it: it is
-      // attacker-influenced and otherwise uncapped (control chars, bidi
-      // overrides, unbounded length). The browser still sends the raw
-      // value as `Last-Event-ID`; this only guards our own debug surface.
-      const sanitizedId = sanitizeWsString(event.lastEventId)
-      if (sanitizedId !== undefined) lastEventId = sanitizedId
-    }
-    if (typeof event.data !== 'string') return
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(event.data)
-    } catch (parseErr) {
-      log.warn('Failed to parse SSE frame', sanitizeForLog(parseErr))
-      return
-    }
-    const sseEvent = asSseRaw(parsed)
-    if (sseEvent === null) {
-      log.warn('SSE frame missing required fields, discarding')
-      return
-    }
-    const mapped = mapAgUiToWsEvent(sseEvent)
-    if (mapped === null) return
-    callbacks.onEvent(mapped)
+  function scheduleReconnect(): void {
+    const delay = Math.min(
+      SSE_RECONNECT_BASE_DELAY * 2 ** (attempt - 1),
+      SSE_RECONNECT_MAX_DELAY,
+    )
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null
+      if (!closed) connect()
+    }, delay)
   }
 
-  for (const aguiType of mappedTypes) {
-    source.addEventListener(aguiType, handleFrame)
+  function connect(): void {
+    if (closed) return
+    detachSource()
+    source = new EventSource(url, { withCredentials: true })
+    source.onopen = () => {
+      attempt = 0
+      reportedDisconnect = false
+      if (lastEventId) {
+        log.debug('SSE fallback (re)connected', sanitizeForLog({ lastEventId }))
+      }
+      callbacks.onOpen?.()
+    }
+    for (const aguiType of mappedTypes) {
+      source.addEventListener(aguiType, handleFrame)
+    }
+    source.onerror = () => {
+      if (closed) return
+      attempt += 1
+      if (attempt > SSE_MAX_RECONNECT_ATTEMPTS) {
+        log.error('SSE fallback exhausted its reconnect budget; closing')
+        teardown()
+        callbacks.onExhausted?.()
+        return
+      }
+      // Close immediately so we own the retry cadence; the native flat-rate
+      // retry would otherwise reconnect on its own without backoff.
+      detachSource()
+      if (!reportedDisconnect) {
+        reportedDisconnect = true
+        callbacks.onError(new Error('SSE transport error'))
+      }
+      scheduleReconnect()
+    }
   }
 
-  source.onerror = () => {
-    // Collapse a burst of errors within one reconnect window to a single
-    // budgeted attempt so a transient outage that fires onerror several
-    // times does not exhaust the reconnect budget prematurely.
-    const now = Date.now()
-    if (now - lastCountedErrorAt >= SSE_RECONNECT_WINDOW_MS) {
-      errorCount += 1
-      lastCountedErrorAt = now
-    }
-    if (errorCount >= SSE_MAX_RECONNECT_ATTEMPTS) {
-      log.error('SSE fallback exhausted its reconnect budget; closing')
-      teardown()
-      callbacks.onExhausted?.()
-      return
-    }
-    if (reportedDisconnect) return
-    reportedDisconnect = true
-    callbacks.onError(new Error('SSE transport error'))
-  }
-
+  connect()
   return { close: teardown }
 }
 

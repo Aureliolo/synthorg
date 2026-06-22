@@ -26,6 +26,7 @@ import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { formatNumber } from '@/utils/format'
 import { getLocale } from '@/utils/locale'
+import { makeEnumParser } from '@/utils/type-guards'
 
 const log = createLogger('ClientListPage')
 
@@ -44,6 +45,8 @@ const SORT_OPTIONS: ReadonlyArray<{ value: ClientSortKey; label: string }> = [
   { value: 'strictness-asc', label: 'Strictness (low to high)' },
   { value: 'strictness-desc', label: 'Strictness (high to low)' },
 ]
+
+const parseClientSortKey = makeEnumParser<ClientSortKey>(SORT_OPTIONS.map((o) => o.value))
 
 function compareClients(a: Client, b: Client, sortKey: ClientSortKey): number {
   switch (sortKey) {
@@ -366,7 +369,10 @@ export default function ClientListPage() {
             <SelectField
               label="Sort by"
               value={data.sortKey}
-              onChange={(value) => data.setSortKey(value as ClientSortKey)}
+              onChange={(value) => {
+                const key = parseClientSortKey(value)
+                if (key) data.setSortKey(key)
+              }}
               options={SORT_OPTIONS}
             />
           }

@@ -8,6 +8,7 @@ import { SegmentedControl } from '@/components/ui/segmented-control'
 import { SelectField } from '@/components/ui/select-field'
 import { TagInput } from '@/components/ui/tag-input'
 import { useSteeringStore } from '@/stores/steering'
+import { makeEnumParser } from '@/utils/type-guards'
 
 type SteerableKind = Extract<InterventionKind, 'hint' | 'redirect'>
 
@@ -21,6 +22,8 @@ const SUPERSEDE_OPTIONS = [
   { value: 'explicit', label: 'Explicit -- cancel the listed tasks now' },
   { value: 'propose', label: 'Propose -- suggest a set to review first' },
 ] as const satisfies readonly { value: SupersedeMode; label: string }[]
+
+const parseSupersedeMode = makeEnumParser<SupersedeMode>(SUPERSEDE_OPTIONS.map((o) => o.value))
 
 interface SupersedeControlsProps {
   mode: SupersedeMode
@@ -43,7 +46,10 @@ function SupersedeControls({
         label="Supersede obsolete tasks"
         options={SUPERSEDE_OPTIONS}
         value={mode}
-        onChange={(value) => onModeChange(value as SupersedeMode)}
+        onChange={(value) => {
+          const m = parseSupersedeMode(value)
+          if (m) onModeChange(m)
+        }}
         disabled={disabled}
         hint="Explicit cancels immediately; Propose returns a set for you to confirm."
       />

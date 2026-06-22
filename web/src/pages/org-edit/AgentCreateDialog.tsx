@@ -8,6 +8,7 @@ import { SelectField } from '@/components/ui/select-field'
 import type { AgentConfig } from '@/api/types/agents'
 import { SENIORITY_LEVEL_VALUES, type SeniorityLevel } from '@/api/types/enums'
 import type { CreateAgentOrgRequest, Department } from '@/api/types/org'
+import { makeEnumParser } from '@/utils/type-guards'
 
 export interface AgentCreateDialogProps {
   open: boolean
@@ -28,6 +29,7 @@ type UpdateFieldFn = <K extends keyof FormState>(key: K, value: FormState[K]) =>
 
 const INITIAL_FORM: FormState = { name: '', role: '', department: '', level: 'mid' }
 const LEVEL_OPTIONS = SENIORITY_LEVEL_VALUES.map((l) => ({ value: l, label: l }))
+const parseSeniorityLevel = makeEnumParser<SeniorityLevel>(SENIORITY_LEVEL_VALUES)
 
 function validateAgentForm(form: FormState): FormErrors {
   const next: FormErrors = {}
@@ -99,7 +101,10 @@ function AgentCreateBody({ form, errors, updateField, deptOptions, submitting, o
           label="Level"
           options={LEVEL_OPTIONS}
           value={form.level}
-          onChange={(value) => updateField('level', value as SeniorityLevel)}
+          onChange={(value) => {
+            const level = parseSeniorityLevel(value)
+            if (level) updateField('level', level)
+          }}
         />
 
         <div className="flex justify-end gap-3 pt-2">
