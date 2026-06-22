@@ -9,19 +9,38 @@ from litestar.datastructures import State
 from prometheus_client import CollectorRegistry, Gauge, Info
 
 from synthorg.api.controllers.metrics import MetricsController
+from synthorg.api.rate_limits._subject import STATE_KEY_CONFIG
+from synthorg.config.rate_limits import PerOpRateLimitConfig
 from tests._shared import LoopAsyncClient
 
 
 def _make_app(*, collector: object | None = None) -> Litestar:
-    """Build a minimal Litestar app with the MetricsController."""
+    """Build a minimal Litestar app with the MetricsController.
+
+    The ``/metrics`` route carries the ``observability.metrics`` per-op
+    rate-limit guard; a disabled config in the state dict short-circuits it
+    so these tests exercise the scrape behaviour, not throttling. Setting
+    ``per_op_limits=None`` forces the guard onto the state-dict fallback.
+    """
+    # A permissive ``MagicMock`` is deliberate here: the rate-limit guard
+    # reads ``per_op_limits`` dynamically (it is not a declared ``AppState``
+    # attribute, so a spec'd ``mock_of[AppState]`` cannot model it), and the
+    # collector lookup walks several state-slice attributes a fixed
+    # ``SimpleNamespace`` would not cover.
     mock_state = MagicMock()
+    mock_state.per_op_limits = None
     mock_state.slice.return_value = SimpleNamespace(
         prometheus_collector=collector, trace_handler=None
     )
 
     return Litestar(
         route_handlers=[MetricsController],
-        state=State({"app_state": mock_state}),
+        state=State(
+            {
+                "app_state": mock_state,
+                STATE_KEY_CONFIG: PerOpRateLimitConfig(enabled=False),
+            }
+        ),
     )
 
 

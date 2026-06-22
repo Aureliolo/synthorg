@@ -21,7 +21,7 @@ from synthorg.notifications.models import (
     NotificationCategory,
     NotificationSeverity,
 )
-from synthorg.notifications.protocol import NotificationSink
+from synthorg.notifications.protocol import NotificationDispatcherProtocol
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.health import HEALTH_PIPELINE_ERROR
 
@@ -41,13 +41,13 @@ class HealthMonitoringPipeline:
     """Two-layer health monitoring pipeline.
 
     Composes ``HealthJudge`` (sensitive) + ``TriageFilter``
-    (conservative) + ``NotificationSink`` (delivery).
+    (conservative) + a notification dispatcher (fan-out delivery).
 
     Args:
         judge: The health judge instance.
         triage: The triage filter instance.
-        notification_sink: Notification delivery target (typically
-            a ``NotificationDispatcher`` for fan-out).
+        notification_dispatcher: Escalation delivery target; fans the
+            health notification out to every configured sink.
     """
 
     def __init__(
@@ -55,11 +55,11 @@ class HealthMonitoringPipeline:
         *,
         judge: HealthJudge,
         triage: TriageFilter,
-        notification_sink: NotificationSink,
+        notification_dispatcher: NotificationDispatcherProtocol,
     ) -> None:
         self._judge = judge
         self._triage = triage
-        self._sink = notification_sink
+        self._dispatcher = notification_dispatcher
 
     async def process(  # noqa: PLR0913
         self,
@@ -137,7 +137,7 @@ class HealthMonitoringPipeline:
         # Layer 3: dispatch notification (best-effort).
         notification = _ticket_to_notification(ticket)
         try:
-            await self._sink.send(notification)
+            await self._dispatcher.dispatch(notification)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             log_exception_redacted(

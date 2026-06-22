@@ -681,7 +681,7 @@ class TestSimulationReportEndpoint:
             assert "totals" in payload
             assert "rates" in payload
 
-    async def test_unknown_format_returns_409(
+    async def test_unknown_format_returns_400(
         self,
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
@@ -711,7 +711,10 @@ class TestSimulationReportEndpoint:
             report = await client.get(
                 f"/api/v1/simulations/{sid}/report?fmt=bogus",
             )
-            assert report.status_code == 409
+            # ``fmt`` is a ``Literal["summary", "detailed"]`` query param;
+            # Litestar rejects any other value at the boundary as a 400
+            # client error (a bad query param, not a 409 conflict).
+            assert report.status_code == 400
 
 
 class TestSimulationCancel:

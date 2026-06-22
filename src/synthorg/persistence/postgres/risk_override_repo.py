@@ -1,8 +1,8 @@
 """Postgres implementation of the RiskOverrideRepository protocol.
 
-This is the Postgres sibling of src/synthorg/persistence/sqlite/risk_override_repo.py.
-Postgres stores timestamps as native TIMESTAMPTZ. Per-connection transactions
-handle isolation without explicit write locks.
+Postgres stores timestamps as native TIMESTAMPTZ. Per-connection
+transactions handle isolation without explicit write locks (unlike the
+SQLite implementation, which serialises writes).
 """
 
 from datetime import UTC, datetime
@@ -33,6 +33,9 @@ from synthorg.security.rules.risk_override import RiskTierOverride
 
 logger = get_logger(__name__)
 
+# Trusted compile-time column list. Interpolated into the SQL strings
+# below; never user-controlled, so the S608 suppressions at each query
+# site are constant-only, not an injection surface.
 _COLS = (
     "id, action_type, original_tier, override_tier, reason, "
     "created_by, created_at, expires_at, revoked_at, revoked_by"

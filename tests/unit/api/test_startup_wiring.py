@@ -1,4 +1,4 @@
-"""Tests for startup wiring helpers introduced by the log/startup audit.
+"""Tests for startup wiring helpers.
 
 Covers `_wire_workflow_observer`, `_wire_ontology_service`, the unconditional
 tunnel wiring path, and the once-only contract on `set_ontology_service`.

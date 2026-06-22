@@ -14,6 +14,7 @@ from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.memory.embedding.fine_tune_orchestrator import (
     FineTuneOrchestrator,
 )
+from synthorg.memory.org.protocol import OrgMemoryBackend
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.service import MemoryService
 
@@ -26,6 +27,7 @@ class MemoryStateSlice(BaseFeatureStateSlice):
     backend: MemoryBackend | None = None
     fine_tune_orchestrator: FineTuneOrchestrator | None = None
     service: MemoryService | None = None
+    org_memory_backend: OrgMemoryBackend | None = None
 
 
 def memory_service_of(app_state: AppStateSliceMixin) -> MemoryService:
@@ -44,3 +46,18 @@ def memory_backend_of(app_state: AppStateSliceMixin) -> MemoryBackend:
         The wired memory backend.
     """
     return require_service(app_state.slice(MemoryStateSlice).backend, "Memory Backend")
+
+
+def org_memory_backend_of(
+    app_state: AppStateSliceMixin,
+) -> OrgMemoryBackend | None:
+    """Resolve the org-memory backend from its slice, or ``None``.
+
+    Returns ``None`` (never raises) so optional consumers -- HR snapshot
+    strategies, the ontology admin sync -- degrade gracefully when the
+    org-memory substrate is disabled or persistence is absent.
+
+    Returns:
+        The wired :class:`OrgMemoryBackend`, or ``None`` when unwired.
+    """
+    return app_state.slice(MemoryStateSlice).org_memory_backend

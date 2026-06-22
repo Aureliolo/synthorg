@@ -156,6 +156,9 @@ async def _rotate_session_and_build_response(
         SECURITY_AUTH_PASSWORD_CHANGED,
         user_id=updated_user.id,
         username=updated_user.username,
+        principal=updated_user.id,
+        resource=f"user:{updated_user.id}",
+        action_type="credential:password_change",
     )
 
     return Response(

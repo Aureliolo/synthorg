@@ -16,6 +16,7 @@ from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.actor_context import ActorIdentity, actor_scope
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import BackgroundTaskRegistry
@@ -31,6 +32,7 @@ from synthorg.observability.events.timeout import (
 )
 from synthorg.security.timeout.enums import TimeoutActionType
 from synthorg.security.timeout.models import TimeoutAction
+from synthorg.security.timeout.protocol import TimeoutPolicy
 from synthorg.security.timeout.timeout_checker import (
     TIMEOUT_POLICY_DECIDER,
     TimeoutChecker,
@@ -100,6 +102,25 @@ class ApprovalTimeoutScheduler:
     def is_running(self) -> bool:
         """Whether the scheduler loop is currently active."""
         return self._task is not None and not self._task.done()
+
+    async def set_timeout_policy(self, policy: TimeoutPolicy) -> None:
+        """Hot-swap the timeout policy under the lifecycle lock.
+
+        Used by the post-persistence risk-override wiring to replace the
+        construction-time tiered policy with one whose classifier honours
+        runtime SecOps risk-tier overrides. Holding ``_lifecycle_lock``
+        orders the swap against ``start``/``stop`` so the loop never sees
+        a half-installed checker.
+
+        Args:
+            policy: The replacement timeout policy.
+        """
+        if self._lifecycle_lock is None:
+            # Never started on this loop: no concurrent reader to order against.
+            self._checker.set_policy(policy)
+            return
+        async with self._lifecycle_lock:
+            self._checker.set_policy(policy)
 
     def _task_is_on_current_loop(self) -> bool:
         """True iff the existing task is alive on the current loop.
@@ -189,16 +210,23 @@ class ApprovalTimeoutScheduler:
                 interval_seconds=self._interval,
             )
 
-    async def stop(self, *, timeout: float | None = None) -> None:  # noqa: ASYNC109
+    async def stop(
+        self,
+        *,
+        timeout: float = DEFAULT_DRAIN_TIMEOUT_SECONDS,  # noqa: ASYNC109
+    ) -> None:
         """Cancel the background scheduler and wait for it to finish.
 
         Holds ``_lifecycle_lock`` across the full body so a racing
         ``start()`` cannot interleave between cancel and the
-        ``self._task = None`` assignment.
+        ``self._task = None`` assignment. The drain is always bounded by
+        ``timeout`` (no indefinite-wait escape hatch): a hung background
+        callback marks the scheduler unrestartable rather than holding
+        the lifecycle lock forever.
 
         Args:
-            timeout: Seconds to wait for cancellation + drain. ``None``
-                means "wait indefinitely". Must be positive when set.
+            timeout: Seconds to wait for cancellation + drain. Must be
+                positive; defaults to ``DEFAULT_DRAIN_TIMEOUT_SECONDS``.
 
         Raises:
             ValueError: If ``timeout`` is non-positive.
@@ -210,7 +238,7 @@ class ApprovalTimeoutScheduler:
                 and a new task spawned alongside it would break the
                 single-writer invariant.
         """
-        if timeout is not None and timeout <= 0:
+        if timeout <= 0:
             msg = f"stop() timeout must be > 0, got {timeout!r}"
             raise ValueError(msg)
         if self._lifecycle_lock is None:
@@ -222,13 +250,10 @@ class ApprovalTimeoutScheduler:
                 await self._background_tasks.drain()
                 return
             try:
-                if timeout is None:
-                    await self._cancel_and_drain()
-                else:
-                    await asyncio.wait_for(
-                        self._cancel_and_drain(),
-                        timeout=timeout,
-                    )
+                await asyncio.wait_for(
+                    self._cancel_and_drain(),
+                    timeout=timeout,
+                )
             except TimeoutError:
                 self._stop_failed = True
                 logger.error(

@@ -82,11 +82,15 @@ async def wire_meta_apply(app_state: AppState) -> None:
 async def _wire(app_state: AppState) -> None:
     from synthorg.approval.state import approval_store_of  # noqa: PLC0415
     from synthorg.engine.state import workflow_service_of  # noqa: PLC0415
-    from synthorg.hr.state import agent_registry_of  # noqa: PLC0415
+    from synthorg.hr.state import HrStateSlice, agent_registry_of  # noqa: PLC0415
     from synthorg.meta.appliers._contexts import (  # noqa: PLC0415
         DurableArchitectureApplierContext,
         DurablePromptApplierContext,
     )
+    from synthorg.meta.rollout.group_aggregator import (  # noqa: PLC0415
+        TrackerGroupAggregator,
+    )
+    from synthorg.meta.rollout.roster import CallableOrgRoster  # noqa: PLC0415
     from synthorg.meta.service import SelfImprovementService  # noqa: PLC0415
     from synthorg.meta.state import (  # noqa: PLC0415
         MetaStateSlice,
@@ -115,11 +119,12 @@ async def _wire(app_state: AppState) -> None:
     set_principle_override_provider(override_provider)
 
     department_service = await _wire_department_service(app_state, department_repo)
+    registry = agent_registry_of(app_state)
     architecture_context = DurableArchitectureApplierContext(
         role_repo=role_repo,
         department_service=department_service,
         workflow_service=workflow_service_of(app_state),
-        agent_registry=agent_registry_of(app_state),
+        agent_registry=registry,
         clock=app_state.clock,
     )
     await architecture_context.refresh_snapshot()
@@ -147,6 +152,18 @@ async def _wire(app_state: AppState) -> None:
         role_repo=role_repo,
         department_service=department_service,
     )
+
+    # Bind rollout group assignment to the live agent registry so A/B and
+    # canary strategies split the real roster instead of the NoOp empty one.
+    async def _live_agent_ids() -> tuple[NotBlankStr, ...]:
+        return tuple(NotBlankStr(agent_id) for agent_id in registry.active_agent_ids())
+
+    performance_tracker = app_state.slice(HrStateSlice).performance_tracker
+    group_aggregator = (
+        TrackerGroupAggregator(tracker=performance_tracker)
+        if performance_tracker is not None
+        else None
+    )
     service = SelfImprovementService(
         config=config,
         prompt_context=prompt_context,
@@ -156,6 +173,8 @@ async def _wire(app_state: AppState) -> None:
         config_resolver=config_resolver_of(app_state),
         ab_test_record_sink=app_state.slice(MetaStateSlice).ab_test_repo,
         clock=app_state.clock,
+        roster=CallableOrgRoster(source=_live_agent_ids),
+        group_aggregator=group_aggregator,
         rollback_executor=rollback_executor,
     )
     app_state.wire(MetaStateSlice, self_improvement_service=service)

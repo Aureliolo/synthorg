@@ -1,11 +1,11 @@
 """Retry handler with exponential backoff and jitter."""
 
-import asyncio
 import random
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.resilience_config import RetryConfig
 from synthorg.observability import get_logger, safe_error_description
@@ -51,10 +51,14 @@ class RetryHandler:
 
     Args:
         config: Retry configuration.
+        clock: Clock seam for backoff sleeps; defaults to
+            :class:`SystemClock`. Tests inject a ``FakeClock`` so retry
+            delays do not consume real wall-clock time.
     """
 
-    def __init__(self, config: RetryConfig) -> None:
+    def __init__(self, config: RetryConfig, *, clock: Clock | None = None) -> None:
         self._config = config
+        self._clock: Clock = clock if clock is not None else SystemClock()
 
     async def execute(
         self,
@@ -103,7 +107,7 @@ class RetryHandler:
                     delay=delay,
                     error_type=type(exc).__name__,
                 )
-                await asyncio.sleep(delay)
+                await self._clock.sleep(delay)
             except Exception as exc:
                 reraise_critical(exc)
                 logger.warning(

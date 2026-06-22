@@ -20,6 +20,7 @@ from synthorg.api.pagination import (
     paginate_cursor,
 )
 from synthorg.api.path_params import PathId
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.core.domain_errors import ValidationError
 from synthorg.core.types import NotBlankStr
@@ -186,7 +187,12 @@ class MCPCatalogController(Controller):
 
     @get(
         "/catalog/search",
-        guards=[require_read_access],
+        guards=[
+            require_read_access,
+            per_op_rate_limit_from_policy(
+                "integrations.mcp_catalog_search", key="user"
+            ),
+        ],
         summary="Search catalog entries",
     )
     async def search_catalog(

@@ -118,7 +118,9 @@ async def service(
         yield build_knowledge_service(
             memory_backend=memory,
             persistence=persistence,
-            config=KnowledgeConfig(enabled=True),
+            # Bound filesystem ingestion (REPO/PDF) to ``tmp_path``; the
+            # path-traversal guard fail-closes without a configured root.
+            config=KnowledgeConfig(enabled=True, repo_root=str(tmp_path)),
             html_fetcher=_FakeFetcher(),
             ticket_fetcher=_FakeTicketFetcher(),
             clock=FakeClock(start=datetime(2026, 5, 21, tzinfo=UTC)),
@@ -178,10 +180,13 @@ class TestKnowledgeRoundTrip:
         assert any(h.citation.source_type is SourceType.WEB for h in web_hits)
 
         # PDF: ingest a fake PDF (opener monkeypatched in the fixture)
-        # and verify citations resolve to the exact PDF page.
+        # and verify citations resolve to the exact PDF page. The URI is a
+        # path under ``repo_root`` so it clears the path-traversal guard;
+        # the monkeypatched opener ignores the path, so the file need not
+        # exist.
         await service.ingest(
             source_type=SourceType.PDF,
-            uri=NotBlankStr("memo://retry-policy.pdf"),
+            uri=NotBlankStr(str(repo / "retry-policy.pdf")),
             title=NotBlankStr("Retry policy memo"),
             project_id=NotBlankStr(sid("proj-1")),
         )

@@ -38,6 +38,7 @@ from synthorg.api.rate_limits.guard import per_op_rate_limit
 from synthorg.api.rate_limits.inflight_guard import per_op_concurrency
 from synthorg.observability import get_logger
 from synthorg.settings.definitions.api import (
+    ACTIVITIES_INFLIGHT_MAX,
     BROWNFIELD_IMPORT_INFLIGHT_MAX,
     EVENTS_STREAM_INFLIGHT_MAX,
     EVENTS_STREAM_RATE_LIMIT_MAX_REQUESTS,
@@ -45,6 +46,7 @@ from synthorg.settings.definitions.api import (
     MEMORY_CHECKPOINT_DEPLOY_INFLIGHT_MAX,
     MEMORY_CHECKPOINT_ROLLBACK_INFLIGHT_MAX,
     MEMORY_FINE_TUNE_INFLIGHT_MAX,
+    METRICS_INFLIGHT_MAX,
     PROVIDERS_DISCOVER_MODELS_INFLIGHT_MAX,
     PROVIDERS_PULL_MODEL_INFLIGHT_MAX,
 )
@@ -61,6 +63,8 @@ logger = get_logger(__name__)
 _POLICIES: Final[dict[str, tuple[int, int]]] = {
     # a2a
     "a2a.gateway": (120, 60),
+    # activities (activity feed)
+    "activities.list": (120, 60),
     # admin (backup controller)
     "admin.backup_create": (5, 3600),
     "admin.backup_delete": (10, 3600),
@@ -77,6 +81,7 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     # approvals
     "approvals.approve": (100, 60),
     "approvals.create": (20, 60),
+    "approvals.list": (120, 60),
     "approvals.reject": (100, 60),
     # artifacts
     "artifacts.create": (60, 60),
@@ -105,6 +110,8 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     # cockpit
     "cockpit.intervention_kill": (10, 60),
     "cockpit.intervention_pause": (30, 60),
+    "cockpit.steering_issue": (20, 60),
+    "cockpit.steering_supersede": (20, 60),
     # collaboration
     "collaboration.override": (20, 60),
     # company
@@ -143,9 +150,12 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
         EVENTS_STREAM_RATE_LIMIT_MAX_REQUESTS,
         EVENTS_STREAM_RATE_LIMIT_WINDOW_SECONDS,
     ),
+    # health (readiness probe)
+    "health.ready": (120, 60),
     # integrations (health controller)
     "integrations.health_aggregate": (30, 60),
     "integrations.health_single": (60, 60),
+    "integrations.mcp_catalog_search": (30, 60),
     # interrupts
     "interrupts.resume": (60, 60),
     # knowledge
@@ -188,6 +198,8 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "ontology.update_entity": (30, 60),
     # objectives
     "objectives.submit": (30, 60),
+    # observability (Prometheus scrape)
+    "observability.metrics": (60, 60),
     # personalities
     "personalities.create": (20, 60),
     "personalities.delete": (10, 60),
@@ -201,6 +213,7 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     # providers
     "providers.add_model": (20, 60),
     "providers.allowlist_add": (50, 60),
+    "providers.audit": (30, 60),
     "providers.allowlist_remove": (50, 60),
     "providers.create": (10, 60),
     "providers.create_from_preset": (10, 60),
@@ -238,13 +251,18 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "scaling.update_strategy": (30, 60),
     # security
     "security.audit_query": (30, 60),
+    "security.risk_override_create": (20, 60),
+    "security.risk_override_list": (120, 60),
+    "security.risk_override_revoke": (20, 60),
     "security.ssrf_resolve": (20, 60),
     # settings
     "settings.delete": (60, 60),
     "settings.import": (5, 3600),
     "settings.update": (60, 60),
     # setup
+    "setup.company": (5, 3600),
     "setup.complete": (5, 3600),
+    "setup.status": (120, 60),
     # simulations
     "simulations.cancel": (30, 60),
     "simulations.create": (30, 3600),
@@ -308,8 +326,10 @@ RATE_LIMIT_POLICIES: Final[Mapping[str, tuple[int, int]]] = MappingProxyType(
 # ``PerOpConcurrencyConfig.overrides``; this map is the default that
 # ships with a fresh deployment.
 _INFLIGHT_POLICIES: Final[dict[str, int]] = {
+    "activities.list": ACTIVITIES_INFLIGHT_MAX,
     "brownfield.import": BROWNFIELD_IMPORT_INFLIGHT_MAX,
     "events.stream": EVENTS_STREAM_INFLIGHT_MAX,
+    "observability.metrics": METRICS_INFLIGHT_MAX,
     "memory.checkpoint_deploy": MEMORY_CHECKPOINT_DEPLOY_INFLIGHT_MAX,
     "memory.checkpoint_rollback": MEMORY_CHECKPOINT_ROLLBACK_INFLIGHT_MAX,
     "memory.fine_tune": MEMORY_FINE_TUNE_INFLIGHT_MAX,

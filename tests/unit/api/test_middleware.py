@@ -93,6 +93,7 @@ class TestSecurityHeadersHook:
             "font-src 'self'",
             "connect-src 'self'",
             "object-src 'none'",
+            "form-action 'self'",
             "frame-ancestors 'none'",
         ):
             assert directive in _API_CSP

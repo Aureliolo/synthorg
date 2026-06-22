@@ -40,8 +40,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: release
+    # The default GITHUB_TOKEN only needs read access to clone main: every
+    # mutation (empty commit POST, ref PATCH) rides the synthorg-repo-bot App
+    # installation token minted by release-runner-setup, never GITHUB_TOKEN.
     permissions:
-      contents: write
+      contents: read
     steps:
       # Pin to main so PARENT_SHA computed via `git rev-parse HEAD`
       # below targets main's tip, not whatever branch the operator

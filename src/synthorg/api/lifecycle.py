@@ -72,6 +72,19 @@ logger = get_logger(__name__)
 #     concurrently with no service work and most services return well under
 #     their cap. Realistic headline budget is 25 (drain) + ~26 s (services).
 #
+# This math covers ONLY ``_safe_shutdown`` (the per-service constants below).
+# ``_run_shutdown`` runs a preamble of background-service stops BEFORE
+# ``_safe_shutdown`` -- including the quota poller and the self-improvement
+# service ``close()`` -- and appends the notification-dispatcher + A2A-client
+# closes AFTER it. Each of those steps is individually bounded by ``_try_stop``
+# (most at ``_SERVICE_STOP_SHUTDOWN_SECONDS`` = 2 s; the draining services at
+# ``_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS``), so each adds at most a couple of
+# seconds and stays subsumed under the 75 s ceiling. To keep the aggregate
+# inside that ceiling the three independent integration draining services
+# (OAuth manager, integration health prober, webhook bridge) drain
+# CONCURRENTLY via ``asyncio.gather`` so their cost is one drain budget, not
+# three.
+#
 # Internal constants by design: per-service shutdown budgets enforce a fixed
 # total worst-case drain of ~67 s, matched in api/server.py by Litestar's 75 s
 # graceful_shutdown to reserve ~8 s of headroom before the orchestrator

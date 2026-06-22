@@ -37,6 +37,19 @@ class TimeoutChecker:
     def __init__(self, *, policy: TimeoutPolicy) -> None:
         self._policy = policy
 
+    def set_policy(self, policy: TimeoutPolicy) -> None:
+        """Hot-swap the active timeout policy.
+
+        A single attribute assignment, so an in-flight ``check`` reads
+        either the old or new policy atomically (both valid). Callers
+        that need ordering against the scheduler loop swap through
+        :meth:`ApprovalTimeoutScheduler.set_timeout_policy`.
+
+        Args:
+            policy: The replacement timeout policy.
+        """
+        self._policy = policy
+
     async def check(
         self,
         item: ApprovalItem,

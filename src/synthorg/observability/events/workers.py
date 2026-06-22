@@ -23,6 +23,7 @@ WORKERS_DUPLICATE_CLAIM_SUPPRESSED: Final[str] = (
 )
 WORKERS_DEDUP_LOOKUP_FAILED: Final[str] = "workers.worker.dedup_lookup_failed"
 WORKERS_DEDUP_MARK_FAILED: Final[str] = "workers.worker.dedup_mark_failed"
+WORKERS_DEDUP_BYPASS_PERMANENT: Final[str] = "workers.worker.dedup_bypass_permanent"
 WORKERS_ACK_EXTEND_FAILED: Final[str] = "workers.worker.ack_extend_failed"
 WORKERS_CLAIM_DEAD_LETTERED: Final[str] = "workers.worker.claim_dead_lettered"
 WORKERS_DEAD_LETTER_PUBLISH_FAILED: Final[str] = (
@@ -160,4 +161,7 @@ WORKERS_EXECUTION_SERVICE_SANDBOX_RELEASED: Final[str] = (
 )
 WORKERS_EXECUTION_SERVICE_SANDBOX_RELEASE_FAILED: Final[str] = (
     "workers.execution_service.sandbox_release_failed"
+)
+WORKERS_EXECUTION_SERVICE_HEALTH_PIPELINE_FAILED: Final[str] = (
+    "workers.execution_service.health_pipeline_failed"
 )

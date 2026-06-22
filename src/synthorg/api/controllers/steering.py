@@ -27,6 +27,7 @@ from synthorg._core.features import require_service
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.path_params import PathId
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.cockpit.state import CockpitStateSlice
@@ -123,7 +124,12 @@ class SteeringController(Controller):
     tags = ("cockpit",)
     guards = [require_read_access]  # noqa: RUF012
 
-    @post(guards=[require_write_access])
+    @post(
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("cockpit.steering_issue", key="user"),
+        ]
+    )
     async def issue(
         self,
         state: State,
@@ -186,7 +192,13 @@ class SteeringController(Controller):
         )
         return ApiResponse(data=list(directives))
 
-    @post("/{directive_id:str}/supersede", guards=[require_write_access])
+    @post(
+        "/{directive_id:str}/supersede",
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("cockpit.steering_supersede", key="user"),
+        ],
+    )
     async def supersede(
         self,
         state: State,

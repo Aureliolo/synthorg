@@ -21,6 +21,7 @@ from synthorg import __version__
 from synthorg._core.features import require_service
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.critical_errors import reraise_critical
@@ -410,7 +411,7 @@ class ReadinessController(Controller):
     path = "/readyz"
     tags = ("health",)
 
-    @get()
+    @get(guards=[per_op_rate_limit_from_policy("health.ready", key="ip")])
     async def readiness(
         self,
         state: State,

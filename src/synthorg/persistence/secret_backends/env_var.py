@@ -76,7 +76,7 @@ class EnvVarSecretBackend:
             logger.debug(
                 SECRET_RETRIEVAL_FAILED,
                 secret_id=secret_id,
-                error=f"env var {env_key} not set",
+                error="env var not set",
             )
             return None
         logger.debug(SECRET_RETRIEVED, secret_id=secret_id)

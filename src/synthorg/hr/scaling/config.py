@@ -4,7 +4,7 @@ Frozen Pydantic models defining per-strategy, trigger, and guard
 configuration for the scaling service.
 """
 
-from typing import Literal, Self
+from typing import ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -12,6 +12,13 @@ from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.enums import ScalingStrategyName
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import HR_SCALING_CONFIG_VALIDATION_FAILED
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import (
+    MirrorField,
+    apply_settings_mirrors,
+    parse_float,
+    parse_int,
+)
 
 logger = get_logger(__name__)
 
@@ -28,6 +35,21 @@ class WorkloadScalingConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="hire_threshold",
+            namespace=SettingNamespace.HR,
+            key="scaling_hire_threshold",
+            parse=parse_float,
+        ),
+        MirrorField(
+            field="prune_threshold",
+            namespace=SettingNamespace.HR,
+            key="scaling_prune_threshold",
+            parse=parse_float,
+        ),
+    )
+
     enabled: bool = Field(default=True, description="Strategy enabled")
     priority: int = Field(default=3, ge=0, description="Priority rank")
     hire_threshold: float = Field(
@@ -42,6 +64,16 @@ class WorkloadScalingConfig(BaseModel):
         le=1.0,
         description="Prune when utilization drops below this",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: object) -> object:
+        """Apply settings mirrors.
+
+        Returns:
+            Result of type ``object``.
+        """
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _validate_threshold_order(self) -> Self:
@@ -190,6 +222,15 @@ class TriggerConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="batched_interval_seconds",
+            namespace=SettingNamespace.HR,
+            key="scaling_trigger_interval_seconds",
+            parse=parse_int,
+        ),
+    )
+
     type: Literal["batched", "composite", "signal_threshold"] = Field(
         default="batched",
         description="Trigger selector (batched preserves current behaviour)",
@@ -239,6 +280,16 @@ class TriggerConfig(BaseModel):
             raise ValueError(msg)
         return self
 
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: object) -> object:
+        """Apply settings mirrors.
+
+        Returns:
+            Result of type ``object``.
+        """
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
+
 
 class GuardConfig(BaseModel):
     """Configuration for scaling guards.
@@ -251,6 +302,27 @@ class GuardConfig(BaseModel):
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="cooldown_seconds",
+            namespace=SettingNamespace.HR,
+            key="scaling_cooldown_seconds",
+            parse=parse_int,
+        ),
+        MirrorField(
+            field="max_hires_per_day",
+            namespace=SettingNamespace.HR,
+            key="scaling_max_hires_per_day",
+            parse=parse_int,
+        ),
+        MirrorField(
+            field="max_prunes_per_day",
+            namespace=SettingNamespace.HR,
+            key="scaling_max_prunes_per_day",
+            parse=parse_int,
+        ),
+    )
 
     cooldown_seconds: int = Field(
         default=3600,
@@ -272,6 +344,16 @@ class GuardConfig(BaseModel):
         ge=1,
         description="Approval item expiry",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: object) -> object:
+        """Apply settings mirrors.
+
+        Returns:
+            Result of type ``object``.
+        """
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
 
 class ScalingConfig(BaseModel):

@@ -67,6 +67,14 @@ PROVIDERS_PULL_MODEL_INFLIGHT_MAX: Final[int] = 2
 # pinning the runtime by firing several imports back-to-back, while the
 # sliding-window rate limit covers burst protection across users.
 BROWNFIELD_IMPORT_INFLIGHT_MAX: Final[int] = 1
+# The Prometheus scrape endpoint serialises a full registry snapshot; a
+# single in-flight slot per subject stops a scraper misconfiguration (or a
+# probe loop) from stacking concurrent snapshot builds.
+METRICS_INFLIGHT_MAX: Final[int] = 1
+# The activity feed fans out a cross-store aggregation per request; a small
+# concurrency ceiling keeps a single operator's dashboard auto-refresh from
+# stacking expensive feed builds while leaving headroom for normal use.
+ACTIVITIES_INFLIGHT_MAX: Final[int] = 4
 
 # Number of hex digits to retain from each SHA-256 sink-destination
 # fingerprint published as the public sink identifier.  16 hex chars

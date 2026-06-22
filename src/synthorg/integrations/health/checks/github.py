@@ -137,6 +137,19 @@ class GitHubHealthCheck:
         """Bind a catalog after construction (see prober registry)."""
         self._catalog = catalog
 
+    def set_default_api_url(self, default_api_url: str) -> None:
+        """Inject the operator-configured GitHub API base URL at startup.
+
+        The check registry is instantiated at import time, before settings
+        resolve, so the public default is baked in. Startup wiring resolves
+        ``integrations.github_api_url`` and injects it here so a GitHub
+        Enterprise connection without its own ``base_url`` falls through to
+        the operator endpoint, and that host joins the per-instance bearer
+        allowlist.
+        """
+        self._default_api_url = default_api_url
+        self._trusted_default_hosts = self._build_default_hosts(default_api_url)
+
     async def check(self, connection: Connection) -> HealthReport:
         """Verify the GitHub token is valid via /user endpoint.
 

@@ -15,11 +15,12 @@ broker blip degrades to "no signal", never to task loss.
 """
 
 import asyncio
-import contextlib
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
+from synthorg.core.workers_errors import WorkerHeartbeatUnrestartableError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workers import (
     WORKERS_HEARTBEAT_OBSERVED,
@@ -91,6 +92,9 @@ class WorkerHeartbeatSubscriber:
         self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- ctx
         self._subscription: Subscription | None = None
         self._sweep_task: asyncio.Task[None] | None = None
+        # Survives a timed-out stop so a later start() cannot stack a
+        # second sweep loop on the orphaned one.
+        self._stop_failed = False
 
     @property
     def is_running(self) -> bool:
@@ -102,8 +106,16 @@ class WorkerHeartbeatSubscriber:
 
         Raises:
             RuntimeError: If already running.
+            WorkerHeartbeatUnrestartableError: If a prior ``stop`` timed
+                out and the subscriber is now unrestartable.
         """
         async with self._lifecycle_lock:
+            if self._stop_failed:
+                logger.warning(
+                    WORKERS_HEARTBEAT_SUBSCRIBER_START_REJECTED,
+                    reason="unrestartable",
+                )
+                raise WorkerHeartbeatUnrestartableError
             if self._running:
                 logger.warning(
                     WORKERS_HEARTBEAT_SUBSCRIBER_START_REJECTED,
@@ -129,6 +141,10 @@ class WorkerHeartbeatSubscriber:
         raising a misleading "already running". This cannot deadlock:
         only ``start()`` / ``stop()`` acquire this lock and neither the
         sweep loop nor the message callback re-enters it.
+
+        Raises:
+            TimeoutError: If the sweep-task drain exceeds the hard
+                deadline; the subscriber is then marked unrestartable.
         """
         async with self._lifecycle_lock:
             if not self._running:
@@ -151,8 +167,36 @@ class WorkerHeartbeatSubscriber:
                     )
             if sweep is not None:
                 sweep.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await sweep
+
+                async def _drain(drained: asyncio.Task[None]) -> None:
+                    try:
+                        await drained
+                    except asyncio.CancelledError:
+                        pass
+                    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                        reraise_critical(exc)
+                        logger.warning(
+                            WORKERS_HEARTBEAT_SUBSCRIBER_STOPPED,
+                            error_type=type(exc).__name__,
+                            error=safe_error_description(exc),
+                            note="shutdown",
+                        )
+
+                drain_task: asyncio.Task[None] = asyncio.create_task(_drain(sweep))
+                try:
+                    await asyncio.wait_for(
+                        asyncio.shield(drain_task),
+                        timeout=DEFAULT_DRAIN_TIMEOUT_SECONDS,
+                    )
+                except TimeoutError:
+                    self._stop_failed = True
+                    drain_task.cancel()
+                    logger.error(
+                        WORKERS_HEARTBEAT_SUBSCRIBER_STOPPED,
+                        error="stop exceeded hard deadline; subscriber unrestartable",
+                        timeout_seconds=DEFAULT_DRAIN_TIMEOUT_SECONDS,
+                    )
+                    raise
             self._running = False
             self._subscription = None
             self._sweep_task = None

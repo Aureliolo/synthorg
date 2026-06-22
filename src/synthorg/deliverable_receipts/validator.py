@@ -15,6 +15,7 @@ available it is reconciled by finding count; otherwise the receipt's
 own snapshot stands (its internal counts are model-enforced).
 """
 
+import asyncio
 import hashlib
 from pathlib import Path
 from typing import Final
@@ -66,7 +67,7 @@ class ReceiptValidator:
         """
         errors: list[str] = []
         errors.extend(await self._check_sources(receipt))
-        errors.extend(self._check_cassette(receipt))
+        errors.extend(await self._check_cassette(receipt))
         errors.extend(await self._check_tests(receipt))
         errors.extend(await self._check_red_team(receipt))
         return ReceiptValidationResult(valid=not errors, errors=tuple(errors))
@@ -91,8 +92,11 @@ class ReceiptValidator:
                 )
         return errors
 
-    def _check_cassette(self, receipt: DeliverableReceipt) -> list[str]:
+    async def _check_cassette(self, receipt: DeliverableReceipt) -> list[str]:
         """Confirm the cassette loads, hashes, and parses (when present).
+
+        Async: the file read is offloaded via ``asyncio.to_thread`` so a
+        large cassette does not block the event loop during validation.
 
         Returns:
             Error strings for an unreadable file, a drifted hash, or an
@@ -102,7 +106,9 @@ class ReceiptValidator:
             return []
         path = Path(receipt.cassette.path)
         try:
-            data = path.read_bytes()
+            # Offload the synchronous file read so a large cassette does not
+            # block the event loop during validation.
+            data = await asyncio.to_thread(path.read_bytes)
         except OSError as exc:
             # The cassette path is an internal filesystem location: log it
             # server-side but return an opaque reason so the REST validation

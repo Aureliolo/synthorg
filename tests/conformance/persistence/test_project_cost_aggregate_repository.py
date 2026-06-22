@@ -1,9 +1,9 @@
 """Conformance tests for ``ProjectCostAggregateRepository``.
 
 Covers atomic increment semantics and lookup parity between SQLite and
-Postgres. PST-1 adds ``project_cost_aggregates`` to the
-``PersistenceBackend`` protocol so conformance tests can drive both
-backends behind the same fixture.
+Postgres. Cost-ceiling enforcement reads aggregates on every budget
+check, so both backends are driven behind the shared ``backend`` fixture
+to catch backend-specific divergence.
 """
 
 from datetime import UTC, datetime

@@ -126,6 +126,7 @@ from synthorg.api.controllers.quality import QualityController
 from synthorg.api.controllers.reports import ReportsController
 from synthorg.api.controllers.requests.lifecycle import RequestController
 from synthorg.api.controllers.reviews import ReviewController
+from synthorg.api.controllers.risk_overrides import RiskOverrideController
 from synthorg.api.controllers.role_versions import RoleVersionController
 from synthorg.api.controllers.scaling import ScalingController
 from synthorg.api.controllers.settings.core import SettingsCoreController
@@ -290,6 +291,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     MetaAnalyticsController,
     LearningController,
     CustomRuleController,
+    RiskOverrideController,
     CockpitController,
     SteeringController,
 )
@@ -426,6 +428,7 @@ __all__ = [
     "ReportsController",
     "RequestController",
     "ReviewController",
+    "RiskOverrideController",
     "RoleVersionController",
     "ScalingController",
     "SettingsCoreController",

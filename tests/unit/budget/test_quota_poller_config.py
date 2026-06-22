@@ -56,7 +56,9 @@ class TestQuotaPollerConfig:
 
     def test_defaults(self) -> None:
         cfg = QuotaPollerConfig()
-        assert cfg.enabled is False
+        # Wired on by default (pre-alpha posture); operators opt out via
+        # the ``budget.quota_poller_enabled`` setting.
+        assert cfg.enabled is True
         assert cfg.poll_interval_seconds == 60.0
         assert cfg.cooldown_seconds == 300.0
         assert isinstance(cfg.alert_thresholds, QuotaAlertThresholds)

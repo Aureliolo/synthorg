@@ -8,12 +8,17 @@ import httpx
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.integrations.connections.models import OAuthToken
-from synthorg.integrations.errors import TokenExchangeFailedError
+from synthorg.integrations.errors import (
+    OAuthConfigurationError,
+    TokenExchangeFailedError,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     OAUTH_TOKEN_EXCHANGE_FAILED,
     OAUTH_TOKEN_EXCHANGED,
 )
+from synthorg.tools.network_validator import NetworkPolicy
+from synthorg.tools.ssrf import build_pinned_transport, resolve_outbound_target
 
 logger = get_logger(__name__)
 
@@ -37,6 +42,10 @@ class ClientCredentialsFlow:
             ``FakeClock`` from ``tests/_shared/fake_clock.py`` so
             ``OAuthToken.expires_at`` is deterministic without real
             time.
+        network_policy: SSRF policy applied to the outbound token-endpoint
+            POST (``token_url`` is operator/provider-supplied, so it is
+            DNS-resolved + pinned before connecting). Defaults to a fresh
+            ``NetworkPolicy``; tests inject a permissive stub.
     """
 
     def __init__(
@@ -44,6 +53,7 @@ class ClientCredentialsFlow:
         *,
         http_timeout_seconds: float = _DEFAULT_HTTP_TIMEOUT_SECONDS,
         clock: Clock | None = None,
+        network_policy: NetworkPolicy | None = None,
     ) -> None:
         # Strict numeric + finite + positive: reject ``bool`` (which
         # is an ``int`` subclass and would silently flow into
@@ -64,6 +74,13 @@ class ClientCredentialsFlow:
             raise ValueError(msg)
         self._http_timeout_seconds = float(http_timeout_seconds)
         self._clock: Clock = clock if clock is not None else SystemClock()
+        # SSRF policy for the outbound token-endpoint POST. ``token_url`` is
+        # operator/provider-supplied, so the exchange is DNS-resolved + pinned
+        # before connecting (DNS-rebinding defence) with no redirects, at
+        # parity with the authorization-code and device flows.
+        self._network_policy: NetworkPolicy = (
+            network_policy if network_policy is not None else NetworkPolicy()
+        )
 
     @property
     def grant_type(self) -> str:
@@ -96,6 +113,8 @@ class ClientCredentialsFlow:
 
         Raises:
             TokenExchangeFailedError: If the exchange fails.
+            OAuthConfigurationError: If ``token_url`` is rejected by the
+                SSRF policy (a deterministic, non-retryable misconfig).
         """
         payload: dict[str, str] = {
             "grant_type": "client_credentials",
@@ -106,7 +125,19 @@ class ClientCredentialsFlow:
             payload["scope"] = " ".join(scopes)
 
         try:
-            async with httpx.AsyncClient(timeout=self._http_timeout_seconds) as client:
+            # SSRF-validate + DNS-pin ``token_url`` before connecting, with
+            # redirects disabled so a 3xx cannot bounce the credential-bearing
+            # POST to an internal host.
+            validation = await resolve_outbound_target(
+                token_url,
+                field="token_url",
+                policy=self._network_policy,
+            )
+            async with httpx.AsyncClient(
+                timeout=self._http_timeout_seconds,
+                follow_redirects=False,
+                transport=build_pinned_transport(validation),
+            ) as client:
                 resp = await client.post(token_url, data=payload)
                 resp.raise_for_status()
                 data = resp.json()
@@ -122,6 +153,19 @@ class ClientCredentialsFlow:
             )
             msg = f"Client credentials exchange failed: {type(exc).__name__}"
             raise TokenExchangeFailedError(msg) from exc
+        except ValueError as exc:
+            # An SSRF rejection of ``token_url`` raised by
+            # ``resolve_outbound_target`` before any network I/O:
+            # deterministic, so non-retryable. (``json.JSONDecodeError`` is a
+            # ``ValueError`` subclass, so this clause must follow the HTTP
+            # clause above.) Mirrors the authorization-code and device flows.
+            logger.warning(
+                OAUTH_TOKEN_EXCHANGE_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = f"Client credentials exchange rejected: {type(exc).__name__}"
+            raise OAuthConfigurationError(msg) from exc
 
         if not isinstance(data, dict):
             logger.warning(

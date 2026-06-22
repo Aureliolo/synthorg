@@ -84,6 +84,10 @@ class TestRiskTierOverrideModel:
                 override=ApprovalRiskLevel.HIGH,
             )
 
+    def test_expiry_beyond_ceiling_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="within"):
+            _make_override(expires_at=_NOW + timedelta(days=400))
+
     def test_expired_override_not_active(self) -> None:
         ovr = RiskTierOverride(
             id="ovr-exp",
@@ -237,3 +241,25 @@ class TestSecOpsRiskClassifier:
         )
         result = classifier.classify("code:write")
         assert result == ApprovalRiskLevel.CRITICAL
+
+    def test_add_duplicate_override_id_rejected(self) -> None:
+        base = _baseline()
+        classifier = SecOpsRiskClassifier(base=base)
+        classifier.add_override(_make_override(override_id="ovr-dup"))
+        with pytest.raises(ValueError, match="already registered"):
+            classifier.add_override(_make_override(override_id="ovr-dup"))
+
+
+def test_risk_tier_literal_matches_approval_risk_level() -> None:
+    """The MCP ``RiskTierLiteral`` must stay in lockstep with the enum.
+
+    The MCP layer deliberately keeps its own string literal rather than
+    importing :class:`ApprovalRiskLevel`; this guards the two from drifting.
+    """
+    from typing import get_args
+
+    from synthorg.meta.mcp.domains._security_args import RiskTierLiteral
+
+    assert set(get_args(RiskTierLiteral)) == {
+        level.value for level in ApprovalRiskLevel
+    }

@@ -14,6 +14,8 @@ explicit, deployment-specific capability allowlist, so it stays an operator
 opt-in.
 """
 
+import asyncio
+
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import SETUP_POSTURE_SEEDED
 from synthorg.settings.service import SettingsService
@@ -56,7 +58,11 @@ async def seed_posture_settings(
         load_self_improvement_config,
     )
 
-    posture = resolve_template_posture(
+    # ``resolve_template_posture`` walks the template inheritance chain and
+    # reads pack/parent YAML files from disk; offload the synchronous file
+    # I/O so it does not block the event loop during setup.
+    posture = await asyncio.to_thread(
+        resolve_template_posture,
         template,
         load_pack=lambda name: load_pack(name).template,
         load_parent=lambda name: load_template(name).template,

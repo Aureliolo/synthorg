@@ -1,8 +1,16 @@
 """Configuration for the proactive quota polling service."""
 
-from typing import Self
+from typing import ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import (
+    MirrorField,
+    apply_settings_mirrors,
+    parse_bool,
+    parse_float,
+)
 
 
 class QuotaAlertThresholds(BaseModel):
@@ -19,6 +27,21 @@ class QuotaAlertThresholds(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="warn_pct",
+            namespace=SettingNamespace.BUDGET,
+            key="quota_warn_pct",
+            parse=parse_float,
+        ),
+        MirrorField(
+            field="critical_pct",
+            namespace=SettingNamespace.BUDGET,
+            key="quota_critical_pct",
+            parse=parse_float,
+        ),
+    )
+
     warn_pct: float = Field(
         default=80.0,
         ge=0.0,
@@ -31,6 +54,16 @@ class QuotaAlertThresholds(BaseModel):
         le=100.0,
         description="Usage percentage that triggers a CRITICAL alert.",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: object) -> object:
+        """Apply settings mirrors.
+
+        Returns:
+            Result of type ``object``.
+        """
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _validate_ordering(self) -> Self:
@@ -55,8 +88,9 @@ class QuotaPollerConfig(BaseModel):
     """Configuration for the proactive quota polling service.
 
     Attributes:
-        enabled: Whether the poller is active.  Defaults to ``False``
-            so it must be explicitly opted in.
+        enabled: Whether the poller is active.  Defaults to ``True``
+            (pre-alpha posture: the proactive poller is wired on by
+            default); operators opt out via ``budget.quota_poller_enabled``.
         poll_interval_seconds: How often to poll quota snapshots.
             Must be in (0, 3600].
         alert_thresholds: Usage percentage thresholds for alerts.
@@ -66,8 +100,29 @@ class QuotaPollerConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="enabled",
+            namespace=SettingNamespace.BUDGET,
+            key="quota_poller_enabled",
+            parse=parse_bool,
+        ),
+        MirrorField(
+            field="poll_interval_seconds",
+            namespace=SettingNamespace.BUDGET,
+            key="quota_poll_interval_seconds",
+            parse=parse_float,
+        ),
+        MirrorField(
+            field="cooldown_seconds",
+            namespace=SettingNamespace.BUDGET,
+            key="quota_cooldown_seconds",
+            parse=parse_float,
+        ),
+    )
+
     enabled: bool = Field(
-        default=False,
+        default=True,
         description="Whether quota polling is active.",
     )
     poll_interval_seconds: float = Field(
@@ -88,3 +143,13 @@ class QuotaPollerConfig(BaseModel):
             "provider/window/level tuple."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: object) -> object:
+        """Apply settings mirrors.
+
+        Returns:
+            Result of type ``object``.
+        """
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)

@@ -197,16 +197,17 @@ class TestHandlerParity:
         assert not orphans
 
     def test_total_tool_count_matches_plan(self) -> None:
-        """Registry has exactly the documented 242-tool surface.
+        """Registry has exactly the documented 245-tool surface.
 
         Pinning to the exact count catches accidental tool removal
         *and* double-registration.  Bump this number only when the
         MCP tool surface is intentionally grown or shrunk (current
         composition: 219 baseline + 8 cockpit + 5 charter +
-        1 query_feature_map + 1 demo + 8 project-brain).
+        1 query_feature_map + 1 demo + 8 project-brain +
+        3 security risk-override).
         """
         registry = build_full_registry()
-        assert registry.tool_count == 242
+        assert registry.tool_count == 245
 
 
 class TestNoPlaceholderInProduction:
@@ -217,6 +218,10 @@ class TestNoPlaceholderInProduction:
     contract forbids.
     """
 
+    # ``build_handler_map`` is evaluated at collection time, so an import
+    # error in any handler module fails collection of this whole file
+    # (not just one case). That is intentional: it doubles as a
+    # "every handler module must import cleanly" gate.
     @pytest.mark.parametrize(
         "tool_name",
         sorted(build_handler_map().keys()),

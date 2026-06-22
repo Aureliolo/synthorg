@@ -6,7 +6,7 @@ import httpx
 import pytest
 import respx
 
-from synthorg.a2a.client import A2AClient, A2AClientError
+from synthorg.a2a.client import A2AClient, A2AClientError, A2ATransientError
 from synthorg.a2a.models import (
     A2AMessage,
     A2AMessageRole,
@@ -172,6 +172,29 @@ class TestA2AClient:
         client = _make_client(catalog)
         with pytest.raises(A2AClientError, match="returned 500"):
             await client.send_message("peer-a", _make_message())
+
+    @pytest.mark.unit
+    @respx.mock
+    async def test_rate_limit_raises_transient_with_retry_after(self) -> None:
+        """HTTP 429 raises a retryable A2ATransientError carrying Retry-After."""
+        respx.post("https://peer.example.com/api/v1/a2a").mock(
+            return_value=httpx.Response(
+                429,
+                headers={"Retry-After": "7"},
+                text="Too Many Requests",
+            ),
+        )
+        client = _make_client(_mock_catalog())
+        with pytest.raises(A2ATransientError) as exc_info:
+            await client.send_message("peer-a", _make_message())
+        err = exc_info.value
+        assert err.is_retryable is True
+        assert err.retry_after_seconds == 7.0
+
+    @pytest.mark.unit
+    def test_base_client_error_not_retryable(self) -> None:
+        """The base A2AClientError is non-retryable by default."""
+        assert A2AClientError("boom", peer_name="p1").is_retryable is False
 
     @pytest.mark.unit
     @respx.mock

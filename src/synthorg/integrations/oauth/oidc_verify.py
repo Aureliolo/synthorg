@@ -118,7 +118,7 @@ async def verify_id_token(
             audience=client_id,
             issuer=issuer,
             leeway=_LEEWAY_SECONDS,
-            options={"require": ["exp", "iat", "nonce"]},
+            options={"require": ["exp", "iat", "nonce", "sub"]},
         )
     except (jwt.exceptions.PyJWTError, jwt.exceptions.PyJWKClientError, OSError) as exc:
         # Dedicated forensic event: the caller only logs the generic

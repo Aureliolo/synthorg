@@ -16,6 +16,7 @@ from synthorg.api.pagination import (
     encode_keyset_meta,
 )
 from synthorg.api.path_params import PathName
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.providers.state import ProvidersStateSlice
 
@@ -28,7 +29,10 @@ class ProviderAuditController(Controller):
 
     @get(
         "/{name:str}/audit",
-        guards=[require_read_access],
+        guards=[
+            require_read_access,
+            per_op_rate_limit_from_policy("providers.audit", key="user"),
+        ],
     )
     async def list_audit(
         self,

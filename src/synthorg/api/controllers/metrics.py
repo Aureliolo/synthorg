@@ -6,6 +6,10 @@ from litestar import Controller, Response, get
 from litestar.datastructures import State
 from prometheus_client import generate_latest
 
+from synthorg.api.rate_limits import (
+    per_op_concurrency_from_policy,
+    per_op_rate_limit_from_policy,
+)
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -36,7 +40,10 @@ class MetricsController(Controller):
     path = "/metrics"
     tags = ("metrics",)
 
-    @get()
+    @get(
+        guards=[per_op_rate_limit_from_policy("observability.metrics", key="ip")],
+        opt=per_op_concurrency_from_policy("observability.metrics", key="ip"),
+    )
     async def metrics(self, state: State) -> Response[bytes]:
         """Refresh and return Prometheus metrics in exposition format.
 

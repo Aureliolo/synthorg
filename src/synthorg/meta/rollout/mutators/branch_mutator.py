@@ -30,6 +30,17 @@ class BranchRevertMutator:
         self._github = github_client
         self._branch_namespace = normalize_base_url(branch_prefix)
 
+    async def aclose(self) -> None:
+        """Close the GitHub client's lazily-created HTTP connection pool.
+
+        Delegated to by ``RollbackExecutor.aclose`` so the branch-revert
+        client (which opens an ``httpx.AsyncClient`` on first use) does not
+        leak its pool past the self-improvement service lifecycle.
+        """
+        close = getattr(self._github, "aclose", None)
+        if close is not None:
+            await close()
+
     async def delete_branch(self, *, name: str) -> None:
         """Delete the generated remote branch ``name`` (closing its draft PR).
 

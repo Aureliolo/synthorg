@@ -18,7 +18,7 @@ from synthorg.hr.strategy_mode import StrategicOutputMode
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.mirrors import MirrorField, apply_settings_mirrors
+from synthorg.settings.mirrors import MirrorField, apply_settings_mirrors, parse_float
 
 logger = get_logger(__name__)
 
@@ -231,6 +231,15 @@ class GracefulShutdownConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="tool_timeout_seconds",
+            namespace=SettingNamespace.ENGINE,
+            key="shutdown_tool_timeout_seconds",
+            parse=parse_float,
+        ),
+    )
+
     strategy: Literal[
         "cooperative_timeout", "immediate", "finish_tool", "checkpoint"
     ] = Field(
@@ -255,6 +264,11 @@ class GracefulShutdownConfig(BaseModel):
         le=300,
         description="Per-tool timeout for finish_tool strategy",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: object) -> object:
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
 
 class TaskAssignmentConfig(BaseModel):

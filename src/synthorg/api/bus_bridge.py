@@ -160,6 +160,7 @@ class MessageBusBridge:
                 # serialise frame-locals into the log.
                 logger.warning(
                     API_BUS_BRIDGE_POLL_ERROR,
+                    error_type=type(exc).__name__,
                     error=(
                         "failed to resolve bus_bridge_poll_timeout_seconds;"
                         " using fallback (logging suppressed until recovery)"
@@ -199,6 +200,7 @@ class MessageBusBridge:
                 # No exc_info on settings-resolver fallback.
                 logger.warning(
                     API_BUS_BRIDGE_DRAIN_RESOLVE_ERROR,
+                    error_type=type(exc).__name__,
                     error=(
                         "failed to resolve bus_bridge_drain_timeout_seconds;"
                         " using fallback (logging suppressed until recovery)"
@@ -237,6 +239,7 @@ class MessageBusBridge:
                 # No exc_info on settings-resolver fallback.
                 logger.warning(
                     API_BUS_BRIDGE_POLL_ERROR,
+                    error_type=type(exc).__name__,
                     error=(
                         "failed to resolve bus_bridge_max_consecutive_errors;"
                         " using fallback (logging suppressed until recovery)"
@@ -585,6 +588,7 @@ class MessageBusBridge:
             if not self._enabled_fallback_logged:
                 logger.warning(
                     API_BUS_BRIDGE_POLL_ERROR,
+                    error_type=type(exc).__name__,
                     error=(
                         "failed to resolve bus_bridge_enabled;"
                         " using fallback (logging suppressed until recovery)"

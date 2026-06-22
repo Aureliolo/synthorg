@@ -4,7 +4,7 @@ On-demand reference for implementing tool handlers in `src/synthorg/meta/mcp/han
 
 ## Surface
 
-SynthOrg exposes <!--RS:mcp_tools-->241<!--/RS--> tools across the <!--RS:mcp_domains-->21<!--/RS--> domain modules under `src/synthorg/meta/mcp/domains/` (tasks, agents, meta, budget, analytics, coordination, quality, signals, approvals, workflows, organisation, communication, integrations, infrastructure, memory, brain, charter, cockpit, docs, knowledge, research). Tools are classified by capability action (`read_tool` / `write_tool` / `admin_tool`) via the builders in `src/synthorg/meta/mcp/tool_builder.py`; only the `admin_tool` subset is destructive and subject to the guardrail triple.
+SynthOrg exposes <!--RS:mcp_tools-->244<!--/RS--> tools across the <!--RS:mcp_domains-->22<!--/RS--> domain modules under `src/synthorg/meta/mcp/domains/` (tasks, agents, meta, budget, analytics, coordination, quality, signals, approvals, workflows, organisation, communication, integrations, infrastructure, memory, brain, charter, cockpit, docs, knowledge, research, security). Tools are classified by capability action (`read_tool` / `write_tool` / `admin_tool`) via the builders in `src/synthorg/meta/mcp/tool_builder.py`; only the `admin_tool` subset is destructive and subject to the guardrail triple.
 
 ## ToolHandler protocol
 
@@ -49,7 +49,7 @@ Return a JSON string built by helpers in `common.py`:
 - `capability_gap(tool, reason)` when the handler is wired but the underlying primitive does not expose the required method. Emits `MCP_HANDLER_CAPABILITY_GAP` at INFO.
 - `not_supported(tool, reason)` for tools registered without a concrete handler. Emits `MCP_HANDLER_NOT_IMPLEMENTED` at WARNING.
 
-Never emit a bare `{"status": "not_implemented"}` payload; `make_placeholder_handler` delegates to `not_supported()` so every unwired tool ships the single agreed envelope. The `service_fallback()` helper is retained in `common.py` but has zero call sites after META-MCP-2; `tests/integration/mcp/test_tool_surface.py` asserts zero `MCP_HANDLER_SERVICE_FALLBACK` emissions across the full <!--RS:mcp_tools-->241<!--/RS-->-tool surface.
+Never emit a bare `{"status": "not_implemented"}` payload; `make_placeholder_handler` delegates to `not_supported()` so every unwired tool ships the single agreed envelope. The `service_fallback()` helper is retained in `common.py` but has zero call sites after META-MCP-2; `tests/integration/mcp/test_tool_surface.py` asserts zero `MCP_HANDLER_SERVICE_FALLBACK` emissions across the full <!--RS:mcp_tools-->244<!--/RS-->-tool surface.
 
 Use the helpers in `common_args.py` for tools without `args_model`:
 

@@ -28,6 +28,7 @@ from synthorg.settings.state import config_resolver_of
 _COCKPIT_NS: str = SettingNamespace.COCKPIT.value
 _FR_ENABLED_KEY: str = "flight_recorder_enabled"
 _FR_STRATEGY_KEY: str = "flight_recorder_sink_strategy"
+_FR_SUMMARY_MAX_CHARS_KEY: str = "flight_recorder_summary_max_chars"
 
 
 def boot_steering_inbox(app_state: AppState) -> SteeringInbox | None:
@@ -146,12 +147,13 @@ async def build_boot_flight_recorder_sink(app_state: AppState) -> FlightRecorder
     """
     backend = app_state.slice(PersistenceStateSlice).backend
     repository = backend.flight_recorder_frames if backend is not None else None
-    enabled = await config_resolver_of(app_state).get_bool(_COCKPIT_NS, _FR_ENABLED_KEY)
-    strategy = await config_resolver_of(app_state).get_str(
-        _COCKPIT_NS, _FR_STRATEGY_KEY
-    )
+    resolver = config_resolver_of(app_state)
+    enabled = await resolver.get_bool(_COCKPIT_NS, _FR_ENABLED_KEY)
+    strategy = await resolver.get_str(_COCKPIT_NS, _FR_STRATEGY_KEY)
+    summary_max_chars = await resolver.get_int(_COCKPIT_NS, _FR_SUMMARY_MAX_CHARS_KEY)
     return build_flight_recorder_sink(
         repository,
         enabled=enabled,
         strategy=strategy,
+        summary_max_chars=summary_max_chars,
     )

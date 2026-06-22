@@ -664,6 +664,11 @@ async def _authenticate_ws(
         user = await _validate_ticket(socket)
         if user is None:
             return None
+        # Role-gate the query-param path BEFORE the upgrade is accepted:
+        # the ticket is validated pre-accept, so an insufficient-role client
+        # is closed without ever completing the WebSocket handshake.
+        if not await _check_ws_role(socket, user):
+            return None
         return user, False
 
     # First-message path: must accept before reading the auth frame, so cap
@@ -687,6 +692,12 @@ async def _authenticate_ws(
     finally:
         await _release_preauth_slot(client_ip)
     if user is None:
+        return None
+    # The first-message path must accept before it can read the auth frame,
+    # so the role gate runs immediately after authentication -- the earliest
+    # point possible -- closing an insufficient-role socket before any
+    # channel subscription or event flow.
+    if not await _check_ws_role(socket, user):
         return None
     return user, True
 
@@ -718,17 +729,17 @@ async def _setup_connection(
 ) -> tuple[ChannelsPlugin, Subscriber] | None:
     """Resolve plugin, accept the connection, and subscribe to channels.
 
-    Returns ``(channels_plugin, subscriber)`` on success, or ``None``
-    (socket already closed) on failure.
-
-    Note: the first-message auth path calls ``accept()`` before role
-    checking.  A valid-ticket, insufficient-role client receives a WS
-    upgrade followed immediately by close code 4003.  This is inherent
-    to reading over an established WS connection.
+    Note: the query-param (ticket) path role-checks before ``accept()``,
+    so an insufficient-role client is rejected without an upgrade. The
+    first-message path must accept to read the auth frame, so there an
+    insufficient-role client receives the upgrade followed immediately by
+    close code 4003 -- inherent to reading over an established WS
+    connection. Either way, a socket bearing an insufficient role never
+    reaches the subscription step.
 
     Returns:
-        The ``tuple[ChannelsPlugin, Subscriber]`` value when present,
-        ``None`` otherwise.
+        ``(channels_plugin, subscriber)`` on success, or ``None`` when the
+        socket was already closed.
     """
     channels_plugin = _resolve_channels_plugin(socket)
     if channels_plugin is None:
@@ -951,9 +962,10 @@ async def ws_handler(
         return
     user, already_accepted = auth_result
 
-    if not await _check_ws_role(socket, user):
-        return
-
+    # Role-gating is performed inside ``_authenticate_ws`` for both auth
+    # paths (before ``accept()`` on the query-param path, immediately after
+    # authentication on the first-message path), so no socket reaches here
+    # without a permitted role.
     setup = await _setup_connection(socket, user, already_accepted=already_accepted)
     if setup is None:
         return

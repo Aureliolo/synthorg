@@ -153,6 +153,7 @@ def _build_budget_enforcer(
     from synthorg.notifications.state import (  # noqa: PLC0415
         NotificationsStateSlice,
     )
+    from synthorg.security.risk_scorer import DefaultRiskScorer  # noqa: PLC0415
 
     if cost_tracker is None:
         return None
@@ -162,6 +163,7 @@ def _build_budget_enforcer(
         cost_tracker=cost_tracker,
         quota_tracker=budget_slice.quota_tracker,
         risk_tracker=budget_slice.risk_tracker,
+        risk_scorer=DefaultRiskScorer(),
         notification_dispatcher=app_state.slice(NotificationsStateSlice).dispatcher,
     )
 

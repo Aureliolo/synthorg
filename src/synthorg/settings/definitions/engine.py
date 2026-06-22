@@ -596,3 +596,21 @@ _r.register(
         max_value=1_000_000,
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="health_monitoring_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Whether the two-layer agent-health monitoring pipeline runs"
+            " after each engine execution. When active the judge emits"
+            " escalation tickets, the triage filter dismisses or escalates"
+            " them, and escalated tickets are dispatched as health"
+            " notifications. Read per run so it can be toggled live."
+        ),
+        group="Health",
+        level=SettingLevel.ADVANCED,
+    )
+)

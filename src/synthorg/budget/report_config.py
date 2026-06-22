@@ -5,9 +5,12 @@ for the automated reporting system.
 """
 
 from enum import StrEnum
-from typing import Self
+from typing import ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import MirrorField, apply_settings_mirrors, parse_int
 
 
 class ReportPeriod(StrEnum):
@@ -98,7 +101,26 @@ class AutomatedReportingConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="retention_days",
+            namespace=SettingNamespace.BUDGET,
+            key="report_retention_days",
+            parse=parse_int,
+        ),
+    )
+
     schedule: ReportScheduleConfig = Field(
         default_factory=ReportScheduleConfig,
     )
     retention_days: int = Field(default=90, ge=1, le=365, strict=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: object) -> object:
+        """Apply settings mirrors.
+
+        Returns:
+            Result of type ``object``.
+        """
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)

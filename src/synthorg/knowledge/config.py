@@ -46,3 +46,13 @@ class KnowledgeConfig(BaseModel):
         default="tree_sitter",
         description="Code chunking strategy discriminator",
     )
+    repo_root: str = Field(
+        default="",
+        description=(
+            "Operator-configured filesystem root that bounds REPO and PDF"
+            " ingestion. A source URI must resolve inside this root or the"
+            " ingest is rejected (path-traversal defence). Empty (the"
+            " default) is fail-closed: filesystem ingestion is refused"
+            " until an operator sets an allowed root."
+        ),
+    )

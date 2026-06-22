@@ -152,6 +152,7 @@
         "cost_tracker",
         "budget_enforcer",
         "quota_tracker",
+        "quota_poller",
         "risk_tracker",
         "call_analytics_service",
         "cost_forecaster",
@@ -804,7 +805,8 @@
       "state_slice_fields": [
         "backend",
         "fine_tune_orchestrator",
-        "service"
+        "service",
+        "org_memory_backend"
       ]
     },
     {
@@ -1137,6 +1139,7 @@
       "controllers": [
         "AuditController",
         "AutonomyController",
+        "RiskOverrideController",
         "SsrfViolationController"
       ],
       "depends_on": [],
@@ -1156,7 +1159,11 @@
         "DeliverableReviewInputBuilder",
         "build_policy_engine"
       ],
-      "mcp_tool_names": [],
+      "mcp_tool_names": [
+        "synthorg_security_risk_override_create",
+        "synthorg_security_risk_override_revoke",
+        "synthorg_security_risk_override_list"
+      ],
       "name": "security",
       "protocol_exports": [
         "OutputScanResponsePolicy",
@@ -1170,7 +1177,8 @@
         "trust_service",
         "autonomy_change_strategy",
         "red_team_reports",
-        "policy_engine"
+        "policy_engine",
+        "risk_override_service"
       ]
     },
     {
@@ -1292,6 +1300,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-22T14:28:40.865389Z",
+  "generated_at": "2026-06-22T15:32:56.701134Z",
   "schema_version": 1
 }

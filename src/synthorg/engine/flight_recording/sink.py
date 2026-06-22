@@ -53,6 +53,11 @@ _TERMINATION_TO_STATUS: Final[dict[TerminationReason, TaskStatus]] = {
 class FlightRecorderSink(Protocol):
     """Receives flight-recorder frames produced from an agent run."""
 
+    #: Cap on stored prompt/response summaries the engine applies when it
+    #: builds frames for this sink (resolved from
+    #: ``cockpit.flight_recorder_summary_max_chars`` at boot).
+    summary_max_chars: int
+
     async def record_frames(self, frames: tuple[FlightRecorderFrame, ...]) -> None:
         """Persist a run's frames. Best-effort; never raises into the engine."""
         ...
@@ -61,8 +66,14 @@ class FlightRecorderSink(Protocol):
 class PersistenceFlightRecorderSink:
     """Default sink: append frames to the persistence backend."""
 
-    def __init__(self, repository: FlightRecorderFrameRepository) -> None:
+    def __init__(
+        self,
+        repository: FlightRecorderFrameRepository,
+        *,
+        summary_max_chars: int = DEFAULT_SUMMARY_MAX_CHARS,
+    ) -> None:
         self._repository = repository
+        self.summary_max_chars = summary_max_chars
 
     async def record_frames(self, frames: tuple[FlightRecorderFrame, ...]) -> None:
         """Persist the run's frames as one batch; a failure logs, not raises.
@@ -103,6 +114,13 @@ class PersistenceFlightRecorderSink:
 class NoOpFlightRecorderSink:
     """Backstop sink that discards frames (recording disabled)."""
 
+    def __init__(
+        self,
+        *,
+        summary_max_chars: int = DEFAULT_SUMMARY_MAX_CHARS,
+    ) -> None:
+        self.summary_max_chars = summary_max_chars
+
     async def record_frames(self, frames: tuple[FlightRecorderFrame, ...]) -> None:
         """Discard the frames."""
         del frames
@@ -113,6 +131,7 @@ def build_flight_recorder_sink(
     *,
     enabled: bool = True,
     strategy: str = "persistence",
+    summary_max_chars: int = DEFAULT_SUMMARY_MAX_CHARS,
 ) -> FlightRecorderSink:
     """Select the configured recorder sink.
 
@@ -122,8 +141,11 @@ def build_flight_recorder_sink(
         otherwise the persistence-backed sink.
     """
     if not enabled or strategy == "noop" or repository is None:
-        return NoOpFlightRecorderSink()
-    return PersistenceFlightRecorderSink(repository)
+        return NoOpFlightRecorderSink(summary_max_chars=summary_max_chars)
+    return PersistenceFlightRecorderSink(
+        repository,
+        summary_max_chars=summary_max_chars,
+    )
 
 
 def _truncate(text: str | None, max_chars: int) -> str | None:

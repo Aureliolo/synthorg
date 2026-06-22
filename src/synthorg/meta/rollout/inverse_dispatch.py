@@ -333,6 +333,17 @@ class RevertBranchHandler:
     def __init__(self, *, mutator: BranchMutator) -> None:
         self._mutator = mutator
 
+    async def aclose(self) -> None:
+        """Close the mutator's GitHub HTTP client if it exposes ``aclose``.
+
+        Released at shutdown by any close orchestrator that discovers this
+        method through the duck-typed ``aclose`` protocol, so the
+        branch-revert client's connection pool does not leak.
+        """
+        close = getattr(self._mutator, "aclose", None)
+        if close is not None:
+            await close()
+
     async def revert(self, operation: RollbackOperation) -> int:
         """Delete the remote branch the apply created at ``target``.
 

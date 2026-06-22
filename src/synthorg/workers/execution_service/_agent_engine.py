@@ -1,6 +1,7 @@
 # module-kind: service
 """Real agent-runtime worker execution service."""
 
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, override
 
@@ -27,6 +28,7 @@ from synthorg.observability.events.workers import (
     WORKERS_EXECUTION_SERVICE_AUTONOMY_DEGRADED,
     WORKERS_EXECUTION_SERVICE_COMPLETED,
     WORKERS_EXECUTION_SERVICE_FAILED,
+    WORKERS_EXECUTION_SERVICE_HEALTH_PIPELINE_FAILED,
     WORKERS_EXECUTION_SERVICE_NO_OP,
     WORKERS_EXECUTION_SERVICE_SANDBOX_RELEASE_FAILED,
     WORKERS_EXECUTION_SERVICE_SANDBOX_RELEASED,
@@ -49,6 +51,8 @@ from synthorg.workers.execution_resume import ResumeDispatchMixin
 if TYPE_CHECKING:
     from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine.agent_engine import AgentEngine
+    from synthorg.engine.health import HealthMonitoringPipeline
+    from synthorg.engine.run_result import AgentRunResult
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.engine.workspace.environment.service import EnvironmentService
     from synthorg.engine.workspace.project_workspace_service import (
@@ -79,6 +83,8 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
         "_engine",
         "_environment_runner_backend",
         "_environment_service",
+        "_health_enabled",
+        "_health_pipeline",
         "_lifecycle_strategy_kind",
         "_project_workspace_service",
         "_resume_tasks",
@@ -98,11 +104,19 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
         project_workspace_service: ProjectWorkspaceService | None = None,
         environment_service: EnvironmentService | None = None,
         environment_runner_backend: SandboxBackend | None = None,
+        health_pipeline: HealthMonitoringPipeline | None = None,
+        health_enabled: Callable[[], Awaitable[bool]] | None = None,
     ) -> None:
         self._engine = engine
         self._task_engine = task_engine
         self._agent_registry = agent_registry
         self._autonomy_resolver = autonomy_resolver
+        # Two-layer agent-health monitoring runs after each engine run when
+        # wired and the ``engine.health_monitoring_enabled`` flag (re-read per
+        # run via ``health_enabled``) is set. Best-effort: a missing pipeline
+        # or disabled flag simply skips it.
+        self._health_pipeline = health_pipeline
+        self._health_enabled = health_enabled
         # Parked-context resumes run off the approve/reject request
         # path so the HTTP response is not blocked by a full agent
         # re-run. Tracked so a crashed resume surfaces in logs and is
@@ -327,6 +341,8 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
             total_turns=run_result.total_turns,
         )
 
+        await self._run_health_pipeline(run_result, identity, task_id)
+
         # The engine syncs transitions to the TaskEngine itself; re-read
         # the authoritative post-run state for the controller envelope.
         post = await self._task_engine.get_task(task_id)
@@ -345,6 +361,41 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
             to_status=post.status.value,
         )
         return post
+
+    async def _run_health_pipeline(
+        self,
+        run_result: AgentRunResult,
+        identity: AgentIdentity,
+        task_id: str,
+    ) -> None:
+        """Run the two-layer agent-health pipeline after a completed run.
+
+        Best-effort: skipped when no pipeline is wired or the
+        ``engine.health_monitoring_enabled`` flag is off. Any failure --
+        the ``_health_enabled`` flag read, or the pipeline itself -- is
+        logged and swallowed so a failed judge / triage / dispatch never
+        disrupts the task-completion path this method runs after.
+        """
+        if self._health_pipeline is None:
+            return
+        try:
+            if self._health_enabled is not None and not await self._health_enabled():
+                return
+            await self._health_pipeline.process(
+                termination_reason=run_result.termination_reason,
+                agent_id=str(identity.id),
+                task_id=task_id,
+                execution_duration=run_result.duration_seconds,
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                WORKERS_EXECUTION_SERVICE_HEALTH_PIPELINE_FAILED,
+                task_id=task_id,
+                agent_id=str(identity.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def _resolve_identity(
         self,

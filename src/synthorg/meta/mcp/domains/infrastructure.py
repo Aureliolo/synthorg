@@ -166,9 +166,14 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
                 "description": "What initiated the backup",
                 "enum": ["scheduled", "manual", "shutdown", "startup", "pre_migration"],
             },
+            "idempotency_key": {
+                "type": "string",
+                "description": "Identical key returns the cached create result.",
+                "maxLength": 255,
+            },
             **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("trigger", *ADMIN_GUARDRAIL_REQUIRED),
+        required=("trigger", "idempotency_key", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=BackupCreateArgs,
     ),
     read_tool(
@@ -208,6 +213,7 @@ INFRASTRUCTURE_TOOLS: tuple[MCPToolDef, ...] = (
             "idempotency_key": {
                 "type": "string",
                 "description": "Identical key returns the cached restore result.",
+                "maxLength": 255,
             },
             **ADMIN_GUARDRAIL_PROPERTIES,
         },

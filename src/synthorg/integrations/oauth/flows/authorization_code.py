@@ -4,6 +4,7 @@ import json
 import math
 import secrets as stdlib_secrets
 from datetime import timedelta
+from typing import Final
 from urllib.parse import urlencode
 
 import httpx
@@ -11,12 +12,18 @@ import httpx
 from synthorg.core.auth.token_size import get_auth_token_bytes
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.resilience.retry_after import (
+    coerce_finite_nonneg_seconds,
+    parse_retry_after_seconds,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import (
     OAuthState,
     OAuthToken,
 )
 from synthorg.integrations.errors import (
+    OAuthConfigurationError,
+    OAuthRateLimitedError,
     TokenExchangeFailedError,
     TokenRefreshFailedError,
 )
@@ -31,6 +38,7 @@ from synthorg.observability.events.integrations import (
     OAUTH_FLOW_STARTED,
     OAUTH_TOKEN_EXCHANGE_FAILED,
     OAUTH_TOKEN_EXCHANGED,
+    OAUTH_TOKEN_RATE_LIMITED,
     OAUTH_TOKEN_REFRESH_FAILED,
     OAUTH_TOKEN_REFRESHED,
 )
@@ -38,6 +46,8 @@ from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.ssrf import build_pinned_transport, resolve_outbound_target
 
 logger = get_logger(__name__)
+
+_HTTP_TOO_MANY_REQUESTS: Final[int] = 429
 
 _DEFAULT_HTTP_TIMEOUT_SECONDS: float = 30.0
 """Fallback OAuth HTTP timeout used when no operator override is supplied."""
@@ -112,6 +122,7 @@ class AuthorizationCodeFlow:
             httpx.HTTPError: On transport / status failure.
             json.JSONDecodeError: When the response body is not JSON.
             TokenExchangeFailedError: When the JSON body is not an object.
+            OAuthRateLimitedError: When the token endpoint returns HTTP 429.
         """
         validation = await resolve_outbound_target(
             token_url,
@@ -124,6 +135,20 @@ class AuthorizationCodeFlow:
             transport=build_pinned_transport(validation),
         ) as client:
             resp = await client.post(token_url, data=payload)
+            if resp.status_code == _HTTP_TOO_MANY_REQUESTS:
+                retry_after = coerce_finite_nonneg_seconds(
+                    parse_retry_after_seconds(
+                        resp.headers.get("Retry-After"),
+                        now=self._clock.now(),
+                    ),
+                )
+                logger.warning(
+                    OAUTH_TOKEN_RATE_LIMITED,
+                    field=field,
+                    retry_after_seconds=retry_after,
+                )
+                msg = "token endpoint rate-limited the request (429)"
+                raise OAuthRateLimitedError(msg, retry_after_seconds=retry_after)
             resp.raise_for_status()
             parsed = resp.json()
         if not isinstance(parsed, dict):
@@ -215,11 +240,20 @@ class AuthorizationCodeFlow:
             ``scope_granted``, and optional ``id_token``.
 
         Raises:
-            TokenExchangeFailedError: If the exchange fails.
+            OAuthConfigurationError: For a deterministic failure (missing
+                or undecryptable PKCE verifier, SSRF-rejected token URL).
+            TokenExchangeFailedError: For a transient transport / body
+                failure.
+            OAuthRateLimitedError: When the token endpoint returns 429;
+                carries ``retry_after_seconds`` so callers can back off.
         """
         if state.pkce_verifier is None:
+            logger.warning(
+                OAUTH_TOKEN_EXCHANGE_FAILED,
+                reason="pkce_verifier_missing",
+            )
             msg = "PKCE verifier missing from OAuth state"
-            raise TokenExchangeFailedError(msg)
+            raise OAuthConfigurationError(msg)
         # state.pkce_verifier is encrypted at rest; decrypt before
         # sending to the OAuth provider.
         try:
@@ -233,7 +267,7 @@ class AuthorizationCodeFlow:
                 error=safe_error_description(exc),
             )
             msg = f"Invalid PKCE verifier in OAuth state: {safe_error_description(exc)}"
-            raise TokenExchangeFailedError(msg) from exc
+            raise OAuthConfigurationError(msg) from exc
 
         payload = {
             "grant_type": "authorization_code",
@@ -250,12 +284,14 @@ class AuthorizationCodeFlow:
                 payload=payload,
                 field="token_url",
             )
-        except (httpx.HTTPError, json.JSONDecodeError, ValueError) as exc:
+        except (httpx.HTTPError, json.JSONDecodeError) as exc:
             # Use ``warning`` (no traceback) + scrubbed description so the
             # request payload that contained ``client_secret`` and
             # ``code_verifier`` cannot leak through frame-local repr's or
-            # stringified error bodies. ``ValueError`` covers an SSRF
-            # rejection of ``token_url`` raised before any network I/O.
+            # stringified error bodies. Transient transport / malformed-body
+            # failures stay retryable. (``json.JSONDecodeError`` is a
+            # ``ValueError`` subclass, so this clause must precede the
+            # SSRF ``ValueError`` clause below.)
             logger.warning(
                 OAUTH_TOKEN_EXCHANGE_FAILED,
                 error_type=type(exc).__name__,
@@ -263,6 +299,16 @@ class AuthorizationCodeFlow:
             )
             msg = f"Token exchange failed: {type(exc).__name__}"
             raise TokenExchangeFailedError(msg) from exc
+        except ValueError as exc:
+            # An SSRF rejection of ``token_url`` raised before any network
+            # I/O: deterministic, so non-retryable.
+            logger.warning(
+                OAUTH_TOKEN_EXCHANGE_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = f"Token exchange rejected: {type(exc).__name__}"
+            raise OAuthConfigurationError(msg) from exc
 
         return self._parse_token_response(data, "exchange")
 
@@ -284,6 +330,8 @@ class AuthorizationCodeFlow:
         Raises:
             TokenRefreshFailedError: If the refresh fails or the
                 response cannot be parsed.
+            OAuthRateLimitedError: When the token endpoint returns 429;
+                carries ``retry_after_seconds`` so callers can back off.
         """
         payload = {
             "grant_type": "refresh_token",

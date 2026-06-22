@@ -10,6 +10,7 @@ from collections.abc import Mapping, Sequence
 from types import MappingProxyType
 from uuid import UUID
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     ApplyResult,
@@ -61,6 +62,30 @@ class RollbackExecutor:
         self._handlers: Mapping[NotBlankStr, RollbackHandler] = MappingProxyType(
             snapshot,
         )
+
+    async def aclose(self) -> None:
+        """Close any handler that owns a closeable resource.
+
+        The ``revert_branch`` handler wraps a GitHub HTTP client whose
+        connection pool would otherwise leak past the self-improvement
+        service lifecycle. Iterates every handler and closes the ones that
+        expose ``aclose`` (best-effort: a failed close on one handler does
+        not stop the others).
+        """
+        for handler in self._handlers.values():
+            close = getattr(handler, "aclose", None)
+            if close is None:
+                continue
+            try:
+                await close()
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                logger.warning(
+                    META_ROLLBACK_FAILED,
+                    reason="handler_close_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
 
     async def execute(
         self,

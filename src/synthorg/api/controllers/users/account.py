@@ -240,6 +240,7 @@ class UserController(Controller):
     async def update_user_role(
         self,
         state: State,
+        request: Request[object, object, State],
         user_id: PathId,
         data: UpdateUserRoleRequest,
     ) -> ApiResponse[UserResponse]:
@@ -247,6 +248,7 @@ class UserController(Controller):
 
         Args:
             state: Application state.
+            request: Incoming request, carrying the authenticated actor.
             user_id: User identifier.
             data: Role update payload.
 
@@ -262,6 +264,7 @@ class UserController(Controller):
             QueryError: Raised on the corresponding failure path.
         """
         service = _service(state)
+        auth_user: AuthenticatedUser = request.scope["user"]
 
         _validate_assignable_role(data.role)
         user = await _get_user_or_404(service, user_id, operation="update_user_role")
@@ -279,6 +282,7 @@ class UserController(Controller):
             await service.save_update(
                 updated,
                 intent="update_user_role",
+                principal=str(auth_user.user_id),
                 old_role=user.role.value,
                 new_role=data.role.value,
             )

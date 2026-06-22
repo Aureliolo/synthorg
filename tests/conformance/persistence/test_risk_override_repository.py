@@ -1,6 +1,5 @@
 """Conformance tests for ``RiskOverrideRepository`` (SQLite + Postgres).
 
-Written from scratch for PST-1 -- no prior unit coverage existed.
 Covers save/get/list_active/revoke across both backends.
 """
 

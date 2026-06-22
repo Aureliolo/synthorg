@@ -244,6 +244,28 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
 
     startup = [*startup, _wire_pruning]
 
+    async def _wire_quota_poller() -> None:
+        from synthorg.api.lifecycle_helpers.budget_wiring import (  # noqa: PLC0415
+            wire_quota_poller,
+        )
+
+        await wire_quota_poller(app_state)
+
+    startup = [*startup, _wire_quota_poller]
+
+    async def _wire_risk_override_service() -> None:
+        from synthorg.api.lifecycle_helpers.security_wiring import (  # noqa: PLC0415
+            wire_risk_override_service,
+        )
+
+        await wire_risk_override_service(
+            app_state,
+            approval_timeout_config=effective_config.config.approval_timeout,
+            approval_timeout_scheduler=approval_timeout_scheduler,
+        )
+
+    startup = [*startup, _wire_risk_override_service]
+
     async def _wire_strategy_context() -> None:
         from synthorg.api.lifecycle_helpers.strategy_context_wiring import (  # noqa: PLC0415
             wire_strategy_context,

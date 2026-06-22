@@ -5,8 +5,8 @@ description: Add a new MCP tool by defining its tool descriptor, implementing th
 
 # Custom MCP Server Development
 
-SynthOrg's MCP surface exposes <!--RS:mcp_tools-->241<!--/RS--> tools across
-<!--RS:mcp_domains-->21<!--/RS--> domain modules under
+SynthOrg's MCP surface exposes <!--RS:mcp_tools-->244<!--/RS--> tools across
+<!--RS:mcp_domains-->22<!--/RS--> domain modules under
 `src/synthorg/meta/mcp/domains/`. A tool is a pair: an `MCPToolDef`
 *descriptor* (cheap data: name, JSON-Schema parameters, capability, optional
 typed `args_model`) and a `ToolHandler` *implementation* (an async function

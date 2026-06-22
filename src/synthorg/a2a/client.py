@@ -5,7 +5,7 @@ pulling credentials from the connection catalog and validating
 outbound URLs against SSRF rules.
 """
 
-from typing import ClassVar
+from typing import ClassVar, Final
 from uuid import uuid4
 
 import httpx
@@ -21,6 +21,10 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.normalization import strip_trailing_slash
+from synthorg.core.resilience.retry_after import (
+    coerce_finite_nonneg_seconds,
+    parse_retry_after_seconds,
+)
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.a2a import (
@@ -33,18 +37,45 @@ from synthorg.tools.network_validator import NetworkPolicy
 
 logger = get_logger(__name__)
 
+_HTTP_TOO_MANY_REQUESTS: Final[int] = 429
+
 
 class A2AClientError(DomainError):
-    """Error raised by the outbound A2A client."""
+    """Error raised by the outbound A2A client.
+
+    Non-retryable by default. Transient peer failures (HTTP 429,
+    connection resets, timeouts) raise :class:`A2ATransientError`, which
+    the project-standard ``is_retryable`` class attribute marks for retry.
+    """
 
     default_message: ClassVar[str] = "A2A client request failed"
     error_category: ClassVar[ErrorCategory] = ErrorCategory.PROVIDER_ERROR
     error_code: ClassVar[ErrorCode] = ErrorCode.PROVIDER_ERROR
     status_code: ClassVar[int] = 502
+    is_retryable: ClassVar[bool] = False
 
-    def __init__(self, message: str, *, peer_name: str = "") -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        peer_name: str = "",
+        retry_after_seconds: float | None = None,
+    ) -> None:
         super().__init__(message)
         self.peer_name = peer_name
+        # ``retry_after_seconds`` carries the peer's advertised cool-off
+        # when it sent one (populated on the transient subclass).
+        self.retry_after_seconds = retry_after_seconds
+
+
+class A2ATransientError(A2AClientError):
+    """Retryable A2A failure: 429 back-pressure or a connect / timeout error.
+
+    Keeps the parent's ``PROVIDER_ERROR`` code (inheritance alias) and
+    only flips ``is_retryable`` so a wrapping retry layer reacts to it.
+    """
+
+    is_retryable: ClassVar[bool] = True
 
 
 class A2AClient:
@@ -330,7 +361,9 @@ class A2AClient:
             HTTP response.
 
         Raises:
-            A2AClientError: On any HTTP failure.
+            A2ATransientError: On a 429 or a connection / timeout error
+                (retryable).
+            A2AClientError: On any other HTTP failure.
         """
         try:
             response = await self._do_post(
@@ -339,7 +372,7 @@ class A2AClient:
                 headers,
             )
             response.raise_for_status()
-        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+        except (httpx.NetworkError, httpx.TimeoutException) as exc:
             logger.warning(
                 A2A_OUTBOUND_FAILED,
                 peer_name=peer_name,
@@ -349,15 +382,36 @@ class A2AClient:
                 transient=True,
             )
             msg = f"Connection to peer '{peer_name}' failed"
-            raise A2AClientError(msg, peer_name=peer_name) from exc
+            raise A2ATransientError(msg, peer_name=peer_name) from exc
         except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            if status == _HTTP_TOO_MANY_REQUESTS:
+                retry_after = coerce_finite_nonneg_seconds(
+                    parse_retry_after_seconds(
+                        exc.response.headers.get("Retry-After"),
+                    ),
+                )
+                logger.warning(
+                    A2A_OUTBOUND_FAILED,
+                    peer_name=peer_name,
+                    method=method,
+                    status=status,
+                    transient=True,
+                    retry_after_seconds=retry_after,
+                )
+                msg = f"Peer '{peer_name}' rate-limited the request (429)"
+                raise A2ATransientError(
+                    msg,
+                    peer_name=peer_name,
+                    retry_after_seconds=retry_after,
+                ) from exc
             logger.warning(
                 A2A_OUTBOUND_FAILED,
                 peer_name=peer_name,
                 method=method,
-                status=exc.response.status_code,
+                status=status,
             )
-            msg = f"Peer '{peer_name}' returned {exc.response.status_code}"
+            msg = f"Peer '{peer_name}' returned {status}"
             raise A2AClientError(msg, peer_name=peer_name) from exc
         except httpx.HTTPError as exc:
             logger.warning(

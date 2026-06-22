@@ -138,11 +138,29 @@ class TokenExchangeFailedError(OAuthError):
     """The authorization code could not be exchanged for tokens.
 
     Transient -- the token endpoint may have been temporarily
-    unavailable, rate-limited, or returned a non-JSON body.
+    unavailable, rate-limited, or returned a non-JSON body. For
+    deterministic failures (SSRF-rejected ``token_url``, a missing or
+    undecryptable PKCE verifier) raise :class:`OAuthConfigurationError`,
+    which is non-retryable.
     """
 
     is_retryable = True
     retryable: ClassVar[bool] = True
+
+
+class OAuthConfigurationError(TokenExchangeFailedError):
+    """An OAuth exchange failed for a deterministic, non-retryable reason.
+
+    Covers an SSRF-rejected ``token_url`` and a missing or undecryptable
+    PKCE verifier: retrying cannot change the outcome, so a retry layer
+    must treat it as terminal. Subclasses :class:`TokenExchangeFailedError`
+    (keeping the ``OAUTH_ERROR`` inheritance-alias code) so existing
+    ``except TokenExchangeFailedError`` handlers still catch it, while
+    ``is_retryable`` flips to ``False``.
+    """
+
+    is_retryable = False
+    retryable: ClassVar[bool] = False
 
 
 class TokenRefreshFailedError(OAuthError):
@@ -154,6 +172,31 @@ class TokenRefreshFailedError(OAuthError):
 
     is_retryable = True
     retryable: ClassVar[bool] = True
+
+
+class OAuthRateLimitedError(OAuthError):
+    """The token endpoint rate-limited the request (HTTP 429).
+
+    Transient -- the caller should back off and retry. Carries the
+    provider's advertised ``Retry-After`` cool-off (seconds) when the
+    response supplied a parseable one, so a retry layer can honour the
+    hint instead of guessing a backoff. Keeps the ancestor
+    ``OAUTH_ERROR`` code (inheritance alias) since clients branch on the
+    OAuth family, not a dedicated 429 code.
+    """
+
+    is_retryable = True
+    retryable: ClassVar[bool] = True
+    retry_after_seconds: float | None
+
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        retry_after_seconds: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
 
 
 class InvalidStateError(OAuthError):

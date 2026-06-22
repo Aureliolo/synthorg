@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Budget namespace setting definitions."""
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
@@ -401,5 +402,172 @@ _r.register(
         env_var_override="SYNTHORG_BUDGET_BASELINE_WINDOW_SIZE",
         min_value=1,
         max_value=1_000_000,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="quota_poller_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Whether the proactive quota poller runs. When active it polls"
+            " provider subscription usage on a fixed cadence and dispatches"
+            " WARNING/CRITICAL notifications as thresholds are crossed."
+        ),
+        group="Quota Poller",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="quota_poll_interval_seconds",
+        type=SettingType.FLOAT,
+        default="60.0",
+        description="How often the quota poller samples provider usage.",
+        group="Quota Poller",
+        level=SettingLevel.ADVANCED,
+        min_value=0.1,
+        max_value=3600.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="quota_cooldown_seconds",
+        type=SettingType.FLOAT,
+        default="300.0",
+        description=(
+            "Silence window after a quota alert fires before the same"
+            " provider/window/level tuple may alert again."
+        ),
+        group="Quota Poller",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="quota_warn_pct",
+        type=SettingType.FLOAT,
+        default="80.0",
+        description="Provider usage percent that raises a WARNING quota alert.",
+        group="Quota Poller",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+        max_value=100.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="quota_critical_pct",
+        type=SettingType.FLOAT,
+        default="95.0",
+        description="Provider usage percent that raises a CRITICAL quota alert.",
+        group="Quota Poller",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+        max_value=100.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="risk_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description="Whether cumulative risk-unit budget tracking is active.",
+        group="Risk Budget",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="risk_per_task_limit",
+        type=SettingType.FLOAT,
+        default="5.0",
+        description="Maximum cumulative risk units a single task may accrue.",
+        group="Risk Budget",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="risk_per_agent_daily",
+        type=SettingType.FLOAT,
+        default="20.0",
+        description="Maximum cumulative risk units per agent per day.",
+        group="Risk Budget",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="risk_total_daily",
+        type=SettingType.FLOAT,
+        default="100.0",
+        description="Maximum cumulative risk units across the org per day.",
+        group="Risk Budget",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="risk_warn_pct",
+        type=SettingType.INTEGER,
+        default="75",
+        description="Risk budget utilisation percent that raises a warning.",
+        group="Risk Budget",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=100,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="risk_critical_pct",
+        type=SettingType.INTEGER,
+        default="90",
+        description="Risk budget utilisation percent that raises a critical alert.",
+        group="Risk Budget",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=100,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="report_retention_days",
+        type=SettingType.INTEGER,
+        default="90",
+        description="How long automated budget reports are retained.",
+        group="Reporting",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=365,
     )
 )

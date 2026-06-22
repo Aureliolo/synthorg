@@ -8,7 +8,7 @@ health-prober / training-backend state now lives on the shared
 """
 
 import asyncio
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Coroutine
 from typing import Final, cast
 
 from synthorg.a2a.state import A2aStateSlice
@@ -227,6 +227,25 @@ async def _run_shutdown(  # noqa: PLR0913
                 service="training_memory_backend",
             )
         tasks.training_memory_backend = None
+    # Disconnect + unwire the hybrid org-memory backend published to the memory
+    # slice at startup, mirroring the training-backend teardown above: clear the
+    # field before disconnecting so a lifespan re-entry can wire a fresh backend
+    # (``wire_org_memory_backend`` is idempotent and skips when the slice is
+    # already set) without a stale handle lingering on the slice.
+    org_memory_backend = app_state.slice(MemoryStateSlice).org_memory_backend
+    if org_memory_backend is not None:
+        app_state.swap_slice(
+            app_state.slice(MemoryStateSlice).model_copy(
+                update={"org_memory_backend": None}
+            )
+        )
+        await _try_stop(
+            org_memory_backend.disconnect(),
+            API_APP_SHUTDOWN,
+            "Failed to disconnect org memory backend",
+            timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
+            service="org_memory_backend",
+        )
     if tasks.ticket_cleanup_task is not None:
         await _cancel_with_timeout(
             tasks.ticket_cleanup_task,
@@ -295,30 +314,51 @@ async def _run_shutdown(  # noqa: PLR0913
             timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
             service="escalation_registry",
         )
+    # The three integration draining services (OAuth token manager,
+    # integration health prober, webhook event bridge) are independent
+    # background loops with no inter-stop ordering dependency, so they drain
+    # concurrently: the aggregate wall-clock is one drain budget rather than
+    # three, keeping the worst case inside the SIGKILL deadline. Each retains
+    # its own bounded ``_try_stop`` timeout.
+    _integration_draining_stops: list[Coroutine[object, object, bool]] = []
     if integrations.oauth_token_manager is not None:
-        await _try_stop(
-            integrations.oauth_token_manager.stop(),
-            API_APP_SHUTDOWN,
-            "Failed to stop OAuth token manager",
-            timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
-            service="oauth_token_manager",
+        _integration_draining_stops.append(
+            _try_stop(
+                integrations.oauth_token_manager.stop(),
+                API_APP_SHUTDOWN,
+                "Failed to stop OAuth token manager",
+                timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
+                service="oauth_token_manager",
+            )
         )
     if integrations.health_prober_service is not None:
-        await _try_stop(
-            integrations.health_prober_service.stop(),
-            API_APP_SHUTDOWN,
-            "Failed to stop integration health prober",
-            timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
-            service="integration_health_prober",
+        _integration_draining_stops.append(
+            _try_stop(
+                integrations.health_prober_service.stop(),
+                API_APP_SHUTDOWN,
+                "Failed to stop integration health prober",
+                timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
+                service="integration_health_prober",
+            )
         )
     if integrations.webhook_event_bridge is not None:
-        await _try_stop(
-            integrations.webhook_event_bridge.stop(),
-            API_APP_SHUTDOWN,
-            "Failed to stop webhook event bridge",
-            timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
-            service="webhook_event_bridge",
+        _integration_draining_stops.append(
+            _try_stop(
+                integrations.webhook_event_bridge.stop(),
+                API_APP_SHUTDOWN,
+                "Failed to stop webhook event bridge",
+                timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
+                service="webhook_event_bridge",
+            )
         )
+    if _integration_draining_stops:
+        # Structured fan-out/fan-in (project convention prefers ``TaskGroup``
+        # over ``gather``). ``_try_stop`` swallows its own failures and returns
+        # a bool, so no child task raises -- the group's first-exception
+        # cancellation never fires and all three drains run to completion.
+        async with asyncio.TaskGroup() as _drain_tg:
+            for _stop_coro in _integration_draining_stops:
+                _ = _drain_tg.create_task(_stop_coro)
     if integrations.tunnel_provider is not None:
         await _try_stop(
             integrations.tunnel_provider.stop(),
@@ -408,6 +448,34 @@ async def _run_shutdown(  # noqa: PLR0913
             promotion_cycle_scheduler=None,
         )
 
+    from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
+
+    budget_slice = app_state.slice(BudgetStateSlice)
+    if budget_slice.quota_poller is not None:
+        await _try_stop(
+            budget_slice.quota_poller.stop(),
+            API_APP_SHUTDOWN,
+            "Failed to stop quota poller",
+            timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
+            service="quota_poller",
+        )
+        app_state.wire(BudgetStateSlice, quota_poller=None)
+
+    si_service = meta_slice.self_improvement_service
+    if si_service is not None:
+        # ``close`` drains the appliers' GitHub HTTP clients, the rollback
+        # executor's branch-revert client, and the analytics emitter's
+        # periodic-flush task; without it those connection pools and the
+        # flush task leak past the app lifecycle.
+        await _try_stop(
+            si_service.close(),
+            API_APP_SHUTDOWN,
+            "Failed to close self-improvement service",
+            timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
+            service="self_improvement_service",
+        )
+        app_state.wire(MetaStateSlice, self_improvement_service=None)
+
     # Stop every cached rate-limit coordinator and clear the module-level
     # factory so background poll tasks and bus subscriptions cannot outlive the
     # app (matters for hot-reload / test teardown where ``create_app`` runs
@@ -417,7 +485,12 @@ async def _run_shutdown(  # noqa: PLR0913
             shared_state as _rate_limit_shared_state,
         )
 
-        await _rate_limit_shared_state.set_coordinator_factory(None)
+        # Bounded: a coordinator whose ``stop`` hangs (NATS drain, stalled
+        # HTTP close) must not block teardown past the SIGKILL deadline.
+        await asyncio.wait_for(
+            _rate_limit_shared_state.set_coordinator_factory(None),
+            timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
+        )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
@@ -479,16 +552,16 @@ async def _run_shutdown(  # noqa: PLR0913
             timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
             service="notification_dispatcher",
         )
-    # Close A2A outbound HTTP client if wired.
-    try:
-        a2a_client_obj = app_state.slice(A2aStateSlice).client
-        if a2a_client_obj is not None and hasattr(a2a_client_obj, "aclose"):
-            await a2a_client_obj.aclose()
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        logger.warning(
+    # Close the A2A outbound HTTP client if wired. Routed through ``_try_stop``
+    # with a bounded timeout (like every other stop step) so a hung keep-alive
+    # socket or stalled TLS shutdown cannot block teardown past the SIGKILL
+    # deadline; a bare ``await aclose()`` would hang silently.
+    a2a_client_obj = app_state.slice(A2aStateSlice).client
+    if a2a_client_obj is not None and hasattr(a2a_client_obj, "aclose"):
+        await _try_stop(
+            a2a_client_obj.aclose(),
             API_APP_SHUTDOWN,
-            phase="a2a_client_close",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
+            "Failed to close A2A outbound HTTP client",
+            timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
+            service="a2a_client",
         )

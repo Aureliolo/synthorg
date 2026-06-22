@@ -34,6 +34,7 @@ from synthorg.observability.events.workers import (
     WORKERS_CLAIM_DEAD_LETTERED,
     WORKERS_CLAIM_RECEIVED,
     WORKERS_DEAD_LETTER_PUBLISH_FAILED,
+    WORKERS_DEDUP_BYPASS_PERMANENT,
     WORKERS_DEDUP_LOOKUP_FAILED,
     WORKERS_DEDUP_MARK_FAILED,
     WORKERS_DUPLICATE_CLAIM_SUPPRESSED,
@@ -324,13 +325,11 @@ class Worker:
                 idempotency_key=NotBlankStr(claim.idempotency_key),
             )
         except QueryError as exc:
-            logger.warning(
+            self._log_dedup_bypass(
                 WORKERS_DEDUP_LOOKUP_FAILED,
-                worker_id=self._worker_id,
-                task_id=claim.task_id,
-                idempotency_key=claim.idempotency_key,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                claim,
+                exc,
+                stage="lookup",
             )
             return False
         if not seen:
@@ -364,14 +363,45 @@ class Worker:
                 ttl_seconds=self._dedup_ttl_seconds,
             )
         except QueryError as exc:
-            logger.warning(
+            self._log_dedup_bypass(
                 WORKERS_DEDUP_MARK_FAILED,
-                worker_id=self._worker_id,
-                task_id=claim.task_id,
-                idempotency_key=claim.idempotency_key,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                claim,
+                exc,
+                stage="mark",
             )
+
+    def _log_dedup_bypass(
+        self,
+        event: str,
+        claim: TaskClaim,
+        exc: QueryError,
+        *,
+        stage: str,
+    ) -> None:
+        """Log a dedup-store failure at exactly one level by retryability.
+
+        A retryable failure is a transient blip: JetStream redelivers within
+        ``ack_wait`` and the next attempt re-consults the store, so it logs a
+        single WARNING. A NON-retryable failure (``is_retryable=False`` --
+        schema drift, a malformed query) means the dedup guarantee is
+        systematically bypassed for every claim until an operator intervenes,
+        silently turning exactly-once into at-least-once; that logs a single
+        CRITICAL (``WORKERS_DEDUP_BYPASS_PERMANENT``) so it surfaces rather
+        than hiding among routine warnings. The two paths are mutually
+        exclusive -- no event is emitted twice.
+        """
+        fields = {
+            "worker_id": self._worker_id,
+            "task_id": claim.task_id,
+            "idempotency_key": claim.idempotency_key,
+            "stage": stage,
+            "error_type": type(exc).__name__,
+            "error": safe_error_description(exc),
+        }
+        if exc.is_retryable:
+            logger.warning(event, **fields)
+            return
+        logger.critical(WORKERS_DEDUP_BYPASS_PERMANENT, **fields)
 
     async def _execute_claim(
         self,
