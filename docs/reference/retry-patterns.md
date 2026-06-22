@@ -47,16 +47,18 @@ Two distinct sub-cases share this section because both are inline-by-necessity f
 
 - `src/synthorg/persistence/postgres/decision_repo.py` `_execute_insert`: version-race retry for the decision-history append path.
 
-### C/Sync -- Bootstrap-tier sync logging-thread retry
+### C/Sync -- Sync retry where `GeneralRetryHandler` is unreachable
 
-**When**: code runs inside a stdlib `logging.Handler` worker thread using synchronous `urllib.request`. There is no event loop available; `await GeneralRetryHandler.run(...)` would either deadlock or panic.
+**When**: synchronous code using `urllib.request` runs where `await GeneralRetryHandler.run(...)` cannot. Two sub-contexts qualify: inside a stdlib `logging.Handler` worker thread (no event loop -- the await would deadlock or panic); and standalone `scripts/` CI gates that must not import `synthorg.core` (they run as bare `python3 scripts/x.py` in CI with only the stdlib, so the async helper is not importable).
 
-**How**: a tight synchronous loop with bounded exponential backoff. The backoff sleep is done using `time.sleep(delay)` so that retries run to completion during shutdown rather than being dropped mid-flight. Bootstrap-tier code keeps its own retry primitive because the async helper is unreachable from this execution context.
+**How**: a tight synchronous loop with bounded backoff. The logging-thread sites sleep via `time.sleep(delay)` so retries complete during shutdown rather than being dropped mid-flight. The CI-script sites split transient (network error + 5xx, retried) from terminal (4xx, returned immediately) so a registry blip does not red the gate while a genuine 404/auth answer fails fast.
 
 **Sites**:
 
 - `src/synthorg/observability/http_handler.py` `HttpBatchHandler._send_with_retries`: HTTP collector POST from inside the stdlib logging-handler thread (4xx non-retryable; bounded exponential backoff between attempts).
 - `src/synthorg/observability/otlp_handler.py` `OtlpHandler._send_with_retries`: OTLP/JSON collector POST from inside the stdlib logging-handler thread (same retry + backoff semantics as the HTTP sink, so a transient collector hiccup does not drop a whole batch).
+- `scripts/check_image_signatures.py` `_request_with_retry`: bounded retry on the token-mint and tag->digest HEAD against GHCR (transient network error + 5xx retried, 4xx returned immediately). A standalone CI gate that cannot import `synthorg.core`.
+- `scripts/check_image_signatures.py` `signature_present`: eventual-consistency poll for a freshly-published cosign referrer tag (retries both a transient network error and a propagation-window 404, on its own short `SIG_PROPAGATION_*` budget; a persistent non-404 registry error raises rather than reporting a false "unsigned" verdict). Same CI-script context.
 
 ## Decision tree
 
@@ -65,7 +67,7 @@ Two distinct sub-cases share this section because both are inline-by-necessity f
 | Bounded, exponential-backoff retry on a transient I/O failure       | `GeneralRetryHandler` (Pattern A)    |
 | LLM re-prompted with prior-attempt context, no sleep                | Inline loop (Pattern B)              |
 | CAS / version-race retry that branches on driver constraint name    | Inline loop (Pattern C/CAS)          |
-| Sync code inside a stdlib `logging.Handler` thread                  | Inline loop (Pattern C/Sync)         |
+| Sync code in a stdlib `logging.Handler` thread, or a `scripts/` CI gate that cannot import `synthorg.core` | Inline loop (Pattern C/Sync)         |
 | None of the above                                                   | Stop and ask before adding a fourth family |
 
 ## Adding a new retry site

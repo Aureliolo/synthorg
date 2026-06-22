@@ -44,22 +44,22 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import override
+from typing import Final, override
 
-GHCR_REGISTRY = "ghcr.io"
-REPO_PREFIX_DEFAULT = "aureliolo/synthorg-"
-MANIFEST_ACCEPT = (
+GHCR_REGISTRY: Final[str] = "ghcr.io"
+REPO_PREFIX_DEFAULT: Final[str] = "aureliolo/synthorg-"
+MANIFEST_ACCEPT: Final[str] = (
     "application/vnd.docker.distribution.manifest.list.v2+json,"
     "application/vnd.oci.image.index.v1+json,"
     "application/vnd.docker.distribution.manifest.v2+json,"
     "application/vnd.oci.image.manifest.v1+json"
 )
-SIG_ACCEPT = "application/vnd.oci.image.index.v1+json"
-HTTP_TIMEOUT_SECONDS = 30
-HTTP_OK = 200
-HTTP_NOT_FOUND = 404
-USAGE_EXIT_CODE = 2
-FAILURE_EXIT_CODE = 1
+SIG_ACCEPT: Final[str] = "application/vnd.oci.image.index.v1+json"
+HTTP_TIMEOUT_SECONDS: Final[int] = 30
+HTTP_OK: Final[int] = 200
+HTTP_NOT_FOUND: Final[int] = 404
+USAGE_EXIT_CODE: Final[int] = 2
+FAILURE_EXIT_CODE: Final[int] = 1
 
 # GHCR surfaces a freshly-published cosign referrer (the `sha256-<hex>`
 # tag) with eventual consistency. In the typical workflow topology this
@@ -69,8 +69,20 @@ FAILURE_EXIT_CODE = 1
 # unusually short. Kept deliberately short -- the gate's purpose is to FAIL
 # a genuinely-unsigned image, so a persistent 404 must surface quickly
 # rather than be masked by a long wait.
-SIG_PROPAGATION_ATTEMPTS = 3
-SIG_PROPAGATION_BACKOFF_SECONDS = 3
+SIG_PROPAGATION_ATTEMPTS: Final[int] = 3
+SIG_PROPAGATION_BACKOFF_SECONDS: Final[int] = 3
+
+# Transient-error retry budget for the registry calls that are NOT the
+# eventual-consistency referrer poll: the token mint and the tag->digest
+# HEAD. A single GHCR network blip (``i/o timeout``, connection reset) or a
+# 5xx on either of these would otherwise red the whole verify-signatures
+# gate for an image that is in fact correctly published and signed -- the
+# same class of failure the publish actions already absorb via
+# docker_push_with_retry.sh. Kept short: a 4xx (auth, genuine 404) is a real
+# answer and is returned immediately, never retried.
+REGISTRY_RETRY_ATTEMPTS: Final[int] = 4
+REGISTRY_RETRY_BACKOFF_SECONDS: Final[int] = 5
+HTTP_SERVER_ERROR_MIN: Final[int] = 500
 
 # Anchored allowlist patterns, applied to every value that flows into
 # the registry URL path. Closes the partial-SSRF window CodeQL flags
@@ -86,15 +98,15 @@ SIG_PROPAGATION_BACKOFF_SECONDS = 3
 # `\Z` (not `$`) so a trailing newline in user input doesn't slip past
 # the anchor; with `$`, "foo\n" would match the empty string before the
 # newline.
-_REPO_PREFIX_RE = re.compile(
+_REPO_PREFIX_RE: Final = re.compile(
     r"\A(?:[a-z0-9]+(?:[._-][a-z0-9]+)*/)+(?:[a-z0-9]+(?:[._-][a-z0-9]+)*)-\Z"
 )
 # Image suffix appended to repo_prefix: lowercase Docker name segment
 # with no `/` (already in prefix).
-_IMAGE_NAME_RE = re.compile(r"\A[a-z0-9]+(?:[._-][a-z0-9]+)*\Z")
+_IMAGE_NAME_RE: Final = re.compile(r"\A[a-z0-9]+(?:[._-][a-z0-9]+)*\Z")
 # OCI tag grammar: 1-128 chars from [A-Za-z0-9_], plus `.` and `-` but
 # not as the first character.
-_TAG_RE = re.compile(r"\A[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}\Z")
+_TAG_RE: Final = re.compile(r"\A[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}\Z")
 
 # Immutable build-identity tags: a tag that pins to exactly ONE build and
 # must never be repointed. Two metadata-action conventions qualify:
@@ -113,8 +125,8 @@ _TAG_RE = re.compile(r"\A[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}\Z")
 # ``0.8.9`` / ``0.8.9-dev.51``, never ``v0.8.9``), but a future tag-policy
 # change emitting a ``v``-prefixed immutable tag would otherwise be
 # misclassified as floating and silently dropped from the convergence check.
-_SHA_TAG_RE = re.compile(r"\Asha-[0-9a-f]{7,}\Z")
-_FULL_SEMVER_TAG_RE = re.compile(
+_SHA_TAG_RE: Final = re.compile(r"\Asha-[0-9a-f]{7,}\Z")
+_FULL_SEMVER_TAG_RE: Final = re.compile(
     r"\A[vV]?[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?\Z"
 )
 
@@ -245,15 +257,18 @@ def mint_pull_token(repo_path: str, ghcr_token: str | None) -> str | None:
         f"https://{GHCR_REGISTRY}/token?service={GHCR_REGISTRY}"
         f"&scope=repository:{safe_repo}:pull"
     )
-    req = urllib.request.Request(
-        url,
-        headers={"Authorization": f"Basic {_basic_auth('x-access-token', ghcr_token)}"},
-    )
-    # S310: URL is built from constants + a percent-encoded repo path,
-    # so the scheme is always https (no file:/custom-scheme surface).
-    with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_SECONDS) as resp:  # noqa: S310
-        body = json.loads(resp.read().decode())
-    token = body.get("token")
+    headers = {"Authorization": f"Basic {_basic_auth('x-access-token', ghcr_token)}"}
+    # Retry a transient blip on the single token mint that gates the whole
+    # gate: a 5xx / reset here would otherwise fail verification for a
+    # correctly-published image. A persistent non-200 (auth rejection, or a
+    # 5xx that outlasts the budget) is raised as URLError so the caller
+    # reports a network/auth error rather than an empty token.
+    status, _, body = _request_with_retry("GET", url, headers)
+    if status != HTTP_OK:
+        msg = f"token endpoint returned HTTP {status} for {url}"
+        raise urllib.error.URLError(msg)
+    payload = json.loads(body.decode())
+    token = payload.get("token")
     return token if isinstance(token, str) else None
 
 
@@ -281,6 +296,51 @@ def _request(
         return exc.code, dict(exc.headers or {}), exc.read()
 
 
+def _request_with_retry(
+    method: str,
+    url: str,
+    headers: dict[str, str],
+) -> tuple[int, dict[str, str], bytes]:
+    """``_request`` with bounded retry on transient network errors and 5xx.
+
+    See docs/reference/retry-patterns.md: Pattern C/Sync -- a standalone CI
+    gate that cannot import ``synthorg.core.resilience.GeneralRetryHandler``.
+
+    A connection-level failure (timeout, reset, refused) or a server-side
+    5xx is transient: GHCR was momentarily unreachable, not a real answer
+    about the image. Both are retried a few times with a fixed backoff.
+    A 4xx (auth, genuine 404) is a definitive answer and is returned on
+    the first attempt -- never retried. Mirrors the transient/terminal
+    split docker_push_with_retry.sh applies on the publish path.
+
+    On exhaustion the two transient classes diverge:
+      - a persistent network error re-raises (no status to return);
+      - a persistent 5xx returns its ``(status, headers, body)`` tuple,
+        so the caller decides whether a lingering 5xx is fatal. Callers
+        that must not treat a 5xx as a real answer (``resolve_digest``,
+        ``mint_pull_token``) check ``status`` and raise themselves.
+
+    Raises:
+        urllib.error.URLError / OSError: a network-level failure that
+            persisted across every attempt (matches ``_request``).
+    """
+    for attempt in range(1, REGISTRY_RETRY_ATTEMPTS + 1):
+        try:
+            status, response_headers, body = _request(method, url, headers)
+        except urllib.error.URLError, OSError:
+            if attempt < REGISTRY_RETRY_ATTEMPTS:
+                time.sleep(REGISTRY_RETRY_BACKOFF_SECONDS)
+                continue
+            raise
+        if status >= HTTP_SERVER_ERROR_MIN and attempt < REGISTRY_RETRY_ATTEMPTS:
+            time.sleep(REGISTRY_RETRY_BACKOFF_SECONDS)
+            continue
+        return status, response_headers, body
+    # Unreachable: the loop either returns or raises on the final attempt.
+    msg = f"exhausted retry budget for {method} {url}"
+    raise urllib.error.URLError(msg)
+
+
 def resolve_digest(
     repo_path: str,
     tag: str,
@@ -296,12 +356,22 @@ def resolve_digest(
     OCI grammar regexes; the additional ``urllib.parse.quote`` calls
     below double down on path-component encoding so CodeQL's
     ``py/partial-ssrf`` data-flow recognises the URL as sanitised.
+
+    Raises:
+        urllib.error.URLError: a 5xx that persisted through the retry
+            budget. A lingering server error is a registry outage, not
+            evidence the tag is absent, so it surfaces as a network error
+            (``_verify_pair`` reports it as such) rather than a misleading
+            "tag does not resolve" verdict. Mirrors ``signature_present``.
     """
     safe_repo = urllib.parse.quote(repo_path, safe="/")
     safe_tag = urllib.parse.quote(tag, safe="")
     url = f"https://{GHCR_REGISTRY}/v2/{safe_repo}/manifests/{safe_tag}"
     headers = {"Accept": MANIFEST_ACCEPT, **auth_header}
-    status, response_headers, _ = _request("HEAD", url, headers)
+    status, response_headers, _ = _request_with_retry("HEAD", url, headers)
+    if status >= HTTP_SERVER_ERROR_MIN:
+        msg = f"registry returned HTTP {status} for {url} after retries"
+        raise urllib.error.URLError(msg)
     if status != HTTP_OK:
         return None, f"tag does not resolve in registry (HTTP {status})"
     for k, v in response_headers.items():
@@ -434,7 +504,7 @@ def _check_per_image_convergence(
     return failures
 
 
-_NetworkExceptions = (
+_NetworkExceptions: Final = (
     urllib.error.URLError,
     json.JSONDecodeError,
     UnicodeDecodeError,

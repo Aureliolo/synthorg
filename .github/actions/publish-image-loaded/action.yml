@@ -169,12 +169,22 @@ runs:
           # the repo prefix so we can reapply it to the per-arch sources.
           t="${full_tag#${REPO}:}"
 
+          # `docker manifest create` re-resolves each `@sha256:` source
+          # member against the registry (a GET on the per-arch image
+          # manifest), so it hits the same transient GHCR failure surface
+          # (`i/o timeout`, 5xx, connection reset) the push and
+          # manifest-push calls already retry. Wrap it in the same helper:
+          # `--amend` makes re-runs idempotent (the local manifest store
+          # is rebuilt from the digest-pinned sources), so a retry never
+          # changes the assembled list.
           if [ "$ENABLE_ARM64" = "true" ]; then
-            docker manifest create --amend "${REPO}:${t}" \
+            bash "$RETRY" "docker manifest create ${REPO}:${t}" \
+              docker manifest create --amend "${REPO}:${t}" \
               "${REPO}@${AMD64_DIGEST}" \
               "${REPO}@${ARM64_DIGEST}"
           else
-            docker manifest create --amend "${REPO}:${t}" \
+            bash "$RETRY" "docker manifest create ${REPO}:${t}" \
+              docker manifest create --amend "${REPO}:${t}" \
               "${REPO}@${AMD64_DIGEST}"
           fi
           bash "$RETRY" "docker manifest push ${REPO}:${t}" docker manifest push "${REPO}:${t}"
