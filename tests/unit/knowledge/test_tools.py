@@ -31,7 +31,7 @@ from tests.unit.knowledge._fakes import (
 pytestmark = pytest.mark.unit
 
 
-async def _factory() -> KnowledgeToolFactory:
+async def _factory(*, repo_root: str = "") -> KnowledgeToolFactory:
     backend = InMemoryBackend()
     await backend.connect()
     sources = FakeKnowledgeSourceRepository()
@@ -43,7 +43,7 @@ async def _factory() -> KnowledgeToolFactory:
         retriever=KnowledgeRetriever(
             backend=backend, sources=sources, provenance=provenance
         ),
-        config=KnowledgeConfig(),
+        config=KnowledgeConfig(repo_root=repo_root),
         clock=clock,
     )
     return KnowledgeToolFactory(service=service)
@@ -56,7 +56,7 @@ class TestKnowledgeTools:
         (tmp_path / "auth.py").write_text(
             "def f():\n    return checkout_secret()\n", encoding="utf-8"
         )
-        factory = await _factory()
+        factory = await _factory(repo_root=str(tmp_path))
         tools = factory.build_tools(project_id=NotBlankStr("proj-1"))
         ingest_tool = next(t for t in tools if isinstance(t, IngestKnowledgeTool))
         search_tool = next(t for t in tools if isinstance(t, SearchKnowledgeTool))
@@ -81,7 +81,7 @@ class TestKnowledgeTools:
 
     async def test_ingest_reports_status(self, tmp_path: Path) -> None:
         (tmp_path / "a.py").write_text("x = 'checkout'\n", encoding="utf-8")
-        factory = await _factory()
+        factory = await _factory(repo_root=str(tmp_path))
         ingest_tool = next(
             t
             for t in factory.build_tools(project_id=NotBlankStr("proj-1"))

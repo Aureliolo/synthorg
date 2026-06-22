@@ -88,8 +88,9 @@ class QuotaPollerConfig(BaseModel):
     """Configuration for the proactive quota polling service.
 
     Attributes:
-        enabled: Whether the poller is active.  Defaults to ``False``
-            so it must be explicitly opted in.
+        enabled: Whether the poller is active.  Defaults to ``True``
+            (pre-alpha posture: the proactive poller is wired on by
+            default); operators opt out via ``budget.quota_poller_enabled``.
         poll_interval_seconds: How often to poll quota snapshots.
             Must be in (0, 3600].
         alert_thresholds: Usage percentage thresholds for alerts.

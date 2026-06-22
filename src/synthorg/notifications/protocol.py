@@ -55,3 +55,18 @@ class NotificationSink(Protocol):
         must be a no-op. Stateless sinks implement this as a no-op.
         """
         ...
+
+
+@runtime_checkable
+class NotificationDispatcherProtocol(Protocol):
+    """Protocol for the fan-out dispatch target.
+
+    Lets escalation producers (e.g. the engine health-monitoring
+    pipeline) depend on the ``dispatch`` seam rather than the concrete
+    :class:`~synthorg.notifications.dispatcher.NotificationDispatcher`, so
+    a test double or an alternative dispatcher satisfies the contract.
+    """
+
+    async def dispatch(self, notification: Notification) -> None:
+        """Fan a notification out to every registered sink."""
+        ...

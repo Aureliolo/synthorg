@@ -38,7 +38,11 @@ class _FakeFetcher:
         return self._html
 
 
-async def _service(html: str = "<p>nothing</p>") -> KnowledgeService:
+async def _service(
+    html: str = "<p>nothing</p>",
+    *,
+    repo_root: str = "",
+) -> KnowledgeService:
     backend = InMemoryBackend()
     await backend.connect()
     sources = FakeKnowledgeSourceRepository()
@@ -50,7 +54,7 @@ async def _service(html: str = "<p>nothing</p>") -> KnowledgeService:
         retriever=KnowledgeRetriever(
             backend=backend, sources=sources, provenance=provenance
         ),
-        config=KnowledgeConfig(),
+        config=KnowledgeConfig(repo_root=repo_root),
         html_fetcher=_FakeFetcher(html),
         clock=clock,
     )
@@ -61,7 +65,7 @@ class TestKnowledgeServiceRoundTrip:
         (tmp_path / "auth.py").write_text(
             "def login(user):\n    return checkout_token(user)\n", encoding="utf-8"
         )
-        service = await _service()
+        service = await _service(repo_root=str(tmp_path))
         source = await service.ingest(
             source_type=SourceType.REPO,
             uri=NotBlankStr(str(tmp_path)),
@@ -83,7 +87,10 @@ class TestKnowledgeServiceRoundTrip:
 
     async def test_mixed_corpus_repo_and_global_web(self, tmp_path: Path) -> None:
         (tmp_path / "a.py").write_text("x = 'checkout repo'\n", encoding="utf-8")
-        service = await _service(html="<html><body><p>checkout web</p></body></html>")
+        service = await _service(
+            html="<html><body><p>checkout web</p></body></html>",
+            repo_root=str(tmp_path),
+        )
         await service.ingest(
             source_type=SourceType.REPO,
             uri=NotBlankStr(str(tmp_path)),
@@ -106,7 +113,7 @@ class TestKnowledgeServiceRoundTrip:
 
     async def test_unchanged_reingest_short_circuits(self, tmp_path: Path) -> None:
         (tmp_path / "a.py").write_text("y = 1\n", encoding="utf-8")
-        service = await _service()
+        service = await _service(repo_root=str(tmp_path))
         first = await service.ingest(
             source_type=SourceType.REPO,
             uri=NotBlankStr(str(tmp_path)),
@@ -125,7 +132,7 @@ class TestKnowledgeServiceRoundTrip:
     async def test_edit_then_reindex_surfaces_new_content(self, tmp_path: Path) -> None:
         target = tmp_path / "a.py"
         target.write_text("def f():\n    return 'alpha'\n", encoding="utf-8")
-        service = await _service()
+        service = await _service(repo_root=str(tmp_path))
         await service.ingest(
             source_type=SourceType.REPO,
             uri=NotBlankStr(str(tmp_path)),
@@ -148,7 +155,7 @@ class TestKnowledgeServiceRoundTrip:
 
     async def test_delete_source_purges(self, tmp_path: Path) -> None:
         (tmp_path / "a.py").write_text("z = 'checkout'\n", encoding="utf-8")
-        service = await _service()
+        service = await _service(repo_root=str(tmp_path))
         source = await service.ingest(
             source_type=SourceType.REPO,
             uri=NotBlankStr(str(tmp_path)),

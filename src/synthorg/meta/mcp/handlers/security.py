@@ -19,6 +19,7 @@ from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.domains._security_args import (
     RiskOverrideCreateArgs,
+    RiskOverrideListArgs,
     RiskOverrideRevokeArgs,
 )
 from synthorg.meta.mcp.errors import (
@@ -150,7 +151,10 @@ async def _list_overrides(
         JSON-encoded MCP envelope string.
     """
     tool_name = "synthorg_security_risk_override_list"
-    _ = (arguments, actor)
+    # Narrow the wire payload once at the boundary even though the read-only
+    # list args carry no fields (MCP typed-args contract).
+    typed_args(arguments, RiskOverrideListArgs)
+    _ = actor
     try:
         active = risk_override_service_of(app_state).list_active()
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary

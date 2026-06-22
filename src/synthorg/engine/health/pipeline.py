@@ -16,12 +16,12 @@ from synthorg.engine.health.models import (
 from synthorg.engine.health.triage import TriageFilter
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.quality.models import StepQualitySignal
-from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.notifications.models import (
     Notification,
     NotificationCategory,
     NotificationSeverity,
 )
+from synthorg.notifications.protocol import NotificationDispatcherProtocol
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.health import HEALTH_PIPELINE_ERROR
 
@@ -41,7 +41,7 @@ class HealthMonitoringPipeline:
     """Two-layer health monitoring pipeline.
 
     Composes ``HealthJudge`` (sensitive) + ``TriageFilter``
-    (conservative) + ``NotificationDispatcher`` (fan-out delivery).
+    (conservative) + a notification dispatcher (fan-out delivery).
 
     Args:
         judge: The health judge instance.
@@ -55,7 +55,7 @@ class HealthMonitoringPipeline:
         *,
         judge: HealthJudge,
         triage: TriageFilter,
-        notification_dispatcher: NotificationDispatcher,
+        notification_dispatcher: NotificationDispatcherProtocol,
     ) -> None:
         self._judge = judge
         self._triage = triage
