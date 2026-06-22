@@ -376,6 +376,7 @@ async def _build_runtime_work_pipeline(  # noqa: PLR0913 -- keyword-only DI
         agent_registry=agent_registry_of(app_state),
         routing_discriminator=routing_policy,
         leaf_threshold=leaf_threshold,
+        assignment_strategy=app_state.config.task_assignment.strategy,
         provider=provider,
         decomposition_model=decomposition_model,
         cost_tracker=cost_tracker,
