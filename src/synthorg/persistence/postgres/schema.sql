@@ -637,13 +637,13 @@ CREATE TABLE project_brain_entries (
     status TEXT NOT NULL,
     author TEXT NOT NULL,
     recorded_at TIMESTAMPTZ NOT NULL,
-    related_task_ids TEXT NOT NULL DEFAULT '[]',
-    related_entry_ids TEXT NOT NULL DEFAULT '[]',
+    related_task_ids JSONB NOT NULL DEFAULT '[]'::JSONB,
+    related_entry_ids JSONB NOT NULL DEFAULT '[]'::JSONB,
     supersedes_entry_id TEXT,
-    tags TEXT NOT NULL DEFAULT '[]',
+    tags JSONB NOT NULL DEFAULT '[]'::JSONB,
     confidence DOUBLE PRECISION,
-    citations TEXT NOT NULL DEFAULT '[]',
-    payload TEXT NOT NULL,
+    citations JSONB NOT NULL DEFAULT '[]'::JSONB,
+    payload JSONB NOT NULL,
     PRIMARY KEY (project_id, entry_id, revision),
     -- Redundant with the PK for per-project lookups, kept deliberately: it
     -- enforces a globally unique (entry_id, revision) pair, so a revision is
@@ -1550,6 +1550,8 @@ CREATE TABLE conversation_turns (
     CONSTRAINT uq_ct_conversation_sequence UNIQUE (conversation_id, sequence)
 );
 CREATE INDEX idx_ct_created_at ON conversation_turns (created_at);
+CREATE INDEX idx_ct_conversation_sequence
+ON conversation_turns (conversation_id, sequence DESC, id DESC);
 
 CREATE TABLE conversational_proposals (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
@@ -1632,12 +1634,7 @@ CREATE TABLE cost_forecasts (
     decision TEXT NOT NULL DEFAULT 'pending' CHECK (
         decision IN ('pending', 'approved', 'rejected', 'superseded')
     ),
-    decided_at TEXT
-    CHECK (
-        decided_at IS NULL
-        OR decided_at LIKE '%+00:00'
-        OR decided_at LIKE '%Z'
-    ),
+    decided_at TIMESTAMPTZ,
     decided_by TEXT
     CHECK (decided_by IS NULL OR CHAR_LENGTH(TRIM(decided_by)) > 0),
     ceiling_amount DOUBLE PRECISION
@@ -1648,18 +1645,9 @@ CREATE TABLE cost_forecasts (
     CHECK (halt_ceiling_amount IS NULL OR halt_ceiling_amount >= 0),
     halt_currency TEXT
     CHECK (halt_currency IS NULL OR CHAR_LENGTH(halt_currency) = 3),
-    halted_at TEXT
-    CHECK (
-        halted_at IS NULL
-        OR halted_at LIKE '%+00:00'
-        OR halted_at LIKE '%Z'
-    ),
-    created_at TEXT NOT NULL CHECK (
-        created_at LIKE '%+00:00' OR created_at LIKE '%Z'
-    ),
-    updated_at TEXT NOT NULL CHECK (
-        updated_at LIKE '%+00:00' OR updated_at LIKE '%Z'
-    ),
+    halted_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
     CONSTRAINT chk_cf_lower_le_upper CHECK (lower_bound <= upper_bound),
     CONSTRAINT chk_cf_estimate_within_band CHECK (
         estimated_cost >= lower_bound AND estimated_cost <= upper_bound
@@ -1991,6 +1979,8 @@ CREATE TABLE dynamic_tools (
 
 CREATE INDEX idx_dynamic_tools_state ON dynamic_tools (state);
 CREATE INDEX idx_dynamic_tools_capability ON dynamic_tools (capability);
+CREATE INDEX idx_dynamic_tools_sandbox_backend
+ON dynamic_tools (sandbox_backend);
 
 CREATE TABLE research_runs (
     run_id TEXT NOT NULL PRIMARY KEY,
@@ -2025,19 +2015,14 @@ CREATE TABLE project_charters (
     ),
     title TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(title)) > 0),
     brief TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(brief)) > 0),
-    goals TEXT NOT NULL DEFAULT '[]',
-    constraints TEXT NOT NULL DEFAULT '[]',
-    success_criteria TEXT NOT NULL DEFAULT '[]',
-    in_scope TEXT NOT NULL DEFAULT '[]',
-    out_of_scope TEXT NOT NULL DEFAULT '[]',
+    goals JSONB NOT NULL DEFAULT '[]'::JSONB,
+    constraints JSONB NOT NULL DEFAULT '[]'::JSONB,
+    success_criteria JSONB NOT NULL DEFAULT '[]'::JSONB,
+    in_scope JSONB NOT NULL DEFAULT '[]'::JSONB,
+    out_of_scope JSONB NOT NULL DEFAULT '[]'::JSONB,
     envelope_amount DOUBLE PRECISION NOT NULL CHECK (envelope_amount > 0),
     envelope_currency TEXT NOT NULL CHECK (CHAR_LENGTH(envelope_currency) = 3),
-    envelope_deadline TEXT
-    CHECK (
-        envelope_deadline IS NULL
-        OR envelope_deadline LIKE '%+00:00'
-        OR envelope_deadline LIKE '%Z'
-    ),
+    envelope_deadline TIMESTAMPTZ,
     envelope_time_horizon TEXT
     CHECK (
         envelope_time_horizon IS NULL
@@ -2051,18 +2036,9 @@ CREATE TABLE project_charters (
         OR CHAR_LENGTH(TRIM(proposed_project_name)) > 0
     ),
     proposed_project_description TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL CHECK (
-        created_at LIKE '%+00:00' OR created_at LIKE '%Z'
-    ),
-    updated_at TEXT NOT NULL CHECK (
-        updated_at LIKE '%+00:00' OR updated_at LIKE '%Z'
-    ),
-    approved_at TEXT
-    CHECK (
-        approved_at IS NULL
-        OR approved_at LIKE '%+00:00'
-        OR approved_at LIKE '%Z'
-    ),
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    approved_at TIMESTAMPTZ,
     approved_by TEXT
     CHECK (approved_by IS NULL OR CHAR_LENGTH(TRIM(approved_by)) > 0),
     forecast_id TEXT
@@ -2257,7 +2233,7 @@ CREATE TABLE ab_tests (
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL
 );
-CREATE INDEX idx_ab_tests_created ON ab_tests (created_at DESC);
+CREATE INDEX idx_ab_tests_created_id ON ab_tests (created_at DESC, id ASC);
 
 CREATE TABLE pruning_requests (
     agent_id TEXT NOT NULL PRIMARY KEY CHECK (CHAR_LENGTH(TRIM(agent_id)) > 0),
@@ -2270,7 +2246,8 @@ CREATE TABLE pruning_requests (
     decided_at TIMESTAMPTZ,
     decided_by TEXT
 );
-CREATE INDEX idx_pruning_requests_created ON pruning_requests (created_at);
+CREATE INDEX idx_pruning_requests_created_agent
+ON pruning_requests (created_at ASC, agent_id ASC);
 
 CREATE TABLE active_principles (
     id TEXT NOT NULL PRIMARY KEY CHECK (CHAR_LENGTH(TRIM(id)) > 0),
@@ -2285,7 +2262,8 @@ CREATE TABLE active_principles (
     updated_at TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX idx_active_principles_scope ON active_principles (scope_kind, scope);
-CREATE INDEX idx_active_principles_created ON active_principles (created_at DESC);
+CREATE INDEX idx_active_principles_created_id
+ON active_principles (created_at DESC, id ASC);
 
 CREATE TABLE roles (
     name TEXT NOT NULL PRIMARY KEY CHECK (CHAR_LENGTH(TRIM(name)) > 0),
@@ -2308,7 +2286,8 @@ CREATE TABLE departments (
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL
 );
-CREATE INDEX idx_departments_created ON departments (created_at DESC);
+CREATE INDEX idx_departments_created_id
+ON departments (created_at DESC, id ASC);
 CREATE TABLE evolution_outcomes (
     id BIGSERIAL PRIMARY KEY,
     agent_id TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(agent_id)) > 0),

@@ -37,6 +37,12 @@
 --       users.{org_roles, scoped_departments},
 --       custom_rules.target_altitudes,
 --       conflict_escalations.conflict_json,
+--       ab_tests.variants,
+--       pruning_requests.evaluation,
+--       project_charters.{goals, constraints, success_criteria,
+--                         in_scope, out_of_scope},
+--       project_brain_entries.{related_task_ids, related_entry_ids,
+--                              tags, citations, payload},
 --       (and any future JSONB column added to the Postgres schema).
 --   * TEXT carrying ISO-8601 strings (with explicit ``+00:00`` or ``Z``
 --     suffix; CHECK constraints enforce the suffix on version-snapshot
@@ -1488,6 +1494,8 @@ CREATE TABLE conversation_turns (
     CONSTRAINT uq_ct_conversation_sequence UNIQUE (conversation_id, sequence)
 );
 CREATE INDEX idx_ct_created_at ON conversation_turns (created_at);
+CREATE INDEX idx_ct_conversation_sequence
+ON conversation_turns (conversation_id, sequence DESC, id DESC);
 
 CREATE TABLE conversational_proposals (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
@@ -2053,6 +2061,8 @@ CREATE TABLE dynamic_tools (
 
 CREATE INDEX idx_dynamic_tools_state ON dynamic_tools (state);
 CREATE INDEX idx_dynamic_tools_capability ON dynamic_tools (capability);
+CREATE INDEX idx_dynamic_tools_sandbox_backend
+ON dynamic_tools (sandbox_backend);
 
 CREATE TABLE research_runs (
     run_id TEXT NOT NULL PRIMARY KEY,
@@ -2325,7 +2335,7 @@ CREATE TABLE ab_tests (
     created_at TEXT NOT NULL CHECK (created_at LIKE '%+00:00' OR created_at LIKE '%Z'),
     updated_at TEXT NOT NULL CHECK (updated_at LIKE '%+00:00' OR updated_at LIKE '%Z')
 );
-CREATE INDEX idx_ab_tests_created ON ab_tests (created_at DESC);
+CREATE INDEX idx_ab_tests_created_id ON ab_tests (created_at DESC, id ASC);
 
 CREATE TABLE pruning_requests (
     agent_id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(agent_id)) > 0),
@@ -2338,7 +2348,8 @@ CREATE TABLE pruning_requests (
     decided_at TEXT CHECK (decided_at IS NULL OR decided_at LIKE '%+00:00' OR decided_at LIKE '%Z'),
     decided_by TEXT
 );
-CREATE INDEX idx_pruning_requests_created ON pruning_requests (created_at);
+CREATE INDEX idx_pruning_requests_created_agent
+ON pruning_requests (created_at ASC, agent_id ASC);
 
 CREATE TABLE active_principles (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
@@ -2353,7 +2364,8 @@ CREATE TABLE active_principles (
     updated_at TEXT NOT NULL CHECK (updated_at LIKE '%+00:00' OR updated_at LIKE '%Z')
 );
 CREATE INDEX idx_active_principles_scope ON active_principles (scope_kind, scope);
-CREATE INDEX idx_active_principles_created ON active_principles (created_at DESC);
+CREATE INDEX idx_active_principles_created_id
+ON active_principles (created_at DESC, id ASC);
 
 CREATE TABLE roles (
     name TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(name)) > 0),
@@ -2376,7 +2388,8 @@ CREATE TABLE departments (
     created_at TEXT NOT NULL CHECK (created_at LIKE '%+00:00' OR created_at LIKE '%Z'),
     updated_at TEXT NOT NULL CHECK (updated_at LIKE '%+00:00' OR updated_at LIKE '%Z')
 );
-CREATE INDEX idx_departments_created ON departments (created_at DESC);
+CREATE INDEX idx_departments_created_id
+ON departments (created_at DESC, id ASC);
 CREATE TABLE evolution_outcomes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     agent_id TEXT NOT NULL CHECK (LENGTH(TRIM(agent_id)) > 0),

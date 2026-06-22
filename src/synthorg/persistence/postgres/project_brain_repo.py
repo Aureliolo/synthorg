@@ -10,6 +10,7 @@ from datetime import datetime
 
 import psycopg
 from psycopg.rows import DictRow, TupleRow, dict_row
+from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 from pydantic import ValidationError
 
@@ -79,13 +80,34 @@ def _passthrough_dt(value: datetime) -> object:
     return value
 
 
+def _encode_jsonb(value: object) -> object:
+    """Wrap a JSON value for binding to a native JSONB column.
+
+    Returns:
+        A :class:`~psycopg.types.json.Jsonb` adapter.
+    """
+    return Jsonb(value)
+
+
+def _jsonb_exists_contains(column: str, ph: str, value: str) -> tuple[str, object]:
+    """Array-membership predicate against a native JSONB array.
+
+    Returns:
+        ``(sql_fragment, bound_param)`` using ``jsonb_exists`` (the function
+        form of the ``?`` operator, which psycopg binds without escaping).
+    """
+    return f"jsonb_exists({column}, {ph})", value
+
+
 def _insert_params(entity: BrainEntry) -> tuple[object, ...]:
-    """Positional INSERT parameters (``recorded_at`` bound natively).
+    """Positional INSERT parameters (``recorded_at`` + JSON bound natively).
 
     Returns:
         The positional parameter tuple in column order.
     """
-    return insert_params(entity, serialize_dt=_passthrough_dt)
+    return insert_params(
+        entity, serialize_dt=_passthrough_dt, encode_json=_encode_jsonb
+    )
 
 
 class PostgresProjectBrainRepository:
@@ -546,7 +568,12 @@ def _filter_sql(filter_spec: BrainFilterSpec) -> tuple[str, tuple[object, ...]]:
     Returns:
         ``(where_sql, params)`` with ``project_id`` first.
     """
-    return build_filter_sql(filter_spec, ph="%s", serialize_dt=_passthrough_dt)
+    return build_filter_sql(
+        filter_spec,
+        ph="%s",
+        serialize_dt=_passthrough_dt,
+        array_contains=_jsonb_exists_contains,
+    )
 
 
 def _current_filter_sql(
@@ -557,4 +584,9 @@ def _current_filter_sql(
     Returns:
         ``(outer_and_sql, params)`` beginning with `` AND`` when non-empty.
     """
-    return build_current_filter_sql(filter_spec, ph="%s", serialize_dt=_passthrough_dt)
+    return build_current_filter_sql(
+        filter_spec,
+        ph="%s",
+        serialize_dt=_passthrough_dt,
+        array_contains=_jsonb_exists_contains,
+    )

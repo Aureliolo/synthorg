@@ -11,6 +11,7 @@ native :class:`~uuid.UUID` (Postgres) and a string (SQLite).
 """
 
 import json
+from collections.abc import Callable
 from datetime import datetime
 from typing import LiteralString
 from uuid import UUID
@@ -58,20 +59,32 @@ _ALLOWED_TRANSITION_KEYS = frozenset(
 def _decode_str_tuple(raw: object) -> tuple[NotBlankStr, ...]:
     """Decode a JSON array column into a tuple of non-blank strings.
 
+    Tolerates both backends: SQLite returns a JSON ``str`` (needs parsing);
+    Postgres' native JSONB column returns an already-parsed ``list``.
+
     Returns:
         The matching collection.
+
+    Raises:
+        TypeError: If the decoded value is not a JSON array.
     """
     if raw is None:
         return ()
-    decoded = json.loads(str(raw))
-    return tuple(NotBlankStr(str(item)) for item in decoded)
+    items = json.loads(raw) if isinstance(raw, str) else raw
+    if not isinstance(items, list):
+        msg = f"expected a JSON array, got {type(items).__name__}"
+        raise TypeError(msg)
+    return tuple(NotBlankStr(str(item)) for item in items)
 
 
-def _encode_str_tuple(values: tuple[str, ...]) -> str:
-    """Encode a string tuple as a deterministic JSON array.
+def _encode_str_tuple(values: tuple[str, ...]) -> object:
+    """Encode a string tuple as a deterministic JSON array (SQLite default).
+
+    The Postgres charter repository injects a ``Jsonb`` encoder instead so the
+    value binds to the native JSONB column.
 
     Returns:
-        Result of type ``str``.
+        A JSON string.
     """
     return json.dumps(list(values))
 
@@ -182,8 +195,18 @@ def row_to_charter(row: RowLike) -> ProjectCharter:
         raise MalformedRowError(msg) from exc
 
 
-def charter_save_params(entity: ProjectCharter) -> tuple[object, ...]:
+def charter_save_params(
+    entity: ProjectCharter,
+    *,
+    encode_array: Callable[[tuple[str, ...]], object] = _encode_str_tuple,
+) -> tuple[object, ...]:
     """Flatten a charter into the positional upsert params.
+
+    Args:
+        entity: The charter to flatten.
+        encode_array: Serialiser for the JSON-array columns (``json.dumps``
+            for SQLite's TEXT columns; a ``Jsonb`` wrapper for Postgres' native
+            JSONB columns).
 
     Returns:
         The matching collection.
@@ -196,11 +219,11 @@ def charter_save_params(entity: ProjectCharter) -> tuple[object, ...]:
         entity.status.value,
         entity.title,
         entity.brief,
-        _encode_str_tuple(entity.goals),
-        _encode_str_tuple(entity.constraints),
-        _encode_str_tuple(entity.success_criteria),
-        _encode_str_tuple(entity.scope.in_scope),
-        _encode_str_tuple(entity.scope.out_of_scope),
+        encode_array(entity.goals),
+        encode_array(entity.constraints),
+        encode_array(entity.success_criteria),
+        encode_array(entity.scope.in_scope),
+        encode_array(entity.scope.out_of_scope),
         float(entity.envelope.amount),
         entity.envelope.currency,
         (
@@ -304,7 +327,10 @@ other writer (lost-update invariant; bespoke under ADR-0001 D7).
 
 
 def charter_cas_params(
-    entity: ProjectCharter, *, expected_version: int
+    entity: ProjectCharter,
+    *,
+    expected_version: int,
+    encode_array: Callable[[tuple[str, ...]], object] = _encode_str_tuple,
 ) -> tuple[object, ...]:
     """Positional params for :func:`charter_cas_update_sql`.
 
@@ -312,7 +338,7 @@ def charter_cas_params(
         The SET params (all non-``id`` columns, from ``charter_save_params``)
         followed by the WHERE params ``(id, expected_version, DRAFTED)``.
     """
-    set_params = charter_save_params(entity)[1:]
+    set_params = charter_save_params(entity, encode_array=encode_array)[1:]
     return (
         *set_params,
         entity.id,

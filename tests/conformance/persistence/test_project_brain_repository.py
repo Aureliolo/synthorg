@@ -152,6 +152,52 @@ class TestProjectBrainRepository:
         assert len(only_open) == 1
         assert only_open[0].entry_kind is BrainEntryKind.OPEN_QUESTION
 
+    async def test_query_filters_by_tag(self, backend: PersistenceBackend) -> None:
+        """Tag membership filters the JSON-array column on both backends.
+
+        Exercises the ``jsonb_exists`` (Postgres JSONB) and quoted-substring
+        ``LIKE`` (SQLite TEXT) array-membership predicates.
+        """
+        await backend.projects.save(_project())
+        repo = backend.project_brain
+        await repo.append_with_next_revision(
+            _decision(entry_id="e-tagged", title="Tagged").model_copy(
+                update={"tags": (NotBlankStr("infra"), NotBlankStr("urgent"))}
+            )
+        )
+        await repo.append_with_next_revision(
+            _decision(entry_id="e-untagged", title="Untagged", minute=1)
+        )
+        spec = BrainFilterSpec(
+            project_id=NotBlankStr(sid("proj-1")), tag=NotBlankStr("infra")
+        )
+        matched = await repo.query(spec)
+        assert len(matched) == 1
+        assert matched[0].entry_id == NotBlankStr("e-tagged")
+        assert NotBlankStr("infra") in matched[0].tags
+
+    async def test_list_current_filters_by_related_task(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """Related-task membership filters the JSON-array column on both backends."""
+        await backend.projects.save(_project())
+        repo = backend.project_brain
+        await repo.append_with_next_revision(
+            _decision(entry_id="e-linked", title="Linked").model_copy(
+                update={"related_task_ids": (NotBlankStr("task-7"),)}
+            )
+        )
+        await repo.append_with_next_revision(
+            _decision(entry_id="e-unlinked", title="Unlinked", minute=1)
+        )
+        spec = BrainFilterSpec(
+            project_id=NotBlankStr(sid("proj-1")),
+            related_task_id=NotBlankStr("task-7"),
+        )
+        matched = await repo.list_current(spec)
+        assert len(matched) == 1
+        assert matched[0].entry_id == NotBlankStr("e-linked")
+
     async def test_history_oldest_first(self, backend: PersistenceBackend) -> None:
         await backend.projects.save(_project())
         repo = backend.project_brain

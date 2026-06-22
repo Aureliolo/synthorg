@@ -32,6 +32,32 @@ BRAIN_COLUMNS = (
 """Column list (insert/select order) shared by both backends."""
 
 
+def _json_dumps_default(value: object) -> object:
+    """Default JSON encoder: ``json.dumps`` for the SQLite TEXT columns.
+
+    Object keys are sorted so the stored text is deterministic. Postgres
+    injects a :class:`~psycopg.types.json.Jsonb` wrapper instead so the value
+    lands in the native JSONB column (which canonicalises key order itself).
+
+    Returns:
+        A JSON string.
+    """
+    return json.dumps(value, sort_keys=True)
+
+
+def _like_array_contains(column: str, ph: str, value: str) -> tuple[str, object]:
+    """Default array-membership predicate: substring ``LIKE`` on the JSON text.
+
+    SQLite stores the array as a JSON string, so element membership is a
+    quoted-substring match. Postgres injects a ``jsonb_exists`` predicate
+    against the native JSONB array instead.
+
+    Returns:
+        ``(sql_fragment, bound_param)``.
+    """
+    return f"{column} LIKE {ph} ESCAPE '\\'", f'%"{escape_like(value)}"%'
+
+
 def row_to_entry(
     row: DictRow,
     *,
@@ -68,6 +94,7 @@ def insert_params(
     entity: BrainEntry,
     *,
     serialize_dt: Callable[[datetime], object],
+    encode_json: Callable[[object], object] = _json_dumps_default,
 ) -> tuple[object, ...]:
     """Scalar SQL parameters for a full-row INSERT (revision included).
 
@@ -75,6 +102,9 @@ def insert_params(
         entity: The entry to persist.
         serialize_dt: Serialiser for ``recorded_at`` (ISO string for SQLite;
             passthrough for Postgres' native ``TIMESTAMPTZ``).
+        encode_json: Serialiser for the JSON array / object columns
+            (``json.dumps`` for SQLite's TEXT columns; a ``Jsonb`` wrapper for
+            Postgres' native JSONB columns).
 
     Returns:
         The positional parameter tuple in column order.
@@ -89,13 +119,13 @@ def insert_params(
         entity.status.value,
         entity.author,
         serialize_dt(entity.recorded_at),
-        json.dumps(list(entity.related_task_ids)),
-        json.dumps(list(entity.related_entry_ids)),
+        encode_json(list(entity.related_task_ids)),
+        encode_json(list(entity.related_entry_ids)),
         entity.supersedes_entry_id,
-        json.dumps(list(entity.tags), sort_keys=True),
+        encode_json(list(entity.tags)),
         entity.confidence,
-        json.dumps([c.model_dump(mode="json") for c in entity.citations]),
-        json.dumps(entity.payload.model_dump(mode="json"), sort_keys=True),
+        encode_json([c.model_dump(mode="json") for c in entity.citations]),
+        encode_json(entity.payload.model_dump(mode="json")),
     )
 
 
@@ -113,6 +143,9 @@ def filter_conditions(
     *,
     ph: str,
     serialize_dt: Callable[[datetime], object],
+    array_contains: Callable[
+        [str, str, str], tuple[str, object]
+    ] = _like_array_contains,
 ) -> tuple[list[str], list[object]]:
     """Build the AND-conditions (kind/status/tag/author/task/since).
 
@@ -120,6 +153,9 @@ def filter_conditions(
         filter_spec: Filter dimensions.
         ph: Backend parameter placeholder (``?`` or ``%s``).
         serialize_dt: Serialiser for the ``updated_since`` timestamp.
+        array_contains: Builds the array-membership predicate for the JSON
+            array columns: substring ``LIKE`` on SQLite's TEXT, ``jsonb_exists``
+            on Postgres' native JSONB.
 
     Returns:
         ``(conditions, params)`` excluding the leading ``project_id`` predicate.
@@ -136,11 +172,15 @@ def filter_conditions(
         conditions.append(f"author = {ph}")
         params.append(filter_spec.author)
     if filter_spec.tag is not None:
-        conditions.append(f"tags LIKE {ph} ESCAPE '\\'")
-        params.append(f'%"{escape_like(filter_spec.tag)}"%')
+        frag, param = array_contains("tags", ph, filter_spec.tag)
+        conditions.append(frag)
+        params.append(param)
     if filter_spec.related_task_id is not None:
-        conditions.append(f"related_task_ids LIKE {ph} ESCAPE '\\'")
-        params.append(f'%"{escape_like(filter_spec.related_task_id)}"%')
+        frag, param = array_contains(
+            "related_task_ids", ph, filter_spec.related_task_id
+        )
+        conditions.append(frag)
+        params.append(param)
     if filter_spec.updated_since is not None:
         conditions.append(f"recorded_at >= {ph}")
         params.append(serialize_dt(filter_spec.updated_since))
@@ -152,6 +192,9 @@ def build_filter_sql(
     *,
     ph: str,
     serialize_dt: Callable[[datetime], object],
+    array_contains: Callable[
+        [str, str, str], tuple[str, object]
+    ] = _like_array_contains,
 ) -> tuple[str, tuple[object, ...]]:
     """Compose the ``WHERE`` clause for an all-revisions query.
 
@@ -159,7 +202,7 @@ def build_filter_sql(
         ``(where_sql, params)`` with ``project_id`` first.
     """
     conditions, params = filter_conditions(
-        filter_spec, ph=ph, serialize_dt=serialize_dt
+        filter_spec, ph=ph, serialize_dt=serialize_dt, array_contains=array_contains
     )
     sql = f"WHERE project_id = {ph}"
     full_params: list[object] = [filter_spec.project_id, *params]
@@ -173,6 +216,9 @@ def build_current_filter_sql(
     *,
     ph: str,
     serialize_dt: Callable[[datetime], object],
+    array_contains: Callable[
+        [str, str, str], tuple[str, object]
+    ] = _like_array_contains,
 ) -> tuple[str, tuple[object, ...]]:
     """Compose the outer AND-fragment for current-state queries.
 
@@ -181,7 +227,7 @@ def build_current_filter_sql(
         when non-empty.
     """
     conditions, params = filter_conditions(
-        filter_spec, ph=ph, serialize_dt=serialize_dt
+        filter_spec, ph=ph, serialize_dt=serialize_dt, array_contains=array_contains
     )
     sql = (" AND " + " AND ".join(conditions)) if conditions else ""
     return sql, tuple(params)

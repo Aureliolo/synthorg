@@ -11,6 +11,7 @@ marshalling is shared with the SQLite sibling via
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
@@ -40,6 +41,16 @@ from synthorg.persistence.charter_protocol import CharterFilterSpec
 logger = get_logger(__name__)
 
 _MAX_PAGE_LIMIT: int = 1_000
+
+
+def _encode_array_jsonb(values: tuple[str, ...]) -> object:
+    """Wrap a charter string-array column for binding to native JSONB.
+
+    Returns:
+        A :class:`~psycopg.types.json.Jsonb` adapter.
+    """
+    return Jsonb(list(values))
+
 
 _UPSERT_SQL = f"""
     INSERT INTO project_charters ({CHARTER_COLUMNS})
@@ -90,7 +101,7 @@ class PostgresCharterRepository:
             ConstraintViolationError: If a database constraint is violated.
             QueryError: If the database query fails.
         """
-        params = charter_save_params(entity)
+        params = charter_save_params(entity, encode_array=_encode_array_jsonb)
         try:
             async with self._pool.connection() as conn:
                 await conn.execute(_UPSERT_SQL, params)
@@ -369,7 +380,9 @@ class PostgresCharterRepository:
             ConstraintViolationError: If a database constraint is violated.
             QueryError: If the database query fails.
         """
-        params = charter_cas_params(entity, expected_version=expected_version)
+        params = charter_cas_params(
+            entity, expected_version=expected_version, encode_array=_encode_array_jsonb
+        )
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(CHARTER_CAS_UPDATE_SQL_PCT, params)
