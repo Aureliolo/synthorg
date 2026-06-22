@@ -10,6 +10,10 @@ import httpx
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import strip_trailing_slash
+from synthorg.core.resilience import (
+    coerce_finite_nonneg_seconds,
+    parse_retry_after_seconds,
+)
 from synthorg.notifications.adapters._ssrf import (
     build_pinned_transport,
     resolve_outbound_target,
@@ -28,6 +32,7 @@ from synthorg.tools.network_validator import NetworkPolicy
 
 logger = get_logger(__name__)
 _DEFAULT_WEBHOOK_TIMEOUT_SECONDS: Final[float] = 10.0
+_HTTP_TOO_MANY_REQUESTS: Final[int] = 429
 
 _SEVERITY_TO_PRIORITY: dict[NotificationSeverity, str] = {
     NotificationSeverity.INFO: "default",
@@ -231,6 +236,18 @@ class NtfyNotificationSink:
                 content=notification.body or notification.title,
                 headers=headers,
             )
+            if response.status_code == _HTTP_TOO_MANY_REQUESTS:
+                # Surface the Retry-After hint so a throttled ntfy server
+                # is observable before raise_for_status turns it into a
+                # generic HTTP error the dispatcher retries.
+                logger.warning(
+                    NOTIFICATION_NTFY_FAILED,
+                    notification_id=str(notification.id),
+                    detail="rate_limited",
+                    retry_after_seconds=coerce_finite_nonneg_seconds(
+                        parse_retry_after_seconds(response.headers.get("retry-after"))
+                    ),
+                )
             response.raise_for_status()
             logger.info(
                 NOTIFICATION_NTFY_DELIVERED,

@@ -8,6 +8,10 @@ from typing import Final, Self
 import httpx
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.resilience import (
+    coerce_finite_nonneg_seconds,
+    parse_retry_after_seconds,
+)
 from synthorg.notifications.adapters._ssrf import (
     build_pinned_transport,
     resolve_outbound_target,
@@ -23,6 +27,7 @@ from synthorg.tools.network_validator import NetworkPolicy
 
 logger = get_logger(__name__)
 _DEFAULT_WEBHOOK_TIMEOUT_SECONDS: Final[float] = 10.0
+_HTTP_TOO_MANY_REQUESTS: Final[int] = 429
 
 
 def _escape_mrkdwn(text: str) -> str:
@@ -239,6 +244,18 @@ class SlackNotificationSink:
                 self._webhook_url,
                 json=payload,
             )
+            if response.status_code == _HTTP_TOO_MANY_REQUESTS:
+                # Surface the Retry-After hint so a throttled webhook is
+                # observable before raise_for_status turns it into a
+                # generic HTTP error the dispatcher retries.
+                logger.warning(
+                    NOTIFICATION_SLACK_FAILED,
+                    notification_id=str(notification.id),
+                    detail="rate_limited",
+                    retry_after_seconds=coerce_finite_nonneg_seconds(
+                        parse_retry_after_seconds(response.headers.get("retry-after"))
+                    ),
+                )
             response.raise_for_status()
             logger.info(
                 NOTIFICATION_SLACK_DELIVERED,

@@ -59,6 +59,10 @@ logger = get_logger(__name__)
 _DEFAULT_INTERVAL_SECONDS: Final[int] = 1800
 _PROBE_TIMEOUT_SECONDS: Final[float] = 10.0
 _HTTP_SERVER_ERROR_THRESHOLD: Final[int] = 500
+# A 429 is a 4xx (below the 5xx threshold) but a rate-limited endpoint
+# is NOT healthy: counting it as success would mask sustained throttling
+# behind a green health verdict.
+_HTTP_TOO_MANY_REQUESTS: Final[int] = 429
 
 
 class ProviderHealthProber:
@@ -581,9 +585,16 @@ class ProviderHealthProber:
                 transport=transport,
             ) as client:
                 resp = await client.get(url, headers=headers)
-                success = resp.status_code < _HTTP_SERVER_ERROR_THRESHOLD
+                success = (
+                    resp.status_code < _HTTP_SERVER_ERROR_THRESHOLD
+                    and resp.status_code != _HTTP_TOO_MANY_REQUESTS
+                )
                 if not success:
-                    error_msg = f"HTTP {resp.status_code}"
+                    if resp.status_code == _HTTP_TOO_MANY_REQUESTS:
+                        retry_after = resp.headers.get("retry-after")
+                        error_msg = f"HTTP 429 rate limited (retry-after={retry_after})"
+                    else:
+                        error_msg = f"HTTP {resp.status_code}"
         except httpx.ConnectError as exc:
             error_msg = f"connect failed: {type(exc).__name__}"
         except httpx.TimeoutException:

@@ -12,6 +12,10 @@ from typing import ClassVar, Final, Self
 import httpx
 
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+from synthorg.core.resilience import (
+    coerce_finite_nonneg_seconds,
+    parse_retry_after_seconds,
+)
 from synthorg.integrations.errors import IntegrationError
 from synthorg.meta.models import CodeChange, CodeOperation
 from synthorg.observability import get_logger
@@ -57,9 +61,34 @@ class GitHubAuthError(GitHubAPIError):
     status_code: ClassVar[int] = 401
 
 
+class GitHubRateLimitError(GitHubAPIError):
+    """Raised on a 429 (or secondary-limit) GitHub API response.
+
+    A retryable failure distinct from the generic ``GitHubAPIError`` so
+    callers (and any retry wrapper) can detect throttling and honour the
+    ``Retry-After`` hint instead of treating it as a terminal API error.
+    Inherits ``GitHubAPIError``'s error code (an inheritance alias) so
+    the error-code-uniqueness gate is satisfied.
+    """
+
+    default_message: ClassVar[str] = "GitHub API rate limited"
+
+    def __init__(
+        self,
+        *,
+        status_code: int,
+        action: str,
+        body: str,
+        retry_after_seconds: float | None,
+    ) -> None:
+        self.retry_after_seconds = retry_after_seconds
+        super().__init__(status_code=status_code, action=action, body=body)
+
+
 logger = get_logger(__name__)
 
 _DEFAULT_TIMEOUT: Final[int] = 30
+_HTTP_TOO_MANY_REQUESTS: Final[int] = 429
 
 
 class HttpGitHubClient:
@@ -400,6 +429,7 @@ def _check_response(resp: httpx.Response, action: str) -> None:
 
     Raises:
         GitHubAuthError: On 401/403 responses.
+        GitHubRateLimitError: On 429 responses (carries Retry-After).
         GitHubAPIError: On other non-2xx responses.
     """
     if resp.is_success:
@@ -417,6 +447,16 @@ def _check_response(resp: httpx.Response, action: str) -> None:
             status_code=resp.status_code,
             action=action,
             body=body,
+        )
+    if resp.status_code == _HTTP_TOO_MANY_REQUESTS:
+        retry_after = coerce_finite_nonneg_seconds(
+            parse_retry_after_seconds(resp.headers.get("retry-after"))
+        )
+        raise GitHubRateLimitError(
+            status_code=resp.status_code,
+            action=action,
+            body=body,
+            retry_after_seconds=retry_after,
         )
     raise GitHubAPIError(
         status_code=resp.status_code,

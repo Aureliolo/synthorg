@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import cast
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 
 from synthorg.meta.appliers.code_applier import (
@@ -13,6 +14,8 @@ from synthorg.meta.appliers.code_applier import (
 from synthorg.meta.appliers.github_client import (
     GitHubAPIError,
     GitHubAuthError,
+    GitHubRateLimitError,
+    _check_response,
     _sanitize_response_body,
 )
 from synthorg.meta.config import CodeModificationConfig
@@ -411,6 +414,34 @@ class TestCodeApplier:
         # Branch was created then cleaned up after push failure.
         gh.create_branch.assert_awaited_once()
         gh.delete_branch.assert_awaited()
+
+
+class TestCheckResponseRateLimit:
+    """``_check_response`` 429 handling."""
+
+    def test_429_raises_rate_limit_error_with_retry_after(self) -> None:
+        resp = httpx.Response(
+            status_code=429,
+            headers={"Retry-After": "30"},
+            text="rate limited",
+            request=httpx.Request("POST", "https://api.github.com/x"),
+        )
+        with pytest.raises(GitHubRateLimitError) as exc_info:
+            _check_response(resp, "create branch")
+        assert exc_info.value.retry_after_seconds == 30.0
+        # The rate-limit error is a GitHubAPIError subclass (inheritance
+        # alias), so generic GitHubAPIError handlers still catch it.
+        assert isinstance(exc_info.value, GitHubAPIError)
+
+    def test_500_raises_generic_api_error_not_rate_limit(self) -> None:
+        resp = httpx.Response(
+            status_code=500,
+            text="boom",
+            request=httpx.Request("POST", "https://api.github.com/x"),
+        )
+        with pytest.raises(GitHubAPIError) as exc_info:
+            _check_response(resp, "create branch")
+        assert not isinstance(exc_info.value, GitHubRateLimitError)
 
 
 class TestGitHubSanitization:

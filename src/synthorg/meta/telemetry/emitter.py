@@ -48,6 +48,9 @@ _SUCCESS_MIN: Final[int] = 200
 _SUCCESS_MAX: Final[int] = 300
 _CLIENT_ERROR_MIN: Final[int] = 400
 _SERVER_ERROR_MIN: Final[int] = 500
+# 429 is a 4xx but is retryable (transient throttling), so it routes
+# through the retry path rather than the blanket-4xx drop below.
+_TOO_MANY_REQUESTS: Final[int] = 429
 _LOG_BODY_MAX_LEN: Final[int] = 500
 
 
@@ -489,6 +492,13 @@ class HttpAnalyticsEmitter:
                     status=response.status_code,
                 )
                 return
+            if response.status_code == _TOO_MANY_REQUESTS:
+                # Rate limited: retry with backoff instead of dropping the
+                # batch on the blanket-4xx path below.
+                raise _TransientPostError(
+                    response.status_code,
+                    _safe_response_text(response),
+                )
             if _CLIENT_ERROR_MIN <= response.status_code < _SERVER_ERROR_MIN:
                 logger.warning(
                     XDEPLOY_BATCH_DROPPED,

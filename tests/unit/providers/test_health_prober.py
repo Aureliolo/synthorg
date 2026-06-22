@@ -250,6 +250,15 @@ class TestProviderHealthProber:
         summary = await tracker.get_summary("test-local")
         assert summary.health_status == ProviderHealthStatus.DOWN
 
+    async def test_probe_records_rate_limited_as_failure(self) -> None:
+        """HTTP 429 is a 4xx but a rate-limited endpoint is NOT healthy."""
+        prober, tracker = _make_prober()
+        with _patch_httpx(status_code=429):
+            await prober._probe_all()
+
+        summary = await tracker.get_summary("test-local")
+        assert summary.health_status == ProviderHealthStatus.DOWN
+
     async def test_probe_records_timeout(self) -> None:
         """Timeout exceptions are recorded as failures."""
         prober, tracker = _make_prober()
