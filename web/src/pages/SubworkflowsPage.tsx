@@ -5,6 +5,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
 import { Pagination } from '@/components/ui/pagination'
+import { SearchFilterSort } from '@/components/ui/search-filter-sort'
 import { SearchInput } from '@/components/ui/search-input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useListPagination } from '@/hooks/use-list-pagination'
@@ -64,15 +65,17 @@ export default function SubworkflowsPage() {
         />
       )}
 
-      <div className="max-w-sm">
-        <SearchInput
-          value={searchQuery}
-          onChange={setSearchQuery}
-          placeholder="Search by name, description, or ID..."
-          ariaLabel="Search subworkflows"
-          focusShortcut
-        />
-      </div>
+      <SearchFilterSort
+        search={
+          <SearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search by name, description, or ID..."
+            ariaLabel="Search subworkflows"
+            focusShortcut
+          />
+        }
+      />
 
       <SubworkflowsListOrEmpty
         searchQuery={searchQuery}

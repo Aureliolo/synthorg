@@ -7,11 +7,10 @@
  * payload size, and any backend-captured error.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AnimatePresence } from 'motion/react'
 import { useSearchParams } from 'react-router'
-import { ChevronDown, ChevronUp, RefreshCw } from 'lucide-react'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
-import { BulkActionBar } from '@/components/ui/bulk-action-bar'
-import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
@@ -34,6 +33,7 @@ import {
   retryWebhookReceipt,
   type WebhookReceipt,
 } from '@/api/endpoints/webhooks'
+import { WebhookRetryBar } from './webhooks/WebhookRetryBar'
 
 const log = createLogger('WebhookReceiptsPage')
 
@@ -391,27 +391,6 @@ function WebhookReceiptsContent({
   return <WebhookReceiptsTable entries={entries} selection={selection} retryableIds={retryableIds} />
 }
 
-function WebhookRetryBar({
-  count,
-  retrying,
-  onClear,
-  onRetry,
-}: {
-  count: number
-  retrying: boolean
-  onClear: () => void
-  onRetry: () => void
-}) {
-  return (
-    <BulkActionBar selectedCount={count} onClear={onClear} loading={retrying}>
-      <Button size="sm" variant="default" onClick={onRetry} disabled={retrying} className="gap-1">
-        <RefreshCw className={`size-3.5 ${retrying ? 'animate-spin' : ''}`} aria-hidden="true" />
-        {retrying ? 'Retrying…' : 'Retry selected'}
-      </Button>
-    </BulkActionBar>
-  )
-}
-
 export default function WebhookReceiptsPage() {
   const { connections } = useConnectionsData()
   const toast = useToastStore((s) => s.add)
@@ -449,14 +428,17 @@ export default function WebhookReceiptsPage() {
         retryableIds={retryableIds}
       />
 
-      {selection.count > 0 && (
-        <WebhookRetryBar
-          count={selection.count}
-          retrying={retrying}
-          onClear={selection.clear}
-          onRetry={() => void handleBulkRetry()}
-        />
-      )}
+      <AnimatePresence mode="wait">
+        {selection.count > 0 && (
+          <WebhookRetryBar
+            key="retry-bar"
+            count={selection.count}
+            retrying={retrying}
+            onClear={selection.clear}
+            onRetry={() => void handleBulkRetry()}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }

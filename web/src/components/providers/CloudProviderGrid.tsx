@@ -57,7 +57,7 @@ export function CloudProviderGrid({
   onSelect,
 }: CloudProviderGridProps) {
   return (
-    <div className="grid grid-cols-3 gap-grid-gap max-[767px]:grid-cols-2">
+    <div className="grid grid-cols-3 gap-grid-gap max-[1023px]:grid-cols-2">
       {presets.map((preset) => (
         <CloudProviderCard
           key={preset.name}

@@ -8,7 +8,9 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
+import { Pagination } from '@/components/ui/pagination'
 import { SegmentedControl } from '@/components/ui/segmented-control'
+import { useListPagination } from '@/hooks/use-list-pagination'
 import { formatNumber } from '@/utils/format'
 import { WorkflowsSkeleton } from './workflows/WorkflowsSkeleton'
 import { WorkflowFilters } from './workflows/WorkflowFilters'
@@ -121,6 +123,10 @@ interface WorkflowsListBodyProps {
 }
 
 function WorkflowsListBody({ ctrl }: WorkflowsListBodyProps) {
+  const { page, pageSize, totalItems, paginatedItems, setPage, setPageSize } = useListPagination({
+    items: ctrl.data.filteredWorkflows,
+    namespace: 'workflows',
+  })
   const hasFilterMismatch =
     ctrl.data.totalWorkflows > 0 && ctrl.data.filteredWorkflows.length === 0
   if (hasFilterMismatch) {
@@ -133,10 +139,19 @@ function WorkflowsListBody({ ctrl }: WorkflowsListBodyProps) {
       />
     )
   }
-  if (ctrl.viewMode === 'grid') {
-    return (
+  const view =
+    ctrl.viewMode === 'grid' ? (
       <WorkflowGridView
-        workflows={ctrl.data.filteredWorkflows}
+        workflows={paginatedItems}
+        onDelete={ctrl.handleDelete}
+        onDuplicate={ctrl.handleDuplicate}
+        onExport={ctrl.handleExport}
+        onToggleSelect={ctrl.handleToggleSelect}
+        selectedIds={ctrl.visibleSelected}
+      />
+    ) : (
+      <WorkflowTableView
+        workflows={paginatedItems}
         onDelete={ctrl.handleDelete}
         onDuplicate={ctrl.handleDuplicate}
         onExport={ctrl.handleExport}
@@ -144,16 +159,17 @@ function WorkflowsListBody({ ctrl }: WorkflowsListBodyProps) {
         selectedIds={ctrl.visibleSelected}
       />
     )
-  }
   return (
-    <WorkflowTableView
-      workflows={ctrl.data.filteredWorkflows}
-      onDelete={ctrl.handleDelete}
-      onDuplicate={ctrl.handleDuplicate}
-      onExport={ctrl.handleExport}
-      onToggleSelect={ctrl.handleToggleSelect}
-      selectedIds={ctrl.visibleSelected}
-    />
+    <>
+      {view}
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={totalItems}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+      />
+    </>
   )
 }
 

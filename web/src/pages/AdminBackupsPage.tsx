@@ -16,9 +16,12 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
+import { SearchFilterSort } from '@/components/ui/search-filter-sort'
+import { SearchInput } from '@/components/ui/search-input'
 import { SectionCard } from '@/components/ui/section-card'
+import { SegmentedControl } from '@/components/ui/segmented-control'
 import { StatPill } from '@/components/ui/stat-pill'
-import { formatDateTime, formatFileSize } from '@/utils/format'
+import { formatDateTime, formatFileSize, formatLabel } from '@/utils/format'
 import type { BackupInfo } from '@/api/types/backup'
 
 type PendingAction = { kind: 'delete' | 'restore'; backupId: string }
@@ -92,6 +95,87 @@ function dialogCopy(pending: PendingAction): DialogCopy {
   }
 }
 
+interface BackupsView {
+  sortedBackups: readonly BackupInfo[]
+  sort: BackupSort
+  handleSort: (key: BackupSortKey) => void
+  search: string
+  setSearch: (value: string) => void
+  triggerFilter: string
+  setTriggerFilter: (value: string) => void
+  triggerOptions: ReadonlyArray<{ value: string; label: string }>
+}
+
+/** Owns the search / trigger-filter / sort state and derives the visible rows. */
+function useBackupsView(backups: readonly BackupInfo[]): BackupsView {
+  const [sort, setSort] = useState<BackupSort>({ key: 'timestamp', dir: 'desc' })
+  const [search, setSearch] = useState('')
+  const [triggerFilter, setTriggerFilter] = useState('all')
+
+  const handleSort = (key: BackupSortKey) => {
+    setSort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+        : { key, dir: 'desc' },
+    )
+  }
+
+  const triggerOptions = useMemo(() => {
+    const present = new Set(backups.map((b) => b.trigger))
+    return [
+      { value: 'all', label: 'All triggers' },
+      ...[...present].sort().map((t) => ({ value: t, label: formatLabel(t) })),
+    ]
+  }, [backups])
+
+  const sortedBackups = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    const filtered = backups.filter(
+      (b) =>
+        (triggerFilter === 'all' || b.trigger === triggerFilter)
+        && (query === '' || b.backup_id.toLowerCase().includes(query)),
+    )
+    const valueOf = BACKUP_SORT_VALUE[sort.key]
+    const factor = sort.dir === 'asc' ? 1 : -1
+    return [...filtered].sort((a, b) => (valueOf(a) - valueOf(b)) * factor)
+  }, [backups, sort, search, triggerFilter])
+
+  return {
+    sortedBackups,
+    sort,
+    handleSort,
+    search,
+    setSearch,
+    triggerFilter,
+    setTriggerFilter,
+    triggerOptions,
+  }
+}
+
+function BackupsToolbar({ view }: { view: BackupsView }) {
+  return (
+    <SearchFilterSort
+      search={
+        <SearchInput
+          value={view.search}
+          onChange={view.setSearch}
+          placeholder="Search by backup ID..."
+          ariaLabel="Search backups"
+        />
+      }
+      filters={
+        <SegmentedControl
+          label="Filter by trigger"
+          value={view.triggerFilter}
+          onChange={view.setTriggerFilter}
+          options={view.triggerOptions}
+          size="sm"
+        />
+      }
+    />
+  )
+}
+
 export default function AdminBackupsPage() {
   const backups = useBackupsStore((s) => s.backups)
   const loading = useBackupsStore((s) => s.loading)
@@ -105,21 +189,8 @@ export default function AdminBackupsPage() {
   const deleteBackup = useBackupsStore((s) => s.deleteBackup)
   const restoreBackup = useBackupsStore((s) => s.restoreBackup)
   const [pending, setPending] = useState<PendingAction | null>(null)
-  const [sort, setSort] = useState<BackupSort>({ key: 'timestamp', dir: 'desc' })
-
-  const handleSort = (key: BackupSortKey) => {
-    setSort((prev) =>
-      prev.key === key
-        ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
-        : { key, dir: 'desc' },
-    )
-  }
-
-  const sortedBackups = useMemo(() => {
-    const valueOf = BACKUP_SORT_VALUE[sort.key]
-    const factor = sort.dir === 'asc' ? 1 : -1
-    return [...backups].sort((a, b) => (valueOf(a) - valueOf(b)) * factor)
-  }, [backups, sort])
+  const view = useBackupsView(backups)
+  const { sortedBackups, sort, handleSort } = view
 
   useEffect(() => {
     void fetchBackups()
@@ -142,6 +213,8 @@ export default function AdminBackupsPage() {
       {error && (
         <ErrorBanner severity="error" title="Could not load backups" description={error} />
       )}
+
+      <BackupsToolbar view={view} />
 
       <BackupsBody
         backups={sortedBackups}

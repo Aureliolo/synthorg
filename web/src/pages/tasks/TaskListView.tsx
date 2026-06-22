@@ -104,7 +104,10 @@ function TaskListViewInner({ tasks, onSelectTask }: TaskListViewProps) {
   }
 
   return (
-    <div className="rounded-lg border border-border">
+    // overflow-x-auto + min-w keep the fixed-width columns from clipping or
+    // forcing whole-page horizontal scroll at tablet widths (768-1023px).
+    <div className="overflow-x-auto rounded-lg border border-border">
+      <div className="min-w-[44rem]">
       {/* Table header */}
       <div className="flex items-center gap-4 border-b border-border bg-surface px-4 py-2">
         {COLUMNS.map((col) => (
@@ -142,6 +145,7 @@ function TaskListViewInner({ tasks, onSelectTask }: TaskListViewProps) {
           </StaggerItem>
         ))}
       </StaggerGroup>
+      </div>
     </div>
   )
 }
