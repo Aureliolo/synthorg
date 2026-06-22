@@ -21,6 +21,8 @@ export interface ActMessage {
   toolCalls?: readonly ExecutedToolCall[] | undefined
   /** Approval id, on ``action`` bubbles when the action parked for consent. */
   parkedApprovalId?: string | undefined
+  /** Renders the notice as a distinct error state with a Try-again. */
+  isError?: boolean
 }
 
 export interface MetaActState {
@@ -33,6 +35,7 @@ export interface MetaActState {
   selectAgent: (id: string) => void
   setInput: (value: string) => void
   triggerSend: () => void
+  retryLast: () => void
 }
 
 export function useMetaActState(): MetaActState {
@@ -60,31 +63,40 @@ export function useMetaActState(): MetaActState {
     setSelectedAgentId((prev) => (prev === id ? null : id))
   }, [])
 
-  const handleSend = useCallback(async () => {
-    const instruction = input.trim()
-    if (!instruction || loading || !selectedAgentId) return
-    setInput('')
-    setMessages((prev) => [
-      ...prev,
-      { id: nextMsgId(), kind: 'human', content: instruction },
-    ])
-    const result = await runAction(
-      instruction,
-      selectedAgentId,
-      conversationIdRef.current,
-    )
-    setMessages((prev) => [...prev, buildActMessage(result, nextMsgId)])
-    if (result) {
-      conversationIdRef.current = result.conversation_id ?? undefined
-    }
-    scrollToBottom(scrollRef)
-  }, [input, loading, selectedAgentId, runAction, nextMsgId])
+  const sendInstruction = useCallback(
+    async (instruction: string) => {
+      if (!instruction || loading || !selectedAgentId) return
+      setMessages((prev) => [
+        ...prev,
+        { id: nextMsgId(), kind: 'human', content: instruction },
+      ])
+      const result = await runAction(
+        instruction,
+        selectedAgentId,
+        conversationIdRef.current,
+      )
+      setMessages((prev) => [...prev, buildActMessage(result, nextMsgId)])
+      if (result) {
+        conversationIdRef.current = result.conversation_id ?? undefined
+      }
+      scrollToBottom(scrollRef)
+    },
+    [loading, selectedAgentId, runAction, nextMsgId],
+  )
 
-  // ``handleSend`` cannot reject: its only awaited call is the
-  // ``runAction`` store mutation, which owns its error UX (catches
-  // internally and returns ``null`` on failure). Voiding the promise is
-  // therefore safe -- there is no rejection path to leak.
-  const triggerSend = useCallback(() => void handleSend(), [handleSend])
+  // ``runAction`` owns its error UX (catches internally, returns ``null`` on
+  // failure), so voiding the promise is safe -- there is no rejection to leak.
+  const triggerSend = useCallback(() => {
+    const instruction = input.trim()
+    if (!instruction) return
+    setInput('')
+    void sendInstruction(instruction)
+  }, [input, sendInstruction])
+
+  const retryLast = useCallback(() => {
+    const lastHuman = [...messages].reverse().find((m) => m.kind === 'human')
+    if (lastHuman) void sendInstruction(lastHuman.content)
+  }, [messages, sendInstruction])
 
   return {
     activeAgents,
@@ -96,6 +108,7 @@ export function useMetaActState(): MetaActState {
     selectAgent,
     setInput,
     triggerSend,
+    retryLast,
   }
 }
 
@@ -104,13 +117,11 @@ function buildActMessage(
   nextMsgId: () => number,
 ): ActMessage {
   if (!result) {
-    const errMsg = useMetaStore.getState().error
     return {
       id: nextMsgId(),
       kind: 'notice',
-      content: errMsg
-        ? `Action request failed: ${errMsg}`
-        : 'Failed to perform the action. Please try again.',
+      content: 'The action could not be completed. Please try again.',
+      isError: true,
     }
   }
   const action = result.action

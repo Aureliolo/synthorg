@@ -8,6 +8,8 @@ export interface MetaChatMessage {
   content: string
   sources?: string[]
   confidence?: number
+  /** Renders as a distinct error notice (not a normal assistant reply). */
+  isError?: boolean
 }
 
 export interface MetaChatState {
@@ -17,6 +19,8 @@ export interface MetaChatState {
   scrollRef: React.RefObject<HTMLDivElement | null>
   setInput: (value: string) => void
   triggerSend: () => void
+  /** Re-send the last user message (used by the error notice's Try again). */
+  retryLast: () => void
 }
 
 export function useMetaChatState(): MetaChatState {
@@ -29,22 +33,33 @@ export function useMetaChatState(): MetaChatState {
 
   const nextMsgId = useCallback(() => ++msgIdRef.current, [])
 
-  const handleSend = useCallback(async () => {
+  const sendMessage = useCallback(
+    async (question: string) => {
+      if (!question || chatLoading) return
+      setMessages((prev) => [
+        ...prev,
+        { id: nextMsgId(), role: 'user', content: question },
+      ])
+      const response = await sendChat(question)
+      setMessages((prev) => [...prev, buildAssistantMessage(response, nextMsgId)])
+      scrollToBottom(scrollRef)
+    },
+    [chatLoading, sendChat, nextMsgId],
+  )
+
+  const triggerSend = useCallback(() => {
     const question = input.trim()
-    if (!question || chatLoading) return
+    if (!question) return
     setInput('')
-    setMessages((prev) => [
-      ...prev,
-      { id: nextMsgId(), role: 'user', content: question },
-    ])
-    const response = await sendChat(question)
-    setMessages((prev) => [...prev, buildAssistantMessage(response, nextMsgId)])
-    scrollToBottom(scrollRef)
-  }, [input, chatLoading, sendChat, nextMsgId])
+    void sendMessage(question)
+  }, [input, sendMessage])
 
-  const triggerSend = useCallback(() => void handleSend(), [handleSend])
+  const retryLast = useCallback(() => {
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user')
+    if (lastUser) void sendMessage(lastUser.content)
+  }, [messages, sendMessage])
 
-  return { messages, input, chatLoading, scrollRef, setInput, triggerSend }
+  return { messages, input, chatLoading, scrollRef, setInput, triggerSend, retryLast }
 }
 
 function buildAssistantMessage(
@@ -60,13 +75,11 @@ function buildAssistantMessage(
       confidence: response.confidence,
     }
   }
-  const errMsg = useMetaStore.getState().error
   return {
     id: nextMsgId(),
     role: 'assistant',
-    content: errMsg
-      ? `Chat request failed: ${errMsg}`
-      : 'Failed to get a response. Please try again.',
+    content: 'The assistant could not respond. Please try again.',
+    isError: true,
   }
 }
 

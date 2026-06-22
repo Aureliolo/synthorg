@@ -13,7 +13,7 @@ const TUNNEL_INTRO_ACK_KEY = 'synthorg.tunnel.intro.acknowledged'
 const CLIPBOARD_ERROR_DESCRIPTIONS: Record<string, string> = {
   NotAllowedError: 'Clipboard access denied. Use Ctrl/Cmd+C to copy the URL manually.',
   SecurityError: 'Clipboard access blocked by browser security. Copy the URL manually.',
-  InvalidStateError: 'The page is not focused. Click the page and try again.',
+  InvalidStateError: 'Could not copy: the page lost focus. Click anywhere on the page, then try again.',
   AbortError: 'Copy was cancelled. Try again.',
   NotFoundError: 'Clipboard is not available in this context. Copy manually from the Public URL field.',
 }

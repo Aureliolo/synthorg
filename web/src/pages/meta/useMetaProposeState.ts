@@ -15,6 +15,8 @@ export interface MetaProposeMessage {
   routedTopic?: string
   /** Titles of parked work items, on the "proposed" branch. */
   proposals?: readonly string[]
+  /** Renders as a distinct error notice (not a normal assistant reply). */
+  isError?: boolean
 }
 
 export interface MetaProposeState {
@@ -24,6 +26,7 @@ export interface MetaProposeState {
   scrollRef: React.RefObject<HTMLDivElement | null>
   setInput: (value: string) => void
   triggerSend: () => void
+  retryLast: () => void
 }
 
 export function useMetaProposeState(): MetaProposeState {
@@ -37,23 +40,34 @@ export function useMetaProposeState(): MetaProposeState {
 
   const nextMsgId = useCallback(() => ++msgIdRef.current, [])
 
-  const handleSend = useCallback(async () => {
+  const sendMessage = useCallback(
+    async (message: string) => {
+      if (!message || proposeLoading) return
+      setMessages((prev) => [
+        ...prev,
+        { id: nextMsgId(), role: 'user', content: message },
+      ])
+      const result = await propose(message, conversationIdRef.current)
+      if (result) conversationIdRef.current = result.conversation_id
+      setMessages((prev) => [...prev, buildAssistantMessage(result, nextMsgId)])
+      scrollToBottom(scrollRef)
+    },
+    [proposeLoading, propose, nextMsgId],
+  )
+
+  const triggerSend = useCallback(() => {
     const message = input.trim()
-    if (!message || proposeLoading) return
+    if (!message) return
     setInput('')
-    setMessages((prev) => [
-      ...prev,
-      { id: nextMsgId(), role: 'user', content: message },
-    ])
-    const result = await propose(message, conversationIdRef.current)
-    if (result) conversationIdRef.current = result.conversation_id
-    setMessages((prev) => [...prev, buildAssistantMessage(result, nextMsgId)])
-    scrollToBottom(scrollRef)
-  }, [input, proposeLoading, propose, nextMsgId])
+    void sendMessage(message)
+  }, [input, sendMessage])
 
-  const triggerSend = useCallback(() => void handleSend(), [handleSend])
+  const retryLast = useCallback(() => {
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user')
+    if (lastUser) void sendMessage(lastUser.content)
+  }, [messages, sendMessage])
 
-  return { messages, input, proposeLoading, scrollRef, setInput, triggerSend }
+  return { messages, input, proposeLoading, scrollRef, setInput, triggerSend, retryLast }
 }
 
 type Attribution = Pick<
@@ -70,13 +84,11 @@ function toAttribution(result: ConversationalProposeResponse): Attribution {
 }
 
 function buildFailureMessage(nextMsgId: () => number): MetaProposeMessage {
-  const errMsg = useMetaStore.getState().error
   return {
     id: nextMsgId(),
     role: 'assistant',
-    content: errMsg
-      ? `Propose request failed: ${errMsg}`
-      : 'Failed to get a response. Please try again.',
+    content: 'The assistant could not respond. Please try again.',
+    isError: true,
   }
 }
 

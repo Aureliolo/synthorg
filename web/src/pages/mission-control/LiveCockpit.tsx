@@ -182,7 +182,14 @@ export function LiveCockpit({ onReplay }: LiveCockpitProps) {
 
   return (
     <div className="space-y-section-gap">
-      {error != null && <ErrorBanner title="Failed to load activity" description={error} />}
+      {error != null && (
+        <ErrorBanner
+          severity="error"
+          title="Could not load activity"
+          description={error}
+          onRetry={() => void useMissionControlStore.getState().fetchSnapshot()}
+        />
+      )}
       <CockpitMetricCards metrics={metrics} />
       <CockpitAgentList agents={metrics.agents} loading={loading} onReplay={onReplay} />
     </div>

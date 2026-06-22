@@ -49,11 +49,24 @@ export interface ClipboardSlice {
   pasteNodes: () => void
 }
 
+/**
+ * Discriminates the most recent persistence error so the editor banner can show
+ * a context-aware title instead of a single generic one.
+ */
+export type WorkflowEditorErrorKind =
+  | 'save'
+  | 'load'
+  | 'create'
+  | 'conflict'
+  | 'validation'
+
 export interface PersistenceSlice {
   definition: WorkflowDefinition | null
   saving: boolean
   loading: boolean
   error: string | null
+  /** Kind of the current ``error``, or null when there is no error. */
+  errorKind: WorkflowEditorErrorKind | null
   loadDefinition: (id: string) => Promise<void>
   createDefinition: (name: string, workflowType: string) => Promise<void>
   saveDefinition: () => Promise<boolean>

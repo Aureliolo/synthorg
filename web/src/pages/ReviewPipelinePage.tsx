@@ -177,7 +177,7 @@ function StageBreakdownCard({
     <SectionCard title="Stage breakdown" icon={ShieldCheck}>
       {actionError && (
         <div className="mb-card">
-          <ErrorBanner variant="section" severity="error" title="Stage action failed" description={actionError} />
+          <ErrorBanner variant="section" severity="error" title="Could not complete the review step" description={actionError} />
         </div>
       )}
       {decisionNotice && (

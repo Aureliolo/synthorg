@@ -22,7 +22,7 @@ export type WorkflowEditorStateResult =
     | 'onEdgesChange'
     | 'selectNode'
   >
-  & Pick<PersistenceSlice, 'definition' | 'saving' | 'loading' | 'error' | 'loadDefinition' | 'createDefinition' | 'saveDefinition' | 'exportYaml'>
+  & Pick<PersistenceSlice, 'definition' | 'saving' | 'loading' | 'error' | 'errorKind' | 'loadDefinition' | 'createDefinition' | 'saveDefinition' | 'exportYaml'>
   & Pick<UndoRedoSlice, 'undoStack' | 'redoStack' | 'undo' | 'redo'>
   & Pick<ValidationSlice, 'validationResult' | 'validating' | 'validate'>
   & Pick<VersionsSlice, 'versionHistoryOpen' | 'toggleVersionHistory'>
@@ -36,6 +36,7 @@ export function useWorkflowEditorState(): WorkflowEditorStateResult {
   const saving = useWorkflowEditorStore((s) => s.saving)
   const loading = useWorkflowEditorStore((s) => s.loading)
   const error = useWorkflowEditorStore((s) => s.error)
+  const errorKind = useWorkflowEditorStore((s) => s.errorKind)
   const validationResult = useWorkflowEditorStore((s) => s.validationResult)
   const validating = useWorkflowEditorStore((s) => s.validating)
   const undoStack = useWorkflowEditorStore((s) => s.undoStack)
@@ -67,6 +68,7 @@ export function useWorkflowEditorState(): WorkflowEditorStateResult {
     saving,
     loading,
     error,
+    errorKind,
     validationResult,
     validating,
     undoStack,

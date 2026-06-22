@@ -7,6 +7,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { EmptyState } from '@/components/ui/empty-state'
 import type { WorkflowNodeType } from '@/api/types/workflows'
+import type { WorkflowEditorErrorKind } from '@/stores/workflow-editor/types'
 import { isObject } from '@/utils/type-guards'
 import { AgentAssignmentNode } from './workflow-editor/AgentAssignmentNode'
 import { ConditionalEdge } from './workflow-editor/ConditionalEdge'
@@ -199,7 +200,7 @@ function WorkflowEditorReadyView({
   const selectedNodeDetails = getSelectedNodeDetails(state.nodes, state.selectedNodeId)
   return (
     <div className="flex h-full flex-col">
-      <WorkflowEditorErrorBanner error={state.error} />
+      <WorkflowEditorErrorBanner error={state.error} errorKind={state.errorKind} />
       <div className="mb-2">
         <WorkflowEditorToolbarRow
           state={state}
@@ -225,15 +226,25 @@ function WorkflowEditorReadyView({
   )
 }
 
-interface WorkflowEditorErrorBannerProps {
-  error: string | null
+const EDITOR_ERROR_TITLES: Readonly<Record<WorkflowEditorErrorKind, string>> = {
+  save: 'Could not save workflow',
+  load: 'Could not load workflow',
+  create: 'Could not create workflow',
+  conflict: 'Save conflict',
+  validation: 'Cannot save yet',
 }
 
-function WorkflowEditorErrorBanner({ error }: WorkflowEditorErrorBannerProps) {
+interface WorkflowEditorErrorBannerProps {
+  error: string | null
+  errorKind: WorkflowEditorErrorKind | null
+}
+
+function WorkflowEditorErrorBanner({ error, errorKind }: WorkflowEditorErrorBannerProps) {
   if (!error) return null
+  const title = errorKind !== null ? EDITOR_ERROR_TITLES[errorKind] : 'Workflow editor error'
   return (
     <div className="mb-2">
-      <ErrorBanner severity="error" title="Workflow editor error" description={error} />
+      <ErrorBanner severity="error" title={title} description={error} />
     </div>
   )
 }

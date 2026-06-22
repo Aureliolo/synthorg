@@ -5,6 +5,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ResponderAttribution } from '@/components/ui/responder-attribution'
 import { cn } from '@/lib/utils'
 
+import { ChatErrorNotice } from './ChatErrorNotice'
 import { useMetaProposeState, type MetaProposeMessage } from './useMetaProposeState'
 
 const INPUT_LABEL = 'Work request'
@@ -12,9 +13,10 @@ const INPUT_PLACEHOLDER = 'Describe work for the organisation...'
 
 interface ProposeBubbleProps {
   msg: MetaProposeMessage
+  onRetry: () => void
 }
 
-function ProposeBubble({ msg }: ProposeBubbleProps) {
+function ProposeReplyBubble({ msg }: { msg: MetaProposeMessage }) {
   const isAttributed = Boolean(msg.responderRole && msg.responderName)
   return (
     <div
@@ -40,6 +42,17 @@ function ProposeBubble({ msg }: ProposeBubbleProps) {
       )}
     </div>
   )
+}
+
+function ProposeBubble({ msg, onRetry }: ProposeBubbleProps) {
+  if (msg.isError === true) {
+    return (
+      <div className="mr-8">
+        <ChatErrorNotice message={msg.content} onRetry={onRetry} />
+      </div>
+    )
+  }
+  return <ProposeReplyBubble msg={msg} />
 }
 
 export function MetaPropose() {
@@ -74,7 +87,7 @@ export function MetaPropose() {
         className="max-h-80 space-y-3 overflow-y-auto rounded-md border border-border p-card"
       >
         {ctrl.messages.map((msg) => (
-          <ProposeBubble key={msg.id} msg={msg} />
+          <ProposeBubble key={msg.id} msg={msg} onRetry={ctrl.retryLast} />
         ))}
         {ctrl.proposeLoading && (
           <div className="mr-8 animate-pulse rounded-md bg-card p-card text-sm text-muted-foreground">
