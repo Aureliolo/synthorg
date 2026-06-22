@@ -18,7 +18,7 @@ export function ActivityLog({ events, total, onLoadMore, className }: ActivityLo
 
   return (
     <SectionCard
-      title="Activity"
+      title="Activity Log"
       icon={Activity}
       className={className}
       action={

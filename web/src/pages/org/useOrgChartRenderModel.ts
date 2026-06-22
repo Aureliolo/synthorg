@@ -12,6 +12,10 @@ export interface OrgChartEdgeData extends Record<string, unknown> {
   hovered?: boolean
 }
 
+// Every field is optional, so an empty object is a valid base; using a typed
+// constant keeps the merge below honest instead of asserting ``{} as ...``.
+const DEFAULT_EDGE_DATA: OrgChartEdgeData = {}
+
 interface DecorateOptions {
   dragOverDeptId: string | null
   highlightedNodeIds: Set<string> | null
@@ -102,7 +106,7 @@ export function useOrgChartRenderModel(args: RenderModelArgs): RenderModelResult
             : particleFlowMode === 'live'
               ? liveActiveEdgeIds.has(e.id)
               : false
-        const existing = (e.data ?? {}) as OrgChartEdgeData
+        const existing = e.data ?? DEFAULT_EDGE_DATA
         return { ...e, data: { ...existing, particlesVisible } }
       }),
     [displayEdges, particleFlowMode, liveActiveEdgeIds],

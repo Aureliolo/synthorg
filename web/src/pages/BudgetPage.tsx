@@ -141,6 +141,7 @@ interface BudgetChartsProps {
   onDimensionChange: (dimension: BreakdownDimension) => void
   paretoFrontier: ParetoFrontier | null
   paretoLoading: boolean
+  paretoError: string | null
 }
 
 function BudgetGaugeCell({ data, currency }: { data: BudgetData; currency: string | undefined }) {
@@ -225,6 +226,7 @@ function BudgetCharts({
   onDimensionChange,
   paretoFrontier,
   paretoLoading,
+  paretoError,
 }: BudgetChartsProps) {
   const { currency, agentSpendingRows, cfoEvents } = derived
   return (
@@ -238,7 +240,15 @@ function BudgetCharts({
       />
 
       <ErrorBoundary level="section">
-        <ParetoSection frontier={paretoFrontier} loading={paretoLoading} />
+        {paretoError !== null ? (
+          <ErrorBanner
+            severity="error"
+            title="Could not load the cost/quality frontier"
+            description={paretoError}
+          />
+        ) : (
+          <ParetoSection frontier={paretoFrontier} loading={paretoLoading} />
+        )}
       </ErrorBoundary>
 
       <ErrorBoundary level="section">
@@ -311,7 +321,7 @@ export default function BudgetPage() {
   const data = useBudgetData()
   const [breakdownDimension, setBreakdownDimension] = useState<BreakdownDimension>('agent')
   const [forecastDialogOpen, setForecastDialogOpen] = useState(false)
-  const { paretoFrontier, paretoLoading } = useParetoFrontier()
+  const { paretoFrontier, paretoLoading, paretoError } = useParetoFrontier()
   const derived = useBudgetDerived(data, breakdownDimension)
 
   const currentForecast = useBudgetForecastStore((s) => s.current)
@@ -349,6 +359,7 @@ export default function BudgetPage() {
         onDimensionChange={setBreakdownDimension}
         paretoFrontier={paretoFrontier}
         paretoLoading={paretoLoading}
+        paretoError={paretoError}
       />
 
       <BudgetForecastDetailDialog

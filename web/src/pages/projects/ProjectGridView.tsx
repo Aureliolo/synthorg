@@ -1,4 +1,5 @@
 import { FolderKanban } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { ProjectCard } from './ProjectCard'
@@ -6,12 +7,18 @@ import type { Project } from '@/api/types/projects'
 
 interface ProjectGridViewProps {
   projects: readonly Project[]
-  onToggleSelect?: (id: string) => void
-  selectedIds?: ReadonlySet<string>
+  onToggleSelect?: ((id: string) => void) | undefined
+  selectedIds?: ReadonlySet<string> | undefined
+  /**
+   * Case-appropriate empty state from the page (genuinely-empty vs
+   * filtered-to-empty). Falls back to a generic message when omitted.
+   */
+  emptyNode?: ReactNode | undefined
 }
 
-export function ProjectGridView({ projects, onToggleSelect, selectedIds }: ProjectGridViewProps) {
+export function ProjectGridView({ projects, onToggleSelect, selectedIds, emptyNode }: ProjectGridViewProps) {
   if (projects.length === 0) {
+    if (emptyNode !== undefined) return <>{emptyNode}</>
     return (
       <EmptyState
         icon={FolderKanban}

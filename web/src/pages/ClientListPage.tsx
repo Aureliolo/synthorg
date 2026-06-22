@@ -26,6 +26,7 @@ import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { formatNumber } from '@/utils/format'
 import { getLocale } from '@/utils/locale'
+import { makeEnumParser } from '@/utils/type-guards'
 
 const log = createLogger('ClientListPage')
 
@@ -44,6 +45,8 @@ const SORT_OPTIONS: ReadonlyArray<{ value: ClientSortKey; label: string }> = [
   { value: 'strictness-asc', label: 'Strictness (low to high)' },
   { value: 'strictness-desc', label: 'Strictness (high to low)' },
 ]
+
+const parseClientSortKey = makeEnumParser<ClientSortKey>(SORT_OPTIONS.map((o) => o.value))
 
 function compareClients(a: Client, b: Client, sortKey: ClientSortKey): number {
   switch (sortKey) {
@@ -114,6 +117,30 @@ interface ClientSelection {
   handleBulkDelete: () => Promise<void>
 }
 
+function emitBulkDeactivateToast(
+  succeeded: number,
+  failed: number,
+  firstError: string | null,
+): void {
+  if (succeeded > 0) {
+    useToastStore.getState().add({
+      variant: failed === 0 ? 'success' : 'warning',
+      title:
+        failed === 0
+          ? `${succeeded} client${succeeded === 1 ? '' : 's'} deactivated`
+          : `${succeeded} deactivated; ${failed} failed`,
+    })
+    return
+  }
+  if (failed > 0) {
+    useToastStore.getState().add({
+      variant: 'error',
+      title: 'Failed to deactivate clients',
+      ...(firstError !== null && { description: firstError }),
+    })
+  }
+}
+
 function useClientSelection(filteredClients: ClientList): ClientSelection {
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set())
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
@@ -142,29 +169,22 @@ function useClientSelection(filteredClients: ClientList): ClientSelection {
     setBulkDeleting(true)
     let succeeded = 0
     let failed = 0
+    let firstError: string | null = null
     for (const id of visibleSelected) {
       try {
         await deleteClient(id)
         succeeded += 1
       } catch (err) {
-        log.warn('bulk_client_delete_failed', sanitizeForLog({ id, error: getErrorMessage(err) }))
+        const message = getErrorMessage(err)
+        firstError ??= message
+        log.warn('bulk_client_delete_failed', sanitizeForLog({ id, error: message }))
         failed += 1
       }
     }
     setBulkDeleting(false)
     setBulkDeleteOpen(false)
     clearSelection()
-    if (succeeded > 0) {
-      useToastStore.getState().add({
-        variant: failed === 0 ? 'success' : 'warning',
-        title:
-          failed === 0
-            ? `${succeeded} client${succeeded === 1 ? '' : 's'} deactivated`
-            : `${succeeded} deactivated; ${failed} failed`,
-      })
-    } else if (failed > 0) {
-      useToastStore.getState().add({ variant: 'error', title: 'Failed to deactivate clients' })
-    }
+    emitBulkDeactivateToast(succeeded, failed, firstError)
   }, [visibleSelected, clearSelection])
 
   return {
@@ -349,7 +369,10 @@ export default function ClientListPage() {
             <SelectField
               label="Sort by"
               value={data.sortKey}
-              onChange={(value) => data.setSortKey(value as ClientSortKey)}
+              onChange={(value) => {
+                const key = parseClientSortKey(value)
+                if (key) data.setSortKey(key)
+              }}
               options={SORT_OPTIONS}
             />
           }

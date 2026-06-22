@@ -79,6 +79,11 @@ export default function ArtifactsPage() {
       <SearchFilterSort filters={<ArtifactFilters />} />
       <ErrorBoundary level="section">
         <ArtifactGridView artifacts={pagedArtifacts} />
+      </ErrorBoundary>
+      {/* Pagination sits outside the grid's boundary (a pagination render error
+          must not blank the loaded artifacts) and carries its own boundary so a
+          fault in it is isolated rather than bubbling up to crash the route. */}
+      <ErrorBoundary level="section">
         <Pagination
           page={page}
           pageSize={pageSize}

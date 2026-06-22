@@ -19,12 +19,20 @@ function subscriptionKey(
   const sortedChannels = [...channels].sort()
   const sortedFilters: Record<string, string> = {}
   if (filters) {
-    for (const key of Object.keys(filters).sort()) {
-      sortedFilters[key] = filters[key]!
+    for (const [key, value] of Object.entries(filters).sort(([a], [b]) => a.localeCompare(b))) {
+      sortedFilters[key] = value
     }
   }
   return JSON.stringify({ channels: sortedChannels, filters: sortedFilters })
 }
+
+/**
+ * Upper bound on distinct active subscriptions. Normal operation dedupes by
+ * key so the array never grows unbounded, but a bookkeeping regression (e.g.
+ * a key that never matches on unsubscribe) would leak entries; crossing this
+ * watermark logs a warning so the leak surfaces instead of silently growing.
+ */
+const MAX_ACTIVE_SUBSCRIPTIONS = 50
 
 const channelHandlers = new Map<string, Set<WsEventHandler>>()
 let pendingSubscriptions: {
@@ -125,6 +133,12 @@ function subscribe(
       channels: [...channels],
       filters: filters ? { ...filters } : undefined,
     })
+    if (activeSubscriptions.length > MAX_ACTIVE_SUBSCRIPTIONS) {
+      log.warn('Active WS subscriptions exceeded watermark', {
+        count: activeSubscriptions.length,
+        max: MAX_ACTIVE_SUBSCRIPTIONS,
+      })
+    }
   }
 
   const currentSocket = getCurrentSocket()
@@ -184,22 +198,23 @@ function subscribe(
   }
 }
 
+/** Drop the unsubscribed channels from each entry, splicing out emptied ones. */
+function pruneSubscriptionList(
+  list: { channels: WsChannel[]; filters?: Record<string, string> | undefined }[],
+  channelSet: ReadonlySet<WsChannel>,
+): void {
+  for (let i = list.length - 1; i >= 0; i--) {
+    const sub = list[i]
+    if (!sub) continue
+    sub.channels = sub.channels.filter((c) => !channelSet.has(c))
+    if (sub.channels.length === 0) list.splice(i, 1)
+  }
+}
+
 function unsubscribe(channels: WsChannel[]): void {
   const channelSet = new Set(channels)
-  for (let i = activeSubscriptions.length - 1; i >= 0; i--) {
-    activeSubscriptions[i]!.channels = activeSubscriptions[i]!.channels
-      .filter((c) => !channelSet.has(c))
-    if (activeSubscriptions[i]!.channels.length === 0) {
-      activeSubscriptions.splice(i, 1)
-    }
-  }
-  for (let i = pendingSubscriptions.length - 1; i >= 0; i--) {
-    pendingSubscriptions[i]!.channels = pendingSubscriptions[i]!.channels
-      .filter((c) => !channelSet.has(c))
-    if (pendingSubscriptions[i]!.channels.length === 0) {
-      pendingSubscriptions.splice(i, 1)
-    }
-  }
+  pruneSubscriptionList(activeSubscriptions, channelSet)
+  pruneSubscriptionList(pendingSubscriptions, channelSet)
 
   const currentSocket = getCurrentSocket()
   if (!currentSocket || currentSocket.readyState !== WebSocket.OPEN) return
@@ -214,10 +229,11 @@ function onChannelEvent(
   channel: WsChannel | '*',
   handler: WsEventHandler,
 ): void {
+  const handlers = channelHandlers.get(channel) ?? new Set()
   if (!channelHandlers.has(channel)) {
-    channelHandlers.set(channel, new Set())
+    channelHandlers.set(channel, handlers)
   }
-  channelHandlers.get(channel)!.add(handler)
+  handlers.add(handler)
 }
 
 function offChannelEvent(

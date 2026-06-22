@@ -6,6 +6,7 @@ import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { useUsersStore } from '@/stores/users'
 import type { OrgRole } from '@/api/types/enums'
+import { makeEnumParser } from '@/utils/type-guards'
 import type {
   GrantOrgRoleRequest,
   UserResponse,
@@ -23,6 +24,8 @@ const ROLE_OPTIONS: ReadonlyArray<{ value: OrgRole; label: string }> = [
   { value: 'editor', label: 'Editor' },
   { value: 'viewer', label: 'Viewer' },
 ]
+
+const parseOrgRole = makeEnumParser<OrgRole>(ROLE_OPTIONS.map((o) => o.value))
 
 function GrantForm({ user, onClose }: { user: UserResponse; onClose: () => void }) {
   const grantOrgRole = useUsersStore((s) => s.grantOrgRole)
@@ -65,7 +68,10 @@ function GrantForm({ user, onClose }: { user: UserResponse; onClose: () => void 
       <SelectField
         label="Role"
         value={role}
-        onChange={(value) => setRole(value as OrgRole)}
+        onChange={(value) => {
+          const r = parseOrgRole(value)
+          if (r) setRole(r)
+        }}
         options={ROLE_OPTIONS}
       />
 

@@ -15,7 +15,7 @@ import type {
   ProviderModelResponse,
   ProviderPreset,
   PullProgressEvent,
-  RateLimitsConfig,
+  RateLimitsResponse,
   RateLimitsUpdateRequest,
   SyncModelsRequest,
   SyncModelsResponse,
@@ -72,7 +72,7 @@ export interface ProvidersState {
   auditProviderName: string | null
 
   // Rate-limit overrides (read state; mutations live in crud-actions)
-  rateLimits: RateLimitsConfig | null
+  rateLimits: RateLimitsResponse | null
   rateLimitsLoading: boolean
   rateLimitsError: string | null
   /** The provider whose rate-limits are currently in state (or ``null``). */
@@ -129,7 +129,7 @@ export interface ProvidersState {
   updateRateLimits: (
     name: string,
     data: RateLimitsUpdateRequest,
-  ) => Promise<RateLimitsConfig | null>
+  ) => Promise<RateLimitsResponse | null>
   updatePresetOverride: (
     presetName: string,
     data: PresetOverrideUpdateRequest,

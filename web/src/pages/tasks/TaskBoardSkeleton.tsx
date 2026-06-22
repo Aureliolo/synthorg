@@ -27,8 +27,9 @@ export function TaskBoardSkeleton() {
         <Skeleton className="h-8 flex-1 max-w-xs rounded-md" />
         <Skeleton className="ml-auto h-8 w-24 rounded-md" />
       </div>
-      {/* Columns skeleton */}
-      <div className="flex gap-4 overflow-hidden">
+      {/* Columns skeleton: scroll (not clip) so the tablet layout matches the
+          real board's overflow-x-auto behaviour. */}
+      <div className="flex gap-4 overflow-x-auto">
         <ColumnSkeleton cards={3} />
         <ColumnSkeleton cards={2} />
         <ColumnSkeleton cards={3} />

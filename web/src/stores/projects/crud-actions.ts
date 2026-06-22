@@ -201,32 +201,52 @@ async function batchDeleteProjectsImpl(
   ids: readonly string[],
 ): Promise<BatchDeleteOutcome | false> {
   const uniqueIds = Array.from(new Set(ids))
-  const removed = applyOptimisticBatchRemoval(set, uniqueIds)
-  const results = await Promise.allSettled(
-    uniqueIds.map(async (id) => {
-      await deleteProjectApi(id)
-      return id
-    }),
-  )
-  const settlement = settleBatchResults(results, uniqueIds)
-  rollbackFailedDeletes(set, removed, settlement.failedIds)
-  if (settlement.failedDetails.length > 0) {
-    log.error(
-      'Batch delete projects partial failure',
-      sanitizeForLog({
-        failedCount: settlement.failedIds.length,
-        failedDetails: settlement.failedDetails,
+  // Outer guard mirrors batchDeleteWorkflowsImpl: an unexpected throw from any
+  // helper (optimistic removal, settlement, rollback, toast) must not escape
+  // the store-mutation contract or leave the store partially rolled back with
+  // no user feedback. Surface a fallback error toast and return the `false`
+  // sentinel so callers (which never wrap store calls in try/catch) are safe.
+  try {
+    const removed = applyOptimisticBatchRemoval(set, uniqueIds)
+    const results = await Promise.allSettled(
+      uniqueIds.map(async (id) => {
+        await deleteProjectApi(id)
+        return id
       }),
     )
-  }
-  emitBatchToast(uniqueIds, settlement)
-  if (settlement.succeededIds.length === 0 && settlement.failedIds.length > 0) {
+    const settlement = settleBatchResults(results, uniqueIds)
+    rollbackFailedDeletes(set, removed, settlement.failedIds)
+    if (settlement.failedDetails.length > 0) {
+      log.error(
+        'Batch delete projects partial failure',
+        sanitizeForLog({
+          failedCount: settlement.failedIds.length,
+          failedDetails: settlement.failedDetails,
+        }),
+      )
+    }
+    emitBatchToast(uniqueIds, settlement)
+    if (settlement.succeededIds.length === 0 && settlement.failedIds.length > 0) {
+      return false
+    }
+    return {
+      succeeded: settlement.succeededIds.length,
+      failed: settlement.failedIds.length,
+      failedReasons: settlement.failedReasons,
+    }
+  } catch (err) {
+    log.error('Batch delete projects failed unexpectedly', sanitizeForLog(err))
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(
+        err,
+        uniqueIds.length === 1
+          ? 'Failed to delete project'
+          : `Failed to delete ${uniqueIds.length} projects`,
+      ),
+      description: getErrorMessage(err),
+    })
     return false
-  }
-  return {
-    succeeded: settlement.succeededIds.length,
-    failed: settlement.failedIds.length,
-    failedReasons: settlement.failedReasons,
   }
 }
 

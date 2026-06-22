@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Check, Clock, ShieldOff, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { StatusPill } from '@/components/ui/status-pill'
 import { useFlash } from '@/hooks/useFlash'
 import {
   DOT_COLOR_CLASSES,
@@ -109,40 +110,30 @@ function ApprovalBadges({
   return (
     <>
       {isPending && countdown !== null && (
-        <span
-          className={cn(
-            'inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[11px] font-medium shrink-0',
-            URGENCY_BADGE_CLASSES[urgencyColor],
-          )}
-          aria-label={`Expires in ${formatUrgency(countdown)}`}
+        <StatusPill
+          toneClassName={URGENCY_BADGE_CLASSES[urgencyColor]}
+          icon={Clock}
+          className="font-mono"
+          ariaLabel={`Expires in ${formatUrgency(countdown)}`}
         >
-          <Clock className="size-3" aria-hidden="true" />
           <span aria-hidden="true">{formatUrgency(countdown)}</span>
-        </span>
+        </StatusPill>
       )}
       {isPending && countdown === null && (
-        <span className="text-[11px] text-muted-foreground shrink-0">No expiry</span>
+        <span className="text-micro text-muted-foreground shrink-0">No expiry</span>
       )}
       {isBlocked && (
-        <span
-          className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-medium shrink-0 border-danger/30 bg-danger/10 text-danger"
-          aria-label="Blocked by safety classifier"
-        >
-          <ShieldOff className="size-3" aria-hidden="true" />
+        <StatusPill tone="danger" icon={ShieldOff} ariaLabel="Blocked by safety classifier">
           Blocked
-        </span>
+        </StatusPill>
       )}
       {isSuspicious && (
-        <span
-          className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] font-medium shrink-0 border-warning/30 bg-warning/10 text-warning"
-          aria-label="Flagged as suspicious"
-        >
-          <AlertTriangle className="size-3" aria-hidden="true" />
+        <StatusPill tone="warning" icon={AlertTriangle} ariaLabel="Flagged as suspicious">
           Suspicious
-        </span>
+        </StatusPill>
       )}
       {showLowConfidence && (
-        <span className="text-[11px] text-warning shrink-0" aria-label="Low confidence score">
+        <span className="text-micro text-warning shrink-0" aria-label="Low confidence score">
           Low confidence
         </span>
       )}

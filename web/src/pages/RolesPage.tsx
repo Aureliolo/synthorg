@@ -22,6 +22,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { StatPill } from '@/components/ui/stat-pill'
 import { ROUTES } from '@/router/routes'
 import type { AgentConfig } from '@/api/types/agents'
+import { makeEnumParser } from '@/utils/type-guards'
 
 interface RoleSummary {
   name: string
@@ -34,6 +35,8 @@ const ROLE_SORT_OPTIONS: ReadonlyArray<{ value: RoleSortKey; label: string }> = 
   { value: 'name', label: 'Sort: Name' },
   { value: 'count', label: 'Sort: Agent count' },
 ]
+
+const parseRoleSortKey = makeEnumParser<RoleSortKey>(ROLE_SORT_OPTIONS.map((o) => o.value))
 
 function deriveRoles(agents: readonly AgentConfig[], sortBy: RoleSortKey): RoleSummary[] {
   const counts = new Map<string, number>()
@@ -97,7 +100,10 @@ export default function RolesPage() {
           <SelectField
             label="Sort"
             value={sortBy}
-            onChange={(value) => setSortBy(value as RoleSortKey)}
+            onChange={(value) => {
+              const key = parseRoleSortKey(value)
+              if (key) setSortBy(key)
+            }}
             options={ROLE_SORT_OPTIONS}
           />
         }

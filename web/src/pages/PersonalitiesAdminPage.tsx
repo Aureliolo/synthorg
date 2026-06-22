@@ -24,6 +24,7 @@ import { SearchInput } from '@/components/ui/search-input'
 import { SelectField } from '@/components/ui/select-field'
 import { TagInput } from '@/components/ui/tag-input'
 import type { PresetSummaryResponse } from '@/api/types'
+import { makeEnumParser } from '@/utils/type-guards'
 
 import {
   usePersonalitiesAdminController,
@@ -35,6 +36,8 @@ const SORT_OPTIONS: ReadonlyArray<{ value: PresetSortKey; label: string }> = [
   { value: 'name-asc', label: 'Name (A-Z)' },
   { value: 'name-desc', label: 'Name (Z-A)' },
 ]
+
+const parsePresetSortKey = makeEnumParser<PresetSortKey>(SORT_OPTIONS.map((o) => o.value))
 
 export default function PersonalitiesAdminPage() {
   const ctrl = usePersonalitiesAdminController()
@@ -70,7 +73,10 @@ export default function PersonalitiesAdminPage() {
           <SelectField
             label="Sort by"
             value={ctrl.sortKey}
-            onChange={(value) => ctrl.setSortKey(value as PresetSortKey)}
+            onChange={(value) => {
+              const key = parsePresetSortKey(value)
+              if (key) ctrl.setSortKey(key)
+            }}
             options={SORT_OPTIONS}
           />
         }

@@ -88,24 +88,58 @@ function buildStepsCompleted(
   return stepsCompleted
 }
 
+function isRehydratedMapEmpty(value: unknown): boolean {
+  // The ``providers`` map is intentionally NOT persisted, so it always
+  // rehydrates to the slice default (``{}``). Treat any non-object or
+  // empty-object value as "not yet (re)loaded".
+  return (
+    value == null
+    || typeof value !== 'object'
+    || Object.keys(value).length === 0
+  )
+}
+
 function unmarkAgentsIfEmptyRehydration(
   stepsCompleted: Record<WizardStep, boolean>,
   stepOrder: readonly WizardStep[],
   merged: SetupWizardState,
 ): void {
-  // E3 rehydration race fix: the ``agents`` slice fetches asynchronously
-  // on mount, so a payload that persisted ``stepsCompleted.agents = true``
-  // is racing the (re)fetch. If the rehydrated agents list is empty,
-  // re-mark the step as incomplete so the user is not silently allowed
-  // past the agents page with a stale "configured" badge and an empty
-  // list under it.
+  // The ``agents`` slice fetches asynchronously on mount, so a payload that
+  // persisted ``stepsCompleted.agents = true`` is racing the (re)fetch. The
+  // agents step also depends on ``providers`` (a prior step) to resolve agent
+  // models, and ``providers`` is not persisted either. Re-mark the step as
+  // incomplete when EITHER the rehydrated agents list OR the providers map is
+  // empty, so the user is never silently allowed past the agents page (or onto
+  // Complete) with a stale "configured" badge over an empty provider map.
   const rehydratedAgents = (merged as { agents?: readonly unknown[] }).agents
+  const rehydratedProviders = (merged as { providers?: unknown }).providers
   if (
     stepOrder.includes('agents')
     && stepsCompleted.agents
-    && (!Array.isArray(rehydratedAgents) || rehydratedAgents.length === 0)
+    && (!Array.isArray(rehydratedAgents)
+      || rehydratedAgents.length === 0
+      || isRehydratedMapEmpty(rehydratedProviders))
   ) {
     stepsCompleted.agents = false
+  }
+}
+
+function unmarkProvidersIfEmptyRehydration(
+  stepsCompleted: Record<WizardStep, boolean>,
+  stepOrder: readonly WizardStep[],
+  merged: SetupWizardState,
+): void {
+  // ``providers`` is not persisted but ``stepsCompleted.providers`` is, so the
+  // two diverge after a reload: the progress bar would show a green tick for
+  // the Providers step while the live map is empty. Clear the completion flag
+  // so the step re-validates on visit and downstream steps stay gated.
+  const rehydratedProviders = (merged as { providers?: unknown }).providers
+  if (
+    stepOrder.includes('providers')
+    && stepsCompleted.providers
+    && isRehydratedMapEmpty(rehydratedProviders)
+  ) {
+    stepsCompleted.providers = false
   }
 }
 
@@ -146,6 +180,7 @@ function mergePersistedSetupState(
   }
   const stepOrder = getStepOrder(merged.needsAdmin, merged.wizardMode)
   const stepsCompleted = buildStepsCompleted(merged.stepsCompleted, stepOrder)
+  unmarkProvidersIfEmptyRehydration(stepsCompleted, stepOrder, merged)
   unmarkAgentsIfEmptyRehydration(stepsCompleted, stepOrder, merged)
   return snapCurrentStepToSafe(merged, stepOrder, stepsCompleted)
 }

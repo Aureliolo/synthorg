@@ -5,7 +5,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { InputField } from '@/components/ui/input-field'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useProvidersStore } from '@/stores/providers'
-import type { RateLimitsConfig } from '@/api/types/providers'
+import type { RateLimitsResponse } from '@/api/types/providers'
 
 interface RateLimitsDrawerProps {
   providerName: string | null
@@ -48,7 +48,7 @@ type RateLimitValidation =
 function diffRateLimitUpdates(
   rpmCap: number | null,
   concurrentCap: number | null,
-  initial: RateLimitsConfig,
+  initial: RateLimitsResponse,
 ): RateLimitUpdates {
   const updates: RateLimitUpdates = {}
   if (rpmCap !== initial.requests_per_minute) {
@@ -66,7 +66,7 @@ function diffRateLimitUpdates(
 function validateRateLimits(
   rpm: string,
   concurrent: string,
-  initial: RateLimitsConfig,
+  initial: RateLimitsResponse,
 ): RateLimitValidation {
   const rpmCap = parseCap(rpm)
   const concurrentCap = parseCap(concurrent)
@@ -91,7 +91,7 @@ function RateLimitsForm({
   onClose,
 }: {
   providerName: string
-  initial: RateLimitsConfig
+  initial: RateLimitsResponse
   onClose: () => void
 }) {
   const updateRateLimits = useProvidersStore((s) => s.updateRateLimits)
@@ -173,7 +173,7 @@ function RateLimitsForm({
  */
 interface RateLimitsBodyProps {
   providerName: string | null
-  rateLimits: RateLimitsConfig | null
+  rateLimits: RateLimitsResponse | null
   error: string | null
   isLoadedForActiveProvider: boolean
   onRetry: (name: string) => void
@@ -213,7 +213,7 @@ function RateLimitsSkeleton() {
 
 interface RateLimitsContentProps {
   providerName: string | null
-  rateLimits: RateLimitsConfig | null
+  rateLimits: RateLimitsResponse | null
   error: string | null
   isLoadedForActiveProvider: boolean
   onClose: () => void

@@ -181,7 +181,13 @@ export async function saveSettingsBatch(
       return Promise.reject(new Error(`Unknown namespace: ${compositeKey}`))
     }
     const ns = nsRaw as SettingNamespace
-    return updateSetting(ns, key, dirtyValues.get(compositeKey)!)
+    const value = dirtyValues.get(compositeKey)
+    if (value === undefined) {
+      const reason = 'Dirty value disappeared before save'
+      surfaceValidationFailure(compositeKey, reason)
+      return Promise.reject(new Error(`Missing dirty value: ${compositeKey}`))
+    }
+    return updateSetting(ns, key, value)
   })
   const results = await Promise.allSettled(promises)
   const failedKeys = new Set<string>()

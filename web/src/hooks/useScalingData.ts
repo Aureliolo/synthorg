@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo } from 'react'
 
 import type { WsChannel } from '@/api/types/websocket'
+import { useFreshnessGate } from '@/hooks/useFreshnessGate'
 import { usePolling } from '@/hooks/usePolling'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { useScalingStore } from '@/stores/scaling'
@@ -43,13 +44,15 @@ export function useScalingData(): UseScalingDataReturn {
     void useScalingStore.getState().fetchAll()
   }, [])
 
-  // Polling for lightweight refresh.
+  // Polling for lightweight refresh, gated so a live WS push skips the next
+  // redundant poll (matches the other WS-backed data hooks).
+  const { skipIfFresh, markFresh } = useFreshnessGate()
   const pollFn = useCallback(async () => {
     await useScalingStore.getState().fetchDecisions()
     await useScalingStore.getState().fetchSignals()
   }, [])
 
-  const polling = usePolling(pollFn, SCALING_POLL_INTERVAL)
+  const polling = usePolling(pollFn, SCALING_POLL_INTERVAL, { skipIfFresh })
   const { start, stop } = polling
   useEffect(() => {
     start()
@@ -63,9 +66,10 @@ export function useScalingData(): UseScalingDataReturn {
         channel,
         handler: (event) => {
           useScalingStore.getState().updateFromWsEvent(event)
+          markFresh()
         },
       })),
-    [],
+    [markFresh],
   )
 
   const { connected: wsConnected, setupError: wsSetupError } = useWebSocket({

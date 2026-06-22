@@ -17,6 +17,10 @@ import {
   type SidebarMode,
 } from '@/stores/theme'
 import { cn } from '@/lib/utils'
+import { makeEnumParser } from '@/utils/type-guards'
+
+const parseColorPalette = makeEnumParser<ColorPalette>(COLOR_PALETTES)
+const parseTypography = makeEnumParser<Typography>(TYPOGRAPHIES)
 
 // ---------------------------------------------------------------------------
 // Option constants
@@ -94,7 +98,10 @@ function ThemePreferencesBody() {
           label="Color"
           options={COLOR_OPTIONS}
           value={colorPalette}
-          onChange={(v) => setColorPalette(v as ColorPalette)}
+          onChange={(v) => {
+            const palette = parseColorPalette(v)
+            if (palette) setColorPalette(palette)
+          }}
         />
         <div className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-foreground">Density</span>
@@ -109,7 +116,10 @@ function ThemePreferencesBody() {
           label="Font"
           options={TYPOGRAPHY_OPTIONS}
           value={typography}
-          onChange={(v) => setTypography(v as Typography)}
+          onChange={(v) => {
+            const next = parseTypography(v)
+            if (next) setTypography(next)
+          }}
         />
         <div className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-foreground">

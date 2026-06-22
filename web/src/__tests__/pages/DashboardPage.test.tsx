@@ -135,7 +135,7 @@ describe('DashboardPage', () => {
 
   it('renders Activity section', () => {
     renderDashboard()
-    expect(screen.getByText('Activity')).toBeInTheDocument()
+    expect(screen.getByText('Live Activity')).toBeInTheDocument()
   })
 
   // BudgetBurnChart is React.lazy-loaded so the recharts bundle defers

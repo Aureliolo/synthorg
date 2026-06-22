@@ -15,6 +15,7 @@ import { isObject, isString } from '@/utils/type-guards'
 import type {
   PersistenceSlice,
   SliceCreator,
+  WorkflowEditorErrorKind,
   WorkflowEditorState,
 } from './types'
 import { generateNodeId, parseDefinition, regenerateYaml } from './yaml'
@@ -70,10 +71,11 @@ function validateGraphForSave(
 function failSaveWithMessage(
   set: WorkflowEditorSet,
   message: string,
+  kind: WorkflowEditorErrorKind,
   logContext: Record<string, unknown>,
 ): false {
   log.warn('Failed to save workflow definition', sanitizeForLog(logContext))
-  set({ error: message })
+  set({ error: message, errorKind: kind })
   useToastStore.getState().add({
     variant: 'error',
     title: 'Failed to save workflow',
@@ -122,7 +124,8 @@ async function handleVersionConflict(
   log.warn('Version conflict saving workflow, reloading', sanitizeForLog(err))
   set({
     saving: false,
-    error: 'Version conflict, another save occurred. Reloading...',
+    error: 'A newer version was saved elsewhere. Reloading the latest version...',
+    errorKind: 'conflict',
   })
   await get().loadDefinition(definition.id)
   // ``loadDefinition`` swallows its own errors and writes them to
@@ -155,7 +158,7 @@ function handleSaveError(
     ...getCrudErrorTitle(err, 'Failed to save workflow'),
     description: getErrorMessage(err),
   })
-  set({ saving: false, error: getErrorMessage(err) })
+  set({ saving: false, error: getErrorMessage(err), errorKind: 'save' })
   return false
 }
 
@@ -167,20 +170,21 @@ async function saveDefinitionImpl(
   if (!definition) {
     return failSaveWithMessage(
       set,
-      'Cannot save: no workflow loaded',
+      'Nothing to save: no workflow is loaded. Reload the page and try again.',
+      'save',
       { reason: 'no_definition' },
     )
   }
   const validationMessage = validateGraphForSave(nodes, edges)
   if (validationMessage !== null) {
-    return failSaveWithMessage(set, validationMessage, {
+    return failSaveWithMessage(set, validationMessage, 'validation', {
       badNodeIds: nodes.filter((n) => !n.type).map((n) => n.id),
       badEdgeIds: edges
         .filter((e) => !readEdgeField(e.data, 'edgeType'))
         .map((e) => e.id),
     })
   }
-  set({ saving: true, error: null })
+  set({ saving: true, error: null, errorKind: null })
   try {
     const updatedDef = await updateWorkflow(
       definition.id,
@@ -212,6 +216,7 @@ async function loadDefinitionImpl(
   set((prev) => ({
     loading: true,
     error: null,
+    errorKind: null,
     versions: [],
     versionsLoading: false,
     versionsHasMore: false,
@@ -238,7 +243,7 @@ async function loadDefinitionImpl(
     })
   } catch (err) {
     log.warn('Failed to load workflow definition', sanitizeForLog(err))
-    set({ loading: false, error: getErrorMessage(err) })
+    set({ loading: false, error: getErrorMessage(err), errorKind: 'load' })
   }
 }
 
@@ -246,6 +251,7 @@ function startCreateDefinition(set: WorkflowEditorSet): void {
   set((prev) => ({
     loading: true,
     error: null,
+    errorKind: null,
     versions: [],
     versionsLoading: false,
     versionsHasMore: false,
@@ -312,7 +318,7 @@ async function createDefinitionImpl(
       ...getCrudErrorTitle(err, 'Failed to create workflow'),
       description: getErrorMessage(err),
     })
-    set({ loading: false, error: getErrorMessage(err) })
+    set({ loading: false, error: getErrorMessage(err), errorKind: 'create' })
   }
 }
 
@@ -326,6 +332,7 @@ function resetPersistenceImpl(set: WorkflowEditorSet): void {
     saving: false,
     loading: false,
     error: null,
+    errorKind: null,
     validationResult: null,
     validating: false,
     undoStack: [],
@@ -352,6 +359,7 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (
   saving: false,
   loading: false,
   error: null,
+  errorKind: null,
 
   loadDefinition: (id) => loadDefinitionImpl(set, id),
   createDefinition: (name, workflowType) =>

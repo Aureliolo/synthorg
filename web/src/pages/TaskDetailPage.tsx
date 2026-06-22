@@ -1,11 +1,11 @@
 import { useParams } from 'react-router'
-import { Loader2 } from 'lucide-react'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
 import { DetailNavBar } from '@/components/ui/detail-nav-bar'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ROUTES } from '@/router/routes'
 import { TaskCancelDialog } from './tasks/TaskCancelDialog'
+import { TaskDetailSkeleton } from './tasks/TaskDetailSkeleton'
 import { TaskDeleteDialog } from './tasks/TaskDeleteDialog'
 import { TaskDetailActions } from './tasks/TaskDetailActions'
 import { TaskDetailHeader } from './tasks/TaskDetailHeader'
@@ -32,7 +32,7 @@ export default function TaskDetailPage() {
     )
   }
 
-  if (ctrl.loadingDetail || !ctrl.task) return <TaskDetailLoading />
+  if (ctrl.loadingDetail || !ctrl.task) return <TaskDetailSkeleton />
 
   const task = ctrl.task
 
@@ -62,18 +62,6 @@ export default function TaskDetailPage() {
         </div>
       </ErrorBoundary>
       <TaskDetailDialogs ctrl={ctrl} />
-    </div>
-  )
-}
-
-function TaskDetailLoading() {
-  return (
-    <div
-      className="flex items-center justify-center py-20"
-      role="status"
-      aria-label="Loading task"
-    >
-      <Loader2 className="size-8 animate-spin text-text-muted" />
     </div>
   )
 }

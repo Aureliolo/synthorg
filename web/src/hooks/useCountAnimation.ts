@@ -59,7 +59,13 @@ export function useCountAnimation(
 
     const startTime = performance.now()
 
+    // Guard against a frame that fires after teardown (concurrent-mode
+    // unmount can run cleanup after the next paint), which would otherwise
+    // setState on an unmounted component.
+    let dead = false
+
     function animate(now: number) {
+      if (dead) return
       const elapsed = now - startTime
       const progress = Math.min(elapsed / durationMs, 1)
       // Ease-out cubic
@@ -78,6 +84,7 @@ export function useCountAnimation(
     animationFrameRef.current = requestAnimationFrame(animate)
 
     return () => {
+      dead = true
       if (animationFrameRef.current !== null) {
         cancelAnimationFrame(animationFrameRef.current)
       }

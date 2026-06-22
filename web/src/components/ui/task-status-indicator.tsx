@@ -2,6 +2,7 @@ import { cn } from '@/lib/utils'
 import type { SemanticColor } from '@/utils/agent-status'
 import { getTaskStatusColor, getTaskStatusLabel, getPriorityColor, getPriorityLabel } from '@/utils/tasks'
 import type { Priority, TaskStatus } from '@/api/types/enums'
+import { StatusPill } from './status-pill'
 
 // ── Dot color classes ───────────────────────────────────────
 
@@ -50,16 +51,6 @@ export function TaskStatusIndicator({ status, label = false, pulse = false, clas
   )
 }
 
-// ── Priority badge color classes ────────────────────────────
-
-const BADGE_COLOR_CLASSES: Record<SemanticColor | 'text-secondary', string> = {
-  danger: 'border-danger/30 bg-danger/10 text-danger',
-  warning: 'border-warning/30 bg-warning/10 text-warning',
-  accent: 'border-accent/30 bg-accent/10 text-accent',
-  success: 'border-success/30 bg-success/10 text-success',
-  'text-secondary': 'border-border bg-surface text-text-secondary',
-}
-
 // ── PriorityBadge ───────────────────────────────────────────
 
 export interface PriorityBadgeProps {
@@ -72,15 +63,8 @@ export function PriorityBadge({ priority, className }: PriorityBadgeProps) {
   const label = getPriorityLabel(priority)
 
   return (
-    <span
-      aria-label={`Priority: ${label}`}
-      className={cn(
-        'inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none',
-        BADGE_COLOR_CLASSES[color],
-        className,
-      )}
-    >
+    <StatusPill tone={color} ariaLabel={`Priority: ${label}`} className={className}>
       {label}
-    </span>
+    </StatusPill>
   )
 }

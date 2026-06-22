@@ -73,3 +73,22 @@ export const NumberInput: Story = {
     type: 'number',
   },
 }
+
+// External label: a visible `<label htmlFor>` associates with the widget via
+// the `id` prop so screen readers announce the field name.
+export const WithExternalLabel: Story = {
+  args: {
+    id: 'inline-field',
+    value: 'Agent Alpha',
+    onSave: async () => {},
+  },
+  render: (args) => (
+    <div className="flex flex-col gap-1">
+      <label htmlFor="inline-field" className="text-sm font-medium text-foreground">
+        Agent name
+      </label>
+      <InlineEdit {...args} />
+    </div>
+  ),
+  parameters: { controls: { disable: true } },
+}

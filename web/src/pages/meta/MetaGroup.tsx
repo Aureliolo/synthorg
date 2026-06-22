@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ResponderAttribution } from '@/components/ui/responder-attribution'
 import { cn } from '@/lib/utils'
 
+import { ChatErrorNotice } from './ChatErrorNotice'
 import { useMetaGroupState, type GroupMessage } from './useMetaGroupState'
 
 const INPUT_LABEL = 'Message'
@@ -17,6 +18,8 @@ interface GroupBubbleProps {
   msg: GroupMessage
   resolvingInvites: ReadonlySet<string>
   onResolveInvite: (msgId: number, approvalId: string, accept: boolean) => void
+  /** Re-send the last human message; only used by error notices. */
+  onRetry?: () => void
 }
 
 function InviteBubble({
@@ -74,13 +77,24 @@ function InviteBubble({
   )
 }
 
-function GroupBubble({ msg, resolvingInvites, onResolveInvite }: GroupBubbleProps) {
-  if (msg.kind === 'notice') {
+function NoticeBubble({ msg, onRetry }: { msg: GroupMessage; onRetry?: (() => void) | undefined }) {
+  if (msg.isError === true && onRetry) {
     return (
-      <div className="mx-4 rounded-md bg-muted/50 p-card text-xs text-muted-foreground">
-        {msg.content}
+      <div className="mx-4">
+        <ChatErrorNotice message={msg.content} onRetry={onRetry} />
       </div>
     )
+  }
+  return (
+    <div className="mx-4 rounded-md bg-muted/50 p-card text-xs text-muted-foreground">
+      {msg.content}
+    </div>
+  )
+}
+
+function GroupBubble({ msg, resolvingInvites, onResolveInvite, onRetry }: GroupBubbleProps) {
+  if (msg.kind === 'notice') {
+    return <NoticeBubble msg={msg} onRetry={onRetry} />
   }
   if (msg.kind === 'invite') {
     return (
@@ -223,6 +237,7 @@ export function MetaGroup() {
               msg={msg}
               resolvingInvites={ctrl.resolvingInvites}
               onResolveInvite={ctrl.resolveInvite}
+              onRetry={() => ctrl.retryLast(msg.id)}
             />
           ))}
           {ctrl.loading && (

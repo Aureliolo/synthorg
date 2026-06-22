@@ -77,7 +77,6 @@ async function performAuthFlow(
   set: (partial: Partial<AuthState>) => void,
   get: () => AuthState,
   authFn: () => Promise<{ expires_in: number }>,
-  flowName: string,
 ): Promise<void> {
   set({ loading: true })
   try {
@@ -88,19 +87,19 @@ async function performAuthFlow(
     } catch (fetchErr) {
       if (get().authStatus === 'unauthenticated') {
         throw new Error(
-          `${flowName} failed: session expired. Please try again.`,
+          'Your session expired before your account details could load. Please try again.',
           { cause: fetchErr },
         )
       }
       throw new Error(
-        `${flowName} succeeded but failed to load user profile. Please check your connection and try again.`,
+        'Authentication succeeded but your account details could not be loaded. Check your connection and try again.',
         { cause: fetchErr },
       )
     }
     if (!get().user) {
       get().handleUnauthorized()
       throw new Error(
-        `${flowName} succeeded but failed to load user profile. Please try again.`,
+        'Authentication succeeded but your account details could not be loaded. Please try again.',
       )
     }
   } finally {
@@ -226,14 +225,12 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       set,
       get,
       () => authApi.login({ username, password }),
-      'Login',
     ),
   setup: (username, password) =>
     performAuthFlow(
       set,
       get,
       () => authApi.setup({ username, password }),
-      'Setup',
     ),
   async logout() {
     try {

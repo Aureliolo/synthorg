@@ -24,6 +24,7 @@ import {
   Scale,
   Settings,
   Shapes,
+  ShieldAlert,
   ShieldCheck,
   Sparkles,
   UserCheck,
@@ -80,6 +81,7 @@ export function SidebarNav({ collapsed }: SidebarNavProps) {
           <SidebarNavItem to={ROUTES.CONNECTIONS} icon={Plug} label="Connections" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.OAUTH_APPS} icon={KeyRound} label="OAuth Apps" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.MCP_CATALOG} icon={LibraryBig} label="MCP Catalog" collapsed={collapsed} />
+          <SidebarNavItem to={ROUTES.SSRF_VIOLATIONS} icon={ShieldAlert} label="SSRF Violations" collapsed={collapsed} />
         </SidebarNavGroup>
       </SidebarSection>
 

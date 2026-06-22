@@ -3,15 +3,14 @@ import type {
   createCustomRule,
   CustomRule,
   getCustomRule,
-  listAllRules,
-  listCustomRules,
   MetricDescriptor,
   previewRule,
+  RuleListItem,
   toggleCustomRule,
   updateCustomRule,
 } from '@/api/endpoints/custom-rules'
 import type { PaginatedResponse } from '@/api/types/http'
-import { apiError, successFor, voidSuccess } from './helpers'
+import { apiError, emptyPageEnvelope, successFor, voidSuccess } from './helpers'
 
 const NOW = '2026-04-19T00:00:00Z'
 
@@ -34,7 +33,10 @@ export function buildCustomRule(overrides: Partial<CustomRule> = {}): CustomRule
 
 export const customRulesHandlers = [
   http.get('/api/v1/meta/custom-rules', () =>
-    HttpResponse.json(successFor<typeof listCustomRules>([])),
+    // Backend returns ``PaginatedResponse[CustomRule]``; the endpoint walks
+    // pages via ``paginateAll`` and returns a flat array, so the wire envelope
+    // must stay paginated even when empty.
+    HttpResponse.json(emptyPageEnvelope<CustomRule>()),
   ),
   http.get('/api/v1/meta/custom-rules/metrics', () =>
     // Backend returns ``PaginatedResponse[MetricDescriptor]``; the
@@ -92,6 +94,6 @@ export const customRulesHandlers = [
     ),
   ),
   http.get('/api/v1/meta/rules', () =>
-    HttpResponse.json(successFor<typeof listAllRules>([])),
+    HttpResponse.json(emptyPageEnvelope<RuleListItem>()),
   ),
 ]

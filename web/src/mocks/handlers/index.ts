@@ -32,6 +32,8 @@ export {
   apiPaginatedError,
   apiSuccess,
   emptyPage,
+  emptyPageEnvelope,
+  pageEnvelope,
   paginatedFor,
   successFor,
   voidSuccess,
@@ -82,6 +84,7 @@ import { personalitiesHandlers } from './personalities'
 import { projectBrainHandlers } from './projectBrain'
 import { projectDocsHandlers } from './projectDocs'
 import { projectsHandlers } from './projects'
+import { promotionHandlers } from './promotion'
 import { providersHandlers } from './providers'
 import { qualityHandlers } from './quality'
 import { recommendationsHandlers } from './recommendations'
@@ -90,6 +93,7 @@ import { rolesHandlers } from './roles'
 import { scalingHandlers } from './scaling'
 import { settingsHandlers } from './settings'
 import { setupHandlers } from './setup'
+import { ssrfViolationsHandlers } from './ssrf-violations'
 import { steeringHandlers } from './steering'
 import { subworkflowsHandlers } from './subworkflows'
 import { tasksHandlers } from './tasks'
@@ -151,6 +155,7 @@ export const defaultHandlers = [
   ...projectBrainHandlers,
   ...projectDocsHandlers,
   ...projectsHandlers,
+  ...promotionHandlers,
   ...providersHandlers,
   ...qualityHandlers,
   ...recommendationsHandlers,
@@ -159,6 +164,7 @@ export const defaultHandlers = [
   ...scalingHandlers,
   ...settingsHandlers,
   ...setupHandlers,
+  ...ssrfViolationsHandlers,
   ...steeringHandlers,
   ...subworkflowsHandlers,
   ...tasksHandlers,
@@ -186,5 +192,7 @@ export {
 } from './deliverableReceipts'
 export { buildConnection } from './connections'
 export { buildCustomRule } from './custom-rules'
+export { buildPromotionEvaluation, buildPromotionRecord } from './promotion'
 export { buildCloudPreset, buildLocalPreset } from './providers'
+export { buildSsrfViolation } from './ssrf-violations'
 export { buildSimulation } from './clients'

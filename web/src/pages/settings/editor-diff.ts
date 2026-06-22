@@ -36,27 +36,40 @@ export interface LineDiff {
  * Removed lines are reported at the line number where the deletion
  * occurred in the edited document (clamped to the last line).
  */
-/** Longest-common-subsequence length table for two line arrays. */
-function buildLcsTable(serverLines: string[], editedLines: string[]): number[][] {
+/**
+ * Longest-common-subsequence length table for two line arrays.
+ *
+ * Backed by a flat ``Int32Array`` (row-major, width ``m + 1``) so the
+ * 2-D reads are single non-optional ``number`` accesses rather than the
+ * doubly-optional ``number[][]`` that ``noUncheckedIndexedAccess`` would
+ * otherwise force ``!`` assertions onto.
+ */
+interface LcsTable {
+  at: (i: number, j: number) => number
+}
+
+function buildLcsTable(serverLines: string[], editedLines: string[]): LcsTable {
   const n = serverLines.length
   const m = editedLines.length
-  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0))
+  const width = m + 1
+  const dp = new Int32Array((n + 1) * width)
+  const at = (i: number, j: number): number => dp[i * width + j] ?? 0
   for (let i = 1; i <= n; i++) {
     for (let j = 1; j <= m; j++) {
-      dp[i]![j] =
+      dp[i * width + j] =
         serverLines[i - 1] === editedLines[j - 1]
-          ? dp[i - 1]![j - 1]! + 1
-          : Math.max(dp[i - 1]![j]!, dp[i]![j - 1]!)
+          ? at(i - 1, j - 1) + 1
+          : Math.max(at(i - 1, j), at(i, j - 1))
     }
   }
-  return dp
+  return { at }
 }
 
 /** Backtrack the LCS table to the matched line indices on each side. */
 function backtrackMatches(
   serverLines: string[],
   editedLines: string[],
-  dp: number[][],
+  dp: LcsTable,
 ): { serverMatched: Set<number>; editedMatched: Set<number> } {
   let si = serverLines.length
   let ei = editedLines.length
@@ -68,7 +81,7 @@ function backtrackMatches(
       editedMatched.add(ei - 1)
       si--
       ei--
-    } else if (dp[si - 1]![ei]! >= dp[si]![ei - 1]!) {
+    } else if (dp.at(si - 1, ei) >= dp.at(si, ei - 1)) {
       si--
     } else {
       ei--

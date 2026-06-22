@@ -1,14 +1,16 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { AnimatePresence } from 'motion/react'
-import { Plus, Trash2 } from 'lucide-react'
+import { FolderKanban, Plus, Trash2 } from 'lucide-react'
 import { useProjectsData } from '@/hooks/useProjectsData'
 import { useProjectsStore } from '@/stores/projects'
 import { Button } from '@/components/ui/button'
 import { BulkActionBar } from '@/components/ui/bulk-action-bar'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
 import { Pagination } from '@/components/ui/pagination'
+import { useEmptyStateProps } from '@/hooks/use-empty-state-props'
 import { useListPagination } from '@/hooks/use-list-pagination'
 import { formatNumber } from '@/utils/format'
 import { ProjectsSkeleton } from './projects/ProjectsSkeleton'
@@ -135,6 +137,82 @@ function ProjectsBulkActions({
   )
 }
 
+/**
+ * Case-appropriate empty state for the project grid: a "New project" CTA when
+ * the org genuinely has no projects, or a filter hint when filters narrowed an
+ * otherwise-populated list to zero. Returns undefined while the grid has rows.
+ */
+function useProjectsEmptyNode(
+  filteredCount: number,
+  totalCount: number,
+  onCreate: () => void,
+): ReactNode {
+  const props = useEmptyStateProps({
+    filteredCount,
+    totalCount,
+    filterActive: totalCount > 0,
+    icon: FolderKanban,
+    empty: {
+      title: 'No projects yet',
+      description: 'Create your first project to start organising the org around delivery goals.',
+      action: { label: 'New project', onClick: onCreate },
+    },
+    filtered: {
+      title: 'No projects match your filters',
+      description: 'Adjust or clear the filters to see more projects.',
+    },
+  })
+  return props !== null ? <EmptyState {...props} /> : undefined
+}
+
+function ProjectsHeader({
+  filteredCount,
+  totalCount,
+  onCreate,
+}: {
+  filteredCount: number
+  totalCount: number
+  onCreate: () => void
+}) {
+  return (
+    <ListHeader
+      title="Projects"
+      count={filteredCount}
+      countLabel={filteredCount === totalCount ? undefined : `${filteredCount} of ${totalCount}`}
+      primaryAction={
+        <Button size="sm" onClick={onCreate}>
+          <Plus aria-hidden="true" />
+          New project
+        </Button>
+      }
+    />
+  )
+}
+
+interface ProjectsBannersProps {
+  error: string | null
+  wsConnected: boolean
+  loading: boolean
+  wsSetupError: string | null
+}
+
+function ProjectsBanners({ error, wsConnected, loading, wsSetupError }: ProjectsBannersProps) {
+  return (
+    <>
+      {error !== null && (
+        <ErrorBanner severity="error" title="Could not load projects" description={error} />
+      )}
+      {!wsConnected && !loading && (
+        <ErrorBanner
+          variant="offline"
+          title="Real-time updates disconnected"
+          description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
+        />
+      )}
+    </>
+  )
+}
+
 export default function ProjectsPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const {
@@ -166,41 +244,37 @@ export default function ProjectsPage() {
     handleBulkDelete,
   } = useProjectSelection(filteredProjects)
 
+  const emptyNode = useProjectsEmptyNode(
+    filteredProjects.length,
+    totalProjects,
+    () => setCreateOpen(true),
+  )
+
   if (loading && totalProjects === 0) {
     return <ProjectsSkeleton />
   }
 
   return (
     <div className="space-y-section-gap">
-      <ListHeader
-        title="Projects"
-        count={filteredProjects.length}
-        countLabel={filteredProjects.length === totalProjects ? undefined : `${filteredProjects.length} of ${totalProjects}`}
-        primaryAction={
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus aria-hidden="true" />
-            New project
-          </Button>
-        }
+      <ProjectsHeader
+        filteredCount={filteredProjects.length}
+        totalCount={totalProjects}
+        onCreate={() => setCreateOpen(true)}
       />
 
-      {error && (
-        <ErrorBanner severity="error" title="Could not load projects" description={error} />
-      )}
-
-      {!wsConnected && !loading && (
-        <ErrorBanner
-          variant="offline"
-          title="Real-time updates disconnected"
-          description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
-        />
-      )}
+      <ProjectsBanners
+        error={error}
+        wsConnected={wsConnected}
+        loading={loading}
+        wsSetupError={wsSetupError}
+      />
 
       <ProjectFilters />
       <ProjectGridView
         projects={pagedProjects}
         onToggleSelect={handleToggleSelect}
         selectedIds={visibleSelected}
+        emptyNode={emptyNode}
       />
       <Pagination
         page={page}

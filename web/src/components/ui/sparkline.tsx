@@ -48,12 +48,17 @@ const SPARKLINE_PADDING = 2
 function _computeGeometry(data: number[], width: number, height: number): SparklineGeometry {
   const points = buildPoints(data, width, height)
   const pairs = points.split(' ')
-  const [rawX, rawY] = pairs[pairs.length - 1]!.split(',')
+  const lastPair = pairs[pairs.length - 1] ?? ''
+  const [rawX = '0', rawY = '0'] = lastPair.split(',')
+  // Empty/malformed coordinate tokens make ``parseFloat`` return NaN, which
+  // would propagate into the SVG geometry; clamp non-finite values to 0.
+  const parsedX = Number.parseFloat(rawX)
+  const parsedY = Number.parseFloat(rawY)
   return {
     points,
     fillPoints: `${SPARKLINE_PADDING},${height - SPARKLINE_PADDING} ${points} ${width - SPARKLINE_PADDING},${height - SPARKLINE_PADDING}`,
-    lastX: parseFloat(rawX!),
-    lastY: parseFloat(rawY!),
+    lastX: Number.isFinite(parsedX) ? parsedX : 0,
+    lastY: Number.isFinite(parsedY) ? parsedY : 0,
     approxPathLength: width * 1.5,
   }
 }

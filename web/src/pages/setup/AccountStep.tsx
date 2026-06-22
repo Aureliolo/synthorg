@@ -217,6 +217,12 @@ interface AccountFormFieldsProps {
   minPasswordLength: number
   loading: boolean
   strength: ReturnType<typeof getPasswordStrength>
+  /**
+   * True when the password policy fetch failed and the form fell back to the
+   * client default minimum. Surfaced as an inline field hint so the operator is
+   * warned the server may enforce a longer minimum BEFORE a submit-time 400.
+   */
+  policyUnavailable: boolean
 }
 
 function AccountFormFields({
@@ -229,10 +235,14 @@ function AccountFormFields({
   minPasswordLength,
   loading,
   strength,
+  policyUnavailable,
 }: AccountFormFieldsProps) {
   // Validate the confirm field on blur (not every keystroke) so the user
   // isn't told "passwords do not match" while still typing the first one.
   const [confirmTouched, setConfirmTouched] = useState(false)
+  const passwordHint = policyUnavailable
+    ? `Min ${minPasswordLength} characters (policy unavailable; the server may require more)`
+    : `Min ${minPasswordLength} characters`
   return (
     <>
       <InputField
@@ -256,7 +266,7 @@ function AccountFormFields({
             onChange={(e) => setPassword(e.currentTarget.value)}
             placeholder={`Min ${minPasswordLength} characters`}
             disabled={loading}
-            hint={`Min ${minPasswordLength} characters`}
+            hint={passwordHint}
             autoComplete="new-password"
           />
           {password.length > 0 && (
@@ -328,6 +338,7 @@ export function AccountStep() {
           minPasswordLength={minPasswordLength}
           loading={loading}
           strength={strength}
+          policyUnavailable={policyError !== null}
         />
 
         {policyError && (

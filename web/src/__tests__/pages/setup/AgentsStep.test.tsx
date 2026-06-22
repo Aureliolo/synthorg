@@ -93,6 +93,10 @@ describe("AgentsStep: unresolved-agent detection", () => {
       agents: [
         agent({ name: "Alice", model_provider: "gone", model_id: "m-1" }),
       ],
+      // Agents are already loaded (as they would be after the company
+      // submit that produced them), so the mount-time fetch is skipped and
+      // the seeded fixtures are not overwritten by the MSW default.
+      agentsFetched: true,
       providers: { "cloud-x": provider("cloud-x", [model("cloud-x-large")]) },
       // Explicit starting step so the click+state assertion below
       // verifies a real navigation. Without this, the click could
@@ -140,6 +144,7 @@ describe("AgentsStep: unresolved-agent detection", () => {
       agents: [
         agent({ name: "Bob", model_provider: "cloud-x", model_id: "gone" }),
       ],
+      agentsFetched: true,
       providers: { "cloud-x": provider("cloud-x", [model("cloud-x-large")]) },
     });
 
@@ -155,6 +160,7 @@ describe("AgentsStep: unresolved-agent detection", () => {
       agents: [
         agent({ name: "Charlie", model_provider: null, model_id: null }),
       ],
+      agentsFetched: true,
       providers: { "cloud-x": provider("cloud-x", [model("cloud-x-large")]) },
     });
 
@@ -174,6 +180,7 @@ describe("AgentsStep: unresolved-agent detection", () => {
           model_id: "cloud-x-large",
         }),
       ],
+      agentsFetched: true,
       providers: { "cloud-x": provider("cloud-x", [model("cloud-x-large")]) },
     });
 

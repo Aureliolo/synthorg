@@ -27,8 +27,10 @@ const recentTimestamps: number[] = []
 function isRateLimited(): boolean {
   const now = Date.now()
   // Prune timestamps outside the window
-  while (recentTimestamps.length > 0 && now - recentTimestamps[0]! > WINDOW_MS) {
+  let oldest = recentTimestamps[0]
+  while (oldest !== undefined && now - oldest > WINDOW_MS) {
     recentTimestamps.shift()
+    oldest = recentTimestamps[0]
   }
   return recentTimestamps.length >= MAX_NOTIFICATIONS
 }

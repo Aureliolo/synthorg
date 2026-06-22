@@ -15,6 +15,7 @@ import { CareerTimeline } from './agents/CareerTimeline'
 import { TaskHistory } from './agents/TaskHistory'
 import { ActivityLog } from './agents/ActivityLog'
 import { QualityScoreOverride } from './agents/QualityScoreOverride'
+import { PromotionPanel } from './agents/PromotionPanel'
 import { CollaborationPanel } from './agents/CollaborationPanel'
 import { TrainingSection } from './agents/TrainingSection'
 import { AgentMemoryAdmin } from './agents/AgentMemoryAdmin'
@@ -127,6 +128,9 @@ function AgentDetailContent({ ctrl }: CtrlProps) {
       </ErrorBoundary>
       <ErrorBoundary level="section">
         <QualityScoreOverride agentId={agent.id} />
+      </ErrorBoundary>
+      <ErrorBoundary level="section">
+        <PromotionPanel key={agent.id} agentId={agent.id} />
       </ErrorBoundary>
       <ErrorBoundary level="section">
         <CollaborationPanel agentId={agent.id} />

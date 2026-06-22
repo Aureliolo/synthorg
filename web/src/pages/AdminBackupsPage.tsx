@@ -13,12 +13,16 @@ import { ChevronDown, ChevronUp, HardDrive, Loader2, Plus, RotateCcw, Trash2 } f
 import { useBackupsStore } from '@/stores/backups'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { EmptyState } from '@/components/ui/empty-state'
+import { EmptyState, type EmptyStateProps } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
+import { useEmptyStateProps } from '@/hooks/use-empty-state-props'
 import { ListHeader } from '@/components/ui/list-header'
+import { SearchFilterSort } from '@/components/ui/search-filter-sort'
+import { SearchInput } from '@/components/ui/search-input'
 import { SectionCard } from '@/components/ui/section-card'
+import { SegmentedControl } from '@/components/ui/segmented-control'
 import { StatPill } from '@/components/ui/stat-pill'
-import { formatDateTime, formatFileSize } from '@/utils/format'
+import { formatDateTime, formatFileSize, formatLabel } from '@/utils/format'
 import type { BackupInfo } from '@/api/types/backup'
 
 type PendingAction = { kind: 'delete' | 'restore'; backupId: string }
@@ -92,6 +96,118 @@ function dialogCopy(pending: PendingAction): DialogCopy {
   }
 }
 
+// Hoisted so the ``useEmptyStateProps`` memo stays stable across renders.
+const BACKUPS_EMPTY_COPY = {
+  title: 'No backups yet',
+  description: 'Create a backup to capture the current system state.',
+}
+const BACKUPS_FILTERED_COPY = {
+  title: 'No matching backups',
+  description: 'No backups match the current search or trigger filter.',
+}
+
+interface BackupsView {
+  sortedBackups: readonly BackupInfo[]
+  sort: BackupSort
+  handleSort: (key: BackupSortKey) => void
+  search: string
+  setSearch: (value: string) => void
+  triggerFilter: string
+  setTriggerFilter: (value: string) => void
+  triggerOptions: ReadonlyArray<{ value: string; label: string }>
+  emptyStateProps: EmptyStateProps | null
+}
+
+/** Owns the search / trigger-filter / sort state and derives the visible rows. */
+function useBackupsView(backups: readonly BackupInfo[]): BackupsView {
+  const [sort, setSort] = useState<BackupSort>({ key: 'timestamp', dir: 'desc' })
+  const [search, setSearch] = useState('')
+  const [triggerFilter, setTriggerFilter] = useState('all')
+
+  const handleSort = (key: BackupSortKey) => {
+    setSort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+        : { key, dir: 'desc' },
+    )
+  }
+
+  const triggerOptions = useMemo(() => {
+    const present = new Set(backups.map((b) => b.trigger))
+    return [
+      { value: 'all', label: 'All triggers' },
+      ...[...present].sort().map((t) => ({ value: t, label: formatLabel(t) })),
+    ]
+  }, [backups])
+
+  // Derive the effective filter instead of resetting state in an effect: once a
+  // backup refresh drops the selected trigger from the present set, fall back to
+  // 'all' so the list cannot stay stuck on zero rows with no way back. A stale
+  // ``triggerFilter`` is harmless because every read goes through this value.
+  const effectiveTriggerFilter = useMemo(
+    () =>
+      triggerOptions.some((o) => o.value === triggerFilter) ? triggerFilter : 'all',
+    [triggerOptions, triggerFilter],
+  )
+
+  const sortedBackups = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    const filtered = backups.filter(
+      (b) =>
+        (effectiveTriggerFilter === 'all' || b.trigger === effectiveTriggerFilter)
+        && (query === '' || b.backup_id.toLowerCase().includes(query)),
+    )
+    const valueOf = BACKUP_SORT_VALUE[sort.key]
+    const factor = sort.dir === 'asc' ? 1 : -1
+    return [...filtered].sort((a, b) => (valueOf(a) - valueOf(b)) * factor)
+  }, [backups, sort, search, effectiveTriggerFilter])
+
+  const emptyStateProps = useEmptyStateProps({
+    filteredCount: sortedBackups.length,
+    totalCount: backups.length,
+    filterActive: effectiveTriggerFilter !== 'all' || search.trim() !== '',
+    icon: HardDrive,
+    empty: BACKUPS_EMPTY_COPY,
+    filtered: BACKUPS_FILTERED_COPY,
+  })
+
+  return {
+    sortedBackups,
+    sort,
+    handleSort,
+    search,
+    setSearch,
+    triggerFilter: effectiveTriggerFilter,
+    setTriggerFilter,
+    triggerOptions,
+    emptyStateProps,
+  }
+}
+
+function BackupsToolbar({ view }: { view: BackupsView }) {
+  return (
+    <SearchFilterSort
+      search={
+        <SearchInput
+          value={view.search}
+          onChange={view.setSearch}
+          placeholder="Search by backup ID..."
+          ariaLabel="Search backups"
+        />
+      }
+      filters={
+        <SegmentedControl
+          label="Filter by trigger"
+          value={view.triggerFilter}
+          onChange={view.setTriggerFilter}
+          options={view.triggerOptions}
+          size="sm"
+        />
+      }
+    />
+  )
+}
+
 export default function AdminBackupsPage() {
   const backups = useBackupsStore((s) => s.backups)
   const loading = useBackupsStore((s) => s.loading)
@@ -105,21 +221,8 @@ export default function AdminBackupsPage() {
   const deleteBackup = useBackupsStore((s) => s.deleteBackup)
   const restoreBackup = useBackupsStore((s) => s.restoreBackup)
   const [pending, setPending] = useState<PendingAction | null>(null)
-  const [sort, setSort] = useState<BackupSort>({ key: 'timestamp', dir: 'desc' })
-
-  const handleSort = (key: BackupSortKey) => {
-    setSort((prev) =>
-      prev.key === key
-        ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
-        : { key, dir: 'desc' },
-    )
-  }
-
-  const sortedBackups = useMemo(() => {
-    const valueOf = BACKUP_SORT_VALUE[sort.key]
-    const factor = sort.dir === 'asc' ? 1 : -1
-    return [...backups].sort((a, b) => (valueOf(a) - valueOf(b)) * factor)
-  }, [backups, sort])
+  const view = useBackupsView(backups)
+  const { sortedBackups, sort, handleSort } = view
 
   useEffect(() => {
     void fetchBackups()
@@ -143,12 +246,15 @@ export default function AdminBackupsPage() {
         <ErrorBanner severity="error" title="Could not load backups" description={error} />
       )}
 
+      <BackupsToolbar view={view} />
+
       <BackupsBody
         backups={sortedBackups}
         loading={loading}
         loadingMore={loadingMore}
         hasMore={hasMore}
         error={error}
+        emptyStateProps={view.emptyStateProps}
         sort={sort}
         onSort={handleSort}
         onDelete={(id) => setPending({ kind: 'delete', backupId: id })}
@@ -185,6 +291,7 @@ interface BackupsBodyProps {
   loadingMore: boolean
   hasMore: boolean
   error: string | null
+  emptyStateProps: EmptyStateProps | null
   sort: BackupSort
   onSort: (key: BackupSortKey) => void
   onDelete: (id: string) => void
@@ -198,6 +305,7 @@ function BackupsBody({
   loadingMore,
   hasMore,
   error,
+  emptyStateProps,
   sort,
   onSort,
   onDelete,
@@ -212,14 +320,10 @@ function BackupsBody({
     )
   }
   if (backups.length === 0) {
+    // With a load error the parent already shows an ErrorBanner; the empty
+    // state otherwise distinguishes "no backups yet" from "no filter matches".
     if (error !== null) return null
-    return (
-      <EmptyState
-        icon={HardDrive}
-        title="No backups yet"
-        description="Create a backup to capture the current system state."
-      />
-    )
+    if (emptyStateProps !== null) return <EmptyState {...emptyStateProps} />
   }
   return (
     <SectionCard title="Backups" icon={HardDrive}>

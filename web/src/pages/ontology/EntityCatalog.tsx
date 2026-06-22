@@ -52,15 +52,16 @@ function sortEntities(
 
 // `attribute_count` is the canonical scalar on summary list payloads; the
 // `attributes` array is only present on detail responses. Both are optional
-// extensions of the base entity shape, so read them through one intersection
-// cast rather than two `as unknown` escapes.
+// runtime extensions absent from the declared `EntityResponse`, so widen
+// through `unknown` (the honest "this is a wider runtime view" escape) rather
+// than an intersection that would pretend both shapes are fully satisfied.
 interface EntitySummaryExtras {
   readonly attribute_count?: number
   readonly attributes?: readonly unknown[]
 }
 
 function readAttributeCount(entity: EntityResponse): number {
-  const extras = entity as EntityResponse & EntitySummaryExtras
+  const extras = entity as unknown as EntitySummaryExtras
   if (typeof extras.attribute_count === 'number') return extras.attribute_count
   // ``attributes`` is only declared as an array; the value comes from an
   // untyped payload, so confirm it actually is one before reading length.

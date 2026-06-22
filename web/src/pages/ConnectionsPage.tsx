@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Filter, Plus } from 'lucide-react'
 import type { Connection, HealthReport } from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
@@ -116,6 +116,18 @@ export default function ConnectionsPage() {
     setHealthFilter(null)
   }
 
+  // Stable handlers so the memoised ConnectionCard rows are not re-rendered on
+  // every parent state change (filter input, modal open, etc.).
+  const handleRunHealthCheck = useCallback(
+    (name: string) => void runHealthCheck(name),
+    [runHealthCheck],
+  )
+  const handleEdit = useCallback(
+    (conn: Connection) => setModal({ kind: 'edit', connection: conn }),
+    [],
+  )
+  const handleDelete = useCallback((conn: Connection) => setPendingDelete(conn), [])
+
   const hasData = connections.length > 0 || filteredConnections.length > 0
   const pagination = useListPagination({ items: filteredConnections, namespace: 'connections' })
 
@@ -150,9 +162,9 @@ export default function ConnectionsPage() {
         healthMap={healthMap}
         checkingHealth={checkingHealth}
         onClearFilters={clearFilters}
-        onRunHealthCheck={(name) => void runHealthCheck(name)}
-        onEdit={(conn) => setModal({ kind: 'edit', connection: conn })}
-        onDelete={(conn) => setPendingDelete(conn)}
+        onRunHealthCheck={handleRunHealthCheck}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
         onCreate={() => setModal({ kind: 'create' })}
       />
 

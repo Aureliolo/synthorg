@@ -3,12 +3,12 @@ import type {
   getProviderRateLimits,
   updateProviderRateLimits,
 } from '@/api/endpoints/providers'
-import type { RateLimitsConfig } from '@/api/types'
+import type { RateLimitsResponse } from '@/api/types'
 import { successFor } from '../helpers'
 
-function buildRateLimitsConfig(
-  overrides: Partial<RateLimitsConfig> = {},
-): RateLimitsConfig {
+function buildRateLimitsResponse(
+  overrides: Partial<RateLimitsResponse> = {},
+): RateLimitsResponse {
   return {
     requests_per_minute: 0,
     concurrent_requests: 0,
@@ -19,12 +19,12 @@ function buildRateLimitsConfig(
 export const rateLimitsHandlers = [
   http.get('/api/v1/providers/:name/rate-limits', () =>
     HttpResponse.json(
-      successFor<typeof getProviderRateLimits>(buildRateLimitsConfig()),
+      successFor<typeof getProviderRateLimits>(buildRateLimitsResponse()),
     ),
   ),
   http.patch('/api/v1/providers/:name/rate-limits', () =>
     HttpResponse.json(
-      successFor<typeof updateProviderRateLimits>(buildRateLimitsConfig()),
+      successFor<typeof updateProviderRateLimits>(buildRateLimitsResponse()),
     ),
   ),
 ]

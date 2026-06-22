@@ -1,3 +1,4 @@
+import { memo, useCallback } from 'react'
 import { Plug } from 'lucide-react'
 import type { Connection, HealthReport } from '@/api/types/integrations'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -13,6 +14,44 @@ export interface ConnectionGridViewProps {
   onDelete: (connection: Connection) => void
   onCreate?: () => void
 }
+
+interface ConnectionGridRowProps {
+  connection: Connection
+  report: HealthReport | null
+  checking: boolean
+  onRunHealthCheck: (name: string) => void
+  onEdit: (connection: Connection) => void
+  onDelete: (connection: Connection) => void
+}
+
+// Memoised row: the per-connection click closures are created from stable
+// parent callbacks, so an unaffected card does not re-render when sibling
+// state (a sibling's health check, the filter input) changes.
+const ConnectionGridRow = memo(function ConnectionGridRow({
+  connection,
+  report,
+  checking,
+  onRunHealthCheck,
+  onEdit,
+  onDelete,
+}: ConnectionGridRowProps) {
+  const handleRunHealthCheck = useCallback(
+    () => onRunHealthCheck(connection.name),
+    [onRunHealthCheck, connection.name],
+  )
+  const handleEdit = useCallback(() => onEdit(connection), [onEdit, connection])
+  const handleDelete = useCallback(() => onDelete(connection), [onDelete, connection])
+  return (
+    <ConnectionCard
+      connection={connection}
+      report={report}
+      checking={checking}
+      onRunHealthCheck={handleRunHealthCheck}
+      onEdit={handleEdit}
+      onDelete={handleDelete}
+    />
+  )
+})
 
 export function ConnectionGridView({
   connections,
@@ -38,13 +77,13 @@ export function ConnectionGridView({
     <StaggerGroup className="grid grid-cols-3 gap-grid-gap max-[1023px]:grid-cols-2 max-[767px]:grid-cols-1">
       {connections.map((connection) => (
         <StaggerItem key={connection.name}>
-          <ConnectionCard
+          <ConnectionGridRow
             connection={connection}
             report={healthMap[connection.name] ?? null}
             checking={checkingHealth.includes(connection.name)}
-            onRunHealthCheck={() => onRunHealthCheck(connection.name)}
-            onEdit={() => onEdit(connection)}
-            onDelete={() => onDelete(connection)}
+            onRunHealthCheck={onRunHealthCheck}
+            onEdit={onEdit}
+            onDelete={onDelete}
           />
         </StaggerItem>
       ))}

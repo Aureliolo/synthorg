@@ -18,6 +18,13 @@ import { LIVE_EDGE_ACTIVE_MS } from '@/stores/org-chart-prefs'
  * `live` mode the caller intersects the rendered edges with this
  * set; in `off` mode the caller returns an empty set.
  */
+/**
+ * Callers MUST pass a memoised `edgeIdByAgentPair` (build it with `useMemo`
+ * upstream). It is a dependency of the subscribe effect below, so a fresh
+ * `Map` reference on every parent render would tear down and re-establish the
+ * Zustand subscription each render, churning closures that retain the previous
+ * map and the expiry ref until GC.
+ */
 export function useLiveEdgeActivity(
   edgeIdByAgentPair: ReadonlyMap<string, string>,
 ): ReadonlySet<string> {

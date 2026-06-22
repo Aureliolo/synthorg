@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import { useSettingsStore } from '@/stores/settings'
+import { useFreshnessGate } from '@/hooks/useFreshnessGate'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
 import type { SettingDefinition, SettingEntry, SettingNamespace } from '@/api/types/settings'
@@ -36,11 +37,13 @@ export function useSettingsData(): UseSettingsDataReturn {
   const updateSetting = useSettingsStore((s) => s.updateSetting)
   const resetSetting = useSettingsStore((s) => s.resetSetting)
 
-  // Lightweight polling for entries refresh
+  // Lightweight polling for entries refresh, gated so a live WS push skips the
+  // next redundant poll (matches the other WS-backed data hooks).
+  const { skipIfFresh, markFresh } = useFreshnessGate()
   const pollFn = useCallback(async () => {
     await useSettingsStore.getState().refreshEntries()
   }, [])
-  const polling = usePolling(pollFn, SETTINGS_POLL_INTERVAL)
+  const polling = usePolling(pollFn, SETTINGS_POLL_INTERVAL, { skipIfFresh })
   const { start: pollingStart, stop: pollingStop } = polling
 
   // Fetch initial data, then start polling (avoids duplicate getAllSettings)
@@ -59,9 +62,10 @@ export function useSettingsData(): UseSettingsDataReturn {
         channel,
         handler: (event) => {
           useSettingsStore.getState().updateFromWsEvent(event)
+          markFresh()
         },
       })),
-    [],
+    [markFresh],
   )
 
   const { connected: wsConnected, setupError: wsSetupError } = useWebSocket({

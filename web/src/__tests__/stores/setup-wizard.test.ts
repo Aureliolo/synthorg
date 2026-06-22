@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
+import { useThemeStore } from '@/stores/theme'
 import { apiError, apiSuccess, buildLocalPreset, buildCloudPreset } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import { CURRENCY_OPTIONS, DEFAULT_CURRENCY } from '@/utils/currencies'
@@ -359,6 +360,53 @@ describe('setup wizard store', () => {
       expect(state.stepOrder).toEqual(['mode', 'providers', 'company', 'complete'])
       // No step is completed, so the wizard lands on the first step.
       expect(state.currentStep).toBe('mode')
+    })
+
+    it('re-blocks providers and agents steps when the providers map is empty after rehydration', async () => {
+      // The ``providers`` map is not persisted, so it rehydrates to ``{}``.
+      // A payload that persisted ``stepsCompleted.providers/agents = true`` (and
+      // currentStep='complete') must not let the user resume on Complete with an
+      // empty provider map: both steps re-block and the wizard snaps to providers.
+      const persistName = useSetupWizardStore.persist.getOptions().name ?? ''
+      const payload = {
+        state: {
+          wizardMode: 'guided',
+          currentStep: 'complete',
+          stepsCompleted: {
+            account: false,
+            mode: true,
+            template: true,
+            company: true,
+            providers: true,
+            agents: true,
+            theme: true,
+            complete: false,
+          },
+        },
+        version: 3,
+      }
+      localStorage.setItem(persistName, JSON.stringify(payload))
+
+      await useSetupWizardStore.persist.rehydrate()
+
+      const state = useSetupWizardStore.getState()
+      expect(state.providers).toEqual({})
+      expect(state.stepsCompleted.providers).toBe(false)
+      expect(state.stepsCompleted.agents).toBe(false)
+      expect(state.currentStep).toBe('providers')
+    })
+
+    it('resets agentsFetched to false after rehydration so the agents step re-fetches', async () => {
+      const persistName = useSetupWizardStore.persist.getOptions().name ?? ''
+      const payload = {
+        state: { wizardMode: 'guided', currentStep: 'mode', stepsCompleted: { mode: true } },
+        version: 3,
+      }
+      localStorage.setItem(persistName, JSON.stringify(payload))
+
+      await useSetupWizardStore.persist.rehydrate()
+
+      expect(useSetupWizardStore.getState().agentsFetched).toBe(false)
     })
   })
 
@@ -1178,6 +1226,36 @@ describe('setup wizard store', () => {
       expect(state.completing).toBe(false)
       expect(state.completionError).toBeNull()
       expect(state.completionWarning).toContain('no ranked model available')
+    })
+
+    it('degrades a theme-persist failure to a warning, not an error, after a clean completion', async () => {
+      // The backend has already persisted setup_complete=true; a client-side
+      // theme store throw must NOT surface as a completionError (which would
+      // offer a Retry that re-POSTs /setup/complete and 409s).
+      server.use(
+        http.post('/api/v1/setup/complete', () =>
+          HttpResponse.json(
+            apiSuccess({
+              setup_complete: true,
+              embedder_selected: true,
+              embedder_failure_reason: null,
+            }),
+          ),
+        ),
+      )
+      const spy = vi
+        .spyOn(useThemeStore.getState(), 'setColorPalette')
+        .mockImplementation(() => {
+          throw new Error('theme store crashed')
+        })
+      try {
+        await useSetupWizardStore.getState().completeSetup()
+        const state = useSetupWizardStore.getState()
+        expect(state.completionError).toBeNull()
+        expect(state.completionWarning).toContain('theme')
+      } finally {
+        spy.mockRestore()
+      }
     })
 
     it('sets completionError on a 409 (already complete) failure', async () => {

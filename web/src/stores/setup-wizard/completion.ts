@@ -28,6 +28,25 @@ function persistWizardTheme(settings: ThemeSettings): void {
 
 const log = createLogger('setup-wizard:completion')
 
+/**
+ * Apply the wizard theme, swallowing any failure into a returned warning.
+ *
+ * Returns ``null`` on success, or a human-readable warning string when the
+ * theme store throws. The caller surfaces this as a ``completionWarning`` (not
+ * a ``completionError``) because the backend completion already succeeded.
+ */
+function applyWizardThemeSafely(settings: ThemeSettings): string | null {
+  try {
+    persistWizardTheme(settings)
+    return null
+  } catch (err) {
+    log.error('setup_wizard.theme_persist_failed', {
+      error: sanitizeForLog(getErrorMessage(err)),
+    })
+    return 'Your theme choices could not be applied. Set them in Settings > Appearance.'
+  }
+}
+
 /** Fresh state for all slices -- used by `reset()` to clear the wizard. */
 function getInitialState() {
   return {
@@ -63,6 +82,7 @@ function getInitialState() {
     agents: [],
     agentsLoading: false,
     agentsError: null,
+    agentsFetched: false,
     personalityPresets: [],
     personalityPresetsLoading: false,
     personalityPresetsError: null,
@@ -101,22 +121,28 @@ export const createCompletionSlice: SliceCreator<CompletionSlice> = (set, get) =
     set({ completing: true, completionError: null, completionWarning: null })
     try {
       const response = await completeSetup()
-      // Forward the wizard's collected theme into the persistent
-      // theme store so the dashboard renders the chosen palette /
-      // density / animation / sidebar mode immediately after the
-      // wizard hands off, instead of reverting to the system default.
-      persistWizardTheme(get().themeSettings)
       // The completion succeeded, but the backend may still report a
       // non-fatal warning (embedder auto-selection produced no ranked
       // model, persistence error for embedder choice). Surface it as
       // ``completionWarning`` so the post-completion step can render
       // an inline notice without claiming the whole setup failed.
-      const warning =
+      const embedderWarning =
         !response.embedder_selected
           ? (response.embedder_failure_reason
             ?? 'Embedder auto-selection did not pick a model. Configure one in Settings.')
           : null
-      set({ completing: false, completionWarning: warning })
+      // Forward the wizard's collected theme into the persistent theme store so
+      // the dashboard renders the chosen palette / density / animation / sidebar
+      // mode immediately after hand-off. This is a pure client-side side-effect:
+      // the backend has already persisted ``setup_complete=true``, so a theme
+      // store failure must NOT be reported as a completion failure (that would
+      // surface a Retry that re-POSTs /setup/complete and 409s). Degrade to a
+      // warning instead.
+      const themeWarning = applyWizardThemeSafely(get().themeSettings)
+      set({
+        completing: false,
+        completionWarning: embedderWarning ?? themeWarning,
+      })
       log.debug('setup_wizard.completed', {
         duration_ms: Date.now() - startedAt,
         embedder_selected: response.embedder_selected,

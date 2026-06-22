@@ -12,6 +12,7 @@ import { SearchInput } from '@/components/ui/search-input'
 import { SectionCard } from '@/components/ui/section-card'
 import { SelectField } from '@/components/ui/select-field'
 import { SkeletonCard } from '@/components/ui/skeleton'
+import { makeEnumParser } from '@/utils/type-guards'
 import { useRequestQueue, type RequestQueueState } from './request-queue/useRequestQueue'
 
 const STATUS_ORDER: readonly RequestStatus[] = [
@@ -31,6 +32,8 @@ const STATUS_LABELS: Record<RequestStatus, string> = {
   task_created: 'Task created',
   cancelled: 'Cancelled',
 }
+
+const parseStatusFilter = makeEnumParser<RequestStatus | 'all'>(['all', ...STATUS_ORDER])
 
 type RequestQueueFallback = 'cap-error' | 'not-configured' | 'loading' | null
 
@@ -118,7 +121,10 @@ function RequestQueueFilters({
         <SelectField
           label="Status"
           value={statusFilter}
-          onChange={(value) => setStatusFilter(value as RequestStatus | 'all')}
+          onChange={(value) => {
+            const status = parseStatusFilter(value)
+            if (status) setStatusFilter(status)
+          }}
           options={[
             { value: 'all', label: 'All statuses' },
             ...STATUS_ORDER.map((s) => ({ value: s, label: STATUS_LABELS[s] })),

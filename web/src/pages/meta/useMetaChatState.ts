@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 
 import { useMetaStore } from '@/stores/meta'
+import { resolveScopedRetryContent } from './scoped-retry'
 
 export interface MetaChatMessage {
   id: number
@@ -8,6 +9,8 @@ export interface MetaChatMessage {
   content: string
   sources?: string[]
   confidence?: number
+  /** Renders as a distinct error notice (not a normal assistant reply). */
+  isError?: boolean
 }
 
 export interface MetaChatState {
@@ -17,6 +20,8 @@ export interface MetaChatState {
   scrollRef: React.RefObject<HTMLDivElement | null>
   setInput: (value: string) => void
   triggerSend: () => void
+  /** Re-send the user message before the clicked error bubble's id. */
+  retryLast: (beforeMsgId?: number) => void
 }
 
 export function useMetaChatState(): MetaChatState {
@@ -29,22 +34,39 @@ export function useMetaChatState(): MetaChatState {
 
   const nextMsgId = useCallback(() => ++msgIdRef.current, [])
 
-  const handleSend = useCallback(async () => {
+  const sendMessage = useCallback(
+    async (question: string) => {
+      if (!question || chatLoading) return
+      setMessages((prev) => [
+        ...prev,
+        { id: nextMsgId(), role: 'user', content: question },
+      ])
+      const response = await sendChat(question)
+      setMessages((prev) => [...prev, buildAssistantMessage(response, nextMsgId)])
+      scrollToBottom(scrollRef)
+    },
+    [chatLoading, sendChat, nextMsgId],
+  )
+
+  const triggerSend = useCallback(() => {
+    // Mirror sendMessage's loading guard before clearing the input, so a send
+    // blocked by an in-flight turn does not discard the user's composed text.
+    if (chatLoading) return
     const question = input.trim()
-    if (!question || chatLoading) return
+    if (!question) return
     setInput('')
-    setMessages((prev) => [
-      ...prev,
-      { id: nextMsgId(), role: 'user', content: question },
-    ])
-    const response = await sendChat(question)
-    setMessages((prev) => [...prev, buildAssistantMessage(response, nextMsgId)])
-    scrollToBottom(scrollRef)
-  }, [input, chatLoading, sendChat, nextMsgId])
+    void sendMessage(question)
+  }, [chatLoading, input, sendMessage])
 
-  const triggerSend = useCallback(() => void handleSend(), [handleSend])
+  // Retry the user message that precedes the clicked error bubble (see
+  // ``resolveScopedRetryContent``); an unscoped retry would resend the wrong
+  // turn when multiple failures exist.
+  const retryLast = useCallback((beforeMsgId?: number) => {
+    const content = resolveScopedRetryContent(messages, beforeMsgId, (m) => m.role === 'user')
+    if (content !== null) void sendMessage(content)
+  }, [messages, sendMessage])
 
-  return { messages, input, chatLoading, scrollRef, setInput, triggerSend }
+  return { messages, input, chatLoading, scrollRef, setInput, triggerSend, retryLast }
 }
 
 function buildAssistantMessage(
@@ -60,13 +82,11 @@ function buildAssistantMessage(
       confidence: response.confidence,
     }
   }
-  const errMsg = useMetaStore.getState().error
   return {
     id: nextMsgId(),
     role: 'assistant',
-    content: errMsg
-      ? `Chat request failed: ${errMsg}`
-      : 'Failed to get a response. Please try again.',
+    content: 'The assistant could not respond. Please try again.',
+    isError: true,
   }
 }
 

@@ -57,7 +57,9 @@ describe('MetaChat', () => {
     await user.click(screen.getByRole('button', { name: 'Send message' }))
 
     await waitFor(() => {
-      expect(screen.getByText(/Chat request failed/)).toBeInTheDocument()
+      expect(screen.getByText(/The assistant could not respond/)).toBeInTheDocument()
     })
+    // The failure renders as a distinct error notice with a retry, not a reply.
+    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
   })
 })

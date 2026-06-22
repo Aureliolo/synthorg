@@ -64,6 +64,6 @@ describe('ReviewPipelinePage', () => {
     )
     renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Override pass' }))
-    expect(await screen.findByText('Stage action failed')).toBeInTheDocument()
+    expect(await screen.findByText('Could not complete the review step')).toBeInTheDocument()
   })
 })

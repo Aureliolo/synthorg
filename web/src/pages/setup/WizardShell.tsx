@@ -125,6 +125,7 @@ function useWizardReEntryToast(
   companyPresent: boolean,
   completeStepDone: boolean,
   stepOrder: readonly WizardStep[],
+  stepsCompleted: Record<WizardStep, boolean>,
 ): void {
   const reEntryToastShownRef = useRef(false)
   // Capture the mount-time value via useRef's initialiser so the render
@@ -132,6 +133,7 @@ function useWizardReEntryToast(
   // only honours the argument on the first render, which is exactly the
   // "did the company already exist when this wizard mounted" signal.
   const companyExistedAtMountRef = useRef(companyPresent)
+  const stepsCompletedAtMountRef = useRef(stepsCompleted)
   useEffect(() => {
     if (reEntryToastShownRef.current) return
     if (!companyExistedAtMountRef.current) return
@@ -139,10 +141,17 @@ function useWizardReEntryToast(
     if (completeStepDone) return
     if (!stepOrder.includes('complete')) return
     reEntryToastShownRef.current = true
+    // Point the operator at the actual first-incomplete step rather than
+    // "Complete": providers / agents rehydrate empty and re-block on reload,
+    // so canNavigateTo('complete') is false until they re-verify. Telling them
+    // to "finish from Complete" would be unfollowable.
+    const firstIncomplete = stepOrder.find((s) => !stepsCompletedAtMountRef.current[s])
+    const target = firstIncomplete ?? 'complete'
     useToastStore.getState().add({
       variant: 'info',
       title: 'Resume setup',
-      description: 'Your company was created in a previous session. Finish setup from the Complete step.',
+      description:
+        `Your company was created in a previous session. Continue from the ${STEP_TITLES[target]} step.`,
     })
   }, [companyPresent, completeStepDone, stepOrder])
 }
@@ -278,7 +287,7 @@ export function WizardShell() {
   const stepComplete = stepsCompleted[currentStep]
   const nextDisabledReason = useNextDisabledReason(currentStep, stepComplete)
 
-  useWizardReEntryToast(companyResponse !== null, stepsCompleted.complete, stepOrder)
+  useWizardReEntryToast(companyResponse !== null, stepsCompleted.complete, stepOrder, stepsCompleted)
   useWizardUrlSync({ urlStep, stepOrder, canNavigateTo, setStep, stepsCompleted, navigate })
   useWizardStepChrome(currentStep, scrollRef)
   const { handleStepClick, handleBack, handleNext } = useWizardStepNavigation(

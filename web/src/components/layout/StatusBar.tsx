@@ -219,7 +219,9 @@ export function StatusBar({ onHamburgerClick, sidebarOverlayOpen = false }: Stat
   return (
     <div
       className={cn(
-        'flex h-8 shrink-0 items-center gap-6',
+        // overflow-x-auto so the dense metric row scrolls rather than clipping
+        // at narrow tablet widths (768-850px) where the items overflow h-8.
+        'flex h-8 shrink-0 items-center gap-6 overflow-x-auto',
         'border-b border-border bg-background px-6',
         'text-[11px] tracking-wide font-mono',
         'text-text-secondary select-none',

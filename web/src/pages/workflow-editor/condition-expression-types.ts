@@ -86,11 +86,10 @@ function parseSingleComparison(str: string): ConditionComparison | null {
   const match = trimmed.match(/^(\S+)\s+(==|!=)\s+(.+)$/)
   if (!match) return null
 
-  return createComparison(
-    match[1],
-    match[2] as ComparisonOperator,
-    match[3]!.trim(),
-  )
+  const [, lhs, op, rhs] = match
+  if (!lhs || !op || !rhs) return null
+
+  return createComparison(lhs, op as ComparisonOperator, rhs.trim())
 }
 
 /**

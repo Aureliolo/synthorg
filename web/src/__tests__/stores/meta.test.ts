@@ -3,7 +3,7 @@ import { http, HttpResponse } from 'msw'
 import { ErrorCategory, ErrorCode } from '@/api/types/errors'
 import { useMetaStore } from '@/stores/meta'
 import { useToastStore } from '@/stores/toast'
-import { apiError, apiSuccess } from '@/mocks/handlers'
+import { apiError, apiSuccess, pageEnvelope } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 
 /** A SERVICE_UNAVAILABLE (503) body with a curated operator-facing detail. */
@@ -244,7 +244,7 @@ describe('fetchActiveAgents', () => {
     const roster = [{ id: 'a-1', name: 'Dana', role: 'CEO' }]
     server.use(
       http.get('/api/v1/agents/active', () =>
-        HttpResponse.json(apiSuccess(roster)),
+        HttpResponse.json(pageEnvelope(roster)),
       ),
     )
     useMetaStore.setState({ error: 'stale' })

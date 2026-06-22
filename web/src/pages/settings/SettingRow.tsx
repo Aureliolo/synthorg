@@ -184,7 +184,7 @@ export function SettingRow({
       {/* Field wrapper carries aria-describedby so the warning paragraphs
           are announced together with the control, even when disabled. */}
       <div
-        className="w-56 shrink-0"
+        className="w-full max-w-56 shrink-0 sm:w-56"
         role="group"
         aria-label={fieldLabel}
         aria-describedby={describedByIds || undefined}

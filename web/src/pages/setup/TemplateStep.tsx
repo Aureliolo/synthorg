@@ -11,6 +11,7 @@ import type { TemplateInfoResponse } from '@/api/types/setup'
 import {
   MAX_COMPARE,
   SIZE_OPTIONS,
+  parseSizeFilter,
   useTemplateStepController,
   type SizeFilter,
 } from './template-step-data'
@@ -135,7 +136,10 @@ function TemplateFilterBar({
         label="Size"
         options={SIZE_OPTIONS}
         value={sizeFilter}
-        onChange={(v) => setSizeFilter(v as SizeFilter)}
+        onChange={(v) => {
+          const size = parseSizeFilter(v)
+          if (size) setSizeFilter(size)
+        }}
       />
 
       {/* Clear filters */}

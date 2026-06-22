@@ -130,6 +130,16 @@ export interface AgentsSlice {
   agents: SetupAgentSummary[]
   agentsLoading: boolean
   agentsError: string | null
+  /**
+   * Idempotency guard mirroring ``providersFetched``: flips true once the
+   * agents list has been populated by EITHER ``fetchAgents`` success OR a
+   * ``submitCompany`` success (the template-apply path writes ``agents``).
+   * Not persisted, so it resets to false on reload. The AgentsStep fetch
+   * effect gates on ``!agentsFetched`` instead of ``agents.length === 0`` so a
+   * legitimately empty agents list (a template with no declared agents) cannot
+   * re-fire the fetch on every mount.
+   */
+  agentsFetched: boolean
   personalityPresets: PersonalityPresetInfo[]
   personalityPresetsLoading: boolean
   personalityPresetsError: string | null

@@ -4,7 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { apiSuccess } from '@/mocks/handlers'
+import { apiSuccess, pageEnvelope } from '@/mocks/handlers'
 import { MetaGroup } from '@/pages/meta/MetaGroup'
 import { useMetaStore } from '@/stores/meta'
 import { server } from '@/test-setup'
@@ -16,7 +16,7 @@ const ROSTER = [
 
 function _useRoster() {
   server.use(
-    http.get('/api/v1/agents/active', () => HttpResponse.json(apiSuccess(ROSTER))),
+    http.get('/api/v1/agents/active', () => HttpResponse.json(pageEnvelope(ROSTER))),
   )
 }
 

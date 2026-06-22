@@ -193,9 +193,11 @@ function AgentSpendingTableInner({ rows, currency }: AgentSpendingTableProps) {
               </div>
 
               {sorted.length === 0 ? (
-                <div className="px-4 py-6 text-center text-sm text-text-secondary">
-                  No agents match the current search.
-                </div>
+                <EmptyState
+                  icon={Users}
+                  title="No agents match"
+                  description="Clear the search to see all agents."
+                />
               ) : (
                 <StaggerGroup className="divide-y divide-border">
                   {sorted.map((row) => (

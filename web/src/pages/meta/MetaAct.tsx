@@ -7,6 +7,7 @@ import { ChatInputArea } from '@/components/ui/chat-input-area'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ResponderAttribution } from '@/components/ui/responder-attribution'
 
+import { ChatErrorNotice } from './ChatErrorNotice'
 import { useMetaActState, type ActMessage } from './useMetaActState'
 
 const INPUT_LABEL = 'Instruction'
@@ -60,10 +61,18 @@ function ActionBubble({ msg }: ActionBubbleProps) {
 
 interface ActBubbleProps {
   msg: ActMessage
+  onRetry: () => void
 }
 
-function ActBubble({ msg }: ActBubbleProps) {
+function ActBubble({ msg, onRetry }: ActBubbleProps) {
   if (msg.kind === 'notice') {
+    if (msg.isError === true) {
+      return (
+        <div className="mx-4">
+          <ChatErrorNotice message={msg.content} onRetry={onRetry} />
+        </div>
+      )
+    }
     return (
       <div className="mx-4 rounded-md bg-muted/50 p-card text-xs text-muted-foreground">
         {msg.content}
@@ -160,7 +169,7 @@ export function MetaAct() {
           className="max-h-80 space-y-3 overflow-y-auto rounded-md border border-border p-card"
         >
           {ctrl.messages.map((msg) => (
-            <ActBubble key={msg.id} msg={msg} />
+            <ActBubble key={msg.id} msg={msg} onRetry={() => ctrl.retryLast(msg.id)} />
           ))}
           {ctrl.loading && (
             <div className="mr-8 animate-pulse rounded-md bg-card p-card text-sm text-muted-foreground">

@@ -2,6 +2,9 @@ import { SelectField } from '@/components/ui/select-field'
 import { formatLabel } from '@/utils/format'
 import { getMeetingStatusLabel, type MeetingPageFilters } from '@/utils/meetings'
 import { MEETING_STATUS_VALUES } from '@/api/types/meetings'
+import { makeEnumParser } from '@/utils/type-guards'
+
+const parseMeetingStatus = makeEnumParser(MEETING_STATUS_VALUES)
 
 interface MeetingFilterBarProps {
   filters: MeetingPageFilters
@@ -33,10 +36,7 @@ export function MeetingFilterBar({
           label="Status"
           value={filters.status ?? ''}
           onChange={(val) =>
-            onFiltersChange({
-              ...filters,
-              status: (val || undefined) as MeetingPageFilters['status'],
-            })
+            onFiltersChange({ ...filters, status: parseMeetingStatus(val) })
           }
           options={STATUS_OPTIONS}
           className="w-44"

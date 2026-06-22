@@ -1,3 +1,4 @@
+import { Search } from 'lucide-react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { InputField, PasswordVisibilityGroup } from './input-field'
 
@@ -35,6 +36,23 @@ export const Disabled: Story = {
 
 export const Multiline: Story = {
   args: { label: 'Description', multiline: true, rows: 4, placeholder: 'Describe your company...' },
+}
+
+export const WithLeadingIcon: Story = {
+  args: {
+    label: 'Search',
+    placeholder: 'Search agents...',
+    leadingIcon: <Search className="h-4 w-4" aria-hidden="true" />,
+  },
+}
+
+export const WithLeadingIconAndError: Story = {
+  args: {
+    label: 'Search',
+    placeholder: 'Search agents...',
+    leadingIcon: <Search className="h-4 w-4" aria-hidden="true" />,
+    error: 'No results matched your query',
+  },
 }
 
 export const Password: Story = {

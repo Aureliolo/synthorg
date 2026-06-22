@@ -74,3 +74,20 @@ export function parseOrNull<T>(
 ): T | null {
   return guard(value) ? value : null
 }
+
+/**
+ * Build a membership parser for a string-literal union from its runtime
+ * values. The returned function narrows an arbitrary ``string`` to the union
+ * (or ``undefined`` when it is not a member), so a ``SelectField`` /
+ * ``<select>`` change handler can adopt the value without an unchecked
+ * ``as`` cast that would silently admit a stray value.
+ *
+ *     const parsePalette = makeEnumParser(COLOR_PALETTE_VALUES)
+ *     onChange={(v) => { const p = parsePalette(v); if (p) setColorPalette(p) }}
+ */
+export function makeEnumParser<T extends string>(
+  values: readonly T[],
+): (value: string) => T | undefined {
+  const members = new Set<string>(values)
+  return (value: string): T | undefined => (members.has(value) ? (value as T) : undefined)
+}

@@ -137,6 +137,47 @@ export function paginatedFor<
   }
 }
 
+/**
+ * Build an empty ``PaginatedResponse`` WIRE envelope directly.
+ *
+ * Use this for endpoints that walk pages via ``paginateAll`` (returning a flat
+ * ``T[]`` / ``readonly T[]`` rather than a ``PaginatedResult``), so the wire
+ * shape stays paginated even though the endpoint return type is flat and
+ * ``paginatedFor`` cannot infer it.
+ */
+export function emptyPageEnvelope<T>(limit = 200): PaginatedResponse<T> {
+  return {
+    data: [],
+    error: null,
+    error_detail: null,
+    pagination: { limit, next_cursor: null, has_more: false },
+    success: true,
+    degraded_sources: [],
+  }
+}
+
+/**
+ * Build a single-page ``PaginatedResponse`` WIRE envelope from a data array.
+ *
+ * Companion to {@link emptyPageEnvelope} for endpoints that walk pages via
+ * ``paginateAll`` (flat return type). Pass ``nextCursor`` to simulate a
+ * multi-page walk in tests.
+ */
+export function pageEnvelope<T>(
+  data: readonly T[],
+  opts: { nextCursor?: string | null; limit?: number } = {},
+): PaginatedResponse<T> {
+  const nextCursor = opts.nextCursor ?? null
+  return {
+    data: [...data],
+    error: null,
+    error_detail: null,
+    pagination: { limit: opts.limit ?? 200, next_cursor: nextCursor, has_more: nextCursor !== null },
+    success: true,
+    degraded_sources: [],
+  }
+}
+
 /** Build an empty paginated result with default offset/limit. */
 export function emptyPage<T>(limit = 200): PaginatedResult<T> {
   return {

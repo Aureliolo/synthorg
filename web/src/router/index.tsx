@@ -29,6 +29,7 @@ const MessagesPage = lazy(() => import('@/pages/MessagesPage'))
 const MeetingsPage = lazy(() => import('@/pages/MeetingsPage'))
 const MeetingDetailPage = lazy(() => import('@/pages/MeetingDetailPage'))
 const ProvidersPage = lazy(() => import('@/pages/ProvidersPage'))
+const SsrfViolationsPage = lazy(() => import('@/pages/security/SsrfViolationsPage'))
 const ProviderDetailPage = lazy(() => import('@/pages/ProviderDetailPage'))
 const OntologyPage = lazy(() => import('@/pages/OntologyPage'))
 const CustomRulesPage = lazy(() => import('@/pages/CustomRulesPage'))
@@ -167,6 +168,9 @@ export const router = createBrowserRouter([
               { path: 'meetings', element: <MeetingsPage /> },
               { path: 'meetings/:meetingId', element: <MeetingDetailPage /> },
               { path: 'providers', element: <ProvidersPage /> },
+              // Registered before ':providerName' so the literal segment is not
+              // captured as a provider name.
+              { path: ROUTES.SSRF_VIOLATIONS.slice(1), element: <SsrfViolationsPage /> },
               { path: 'providers/:providerName', element: <ProviderDetailPage /> },
               { path: ROUTES.CONNECTIONS.slice(1), element: <ConnectionsPage /> },
               { path: ROUTES.OAUTH_APPS.slice(1), element: <OauthAppsPage /> },

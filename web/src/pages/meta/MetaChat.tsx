@@ -4,13 +4,22 @@ import { ChatInputArea } from '@/components/ui/chat-input-area'
 import { EmptyState } from '@/components/ui/empty-state'
 import { cn } from '@/lib/utils'
 
+import { ChatErrorNotice } from './ChatErrorNotice'
 import { useMetaChatState, type MetaChatMessage } from './useMetaChatState'
 
 interface MessageBubbleProps {
   msg: MetaChatMessage
+  onRetry: () => void
 }
 
-function MessageBubble({ msg }: MessageBubbleProps) {
+function MessageBubble({ msg, onRetry }: MessageBubbleProps) {
+  if (msg.isError === true) {
+    return (
+      <div className="mr-8">
+        <ChatErrorNotice message={msg.content} onRetry={onRetry} />
+      </div>
+    )
+  }
   return (
     <div
       className={cn(
@@ -60,7 +69,7 @@ export function MetaChat() {
         className="max-h-80 space-y-3 overflow-y-auto rounded-md border border-border p-card"
       >
         {ctrl.messages.map((msg) => (
-          <MessageBubble key={msg.id} msg={msg} />
+          <MessageBubble key={msg.id} msg={msg} onRetry={() => ctrl.retryLast(msg.id)} />
         ))}
         {ctrl.chatLoading && (
           <div className="mr-8 animate-pulse rounded-md bg-card p-card text-sm text-muted-foreground">

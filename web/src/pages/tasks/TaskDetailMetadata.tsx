@@ -1,5 +1,6 @@
 import { Avatar } from '@/components/ui/avatar'
 import { InlineEdit } from '@/components/ui/inline-edit'
+import { MetadataGrid, type MetadataGridItem } from '@/components/ui/metadata-grid'
 import { SelectField, type SelectOption } from '@/components/ui/select-field'
 import { cn } from '@/lib/utils'
 import { useTasksStore } from '@/stores/tasks'
@@ -26,7 +27,7 @@ export function TaskDetailMetadata({ task }: TaskDetailMetadataProps) {
       <DescriptionField task={task} />
       <PriorityField task={task} />
       <AssigneeField task={task} />
-      <MetadataGrid task={task} />
+      <TaskMetadataGrid task={task} />
       {task.dependencies.length > 0 && <DependenciesList task={task} />}
       {task.acceptance_criteria.length > 0 && <AcceptanceCriteriaList task={task} />}
     </>
@@ -104,58 +105,26 @@ function AssigneeField({ task }: TaskFieldProps) {
   )
 }
 
-function MetadataGrid({ task }: TaskFieldProps) {
+function TaskMetadataGrid({ task }: TaskFieldProps) {
+  const MONO = 'font-mono text-xs'
+  const items: MetadataGridItem[] = [
+    { label: 'Type', value: getTaskTypeLabel(task.type) },
+    { label: 'Complexity', value: task.estimated_complexity, valueClassName: 'capitalize' },
+    { label: 'Project', value: task.project },
+    { label: 'Created', value: formatDateTime(task.created_at), valueClassName: MONO },
+    { label: 'Updated', value: formatDateTime(task.updated_at), valueClassName: MONO },
+    ...(task.cost != null
+      ? [{ label: 'Cost', value: formatCurrency(task.cost, DEFAULT_CURRENCY), valueClassName: MONO }]
+      : []),
+  ]
+  // Shared MetadataGrid (columns=3) carries the max-[1023px]:grid-cols-2 rule,
+  // so the drawer-constrained grid no longer over-compresses at tablet widths.
   return (
-    <div className="grid grid-cols-3 gap-grid-gap rounded-lg border border-border p-card text-sm">
-      <MetadataCell label="Type" value={getTaskTypeLabel(task.type)} />
-      <MetadataCell
-        label="Complexity"
-        value={task.estimated_complexity}
-        capitalize
-      />
-      <MetadataCell label="Project" value={task.project} />
-      <MetadataCell
-        label="Created"
-        value={formatDateTime(task.created_at)}
-        monospace
-      />
-      <MetadataCell
-        label="Updated"
-        value={formatDateTime(task.updated_at)}
-        monospace
-      />
-      {task.cost != null && (
-        <MetadataCell
-          label="Cost"
-          value={formatCurrency(task.cost, DEFAULT_CURRENCY)}
-          monospace
-        />
-      )}
-    </div>
-  )
-}
-
-interface MetadataCellProps {
-  label: string
-  value: string
-  capitalize?: boolean
-  monospace?: boolean
-}
-
-function MetadataCell({ label, value, capitalize, monospace }: MetadataCellProps) {
-  return (
-    <div>
-      <span className="block text-[10px] text-text-muted">{label}</span>
-      <span
-        className={cn(
-          'text-foreground',
-          capitalize && 'capitalize',
-          monospace && 'font-mono text-xs',
-        )}
-      >
-        {value}
-      </span>
-    </div>
+    <MetadataGrid
+      items={items}
+      columns={3}
+      className="rounded-lg border border-border p-card text-sm"
+    />
   )
 }
 

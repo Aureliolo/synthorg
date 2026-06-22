@@ -29,7 +29,7 @@ function ActivityFeedInner({ activities }: ActivityFeedProps) {
   }, [activities.length, isAutoScrolling, scrollToBottom])
 
   return (
-    <SectionCard title="Activity" icon={Activity}>
+    <SectionCard title="Live Activity" icon={Activity}>
       {visible.length === 0 ? (
         <EmptyState
           icon={Activity}

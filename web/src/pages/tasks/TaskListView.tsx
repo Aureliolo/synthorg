@@ -7,7 +7,7 @@ import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { EmptyState } from '@/components/ui/empty-state'
 import { getTaskTypeLabel } from '@/utils/tasks'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
-import { formatRelativeTime, formatCurrency } from '@/utils/format'
+import { formatRelativeTime, formatDateTime, formatCurrency } from '@/utils/format'
 import { ArrowDown, ArrowUp, Inbox } from 'lucide-react'
 import type { DashboardTask } from '@/api/types/tasks'
 
@@ -15,7 +15,10 @@ type SortKey = 'status' | 'title' | 'assignee' | 'priority' | 'type' | 'deadline
 type SortDirection = 'asc' | 'desc'
 
 export interface TaskListViewProps {
-  tasks: DashboardTask[]
+  // Accept readonly so callers pass the store array directly (it is spread
+  // internally for sorting); a defensive copy at the call site would defeat the
+  // component's React.memo on every parent render.
+  tasks: readonly DashboardTask[]
   onSelectTask: (taskId: string) => void
 }
 
@@ -101,7 +104,10 @@ function TaskListViewInner({ tasks, onSelectTask }: TaskListViewProps) {
   }
 
   return (
-    <div className="rounded-lg border border-border">
+    // overflow-x-auto + min-w keep the fixed-width columns from clipping or
+    // forcing whole-page horizontal scroll at tablet widths (768-1023px).
+    <div className="overflow-x-auto rounded-lg border border-border">
+      <div className="min-w-[44rem]">
       {/* Table header */}
       <div className="flex items-center gap-4 border-b border-border bg-surface px-4 py-2">
         {COLUMNS.map((col) => (
@@ -139,6 +145,7 @@ function TaskListViewInner({ tasks, onSelectTask }: TaskListViewProps) {
           </StaggerItem>
         ))}
       </StaggerGroup>
+      </div>
     </div>
   )
 }
@@ -188,7 +195,13 @@ const TaskListRow = memo(function TaskListRow({ task, onSelectTask }: TaskListRo
         {getTaskTypeLabel(task.type)}
       </span>
       <span className="w-24 font-mono text-[10px] text-text-muted">
-        {task.deadline ? formatRelativeTime(task.deadline) : '--'}
+        {task.deadline ? (
+          <time dateTime={task.deadline} title={formatDateTime(task.deadline)}>
+            {formatRelativeTime(task.deadline)}
+          </time>
+        ) : (
+          '--'
+        )}
       </span>
       <span className="w-20 text-right font-mono text-[10px] text-text-muted">
         {task.cost != null ? formatCurrency(task.cost, DEFAULT_CURRENCY) : '--'}

@@ -10,15 +10,23 @@ export const SETTINGS_ADVANCED_WARNED_KEY = 'settings_advanced_warned'
 
 /** Display order for setting namespaces shown in the Settings page.
  * Excluded:
- *   - 'company' and 'providers': have dedicated pages.
+ *   - 'providers': the dedicated Providers page surfaces every
+ *     registry key for that namespace.
  *   - 'settings': service-managed internal knobs.
  *   - 'demo': synthetic discovery-regression guard, not a real
  *     product feature, so it stays out of the user-facing UI.
+ * 'company' IS surfaced here: the Org Edit page only covers the
+ * company REST API (name / autonomy / budget), so without the generic
+ * panel the registry-only keys (description, name_locales) would be
+ * unreachable. The structural JSON blobs (company/agents,
+ * company/departments) are managed via the dedicated tabs and hidden
+ * from the panel (see HIDDEN_SETTINGS).
  * Every other namespace the backend registry exposes is surfaced
  * here. Each setting's `restart_required` flag is honoured by
  * RestartBadge. */
 export const NAMESPACE_ORDER: readonly SettingNamespace[] = [
   'api',
+  'company',
   'memory',
   'budget',
   'security',
@@ -81,6 +89,11 @@ const HIDDEN_SETTING_KEYS = [
   'api/setup_complete',
   'observability/sink_overrides',
   'observability/custom_sinks',
+  // Large structural JSON blobs managed via the dedicated Org Edit tabs;
+  // hidden from the generic panel to keep it readable (the panel still
+  // surfaces company/description + company/name_locales).
+  'company/agents',
+  'company/departments',
 ] as const
 export const HIDDEN_SETTINGS: ReadonlySet<string> = new Set(HIDDEN_SETTING_KEYS)
 
@@ -108,7 +121,7 @@ export const SENSITIVE_VALUE_PLACEHOLDER = '••••••••'
  * Settings that carry elevated security risk when misconfigured.
  * The GUI shows an additional warning for these keys.
  */
-const SECURITY_SENSITIVE_KEYS = ['api/auth_exclude_paths'] as const
+const SECURITY_SENSITIVE_KEYS = ['api/auth_exclude_paths', 'providers/configs'] as const
 export const SECURITY_SENSITIVE_SETTINGS: ReadonlySet<string> = new Set(SECURITY_SENSITIVE_KEYS)
 
 /** Settings that are simple string arrays and should render as chip inputs in GUI mode. */
