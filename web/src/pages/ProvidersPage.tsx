@@ -21,7 +21,12 @@ import { ProviderFilters } from './providers/ProviderFilters'
 import { ProvidersSkeleton } from './providers/ProvidersSkeleton'
 import { ProviderFormModal } from './providers/ProviderFormModal'
 import { ProviderRoutingSection } from './providers/ProviderRoutingSection'
-import type { ProbePresetResponse, ProviderConfig } from '@/api/types/providers'
+import { PresetOverridesSection } from './providers/PresetOverridesSection'
+import type {
+  ProbePresetResponse,
+  ProviderConfig,
+  ProviderPreset,
+} from '@/api/types/providers'
 
 const log = createLogger('providers-page')
 
@@ -295,6 +300,22 @@ function AddProviderSection({
   )
 }
 
+/** Routing + preset-override management, isolated behind one boundary. */
+function ProviderManagementSections({
+  presets,
+}: {
+  presets: readonly ProviderPreset[]
+}) {
+  return (
+    <ErrorBoundary level="section">
+      <div className="space-y-section-gap">
+        <ProviderRoutingSection />
+        <PresetOverridesSection presets={presets} />
+      </div>
+    </ErrorBoundary>
+  )
+}
+
 /**
  * Settings → Providers page.
  *
@@ -382,9 +403,7 @@ export default function ProvidersPage() {
         modal={modal}
       />
 
-      <ErrorBoundary level="section">
-        <ProviderRoutingSection />
-      </ErrorBoundary>
+      <ProviderManagementSections presets={presets} />
 
       <ProviderFormModal
         open={modal.modalOpen}

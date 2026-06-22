@@ -6,6 +6,7 @@ import type { AgentRuntimeStatus } from '@/utils/agent-status'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { useOrgChartPrefs } from '@/stores/org-chart-prefs'
 import type { DepartmentGroupData } from './build-org-tree'
+import { DepartmentStatsBar } from './DepartmentStatsBar'
 
 export type DepartmentGroupType = Node<DepartmentGroupData, 'department'>
 
@@ -225,6 +226,9 @@ function DepartmentGroupNodeComponent({ id, data }: NodeProps<DepartmentGroupTyp
   const {
     displayName,
     agentCount,
+    activeCount,
+    cost7d,
+    currency,
     budgetPercent,
     utilizationPercent,
     statusDots,
@@ -264,6 +268,14 @@ function DepartmentGroupNodeComponent({ id, data }: NodeProps<DepartmentGroupTyp
           utilizationPercent={utilizationPercent}
         />
         <DeptStatusDots statusDots={statusDots} />
+        {!isEmpty && !isCollapsed && (
+          <DepartmentStatsBar
+            agentCount={agentCount}
+            activeCount={activeCount}
+            cost7d={cost7d}
+            {...(currency !== null && { currency })}
+          />
+        )}
       </div>
 
       <DeptEmptyState isEmpty={isEmpty} />
