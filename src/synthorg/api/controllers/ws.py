@@ -1015,6 +1015,10 @@ async def ws_handler(
         maxsize=_OUTBOUND_QUEUE_DEPTH,
     )
     backpressure_tracker = _BackpressureTracker()
+    # Resolve the injected clock so the circuit-breaker close timing is
+    # driven by the app-state Clock seam (FakeClock in tests) rather than
+    # a bare SystemClock fallback inside ``_trip_breaker_and_close``.
+    breaker_clock: Clock = socket.app.state["app_state"].clock
 
     async def _event_callback(event_data: bytes) -> None:
         """Run event callback."""
@@ -1026,6 +1030,7 @@ async def ws_handler(
             user,
             backpressure=backpressure_tracker,
             socket=socket,
+            clock=breaker_clock,
         )
 
     # Structured concurrency for the WS background workers (CLAUDE.md):
@@ -1061,6 +1066,7 @@ async def ws_handler(
                         user,
                         outbound_queue,
                         backpressure=backpressure_tracker,
+                        clock=breaker_clock,
                     )
             finally:
                 # Long-running workers won't exit on their own; cancel

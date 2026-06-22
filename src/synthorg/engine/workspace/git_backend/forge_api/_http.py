@@ -13,7 +13,10 @@ from typing import Final
 
 import httpx
 
-from synthorg.core.resilience import coerce_finite_nonneg_seconds
+from synthorg.core.resilience import (
+    coerce_finite_nonneg_seconds,
+    parse_retry_after_seconds,
+)
 from synthorg.engine.errors import (
     GitBackendForgeApiError,
     GitBackendForgeAuthError,
@@ -61,25 +64,22 @@ def sanitize_body(text: str) -> str:
 
 
 def parse_retry_after(headers: httpx.Headers) -> float | None:
-    """Parse a ``Retry-After`` header (delta-seconds form) if present.
+    """Parse a ``Retry-After`` header if present.
+
+    Delegates to the shared :func:`parse_retry_after_seconds`, which
+    handles both RFC 9110 forms (delta-seconds AND HTTP-date) and is
+    ``TypeError``-safe, then clamps the result through
+    :func:`coerce_finite_nonneg_seconds` so inf / nan / negative (past-
+    date) deltas are rejected.
 
     Returns:
         The ``Retry-After`` delay in seconds when present and
-        parseable; ``None`` for absent / non-numeric headers (HTTP-
-        date form is intentionally not parsed).
+        parseable to a finite non-negative value; ``None`` otherwise.
     """
     raw = headers.get(_RETRY_AFTER_HEADER)
     if raw is None:
         return None
-    try:
-        value = float(raw.strip())
-    except ValueError:
-        # HTTP-date form is valid per spec but rare for forges; the
-        # exponential backoff handles the wait when we cannot parse a
-        # delta-seconds value.
-        return None
-    # Shared validator rejects inf / nan / negative deltas.
-    return coerce_finite_nonneg_seconds(value)
+    return coerce_finite_nonneg_seconds(parse_retry_after_seconds(raw.strip()))
 
 
 def _is_rate_limited(resp: httpx.Response) -> bool:
