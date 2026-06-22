@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, override
 import pytest
 
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.completion_enums import FinishReason
@@ -19,7 +20,6 @@ from synthorg.engine.loop_protocol import (
 from synthorg.execution.turn import TurnRecord
 
 if TYPE_CHECKING:
-    from synthorg.budget.cost_record import CostRecord
     from synthorg.core.agent import AgentIdentity
 
 
