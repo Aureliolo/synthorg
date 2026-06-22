@@ -414,17 +414,16 @@ class CodeApplier:
         if error is not None:
             return error
         project_root = self._project_root or Path.cwd()
-        errors: list[str] = []
 
-        resolved_root = project_root.resolve()
-        for change in proposal.code_changes:
-            file_path = project_root / change.file_path
-            if not _is_within(file_path, resolved_root):
-                errors.append(
-                    f"Path escapes project root: {change.file_path}",
-                )
-                continue
-            _validate_change_preconditions(change, file_path, errors)
+        # The precondition checks read each target file from disk to diff
+        # against the proposal's ``old_content``. Offload the whole loop to
+        # a worker thread so a proposal with many or large files does not
+        # block the event loop.
+        errors = await asyncio.to_thread(
+            self._run_preconditions,
+            proposal.code_changes,
+            project_root,
+        )
 
         if errors:
             return ApplyResult(
@@ -436,6 +435,30 @@ class CodeApplier:
             success=True,
             changes_applied=len(proposal.code_changes),
         )
+
+    @staticmethod
+    def _run_preconditions(
+        changes: tuple[CodeChange, ...],
+        project_root: Path,
+    ) -> list[str]:
+        """Validate every change against the working tree (blocking I/O).
+
+        Runs the path-containment guard and per-change precondition checks
+        (which read target files from disk) for all changes. Pure and
+        side-effect-free, so it is safe to run via ``asyncio.to_thread``.
+
+        Returns:
+            The accumulated validation error messages (empty when valid).
+        """
+        errors: list[str] = []
+        resolved_root = project_root.resolve()
+        for change in changes:
+            file_path = project_root / change.file_path
+            if not _is_within(file_path, resolved_root):
+                errors.append(f"Path escapes project root: {change.file_path}")
+                continue
+            _validate_change_preconditions(change, file_path, errors)
+        return errors
 
     @staticmethod
     def _write_changes(
