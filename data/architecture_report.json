@@ -356,8 +356,8 @@
     },
     "src/synthorg/docs_engine/service.py": {
       "cap": 600,
-      "loc": 602,
-      "ratio": 1.003,
+      "loc": 529,
+      "ratio": 0.882,
       "tier": "service"
     },
     "src/synthorg/engine/__init__.py": {
@@ -914,14 +914,14 @@
     },
     "src/synthorg/observability/prometheus_collector.py": {
       "cap": 600,
-      "loc": 498,
-      "ratio": 0.83,
+      "loc": 500,
+      "ratio": 0.833,
       "tier": "service"
     },
     "src/synthorg/observability/prometheus_labels.py": {
       "cap": 500,
-      "loc": 502,
-      "ratio": 1.004,
+      "loc": 452,
+      "ratio": 0.904,
       "tier": "code"
     },
     "src/synthorg/observability/sink_config_builder.py": {
@@ -998,8 +998,8 @@
     },
     "src/synthorg/persistence/postgres/project_brain_repo.py": {
       "cap": 500,
-      "loc": 517,
-      "ratio": 1.034,
+      "loc": 451,
+      "ratio": 0.902,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/project_cost_aggregate_repo.py": {
@@ -1417,7 +1417,7 @@
     "synthorg.core.role": 20,
     "synthorg.core.task": 96,
     "synthorg.core.task_enums": 89,
-    "synthorg.core.types": 1154,
+    "synthorg.core.types": 1155,
     "synthorg.engine.context": 39,
     "synthorg.engine.decomposition.models": 28,
     "synthorg.engine.errors": 85,
@@ -1444,7 +1444,7 @@
     "synthorg.integrations.state": 30,
     "synthorg.knowledge.models": 24,
     "synthorg.memory.errors": 25,
-    "synthorg.memory.models": 72,
+    "synthorg.memory.models": 73,
     "synthorg.memory.protocol": 67,
     "synthorg.meta.chief_of_staff.models": 32,
     "synthorg.meta.config": 23,
@@ -1494,7 +1494,7 @@
     "synthorg.persistence.protocol": 46,
     "synthorg.persistence.sqlite._shared": 82,
     "synthorg.persistence.state": 65,
-    "synthorg.project_brain.models": 24,
+    "synthorg.project_brain.models": 25,
     "synthorg.providers.cost_recording": 38,
     "synthorg.providers.enums": 92,
     "synthorg.providers.errors": 45,
