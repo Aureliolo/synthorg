@@ -5,6 +5,7 @@ from typing import Self
 
 import httpx
 
+from synthorg.core.normalization import normalize_base_url
 from synthorg.engine.errors import GitBackendForgeApiError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import FORGE_API_REQUEST_FAILED
@@ -32,7 +33,7 @@ class BaseForgeClient:
         # request URL against the base_url's *path*, so without it a
         # forge hosted under a path prefix (``/api/v3``, ``/api/v4``)
         # would lose that prefix when joining the relative endpoint.
-        self._api_base_url = api_base_url.rstrip("/") + "/"
+        self._api_base_url = normalize_base_url(api_base_url)
         # Copy-on-store so a later mutation of the caller's header map
         # cannot retroactively change this client's auth/headers.
         self._headers: dict[str, str] = dict(headers)

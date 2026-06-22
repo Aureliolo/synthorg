@@ -30,6 +30,7 @@ from synthorg.ontology.models import (
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
     DEFAULT_LIST_LIMIT,
+    format_iso_utc,
     validate_pagination_args,
 )
 from synthorg.persistence.sqlite._shared import WriteContext
@@ -124,8 +125,8 @@ class SQLiteOntologyEntityRepository:
                 [r.model_dump(mode="json") for r in entity.relationships],
             ),
             "created_by": entity.created_by,
-            "created_at": entity.created_at.isoformat(),
-            "updated_at": entity.updated_at.isoformat(),
+            "created_at": format_iso_utc(entity.created_at),
+            "updated_at": format_iso_utc(entity.updated_at),
         }
 
     async def register(self, entity: EntityDefinition) -> None:

@@ -18,12 +18,12 @@ Heavy-cardinality domains (``agents``, ``communication``,
 left so we don't ship a dozen tiny files.
 """
 
-from datetime import datetime
 from typing import Literal, Self
 
 from pydantic import Field, model_validator
 
 from synthorg.approval.enums import ApprovalStatus as ApprovalStatusEnum
+from synthorg.core.iso_datetime import parse_iso_utc
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.domains._common_args import (
     AdminGuardrailFields,
@@ -50,8 +50,8 @@ def _check_time_window_ordering(since: str | None, until: str | None) -> None:
     """
     if since is None or until is None:
         return
-    start = datetime.fromisoformat(since)
-    end = datetime.fromisoformat(until)
+    start = parse_iso_utc(since)
+    end = parse_iso_utc(until)
     if start >= end:
         msg = (
             f"since must be strictly before until; got since={since!r}, until={until!r}"

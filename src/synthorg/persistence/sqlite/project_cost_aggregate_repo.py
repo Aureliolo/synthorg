@@ -459,7 +459,7 @@ class SQLiteProjectCostAggregateRepository:
 
         seen_at = normalize_utc(now)
         expires_at = seen_at + timedelta(seconds=ttl_seconds)
-        upsert_now = datetime.now(UTC).isoformat()
+        upsert_now = format_iso_utc(datetime.now(UTC))
         project_lock = await self._project_lock(project_id)
         async with project_lock:
             pinned = self._pinned_currencies.get(project_id)

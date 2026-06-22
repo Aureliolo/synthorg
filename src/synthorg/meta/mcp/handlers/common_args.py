@@ -29,6 +29,7 @@ import copy
 from datetime import UTC, datetime
 from typing import Final, cast, overload
 
+from synthorg.core.iso_datetime import parse_iso_utc
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.errors import ArgumentValidationError
 
@@ -307,12 +308,9 @@ def _parse_iso_datetime(raw: object, arg_name: str) -> datetime:
     if not isinstance(raw, str) or not raw.strip():
         raise ArgumentValidationError(arg_name, _TY_ISO_DT)
     try:
-        parsed = datetime.fromisoformat(raw)
+        return parse_iso_utc(raw)
     except ValueError as exc:
-        raise ArgumentValidationError(arg_name, _TY_ISO_DT) from exc
-    if parsed.tzinfo is None:
-        raise ArgumentValidationError(arg_name, _TY_TZ_AWARE)
-    return parsed
+        raise ArgumentValidationError(arg_name, _TY_TZ_AWARE) from exc
 
 
 def parse_time_window(

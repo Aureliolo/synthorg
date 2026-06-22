@@ -23,7 +23,7 @@ from synthorg.observability.events.meta import (
     META_CUSTOM_RULE_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence._shared import format_iso_utc
 from synthorg.persistence._shared.custom_rule import (
     row_to_custom_rule,
     serialize_altitudes,
@@ -156,8 +156,8 @@ ON CONFLICT(id) DO UPDATE SET
                         rule.severity.value,
                         altitudes_json,
                         int(rule.enabled),
-                        normalize_utc(rule.created_at).isoformat(),
-                        normalize_utc(rule.updated_at).isoformat(),
+                        format_iso_utc(rule.created_at),
+                        format_iso_utc(rule.updated_at),
                     ),
                 )
                 await self._db.commit()
