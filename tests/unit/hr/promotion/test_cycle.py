@@ -148,3 +148,38 @@ async def test_empty_registry_returns_nothing(
     service = build_promotion_service(registry=registry, tracker=tracker)
 
     assert await run_promotion_cycle(service) == ()
+
+
+async def test_cycle_does_not_refetch_identity_per_evaluation(
+    registry: AgentRegistryService,
+    tracker: PerformanceTracker,
+) -> None:
+    """The sweep threads the ``list_active`` identity into evaluate/request.
+
+    Only the authoritative under-lock read in ``_apply_level_change`` should
+    hit ``registry.get`` (once for the applied agent); the evaluation and
+    request steps must reuse the pre-loaded identity rather than re-fetching.
+    """
+    identity = make_agent_identity(name="promotable", level=SeniorityLevel.JUNIOR)
+    await registry.register(identity)
+    await _seed_metrics(tracker, str(identity.id), quality=8.0)
+    service = build_promotion_service(registry=registry, tracker=tracker)
+
+    get_calls = 0
+    original_get = registry.get
+
+    async def _counting_get(agent_id: NotBlankStr) -> object:
+        nonlocal get_calls
+        get_calls += 1
+        return await original_get(agent_id)
+
+    registry.get = _counting_get  # type: ignore[method-assign]
+    try:
+        applied = await run_promotion_cycle(service)
+    finally:
+        registry.get = original_get  # type: ignore[method-assign]
+
+    assert len(applied) == 1
+    # Pre-fix this was 3 (evaluate + request + apply); now only the
+    # under-lock apply read remains.
+    assert get_calls == 1
