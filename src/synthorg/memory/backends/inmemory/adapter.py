@@ -190,18 +190,12 @@ class InMemoryBackend:
         """
         self._require_connected()
         memory_id = NotBlankStr(str(uuid.uuid4()))
-        now = self._clock.now()
-        entry = MemoryEntry(
-            id=memory_id,
-            agent_id=agent_id,
-            namespace=request.namespace,
-            category=request.category,
-            content=request.content,
-            metadata=request.metadata,
-            created_at=now,
-            expires_at=request.expires_at,
-        )
         async with self._store_lock:
+            # Sample the clock under the lock so pruning uses a fresh
+            # instant: a ``now`` captured before lock acquisition goes
+            # stale while waiting, leaving just-expired entries unpruned
+            # and risking a false limit error.
+            now = self._clock.now()
             agent_store = self._store.setdefault(str(agent_id), {})
             # Prune expired entries before checking quota.
             _prune_expired(agent_store, now)
@@ -217,6 +211,16 @@ class InMemoryBackend:
                     error=msg,
                 )
                 raise MemoryStoreError(msg)
+            entry = MemoryEntry(
+                id=memory_id,
+                agent_id=agent_id,
+                namespace=request.namespace,
+                category=request.category,
+                content=request.content,
+                metadata=request.metadata,
+                created_at=now,
+                expires_at=request.expires_at,
+            )
             agent_store[str(memory_id)] = entry
         logger.debug(
             MEMORY_ENTRY_STORED,

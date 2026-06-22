@@ -947,12 +947,23 @@ class TaskEngine(TaskEngineLoopsMixin):
         # repo (e.g. test fixture returning more rows than count
         # reports) still surfaces the real pre-cap size.
         if limit is None:
-            count_total = await self._count_tasks_filtered(
-                status=status,
-                assigned_to=assigned_to,
-                project=project,
-            )
-            true_total = max(count_total, len(tasks))
+            # Full-fetch path.  ``count_tasks`` gives the authoritative
+            # pre-cap cardinality, but it is only issued when the caller
+            # wants the total -- ``include_total=False`` callers (e.g. the
+            # metrics scrape) must not pay for the extra round-trip.  The
+            # in-memory truncation still runs either way as defence against
+            # a non-clamping repo; without the count we cap against the
+            # observed list length, which is sufficient since a clamping
+            # repo never returns more than the cap.
+            if include_total:
+                count_total = await self._count_tasks_filtered(
+                    status=status,
+                    assigned_to=assigned_to,
+                    project=project,
+                )
+                true_total = max(count_total, len(tasks))
+            else:
+                true_total = len(tasks)
             if true_total > self._MAX_LIST_RESULTS:
                 logger.warning(
                     TASK_ENGINE_LIST_CAPPED,
@@ -960,17 +971,13 @@ class TaskEngine(TaskEngineLoopsMixin):
                     cap=self._MAX_LIST_RESULTS,
                 )
                 tasks = tasks[: self._MAX_LIST_RESULTS]
-        else:
-            true_total = len(tasks)
-
-        if not include_total:
-            return tasks, None
-
-        if limit is None:
-            # Full-fetch path: ``true_total`` is the authoritative
-            # pre-truncation count from ``count_tasks``.
+            if not include_total:
+                return tasks, None
             return tasks, true_total
 
+        # Repo-bounded window: ``tasks`` is already capped by the repo.
+        if not include_total:
+            return tasks, None
         total = await self._count_tasks_filtered(
             status=status,
             assigned_to=assigned_to,
