@@ -372,7 +372,7 @@ class A2AClient:
                 headers,
             )
             response.raise_for_status()
-        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+        except (httpx.NetworkError, httpx.TimeoutException) as exc:
             logger.warning(
                 A2A_OUTBOUND_FAILED,
                 peer_name=peer_name,

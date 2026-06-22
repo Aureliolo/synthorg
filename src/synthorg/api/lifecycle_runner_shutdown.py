@@ -8,7 +8,7 @@ health-prober / training-backend state now lives on the shared
 """
 
 import asyncio
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Coroutine
 from typing import Final, cast
 
 from synthorg.a2a.state import A2aStateSlice
@@ -227,6 +227,25 @@ async def _run_shutdown(  # noqa: PLR0913
                 service="training_memory_backend",
             )
         tasks.training_memory_backend = None
+    # Disconnect + unwire the hybrid org-memory backend published to the memory
+    # slice at startup, mirroring the training-backend teardown above: clear the
+    # field before disconnecting so a lifespan re-entry can wire a fresh backend
+    # (``wire_org_memory_backend`` is idempotent and skips when the slice is
+    # already set) without a stale handle lingering on the slice.
+    org_memory_backend = app_state.slice(MemoryStateSlice).org_memory_backend
+    if org_memory_backend is not None:
+        app_state.swap_slice(
+            app_state.slice(MemoryStateSlice).model_copy(
+                update={"org_memory_backend": None}
+            )
+        )
+        await _try_stop(
+            org_memory_backend.disconnect(),
+            API_APP_SHUTDOWN,
+            "Failed to disconnect org memory backend",
+            timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
+            service="org_memory_backend",
+        )
     if tasks.ticket_cleanup_task is not None:
         await _cancel_with_timeout(
             tasks.ticket_cleanup_task,
@@ -301,7 +320,7 @@ async def _run_shutdown(  # noqa: PLR0913
     # concurrently: the aggregate wall-clock is one drain budget rather than
     # three, keeping the worst case inside the SIGKILL deadline. Each retains
     # its own bounded ``_try_stop`` timeout.
-    _integration_draining_stops: list[Awaitable[bool]] = []
+    _integration_draining_stops: list[Coroutine[object, object, bool]] = []
     if integrations.oauth_token_manager is not None:
         _integration_draining_stops.append(
             _try_stop(
@@ -333,7 +352,13 @@ async def _run_shutdown(  # noqa: PLR0913
             )
         )
     if _integration_draining_stops:
-        await asyncio.gather(*_integration_draining_stops)
+        # Structured fan-out/fan-in (project convention prefers ``TaskGroup``
+        # over ``gather``). ``_try_stop`` swallows its own failures and returns
+        # a bool, so no child task raises -- the group's first-exception
+        # cancellation never fires and all three drains run to completion.
+        async with asyncio.TaskGroup() as _drain_tg:
+            for _stop_coro in _integration_draining_stops:
+                _ = _drain_tg.create_task(_stop_coro)
     if integrations.tunnel_provider is not None:
         await _try_stop(
             integrations.tunnel_provider.stop(),

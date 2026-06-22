@@ -113,25 +113,28 @@ class OAuthRotationMixin:
                 merged,
             )
             await self._persist_oauth_rotation(updated, new_secret_id, name)
-            await self._invalidate_cache()
-            await self._cleanup_stale_oauth_secrets(conn.secret_refs, name)
-            logger.info(
-                OAUTH_TOKEN_EXCHANGED,
-                connection_name=name,
-                has_refresh=refresh_token is not None,
-            )
-            # Sign the credential write into the audit chain: storing live
-            # OAuth bearer tokens is equivalent in impact to a REST
-            # connection update (which signs ``SECURITY_CONNECTION_UPDATED``),
-            # and this callback path is unauthenticated, making audit
-            # coverage more critical. ``principal="system"`` marks the
-            # provider-driven callback actor.
+            # Sign the credential write into the audit chain immediately after
+            # the durable rotation commits, BEFORE cache invalidation or stale-
+            # secret cleanup: those later awaits can raise, and an exception
+            # there must not leave a persisted bearer-token rotation without
+            # its signed security event. Storing live OAuth bearer tokens is
+            # equivalent in impact to a REST connection update (which signs
+            # ``SECURITY_CONNECTION_UPDATED``), and this callback path is
+            # unauthenticated, making audit coverage more critical.
+            # ``principal="system"`` marks the provider-driven callback actor.
             logger.info(
                 SECURITY_CONNECTION_UPDATED,
                 principal="system",
                 resource=f"connection:{name}",
                 action_type="oauth_token_rotation",
                 connection_name=name,
+            )
+            await self._invalidate_cache()
+            await self._cleanup_stale_oauth_secrets(conn.secret_refs, name)
+            logger.info(
+                OAUTH_TOKEN_EXCHANGED,
+                connection_name=name,
+                has_refresh=refresh_token is not None,
             )
             return updated
 

@@ -6,7 +6,7 @@ policy) and list the active overrides. The two mutating tools are
 guardrailed admin tools.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, get_args
 
 from pydantic import JsonValue
 
@@ -14,6 +14,7 @@ from synthorg.meta.mcp.domains._security_args import (
     RiskOverrideCreateArgs,
     RiskOverrideListArgs,
     RiskOverrideRevokeArgs,
+    RiskTierLiteral,
 )
 from synthorg.meta.mcp.tool_builder import (
     ADMIN_GUARDRAIL_PROPERTIES,
@@ -25,7 +26,9 @@ from synthorg.meta.mcp.tool_builder import (
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
 
-_TIER_ENUM: list[JsonValue] = ["low", "medium", "high", "critical"]
+# Derived from the same ``RiskTierLiteral`` the args model validates against,
+# so the advertised MCP schema enum cannot drift from server-side validation.
+_TIER_ENUM: list[JsonValue] = list(get_args(RiskTierLiteral))
 
 SECURITY_MCP_TOOLS: tuple[MCPToolDef, ...] = (
     admin_tool(

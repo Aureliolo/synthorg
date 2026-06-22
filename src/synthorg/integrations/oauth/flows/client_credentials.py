@@ -42,6 +42,10 @@ class ClientCredentialsFlow:
             ``FakeClock`` from ``tests/_shared/fake_clock.py`` so
             ``OAuthToken.expires_at`` is deterministic without real
             time.
+        network_policy: SSRF policy applied to the outbound token-endpoint
+            POST (``token_url`` is operator/provider-supplied, so it is
+            DNS-resolved + pinned before connecting). Defaults to a fresh
+            ``NetworkPolicy``; tests inject a permissive stub.
     """
 
     def __init__(

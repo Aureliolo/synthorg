@@ -244,8 +244,14 @@ class AuthorizationCodeFlow:
                 or undecryptable PKCE verifier, SSRF-rejected token URL).
             TokenExchangeFailedError: For a transient transport / body
                 failure.
+            OAuthRateLimitedError: When the token endpoint returns 429;
+                carries ``retry_after_seconds`` so callers can back off.
         """
         if state.pkce_verifier is None:
+            logger.warning(
+                OAUTH_TOKEN_EXCHANGE_FAILED,
+                reason="pkce_verifier_missing",
+            )
             msg = "PKCE verifier missing from OAuth state"
             raise OAuthConfigurationError(msg)
         # state.pkce_verifier is encrypted at rest; decrypt before
@@ -324,6 +330,8 @@ class AuthorizationCodeFlow:
         Raises:
             TokenRefreshFailedError: If the refresh fails or the
                 response cannot be parsed.
+            OAuthRateLimitedError: When the token endpoint returns 429;
+                carries ``retry_after_seconds`` so callers can back off.
         """
         payload = {
             "grant_type": "refresh_token",

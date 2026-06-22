@@ -4,7 +4,7 @@ On-demand reference for implementing tool handlers in `src/synthorg/meta/mcp/han
 
 ## Surface
 
-SynthOrg exposes <!--RS:mcp_tools-->244<!--/RS--> tools across the <!--RS:mcp_domains-->22<!--/RS--> domain modules under `src/synthorg/meta/mcp/domains/` (tasks, agents, meta, budget, analytics, coordination, quality, signals, approvals, workflows, organisation, communication, integrations, infrastructure, memory, brain, charter, cockpit, docs, knowledge, research). Tools are classified by capability action (`read_tool` / `write_tool` / `admin_tool`) via the builders in `src/synthorg/meta/mcp/tool_builder.py`; only the `admin_tool` subset is destructive and subject to the guardrail triple.
+SynthOrg exposes <!--RS:mcp_tools-->244<!--/RS--> tools across the <!--RS:mcp_domains-->22<!--/RS--> domain modules under `src/synthorg/meta/mcp/domains/` (tasks, agents, meta, budget, analytics, coordination, quality, signals, approvals, workflows, organisation, communication, integrations, infrastructure, memory, brain, charter, cockpit, docs, knowledge, research, security). Tools are classified by capability action (`read_tool` / `write_tool` / `admin_tool`) via the builders in `src/synthorg/meta/mcp/tool_builder.py`; only the `admin_tool` subset is destructive and subject to the guardrail triple.
 
 ## ToolHandler protocol
 

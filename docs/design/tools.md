@@ -262,7 +262,8 @@ SynthOrg exposes its own MCP server offering <!--RS:mcp_tools-->244<!--/RS-->
 tools across <!--RS:mcp_domains-->22<!--/RS--> domain
 modules (agents, analytics, approvals, brain, budget, charter, cockpit,
 communication, coordination, docs, infrastructure, integrations, knowledge,
-memory, meta, organisation, quality, research, signals, tasks, workflows).
+memory, meta, organisation, quality, research, security, signals, tasks,
+workflows).
 Tool definitions are classified
 by capability action via the
 `read_tool` / `write_tool` / `admin_tool` builders
