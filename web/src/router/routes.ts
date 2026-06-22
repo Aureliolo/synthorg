@@ -32,6 +32,7 @@ export const ROUTES = {
   MEETINGS: '/meetings',
   MEETING_DETAIL: '/meetings/:meetingId',
   PROVIDERS: '/providers',
+  SSRF_VIOLATIONS: '/providers/ssrf-violations',
   PROVIDER_DETAIL: '/providers/:providerName',
   PROJECTS: '/projects',
   PROJECT_DETAIL: '/projects/:projectId',

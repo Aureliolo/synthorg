@@ -93,6 +93,7 @@ import { rolesHandlers } from './roles'
 import { scalingHandlers } from './scaling'
 import { settingsHandlers } from './settings'
 import { setupHandlers } from './setup'
+import { ssrfViolationsHandlers } from './ssrf-violations'
 import { steeringHandlers } from './steering'
 import { subworkflowsHandlers } from './subworkflows'
 import { tasksHandlers } from './tasks'
@@ -163,6 +164,7 @@ export const defaultHandlers = [
   ...scalingHandlers,
   ...settingsHandlers,
   ...setupHandlers,
+  ...ssrfViolationsHandlers,
   ...steeringHandlers,
   ...subworkflowsHandlers,
   ...tasksHandlers,
@@ -192,4 +194,5 @@ export { buildConnection } from './connections'
 export { buildCustomRule } from './custom-rules'
 export { buildPromotionEvaluation, buildPromotionRecord } from './promotion'
 export { buildCloudPreset, buildLocalPreset } from './providers'
+export { buildSsrfViolation } from './ssrf-violations'
 export { buildSimulation } from './clients'
