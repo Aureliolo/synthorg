@@ -114,6 +114,7 @@ class TestWriteProse:
         # Fenced brief title + record ride in the USER message (index 1);
         # the SYSTEM message (index 0) carries the directive.
         assert messages[0].role is MessageRole.SYSTEM
+        assert messages[1].role is MessageRole.USER
         content = messages[1].content
         assert wrap_untrusted(TAG_TASK_DATA, "Ship checkout") in content
         # The decision rationale (agent-authored) flows through the fenced
