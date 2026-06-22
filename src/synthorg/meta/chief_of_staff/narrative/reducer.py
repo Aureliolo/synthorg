@@ -14,6 +14,7 @@ from synthorg.meta.chief_of_staff.narrative.constants import (
     MAX_AGENTS_LISTED,
     MAX_SOURCES,
     MAX_TOOLS_PER_AGENT,
+    clip_text,
 )
 from synthorg.meta.chief_of_staff.narrative.models import (
     AgentContribution,
@@ -224,7 +225,7 @@ def _clip(text: str) -> str:
     Returns:
         ``text`` truncated to :data:`_LABEL_MAX` characters.
     """
-    return text[:_LABEL_MAX]
+    return clip_text(text, _LABEL_MAX)
 
 
 def _clip_decision_text(text: str) -> str:
@@ -233,4 +234,4 @@ def _clip_decision_text(text: str) -> str:
     Returns:
         ``text`` truncated to :data:`DECISION_TEXT_MAX` characters.
     """
-    return text[:DECISION_TEXT_MAX]
+    return clip_text(text, DECISION_TEXT_MAX)

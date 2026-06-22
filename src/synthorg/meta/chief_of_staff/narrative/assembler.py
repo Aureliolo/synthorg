@@ -25,6 +25,7 @@ from synthorg.meta.chief_of_staff.narrative.constants import (
     SECTION_OUTCOMES,
     SECTION_SOURCES,
     SECTION_SUMMARY,
+    clip_text,
 )
 from synthorg.meta.chief_of_staff.narrative.models import (
     NarrativeProse,
@@ -205,4 +206,4 @@ def _clip(text: str) -> str:
     Returns:
         ``text`` truncated to :data:`_BULLET_MAX` characters.
     """
-    return text[:_BULLET_MAX]
+    return clip_text(text, _BULLET_MAX)

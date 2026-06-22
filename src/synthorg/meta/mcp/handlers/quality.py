@@ -33,7 +33,7 @@ from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,
 )
-from synthorg.meta.mcp.handlers._mcp_handler_common import typed_args
+from synthorg.meta.mcp.handlers._mcp_handler_common import _to_jsonable, typed_args
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     err,
@@ -73,21 +73,6 @@ def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
         capability=exc.capability,
     )
     return err(exc, domain_code=exc.domain_code)
-
-
-def _to_jsonable(value: object) -> object:
-    """Coerce a Pydantic / ``to_dict`` value into a JSON-serialisable form.
-
-    Returns:
-        JSON-serialisable representation of ``value``.
-    """
-    dump_fn = getattr(value, "model_dump", None)
-    if callable(dump_fn):
-        return dump_fn(mode="json")
-    to_dict = getattr(value, "to_dict", None)
-    if callable(to_dict):
-        return to_dict()
-    return value
 
 
 # ── quality ─────────────────────────────────────────────────────────

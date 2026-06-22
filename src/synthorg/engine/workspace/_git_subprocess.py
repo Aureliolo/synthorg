@@ -16,8 +16,8 @@ import os
 # lazy annotations ``inspect.get_annotations`` resolves these in module globals,
 # so a TYPE_CHECKING-only import would raise ``NameError`` at introspection time.
 from pathlib import Path
-from urllib.parse import urlsplit, urlunsplit
 
+from synthorg.core.url_redaction import redact_url
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
@@ -49,16 +49,11 @@ def _redact_arg(arg: str) -> str:
         The arg with userinfo stripped when it looks like a URL with
         embedded credentials; the arg unchanged otherwise.
     """
+    # Fast pass-through for plain args / credential-free URLs avoids any
+    # reformatting; only a URL carrying ``user:token@`` is reconstructed.
     if "://" not in arg or "@" not in arg:
         return arg
-    try:
-        parts = urlsplit(arg)
-    except ValueError:
-        return arg
-    if "@" not in parts.netloc:
-        return arg
-    host = parts.netloc.rsplit("@", 1)[1]
-    return urlunsplit((parts.scheme, host, parts.path, parts.query, parts.fragment))
+    return redact_url(arg, query="keep")
 
 
 def _redact_args(args: tuple[str, ...]) -> tuple[str, ...]:
