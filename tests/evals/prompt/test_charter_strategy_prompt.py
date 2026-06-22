@@ -14,7 +14,7 @@ from tests.evals.prompt._harness import (
 class TestCharterStrategyPromptContract:
     """Guard rails for the charter interview prompt surface."""
 
-    PINNED_FP = "fe967b7a06817a08"
+    PINNED_FP = "269e248cb0322bd6"
 
     def test_temperature_is_config_sourced(self) -> None:
         """Interview temperature must be drawn from config, not a literal."""
@@ -33,7 +33,12 @@ class TestCharterStrategyPromptContract:
             CHARTER_INTERVIEW_USER,
         )
 
-        fp = fingerprint_prompt(CHARTER_INTERVIEW_SYSTEM + CHARTER_INTERVIEW_USER)
+        fp = fingerprint_prompt(
+            "[SYSTEM]\n"
+            + CHARTER_INTERVIEW_SYSTEM
+            + "\n[USER]\n"
+            + CHARTER_INTERVIEW_USER
+        )
         assert fp == self.PINNED_FP, (
             f"charter interview prompt drifted: {fp!r} != "
             f"{self.PINNED_FP!r}. Update the pin if intentional."

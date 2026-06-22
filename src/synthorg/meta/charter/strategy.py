@@ -134,8 +134,10 @@ class LLMCharterInterviewer:
                 failed validation.
         """
         system = CHARTER_INTERVIEW_SYSTEM.format(
-            project_hint=_render_project_hint(project_id),
-            currency=currency,
+            project_hint=wrap_untrusted(
+                TAG_TASK_DATA, _render_project_hint(project_id)
+            ),
+            currency=wrap_untrusted(TAG_TASK_DATA, currency),
         )
         user = CHARTER_INTERVIEW_USER.format(
             conversation_history=wrap_untrusted(

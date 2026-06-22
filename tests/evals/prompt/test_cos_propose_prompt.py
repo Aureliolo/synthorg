@@ -14,7 +14,7 @@ from tests.evals.prompt._harness import (
 class TestCosProposePromptContract:
     """Guard rails for the chief-of-staff proposer prompt surface."""
 
-    PINNED_FP = "f499ae83356491df"
+    PINNED_FP = "7cb8361eb0c27149"
 
     def test_temperature_is_config_sourced(self) -> None:
         """Propose temperature must be drawn from config, not a literal."""
@@ -34,7 +34,10 @@ class TestCosProposePromptContract:
         )
 
         fp = fingerprint_prompt(
-            CONVERSATIONAL_PROPOSE_SYSTEM + CONVERSATIONAL_PROPOSE_USER
+            "[SYSTEM]\n"
+            + CONVERSATIONAL_PROPOSE_SYSTEM
+            + "\n[USER]\n"
+            + CONVERSATIONAL_PROPOSE_USER
         )
         assert fp == self.PINNED_FP, (
             f"conversational propose prompt drifted: {fp!r} != "

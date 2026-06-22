@@ -68,9 +68,12 @@ def test_ipv6_host_is_bracketed() -> None:
 
 def test_malformed_port_treated_as_absent() -> None:
     """A non-numeric port never raises; it is treated as absent."""
-    result = redact_url("https://user:tok@host:notaport/p")
-    assert result.startswith("https://host")
-    assert "tok" not in result
+    assert redact_url("https://user:tok@host:notaport/p") == "https://host/p"
+
+
+def test_zero_port_is_preserved() -> None:
+    """A valid port of 0 is kept (truthiness must not drop it)."""
+    assert redact_url("https://user:tok@host:0/p", query="strip") == "https://host:0/p"
 
 
 def test_no_hostname_returns_input_unchanged() -> None:

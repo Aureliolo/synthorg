@@ -74,10 +74,12 @@ async def _cycle_one(
     """Evaluate one agent and apply an auto-approved change, if any.
 
     The ``identity`` is the one already loaded by ``list_active`` at the
-    sweep boundary; threading it into the read-only evaluation and request
-    steps avoids re-fetching the same agent per evaluation. The apply step
-    re-reads under its per-agent lock by design (authoritative pre-mutation
-    read), so it is not threaded.
+    sweep boundary; threading it into the read-only evaluation step avoids
+    re-fetching the same agent per evaluation. The request step is NOT
+    threaded: it persists a pending promotion request, so it re-reads the
+    identity authoritatively to avoid recording stale agent data if the
+    agent changed after ``list_active``. The apply step likewise re-reads
+    under its per-agent lock by design (authoritative pre-mutation read).
 
     Returns:
         The applied record, or ``None`` when nothing was applied.
@@ -88,9 +90,7 @@ async def _cycle_one(
     if evaluation is None:
         return None
     try:
-        request = await service.request_promotion(
-            agent_id, evaluation, identity=identity
-        )
+        request = await service.request_promotion(agent_id, evaluation)
     except (PromotionError, PromotionCooldownError) as exc:
         logger.warning(
             PROMOTION_EVALUATE_FAILED,

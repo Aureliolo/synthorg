@@ -30,6 +30,11 @@ _ACTION_TYPES = frozenset({ScalingActionType.PRUNE})
 # Confidence stamped on an emitted prune decision.
 _PRUNE_ACTION_CONFIDENCE: Final[float] = 0.8
 
+# Fallback per-agent evolution-check timeout when the strategy is built
+# without an explicit value (the factory always threads the configured
+# ``PerformancePruningConfig.evolution_check_timeout_seconds``).
+_DEFAULT_EVOLUTION_CHECK_TIMEOUT_SECONDS: Final[float] = 30.0
+
 
 def _benchmark_regressing(context: ScalingContext) -> bool:
     """Return whether the benchmark regression signal is set in *context*.
@@ -64,6 +69,9 @@ class PerformancePruningStrategy:
             golden benchmark's latest run regressed. A measured org-wide
             quality drop is the wrong moment to shed capacity, so the strategy
             holds the team until the benchmark recovers.
+        evolution_check_timeout_seconds: Per-agent timeout for the evolution
+            deferral check. A checker that hangs is treated as a per-agent
+            error so it cannot stall the whole concurrent fan-out.
     """
 
     def __init__(
@@ -73,11 +81,15 @@ class PerformancePruningStrategy:
         evolution_checker: EvolutionChecker | None = None,
         defer_during_evolution: bool = True,
         defer_during_benchmark_regression: bool = True,
+        evolution_check_timeout_seconds: float = (
+            _DEFAULT_EVOLUTION_CHECK_TIMEOUT_SECONDS
+        ),
     ) -> None:
         self._policy = policy
         self._evolution_checker = evolution_checker
         self._defer_during_evolution = defer_during_evolution
         self._defer_during_benchmark_regression = defer_during_benchmark_regression
+        self._evolution_check_timeout_seconds = evolution_check_timeout_seconds
 
     @property
     def name(self) -> NotBlankStr:
@@ -250,11 +262,16 @@ class PerformancePruningStrategy:
         if not self._defer_during_evolution or checker is None or not agent_ids:
             return ({}, set())
 
+        timeout = self._evolution_check_timeout_seconds
+
         async def _check_one(
             agent_id: NotBlankStr,
         ) -> tuple[str, bool | None, Exception | None]:
             try:
-                return (str(agent_id), await checker(agent_id), None)
+                flag = await asyncio.wait_for(checker(agent_id), timeout=timeout)
+                return (str(agent_id), flag, None)
+            except TimeoutError as exc:
+                return (str(agent_id), None, exc)
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 return (str(agent_id), None, exc)

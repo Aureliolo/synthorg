@@ -18,6 +18,7 @@ from collections.abc import Mapping
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from synthorg.core.boundary import parse_typed
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.ceremony_context import CeremonyEvalContext
 from synthorg.engine.workflow.ceremony_policy import (
@@ -445,7 +446,9 @@ class MilestoneDrivenStrategy:
             Stripped ``(task_id, milestone)`` or ``None`` if invalid.
         """
         try:
-            parsed = MilestoneEventPayload.model_validate(dict(payload))
+            parsed = parse_typed(
+                "workflow.milestone_event", payload, MilestoneEventPayload
+            )
         except ValidationError as exc:
             logger.debug(
                 SPRINT_CEREMONY_SKIPPED,

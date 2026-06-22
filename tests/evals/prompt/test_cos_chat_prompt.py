@@ -19,9 +19,9 @@ from tests.evals.prompt._harness import (
 class TestCosChatPromptContract:
     """Guard rails for the chief-of-staff chat prompt surfaces."""
 
-    PINNED_PROPOSAL_FP = "0cf259fcbd054236"
-    PINNED_ALERT_FP = "98fa3118b80ae623"
-    PINNED_QUERY_FP = "c4c4176855df3b46"
+    PINNED_PROPOSAL_FP = "2c0254f1f9781538"
+    PINNED_ALERT_FP = "b50bc7c47de8439e"
+    PINNED_QUERY_FP = "d40af1415c7b3c51"
 
     def test_temperature_is_config_sourced(self) -> None:
         """Chat temperature must be drawn from config, not a literal."""
@@ -40,7 +40,12 @@ class TestCosChatPromptContract:
             PROPOSAL_EXPLANATION_USER,
         )
 
-        fp = fingerprint_prompt(PROPOSAL_EXPLANATION_SYSTEM + PROPOSAL_EXPLANATION_USER)
+        fp = fingerprint_prompt(
+            "[SYSTEM]\n"
+            + PROPOSAL_EXPLANATION_SYSTEM
+            + "\n[USER]\n"
+            + PROPOSAL_EXPLANATION_USER
+        )
         assert fp == self.PINNED_PROPOSAL_FP, (
             f"proposal explanation prompt drifted: {fp!r} != "
             f"{self.PINNED_PROPOSAL_FP!r}. Update the pin if intentional."
@@ -53,7 +58,12 @@ class TestCosChatPromptContract:
             ALERT_EXPLANATION_USER,
         )
 
-        fp = fingerprint_prompt(ALERT_EXPLANATION_SYSTEM + ALERT_EXPLANATION_USER)
+        fp = fingerprint_prompt(
+            "[SYSTEM]\n"
+            + ALERT_EXPLANATION_SYSTEM
+            + "\n[USER]\n"
+            + ALERT_EXPLANATION_USER
+        )
         assert fp == self.PINNED_ALERT_FP, (
             f"alert explanation prompt drifted: {fp!r} != "
             f"{self.PINNED_ALERT_FP!r}. Update the pin if intentional."
@@ -66,7 +76,9 @@ class TestCosChatPromptContract:
             CHAT_QUERY_USER,
         )
 
-        fp = fingerprint_prompt(CHAT_QUERY_SYSTEM + CHAT_QUERY_USER)
+        fp = fingerprint_prompt(
+            "[SYSTEM]\n" + CHAT_QUERY_SYSTEM + "\n[USER]\n" + CHAT_QUERY_USER
+        )
         assert fp == self.PINNED_QUERY_FP, (
             f"chat query prompt drifted: {fp!r} != "
             f"{self.PINNED_QUERY_FP!r}. Update the pin if intentional."

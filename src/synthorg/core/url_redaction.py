@@ -68,7 +68,7 @@ def redact_url(
         port = parts.port
     except ValueError:
         port = None
-    authority = f"{hostname}:{port}" if port else hostname
+    authority = f"{hostname}:{port}" if port is not None else hostname
     has_creds = parts.username is not None or parts.password is not None
     if has_creds and mask_userinfo:
         authority = f"{USERINFO_MASK}@{authority}"

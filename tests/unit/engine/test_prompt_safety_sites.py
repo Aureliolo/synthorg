@@ -408,24 +408,45 @@ class TestChiefOfStaffTemplatesFence:
     """
 
     def test_proposal_template_has_fence_names(self) -> None:
-        from synthorg.meta.chief_of_staff.prompts import PROPOSAL_EXPLANATION_SYSTEM
+        from synthorg.meta.chief_of_staff.prompts import (
+            PROPOSAL_EXPLANATION_SYSTEM,
+            PROPOSAL_EXPLANATION_USER,
+        )
 
         assert "<config-value>" in PROPOSAL_EXPLANATION_SYSTEM
         assert "<task-data>" in PROPOSAL_EXPLANATION_SYSTEM
         assert "untrusted" in PROPOSAL_EXPLANATION_SYSTEM.lower()
+        # The USER template must carry only fenced data, never the
+        # directive or fence-name declarations -- those ride at system
+        # priority. Assert the role separation cannot regress silently.
+        assert "<config-value>" not in PROPOSAL_EXPLANATION_USER
+        assert "<task-data>" not in PROPOSAL_EXPLANATION_USER
+        assert "untrusted" not in PROPOSAL_EXPLANATION_USER.lower()
 
     def test_alert_template_has_fence_names(self) -> None:
-        from synthorg.meta.chief_of_staff.prompts import ALERT_EXPLANATION_SYSTEM
+        from synthorg.meta.chief_of_staff.prompts import (
+            ALERT_EXPLANATION_SYSTEM,
+            ALERT_EXPLANATION_USER,
+        )
 
         assert "<config-value>" in ALERT_EXPLANATION_SYSTEM
         assert "<task-data>" in ALERT_EXPLANATION_SYSTEM
         assert "untrusted" in ALERT_EXPLANATION_SYSTEM.lower()
+        assert "<config-value>" not in ALERT_EXPLANATION_USER
+        assert "<task-data>" not in ALERT_EXPLANATION_USER
+        assert "untrusted" not in ALERT_EXPLANATION_USER.lower()
 
     def test_chat_query_template_has_fence_names(self) -> None:
-        from synthorg.meta.chief_of_staff.prompts import CHAT_QUERY_SYSTEM
+        from synthorg.meta.chief_of_staff.prompts import (
+            CHAT_QUERY_SYSTEM,
+            CHAT_QUERY_USER,
+        )
 
         assert "<task-data>" in CHAT_QUERY_SYSTEM
         assert "untrusted" in CHAT_QUERY_SYSTEM.lower()
+        assert "<config-value>" not in CHAT_QUERY_USER
+        assert "<task-data>" not in CHAT_QUERY_USER
+        assert "untrusted" not in CHAT_QUERY_USER.lower()
 
 
 @pytest.mark.unit

@@ -1,5 +1,7 @@
 """Tests for performance pruning strategy."""
 
+import asyncio
+
 import pytest
 
 from synthorg.core.types import NotBlankStr
@@ -176,6 +178,30 @@ class TestPerformancePruningStrategy:
         )
         decisions = await strategy.evaluate(ctx)
         assert len(decisions) == len(_AGENT_IDS)
+
+    async def test_hung_evolution_checker_does_not_block_fanout(self) -> None:
+        """A checker that never returns times out per-agent, not the batch.
+
+        A hung checker is treated as a per-agent error, so the agent yields
+        no PRUNE decision and the overall evaluation still completes.
+        """
+        policy = _StubPruningPolicy(eligible=True)
+        never = asyncio.Event()
+
+        async def _hangs(agent_id: str) -> bool:
+            await never.wait()
+            return True
+
+        strategy = PerformancePruningStrategy(
+            policy=policy,
+            evolution_checker=_hangs,
+            defer_during_evolution=True,
+            evolution_check_timeout_seconds=0.01,
+        )
+        snapshots = {aid: _make_snapshot(aid) for aid in _AGENT_IDS}
+        ctx = make_context(agent_ids=_AGENT_IDS, performance_snapshots=snapshots)
+        decisions = await strategy.evaluate(ctx)
+        assert decisions == ()
 
     async def test_name_and_action_types(self) -> None:
         policy = _StubPruningPolicy()

@@ -590,8 +590,8 @@
     },
     "src/synthorg/engine/workflow/strategies/milestone_driven.py": {
       "cap": 500,
-      "loc": 438,
-      "ratio": 0.876,
+      "loc": 441,
+      "ratio": 0.882,
       "tier": "code"
     },
     "src/synthorg/engine/workflow/strategies/throughput_adaptive.py": {
@@ -662,8 +662,8 @@
     },
     "src/synthorg/hr/promotion/service.py": {
       "cap": 600,
-      "loc": 587,
-      "ratio": 0.978,
+      "loc": 634,
+      "ratio": 1.057,
       "tier": "service"
     },
     "src/synthorg/hr/scaling/service.py": {
@@ -1390,7 +1390,7 @@
     "synthorg.core.auth.models": 32,
     "synthorg.core.auth.roles": 29,
     "synthorg.core.autonomy_enums": 36,
-    "synthorg.core.boundary": 37,
+    "synthorg.core.boundary": 38,
     "synthorg.core.clock": 182,
     "synthorg.core.critical_errors": 546,
     "synthorg.core.domain_errors": 220,
@@ -1590,11 +1590,11 @@
     },
     "synthorg.hr.promotion.service:PromotionService": {
       "lcom4": 2,
-      "loc": 533
+      "loc": 580
     },
     "synthorg.hr.pruning.service:PruningService": {
       "lcom4": 1,
-      "loc": 781
+      "loc": 789
     },
     "synthorg.hr.registry:AgentRegistryService": {
       "lcom4": 2,

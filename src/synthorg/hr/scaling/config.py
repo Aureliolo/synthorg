@@ -152,6 +152,9 @@ class PerformancePruningConfig(BaseModel):
         enabled: Whether this strategy is active.
         priority: Priority rank (lower = higher priority).
         defer_during_evolution: Defer pruning during active evolution.
+        evolution_check_timeout_seconds: Per-agent timeout for the
+            evolution-deferral check; a hung checker is treated as a
+            per-agent error so it cannot stall the whole fan-out.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -161,6 +164,11 @@ class PerformancePruningConfig(BaseModel):
     defer_during_evolution: bool = Field(
         default=True,
         description="Defer pruning during active evolution",
+    )
+    evolution_check_timeout_seconds: float = Field(
+        default=30.0,
+        gt=0.0,
+        description="Per-agent timeout for the evolution-deferral check",
     )
 
 

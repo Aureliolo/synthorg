@@ -735,8 +735,13 @@ class PruningService:
                 continue
             try:
                 agent_id = item.metadata.get("agent_id")
+                # ``pop`` (not ``get``): once a pre-resolved identity is
+                # consumed for an agent, later approved items sharing that
+                # agent_id receive ``None`` and re-read authoritatively,
+                # rather than reusing a stale snapshot that would re-trigger
+                # the non-idempotent offboarding path.
                 identity = (
-                    approved_identities.get(agent_id)
+                    approved_identities.pop(agent_id, None)
                     if isinstance(agent_id, str)
                     else None
                 )
@@ -781,7 +786,19 @@ class PruningService:
         )
         if not agent_ids:
             return {}
-        return await self._registry.get_by_ids(agent_ids)
+        # ``get_by_ids`` raises ``ValueError`` above its batch ceiling. A
+        # large distinct-agent approved queue must not abort the entire sweep
+        # before any item is handled, so fall back to per-agent reads when the
+        # batch is oversized.
+        try:
+            return await self._registry.get_by_ids(agent_ids)
+        except ValueError:
+            resolved: dict[str, AgentIdentity] = {}
+            for agent_id in agent_ids:
+                identity = await self._registry.get(agent_id)
+                if identity is not None:
+                    resolved[str(agent_id)] = identity
+            return resolved
 
     async def _try_claim(self, approval_id: str) -> bool:
         """Atomically claim an approval id for handling.
