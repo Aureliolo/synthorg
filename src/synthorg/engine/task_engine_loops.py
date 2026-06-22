@@ -22,7 +22,11 @@ from synthorg.engine.task_engine_models import (
     TaskMutationResult,
     TaskStateChanged,
 )
-from synthorg.engine.task_engine_version import TaskTimingTracker, VersionTracker
+from synthorg.engine.task_engine_version import (
+    TaskSpanTracker,
+    TaskTimingTracker,
+    VersionTracker,
+)
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.task_engine import (
     TASK_ENGINE_DRAIN_COMPLETE,
@@ -79,6 +83,7 @@ class TaskEngineLoopsMixin:
     _persistence: PersistenceBackend
     _versions: VersionTracker
     _timings: TaskTimingTracker
+    _spans: TaskSpanTracker
     _message_bus: MessageBus | None
     _config: TaskEngineConfig
 
@@ -273,6 +278,7 @@ class TaskEngineLoopsMixin:
                 self._persistence,
                 self._versions,
                 self._timings,
+                self._spans,
             )
             if not envelope.future.done():
                 envelope.future.set_result(result)

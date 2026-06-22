@@ -13,7 +13,7 @@ tracing disabled, ``get_tracer`` returns OTel's built-in
 nothing.
 """
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 
 from opentelemetry import trace as _ot_trace
@@ -40,16 +40,27 @@ async def llm_span(
     provider: str,
     model: str,
     input_tokens: int | None = None,
+    output_tokens_callback: Callable[[], int | None] | None = None,
     tracer: Tracer | None = None,
 ) -> AsyncIterator[Span]:
     """Wrap an LLM completion call in a ``chat {model}`` span.
 
     Attributes set on entry follow OTel's GenAI semantic conventions
     (``gen_ai.system``, ``gen_ai.request.model``, and when known
-    ``gen_ai.usage.input_tokens``). Callers should set
-    ``gen_ai.response.model`` / ``gen_ai.usage.output_tokens`` /
-    ``gen_ai.response.finish_reasons`` on the span once the response
-    is available via :meth:`Span.set_attribute`.
+    ``gen_ai.usage.input_tokens``). Callers MUST set
+    ``gen_ai.usage.output_tokens`` (and ideally ``gen_ai.response.model``
+    / ``gen_ai.response.finish_reasons``) on the span once the response is
+    available via :meth:`Span.set_attribute`.
+
+    For the streaming drain path the output-token count is only known
+    after the iterator is exhausted, which can be past the ``yield``;
+    pass *output_tokens_callback* to have the span stamp
+    ``gen_ai.usage.output_tokens`` from the callback in the ``finally``
+    block, so a streamed call records its output tokens even when the
+    caller cannot set the attribute before the context exits. The
+    ``provider.stream`` span in ``providers/base.py`` intentionally closes
+    at time-to-first-iterator, so that span never sees the drained count;
+    this callback is the seam that recovers it on the wrapping span.
 
     Exceptions raised inside the context manager are recorded on the
     span and the span status is set to ``ERROR`` before the
@@ -82,6 +93,11 @@ async def llm_span(
             )
             span.set_status(Status(StatusCode.ERROR, type(exc).__name__))
             raise
+        finally:
+            if output_tokens_callback is not None:
+                resolved = output_tokens_callback()
+                if resolved is not None:
+                    span.set_attribute("gen_ai.usage.output_tokens", resolved)
 
 
 @asynccontextmanager

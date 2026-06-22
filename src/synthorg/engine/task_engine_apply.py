@@ -29,7 +29,11 @@ from synthorg.engine.task_engine_models import (
     TransitionTaskMutation,
     UpdateTaskMutation,
 )
-from synthorg.engine.task_engine_version import TaskTimingTracker, VersionTracker
+from synthorg.engine.task_engine_version import (
+    TaskSpanTracker,
+    TaskTimingTracker,
+    VersionTracker,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.task_engine import (
     TASK_ENGINE_MUTATION_APPLIED,
@@ -95,6 +99,7 @@ async def dispatch(
     persistence: PersistenceBackend,
     versions: VersionTracker,
     timings: TaskTimingTracker,
+    spans: TaskSpanTracker | None = None,
 ) -> TaskMutationResult:
     """Dispatch and apply a mutation by type.
 
@@ -107,15 +112,17 @@ async def dispatch(
     """
     match mutation:
         case CreateTaskMutation():
-            return await apply_create(mutation, persistence, versions, timings)
+            return await apply_create(mutation, persistence, versions, timings, spans)
         case UpdateTaskMutation():
             return await apply_update(mutation, persistence, versions)
         case TransitionTaskMutation():
-            return await apply_transition(mutation, persistence, versions, timings)
+            return await apply_transition(
+                mutation, persistence, versions, timings, spans
+            )
         case DeleteTaskMutation():
-            return await apply_delete(mutation, persistence, versions, timings)
+            return await apply_delete(mutation, persistence, versions, timings, spans)
         case CancelTaskMutation():
-            return await apply_cancel(mutation, persistence, versions, timings)
+            return await apply_cancel(mutation, persistence, versions, timings, spans)
         case _:
             msg = f"Unknown mutation type: {type(mutation).__name__}"  # type: ignore[unreachable]
             raise TypeError(msg)
@@ -129,6 +136,7 @@ async def apply_create(
     persistence: PersistenceBackend,
     versions: VersionTracker,
     timings: TaskTimingTracker,
+    spans: TaskSpanTracker | None = None,
 ) -> TaskMutationResult:
     """Create a new task.
 
@@ -140,6 +148,8 @@ async def apply_create(
             current UTC time so terminal transitions can compute
             duration for ``synthorg_task_runs_total`` /
             ``synthorg_task_duration_seconds``.
+        spans: Optional ``task.run`` span tracker; opens the per-task
+            span on create. ``None`` skips span tracking.
 
     Returns:
         Result with the created task on success, or a validation
@@ -180,6 +190,8 @@ async def apply_create(
     await persistence.tasks.save(task)
     versions.set_initial(task_id, 1)
     timings.record_creation(task_id, datetime.now(UTC))
+    if spans is not None:
+        spans.start(task_id, task_type=data.type.value)
 
     logger.info(
         TASK_ENGINE_MUTATION_APPLIED,
@@ -291,6 +303,7 @@ async def apply_transition(
     persistence: PersistenceBackend,
     versions: VersionTracker,
     timings: TaskTimingTracker,
+    spans: TaskSpanTracker | None = None,
 ) -> TaskMutationResult:
     """Perform a task status transition.
 
@@ -302,6 +315,8 @@ async def apply_transition(
             transitions to compute duration for
             ``synthorg_task_runs_total`` /
             ``synthorg_task_duration_seconds``.
+        spans: Optional ``task.run`` span tracker; ends the per-task
+            span on a terminal / FAILED hop. ``None`` skips span tracking.
 
     Returns:
         Result with the transitioned task on success, or a failure
@@ -424,6 +439,15 @@ async def apply_transition(
         if mutation.target_status in _TRULY_TERMINAL_STATUSES:
             timings.remove(mutation.task_id)
 
+    # End the task.run span on any terminal hop (COMPLETED / CANCELLED /
+    # REJECTED) plus FAILED: a failed task may be reassigned, but the span
+    # represents this run, so close it and let a retry open a fresh one.
+    if spans is not None and (
+        mutation.target_status in _TRULY_TERMINAL_STATUSES
+        or mutation.target_status is TaskStatus.FAILED
+    ):
+        spans.end(mutation.task_id, final_status=mutation.target_status.value)
+
     return TaskMutationResult(
         request_id=mutation.request_id,
         success=True,
@@ -438,6 +462,7 @@ async def apply_delete(
     persistence: PersistenceBackend,
     versions: VersionTracker,
     timings: TaskTimingTracker,
+    spans: TaskSpanTracker | None = None,
 ) -> TaskMutationResult:
     """Delete a task.
 
@@ -446,6 +471,8 @@ async def apply_delete(
         persistence: Backend for task storage.
         versions: Version tracker for optimistic concurrency.
         timings: Creation-time tracker (entry dropped on delete).
+        spans: Optional ``task.run`` span tracker; ends and drops the
+            per-task span on delete. ``None`` skips span tracking.
 
     Returns:
         Result with ``success=True`` on deletion, or a failure
@@ -457,6 +484,8 @@ async def apply_delete(
 
     versions.remove(mutation.task_id)
     timings.remove(mutation.task_id)
+    if spans is not None:
+        spans.remove(mutation.task_id)
 
     logger.info(
         TASK_ENGINE_MUTATION_APPLIED,
@@ -476,6 +505,7 @@ async def apply_cancel(
     persistence: PersistenceBackend,
     versions: VersionTracker,
     timings: TaskTimingTracker,
+    spans: TaskSpanTracker | None = None,
 ) -> TaskMutationResult:
     """Cancel a task (shortcut for transition to CANCELLED).
 
@@ -491,6 +521,8 @@ async def apply_cancel(
         timings: Creation-time tracker; consulted to compute the
             duration observation for ``synthorg_task_runs_total`` /
             ``synthorg_task_duration_seconds``.
+        spans: Optional ``task.run`` span tracker; ends the per-task
+            span with a ``cancelled`` status. ``None`` skips span tracking.
 
     Returns:
         Result with the cancelled task on success, or a failure with
@@ -552,6 +584,8 @@ async def apply_cancel(
         ),
     )
     timings.remove(mutation.task_id)
+    if spans is not None:
+        spans.end(mutation.task_id, final_status=TaskStatus.CANCELLED.value)
 
     return TaskMutationResult(
         request_id=mutation.request_id,

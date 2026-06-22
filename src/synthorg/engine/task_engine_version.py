@@ -10,9 +10,12 @@ from datetime import (
     datetime,
 )
 
+from opentelemetry.trace import Span, Tracer
+
 from synthorg.engine.errors import TaskVersionConflictError
 from synthorg.observability import get_logger
 from synthorg.observability.events.task_engine import TASK_ENGINE_VERSION_CONFLICT
+from synthorg.observability.tracing.instrumentation import get_tracer
 
 logger = get_logger(__name__)
 
@@ -177,3 +180,65 @@ class TaskTimingTracker:
     def remove(self, task_id: str) -> None:
         """Drop the creation timestamp for a deleted task."""
         self._created_at.pop(task_id, None)
+
+
+class TaskSpanTracker:
+    """In-memory per-task ``task.run`` OTel spans for the task lifetime.
+
+    Mirrors :class:`TaskTimingTracker`: the engine opens a ``task.run``
+    span on ``apply_create`` (kept open across mutation calls -- it is
+    deliberately NOT a ``with``-scoped current span, since create and the
+    terminal transition arrive on separate processing-loop turns) and
+    ends it on the truly-terminal transition / cancellation. With tracing
+    disabled, :func:`get_tracer` yields a ``NoOpTracer`` so every operation
+    here is effectively free.
+
+    **Child-nesting limitation:** the ``agent.execution`` span runs in a
+    worker on a separate turn (and, in distributed mode, a separate
+    process), so it does not auto-nest under this span. Parenting it would
+    require propagating the ``task.run`` span context through the work
+    queue (W3C ``traceparent`` on the queue message); this span therefore
+    stands as a self-contained task-lifetime span keyed by ``task.id``.
+
+    **Volatility:** like the sibling trackers this is volatile
+    single-writer state owned by the TaskEngine loop; a task whose
+    terminal transition lands after a process restart has no open span to
+    close (the span was abandoned with the prior process). Single-writer,
+    not thread-safe.
+    """
+
+    def __init__(self, *, tracer: Tracer | None = None) -> None:
+        self._spans: dict[str, Span] = {}
+        self._tracer = tracer
+
+    def start(self, task_id: str, *, task_type: str) -> None:
+        """Open a ``task.run`` span for *task_id* (overwrites any prior).
+
+        Args:
+            task_id: Task identifier (also set as the ``task.id`` attribute).
+            task_type: Task-type label set as ``task.type``.
+        """
+        tracer = self._tracer or get_tracer()
+        span = tracer.start_span("task.run")
+        span.set_attribute("task.id", task_id)
+        span.set_attribute("task.type", task_type)
+        self._spans[task_id] = span
+
+    def end(self, task_id: str, *, final_status: str) -> None:
+        """Stamp the final status and end *task_id*'s span (idempotent).
+
+        Args:
+            task_id: Task identifier.
+            final_status: Terminal status value set as ``task.status.final``.
+        """
+        span = self._spans.pop(task_id, None)
+        if span is None:
+            return
+        span.set_attribute("task.status.final", final_status)
+        span.end()
+
+    def remove(self, task_id: str) -> None:
+        """End and drop a deleted task's span without a terminal status."""
+        span = self._spans.pop(task_id, None)
+        if span is not None:
+            span.end()
