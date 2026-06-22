@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import TaskMetricRecord
@@ -168,7 +169,7 @@ async def test_cycle_does_not_refetch_identity_per_evaluation(
     get_calls = 0
     original_get = registry.get
 
-    async def _counting_get(agent_id: NotBlankStr) -> object:
+    async def _counting_get(agent_id: NotBlankStr) -> AgentIdentity | None:
         nonlocal get_calls
         get_calls += 1
         return await original_get(agent_id)
