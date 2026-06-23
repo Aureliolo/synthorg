@@ -8,9 +8,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from synthorg.memory.embedding.fine_tune_runner import (
+    _DEFAULT_HEALTH_HOST,
     _DEFAULT_HEALTH_PORT,
     _load_config,
     _run,
+    resolve_health_host,
     resolve_health_port,
 )
 
@@ -86,6 +88,35 @@ class TestResolveHealthPort:
         monkeypatch.setenv(self._ENV_VAR, raw)
         with pytest.raises(ValueError, match=match):
             resolve_health_port()
+
+
+class TestResolveHealthHost:
+    """`resolve_health_host` env-driven host resolution."""
+
+    _ENV_VAR = "SYNTHORG_FINE_TUNE_HEALTH_HOST"
+
+    def test_env_unset_returns_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv(self._ENV_VAR, raising=False)
+        assert resolve_health_host() == _DEFAULT_HEALTH_HOST
+
+    def test_env_override_wins(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(self._ENV_VAR, "ft-sidecar.internal")
+        assert resolve_health_host() == "ft-sidecar.internal"
+
+    @pytest.mark.parametrize("raw", ["", "   "], ids=["empty", "whitespace"])
+    def test_blank_env_falls_back_to_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        raw: str,
+    ) -> None:
+        monkeypatch.setenv(self._ENV_VAR, raw)
+        assert resolve_health_host() == _DEFAULT_HEALTH_HOST
 
 
 class TestLoadConfig:

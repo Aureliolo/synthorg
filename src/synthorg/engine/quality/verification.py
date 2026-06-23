@@ -10,7 +10,7 @@ import math
 from collections.abc import Mapping
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal, Self
+from typing import Final, Literal, Self
 
 from pydantic import (
     BaseModel,
@@ -322,28 +322,33 @@ class VerificationResult(BaseModel):
         return self
 
 
+# The four frontend-design criteria are equally weighted; the shared
+# constant keeps the 4 x 0.25 = 1.0 split explicit and editable in one place.
+_FRONTEND_CRITERION_WEIGHT: Final[float] = 0.25
+_RUBRIC_MIN_CONFIDENCE: Final[float] = 0.7
+
 _DESIGN_CRITERION = RubricCriterion(
     name="design",
     description="Visual design quality, layout, and aesthetics",
-    weight=0.25,
+    weight=_FRONTEND_CRITERION_WEIGHT,
     grade_type=GradeType.SCORE,
 )
 _ORIGINALITY_CRITERION = RubricCriterion(
     name="originality",
     description="Creative originality and avoidance of generic patterns",
-    weight=0.25,
+    weight=_FRONTEND_CRITERION_WEIGHT,
     grade_type=GradeType.SCORE,
 )
 _CRAFT_CRITERION = RubricCriterion(
     name="craft",
     description="Implementation craft, code quality, and attention to detail",
-    weight=0.25,
+    weight=_FRONTEND_CRITERION_WEIGHT,
     grade_type=GradeType.SCORE,
 )
 _FUNCTIONALITY_CRITERION = RubricCriterion(
     name="functionality",
     description="Functional correctness and completeness",
-    weight=0.25,
+    weight=_FRONTEND_CRITERION_WEIGHT,
     grade_type=GradeType.SCORE,
 )
 
@@ -356,6 +361,6 @@ FRONTEND_DESIGN_RUBRIC = VerificationRubric(
         _FUNCTIONALITY_CRITERION,
     ),
     calibration_examples=(),
-    min_confidence=0.7,
+    min_confidence=_RUBRIC_MIN_CONFIDENCE,
 )
 """Default four-criterion rubric for frontend design verification."""

@@ -50,6 +50,9 @@ logger = get_logger(__name__)
 # wired ``memory_injection_strategy``.  Caps the injected-memory section so it
 # cannot crowd out the system prompt and task instruction.
 _DEFAULT_MEMORY_TOKEN_BUDGET: Final[int] = 2000
+# Best-effort budget for the personality-trim WebSocket notifier callback; a
+# slow dashboard sink must not stall the engine's trim path.
+_PERSONALITY_TRIM_NOTIFY_TIMEOUT_S: Final[float] = 2.0
 # ``NotBlankStr(x)`` is a bare ``str(x)`` cast at runtime and performs no
 # validation, so a module-level adapter enforces the not-blank contract on the
 # identifiers before they cross the memory-injection strategy boundary (the
@@ -266,7 +269,7 @@ class AgentEngineContextMixin:
         task_id = payload["task_id"]
         trim_tier = payload["trim_tier"]
         try:
-            async with asyncio.timeout(2.0):
+            async with asyncio.timeout(_PERSONALITY_TRIM_NOTIFY_TIMEOUT_S):
                 await self._personality_trim_notifier(payload)
         except TimeoutError:
             logger.warning(

@@ -46,9 +46,29 @@ _CONFIG_PATH = Path("/etc/fine-tune/config.json")
 
 _DEFAULT_HEALTH_PORT: Final[int] = 15002
 _HEALTH_PORT_ENV_VAR: Final[str] = "SYNTHORG_FINE_TUNE_HEALTH_PORT"
+_DEFAULT_HEALTH_HOST: Final[str] = "fine-tune"
+_HEALTH_HOST_ENV_VAR: Final[str] = "SYNTHORG_FINE_TUNE_HEALTH_HOST"
 _MIN_TCP_PORT: Final[int] = 1
 _MAX_TCP_PORT: Final[int] = 65535
 _MAX_LOGGED_ENV_CHARS: Final[int] = 64
+
+
+def resolve_health_host() -> str:
+    """Resolve the fine-tune sidecar host the main container probes.
+
+    Reads ``SYNTHORG_FINE_TUNE_HEALTH_HOST``; falls back to
+    :data:`_DEFAULT_HEALTH_HOST` (the compose service name) when unset
+    or blank. Symmetric with :func:`resolve_health_port` so an operator
+    who renames the sidecar service overrides both host and port the
+    same way.
+
+    Returns:
+        The sidecar hostname (never blank).
+    """
+    raw = os.environ.get(_HEALTH_HOST_ENV_VAR)
+    if raw is None or not raw.strip():
+        return _DEFAULT_HEALTH_HOST
+    return raw.strip()
 
 
 def resolve_health_port() -> int:

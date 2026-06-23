@@ -1,6 +1,7 @@
 """Frozen registry of built-in verification rubrics."""
 
 from types import MappingProxyType
+from typing import Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.quality.verification import (
@@ -16,30 +17,37 @@ from synthorg.observability.events.verification import (
 
 logger = get_logger(__name__)
 
+# Default-task criterion weights (sum to 1.0); named so the scoring split
+# is explicit and editable in one place.
+_DEFAULT_CORRECTNESS_WEIGHT: Final[float] = 0.4
+_DEFAULT_COMPLETENESS_WEIGHT: Final[float] = 0.35
+_DEFAULT_PROBE_ADHERENCE_WEIGHT: Final[float] = 0.25
+_DEFAULT_MIN_CONFIDENCE: Final[float] = 0.7
+
 _DEFAULT_TASK_RUBRIC = VerificationRubric(
     name="default-task",
     criteria=(
         RubricCriterion(
             name="correctness",
             description="Output is factually and logically correct",
-            weight=0.4,
+            weight=_DEFAULT_CORRECTNESS_WEIGHT,
             grade_type=GradeType.SCORE,
         ),
         RubricCriterion(
             name="completeness",
             description="All acceptance criteria are addressed",
-            weight=0.35,
+            weight=_DEFAULT_COMPLETENESS_WEIGHT,
             grade_type=GradeType.SCORE,
         ),
         RubricCriterion(
             name="probe-adherence",
             description="Adherence to atomic acceptance probes",
-            weight=0.25,
+            weight=_DEFAULT_PROBE_ADHERENCE_WEIGHT,
             grade_type=GradeType.BINARY,
         ),
     ),
     calibration_examples=(),
-    min_confidence=0.7,
+    min_confidence=_DEFAULT_MIN_CONFIDENCE,
 )
 
 BUILTIN_RUBRICS: MappingProxyType[str, VerificationRubric] = MappingProxyType(
