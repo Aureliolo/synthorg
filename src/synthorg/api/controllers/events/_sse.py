@@ -25,6 +25,7 @@ from synthorg.communication.event_stream.types import StreamEvent
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.auth.config import AUTH_REVALIDATE_INTERVAL_SECONDS
 from synthorg.core.auth.models import AuthenticatedUser
+from synthorg.core.auth.predicates import is_owner_or_ceo
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.clock import SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -255,7 +256,7 @@ async def _session_ownership_reason(
             error=safe_error_description(exc),
         )
         return None, False
-    if task is None or task.requested_by_user_id != user.user_id:
+    if task is None or not is_owner_or_ceo(user, task.requested_by_user_id):
         return "session_not_owned", True
     return None, True
 

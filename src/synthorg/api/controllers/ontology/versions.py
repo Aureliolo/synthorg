@@ -27,7 +27,6 @@ from synthorg.api.state import AppState
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
-from synthorg.ontology.errors import OntologyNotFoundError
 
 logger = get_logger(__name__)
 
@@ -53,17 +52,16 @@ class OntologyVersionsController(Controller):
             ``PaginatedResponse[EntityVersionResponse]`` instance.
 
         Raises:
-            NotFoundError: Raised on the corresponding failure path.
+            OntologyNotFoundError: When no entity is registered under
+                *name* (404 ``ONTOLOGY_NOT_FOUND`` via the ontology
+                family handler).
         """
         app_state: AppState = state.app_state
         svc = _ontology_service(app_state)
 
-        try:
-            await svc.get(name)
-        except OntologyNotFoundError:
-            logger.warning(API_RESOURCE_NOT_FOUND, resource="entity", name=name)
-            msg = "Entity not found"
-            raise NotFoundError(msg)  # noqa: B904
+        # Existence check: a missing entity raises OntologyNotFoundError,
+        # which the ontology family handler maps to its faithful 404.
+        await svc.get(name)
 
         # Decode the cursor at the controller so the repo can honour a
         # true ``LIMIT / OFFSET`` instead of streaming every version.

@@ -17,7 +17,7 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.boundary import parse_typed
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -91,7 +91,7 @@ class LLMToolBlueprintGenerator:
         *,
         config: ToolsmithConfig,
         provider: BaseCompletionProvider,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._config = config

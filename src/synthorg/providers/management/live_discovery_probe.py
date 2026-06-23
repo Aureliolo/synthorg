@@ -22,7 +22,7 @@ from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import PROVIDER_MODEL_ABSENT
-from synthorg.providers.management._helpers import models_from_litellm
+from synthorg.providers.management._litellm_parser import models_from_litellm
 from synthorg.providers.management.model_presence_probe import ModelPresenceReport
 
 logger = get_logger(__name__)

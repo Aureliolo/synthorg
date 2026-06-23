@@ -40,6 +40,16 @@ logger = get_logger(__name__)
 # the codebase (30+ repositories already default ``limit`` to 100).
 DEFAULT_LIST_LIMIT: Final[int] = 100
 
+#: Canonical page size for ``list_items`` / ``query`` across every
+#: repository protocol and concrete repo. Lives in ``core`` (not
+#: ``persistence/_generics``) so domain and observability callers that
+#: page through repository reads import it without reaching up into a
+#: persistence internal; ``persistence/_generics`` re-exports it so the
+#: backend repositories keep their existing import surface. Same value as
+#: :data:`DEFAULT_LIST_LIMIT`; the two names mark the two surfaces (the
+#: pure-helper limit here vs. the repository-protocol page size).
+DEFAULT_PAGE_SIZE: Final[int] = 100
+
 # Hard upper bound on ``list_*`` / ``query`` page sizes regardless of
 # caller-supplied limit. Defense-in-depth: the API layer's
 # ``CursorLimit`` already caps caller input at 200, but internal

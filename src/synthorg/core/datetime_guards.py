@@ -9,9 +9,19 @@ and persistence query paths. They differ in strictness:
 * :func:`validate_time_window` requires both bounds, rejects naive
   values, and rejects an inverted or empty window. Scan helpers use it
   to fail fast before iterating.
+
+:func:`validate_time_range` is the logging variant of
+:func:`validate_datetime_range`: query helpers across the budget,
+tool-invocation, and delegation paths emit a domain-specific warning
+event before rejecting an inverted range, so the event name is supplied
+by the caller.
 """
 
 from datetime import datetime
+
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 
 def validate_datetime_range(
@@ -38,6 +48,31 @@ def validate_datetime_range(
             f"{end_label} ({end.isoformat()})"
         )
         raise ValueError(msg)
+
+
+def validate_time_range(
+    start: datetime | None,
+    end: datetime | None,
+    *,
+    event: str,
+) -> None:
+    """Log *event* then reject an inverted range when both bounds exist.
+
+    The logging variant of :func:`validate_datetime_range` used by query
+    helpers that record a domain-specific warning before raising. The
+    rejection message matches :func:`validate_datetime_range` exactly.
+
+    Args:
+        start: The lower bound, or ``None`` for an open start.
+        end: The upper bound, or ``None`` for an open end.
+        event: The structured warning event name to emit on rejection.
+
+    Raises:
+        ValueError: When both bounds are present and ``start >= end``.
+    """
+    if start is not None and end is not None and start >= end:
+        logger.warning(event, start=start.isoformat(), end=end.isoformat())
+    validate_datetime_range(start, end)
 
 
 def validate_time_window(since: datetime, until: datetime) -> None:

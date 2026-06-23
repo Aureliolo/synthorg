@@ -16,6 +16,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.api.auth.service import AuthService
 from synthorg.core.auth.models import ApiKey, AuthenticatedUser
+from synthorg.core.auth.predicates import is_owner_or_ceo
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.domain_errors import ApiKeyNotFoundError, ForbiddenError
@@ -213,9 +214,7 @@ class ApiKeyService:
                 to the caller.
         """
         key = await self._api_keys.get(key_id)
-        if key is None or (
-            key.user_id != requester.user_id and requester.role is not HumanRole.CEO
-        ):
+        if key is None or not is_owner_or_ceo(requester, key.user_id):
             logger.warning(
                 SECURITY_AUTH_FAILED,
                 reason="api_key_revoke_not_found_or_forbidden",

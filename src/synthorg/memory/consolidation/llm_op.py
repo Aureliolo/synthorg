@@ -14,7 +14,7 @@ import builtins
 from enum import StrEnum
 
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
@@ -96,7 +96,7 @@ class LLMSynthesisOp:
         provider: CompletionPort,
         model: NotBlankStr,
         config: LLMConsolidationConfig | None = None,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         cfg = config if config is not None else LLMConsolidationConfig()
         self._backend = backend

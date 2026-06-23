@@ -6,7 +6,7 @@ There is no silent default: an unrecognised discriminator raises
 pluggable-subsystems contract).
 """
 
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.meta.charter.config import CharterConfig
 from synthorg.meta.charter.strategy import (
     CharterInterviewStrategy,
@@ -22,7 +22,7 @@ def build_charter_interview_strategy(
     config: CharterConfig,
     *,
     provider: CompletionProvider,
-    cost_tracker: CostTracker | None = None,
+    cost_tracker: CostTrackerProtocol | None = None,
 ) -> CharterInterviewStrategy:
     """Construct the interview strategy named by *config*.
 

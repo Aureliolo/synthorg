@@ -125,10 +125,11 @@ class SteeringController(Controller):
     guards = [require_read_access]  # noqa: RUF012
 
     @post(
+        summary="Issue a steering directive",
         guards=[
             require_write_access,
             per_op_rate_limit_from_policy("cockpit.steering_issue", key="user"),
-        ]
+        ],
     )
     async def issue(
         self,

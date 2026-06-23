@@ -104,6 +104,7 @@ class DepartmentController(Controller):
 
     @post(
         "/",
+        summary="Create a department",
         guards=[
             require_org_mutation(),
             per_op_rate_limit_from_policy("departments.create", key="user"),
@@ -235,6 +236,7 @@ class DepartmentController(Controller):
 
     @post(
         "/{name:str}/reorder-agents",
+        summary="Reorder a department's agents",
         guards=[
             require_org_mutation(department_param="name"),
             per_op_rate_limit_from_policy(

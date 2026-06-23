@@ -1,8 +1,8 @@
 """Centralized structured-logging helpers for MCP tool handlers.
 
-Every handler used to define its own thin wrappers around
-``logger.warning(MCP_HANDLER_*, ...)``; this module provides the
-canonical, single-source-of-truth versions that every handler imports.
+This module provides the canonical, single-source-of-truth wrappers
+around ``logger.warning(MCP_HANDLER_*, ...)`` that every domain handler
+imports, so the log shape lives in one place.
 
 Three helpers cover the three log paths every domain handler exercises:
 

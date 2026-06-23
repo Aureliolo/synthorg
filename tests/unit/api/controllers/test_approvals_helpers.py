@@ -8,13 +8,13 @@ import pytest
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.controllers._approval_review_gate import (
     preflight_review_gate,
+    signal_resume_intent,
     try_review_gate_transition,
 )
 from synthorg.api.controllers.approvals._notify import (
     _log_approval_decision,
     _publish_approval_event,
     _resolve_decision,
-    _signal_resume_intent,
 )
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
@@ -25,7 +25,6 @@ from synthorg.core.domain_errors import (
     ConflictError,
     ForbiddenError,
     NotFoundError,
-    ServiceUnavailableError,
     UnauthorizedError,
 )
 from synthorg.core.task import Task
@@ -163,7 +162,7 @@ class TestLogApprovalDecision:
 
 
 class TestSignalResumeIntent:
-    """_signal_resume_intent() resume + review-gate dispatch."""
+    """signal_resume_intent() resume + review-gate dispatch."""
 
     async def test_no_gate_no_review_gate_is_noop(self) -> None:
         """When both gates are None, function is a no-op."""
@@ -172,7 +171,7 @@ class TestSignalResumeIntent:
             review_gate=None,
             store=_store(_make_pending_item()),
         )
-        await _signal_resume_intent(
+        await signal_resume_intent(
             app_state,
             "approval-1",
             approved=True,
@@ -203,7 +202,7 @@ class TestSignalResumeIntent:
             ),
         )
 
-        await _signal_resume_intent(
+        await signal_resume_intent(
             app_state,
             "approval-1",
             approved=True,
@@ -240,7 +239,7 @@ class TestSignalResumeIntent:
             ),
         )
 
-        await _signal_resume_intent(
+        await signal_resume_intent(
             app_state,
             "approval-1",
             approved=True,
@@ -281,7 +280,7 @@ class TestSignalResumeIntent:
             store=_store(None),
         )
 
-        await _signal_resume_intent(
+        await signal_resume_intent(
             app_state,
             "approval-1",
             approved=True,
@@ -317,7 +316,7 @@ class TestSignalResumeIntent:
             ),
         )
 
-        await _signal_resume_intent(
+        await signal_resume_intent(
             app_state,
             "approval-1",
             approved=True,
@@ -326,7 +325,7 @@ class TestSignalResumeIntent:
         )
 
         # The dispatch path must actually have run (otherwise the test
-        # would pass even if _signal_resume_intent returned before
+        # would pass even if signal_resume_intent returned before
         # awaiting dispatch_resume, never exercising the swallow).
         mock_worker.dispatch_resume.assert_awaited_once()
         mock_review.dispatch_completion.assert_not_awaited()
@@ -357,7 +356,7 @@ class TestSignalResumeIntent:
         )
 
         with pytest.raises(AgentRuntimeNotConfiguredError):
-            await _signal_resume_intent(
+            await signal_resume_intent(
                 app_state,
                 "approval-1",
                 approved=True,
@@ -378,7 +377,7 @@ class TestSignalResumeIntent:
             store=_store(_make_pending_item()),
         )
 
-        await _signal_resume_intent(
+        await signal_resume_intent(
             app_state,
             "approval-1",
             approved=False,
@@ -406,7 +405,7 @@ class TestSignalResumeIntent:
             store=_store(_make_pending_item()),
         )
 
-        await _signal_resume_intent(
+        await signal_resume_intent(
             app_state,
             "approval-1",
             approved=True,
@@ -438,7 +437,7 @@ class TestSignalResumeIntent:
         )
 
         with pytest.raises(RuntimeError, match="transition failed"):
-            await _signal_resume_intent(
+            await signal_resume_intent(
                 app_state,
                 "approval-1",
                 approved=True,
@@ -469,7 +468,7 @@ class TestSignalResumeIntent:
         )
 
         with pytest.raises(error_cls):
-            await _signal_resume_intent(
+            await signal_resume_intent(
                 app_state,
                 "approval-1",
                 approved=True,
@@ -498,7 +497,7 @@ class TestSignalResumeIntent:
         )
 
         with pytest.raises(error_cls):
-            await _signal_resume_intent(
+            await signal_resume_intent(
                 app_state,
                 "approval-1",
                 approved=True,
@@ -573,15 +572,15 @@ class TestPreflightReviewGate:
         # Generic message -- never leak task_id via 404.
         assert "task-xyz" not in str(exc_info.value)
 
-    async def test_task_internal_error_raises_503(self) -> None:
-        """TaskInternalError maps to ServiceUnavailableError (503)."""
+    async def test_task_internal_error_propagates_500(self) -> None:
+        """TaskInternalError propagates as its faithful 500 ENGINE_ERROR."""
         review_gate = mock_of[ReviewGateService](
             check_can_decide=AsyncMock(
                 side_effect=TaskInternalError("Persistence backend offline"),
             ),
         )
 
-        with pytest.raises(ServiceUnavailableError):
+        with pytest.raises(TaskInternalError):
             await preflight_review_gate(
                 review_gate,
                 "approval-1",
@@ -678,14 +677,14 @@ class TestTryReviewGateTransition:
             )
         assert "task-xyz" not in str(exc_info.value)
 
-    async def test_task_internal_error_raises_503(self) -> None:
-        """TaskInternalError maps to ServiceUnavailableError."""
+    async def test_task_internal_error_propagates_500(self) -> None:
+        """TaskInternalError propagates as its faithful 500 ENGINE_ERROR."""
         review_gate = mock_of[ReviewGateService]()
         review_gate.dispatch_completion = AsyncMock(
             side_effect=TaskInternalError("Persistence backend offline"),
         )
 
-        with pytest.raises(ServiceUnavailableError):
+        with pytest.raises(TaskInternalError):
             await try_review_gate_transition(
                 review_gate,
                 "approval-1",

@@ -19,7 +19,7 @@ from collections.abc import Callable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.service import KnowledgeService
 from synthorg.providers.protocol import CompletionProvider
@@ -59,7 +59,7 @@ class GroundingSubstrateContext(BaseModel):
         description="Completion provider for extraction + entailment",
     )
     model_id: NotBlankStr = Field(description="Model id for provider.complete")
-    cost_tracker: CostTracker | None = Field(
+    cost_tracker: CostTrackerProtocol | None = Field(
         default=None,
         description="Optional cost sink for LLM-call attribution",
     )

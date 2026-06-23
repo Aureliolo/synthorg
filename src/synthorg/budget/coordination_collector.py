@@ -45,7 +45,7 @@ from synthorg.budget.coordination_store import (
     CoordinationMetricsRecord,
     CoordinationMetricsStore,
 )
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
@@ -185,7 +185,7 @@ class CoordinationMetricsCollector:
         self,
         *,
         config: CoordinationMetricsConfig,
-        cost_tracker: CostTracker,
+        cost_tracker: CostTrackerProtocol,
         message_bus: MessageBus | None = None,
         notification_dispatcher: NotificationDispatcher | None = None,
         similarity_computer: SimilarityComputer | None = None,

@@ -1,10 +1,9 @@
 """Cross-cutting controller response helpers.
 
-Many controllers used to hand-roll the same ``if resource is None:
-log + raise NotFoundError`` block.  This module centralises that
-pattern so the log-then-raise ordering, the structured kwargs, and
-the domain-specific :class:`NotFoundError` subclass selection are
-owned by one helper that every controller reuses.
+This module centralises the ``if resource is None: log + raise
+NotFoundError`` pattern so the log-then-raise ordering, the structured
+kwargs, and the domain-specific :class:`NotFoundError` subclass
+selection are owned by one helper that every controller reuses.
 """
 
 from collections.abc import Mapping
@@ -29,8 +28,8 @@ def require_resource_or_404[T](  # noqa: PLR0913 -- intentional rich kwargs surf
     """Return ``resource`` or raise the supplied NotFoundError subclass.
 
     The single canonical spelling for the ``if resource is None: log
-    then raise`` pattern that recurred across 17+ controller call
-    sites.  The helper:
+    then raise`` pattern, so every controller emits the same structured
+    miss event and the same domain-specific 404 envelope.  The helper:
 
     1. Logs ``log_event`` at WARNING with structured kwargs so the
        miss is observable in the audit trail.

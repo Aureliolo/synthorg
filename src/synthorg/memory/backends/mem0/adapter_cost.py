@@ -5,7 +5,7 @@ can focus on connection lifecycle and CRUD.  Relies on these
 attributes declared on the concrete class:
 
 * ``_mem0_config``    -- :class:`synthorg.memory.backends.mem0.config.Mem0BackendConfig`
-* ``_cost_tracker``   -- optional :class:`synthorg.budget.tracker.CostTracker`
+* ``_cost_tracker``   -- optional :class:`CostTrackerProtocol`
 """
 
 import asyncio
@@ -26,7 +26,7 @@ from synthorg.observability.events.budget import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
+    from synthorg.budget.tracker_protocol import CostTrackerProtocol
 
 logger = get_logger(__name__)
 
@@ -40,7 +40,7 @@ class Mem0AdapterCostMixin:
     __slots__ = ()
 
     _mem0_config: Mem0BackendConfig
-    _cost_tracker: CostTracker | None
+    _cost_tracker: CostTrackerProtocol | None
 
     async def _record_embedding_cost(
         self,
@@ -90,7 +90,7 @@ class Mem0AdapterCostMixin:
 
     async def _record_cost(
         self,
-        cost_tracker: CostTracker,
+        cost_tracker: CostTrackerProtocol,
         record: CostRecord,
         agent_id: str,
         operation: str,

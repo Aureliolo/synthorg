@@ -19,7 +19,6 @@ import importlib
 from pathlib import Path
 from typing import Self
 
-from litestar import Controller
 from pydantic import (
     AwareDatetime,
     BaseModel,
@@ -176,14 +175,15 @@ def protocol_exports(directory: str) -> tuple[str, ...]:
     )
 
 
-def _controller_class(
-    entry: type[Controller] | ControllerRegistration,
-) -> type[Controller]:
+def _controller_class(entry: type | ControllerRegistration) -> type:
     """Return the controller class from a manifest ``controllers`` entry.
 
-    A manifest may list a bare ``type[Controller]`` or a
+    A manifest may list a bare controller class or a
     :class:`ControllerRegistration` wrapping one with mount / predicate
-    metadata; both resolve to the underlying class.
+    metadata; both resolve to the underlying class. The annotation stays
+    ``type`` (not the concrete Litestar ``Controller``) so this
+    foundation-layer module never imports the HTTP framework; only the
+    class ``__name__`` is read downstream.
 
     Args:
         entry: A bare controller class or a registration wrapping one.

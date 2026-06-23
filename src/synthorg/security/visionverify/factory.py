@@ -10,7 +10,7 @@ provider / tier resolver fails fast with :class:`VisionVerifyConfigError`.
 from collections.abc import Callable
 from pathlib import Path
 
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.types import ModelTier, NotBlankStr
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.security.visionverify.config import (
@@ -34,7 +34,7 @@ def build_vision_verifier(
     workspace: Path,
     provider: CompletionProvider | None = None,
     tier_resolver: TierResolver | None = None,
-    cost_tracker: CostTracker | None = None,
+    cost_tracker: CostTrackerProtocol | None = None,
 ) -> VisionVerifier | None:
     """Build the configured verifier, or ``None`` when disabled.
 
@@ -77,7 +77,7 @@ def _build_llm_vision(
     workspace: Path,
     provider: CompletionProvider | None,
     tier_resolver: TierResolver | None,
-    cost_tracker: CostTracker | None,
+    cost_tracker: CostTrackerProtocol | None,
 ) -> VisionVerifier:
     """Construct the ``llm_vision`` verifier, failing fast on missing deps.
 

@@ -84,7 +84,7 @@ def make_compaction_callback(
     async def _compact(ctx: AgentContext) -> AgentContext | None:
         if summarizer is None and offloader is None:
             return _do_compaction(ctx, config, est)
-        return await _do_compaction_phase2(
+        return await _do_semantic_compaction(
             ctx, config, est, summarizer=summarizer, offloader=offloader
         )
 
@@ -113,11 +113,11 @@ def _do_compaction(
     if prep is None:
         return None
     head, archivable, recent = prep
-    summary_text = _build_phase1_summary(ctx, archivable, config)
+    summary_text = _build_text_summary(ctx, archivable, config)
     return _finalise(ctx, head, archivable, recent, estimator, summary_text)
 
 
-async def _do_compaction_phase2(  # noqa: PLR0913 -- ctx + config + estimator + two semantic collaborators + force flag
+async def _do_semantic_compaction(  # noqa: PLR0913 -- ctx + config + estimator + two semantic collaborators + force flag
     ctx: AgentContext,
     config: CompactionConfig,
     estimator: PromptTokenEstimator,
@@ -147,7 +147,7 @@ async def _do_compaction_phase2(  # noqa: PLR0913 -- ctx + config + estimator + 
     if prep is None:
         return None
     head, archivable, recent = prep
-    summary_text = _build_phase1_summary(ctx, archivable, config)
+    summary_text = _build_text_summary(ctx, archivable, config)
     if summarizer is not None and config.llm_summarizer_enabled:
         summary_text = await summarizer.summarize(
             archivable,
@@ -204,7 +204,7 @@ def _prepare_compaction(
     return _split_conversation(ctx, config)
 
 
-def _build_phase1_summary(
+def _build_text_summary(
     ctx: AgentContext,
     archivable: tuple[ChatMessage, ...],
     config: CompactionConfig,
@@ -466,7 +466,7 @@ async def force_compaction(
     """
     if summarizer is None and offloader is None:
         return _do_compaction(ctx, config, estimator, force=True)
-    return await _do_compaction_phase2(
+    return await _do_semantic_compaction(
         ctx,
         config,
         estimator,

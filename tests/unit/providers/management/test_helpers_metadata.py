@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from synthorg.providers.management._helpers import models_from_litellm
+from synthorg.providers.management._litellm_parser import models_from_litellm
 
 
 def _fake_model_cost() -> dict[str, object]:

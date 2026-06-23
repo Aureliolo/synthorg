@@ -21,6 +21,7 @@ from synthorg.api.auth.controller_helpers import (
     extract_jti,
     get_auth_config,
     make_session_cookies,
+    require_authenticated_user,
 )
 from synthorg.api.auth.controllers._shared import _AUTH_RATE_LIMIT
 from synthorg.api.auth.service import AuthService
@@ -210,15 +211,9 @@ class AuthCredentialsController(Controller):
             UnauthorizedError: Raised on the corresponding failure path.
             PermissionDeniedException: Raised on the corresponding failure path.
         """
-        auth_user = request.scope.get("user")
-        if not isinstance(auth_user, AuthenticatedUser):
-            logger.warning(
-                SECURITY_AUTH_FAILED,
-                reason="change_password_auth_required",
-                path=str(request.url.path),
-            )
-            msg = "Authentication required"
-            raise UnauthorizedError(msg)
+        auth_user = require_authenticated_user(
+            request, reason="change_password_auth_required"
+        )
         if is_system_user(auth_user.user_id):
             logger.warning(
                 SECURITY_AUTH_FAILED,

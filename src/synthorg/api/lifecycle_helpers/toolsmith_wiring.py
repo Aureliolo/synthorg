@@ -10,7 +10,7 @@ from pathlib import Path
 
 from synthorg.api.state import AppState
 from synthorg.approval.protocol import ApprovalStoreProtocol
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.toolsmith.factory import ToolsmithRuntime
@@ -70,7 +70,7 @@ def _build_toolsmith_runtime(  # noqa: PLR0913 -- explicit DI of the toolsmith r
     provider_registry: ProviderRegistry,
     persistence: PersistenceBackend,
     approval_store: ApprovalStoreProtocol | None,
-    cost_tracker: CostTracker | None,
+    cost_tracker: CostTrackerProtocol | None,
     workspace_root: Path,
 ) -> ToolsmithRuntime | None:
     """Resolve dependencies and build the toolsmith runtime, or None.
@@ -242,7 +242,7 @@ async def wire_toolsmith(
     provider_registry: ProviderRegistry | None,
     persistence: PersistenceBackend | None,
     approval_store: ApprovalStoreProtocol | None,
-    cost_tracker: CostTracker | None,
+    cost_tracker: CostTrackerProtocol | None,
 ) -> None:
     """Wire the self-extending toolkit at startup when enabled.
 

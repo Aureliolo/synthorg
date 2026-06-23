@@ -4,8 +4,12 @@ Shared formatting, argument parsing, and result merging utilities used
 by ``ToolBasedInjectionStrategy`` and its reformulation loop.
 """
 
+import math
 from typing import Final
 
+from pydantic import BaseModel, ConfigDict, field_validator
+
+from synthorg.core.boundary import parse_typed
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.models import MemoryEntry
 from synthorg.observability import get_logger
@@ -17,6 +21,52 @@ logger = get_logger(__name__)
 # applied on top of the configured per-agent maximum.
 _DEFAULT_MEMORY_LIMIT: Final[int] = 10
 _MAX_MEMORY_LIMIT: Final[int] = 50
+
+
+class MemorySearchArgs(
+    BaseModel
+):  # lint-allow: frozen-extra-forbid -- LLM tool args carry unrelated keys (e.g. categories, parsed separately)  # noqa: E501
+    """Validated ``search_memory`` tool arguments (query + limit).
+
+    Lenient by design so a hallucinated argument shape degrades rather
+    than rejecting the tool call: a non-string ``query`` coerces to empty
+    (the caller then returns no results) and a non-numeric ``limit``
+    coerces to ``None`` (the caller applies the default). Categories are
+    parsed separately by :func:`_parse_categories` because invalid values
+    are surfaced back to the LLM for self-correction.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="ignore")
+
+    query: str = ""
+    limit: int | None = None
+
+    @field_validator("query", mode="before")
+    @classmethod
+    def _coerce_query(cls, value: object) -> object:
+        """Coerce a non-string query to empty so the caller returns none.
+
+        Returns:
+            The value when it is a string, else ``""``.
+        """
+        return value if isinstance(value, str) else ""
+
+    @field_validator("limit", mode="before")
+    @classmethod
+    def _coerce_limit(cls, value: object) -> object:
+        """Coerce a missing / non-numeric / boolean limit to ``None``.
+
+        Returns:
+            The integer limit, or ``None`` when the value is absent or
+            not a finite real number (the caller applies the default).
+        """
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int | float)
+            or not math.isfinite(value)
+        ):
+            return None
+        return int(value)
 
 
 def _format_entries(entries: tuple[MemoryEntry, ...]) -> str:
@@ -191,18 +241,12 @@ def _parse_search_args(
         that failed to parse as ``MemoryCategory`` so the caller can
         surface them back to the LLM for self-correction.
     """
-    query_raw = arguments.get("query", "")
-    if not isinstance(query_raw, str):
-        return None, 0, None, ()
-    query_text = query_raw.strip()
+    parsed = parse_typed("mcp.tool_search", arguments, MemorySearchArgs)
+    query_text = parsed.query.strip()
     if not query_text:
         return None, 0, None, ()
 
-    limit_raw = arguments.get("limit", _DEFAULT_MEMORY_LIMIT)
-    if isinstance(limit_raw, bool) or not isinstance(limit_raw, int | float):
-        limit = _DEFAULT_MEMORY_LIMIT
-    else:
-        limit = int(limit_raw)
+    limit = _DEFAULT_MEMORY_LIMIT if parsed.limit is None else parsed.limit
     effective_max = min(_MAX_MEMORY_LIMIT, config_max_memories)
     limit = min(max(limit, 1), effective_max)
 

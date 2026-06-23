@@ -225,6 +225,23 @@ class TestSecurityContext:
         assert ctx.agent_id == "agent-1"
         assert ctx.task_id == "task-42"
 
+    def test_arguments_deep_copied_from_source(self) -> None:
+        source: dict[str, object] = {"path": "/src/main.py", "nested": {"k": "v"}}
+        ctx = SecurityContext(
+            tool_name="file_write",
+            tool_category=ToolCategory.FILE_SYSTEM,
+            action_type="code:write",
+            arguments=source,
+        )
+        # Mutating the source dict (and its nested value) must not bleed
+        # into the constructed context.
+        source["path"] = "/etc/passwd"
+        nested = source["nested"]
+        assert isinstance(nested, dict)
+        nested["k"] = "tampered"
+        assert ctx.arguments["path"] == "/src/main.py"
+        assert ctx.arguments["nested"] == {"k": "v"}
+
     def test_frozen(self) -> None:
         ctx = SecurityContext(
             tool_name="git_push",

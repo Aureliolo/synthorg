@@ -1,10 +1,10 @@
 """Unit tests for the centralized MCP handler logging helpers.
 
-Every domain handler used to define its own ``_log_invalid``, ``_log_failed``,
-and ``_log_guardrail`` thin wrappers around ``logger.warning(...)``.  Those
-duplicates collapse into three public helpers in
-``synthorg.meta.mcp.handlers.common_logging``; this file pins their wire
-shape so a future refactor cannot silently drop a kwarg or change a level.
+Three public helpers in ``synthorg.meta.mcp.handlers.common_logging``
+provide the canonical ``_log_invalid`` / ``_log_failed`` /
+``_log_guardrail`` wrappers around ``logger.warning(...)`` that every
+domain handler imports; this file pins their wire shape so a refactor
+cannot silently drop a kwarg or change a level.
 """
 
 import pytest

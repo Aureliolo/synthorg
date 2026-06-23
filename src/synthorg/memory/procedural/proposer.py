@@ -10,12 +10,12 @@ from pydantic import ValidationError
 
 from synthorg.budget.call_category import LLMCallCategory
 
-# ``CostTracker`` is part of ``ProceduralMemoryProposer.__init__``'s
+# ``CostTrackerProtocol`` is part of ``ProceduralMemoryProposer.__init__``'s
 # annotation, so it must resolve at runtime when downstream tooling
 # evaluates type hints (DI containers, doc generators).  Importing at
 # module top -- not under ``TYPE_CHECKING`` -- keeps the name in module
 # globals.
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.types import NotBlankStr
@@ -125,7 +125,7 @@ class ProceduralMemoryProposer:
     Args:
         provider: Completion provider for the proposer LLM call.
         config: Procedural memory configuration.
-        cost_tracker: Optional :class:`CostTracker`.  When wired, the
+        cost_tracker: Optional :class:`CostTrackerProtocol`.  When wired, the
             provider chokepoint emits a ``CostRecord`` for each
             proposer call attributed to the owning agent and a
             per-task ``task_id``; when ``None``, the scope is a
@@ -137,7 +137,7 @@ class ProceduralMemoryProposer:
         *,
         provider: CompletionProvider,
         config: ProceduralMemoryConfig,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         self._provider = provider
         self._config = config

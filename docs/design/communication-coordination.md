@@ -196,7 +196,10 @@ registered and selected per meeting type. Cost bounds are enforced by
     minority-report positions as first-class output. A known limitation is that
     it neither weights by verifiable-evidence density nor caps correlated-source
     clusters, and minority reports are not surfaced in an extended
-    `DissentRecord.minority_evidence` field. See
+    `DissentRecord.minority_evidence` field. The planned
+    `EvidenceWeightedSynthesizer` (evidence-density weighting, correlated-source
+    capping, minority-report preservation) addresses this but is not yet wired.
+    See
     [S1 Multi-Agent Architecture Decision §3](../research/s1-multi-agent-decision.md#section-3-risk-mitigation-register-15-emergent-risks-from-paper-1).
 
 === "Protocol 1: Round-Robin Transcript"

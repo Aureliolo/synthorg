@@ -13,7 +13,7 @@ from typing import Final
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -92,7 +92,7 @@ class LlmCalibrationSampler:
         sampling_rate: float = _DEFAULT_SAMPLING_RATE,
         retention_days: int = _DEFAULT_RETENTION_DAYS,
         currency: CurrencyCode = DEFAULT_CURRENCY,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
         clock: Clock | None = None,
     ) -> None:
         if not (0.0 <= sampling_rate <= 1.0):

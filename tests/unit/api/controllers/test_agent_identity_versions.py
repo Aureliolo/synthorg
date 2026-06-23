@@ -278,7 +278,9 @@ class TestRollback:
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 404
-        assert "agent not found" in resp.json()["error"].lower()
+        # The faithful AGENT_NOT_FOUND code propagates (not the generic
+        # RESOURCE_NOT_FOUND), so clients can branch on the cause.
+        assert resp.json()["error_detail"]["error_code"] == ErrorCode.AGENT_NOT_FOUND
 
     @pytest.mark.unit
     async def test_rollback_missing_target_returns_404(

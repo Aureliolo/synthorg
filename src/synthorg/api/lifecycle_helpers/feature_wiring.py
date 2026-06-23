@@ -40,7 +40,7 @@ from synthorg.api.lifecycle_helpers.org_memory_wiring import (
 )
 from synthorg.api.state import AppState
 from synthorg.approval.protocol import ApprovalStoreProtocol
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.observability import get_logger, safe_error_description
@@ -548,7 +548,7 @@ async def _wire_chief_of_staff_chat(
     app_state: AppState,
     *,
     provider_registry: ProviderRegistry | None,
-    cost_tracker: CostTracker | None,
+    cost_tracker: CostTrackerProtocol | None,
     si_config: SelfImprovementConfig,
 ) -> None:
     """Wire the Chief of Staff chat backend behind chief_of_staff.chat_enabled."""
@@ -574,7 +574,7 @@ async def wire_features_on_startup(
     *,
     provider_registry: ProviderRegistry | None,
     persistence: PersistenceBackend | None,
-    cost_tracker: CostTracker | None,
+    cost_tracker: CostTrackerProtocol | None,
     effective_approval_store: ApprovalStoreProtocol,
 ) -> None:
     """Run every optional feature-engine wire in dependency order."""
@@ -639,7 +639,7 @@ async def _wire_meta_features(
     app_state: AppState,
     *,
     provider_registry: ProviderRegistry | None,
-    cost_tracker: CostTracker | None,
+    cost_tracker: CostTrackerProtocol | None,
     effective_approval_store: ApprovalStoreProtocol,
     si_config: SelfImprovementConfig,
 ) -> None:

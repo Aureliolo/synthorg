@@ -35,7 +35,7 @@ from synthorg.telemetry import TelemetryCollector, TelemetryConfig
 # constructor reference is independent of the annotation surface.
 if TYPE_CHECKING:
     from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.budget.tracker import CostTracker
+    from synthorg.budget.tracker_protocol import CostTrackerProtocol
     from synthorg.config.schema import RootConfig
     from synthorg.core.clock import Clock
     from synthorg.hr.performance.config import PerformanceConfig
@@ -106,7 +106,7 @@ def _resolve_llm_judge_strategy(
     cfg: PerformanceConfig,
     *,
     provider_registry: ProviderRegistry,
-    cost_tracker: CostTracker | None,
+    cost_tracker: CostTrackerProtocol | None,
 ) -> QualityScoringStrategy | None:
     """Resolve the LLM judge strategy from config.
 
@@ -162,7 +162,7 @@ def build_chief_of_staff_chat(
     chief_of_staff_config: ChiefOfStaffConfig,
     *,
     provider_registry: ProviderRegistry,
-    cost_tracker: CostTracker | None,
+    cost_tracker: CostTrackerProtocol | None,
 ) -> ChiefOfStaffChat | None:
     """Resolve a ChiefOfStaffChat from the meta config + provider registry.
 
@@ -213,7 +213,7 @@ def build_chief_of_staff_proposer(  # noqa: PLR0913 -- DI builder seam
     provider_registry: ProviderRegistry,
     approval_store: ApprovalStoreProtocol,
     repositories: ConversationalRepositories | None,
-    cost_tracker: CostTracker | None,
+    cost_tracker: CostTrackerProtocol | None,
     clock: Clock | None = None,
     role_router: RoleRouter | None = None,
 ) -> ChiefOfStaffProposer | None:
@@ -490,7 +490,7 @@ def _build_telemetry_collector(
 
 def _build_performance_tracker(
     *,
-    cost_tracker: CostTracker | None = None,
+    cost_tracker: CostTrackerProtocol | None = None,
     provider_registry: ProviderRegistry | None = None,
     perf_config: PerformanceConfig | None = None,
 ) -> PerformanceTracker:

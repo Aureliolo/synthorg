@@ -10,7 +10,7 @@ from typing import Final
 
 from pydantic import ValidationError
 
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.boundary import parse_typed
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
@@ -53,7 +53,7 @@ class LlmQueryPlanner:
         *,
         provider: CompletionProvider,
         model: str,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         self._provider = provider
         self._model = model

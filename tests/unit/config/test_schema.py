@@ -279,6 +279,41 @@ class TestAgentConfig:
         assert a.level == SeniorityLevel.SENIOR
         assert a.personality == {"traits": ["analytical"]}
 
+    def test_raw_dicts_deep_copied_from_source(self) -> None:
+        personality: dict[str, JsonValue] = {"traits": ["analytical"]}
+        a = AgentConfig(
+            name="Alice",
+            role="Backend Developer",
+            department="Engineering",
+            personality=personality,
+        )
+        # Mutating the source list inside the raw dict must not bleed in.
+        traits = personality["traits"]
+        assert isinstance(traits, list)
+        traits.append("tampered")
+        assert a.personality == {"traits": ["analytical"]}
+
+    @pytest.mark.parametrize(
+        "field",
+        ["personality", "model", "memory", "tools", "authority", "model_requirement"],
+    )
+    def test_every_raw_dict_field_is_deep_copied(self, field: str) -> None:
+        """The deep-copy guard covers all six raw-dict fields, not just
+        ``personality`` -- a retained source reference to any of them must
+        not be able to mutate the frozen config after construction."""
+        source: dict[str, JsonValue] = {"nested": ["x"]}
+        kwargs: dict[str, dict[str, JsonValue]] = {field: source}
+        a = AgentConfig(
+            name="Alice",
+            role="Backend Developer",
+            department="Engineering",
+            **kwargs,  # type: ignore[arg-type]
+        )
+        inner = source["nested"]
+        assert isinstance(inner, list)
+        inner.append("tampered")
+        assert getattr(a, field) == {"nested": ["x"]}
+
     def test_non_json_value_in_raw_field_rejected(self) -> None:
         """A non-JSON value in a raw-config field is rejected.
 

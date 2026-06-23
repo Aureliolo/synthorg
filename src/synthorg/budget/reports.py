@@ -26,8 +26,10 @@ from synthorg.budget.report_models import (
     TaskSpending,
 )
 from synthorg.budget.spending_summary import SpendingSummary
-from synthorg.budget.tracker import CostTracker
-from synthorg.budget.tracker_protocol import collect_all_records
+from synthorg.budget.tracker_protocol import (
+    CostTrackerProtocol,
+    collect_all_records,
+)
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.observability import get_logger
 from synthorg.observability.events.cfo import (
@@ -58,7 +60,7 @@ class ReportGenerator:
     def __init__(
         self,
         *,
-        cost_tracker: CostTracker,
+        cost_tracker: CostTrackerProtocol,
         budget_config: BudgetConfig,
     ) -> None:
         self._cost_tracker = cost_tracker
@@ -120,7 +122,6 @@ class ReportGenerator:
             start=start,
             end=end,
         )
-        self._cost_tracker._log_retention_window(start)  # noqa: SLF001
         summary = self._cost_tracker.build_summary_from_records(
             records,
             start=start,

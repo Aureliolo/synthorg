@@ -13,7 +13,7 @@ class TestCoordinationConfig:
     def test_defaults(self) -> None:
         """Default config uses sensible values."""
         cfg = CoordinationConfig()
-        assert cfg.max_concurrency_per_wave is None
+        assert cfg.max_concurrency_per_wave == 5
         assert cfg.fail_fast is False
         assert cfg.enable_workspace_isolation is True
         assert cfg.base_branch == "main"

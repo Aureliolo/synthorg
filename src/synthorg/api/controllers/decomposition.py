@@ -212,6 +212,7 @@ class DecompositionController(Controller):
 
     @post(
         "/{task_id:str}/decompose",
+        summary="Run a manual task decomposition plan",
         guards=[
             require_write_access,
             per_op_rate_limit_from_policy("decomposition.manual"),

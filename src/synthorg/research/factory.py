@@ -7,7 +7,7 @@ mirroring the vendor-agnostic house pattern: a missing provider simply
 means that source family does not fan out.
 """
 
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.clock import Clock
 from synthorg.knowledge.service import KnowledgeService
 from synthorg.observability import get_logger
@@ -50,7 +50,7 @@ def _build_triage(
     provider: CompletionProvider,
     model: str,
     clock: Clock | None,
-    cost_tracker: CostTracker | None,
+    cost_tracker: CostTrackerProtocol | None,
 ) -> CredibilityTriage:
     """Select the credibility-triage strategy per the config discriminator.
 
@@ -150,7 +150,7 @@ def build_research_service(  # noqa: PLR0913 -- injected boot collaborators
     code_provider: CodeSearchProvider | None = None,
     embedder: Embedder | None = None,
     clock: Clock | None = None,
-    cost_tracker: CostTracker | None = None,
+    cost_tracker: CostTrackerProtocol | None = None,
 ) -> ResearchService:
     """Wire a :class:`ResearchService` from the config + injected providers.
 

@@ -447,7 +447,7 @@ class TestInferPresetHint:
         ],
     )
     def test_port_mapping(self, url: str, expected: str | None) -> None:
-        from synthorg.providers.management._helpers import infer_preset_hint
+        from synthorg.providers.management._discovery_auth import infer_preset_hint
 
         assert infer_preset_hint(url) == expected
 

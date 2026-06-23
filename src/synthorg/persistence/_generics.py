@@ -37,15 +37,18 @@ layer is uniformly async.
 """
 
 from datetime import datetime
-from typing import Final, Protocol, TypeVar, runtime_checkable
+from typing import Protocol, TypeVar, runtime_checkable
 
-#: Canonical page size for ``list_items`` / ``query`` across every
-#: repository protocol defined here and every concrete repo that
-#: composes one of them. Pinned in one place so callers and impls
-#: cannot drift apart. The ``# lint-allow: magic-numbers`` opt-out on
-#: every protocol method default below references this constant so the
-#: justification is not duplicated per method body.
-DEFAULT_PAGE_SIZE: Final[int] = 100
+# Re-exported from ``synthorg.core.pagination`` so the repository
+# protocols and concrete repos keep importing the page-size default from
+# here, while domain / observability callers import it from ``core`` and
+# never reach up into this persistence internal. The
+# ``# lint-allow: magic-numbers`` opt-out on every protocol method
+# default below references this constant so the justification is not
+# duplicated per method body.
+from synthorg.core.pagination import (
+    DEFAULT_PAGE_SIZE as DEFAULT_PAGE_SIZE,  # noqa: PLC0414 -- explicit re-export for persistence protocol importers
+)
 
 # Variance follows the position rule: TypeVars that only appear in
 # argument position are contravariant; TypeVars that only appear in

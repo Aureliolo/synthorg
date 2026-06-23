@@ -14,8 +14,8 @@ from pydantic import BaseModel, JsonValue
 from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
-from synthorg.docs_engine.models import DocSearchHit
 from synthorg.docs_engine.service import DocsService
+from synthorg.engine.prompt_safety import TAG_LIVING_DOC
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -27,6 +27,7 @@ from synthorg.observability.events.docs import (
     DOC_SEARCH_START,
 )
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
+from synthorg.tools._search_hit_formatting import format_scored_hits
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.docs._args import SearchLivingDocsArgs
 
@@ -123,27 +124,16 @@ class SearchLivingDocsTool(BaseTool):
             for h in hits
         ]
         return ToolExecutionResult(
-            content=_format_hits(hits),
+            content=format_scored_hits(
+                (
+                    (h.doc_type.value, h.doc_slug, h.relevance_score, h.chunk_text)
+                    for h in hits
+                ),
+                empty_msg="No matching living docs for this project.",
+                wrap_tag=TAG_LIVING_DOC,
+            ),
             metadata={"hit_count": len(hits), "hits": hit_dicts},
         )
-
-
-def _format_hits(hits: tuple[DocSearchHit, ...]) -> str:
-    """Format hits.
-
-    Returns:
-        Result of type ``str``.
-    """
-    if not hits:
-        return "No matching living docs for this project."
-    lines: list[str] = []
-    for h in hits:
-        lines.append(
-            f"[{h.doc_type.value}] {h.doc_slug} (score={h.relevance_score:.2f}):"
-        )
-        lines.append(h.chunk_text)
-        lines.append("")
-    return "\n".join(lines).rstrip()
 
 
 __all__ = ["SearchLivingDocsTool"]

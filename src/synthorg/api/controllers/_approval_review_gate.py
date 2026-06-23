@@ -25,7 +25,6 @@ from synthorg.core.domain_errors import (
     ConflictError,
     ForbiddenError,
     NotFoundError,
-    ServiceUnavailableError,
 )
 from synthorg.engine.errors import (
     SelfReviewError,
@@ -185,9 +184,8 @@ async def preflight_review_gate(
         NotFoundError: When the task does not exist
             (mapped from ``TaskNotFoundError``; the client-facing
             message is generic to avoid leaking task UUIDs via 404).
-        ServiceUnavailableError: When the task engine backend is
-            unavailable (mapped from ``TaskInternalError``), mirroring
-            the tasks controller's 503 handling for the same error.
+        TaskInternalError: A task-engine internal fault propagates as its
+            faithful 500 ``ENGINE_ERROR`` via the centralised handler.
     """
     decided_by = resolve_decided_by(decided_by)
     try:
@@ -214,6 +212,11 @@ async def preflight_review_gate(
         not_found_msg = "Associated task could not be found"
         raise NotFoundError(not_found_msg) from exc
     except TaskInternalError as exc:
+        # A task-engine internal fault is a 500 ENGINE_ERROR, not a
+        # not-wired-yet 503: let it propagate via handle_domain_error
+        # rather than mislabelling it SERVICE_UNAVAILABLE. The centralised
+        # handler also logs the 5xx; this approval-scoped warning carries
+        # the fault type so the audit event stands alone without a join.
         logger.warning(
             APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
             approval_id=approval_id,
@@ -221,8 +224,7 @@ async def preflight_review_gate(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        unavailable_msg = "Internal server error"
-        raise ServiceUnavailableError(unavailable_msg) from exc
+        raise
 
 
 async def try_review_gate_transition(  # noqa: PLR0913
@@ -256,8 +258,8 @@ async def try_review_gate_transition(  # noqa: PLR0913
             retry.
         ForbiddenError: When a late self-review race is detected
             (agent reassigned between preflight and transition).
-        ServiceUnavailableError: When the task engine backend becomes
-            unavailable mid-transition.
+        TaskInternalError: A task-engine internal fault propagates as its
+            faithful 500 ``ENGINE_ERROR`` via the centralised handler.
         NotFoundError: Raised on the corresponding failure path.
     """
     decided_by = resolve_decided_by(decided_by)
@@ -302,6 +304,11 @@ async def try_review_gate_transition(  # noqa: PLR0913
         conflict_msg = "A concurrent modification was detected; retry the request"
         raise ConflictError(conflict_msg) from exc
     except TaskInternalError as exc:
+        # A task-engine internal fault is a 500 ENGINE_ERROR, not a
+        # not-wired-yet 503: let it propagate via handle_domain_error
+        # rather than mislabelling it SERVICE_UNAVAILABLE. The centralised
+        # handler also logs the 5xx; this approval-scoped warning carries
+        # the fault type so the audit event stands alone without a join.
         logger.warning(
             APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
             approval_id=approval_id,
@@ -309,8 +316,7 @@ async def try_review_gate_transition(  # noqa: PLR0913
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        unavailable_msg = "Internal server error"
-        raise ServiceUnavailableError(unavailable_msg) from exc
+        raise
 
 
 async def signal_resume_intent(  # noqa: PLR0913

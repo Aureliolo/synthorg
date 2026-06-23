@@ -39,7 +39,7 @@ from synthorg.memory.protocol import MemoryBackend
 from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
+    from synthorg.budget.tracker_protocol import CostTrackerProtocol
 
 _DEFAULT_GROUP_THRESHOLD: Final[int] = 3
 
@@ -58,7 +58,7 @@ class ConsolidationDeps:
     provider: CompletionProvider | None = None
     model: NotBlankStr | None = None
     llm_config: LLMConsolidationConfig | None = None
-    cost_tracker: CostTracker | None = None
+    cost_tracker: CostTrackerProtocol | None = None
     classifier: DensityClassifier | None = None
     extractor: ExtractivePreserver | None = None
     summarizer: AbstractiveSummarizer | None = None

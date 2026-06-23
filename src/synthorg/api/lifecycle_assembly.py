@@ -39,7 +39,7 @@ from synthorg.backup.service import BackupService
 from synthorg.budget.automated_reports import AutomatedReportService
 from synthorg.budget.reports import ReportGenerator
 from synthorg.budget.state import BudgetStateSlice
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.config.schema import RootConfig
@@ -71,7 +71,7 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
     effective_config: RootConfig,
     connection_catalog: ConnectionCatalog | None,
     provider_registry: ProviderRegistry | None,
-    cost_tracker: CostTracker | None,
+    cost_tracker: CostTrackerProtocol | None,
     approval_store: ApprovalStoreProtocol,
     performance_tracker: PerformanceTracker | None,
     notification_dispatcher: NotificationDispatcher,

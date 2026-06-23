@@ -1,9 +1,9 @@
 """Tests for the destructive-empty-discovery guard.
 
-The provider sync flow used to silently wipe every persisted model
-when discovery returned an empty set (404 / wrong URL / network
-blip) paired with ``replace_existing=True``.  The guard now refuses
-the destructive path; this file covers the three branches.
+The guard refuses to let the provider sync flow silently wipe every
+persisted model when discovery returns an empty set (404 / wrong URL /
+network blip) paired with ``replace_existing=True``.  This file covers
+the three branches.
 """
 
 from datetime import UTC, datetime

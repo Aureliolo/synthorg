@@ -18,6 +18,7 @@ from types import MappingProxyType
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.pagination import DEFAULT_PAGE_SIZE
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.research import (
@@ -32,7 +33,6 @@ from synthorg.observability.events.research import (
     RESEARCH_RUN_TRIAGED,
     RESEARCH_SOURCE_FAILED,
 )
-from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence.research_protocol import ResearchRunRepository
 from synthorg.research.constants import RESEARCH_DEFAULT_PER_QUERY_LIMIT
 from synthorg.research.enums import ResearchRunStatus, ResearchSourceType

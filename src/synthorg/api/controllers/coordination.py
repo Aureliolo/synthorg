@@ -130,6 +130,7 @@ class CoordinationController(Controller):
     tags = ("coordination",)
 
     @post(
+        summary="Run multi-agent coordination for a task",
         guards=[
             require_write_access,
             per_op_rate_limit_from_policy("tasks.coordinate", key="user"),
@@ -276,6 +277,8 @@ class CoordinationController(Controller):
 
         Raises:
             ValidationError: Raised on the corresponding failure path.
+            CoordinationPhaseError: A coordination-phase runtime fault,
+                propagated as its faithful 500 ``ENGINE_ERROR``.
             Exception: Raised on the corresponding failure path.
         """
         try:
@@ -301,7 +304,11 @@ class CoordinationController(Controller):
                     "error": client_msg,
                 },
             )
-            raise ValidationError(client_msg) from exc
+            # A coordination-phase failure is a runtime engine fault, not a
+            # request-shape problem: let the original 500 ENGINE_ERROR
+            # propagate via handle_domain_error rather than mislabelling it
+            # 422. The WS event + warning above are the side effects we keep.
+            raise
         except Exception as exc:
             reraise_critical(exc)
             # Drop ``logger.exception`` -- frame-locals on the

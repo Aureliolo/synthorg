@@ -265,7 +265,7 @@ async run(
    the gate also emits an `APPROVAL_INTERRUPT` SSE event and creates an
    `Interrupt` record for real-time HITL resolution. On resume, an
    `APPROVAL_RESUMED` event is emitted. See
-   [Event Stream and Async Delegation](communication-events.md#interrupt--resume-protocol)
+   [Event Stream and Async Delegation](communication-events.md#interrupt-and-resume-protocol)
    for the full interrupt/resume protocol and `EvidencePackage` schema.
 11. **Record costs**: records accumulated `TokenUsage` to `CostTracker` (if
     available), tagged with `project_id` for project-level cost aggregation.

@@ -183,7 +183,14 @@ class WsEvent(BaseModel):
 
     @model_validator(mode="after")
     def _deep_copy_payload(self) -> Self:
-        """Return deep copy payload."""
+        """Isolate ``payload`` from caller mutation after construction.
+
+        A caller holding the source dict could otherwise mutate this
+        frozen event's view; deep-copying severs that shared reference.
+
+        Returns:
+            ``Self`` with an isolated ``payload`` copy.
+        """
         object.__setattr__(self, "payload", copy.deepcopy(self.payload))
         return self
 
@@ -222,3 +229,27 @@ class WsEvent(BaseModel):
         adapter = _get_payload_adapter()
         adapter.validate_python({**self.payload, "event_type": self.event_type.value})
         return self
+
+
+class WsOutboundEnvelope(
+    BaseModel
+):  # lint-allow: frozen-extra-forbid -- ignores version/timestamp envelope fields on the read-only routing path  # noqa: E501
+    """Validated shape of an outbound channel event read off the bus.
+
+    The fan-out path deserialises events from the channels backend purely
+    to read the routing fields (``channel``, ``event_type``) and the
+    ``payload`` used for subscription-filter matching; the raw bytes are
+    what is forwarded to subscribers. This is deliberately lenient (a
+    plain ``str`` ``event_type`` tolerating reserved / future event types
+    the strict :class:`WsEvent` union does not yet cover, and
+    ``extra="ignore"`` so the ``version`` / ``timestamp`` envelope fields
+    are accepted and dropped) and performs no payload-union validation:
+    re-validating the full union on the hot delivery path would both cost
+    a redundant pass and drop events the lenient reader must forward.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="ignore")
+
+    channel: str = ""
+    event_type: str = ""
+    payload: dict[str, object] = Field(default_factory=dict)

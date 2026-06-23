@@ -6,6 +6,7 @@ per-agent configuration, model routing rules, graceful shutdown, and
 task assignment.
 """
 
+import copy
 from typing import ClassVar, Literal, Self
 from uuid import UUID, uuid4
 
@@ -213,6 +214,29 @@ class AgentConfig(BaseModel):
         if isinstance(data, dict) and data.get("name"):
             return {**data, "id": str(stable_agent_id(str(data["name"])))}
         return data
+
+    @model_validator(mode="after")
+    def _deep_copy_raw_dicts(self) -> Self:
+        """Deep-copy the raw-dict fields so a retained source cannot mutate them.
+
+        ``personality`` / ``model`` / ``memory`` / ``tools`` /
+        ``authority`` / ``model_requirement`` are mutable references
+        inside a frozen model; without this guard a caller holding the
+        original dict could mutate the config's view after construction.
+
+        Returns:
+            The config with owned deep copies of each raw-dict field.
+        """
+        for field in (
+            "personality",
+            "model",
+            "memory",
+            "tools",
+            "authority",
+            "model_requirement",
+        ):
+            object.__setattr__(self, field, copy.deepcopy(getattr(self, field)))
+        return self
 
 
 class GracefulShutdownConfig(BaseModel):

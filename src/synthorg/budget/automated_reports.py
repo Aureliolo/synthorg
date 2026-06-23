@@ -29,8 +29,10 @@ from synthorg.budget.report_templates import (
 from synthorg.budget.reports import ReportGenerator
 from synthorg.budget.risk_record import RiskRecord
 from synthorg.budget.risk_tracker import RiskTracker
-from synthorg.budget.tracker import CostTracker
-from synthorg.budget.tracker_protocol import collect_all_records
+from synthorg.budget.tracker_protocol import (
+    CostTrackerProtocol,
+    collect_all_records,
+)
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.hr.performance.tracker import PerformanceTracker
@@ -65,7 +67,7 @@ class AutomatedReportService:
         self,
         *,
         report_generator: ReportGenerator,
-        cost_tracker: CostTracker,
+        cost_tracker: CostTrackerProtocol,
         risk_tracker: RiskTracker | None = None,
         performance_tracker: PerformanceTracker | None = None,
         config: AutomatedReportingConfig | None = None,

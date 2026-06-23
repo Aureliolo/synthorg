@@ -42,7 +42,7 @@ from synthorg.settings.enums import SettingNamespace
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
-    from synthorg.budget.tracker import CostTracker
+    from synthorg.budget.tracker_protocol import CostTrackerProtocol
     from synthorg.engine.intake.protocol import IntakeStrategy
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.providers.protocol import CompletionProvider
@@ -132,7 +132,7 @@ def _build_intake_with_fallback(  # noqa: PLR0913 -- keyword-only DI
     default_project: str,
     task_engine: TaskEngine,
     provider: CompletionProvider | None,
-    cost_tracker: CostTracker | None,
+    cost_tracker: CostTrackerProtocol | None,
 ) -> tuple[IntakeStrategy, str]:
     """Build the requested intake strategy, degrading ``agent`` to ``direct``.
 

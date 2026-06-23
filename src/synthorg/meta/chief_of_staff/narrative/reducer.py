@@ -8,13 +8,13 @@ assembler renders and the synthesiser narrates around.
 """
 
 from synthorg.budget.currency import format_cost
+from synthorg.core.text_clipping import clip_text
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.narrative.constants import (
     DECISION_TEXT_MAX,
     MAX_AGENTS_LISTED,
     MAX_SOURCES,
     MAX_TOOLS_PER_AGENT,
-    clip_text,
 )
 from synthorg.meta.chief_of_staff.narrative.models import (
     AgentContribution,

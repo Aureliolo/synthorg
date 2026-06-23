@@ -279,7 +279,8 @@ class AgentIdentityVersionController(Controller):
             data: Rollback request (target version, optional reason).
 
         Raises:
-            NotFoundError: The agent does not exist (HTTP 404).
+            AgentNotFoundError: The agent does not exist (HTTP 404,
+                ``AGENT_NOT_FOUND``).
             ImmutableFieldMismatchError: Immutable fields
                 (id/name/department) differ between the current entry
                 and the restored snapshot (HTTP 422,
@@ -312,14 +313,13 @@ class AgentIdentityVersionController(Controller):
                 target.snapshot,
                 evolution_rationale=rationale,
             )
-        except AgentNotFoundError as exc:
-            logger.warning(
-                AGENT_IDENTITY_ROLLBACK_FAILED,
-                agent_id=agent_id,
-                error="agent not found",
-            )
-            msg = "Agent not found"
-            raise NotFoundError(msg) from exc
+        except AgentNotFoundError:
+            # Let the specific 404 AGENT_NOT_FOUND propagate via the
+            # domain handler rather than collapsing it to the generic
+            # RESOURCE_NOT_FOUND, so clients can branch on the code. No
+            # warning log: this is a routine client-facing not-found guard,
+            # not an operational fault.
+            raise
         except ValueError as exc:
             # evolve_identity raises ValueError when immutable fields
             # (id/name/department) differ between the current registry entry

@@ -9,6 +9,7 @@ verbatim; the prose only introduces each section.
 """
 
 from synthorg.budget.currency import format_cost
+from synthorg.core.text_clipping import clip_text
 from synthorg.docs_engine.models import (
     BulletListBlock,
     DecisionBlock,
@@ -25,7 +26,6 @@ from synthorg.meta.chief_of_staff.narrative.constants import (
     SECTION_OUTCOMES,
     SECTION_SOURCES,
     SECTION_SUMMARY,
-    clip_text,
 )
 from synthorg.meta.chief_of_staff.narrative.models import (
     NarrativeProse,

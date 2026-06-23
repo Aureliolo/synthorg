@@ -34,8 +34,10 @@ from synthorg.budget.optimizer_models import (
     EfficiencyAnalysis,
     SpendingAnomaly,
 )
-from synthorg.budget.tracker import CostTracker
-from synthorg.budget.tracker_protocol import collect_all_records
+from synthorg.budget.tracker_protocol import (
+    CostTrackerProtocol,
+    collect_all_records,
+)
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.observability import get_logger
 from synthorg.observability.events.cfo import (
@@ -75,7 +77,7 @@ class CostOptimizer(_CostOptimizerRoutingMixin):
     def __init__(
         self,
         *,
-        cost_tracker: CostTracker,
+        cost_tracker: CostTrackerProtocol,
         budget_config: BudgetConfig,
         config: CostOptimizerConfig | None = None,
         model_resolver: ModelResolver | None = None,

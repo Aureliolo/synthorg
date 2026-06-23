@@ -24,6 +24,7 @@ from synthorg.observability.events.security import (
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.family import get_family, providers_excluding_family
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.security._model_selection import select_security_eval_model
 from synthorg.security.config import (
     ArgumentTruncationStrategy,
     LlmFallbackConfig,
@@ -134,32 +135,16 @@ class _LlmEvaluatorSupportMixin:
     def _select_model(self, provider_name: str) -> str:
         """Select the model to use for security evaluation.
 
-        Uses explicit config model if set, otherwise picks the first
-        model from the selected provider's config.
-
         Returns:
             The model alias or id to evaluate with; falls back to the
             provider name when no model is configured.
         """
-        if self._config.model is not None:
-            return self._config.model
-
-        config = self._configs.get(provider_name)
-        if config is not None and config.models:
-            first = config.models[0]
-            return first.alias or first.id
-
-        # Last resort: use provider name as model hint (likely to
-        # fail at the driver level; error policy will handle it).
-        logger.warning(
-            SECURITY_LLM_EVAL_ERROR,
-            note=(
-                f"No model configured for provider {provider_name!r}, "
-                "using provider name as model hint"
-            ),
-            provider_name=provider_name,
+        return select_security_eval_model(
+            self._config.model,
+            self._configs,
+            provider_name,
+            event=SECURITY_LLM_EVAL_ERROR,
         )
-        return provider_name
 
     # ------------------------------------------------------------------
     # Argument serialization

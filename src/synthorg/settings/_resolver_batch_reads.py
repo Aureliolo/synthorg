@@ -8,6 +8,8 @@ the operator log actionable when one key in a bundle fails.
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable, Mapping
+from types import MappingProxyType
 from typing import Protocol, runtime_checkable
 
 from synthorg.core.critical_errors import reraise_critical
@@ -29,6 +31,21 @@ class TypedSettingReads(Protocol):
     async def get_str(self, namespace: str, key: str) -> str: ...
 
     async def get_json(self, namespace: str, key: str) -> object: ...
+
+
+# Dispatch table from the ``kind`` discriminator to the matching typed
+# accessor, replacing a hand-rolled if-chain. ``Awaitable[object]`` is
+# covariant, so the narrower per-accessor return types fit.
+_TYPED_READERS: Mapping[
+    str, Callable[[TypedSettingReads, str, str], Awaitable[object]]
+] = MappingProxyType(
+    {
+        "int": lambda reads, ns, key: reads.get_int(ns, key),
+        "float": lambda reads, ns, key: reads.get_float(ns, key),
+        "str": lambda reads, ns, key: reads.get_str(ns, key),
+        "json": lambda reads, ns, key: reads.get_json(ns, key),
+    }
+)
 
 
 async def resolve_bridge_fields(
@@ -118,13 +135,8 @@ async def _resolve_typed(
         SettingNotFoundError: If the registry does not contain *key*
             in *namespace*.
     """
-    if kind == "int":
-        return await reads.get_int(namespace, key)
-    if kind == "float":
-        return await reads.get_float(namespace, key)
-    if kind == "str":
-        return await reads.get_str(namespace, key)
-    if kind == "json":
-        return await reads.get_json(namespace, key)
-    msg = f"Unsupported typed-resolve kind: {kind!r}"
-    raise ValueError(msg)
+    reader = _TYPED_READERS.get(kind)
+    if reader is None:
+        msg = f"Unsupported typed-resolve kind: {kind!r}"
+        raise ValueError(msg)
+    return await reader(reads, namespace, key)

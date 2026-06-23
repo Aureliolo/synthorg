@@ -13,12 +13,12 @@ from typing import Final
 
 from synthorg.budget.call_category import LLMCallCategory
 
-# ``CostTracker``, ``CompletionProvider``, and ``AcceptanceCriterion``
+# ``CostTrackerProtocol``, ``CompletionProvider``, and ``AcceptanceCriterion``
 # are part of public annotations on ``LlmJudgeQualityStrategy``
 # (constructor + ``score()``), so they must resolve at runtime when
 # downstream tooling evaluates type hints (DI containers, doc
 # generators).
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import AcceptanceCriterion
 from synthorg.core.types import NotBlankStr
@@ -100,7 +100,7 @@ class LlmJudgeQualityStrategy:
         *,
         provider: CompletionProvider,
         model: NotBlankStr,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
         provider_name: NotBlankStr | None = None,
     ) -> None:
         self._provider = provider

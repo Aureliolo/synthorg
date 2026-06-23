@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.ontology.errors import OntologyDuplicateError, OntologyNotFoundError
 from synthorg.ontology.models import (
     EntityDefinition,
@@ -116,6 +117,9 @@ class TestGetEntity:
 
         resp = await async_test_client.get("/api/v1/ontology/entities/Missing")
         assert resp.status_code == 404
+        # The faithful 404 ONTOLOGY_NOT_FOUND propagates rather than being
+        # collapsed to the generic RESOURCE_NOT_FOUND, so clients can branch.
+        assert resp.json()["error_detail"]["error_code"] == ErrorCode.ONTOLOGY_NOT_FOUND
 
 
 @pytest.mark.unit
@@ -135,7 +139,7 @@ class TestCreateEntity:
         assert resp.json()["data"]["name"] == "NewEntity"
         assert resp.json()["data"]["tier"] == "user"
 
-    async def test_duplicate_returns_400(
+    async def test_duplicate_returns_409(
         self,
         async_test_client: LoopAsyncClient,
     ) -> None:
@@ -146,7 +150,10 @@ class TestCreateEntity:
             "/api/v1/ontology/entities",
             json={"name": "Task"},
         )
-        assert resp.status_code == 422
+        # The faithful 409 ONTOLOGY_DUPLICATE propagates rather than being
+        # collapsed to a generic 422 validation error.
+        assert resp.status_code == 409
+        assert resp.json()["error_detail"]["error_code"] == ErrorCode.ONTOLOGY_DUPLICATE
 
 
 @pytest.mark.unit
@@ -214,6 +221,32 @@ class TestDeleteEntity:
 
         resp = await async_test_client.delete("/api/v1/ontology/entities/Missing")
         assert resp.status_code == 404
+        assert resp.json()["error_detail"]["error_code"] == ErrorCode.ONTOLOGY_NOT_FOUND
+
+
+@pytest.mark.unit
+class TestListEntityVersions:
+    async def test_lists_versions_for_known_entity(
+        self,
+        async_test_client: LoopAsyncClient,
+    ) -> None:
+        svc = _inject_ontology_service(async_test_client)
+        svc.get.return_value = _make_entity()
+        svc.list_versions.return_value = ()
+
+        resp = await async_test_client.get("/api/v1/ontology/entities/Task/versions")
+        assert resp.status_code == 200
+        assert resp.json()["data"] == []
+
+    async def test_not_found(self, async_test_client: LoopAsyncClient) -> None:
+        svc = _inject_ontology_service(async_test_client)
+        # The controller's existence check raises before any pagination,
+        # so the faithful 404 ONTOLOGY_NOT_FOUND propagates.
+        svc.get.side_effect = OntologyNotFoundError("nope")
+
+        resp = await async_test_client.get("/api/v1/ontology/entities/Missing/versions")
+        assert resp.status_code == 404
+        assert resp.json()["error_detail"]["error_code"] == ErrorCode.ONTOLOGY_NOT_FOUND
 
 
 @pytest.mark.unit

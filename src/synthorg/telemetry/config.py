@@ -39,7 +39,7 @@ in order:
 4. This constant -- the last-resort fallback when nothing else matched.
 
 A non-blank default avoids ``null`` showing up as
-``deployment.environment`` in Logfire, which used to make every
+``deployment.environment`` in Logfire, which would otherwise make every
 deployment look identical in the span stream.
 """
 

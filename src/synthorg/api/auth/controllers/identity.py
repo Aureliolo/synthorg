@@ -12,12 +12,13 @@ from synthorg.api.auth.controller_dtos import (
     UserInfoResponse,
     WsTicketResponse,
 )
+from synthorg.api.auth.controller_helpers import require_authenticated_user
 from synthorg.api.auth.system_user import is_system_user
 from synthorg.api.auth.ticket_store import TicketLimitExceededError
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.rate_limits.policies import per_op_rate_limit_from_policy
-from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
+from synthorg.core.auth.models import AuthMethod
 from synthorg.core.domain_errors import ConflictError, UnauthorizedError
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import SECURITY_AUTH_FAILED
@@ -51,15 +52,7 @@ class AuthIdentityController(Controller):
         Raises:
             UnauthorizedError: Raised on the corresponding failure path.
         """
-        auth_user = request.scope.get("user")
-        if not isinstance(auth_user, AuthenticatedUser):
-            logger.warning(
-                SECURITY_AUTH_FAILED,
-                reason="me_auth_required",
-                path=str(request.url.path),
-            )
-            msg = "Authentication required"
-            raise UnauthorizedError(msg)
+        auth_user = require_authenticated_user(request, reason="me_auth_required")
 
         return Response(
             content=ApiResponse(
@@ -100,15 +93,9 @@ class AuthIdentityController(Controller):
             PermissionDeniedException: Raised on the corresponding failure path.
             ConflictError: Raised on the corresponding failure path.
         """
-        auth_user = request.scope.get("user")
-        if not isinstance(auth_user, AuthenticatedUser):
-            logger.warning(
-                SECURITY_AUTH_FAILED,
-                reason="ws_ticket_auth_required",
-                path=str(request.url.path),
-            )
-            msg = "Authentication required"
-            raise UnauthorizedError(msg)
+        auth_user = require_authenticated_user(
+            request, reason="ws_ticket_auth_required"
+        )
 
         if is_system_user(auth_user.user_id):
             logger.warning(

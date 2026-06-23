@@ -23,7 +23,7 @@ from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
-    from synthorg.budget.tracker import CostTracker
+    from synthorg.budget.tracker_protocol import CostTrackerProtocol
 
 logger = get_logger(__name__)
 _DEFAULT_TEMPERATURE: Final[float] = 0.7
@@ -57,7 +57,7 @@ class LLMGenerator:
         persona: str = _DEFAULT_PERSONA,
         temperature: float = _DEFAULT_TEMPERATURE,
         max_tokens: int = _DEFAULT_MAX_TOKENS,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         """Initialize the LLM generator.
 

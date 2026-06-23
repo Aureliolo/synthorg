@@ -1,9 +1,10 @@
 """Unit tests for :class:`BudgetForecastService`.
 
-The service owns the forecast read/write path the
-``/budget/forecasts`` controller used to drive directly against the
-repository. These cover the generate / get / approve / reject /
-raise-ceiling flow against an in-memory repo double.
+The service owns the forecast read/write path behind the
+``/budget/forecasts`` controller (which routes through the service
+rather than touching the repository directly). These cover the generate
+/ get / approve / reject / raise-ceiling flow against an in-memory repo
+double.
 """
 
 from datetime import UTC, datetime

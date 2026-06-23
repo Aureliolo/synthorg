@@ -5,10 +5,10 @@ with org-wide quality, success rate, collaboration scores, and
 per-window metric summaries across all configured rolling windows.
 """
 
-import re
 from datetime import datetime
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.time_window import parse_window_days
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.meta.models import (
@@ -30,18 +30,6 @@ _EMPTY = OrgPerformanceSummary(
     agent_count=0,
 )
 
-_WINDOW_DAYS_RE = re.compile(r"(\d+)d")
-
-
-def _parse_window_days(window_size: str) -> int | None:
-    """Extract days from a window size string like '7d', '30d'.
-
-    Returns:
-        The ``int`` value when present, ``None`` otherwise.
-    """
-    m = _WINDOW_DAYS_RE.match(window_size)
-    return int(m.group(1)) if m else None
-
 
 def _build_window_metrics(
     window_success: dict[str, list[float]],
@@ -59,7 +47,7 @@ def _build_window_metrics(
     metrics: list[MetricSummary] = []
     all_success: list[float] = []
     for ws, rates in sorted(window_success.items()):
-        days = _parse_window_days(ws) or 7
+        days = parse_window_days(ws) or 7
         avg = round(sum(rates) / len(rates), 4)
         metrics.append(
             MetricSummary(
@@ -70,7 +58,7 @@ def _build_window_metrics(
         )
         all_success.extend(rates)
     for ws, scores in sorted(window_quality.items()):
-        days = _parse_window_days(ws) or 7
+        days = parse_window_days(ws) or 7
         avg = round(sum(scores) / len(scores), 4)
         metrics.append(
             MetricSummary(

@@ -8,8 +8,10 @@ from synthorg.budget.call_analytics_config import CallAnalyticsConfig
 from synthorg.budget.call_analytics_models import AnalyticsAggregation
 from synthorg.budget.category_analytics import OrchestrationRatio
 from synthorg.budget.cost_record import CostRecord
-from synthorg.budget.tracker import CostTracker
-from synthorg.budget.tracker_protocol import collect_all_records
+from synthorg.budget.tracker_protocol import (
+    CostTrackerProtocol,
+    collect_all_records,
+)
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.notifications.dispatcher import NotificationDispatcher
@@ -41,7 +43,7 @@ class CallAnalyticsService:
     def __init__(
         self,
         *,
-        cost_tracker: CostTracker,
+        cost_tracker: CostTrackerProtocol,
         config: CallAnalyticsConfig,
         notification_dispatcher: NotificationDispatcher | None = None,
     ) -> None:

@@ -17,11 +17,9 @@ from synthorg.budget._aggregation import group_by_agent, sum_cost
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import assert_currencies_match
 from synthorg.budget.spending_summary import AgentSpending
+from synthorg.core.datetime_guards import validate_time_range
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger
 from synthorg.observability.events.budget import BUDGET_TIME_RANGE_INVALID
-
-logger = get_logger(__name__)
 
 
 class _AggregateResult(NamedTuple):
@@ -45,19 +43,15 @@ def _validate_time_range(
     start: datetime | None,
     end: datetime | None,
 ) -> None:
-    """Raise ``ValueError`` if *start* >= *end* when both are given.
+    """Reject an inverted query range, logging the budget event first.
+
+    Binds the budget warning event to the shared
+    :func:`~synthorg.core.datetime_guards.validate_time_range`.
 
     Raises:
         ValueError: If an argument fails domain validation.
     """
-    if start is not None and end is not None and start >= end:
-        logger.warning(
-            BUDGET_TIME_RANGE_INVALID,
-            start=start.isoformat(),
-            end=end.isoformat(),
-        )
-        msg = f"start ({start.isoformat()}) must be before end ({end.isoformat()})"
-        raise ValueError(msg)
+    validate_time_range(start, end, event=BUDGET_TIME_RANGE_INVALID)
 
 
 def _filter_records(  # noqa: PLR0913

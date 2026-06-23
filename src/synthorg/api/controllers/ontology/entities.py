@@ -30,13 +30,11 @@ from synthorg.api.pagination import (
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathName
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
-from synthorg.core.domain_errors import NotFoundError, ValidationError
+from synthorg.core.domain_errors import ValidationError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_REQUEST_ERROR,
-    API_RESOURCE_NOT_FOUND,
 )
-from synthorg.ontology.errors import OntologyDuplicateError, OntologyNotFoundError
 from synthorg.ontology.models import (
     EntityDefinition,
     EntityField,
@@ -159,19 +157,12 @@ class OntologyController(Controller):
             ``ApiResponse[EntityResponse]`` instance.
 
         Raises:
-            NotFoundError: Raised on the corresponding failure path.
+            OntologyNotFoundError: When no entity is registered under
+                *name* (404 ``ONTOLOGY_NOT_FOUND`` via the ontology
+                family handler).
         """
         app_state: AppState = state.app_state
-        try:
-            entity = await _ontology_service(app_state).get(name)
-        except OntologyNotFoundError:
-            msg = "Entity not found"
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="entity",
-                name=name,
-            )
-            raise NotFoundError(msg)  # noqa: B904
+        entity = await _ontology_service(app_state).get(name)
         return ApiResponse(data=_entity_to_response(entity))
 
     @post(
@@ -193,7 +184,9 @@ class OntologyController(Controller):
             ``ApiResponse[EntityResponse]`` instance.
 
         Raises:
-            ValidationError: Raised on the corresponding failure path.
+            OntologyDuplicateError: When an entity already exists under
+                the same name (409 ``ONTOLOGY_DUPLICATE`` via the
+                ontology family handler).
         """
         app_state: AppState = state.app_state
         now = datetime.now(UTC)
@@ -226,16 +219,7 @@ class OntologyController(Controller):
             updated_at=now,
         )
 
-        try:
-            await _ontology_service(app_state).register(entity)
-        except OntologyDuplicateError:
-            msg = "Entity already exists"
-            logger.warning(
-                API_REQUEST_ERROR,
-                reason="duplicate_entity",
-                name=data.name,
-            )
-            raise ValidationError(msg)  # noqa: B904
+        await _ontology_service(app_state).register(entity)
 
         return ApiResponse(data=_entity_to_response(entity))
 
@@ -259,17 +243,13 @@ class OntologyController(Controller):
 
         Raises:
             ValidationError: Raised on the corresponding failure path.
-            NotFoundError: Raised on the corresponding failure path.
+            OntologyNotFoundError: When no entity is registered under
+                *name* (404 via the ontology family handler).
         """
         app_state: AppState = state.app_state
         svc = _ontology_service(app_state)
 
-        try:
-            existing = await svc.get(name)
-        except OntologyNotFoundError:
-            msg = "Entity not found"
-            logger.warning(API_RESOURCE_NOT_FOUND, resource="entity", name=name)
-            raise NotFoundError(msg)  # noqa: B904
+        existing = await svc.get(name)
 
         if existing.tier == EntityTier.CORE and any(
             (
@@ -313,17 +293,13 @@ class OntologyController(Controller):
 
         Raises:
             ValidationError: Raised on the corresponding failure path.
-            NotFoundError: Raised on the corresponding failure path.
+            OntologyNotFoundError: When no entity is registered under
+                *name* (404 via the ontology family handler).
         """
         app_state: AppState = state.app_state
         svc = _ontology_service(app_state)
 
-        try:
-            entity = await svc.get(name)
-        except OntologyNotFoundError:
-            msg = "Entity not found"
-            logger.warning(API_RESOURCE_NOT_FOUND, resource="entity", name=name)
-            raise NotFoundError(msg)  # noqa: B904
+        entity = await svc.get(name)
 
         if entity.tier == EntityTier.CORE:
             msg = "CORE entities cannot be deleted via API"

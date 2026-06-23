@@ -10,7 +10,7 @@ import re
 from typing import Final
 
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.types import NotBlankStr
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
@@ -67,7 +67,7 @@ async def complete_text(  # noqa: PLR0913 -- cost-recording context is keyword-o
     *,
     system: str,
     user: str,
-    cost_tracker: CostTracker | None = None,
+    cost_tracker: CostTrackerProtocol | None = None,
     task_id: NotBlankStr | None = None,
     project_id: NotBlankStr | None = None,
 ) -> tuple[str, float]:

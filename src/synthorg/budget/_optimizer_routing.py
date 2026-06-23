@@ -29,8 +29,10 @@ from synthorg.budget.optimizer_models import (
     RoutingOptimizationAnalysis,
     RoutingSuggestion,
 )
-from synthorg.budget.tracker import CostTracker
-from synthorg.budget.tracker_protocol import collect_all_records
+from synthorg.budget.tracker_protocol import (
+    CostTrackerProtocol,
+    collect_all_records,
+)
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.observability import get_logger
 from synthorg.observability.events.cfo import (
@@ -50,7 +52,7 @@ logger = get_logger(__name__)
 class _CostOptimizerRoutingMixin:
     """Routing / downgrade analysis for ``CostOptimizer``."""
 
-    _cost_tracker: CostTracker
+    _cost_tracker: CostTrackerProtocol
     _budget_config: BudgetConfig
     _config: CostOptimizerConfig
     _model_resolver: ModelResolver | None

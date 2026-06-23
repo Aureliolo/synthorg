@@ -16,11 +16,11 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from synthorg.budget.call_category import LLMCallCategory
 
-# ``CostTracker``, ``ExperienceCompressorConfig`` and
+# ``CostTrackerProtocol``, ``ExperienceCompressorConfig`` and
 # ``CompletionProvider`` are part of ``LLMExperienceCompressor.__init__``'s
 # public annotation, so they must resolve at runtime when downstream
 # tooling evaluates type hints (DI containers, doc generators).
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
@@ -152,7 +152,7 @@ class LLMExperienceCompressor:
         provider: CompletionProvider,
         model: NotBlankStr,
         config: ExperienceCompressorConfig,
-        cost_tracker: CostTracker | None = None,
+        cost_tracker: CostTrackerProtocol | None = None,
     ) -> None:
         self._provider = provider
         self._model = model
