@@ -90,8 +90,10 @@ func (s *Server) Shutdown(ctx context.Context) error {
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	uptime := int64(time.Since(s.startTime).Seconds())
+	// "ok" aligns with the main API /healthz liveness body and the
+	// /rules response below; Docker's own State.Health stays "healthy".
 	resp := map[string]any{
-		"status":         "healthy",
+		"status":         "ok",
 		"uptime_seconds": uptime,
 	}
 	json.NewEncoder(w).Encode(resp) //nolint:errcheck // HTTP response write errors are non-actionable in handlers

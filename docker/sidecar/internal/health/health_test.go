@@ -36,8 +36,8 @@ func TestHealthzOK(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
-	if body["status"] != "healthy" {
-		t.Errorf("status = %v, want healthy", body["status"])
+	if body["status"] != "ok" {
+		t.Errorf("status = %v, want ok", body["status"])
 	}
 	if _, ok := body["uptime_seconds"]; !ok {
 		t.Error("missing uptime_seconds field")

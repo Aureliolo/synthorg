@@ -180,7 +180,11 @@ class _HealthHandler(http.server.BaseHTTPRequestHandler):
         if self.path == "/healthz":
             body = json.dumps(
                 {
-                    "status": "healthy",
+                    # Aligns with the main API ``/healthz`` liveness body,
+                    # which reports ``"ok"`` (Docker's own State.Health
+                    # vocabulary stays "healthy" -- that is the engine's, not
+                    # this app-level HTTP surface).
+                    "status": "ok",
                     # lint-allow: clock-seam -- stdlib BaseHTTPRequestHandler
                     # subprocess health server; no clock-injection seam
                     "uptime_seconds": int(time.monotonic() - self._start_time),

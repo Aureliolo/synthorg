@@ -153,6 +153,25 @@ _r.register(
     )
 )
 
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="readiness_probe_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="4.0",
+        description=(
+            "Ceiling for the /readyz dependency-probe fan-out. A hung probe"
+            " returns a 503 verdict within this budget instead of stalling;"
+            " kept just under the typical k8s 5s readinessProbe timeout."
+            " Read from the boot config, so a change needs a restart."
+        ),
+        group="Server",
+        level=SettingLevel.ADVANCED,
+        min_value=0.1,
+        restart_required=True,
+    )
+)
+
 # ── TLS (bootstrap-only) ────────────────────────────────────────
 
 _r.register(
