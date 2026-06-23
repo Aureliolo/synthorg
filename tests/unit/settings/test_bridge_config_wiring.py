@@ -380,6 +380,38 @@ class TestNotificationFactoryBridgeConfig:
         assert slack._webhook_timeout_seconds == 10.0
 
 
+# ── NotificationsBridgeConfig URL validation ───────────────────
+
+
+class TestNotificationsBridgeConfigUrlValidation:
+    @pytest.mark.unit
+    def test_empty_ntfy_url_allowed(self) -> None:
+        """Empty means no default server configured, not a misconfig."""
+        config = NotificationsBridgeConfig(ntfy_default_url="")
+        assert config.ntfy_default_url == ""
+
+    @pytest.mark.unit
+    def test_https_ntfy_url_accepted(self) -> None:
+        config = NotificationsBridgeConfig(
+            ntfy_default_url="https://ntfy.example.com",
+        )
+        assert config.ntfy_default_url == "https://ntfy.example.com"
+
+    @pytest.mark.unit
+    def test_http_ntfy_url_rejected(self) -> None:
+        """A plaintext URL is rejected so topic names are not sent in clear."""
+        with pytest.raises(ValueError, match="https"):
+            NotificationsBridgeConfig(ntfy_default_url="http://ntfy.example.com")
+
+    @pytest.mark.unit
+    def test_reserved_port_ntfy_url_rejected(self) -> None:
+        """A URL passing the pattern but using port 0 hits the validator."""
+        with pytest.raises(ValueError, match="reserved"):
+            NotificationsBridgeConfig(
+                ntfy_default_url="https://ntfy.example.com:0",
+            )
+
+
 # ── SubprocessSandbox.kill_grace_seconds ───────────────────────
 
 

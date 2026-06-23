@@ -145,3 +145,7 @@ SETUP_PRESET_NOT_FOUND: Final[str] = "setup.agent.preset_not_found"
 
 # A template's resolved posture was seeded into the settings service
 SETUP_POSTURE_SEEDED: Final[str] = "setup.posture.seeded"
+
+# Seeding a template's posture settings failed; non-fatal (company and
+# agents are already persisted, the operator can re-apply the posture).
+SETUP_POSTURE_SEED_FAILED: Final[str] = "setup.posture.seed_failed"

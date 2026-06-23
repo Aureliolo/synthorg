@@ -13,6 +13,7 @@ thin coordinator (``__init__`` / ``get_protocol_type`` / ``run``).
 
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from typing import Final
 
 from synthorg.communication.meeting._parsing import (
     parse_action_items,
@@ -31,6 +32,10 @@ from synthorg.communication.meeting.enums import (
     MeetingProtocolType,
 )
 from synthorg.communication.meeting.factory import build_conflict_detector
+from synthorg.communication.meeting.hooks import (
+    ConsensusVelocityHook,
+    PremortemHook,
+)
 from synthorg.communication.meeting.models import (
     MeetingAgenda,
     MeetingContribution,
@@ -40,15 +45,24 @@ from synthorg.communication.meeting.protocol import (
     AgentCaller,
     ConflictDetector,
 )
-from synthorg.observability import get_logger
+from synthorg.core.critical_errors import reraise_critical
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meeting import (
     MEETING_BUDGET_EXHAUSTED,
+    MEETING_CONSENSUS_VELOCITY_FAILED,
+    MEETING_CONSENSUS_VELOCITY_FORCED,
     MEETING_PHASE_COMPLETED,
     MEETING_PHASE_STARTED,
+    MEETING_PREMORTEM_APPENDED,
+    MEETING_PREMORTEM_FAILED,
     MEETING_TOKENS_RECORDED,
 )
 
 logger = get_logger(__name__)
+
+#: Heading the premortem section is folded under when appended to the
+#: synthesis summary so action-item / decision parsing still scans it.
+_PREMORTEM_SECTION_HEADING: Final[str] = "## Premortem Analysis"
 
 
 class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
@@ -64,15 +78,29 @@ class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
             responses. When ``None``, ``build_conflict_detector(config)``
             dispatches by ``config.conflict_detector`` so the runtime
             choice tracks the configured enum.
+        consensus_hook: Optional premature-consensus check run over the
+            gathered input positions. When it fires, the discussion
+            (devil's-advocate) round is forced even if the leader's
+            conflict check found none. Absent -> no velocity check.
+        premortem_hook: Optional premortem analysis run over the
+            synthesis summary; its rendered section is folded into the
+            summary. Absent -> no premortem phase.
     """
 
-    __slots__ = ("_config", "_conflict_detector")
+    __slots__ = (
+        "_config",
+        "_conflict_detector",
+        "_consensus_hook",
+        "_premortem_hook",
+    )
 
     def __init__(
         self,
         config: StructuredPhasesConfig,
         *,
         conflict_detector: ConflictDetector | None = None,
+        consensus_hook: ConsensusVelocityHook | None = None,
+        premortem_hook: PremortemHook | None = None,
     ) -> None:
         self._config = config
         self._conflict_detector: ConflictDetector = (
@@ -80,6 +108,8 @@ class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
             if conflict_detector is not None
             else build_conflict_detector(config)
         )
+        self._consensus_hook = consensus_hook
+        self._premortem_hook = premortem_hook
 
     def get_protocol_type(self) -> MeetingProtocolType:
         """Return the protocol type."""
@@ -146,6 +176,15 @@ class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
         )
         turn_number = len(participant_ids)
 
+        # Consensus-velocity check: when the gathered positions have
+        # converged prematurely the discussion round is forced so a
+        # devil's-advocate pass surfaces the suppressed disagreement,
+        # even if the leader's own conflict check would skip it.
+        force_discussion = self._detect_premature_consensus(
+            meeting_id=meeting_id,
+            inputs=inputs,
+        )
+
         # Discussion (conditional on conflicts).
         discussion_contributions: list[MeetingContribution] = []
         discussion_pairs: list[tuple[str, str]] = []
@@ -167,6 +206,7 @@ class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
                 inputs=inputs,
                 turn_number=turn_number,
                 lens_assignments=lens_assignments,
+                force_discussion=force_discussion,
             )
         else:
             logger.warning(
@@ -189,10 +229,24 @@ class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
             turn_number=turn_number,
         )
 
+        # Premortem: fold a failure-mode / assumption analysis of the
+        # synthesised decision into the summary so decisions / action
+        # items parsed below also scan it.
+        summary, premortem_contribution = await self._maybe_append_premortem(
+            meeting_id=meeting_id,
+            summary=summary,
+            leader_id=leader_id,
+            participant_ids=participant_ids,
+            agent_caller=agent_caller,
+            tracker=tracker,
+            turn_number=turn_number,
+        )
+
         contributions = (
             *input_contributions,
             *discussion_contributions,
             synthesis_contribution,
+            *((premortem_contribution,) if premortem_contribution else ()),
         )
 
         decisions = parse_decisions(summary)
@@ -229,4 +283,130 @@ class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
             total_output_tokens=tracker.output_tokens,
             started_at=started_at,
             ended_at=ended_at,
+        )
+
+    def _detect_premature_consensus(
+        self,
+        *,
+        meeting_id: str,
+        inputs: list[tuple[str, str]],
+    ) -> bool:
+        """Run the consensus-velocity hook over the gathered positions.
+
+        Returns:
+            ``True`` when the hook is wired AND it flags the input
+            positions as prematurely converged (so the discussion round
+            should be forced); ``False`` otherwise.
+        """
+        if self._consensus_hook is None:
+            return False
+        positions = tuple(content for _, content in inputs)
+        try:
+            detected = self._consensus_hook(positions)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            # Advisory check only: a hook failure must not abort the meeting
+            # and discard all phase output. Skip the forced-discussion nudge.
+            logger.warning(
+                MEETING_CONSENSUS_VELOCITY_FAILED,
+                meeting_id=meeting_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return False
+        if detected:
+            logger.info(
+                MEETING_CONSENSUS_VELOCITY_FORCED,
+                meeting_id=meeting_id,
+                position_count=len(positions),
+            )
+        return detected
+
+    async def _maybe_append_premortem(  # noqa: PLR0913
+        self,
+        *,
+        meeting_id: str,
+        summary: str,
+        leader_id: str,
+        participant_ids: tuple[str, ...],
+        agent_caller: AgentCaller,
+        tracker: TokenTracker,
+        turn_number: int,
+    ) -> tuple[str, MeetingContribution | None]:
+        """Fold a premortem analysis section into the synthesis summary.
+
+        No-op (returns ``summary`` unchanged with no contribution) when no
+        premortem hook is wired, the token budget is exhausted, or the
+        analysis surfaced nothing and consumed no tokens.
+
+        When the premortem ran any agent calls, its token usage is recorded
+        on the ``tracker`` AND surfaced as a ``MeetingContribution`` so the
+        minutes' ``total_*_tokens`` (validated to equal the sum of
+        contributions) account for the premortem rather than tripping the
+        invariant.
+
+        Returns:
+            ``(summary, contribution)`` where ``summary`` carries the
+            appended premortem section when one was produced and
+            ``contribution`` is the premortem's token-bearing contribution
+            (``None`` when nothing ran or no tokens were consumed).
+        """
+        if self._premortem_hook is None or tracker.is_exhausted:
+            return summary, None
+        logger.info(
+            MEETING_PHASE_STARTED,
+            meeting_id=meeting_id,
+            phase=MeetingPhase.PREMORTEM,
+        )
+        try:
+            result = await self._premortem_hook(
+                synthesis_text=summary,
+                participant_ids=participant_ids,
+                agent_caller=agent_caller,
+                token_budget=tracker.remaining,
+                context_id=meeting_id,
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            # Best-effort phase: a hook failure returns the summary without
+            # a premortem section rather than discarding the whole meeting.
+            logger.warning(
+                MEETING_PREMORTEM_FAILED,
+                meeting_id=meeting_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return summary, None
+        logger.info(
+            MEETING_PHASE_COMPLETED,
+            meeting_id=meeting_id,
+            phase=MeetingPhase.PREMORTEM,
+        )
+        section = result.text
+        # Pair the tracker record with a contribution carrying the same
+        # counts so the minutes' total==sum(contributions) invariant holds.
+        # Attribute the aggregate premortem usage to the synthesis leader,
+        # who owns this phase. Skip both when the premortem was inert.
+        contribution: MeetingContribution | None = None
+        if result.input_tokens or result.output_tokens:
+            tracker.record(result.input_tokens, result.output_tokens)
+            contribution = MeetingContribution(
+                agent_id=leader_id,
+                content=section,
+                phase=MeetingPhase.PREMORTEM,
+                turn_number=turn_number,
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens,
+                timestamp=datetime.now(UTC),
+            )
+        if not section.strip():
+            return summary, contribution
+        logger.info(
+            MEETING_PREMORTEM_APPENDED,
+            meeting_id=meeting_id,
+            section_length=len(section),
+        )
+        return (
+            f"{summary}\n\n{_PREMORTEM_SECTION_HEADING}\n\n{section}",
+            contribution,
         )

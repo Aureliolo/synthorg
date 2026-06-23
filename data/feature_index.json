@@ -269,7 +269,11 @@
       ],
       "depends_on": [],
       "directory": "src/synthorg/communication",
-      "ghost_wired_symbols": [],
+      "ghost_wired_symbols": [
+        "ConsensusVelocityDetector",
+        "DefaultPremortemExecutor",
+        "ProgressiveTierResolver"
+      ],
       "mcp_tool_names": [
         "synthorg_messages_list",
         "synthorg_messages_get",
@@ -436,6 +440,7 @@
       "depends_on": [],
       "directory": "src/synthorg/engine",
       "ghost_wired_symbols": [
+        "TaskAssignmentService",
         "EvaluationVersionService",
         "SubworkflowService",
         "build_evolution_service",
@@ -1283,7 +1288,9 @@
         "EmbeddedGitBackend",
         "LocalPathGitBackend",
         "ExternalRemoteGitBackend",
-        "EnvironmentService"
+        "EnvironmentService",
+        "AstSemanticAnalyzer",
+        "DiskQuotaWatcher"
       ],
       "mcp_tool_names": [],
       "name": "workspace",
@@ -1300,6 +1307,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-22T22:23:59.910742Z",
+  "generated_at": "2026-06-23T12:14:02.916784Z",
   "schema_version": 1
 }

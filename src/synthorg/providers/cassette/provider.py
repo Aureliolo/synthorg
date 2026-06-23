@@ -28,6 +28,8 @@ from typing import override
 
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
+    PROVIDER_CASSETTE_FORMAT_ERROR,
+    PROVIDER_CASSETTE_INTERNAL_ERROR,
     PROVIDER_CASSETTE_RECORDED,
     PROVIDER_CASSETTE_REPLAYED,
 )
@@ -109,6 +111,11 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         """
         if self._inner is None:
             msg = "record mode requires a wrapped inner provider"
+            logger.error(
+                PROVIDER_CASSETTE_INTERNAL_ERROR,
+                provider=self._provider_name,
+                reason="record_mode_without_inner",
+            )
             raise CassetteInternalError(
                 msg,
                 context={"provider": self._provider_name},
@@ -247,6 +254,11 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         ):
             return outcome.response
         msg = f"cassette outcome kind {outcome.kind.value!r} is not a completion"
+        logger.error(
+            PROVIDER_CASSETTE_FORMAT_ERROR,
+            provider=self._provider_name,
+            kind=outcome.kind.value,
+        )
         raise CassetteFormatError(msg, context={"kind": outcome.kind.value})
 
     # -- stream -------------------------------------------------------
@@ -421,6 +433,11 @@ class CassetteCompletionProvider(BaseCompletionProvider):
             )
             raise recorded_error
         msg = f"cassette outcome kind {outcome.kind.value!r} is not a stream"
+        logger.error(
+            PROVIDER_CASSETTE_FORMAT_ERROR,
+            provider=self._provider_name,
+            kind=outcome.kind.value,
+        )
         raise CassetteFormatError(msg, context={"kind": outcome.kind.value})
 
     # -- capabilities -------------------------------------------------
@@ -464,6 +481,11 @@ class CassetteCompletionProvider(BaseCompletionProvider):
             msg = (
                 f"cassette outcome kind {outcome.kind.value!r} "
                 f"is not a capability lookup"
+            )
+            logger.error(
+                PROVIDER_CASSETTE_FORMAT_ERROR,
+                provider=self._provider_name,
+                kind=outcome.kind.value,
             )
             raise CassetteFormatError(msg, context={"kind": outcome.kind.value})
 

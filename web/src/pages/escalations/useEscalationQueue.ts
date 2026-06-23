@@ -6,6 +6,9 @@ import type { ConflictType, EscalationResponse, EscalationStatus } from '@/api/t
 export type PriorityBucket = 'critical' | 'high' | 'standard'
 export type SortKey = 'priority' | 'created' | 'conflict_type'
 
+/** Page window size for the cursor-mode pagination control. */
+export const ESCALATION_PAGE_SIZE = 20
+
 /**
  * Conflict-type buckets surfaced as the "priority" filter; the data
  * model has no explicit priority field, so we group by conflict domain.
@@ -66,6 +69,61 @@ function sortEscalations(list: EscalationResponse[], sortKey: SortKey): Escalati
   return [...list].sort(createdDesc)
 }
 
+/**
+ * Cursor-mode paging over the accumulated, filtered escalation list.
+ *
+ * Navigating past the loaded window pulls the next cursor batch (the
+ * slice fills in once it resolves); navigating past the end with nothing
+ * more to load is a no-op so the control cannot strand the operator on an
+ * empty page. `resetPage` is called by the filter handlers when the
+ * filtered/sorted basis changes.
+ */
+function useEscalationPaging(
+  visibleEscalations: EscalationResponse[],
+  hasMore: boolean,
+  fetchMore: () => unknown,
+): {
+  page: number
+  pagedEscalations: EscalationResponse[]
+  loadPage: (page: number) => void
+  resetPage: () => void
+} {
+  const [page, setPage] = useState(1)
+  const loadedPageCount = Math.max(1, Math.ceil(visibleEscalations.length / ESCALATION_PAGE_SIZE))
+  // Clamp at read time rather than storing the bound via an effect: when
+  // the loaded list shrinks (a refresh, filter, or decision drops rows),
+  // a stored `page` can exceed `loadedPageCount` and slice to an empty
+  // list even though items still exist. Deriving `effectivePage` keeps the
+  // slice in range without a redundant render or a set-state-in-effect.
+  const effectivePage = Math.min(page, loadedPageCount)
+  const pagedEscalations = useMemo(
+    () =>
+      visibleEscalations.slice(
+        (effectivePage - 1) * ESCALATION_PAGE_SIZE,
+        effectivePage * ESCALATION_PAGE_SIZE,
+      ),
+    [visibleEscalations, effectivePage],
+  )
+  const loadPage = useCallback(
+    (target: number) => {
+      const next = Math.max(1, target)
+      if (next > loadedPageCount) {
+        if (!hasMore) return
+        void fetchMore()
+        // Store the requested target; `effectivePage` clamps rendering to
+        // the last loaded page until the next batch resolves, then the
+        // operator lands on the page they asked for once rows fill in.
+        setPage(next)
+        return
+      }
+      setPage(next)
+    },
+    [loadedPageCount, hasMore, fetchMore],
+  )
+  const resetPage = useCallback(() => setPage(1), [])
+  return { page: effectivePage, pagedEscalations, loadPage, resetPage }
+}
+
 type EmptyProps = ReturnType<typeof useEmptyStateProps>
 
 function applyFilteredEmptyTitle(base: EmptyProps, filterActive: boolean, isEmpty: boolean): EmptyProps {
@@ -78,9 +136,33 @@ function applyFilteredEmptyTitle(base: EmptyProps, filterActive: boolean, isEmpt
   }
 }
 
+function useEscalationEmptyState(
+  visibleCount: number,
+  totalCount: number,
+  filterActive: boolean,
+): EmptyProps {
+  const base = useEmptyStateProps({
+    filteredCount: visibleCount,
+    totalCount,
+    filterActive,
+    empty: {
+      title: 'No escalations',
+      description: 'Conflicts that the autonomous resolvers cannot decide land here for human review.',
+    },
+    filtered: {
+      title: 'No escalations match your filters',
+      description: 'Adjust the status or priority filter above to see more escalations.',
+    },
+  })
+  return applyFilteredEmptyTitle(base, filterActive, visibleCount === 0)
+}
+
 export interface EscalationQueue {
   escalations: readonly EscalationResponse[]
   visibleEscalations: EscalationResponse[]
+  pagedEscalations: EscalationResponse[]
+  page: number
+  pageSize: number
   loading: boolean
   loadingMore: boolean
   error: string | null
@@ -95,7 +177,7 @@ export interface EscalationQueue {
   handlePriorityChange: (value: string) => void
   handleSortChange: (value: string) => void
   retry: () => void
-  loadMore: () => void
+  loadPage: (page: number) => void
 }
 
 export function useEscalationQueue(): EscalationQueue {
@@ -124,41 +206,54 @@ export function useEscalationQueue(): EscalationQueue {
     [escalations, priorityFilter, sortKey],
   )
 
-  const filterActive = statusFilter != null || priorityFilter !== 'all'
-  const base = useEmptyStateProps({
-    filteredCount: visibleEscalations.length,
-    totalCount: escalations.length,
-    filterActive,
-    empty: {
-      title: 'No escalations',
-      description: 'Conflicts that the autonomous resolvers cannot decide land here for human review.',
-    },
-    filtered: {
-      title: 'No escalations match your filters',
-      description: 'Adjust the status or priority filter above to see more escalations.',
-    },
-  })
+  const { page, pagedEscalations, loadPage, resetPage } = useEscalationPaging(
+    visibleEscalations,
+    hasMore,
+    fetchMoreEscalations,
+  )
 
+  const filterActive = statusFilter != null || priorityFilter !== 'all'
+  const emptyStateProps = useEscalationEmptyState(
+    visibleEscalations.length,
+    escalations.length,
+    filterActive,
+  )
+
+  // Each filter / sort change re-windows from the first page so the
+  // operator never lands on an out-of-range page after narrowing the list.
   const handleStatusChange = useCallback(
     (value: string) => {
+      resetPage()
       if (value === 'all') {
         setStatusFilter(null)
         return
       }
       if (STATUS_OPTIONS.some((o) => o.value === value)) setStatusFilter(value as EscalationStatus)
     },
-    [setStatusFilter],
+    [setStatusFilter, resetPage],
   )
-  const handlePriorityChange = useCallback((value: string) => {
-    if (PRIORITY_OPTIONS.some((o) => o.value === value)) setPriorityFilter(value as PriorityBucket | 'all')
-  }, [])
-  const handleSortChange = useCallback((value: string) => {
-    if (SORT_OPTIONS.some((o) => o.value === value)) setSortKey(value as SortKey)
-  }, [])
+  const handlePriorityChange = useCallback(
+    (value: string) => {
+      resetPage()
+      if (PRIORITY_OPTIONS.some((o) => o.value === value)) setPriorityFilter(value as PriorityBucket | 'all')
+    },
+    [resetPage],
+  )
+  const handleSortChange = useCallback(
+    (value: string) => {
+      resetPage()
+      if (SORT_OPTIONS.some((o) => o.value === value)) setSortKey(value as SortKey)
+    },
+    [resetPage],
+  )
+  const retry = useCallback(() => void fetchEscalations(), [fetchEscalations])
 
   return {
     escalations,
     visibleEscalations,
+    pagedEscalations,
+    page,
+    pageSize: ESCALATION_PAGE_SIZE,
     loading,
     loadingMore,
     error,
@@ -167,12 +262,12 @@ export function useEscalationQueue(): EscalationQueue {
     priorityFilter,
     sortKey,
     selectedId,
-    emptyStateProps: applyFilteredEmptyTitle(base, filterActive, visibleEscalations.length === 0),
+    emptyStateProps,
     setSelectedId,
     handleStatusChange,
     handlePriorityChange,
     handleSortChange,
-    retry: () => void fetchEscalations(),
-    loadMore: () => void fetchMoreEscalations(),
+    retry,
+    loadPage,
   }
 }

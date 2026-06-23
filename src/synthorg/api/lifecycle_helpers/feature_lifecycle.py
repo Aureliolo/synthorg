@@ -22,6 +22,7 @@ that hangs past its budget never wedges the shutdown window.
 
 import asyncio
 from collections.abc import Sequence
+from typing import Final
 
 from synthorg._core.features import ServiceLifecycleHook, discover_features
 from synthorg.api.lifecycle import _try_stop
@@ -29,6 +30,13 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_SHUTDOWN, API_APP_STARTUP
 
 logger = get_logger(__name__)
+
+# Fallback stop budget for a feature hook that declares no
+# ``stop_timeout_seconds`` (``None``). Without it the teardown await is
+# unbounded, so one hook whose ``stop()`` hangs could block the whole
+# shutdown window past the orchestrator's SIGKILL deadline (75s, see
+# api/server.py). Matches the draining-service budget used elsewhere.
+_FEATURE_HOOK_DEFAULT_STOP_SECONDS: Final[float] = 5.0
 
 
 class FeatureLifecycleRunner:
@@ -93,11 +101,16 @@ class FeatureLifecycleRunner:
     async def stop_all(self) -> None:
         """Stop the started hooks in reverse order under each stop budget."""
         for hook in reversed(self._started):
+            stop_budget = (
+                hook.stop_timeout_seconds
+                if hook.stop_timeout_seconds is not None
+                else _FEATURE_HOOK_DEFAULT_STOP_SECONDS
+            )
             await _try_stop(
                 hook.stop(),
                 API_APP_SHUTDOWN,
                 f"stopping feature hook {hook.name}",
-                timeout=hook.stop_timeout_seconds,
+                timeout=stop_budget,
                 service=hook.name,
             )
         self._started.clear()

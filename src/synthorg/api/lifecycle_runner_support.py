@@ -41,6 +41,7 @@ class _LifecycleTasks:
 
     ticket_cleanup_task: asyncio.Task[None] | None = None
     audit_retention_task: asyncio.Task[None] | None = None
+    flight_recorder_retention_task: asyncio.Task[None] | None = None
     webhook_cleanup_task: asyncio.Task[None] | None = None
     auto_wired_dispatcher: SettingsChangeDispatcher | None = None
     health_prober: ProviderHealthProber | None = None

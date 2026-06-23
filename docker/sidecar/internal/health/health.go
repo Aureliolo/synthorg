@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -68,9 +69,12 @@ func (s *Server) Start() error {
 	s.server = &http.Server{
 		Handler:           s.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       30 * time.Second,
 	}
 	go func() {
-		if err := s.server.Serve(listener); err != nil && err != http.ErrServerClosed {
+		if err := s.server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			if s.logger != nil {
 				s.logger.Warn("health.serve.error", "error", err.Error())
 			}
@@ -90,8 +94,10 @@ func (s *Server) Shutdown(ctx context.Context) error {
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	uptime := int64(time.Since(s.startTime).Seconds())
+	// "ok" aligns with the main API /healthz liveness body and the
+	// /rules response below; Docker's own State.Health stays "healthy".
 	resp := map[string]any{
-		"status":         "healthy",
+		"status":         "ok",
 		"uptime_seconds": uptime,
 	}
 	json.NewEncoder(w).Encode(resp) //nolint:errcheck // HTTP response write errors are non-actionable in handlers
@@ -121,6 +127,9 @@ type rulesRequest struct {
 }
 
 func (s *Server) handlePutRules(w http.ResponseWriter, r *http.Request) {
+	// Bound the request body (defence-in-depth): even an authenticated
+	// caller should not be able to stream an unbounded body into memory.
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req rulesRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.jsonError(w, "invalid JSON", http.StatusBadRequest)

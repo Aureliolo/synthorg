@@ -39,11 +39,18 @@ from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.meta.appliers._architecture_contract import AppliedArchitectureChange
 from synthorg.meta.models import ArchitectureChange, PromptChange, RollbackOperation
+from synthorg.observability import get_logger
+from synthorg.observability.events.meta import (
+    META_APPLY_FAILED,
+    META_ROLLBACK_PRINCIPLE_REMOVED,
+)
 from synthorg.organization.department_record import DepartmentRecord
 from synthorg.organization.enums import DepartmentName
 from synthorg.organization.services import DepartmentService
 from synthorg.persistence.active_principle_protocol import ActivePrincipleRepository
 from synthorg.persistence.role_registry_protocol import RoleRegistryRepository
+
+logger = get_logger(__name__)
 
 _ALL_SCOPE: Final[str] = "all"
 
@@ -150,6 +157,11 @@ class DurablePromptApplierContext:
                 f"Cannot resolve scope {scope!r}: not 'all', a known role, or a "
                 "known department. Refusing to widen scope to ALL silently."
             )
+            logger.warning(
+                META_APPLY_FAILED,
+                operation="create_principle",
+                reason="unresolvable_scope",
+            )
             raise ValueError(msg)
         now = self._clock.now()
         principle = ActivePrinciple(
@@ -166,6 +178,7 @@ class DurablePromptApplierContext:
     async def delete_principle(self, principle_id: str) -> None:
         """Delete a previously-created active principle (rollback)."""
         await self._repo.delete(NotBlankStr(principle_id))
+        logger.debug(META_ROLLBACK_PRINCIPLE_REMOVED, principle_id=principle_id)
 
     async def refresh_snapshot(self) -> None:
         """Reload the cached read provider after a successful apply."""
@@ -265,6 +278,7 @@ class DurableArchitectureApplierContext:
         if operation == "modify_workflow":
             return await self._modify_workflow(change)
         msg = f"Unsupported architecture operation: {operation}"
+        logger.warning(META_APPLY_FAILED, operation=operation, reason="unsupported")
         raise MetaArchitectureApplyError(msg)
 
     async def refresh_snapshot(self) -> None:
@@ -314,6 +328,12 @@ class DurableArchitectureApplierContext:
         prior = await self._role_repo.get(name)
         if prior is None:
             msg = f"Role not found for removal: {change.target_name}"
+            logger.warning(
+                META_APPLY_FAILED,
+                operation="remove_role",
+                target_name=change.target_name,
+                reason="not_found",
+            )
             raise MetaArchitectureApplyError(msg)
         await self._role_repo.delete(name)
 
@@ -366,6 +386,12 @@ class DurableArchitectureApplierContext:
         prior = await self._department_by_name(name)
         if prior is None:
             msg = f"Department not found for removal: {name}"
+            logger.warning(
+                META_APPLY_FAILED,
+                operation="remove_department",
+                target_name=name,
+                reason="not_found",
+            )
             raise MetaArchitectureApplyError(msg)
         await self._departments.delete_department(
             department_id=NotBlankStr(str(prior.id)),
@@ -402,6 +428,12 @@ class DurableArchitectureApplierContext:
         current = await self._workflow_by_name(change.target_name)
         if current is None:
             msg = f"Workflow not found for modification: {change.target_name}"
+            logger.warning(
+                META_APPLY_FAILED,
+                operation="modify_workflow",
+                target_name=change.target_name,
+                reason="not_found",
+            )
             raise MetaArchitectureApplyError(msg)
         description = change.payload.get("description")
         new_description = (
@@ -453,11 +485,23 @@ class DurableArchitectureApplierContext:
         dept_raw = payload.get("department")
         if dept_raw is None:
             msg = f"create_role for {change.target_name!r} requires a department"
+            logger.warning(
+                META_APPLY_FAILED,
+                operation="create_role",
+                target_name=change.target_name,
+                reason="missing_department",
+            )
             raise MetaArchitectureApplyError(msg)
         try:
             department = DepartmentName(str(dept_raw))
         except ValueError as exc:
             msg = f"create_role department {dept_raw!r} is not a known DepartmentName"
+            logger.warning(
+                META_APPLY_FAILED,
+                operation="create_role",
+                target_name=change.target_name,
+                reason="unknown_department",
+            )
             raise MetaArchitectureApplyError(msg) from exc
         authority_raw = payload.get("authority_level")
         authority = (

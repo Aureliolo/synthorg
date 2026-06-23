@@ -1080,3 +1080,98 @@ class TestSubscribeAccessControl:
         data = json.loads(result)
         assert "user:u2" not in data["channels"]
         assert "user:u2" not in subscribed
+
+
+@pytest.mark.unit
+class TestWsFirstMessageAuthTimeout:
+    """The first-message auth (read + ticket validation) is budget-bounded."""
+
+    async def test_validation_hang_times_out_and_closes(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import asyncio
+        from types import SimpleNamespace
+
+        from typeguard import suppress_type_checks
+
+        from synthorg.api.controllers import ws as ws_module
+
+        async def _hang(_socket: object) -> None:
+            # Stand in for a ticket-store validation that never returns.
+            await asyncio.Event().wait()
+
+        monkeypatch.setattr(ws_module, "_auth_from_first_message", _hang)
+
+        closed: list[tuple[int, str]] = []
+
+        class _FakeSocket:
+            def __init__(self) -> None:
+                self.query_params: dict[str, str] = {}
+                self.client = SimpleNamespace(host="9.9.9.9")
+                self.app = SimpleNamespace(
+                    state={
+                        "app_state": SimpleNamespace(
+                            ws_auth_limits=SimpleNamespace(
+                                auth_timeout_seconds=0.01,
+                            ),
+                        ),
+                    },
+                )
+
+            async def accept(self) -> None:
+                return None
+
+            async def close(self, code: int, reason: str) -> None:
+                closed.append((code, reason))
+
+        with suppress_type_checks():
+            result = await ws_module._authenticate_ws(_FakeSocket())  # type: ignore[arg-type]
+
+        assert result is None
+        assert closed
+        assert closed[0][0] == ws_module._WS_CLOSE_POLICY_VIOLATION
+
+
+@pytest.mark.unit
+class TestWsBreakerClock:
+    """The outbound circuit-breaker close timing honours the injected clock."""
+
+    async def test_breaker_window_rollover_uses_injected_clock(self) -> None:
+        from typeguard import suppress_type_checks
+
+        from synthorg.api.controllers import ws as ws_module
+        from tests._shared import FakeClock
+
+        clock = FakeClock()
+        tracker = ws_module._BackpressureTracker()
+        closed: list[int] = []
+
+        class _FakeSocket:
+            async def close(self, code: int, reason: str) -> None:
+                del reason
+                closed.append(code)
+
+        threshold = ws_module._WS_BACKPRESSURE_DROP_THRESHOLD
+
+        async def _drop() -> None:
+            with suppress_type_checks():
+                await ws_module._trip_breaker_and_close(
+                    backpressure=tracker,
+                    socket=_FakeSocket(),  # type: ignore[arg-type]
+                    clock=clock,
+                    log_context={},
+                )
+
+        # threshold-1 drops within the window do not trip.
+        for _ in range(threshold - 1):
+            await _drop()
+        assert not closed
+
+        # Advance the injected clock past the window: the next drop starts
+        # a fresh window (count resets to 1) instead of tripping, proving
+        # the breaker reads the injected clock.
+        clock.advance(ws_module._WS_BACKPRESSURE_WINDOW_SECONDS + 1.0)
+        await _drop()
+        assert not closed
+        assert tracker.consecutive_drops == 1

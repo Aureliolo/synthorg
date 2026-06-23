@@ -311,10 +311,21 @@ class Worker:
     async def _is_completed(self, claim: TaskClaim) -> bool:
         """Return ``True`` if the claim has already completed.
 
-        Resolves to ``False`` when no dedup repository is wired or when
-        the repo lookup fails (fail-open: a transient persistence error
-        must not stall the worker; the JetStream ``ack_wait`` window
+        Resolves to ``False`` when no dedup repository is wired or when a
+        *retryable* repo lookup fails (fail-open: a transient persistence
+        error must not stall the worker; the JetStream ``ack_wait`` window
         will redeliver and the next worker tries again).
+
+        A *non-retryable* lookup failure (``is_retryable=False`` -- schema
+        drift, a malformed query) means the dedup store is systematically
+        unusable. Continuing would execute every claim with no
+        exactly-once guard, so this re-raises (fail-closed): the worker
+        stops loudly for operator intervention rather than silently
+        degrading exactly-once to at-least-once for every task.
+
+        Raises:
+            QueryError: Re-raised when the dedup lookup fails
+                non-retryably.
         """
         if self._seen_claims is None:
             return False
@@ -329,6 +340,8 @@ class Worker:
                 exc,
                 stage="lookup",
             )
+            if not exc.is_retryable:
+                raise
             return False
         if not seen:
             return False
@@ -343,13 +356,24 @@ class Worker:
     async def _mark_completed(self, claim: TaskClaim) -> None:
         """Record the claim's terminal outcome in the dedup repository.
 
-        Fail-open: a transient persistence error here is logged and
-        swallowed. The worst-case is that a duplicate redelivery
-        executes the work twice; the work itself is idempotent at the
-        task-engine layer (single-writer transitions plus the API's
-        idempotency-key envelope), so re-execution converges on the
-        same state rather than corrupting it. Raising would crash the
-        worker loop and stall every claim sharing this subscriber.
+        Split by retryability:
+
+        - **Retryable** failure (transient blip): logged and swallowed
+          (fail-open). The work is idempotent at the task-engine layer
+          (single-writer transitions plus the API's idempotency-key
+          envelope), so a duplicate redelivery converges on the same
+          state rather than corrupting it.
+        - **Non-retryable** failure (``is_retryable=False`` -- schema
+          drift, a malformed query): re-raised (fail-closed). The mark is
+          written *before* the JetStream ack, so re-raising here leaves
+          the message un-acked and stops the worker loop instead of
+          acking a claim whose dedup row could never be written. Silently
+          proceeding would ack the claim while the dedup store stays
+          broken, degrading exactly-once to at-least-once for every
+          subsequent task until an operator intervenes.
+
+        Raises:
+            QueryError: Re-raised when the dedup write fails non-retryably.
         """
         if self._seen_claims is None:
             return
@@ -367,6 +391,8 @@ class Worker:
                 exc,
                 stage="mark",
             )
+            if not exc.is_retryable:
+                raise
 
     def _log_dedup_bypass(
         self,

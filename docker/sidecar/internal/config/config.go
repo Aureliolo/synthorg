@@ -8,6 +8,12 @@ import (
 	"strings"
 )
 
+// minAdminTokenLength is the floor for SIDECAR_ADMIN_TOKEN. The token
+// guards the rule-mutation endpoint with a constant-time compare; a very
+// short token provides negligible brute-force resistance, so a
+// misconfigured short value is rejected loudly at startup.
+const minAdminTokenLength = 32
+
 // HostPort is a validated host:port entry from the allowlist.
 type HostPort struct {
 	Host string
@@ -41,6 +47,10 @@ func Load() (Config, error) {
 	cfg.AdminToken = strings.TrimSpace(os.Getenv("SIDECAR_ADMIN_TOKEN"))
 	if cfg.AdminToken == "" {
 		return Config{}, fmt.Errorf("SIDECAR_ADMIN_TOKEN is required")
+	}
+	if len(cfg.AdminToken) < minAdminTokenLength {
+		return Config{}, fmt.Errorf(
+			"SIDECAR_ADMIN_TOKEN must be at least %d characters", minAdminTokenLength)
 	}
 
 	if v := os.Getenv("SIDECAR_ALLOWED_HOSTS"); v != "" {

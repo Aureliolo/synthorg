@@ -45,6 +45,7 @@ from synthorg.observability import (
 )
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.meeting import (
+    MEETING_BUDGET_SCALED,
     MEETING_EVENT_COOLDOWN_SKIPPED,
     MEETING_EVENT_TRIGGERED,
     MEETING_NO_PARTICIPANTS,
@@ -104,6 +105,7 @@ class MeetingScheduler:
 
     __slots__ = (
         "_background_drain_task",
+        "_budget_scaler",
         "_clock",
         "_config",
         "_cooldown_hydrated",
@@ -130,12 +132,20 @@ class MeetingScheduler:
         event_publisher: Callable[[str, dict[str, object]], None] | None = None,
         clock: Callable[[], float] | None = None,
         cooldown_repo: MeetingCooldownRepository | None = None,
+        budget_scaler: Callable[[int], int] | None = None,
     ) -> None:
         self._config = config
         self._orchestrator = orchestrator
         self._resolver = participant_resolver
         self._event_publisher = event_publisher
         self._clock = clock or time.monotonic
+        # Optional progressive-tier budget scaler: maps a meeting type's
+        # static ``duration_tokens`` to a tier-adjusted token budget so
+        # high-impact decisions get a deeper (or shallower) analysis
+        # allowance. Identity when absent. Bound in the api layer behind
+        # ``engine.strategy.ProgressiveTierResolver`` (kept out of this
+        # package to avoid the strategy<->meeting import cycle).
+        self._budget_scaler = budget_scaler
         # When cooldown_repo is supplied the scheduler persists the
         # wall-clock timestamp of every trigger at trigger_event and
         # rehydrates _last_triggered from the repo at start(), so a
@@ -778,6 +788,7 @@ class MeetingScheduler:
             Meeting record on success, None on error.
         """
         self._publish_started_event(meeting_type.name)
+        token_budget = self._scaled_token_budget(meeting_type.duration_tokens)
         try:
             record = await self._orchestrator.run_meeting(
                 meeting_type_name=meeting_type.name,
@@ -785,7 +796,7 @@ class MeetingScheduler:
                 agenda=agenda,
                 leader_id=leader_id,
                 participant_ids=tuple(participant_ids),
-                token_budget=meeting_type.duration_tokens,
+                token_budget=token_budget,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
@@ -800,6 +811,60 @@ class MeetingScheduler:
 
         self._publish_meeting_event(record)
         return record
+
+    def _scaled_token_budget(self, base_tokens: int) -> int:
+        """Apply the progressive-tier budget scaler to a token budget.
+
+        Identity when no scaler is wired. A scaler that returns a
+        non-positive value (or raises) falls back to ``base_tokens`` so
+        a misconfigured tier map can never starve ``run_meeting``'s
+        ``token_budget > 0`` invariant.
+
+        Returns:
+            The tier-adjusted token budget, or ``base_tokens`` when no
+            scaler is wired or the scaler produced an unusable value.
+        """
+        if self._budget_scaler is None:
+            return base_tokens
+        try:
+            # Read through an ``object`` view: the annotation promises
+            # ``-> int`` but a misbehaving injected scaler can return any
+            # runtime type, and comparing a non-integer with ``<= 0`` below
+            # would raise ``TypeError`` outside the try and escape the method.
+            scaled_value: object = self._budget_scaler(base_tokens)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                MEETING_SCHEDULER_ERROR,
+                note="budget scaler raised; using base token budget",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return base_tokens
+        if not isinstance(scaled_value, int) or isinstance(scaled_value, bool):
+            logger.warning(
+                MEETING_BUDGET_SCALED,
+                note="budget scaler returned a non-integer; using base",
+                base_tokens=base_tokens,
+                scaled_tokens=scaled_value,
+            )
+            return base_tokens
+        scaled = scaled_value
+        if scaled <= 0:
+            logger.warning(
+                MEETING_BUDGET_SCALED,
+                note="budget scaler returned non-positive; using base",
+                base_tokens=base_tokens,
+                scaled_tokens=scaled,
+            )
+            return base_tokens
+        if scaled != base_tokens:
+            logger.info(
+                MEETING_BUDGET_SCALED,
+                base_tokens=base_tokens,
+                scaled_tokens=scaled,
+            )
+        return scaled
 
     def _publish_meeting_event(self, record: MeetingRecord) -> None:
         """Publish a WebSocket event for a meeting result.

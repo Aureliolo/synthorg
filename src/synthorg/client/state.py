@@ -49,12 +49,24 @@ def has_simulation_runtime(app_state: AppStateSliceMixin) -> bool:
 def client_simulation_state_of(
     app_state: AppStateSliceMixin,
 ) -> ClientSimulationState:
-    """Resolve the client simulation state from its slice, or raise 503.
+    """Resolve the fully-wired client simulation state, or raise 503.
+
+    The simulation/request controllers mount unconditionally, so this
+    guard is the single place that turns an absent or partially-wired
+    runtime into a clean ``ServiceUnavailableError`` (503) instead of a
+    404 (route absent) or an ``AttributeError`` on a ``None`` engine. A
+    runtime that lacks an LLM provider / task engine leaves
+    ``intake_engine`` / ``review_pipeline`` unwired; both are required to
+    run an end-to-end simulation flow.
 
     Returns:
-        The wired client simulation state.
+        The wired client simulation state with both the intake engine and
+        review pipeline present.
     """
-    return require_service(
+    state = require_service(
         app_state.slice(ClientStateSlice).simulation_state,
         "Client Simulation State",
     )
+    require_service(state.intake_engine, "Client Simulation Intake Engine")
+    require_service(state.review_pipeline, "Client Simulation Review Pipeline")
+    return state

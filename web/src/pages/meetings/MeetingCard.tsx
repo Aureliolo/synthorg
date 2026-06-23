@@ -33,7 +33,7 @@ function MeetingCardHeader({ meeting }: { meeting: MeetingResponse }) {
         <span className="truncate text-sm font-semibold text-foreground">
           {formatLabel(meeting.meeting_type_name)}
         </span>
-        <span className="shrink-0 rounded border border-border bg-surface px-1.5 py-0.5 text-micro font-mono text-muted-foreground">
+        <span className="shrink-0 rounded border border-border bg-surface px-1.5 py-0.5 text-micro font-mono text-text-secondary">
           {getProtocolLabel(meeting.protocol_type)}
         </span>
       </div>
@@ -44,7 +44,7 @@ function MeetingCardHeader({ meeting }: { meeting: MeetingResponse }) {
 
 function MeetingCardStats({ meeting }: { meeting: MeetingResponse }) {
   return (
-    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+    <div className="flex items-center gap-4 text-xs text-text-secondary">
       <span className="flex items-center gap-1">
         <Users className="size-3.5" aria-hidden="true" />
         {meeting.minutes?.participant_ids.length ?? 0}
@@ -69,12 +69,11 @@ function MeetingTokenBar({ meeting }: { meeting: MeetingResponse }) {
     <div className="h-1 w-full overflow-hidden rounded-full bg-border">
       <div
         className={cn(
-          'h-full rounded-full transition-all duration-[var(--so-transition-progress)]',
+          'h-full rounded-full transition-all duration-[var(--so-transition-progress)] ease-in-out',
           tokenBarColorClass(tokenPercent),
         )}
         style={{
           width: `${tokenPercent}%`,
-          transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
         }}
       />
     </div>
@@ -89,7 +88,7 @@ function MeetingCardImpl({ meeting, className }: MeetingCardProps) {
       to={ROUTES.MEETING_DETAIL.replace(':meetingId', meeting.meeting_id)}
       className={cn(
         'flex flex-col gap-3 rounded-lg border border-border bg-card p-card',
-        'transition-all duration-200 hover:bg-card-hover hover:-translate-y-px',
+        'transition-all duration-[var(--so-transition-default)] hover:bg-card-hover hover:-translate-y-px',
         'hover:shadow-[var(--so-shadow-card-hover)]',
         className,
       )}
@@ -102,7 +101,7 @@ function MeetingCardImpl({ meeting, className }: MeetingCardProps) {
         <time
           dateTime={startedAt}
           title={formatDateTime(startedAt)}
-          className="text-micro font-mono text-muted-foreground"
+          className="text-micro font-mono text-text-secondary"
         >
           {formatRelativeTime(startedAt)}
         </time>

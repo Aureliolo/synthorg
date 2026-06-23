@@ -12,6 +12,8 @@ from pathlib import Path
 
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.types import ModelTier, NotBlankStr
+from synthorg.observability import get_logger
+from synthorg.observability.events.vision_verify import VISION_VERIFY_CONFIG_ERROR
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.security.visionverify.config import (
     VisionVerifierKind,
@@ -24,6 +26,8 @@ from synthorg.security.visionverify.verifiers import (
     LLMVisionVerifier,
     NoOpVisionVerifier,
 )
+
+logger = get_logger(__name__)
 
 type TierResolver = Callable[[ModelTier], str | None]
 
@@ -93,10 +97,21 @@ def _build_llm_vision(
             "llm_vision verifier requires a CompletionProvider and a "
             "tier_resolver; pass both to build_vision_verifier()"
         )
+        logger.error(
+            VISION_VERIFY_CONFIG_ERROR,
+            reason="missing_provider_or_tier_resolver",
+            has_provider=provider is not None,
+            has_tier_resolver=tier_resolver is not None,
+        )
         raise VisionVerifyConfigError(msg)
     model_id = tier_resolver(config.model_tier)
     if not model_id or not model_id.strip():
         msg = f"llm_vision verifier tier {config.model_tier!r} resolved to no model id"
+        logger.error(
+            VISION_VERIFY_CONFIG_ERROR,
+            reason="tier_resolved_no_model",
+            tier=config.model_tier,
+        )
         raise VisionVerifyConfigError(msg, context={"tier": config.model_tier})
     return LLMVisionVerifier(
         provider=provider,

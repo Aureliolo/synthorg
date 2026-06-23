@@ -29,6 +29,7 @@ from synthorg.memory.embedding.fine_tune_models import (
     CheckpointRecord,
     FineTuneRun,
 )
+from synthorg.memory.embedding.fine_tune_query import QueryGenerator
 from synthorg.memory.embedding.fine_tune_run_helpers import (
     dir_size,
     generate_run_training_data,
@@ -56,7 +57,7 @@ async def run_fine_tune_stages(  # noqa: PLR0913 -- pipeline collaborators threa
     checkpoint_repo: FineTuneCheckpointRepository,
     settings_service: object | None,
     training_data_source: TrainingDataSource | None,
-    llm_provider: object | None,
+    query_generator: QueryGenerator | None,
     cancellation: CancellationToken | None,
     enter_stage: EnterStageFn,
     complete_stage: CompleteStageFn,
@@ -83,7 +84,7 @@ async def run_fine_tune_stages(  # noqa: PLR0913 -- pipeline collaborators threa
             cfg,
             out_dir,
             training_data_source=training_data_source,
-            llm_provider=llm_provider,
+            query_generator=query_generator,
             progress_callback=make_progress_cb(run),
             cancellation=cancellation,
         )

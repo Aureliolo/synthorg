@@ -50,7 +50,7 @@ class ChatActionResult(BaseModel):
         default=(),
         description="Tools the action executed this run, in order",
     )
-    approval_id: str | None = Field(
+    approval_id: NotBlankStr | None = Field(
         default=None,
         description="Approval id of the parked decision (PARKED only)",
     )

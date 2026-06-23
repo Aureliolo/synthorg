@@ -22,7 +22,6 @@ from synthorg.communication.event_stream.stream import (
     EventStreamSubscription,
 )
 from synthorg.communication.event_stream.types import StreamEvent
-from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.auth.config import AUTH_REVALIDATE_INTERVAL_SECONDS
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.auth.predicates import is_owner_or_ceo
@@ -290,19 +289,6 @@ async def assert_sse_session_access(
     raise NotFoundError(msg)
 
 
-def _require_hub(app_state: AppState) -> EventStreamHub:
-    """Return the hub or raise when unavailable.
-
-    Raises:
-        NotFoundError: Raised on the corresponding failure path.
-    """
-    hub = app_state.slice(CommunicationStateSlice).event_stream_hub
-    if hub is None:
-        msg = "Event stream not configured"
-        raise NotFoundError(msg)
-    return hub
-
-
 async def _serialise_stream_event(
     event: StreamEvent,
     session_id: str,
@@ -477,6 +463,7 @@ async def _sse_event_stream(
     *,
     app_state: AppState | None = None,
     user: AuthenticatedUser | None = None,
+    after_id: str | None = None,
 ) -> AsyncIterator[dict[str, str]]:
     """Yield SSE events from the hub for the given session.
 
@@ -508,10 +495,11 @@ async def _sse_event_stream(
         # subscriber attached to the hub: ``finally`` always runs
         # ``hub.unsubscribe`` and tolerates ``queue is None`` when the
         # subscribe itself raised.
-        subscription = await hub.subscribe(session_id)
+        subscription = await hub.subscribe(session_id, after_id=after_id)
         logger.info(
             EVENT_STREAM_CLIENT_CONNECTED,
             session_id=session_id,
+            replay_after_id=after_id,
         )
         revalidation_armed = app_state is not None and user is not None
         keepalive_seconds = await _resolve_sse_keepalive_seconds(app_state)

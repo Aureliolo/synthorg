@@ -201,6 +201,45 @@ class TestMeetingScheduler:
         assert len(records) == 1
         orchestrator.run_meeting.assert_awaited_once()
 
+    async def test_budget_scaler_scales_token_budget(
+        self,
+        orchestrator: MagicMock,
+        resolver: MagicMock,
+    ) -> None:
+        trigger_type = _make_trigger_type()
+        config = _make_config(types=(trigger_type,))
+        scheduler = MeetingScheduler(
+            config=config,
+            orchestrator=orchestrator,
+            participant_resolver=resolver,
+            budget_scaler=lambda base: base + 7,
+        )
+
+        await scheduler.trigger_event("code_review_complete")
+
+        orchestrator.run_meeting.assert_awaited_once()
+        kwargs = orchestrator.run_meeting.await_args.kwargs
+        assert kwargs["token_budget"] == trigger_type.duration_tokens + 7
+
+    async def test_budget_scaler_non_positive_falls_back_to_base(
+        self,
+        orchestrator: MagicMock,
+        resolver: MagicMock,
+    ) -> None:
+        trigger_type = _make_trigger_type()
+        config = _make_config(types=(trigger_type,))
+        scheduler = MeetingScheduler(
+            config=config,
+            orchestrator=orchestrator,
+            participant_resolver=resolver,
+            budget_scaler=lambda base: base * 0,
+        )
+
+        await scheduler.trigger_event("code_review_complete")
+
+        kwargs = orchestrator.run_meeting.await_args.kwargs
+        assert kwargs["token_budget"] == trigger_type.duration_tokens
+
     async def test_trigger_event_returns_empty_for_unknown(
         self,
         orchestrator: MagicMock,

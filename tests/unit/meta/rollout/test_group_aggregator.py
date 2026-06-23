@@ -34,6 +34,7 @@ class _FakeTracker(PerformanceTracker):
         agent_id: NotBlankStr,
         *,
         now: datetime | None = None,
+        since: datetime | None = None,
     ) -> AgentPerformanceSnapshot:
         self.calls.append((agent_id, now))
         return self._snapshots[agent_id]

@@ -25,6 +25,7 @@ from synthorg.observability.audit_chain.protocol import SignedPayload
 from synthorg.observability.audit_chain.timestamping import TimestampResult
 from synthorg.observability.events.audit_chain import (
     AUDIT_CHAIN_CALLBACK_ERROR,
+    AUDIT_CHAIN_CONFIG_ERROR,
     AUDIT_CHAIN_EMIT_ERROR,
     AUDIT_CHAIN_EMIT_TIMEOUT,
     AUDIT_CHAIN_EMIT_VALIDATION_FAILED,
@@ -220,6 +221,11 @@ class AuditChainSink(logging.Handler):
                 "signing_timeout_seconds must be finite and > 0, got "
                 f"{signing_timeout_seconds}"
             )
+            logger.error(
+                AUDIT_CHAIN_CONFIG_ERROR,
+                setting="signing_timeout_seconds",
+                phase="construction",
+            )
             raise ValueError(msg)
         self._signer = signer
         self._timestamp_provider = timestamp_provider
@@ -244,6 +250,11 @@ class AuditChainSink(logging.Handler):
         """
         if not math.isfinite(value) or value <= 0:
             msg = f"signing_timeout_seconds must be finite and > 0, got {value}"
+            logger.error(
+                AUDIT_CHAIN_CONFIG_ERROR,
+                setting="signing_timeout_seconds",
+                phase="runtime_update",
+            )
             raise ValueError(msg)
         self._signing_timeout_seconds = value
 

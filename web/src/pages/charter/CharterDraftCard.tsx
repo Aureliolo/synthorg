@@ -23,7 +23,7 @@ export interface CharterDraftCardProps {
 // design-system primitive; if it grows callers it should move to
 // `components/ui/string-list.tsx` with stories.
 function StringList({ items }: { items: readonly string[] }) {
-  if (items.length === 0) return <p className="text-sm text-muted-foreground">None.</p>
+  if (items.length === 0) return <p className="text-sm text-text-secondary">None.</p>
   return (
     <ul className="list-disc space-y-1 pl-5 text-sm">
       {items.map((item, idx) => (
@@ -61,7 +61,7 @@ function CharterBudgetRow({
   onAmountChange,
 }: CharterBudgetRowProps) {
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
+    <div className="grid gap-grid-gap sm:grid-cols-2">
       <InputField
         label="Budget"
         type="number"
@@ -72,7 +72,7 @@ function CharterBudgetRow({
       />
       <div>
         <h4 className="mb-1 text-sm font-medium">Approved ceiling</h4>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-text-secondary">
           {formatCurrency(ceiling, currency)}
         </p>
       </div>
@@ -149,7 +149,7 @@ function CharterDraftCardInner({
     <SectionCard
       title={charter.title}
       action={
-        <span className="text-xs font-medium text-muted-foreground">
+        <span className="text-xs font-medium text-text-secondary">
           {STATUS_LABELS[charter.status]}
         </span>
       }
@@ -166,7 +166,7 @@ function CharterDraftCardInner({
         <LabelledList label="Goals" items={charter.goals} />
         <LabelledList label="Constraints" items={charter.constraints} />
         <LabelledList label="Success criteria" items={charter.success_criteria} />
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-grid-gap sm:grid-cols-2">
           <LabelledList label="In scope" items={charter.scope.in_scope} />
           <LabelledList label="Out of scope" items={charter.scope.out_of_scope} />
         </div>

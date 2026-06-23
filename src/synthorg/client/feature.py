@@ -4,14 +4,14 @@
 Declares the client feature's surface: its ``client`` settings
 namespace, the :class:`ClientStateSlice` holding the client-simulation
 state, and its REST controllers. The simulation and request controllers
-mount only when the client-simulation runtime is wired (predicate
-``has_simulation_runtime``), preserving the historic 404-when-disabled
-behaviour; the composition root evaluates the predicate at route
-assembly.
+mount unconditionally so that calling them without a wired runtime returns
+a clear ``503 Service Unavailable`` (via ``client_simulation_state_of``)
+instead of a misleading 404. The ``has_simulation_runtime`` predicate still
+drives the ``/capabilities`` flag so the dashboard skips polling a disabled
+runtime.
 """
 
 from synthorg._core.features import (
-    ControllerRegistration,
     FeatureManifest,
     FeatureModule,
 )
@@ -19,7 +19,7 @@ from synthorg.api.controllers.clients import ClientController
 from synthorg.api.controllers.requests.lifecycle import RequestController
 from synthorg.api.controllers.simulations import SimulationController
 from synthorg.client._construction import wire_construction
-from synthorg.client.state import ClientStateSlice, has_simulation_runtime
+from synthorg.client.state import ClientStateSlice
 from synthorg.settings.enums import SettingNamespace
 
 FEATURE: FeatureModule = FeatureManifest(
@@ -28,12 +28,8 @@ FEATURE: FeatureModule = FeatureManifest(
     state_slice=ClientStateSlice,
     controllers=(
         ClientController,
-        ControllerRegistration(
-            controller=SimulationController, predicate=has_simulation_runtime
-        ),
-        ControllerRegistration(
-            controller=RequestController, predicate=has_simulation_runtime
-        ),
+        SimulationController,
+        RequestController,
     ),
     mcp_handlers=(),
     lifecycle_hooks=(),

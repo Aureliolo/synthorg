@@ -149,14 +149,20 @@ export function PresetOverrideDrawer({
 
   if (preset === null) return null
 
+  // Discard a stale override whose fetch resolved after a quick preset
+  // switch: only trust the store value when its preset matches the one
+  // currently shown, so a late response for preset A cannot clobber the
+  // form that has already moved on to preset B.
+  const matchingOverride = override?.preset_name === preset.name ? override : null
+
   // Form state is seeded from the loaded override via remount-on-key.
   // The "no-override" branch must include the preset name so that
   // moving between two presets that both lack overrides still
   // re-mounts the form with the correct preset context (otherwise
   // form state from the previous preset would leak into the new
   // one).
-  const formKey = override
-    ? `${override.preset_name}/${override.updated_at ?? 'new'}`
+  const formKey = matchingOverride
+    ? `${matchingOverride.preset_name}/${matchingOverride.updated_at ?? 'new'}`
     : `no-override/${preset.name}`
 
   return (
@@ -188,7 +194,7 @@ export function PresetOverrideDrawer({
           <PresetOverrideForm
             key={formKey}
             preset={preset}
-            override={override}
+            override={matchingOverride}
             onClose={onClose}
           />
         )}

@@ -29,8 +29,12 @@ async def _wire_fine_tune_orchestrator(app_state: AppState) -> None:
     """
     from pathlib import Path  # noqa: PLC0415
 
+    from synthorg.budget.state import cost_tracker_of  # noqa: PLC0415
     from synthorg.memory.embedding.fine_tune_orchestrator import (  # noqa: PLC0415
         FineTuneOrchestrator,
+    )
+    from synthorg.memory.embedding.fine_tune_query import (  # noqa: PLC0415
+        build_query_generator,
     )
     from synthorg.memory.embedding.training_sources import (  # noqa: PLC0415
         TrajectoryTrainingDataSource,
@@ -42,6 +46,10 @@ async def _wire_fine_tune_orchestrator(app_state: AppState) -> None:
     from synthorg.persistence.state import (  # noqa: PLC0415
         PersistenceStateSlice,
         persistence_of,
+    )
+    from synthorg.providers.state import (  # noqa: PLC0415
+        has_active_provider,
+        provider_registry_of,
     )
     from synthorg.settings.enums import SettingNamespace  # noqa: PLC0415
     from synthorg.settings.state import (  # noqa: PLC0415
@@ -66,10 +74,10 @@ async def _wire_fine_tune_orchestrator(app_state: AppState) -> None:
         )
         return
     try:
+        resolver = config_resolver_of(app_state)
         training_data_source = None
         memory_backend = memory_slice.backend
         if memory_backend is not None:
-            resolver = config_resolver_of(app_state)
             history_dir = await resolver.get_str(
                 SettingNamespace.META, "scorecard_history_dir"
             )
@@ -87,10 +95,69 @@ async def _wire_fine_tune_orchestrator(app_state: AppState) -> None:
                 max_tasks_per_status=max_tasks_per_status,
                 per_agent_memory_limit=per_agent_memory_limit,
             )
+        # Stage-1 query generation is LLM-backed only when an operator sets
+        # ``fine_tune_query_model`` AND a provider is registered; otherwise
+        # the orchestrator falls back to the extractive generator (no LLM
+        # cost). Directory mode needs no memory backend, so resolve this
+        # regardless of the trajectory source above.
+        query_generator = None
+        query_model = (
+            await resolver.get_str(SettingNamespace.MEMORY, "fine_tune_query_model")
+        ).strip()
+        if query_model and has_active_provider(app_state):
+            registry = provider_registry_of(app_state)
+            provider_names = registry.list_providers()
+            provider_name = (
+                await resolver.get_str(
+                    SettingNamespace.MEMORY, "fine_tune_query_provider"
+                )
+            ).strip()
+            provider = None
+            if not provider_name:
+                # No explicit choice: default to the first registered provider.
+                provider = registry.get(provider_names[0])
+            elif provider_name in registry:
+                provider = registry.get(provider_name)
+            else:
+                # The operator named a provider that is not registered.
+                # Surface the misconfiguration rather than silently
+                # substituting a different provider; fall back to the
+                # extractive query generator (provider stays None).
+                logger.error(
+                    API_APP_STARTUP,
+                    service="fine_tune_orchestrator",
+                    note=(
+                        "fine_tune_query_provider names a provider that is "
+                        "not registered; using the extractive query generator"
+                    ),
+                    fine_tune_query_provider=provider_name,
+                )
+            if provider is not None:
+                query_generator = build_query_generator(
+                    provider=provider,
+                    model=query_model,
+                    cost_tracker=cost_tracker_of(app_state),
+                )
+        elif query_model:
+            # The operator explicitly configured an LLM query model but no
+            # provider is registered (or the registry is not yet wired).
+            # Guard on ``has_active_provider`` so ``provider_registry_of``
+            # cannot raise a 503 and abort orchestrator startup; surface the
+            # intent-discard and fall back to the extractive query generator.
+            logger.warning(
+                API_APP_STARTUP,
+                service="fine_tune_orchestrator",
+                note=(
+                    "fine_tune_query_model is set but no provider is "
+                    "registered; using the extractive query generator"
+                ),
+                fine_tune_query_model=query_model,
+            )
         orchestrator = FineTuneOrchestrator(
             run_repo=run_repo,
             checkpoint_repo=checkpoint_repo,
             settings_service=app_state.slice(SettingsStateSlice).settings_service,
+            query_generator=query_generator,
             training_data_source=training_data_source,
             clock=app_state.clock,
         )

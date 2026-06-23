@@ -15,11 +15,11 @@ from litestar.datastructures import State
 from litestar.params import QueryParameter
 from litestar.response import ServerSentEvent
 
+from synthorg.api.controllers.events._hub_access import require_hub
 from synthorg.api.controllers.events._shared import (
     _SESSION_ID_PATTERN,
 )
 from synthorg.api.controllers.events._sse import (
-    _require_hub,
     _sse_event_stream,
     assert_sse_session_access,
 )
@@ -33,6 +33,15 @@ from synthorg.api.state import AppState
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.types import NotBlankStr
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_SSE_INVALID_LAST_EVENT_ID
+
+logger = get_logger(__name__)
+
+# Event ids are UUID-shaped; cap the reconnect header so a crafted
+# oversized ``Last-Event-ID`` cannot drive repeated linear scans over the
+# per-session replay buffer.
+_MAX_LAST_EVENT_ID_LENGTH: int = 64
 
 
 class EventStreamController(Controller):
@@ -82,7 +91,7 @@ class EventStreamController(Controller):
                 ids cannot be enumerated by status code).
         """
         app_state: AppState = state.app_state
-        hub = _require_hub(app_state)
+        hub = require_hub(app_state)
         user = getattr(request, "user", None)
         # ``require_read_access`` guarantees an authenticated user; assert it
         # so a misconfigured guard chain fails closed rather than streaming
@@ -91,11 +100,25 @@ class EventStreamController(Controller):
             msg = "Session not found"
             raise NotFoundError(msg)
         await assert_sse_session_access(app_state, session_id, user)
+        # SSE reconnect: the browser resends the last event id it saw via
+        # the ``Last-Event-ID`` header so the hub can replay the gap it
+        # missed while disconnected.
+        after_id = request.headers.get("last-event-id") or None
+        if after_id is not None and len(after_id) > _MAX_LAST_EVENT_ID_LENGTH:
+            # Oversized header: a real event id is UUID-shaped, so drop the
+            # crafted value and fall back to a normal (no-replay) subscribe.
+            logger.warning(
+                API_SSE_INVALID_LAST_EVENT_ID,
+                session_id=session_id,
+                length=len(after_id),
+            )
+            after_id = None
         return ServerSentEvent(
             content=_sse_event_stream(
                 hub,
                 session_id,
                 app_state=app_state,
                 user=user,
+                after_id=after_id,
             ),
         )

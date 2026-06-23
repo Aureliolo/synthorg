@@ -110,13 +110,15 @@ class PerformanceSignalAggregator:
         """Aggregate org-wide performance from individual snapshots.
 
         Args:
-            since: Start of observation window.
-            until: End of observation window.
+            since: Start of the observation window. Bounds the task records
+                that feed every per-agent snapshot, so the org-wide quality
+                average and the rolling-window metrics reflect activity in
+                ``[since, until]`` rather than the agent's all-time history.
+            until: End of observation window (the snapshot reference time).
 
         Returns:
             Org-wide performance summary with per-window metrics.
         """
-        _ = since  # Will be used for windowed filtering.
         try:
             agent_ids = self._get_agent_ids()
             if not agent_ids:
@@ -129,7 +131,9 @@ class PerformanceSignalAggregator:
             window_quality: dict[str, list[float]] = {}
 
             for agent_id in agent_ids:
-                snapshot = await self._tracker.get_snapshot(agent_id, now=until)
+                snapshot = await self._tracker.get_snapshot(
+                    agent_id, now=until, since=since
+                )
                 q = snapshot.overall_quality_score
                 if q is not None:
                     quality_scores.append(q)

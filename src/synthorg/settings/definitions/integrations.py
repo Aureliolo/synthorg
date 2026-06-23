@@ -196,13 +196,16 @@ _r.register(
         type=SettingType.STRING,
         default="https://api.github.com",
         description=(
-            "GitHub API base URL.  Override for GitHub Enterprise"
-            " installations (e.g. ``https://github.example.com/api/v3``)"
-            " or self-hosted GitHub-compatible services."
+            "GitHub API base URL (HTTPS only).  Override for GitHub"
+            " Enterprise installations (e.g."
+            " ``https://github.example.com/api/v3``) or self-hosted"
+            " GitHub-compatible services."
         ),
         group="GitHub",
         level=SettingLevel.ADVANCED,
         restart_required=True,
-        validator_pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
+        # HTTPS-only: a bearer token rides the Authorization header, so a
+        # plaintext http:// endpoint would leak it on the wire.
+        validator_pattern=r"^https://[\w.\-:]+(?:/.*)?$",
     )
 )

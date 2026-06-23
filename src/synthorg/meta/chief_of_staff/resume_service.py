@@ -34,6 +34,12 @@ from synthorg.meta.chief_of_staff.group_models import (
     ConversationParticipant,
 )
 from synthorg.meta.chief_of_staff.models import ConversationalProposal
+from synthorg.observability import get_logger
+from synthorg.observability.events.chief_of_staff import (
+    COS_RESUME_INVITE_TRANSITION,
+    COS_RESUME_PARTICIPANT_ADMITTED,
+    COS_RESUME_PROPOSAL_TRANSITION,
+)
 from synthorg.persistence.conversation_invite_protocol import (
     ConversationInviteFilterSpec,
     ConversationInviteRepository,
@@ -46,6 +52,8 @@ from synthorg.persistence.conversational_proposal_protocol import (
     ConversationalProposalFilterSpec,
     ConversationalProposalRepository,
 )
+
+logger = get_logger(__name__)
 
 
 class ConversationalResumeService:
@@ -90,11 +98,19 @@ class ConversationalResumeService:
             ``True`` when this caller won the transition, ``False`` when
             a concurrent writer had already moved the proposal.
         """
-        return await self._proposal_repo.transition_if(
+        won = await self._proposal_repo.transition_if(
             proposal_id,
             from_status,
             to_status,
         )
+        logger.info(
+            COS_RESUME_PROPOSAL_TRANSITION,
+            proposal_id=proposal_id,
+            from_status=from_status.value,
+            to_status=to_status.value,
+            won=won,
+        )
+        return won
 
     async def invites_for_approval(
         self,
@@ -122,11 +138,19 @@ class ConversationalResumeService:
             ``True`` when this caller won the transition, ``False`` when
             a concurrent writer had already moved the invite.
         """
-        return await self._invite_repo.transition_if(
+        won = await self._invite_repo.transition_if(
             invite_id,
             from_status,
             to_status,
         )
+        logger.info(
+            COS_RESUME_INVITE_TRANSITION,
+            invite_id=invite_id,
+            from_status=from_status.value,
+            to_status=to_status.value,
+            won=won,
+        )
+        return won
 
     async def active_participants(
         self,
@@ -164,6 +188,14 @@ class ConversationalResumeService:
         Returns:
             The admission outcome (admitted / already-active / cap-reached).
         """
-        return await self._participant_repo.admit_active_within_cap(
+        admission = await self._participant_repo.admit_active_within_cap(
             participant, cap=cap
         )
+        logger.info(
+            COS_RESUME_PARTICIPANT_ADMITTED,
+            conversation_id=participant.conversation_id,
+            participant_id=participant.agent_id,
+            cap=cap,
+            outcome=admission.value,
+        )
+        return admission

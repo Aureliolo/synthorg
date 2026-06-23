@@ -10,8 +10,9 @@ import asyncio
 import math
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
-from pydantic import ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg._core.features import require_service
 from synthorg.api.responses import require_resource_or_404
@@ -19,6 +20,8 @@ from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.evidence import EvidencePackage
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
@@ -145,6 +148,85 @@ class UrgencyLevel(StrEnum):
     NO_EXPIRY = "no_expiry"
 
 
+class SafeEvidencePackageSignature(BaseModel):
+    """Client-facing view of an approver signature without the raw bytes.
+
+    The audit-chain signature material (``signature_bytes``) is a
+    cryptographic secret: exposing it lets any API consumer replay or
+    forge-check signatures offline. The wire view keeps the auditable
+    metadata (who signed, with what algorithm, when, and the chain
+    position) but omits the raw signature bytes entirely.
+
+    Attributes:
+        approver_id: Identity of the approver.
+        algorithm: Signature algorithm used.
+        signed_at: When the signature was produced.
+        chain_position: Position in the append-only audit chain.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    approver_id: NotBlankStr = Field(description="Approver identity")
+    algorithm: Literal["ml-dsa-65", "ed25519"] = Field(
+        description="Signature algorithm",
+    )
+    signed_at: datetime = Field(description="Signature timestamp")
+    chain_position: int = Field(
+        ge=0,
+        description="Position in the append-only audit chain",
+    )
+
+
+class SafeEvidencePackage(EvidencePackage):
+    """Client-facing evidence package whose signatures omit the raw bytes.
+
+    Narrows :class:`EvidencePackage.signatures` to the redacted
+    :class:`SafeEvidencePackageSignature` element type so the raw
+    ``signature_bytes`` can never reach an API response. The inherited
+    ``is_fully_signed`` computed field still works (it counts distinct
+    ``approver_id`` values, which the safe signature retains).
+    """
+
+    # Narrowing the element type to the redacted signature is the whole
+    # point of this subclass; Pydantic supports the field override but
+    # mypy treats the annotation as an invariant reassignment. The
+    # narrowed type is strictly safer (a subset of the base fields), and
+    # ``_to_safe_evidence`` only ever constructs it without bytes.
+    signatures: tuple[SafeEvidencePackageSignature, ...] = Field(  # type: ignore[assignment]
+        default=(),
+        description="Collected approver signatures (raw bytes redacted)",
+    )
+
+
+def _to_safe_evidence(
+    evidence: EvidencePackage | None,
+) -> SafeEvidencePackage | None:
+    """Redact signature bytes from an evidence package for the wire.
+
+    Args:
+        evidence: The domain evidence package (or ``None``).
+
+    Returns:
+        A :class:`SafeEvidencePackage` with each signature's raw bytes
+        stripped, or ``None`` when there is no evidence.
+    """
+    if evidence is None:
+        return None
+    safe_signatures = tuple(
+        SafeEvidencePackageSignature(
+            approver_id=sig.approver_id,
+            algorithm=sig.algorithm,
+            signed_at=sig.signed_at,
+            chain_position=sig.chain_position,
+        )
+        for sig in evidence.signatures
+    )
+    return SafeEvidencePackage(
+        **evidence.model_dump(exclude={"signatures", "is_fully_signed"}),
+        signatures=safe_signatures,
+    )
+
+
 class ApprovalResponse(ApprovalItem):
     """Approval item enriched with computed urgency fields.
 
@@ -152,10 +234,16 @@ class ApprovalResponse(ApprovalItem):
         seconds_remaining: Seconds until expiry, clamped to 0.0 for
             expired items (``None`` if no TTL).
         urgency_level: Urgency classification based on time remaining.
+        evidence_package: Structured evidence with signature bytes
+            redacted (see :class:`SafeEvidencePackage`).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    evidence_package: SafeEvidencePackage | None = Field(
+        default=None,
+        description="Structured evidence for HITL approval (bytes redacted)",
+    )
     seconds_remaining: float | None = Field(
         ge=0.0,
         description="Seconds until expiry (null if no TTL set)",
@@ -206,7 +294,8 @@ def _to_approval_response(
         else:
             urgency = UrgencyLevel.NORMAL
     return ApprovalResponse(
-        **item.model_dump(),
+        **item.model_dump(exclude={"evidence_package"}),
+        evidence_package=_to_safe_evidence(item.evidence_package),
         seconds_remaining=seconds_remaining,
         urgency_level=urgency,
     )

@@ -23,6 +23,7 @@ Construction is via :func:`synthorg.docs_engine.factory.build_docs_service`.
 """
 
 import asyncio
+from collections.abc import Mapping
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
@@ -32,7 +33,11 @@ from synthorg.docs_engine.constants import (
     DOCS_PROJECT_TAG_PREFIX,
     SYSTEM_DOCS_AGENT_ID,
 )
-from synthorg.engine.prompt_safety import TAG_BRAIN_STATE, wrap_untrusted
+from synthorg.engine.prompt_safety import (
+    TAG_BRAIN_STATE,
+    TAG_KNOWLEDGE,
+    wrap_untrusted,
+)
 from synthorg.knowledge.constants import (
     KNOWLEDGE_GLOBAL_SCOPE_TAG,
     KNOWLEDGE_MEMORY_NAMESPACE,
@@ -158,7 +163,7 @@ class ProjectAwareMemoryFacade:
             # fan-out failure still returns the agent's own memories.
             return await self._backend.retrieve(agent_id, query)
         merged = _merge_by_score(*results, limit=query.limit)
-        wrapped = tuple(_wrap_brain_state(entry) for entry in merged)
+        wrapped = tuple(_fence_untrusted_entry(entry) for entry in merged)
         logger.debug(
             DOC_FACADE_FANOUT,
             agent_id=agent_id,
@@ -242,24 +247,30 @@ def _brain_query(*, project_id: NotBlankStr, base: MemoryQuery) -> MemoryQuery:
     )
 
 
-def _wrap_brain_state(entry: MemoryEntry) -> MemoryEntry:
-    """Fence a project-brain entry's content under ``TAG_BRAIN_STATE``.
+_FENCE_TAG_BY_CATEGORY: Mapping[MemoryCategory, str] = {
+    MemoryCategory.PROJECT_BRAIN: TAG_BRAIN_STATE,
+    MemoryCategory.KNOWLEDGE: TAG_KNOWLEDGE,
+}
 
-    Brain entries are authored by agents and the operator, so on re-entry they
-    are attacker-controllable; wrapping the content at this retrieval boundary
-    (never on storage) keeps the resuming agent from following instructions an
-    upstream writer may have embedded. Entries of any other category pass
-    through unchanged.
+
+def _fence_untrusted_entry(entry: MemoryEntry) -> MemoryEntry:
+    """Fence an untrusted retrieval entry's content under its category tag.
+
+    Project-brain and knowledge entries are authored by agents and the
+    operator, so on retrieval they are attacker-controllable; wrapping the
+    content at this retrieval boundary (never on storage) keeps the resuming
+    agent from following instructions an upstream writer may have embedded.
+    Each fenced category gets its own tag (``TAG_BRAIN_STATE`` /
+    ``TAG_KNOWLEDGE``); entries of any other category pass through unchanged.
 
     Returns:
-        The entry with its content fenced when it is a ``PROJECT_BRAIN`` entry,
+        The entry with its content fenced when its category is fenceable,
         otherwise the entry unchanged.
     """
-    if entry.category is not MemoryCategory.PROJECT_BRAIN:
+    tag = _FENCE_TAG_BY_CATEGORY.get(entry.category)
+    if tag is None:
         return entry
-    return entry.model_copy(
-        update={"content": wrap_untrusted(TAG_BRAIN_STATE, entry.content)}
-    )
+    return entry.model_copy(update={"content": wrap_untrusted(tag, entry.content)})
 
 
 def _merge_by_score(

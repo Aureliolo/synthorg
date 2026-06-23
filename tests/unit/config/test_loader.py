@@ -366,7 +366,6 @@ performance:
   quality_judge_model: test-judge-001
   quality_judge_provider: test-provider
   quality_ci_weight: 0.3
-  quality_llm_weight: 0.7
   min_data_points: 10
 """
         cfg = load_config_from_string(yaml_str)

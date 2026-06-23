@@ -685,9 +685,38 @@ async def _authenticate_ws(
             reason="Too many pending connections",
         )
         return None
+    # Bound the WHOLE first-message auth (frame read AND ticket
+    # validation) under the operator-tuned auth budget. The read alone
+    # is already bounded inside ``_read_auth_message``, but the ticket
+    # ``validate_and_consume`` round-trip is not; without this an
+    # accepted socket whose validation hangs would hold its pre-auth
+    # slot until the per-IP cap rather than releasing it on a budget.
+    auth_timeout = socket.app.state["app_state"].ws_auth_limits.auth_timeout_seconds
     try:
         await socket.accept()
-        user = await _auth_from_first_message(socket)
+        user = await asyncio.wait_for(
+            _auth_from_first_message(socket),
+            timeout=auth_timeout,
+        )
+    except TimeoutError:
+        logger.warning(
+            API_WS_AUTH_STAGE,
+            stage="first_message_auth_timeout",
+            client=str(socket.client),
+        )
+        try:
+            await socket.close(
+                code=_WS_CLOSE_POLICY_VIOLATION,
+                reason="Auth timeout",
+            )
+        except Exception as exc:  # noqa: BLE001 -- best-effort close, criticals re-raised
+            reraise_critical(exc)
+            logger.debug(
+                API_WS_SEND_FAILED,
+                reason="close_after_auth_timeout",
+                error_type=type(exc).__name__,
+            )
+        return None
     finally:
         await _release_preauth_slot(client_ip)
     if user is None:
@@ -991,6 +1020,10 @@ async def ws_handler(
         maxsize=_OUTBOUND_QUEUE_DEPTH,
     )
     backpressure_tracker = _BackpressureTracker()
+    # Resolve the injected clock so the circuit-breaker close timing is
+    # driven by the app-state Clock seam (FakeClock in tests) rather than
+    # a bare SystemClock fallback inside ``_trip_breaker_and_close``.
+    breaker_clock: Clock = socket.app.state["app_state"].clock
 
     async def _event_callback(event_data: bytes) -> None:
         """Run event callback."""
@@ -1002,6 +1035,7 @@ async def ws_handler(
             user,
             backpressure=backpressure_tracker,
             socket=socket,
+            clock=breaker_clock,
         )
 
     # Structured concurrency for the WS background workers (CLAUDE.md):
@@ -1037,6 +1071,7 @@ async def ws_handler(
                         user,
                         outbound_queue,
                         backpressure=backpressure_tracker,
+                        clock=breaker_clock,
                     )
             finally:
                 # Long-running workers won't exit on their own; cancel

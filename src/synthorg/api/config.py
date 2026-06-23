@@ -20,6 +20,7 @@ from synthorg.settings.mirrors import (
     MirrorField,
     apply_settings_mirrors,
     parse_bool,
+    parse_float,
     parse_int,
     parse_str_tuple_json,
 )
@@ -59,7 +60,7 @@ class CorsConfig(BaseModel):
         description="Headers permitted in cross-origin requests",
     )
     allow_credentials: bool = Field(
-        default=True,
+        default=False,
         description="Whether credentials (cookies) are allowed",
     )
 
@@ -318,6 +319,12 @@ class ApiConfig(BaseModel):
             namespace=SettingNamespace.API,
             key="rate_limiter_enabled",
             parse=parse_bool,
+        ),
+        MirrorField(
+            field="readiness_probe_timeout_seconds",
+            namespace=SettingNamespace.API,
+            key="readiness_probe_timeout_seconds",
+            parse=parse_float,
         ),
     )
 

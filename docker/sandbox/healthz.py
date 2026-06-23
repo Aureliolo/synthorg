@@ -18,7 +18,9 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         if self.path == "/healthz":
             body = json.dumps(
                 {
-                    "status": "healthy",
+                    # Aligns with the main API /healthz liveness body ("ok");
+                    # Docker's own State.Health vocabulary stays "healthy".
+                    "status": "ok",
                     "uptime_seconds": int(time.monotonic() - self._start_time),
                 }
             )

@@ -95,13 +95,36 @@ class TestAutoDowngrade:
             DowngradeReason.SECURITY_INCIDENT,
             current_level=AutonomyLevel.SEMI,
         )
-        # Now agent is LOCKED. HIGH_ERROR_RATE targets SUPERVISED -- but
-        # that's higher than LOCKED, so agent should stay LOCKED.
+        # Now agent is LOCKED. HIGH_ERROR_RATE steps one level down, but
+        # LOCKED is the floor, so the agent stays LOCKED.
         result = strategy.auto_downgrade("agent-1", DowngradeReason.HIGH_ERROR_RATE)
         assert result == AutonomyLevel.LOCKED
         override = strategy.get_override("agent-1")
         assert override is not None
         assert override.current_level == AutonomyLevel.LOCKED
+
+    @pytest.mark.unit
+    def test_high_error_rate_steps_down_one_level_from_full(self) -> None:
+        """HIGH_ERROR_RATE drops FULL one level to SEMI, not straight to SUPERVISED."""
+        strategy = HumanOnlyPromotionStrategy()
+        result = strategy.auto_downgrade(
+            "agent-1",
+            DowngradeReason.HIGH_ERROR_RATE,
+            current_level=AutonomyLevel.FULL,
+        )
+        assert result == AutonomyLevel.SEMI
+
+    @pytest.mark.unit
+    def test_high_error_rate_steps_semi_to_supervised(self) -> None:
+        """A second HIGH_ERROR_RATE steps SEMI down to SUPERVISED."""
+        strategy = HumanOnlyPromotionStrategy()
+        strategy.auto_downgrade(
+            "agent-1",
+            DowngradeReason.HIGH_ERROR_RATE,
+            current_level=AutonomyLevel.FULL,
+        )
+        result = strategy.auto_downgrade("agent-1", DowngradeReason.HIGH_ERROR_RATE)
+        assert result == AutonomyLevel.SUPERVISED
 
 
 class TestRecovery:

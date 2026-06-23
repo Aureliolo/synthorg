@@ -18,6 +18,7 @@ import asyncio
 import http.server
 import json
 import os
+import re
 import signal
 import sys
 import threading
@@ -46,9 +47,59 @@ _CONFIG_PATH = Path("/etc/fine-tune/config.json")
 
 _DEFAULT_HEALTH_PORT: Final[int] = 15002
 _HEALTH_PORT_ENV_VAR: Final[str] = "SYNTHORG_FINE_TUNE_HEALTH_PORT"
+_DEFAULT_HEALTH_HOST: Final[str] = "fine-tune"
+_HEALTH_HOST_ENV_VAR: Final[str] = "SYNTHORG_FINE_TUNE_HEALTH_HOST"
 _MIN_TCP_PORT: Final[int] = 1
 _MAX_TCP_PORT: Final[int] = 65535
 _MAX_LOGGED_ENV_CHARS: Final[int] = 64
+# A health-probe host is only ever a compose service name, a DNS
+# hostname, an IPv4 literal, or a bracketed IPv6 literal. Constraining
+# the operator-supplied override to that shape before it reaches the
+# probe URL keeps a stray scheme / path / credential / whitespace out of
+# the request target (defence against an SSRF-shaped misconfiguration).
+_HEALTH_HOST_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"\A(?:[A-Za-z0-9._-]+|\[[0-9A-Fa-f:]+\])\Z",
+)
+
+
+def resolve_health_host() -> str:
+    """Resolve the fine-tune sidecar host the main container probes.
+
+    Reads ``SYNTHORG_FINE_TUNE_HEALTH_HOST``; falls back to
+    :data:`_DEFAULT_HEALTH_HOST` (the compose service name) when unset
+    or blank. Symmetric with :func:`resolve_health_port` so an operator
+    who renames the sidecar service overrides both host and port the
+    same way.
+
+    Returns:
+        The sidecar hostname (never blank).
+    """
+    raw = os.environ.get(_HEALTH_HOST_ENV_VAR)
+    if raw is None:
+        return _DEFAULT_HEALTH_HOST
+    if not raw.strip():
+        # Set-but-blank is an operator config mistake: log it (symmetric
+        # with resolve_health_port's CONFIG_VALIDATION_FAILED) rather than
+        # silently probing the default host under a misconfigured override.
+        logger.warning(
+            CONFIG_VALIDATION_FAILED,
+            env_var=_HEALTH_HOST_ENV_VAR,
+            reason="blank-after-strip",
+        )
+        return _DEFAULT_HEALTH_HOST
+    host = raw.strip()
+    if _HEALTH_HOST_PATTERN.match(host) is None:
+        # A malformed override (embedded scheme, path, credentials, or
+        # whitespace) would let the probe URL point somewhere other than
+        # the sidecar healthz endpoint; reject it and fall back to the
+        # default service name rather than honour an SSRF-shaped value.
+        logger.warning(
+            CONFIG_VALIDATION_FAILED,
+            env_var=_HEALTH_HOST_ENV_VAR,
+            reason="invalid-hostname",
+        )
+        return _DEFAULT_HEALTH_HOST
+    return host
 
 
 def resolve_health_port() -> int:
@@ -160,7 +211,11 @@ class _HealthHandler(http.server.BaseHTTPRequestHandler):
         if self.path == "/healthz":
             body = json.dumps(
                 {
-                    "status": "healthy",
+                    # Aligns with the main API ``/healthz`` liveness body,
+                    # which reports ``"ok"`` (Docker's own State.Health
+                    # vocabulary stays "healthy" -- that is the engine's, not
+                    # this app-level HTTP surface).
+                    "status": "ok",
                     # lint-allow: clock-seam -- stdlib BaseHTTPRequestHandler
                     # subprocess health server; no clock-injection seam
                     "uptime_seconds": int(time.monotonic() - self._start_time),

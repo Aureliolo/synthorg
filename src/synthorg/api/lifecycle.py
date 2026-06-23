@@ -30,6 +30,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.integrations.state import provider_credential_catalog_of
+from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_SHUTDOWN, API_APP_STARTUP
 from synthorg.persistence.protocol import PersistenceBackend
@@ -101,6 +102,11 @@ _BRIDGE_SHUTDOWN_SECONDS: float = 2.0
 _DISTRIBUTED_QUEUE_SHUTDOWN_SECONDS: float = 3.0
 _DISTRIBUTED_BUNDLE_SHUTDOWN_SECONDS: float = 3.0
 _MESSAGE_BUS_SHUTDOWN_SECONDS: float = 3.0
+# The notification dispatcher drains pending sends (some of which persist
+# delivery records), so it stops AFTER the task engine / message bus have
+# drained (all events generated) but BEFORE persistence disconnects, so a
+# final flush still reaches the DB.
+_NOTIFICATION_DISPATCHER_SHUTDOWN_SECONDS: float = 5.0
 _PERSISTENCE_SHUTDOWN_SECONDS: float = 5.0
 _APPROVAL_TIMEOUT_SHUTDOWN_SECONDS: float = 1.0
 _DRAIN_TIMEOUT_SECONDS: float = 25.0
@@ -124,6 +130,7 @@ async def _safe_shutdown(  # noqa: PLR0913
     performance_tracker: PerformanceTracker | None = None,
     distributed_task_queue: _AsyncStartStop | None = None,
     distributed_backend_services: _AsyncStartStop | None = None,
+    notification_dispatcher: NotificationDispatcher | None = None,
 ) -> None:
     """Stop services in reverse startup order.
 
@@ -133,7 +140,9 @@ async def _safe_shutdown(  # noqa: PLR0913
     stops after the engine so in-flight observer callbacks can still publish
     their final claims. Performance tracker closes after task engine (sampling
     is triggered by task events). Backup runs before persistence disconnect so
-    shutdown backup can still access the DB.
+    shutdown backup can still access the DB. The notification dispatcher closes
+    after the message bus drains (all events generated) but before persistence
+    disconnects, so a final delivery flush still reaches the DB.
     """
     if approval_timeout_scheduler is not None:
         # Inner timeout sets the scheduler's ``_stop_failed`` flag on drain
@@ -256,6 +265,17 @@ async def _safe_shutdown(  # noqa: PLR0913
             "Failed to stop message bus",
             timeout=_MESSAGE_BUS_SHUTDOWN_SECONDS,
             service="message_bus",
+        )
+    # Close the notification dispatcher after the bus drains but before
+    # persistence disconnects: a final delivery flush may persist its
+    # record, which would fail against a disconnected backend.
+    if notification_dispatcher is not None:
+        await _try_stop(
+            notification_dispatcher.aclose(),
+            API_APP_SHUTDOWN,
+            "Failed to stop notification dispatcher",
+            timeout=_NOTIFICATION_DISPATCHER_SHUTDOWN_SECONDS,
+            service="notification_dispatcher",
         )
     if persistence is not None:
         await _try_stop(

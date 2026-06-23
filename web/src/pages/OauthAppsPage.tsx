@@ -24,7 +24,10 @@ const log = createLogger('oauth-apps-page')
 
 async function startOauthFlow(connection: Connection): Promise<void> {
   try {
-    const response = await initiateOauth({ connection_name: connection.name })
+    const response = await initiateOauth({
+      connection_name: connection.name,
+      scopes: [],
+    })
     useToastStore.getState().add({
       variant: 'info',
       title: 'OAuth flow started',

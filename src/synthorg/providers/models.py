@@ -431,7 +431,7 @@ class CompletionResponse(BaseModel):
     finish_reason: FinishReason = Field(description="Reason generation stopped")
     usage: TokenUsage = Field(description="Token usage breakdown")
     model: NotBlankStr = Field(description="Model that served the request")
-    provider_request_id: str | None = Field(
+    provider_request_id: NotBlankStr | None = Field(
         default=None,
         description="Provider request ID",
     )

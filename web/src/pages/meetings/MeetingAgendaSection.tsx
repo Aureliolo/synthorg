@@ -16,7 +16,7 @@ export function MeetingAgendaSection({ agenda, className }: MeetingAgendaSection
         <div className="space-y-1">
           <h3 className="text-sm font-semibold text-foreground">{agenda.title}</h3>
           {agenda.context && (
-            <p className="text-sm text-muted-foreground">{agenda.context}</p>
+            <p className="text-sm text-text-secondary">{agenda.context}</p>
           )}
         </div>
 
@@ -24,17 +24,18 @@ export function MeetingAgendaSection({ agenda, className }: MeetingAgendaSection
         {agenda.items.length > 0 && (
           <ol className="space-y-3">
             {agenda.items.map((item, idx) => (
-              <li key={`agenda-${item.title}`} className="flex gap-3">
+              // eslint-disable-next-line @eslint-react/no-array-index-key -- agenda items have no stable id and the ordered list is never reordered/filtered; title alone is not unique
+              <li key={`agenda-${idx}`} className="flex gap-3">
                 <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-accent/10 font-mono text-micro font-medium text-accent">
                   {idx + 1}
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-foreground">{item.title}</p>
                   {item.description && (
-                    <p className="text-xs text-muted-foreground">{item.description}</p>
+                    <p className="text-xs text-text-secondary">{item.description}</p>
                   )}
                   {item.presenter_id && (
-                    <p className="mt-0.5 text-micro text-muted-foreground">
+                    <p className="mt-0.5 text-micro text-text-secondary">
                       Presenter: {formatLabel(item.presenter_id)}
                     </p>
                   )}

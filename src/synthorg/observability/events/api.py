@@ -94,6 +94,7 @@ API_WS_TICKET_INVALID: Final[str] = "api.ws.ticket_invalid"
 API_WS_TICKET_CLEANUP: Final[str] = "api.ws.ticket_cleanup"
 API_WS_TICKET_LIMIT_EXCEEDED: Final[str] = "api.ws.ticket_limit_exceeded"
 API_AUDIT_RETENTION: Final[str] = "api.audit.retention"
+API_FLIGHT_RECORDER_RETENTION: Final[str] = "api.flight_recorder.retention"
 API_WS_AUTH_STAGE: Final[str] = "api.ws.auth_stage"
 API_WS_AUTH_OK: Final[str] = "api.ws.auth_ok"
 API_WS_PING: Final[str] = "api.ws.ping"
@@ -106,6 +107,7 @@ API_WS_REVALIDATION_BUDGET_EXHAUSTED: Final[str] = (
 
 # SSE streaming
 API_SSE_PULL_MODEL_FAILED: Final[str] = "api.sse.pull_model_failed"
+API_SSE_INVALID_LAST_EVENT_ID: Final[str] = "api.sse.invalid_last_event_id"
 API_MODEL_OPERATION_FAILED: Final[str] = "api.model.operation_failed"
 API_OPENAPI_SCHEMA_ENHANCED: Final[str] = "api.openapi.schema_enhanced"
 API_RESOURCE_CONFLICT: Final[str] = "api.resource.conflict"

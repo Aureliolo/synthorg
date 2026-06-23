@@ -100,13 +100,13 @@ class _PatchCtx:
         self._status_code = status_code
         self._side_effect = side_effect
         self._patcher = patch(
-            "synthorg.providers.health_prober.httpx.AsyncClient",
+            "synthorg.providers._probe_request.httpx.AsyncClient",
         )
         self.mock_client_cls: MagicMock | None = None
 
     def __enter__(self) -> _PatchCtx:
         # Capture the real classes BEFORE entering the patch context.
-        # ``patch("synthorg.providers.health_prober.httpx.AsyncClient")``
+        # ``patch("synthorg.providers._probe_request.httpx.AsyncClient")``
         # mutates the shared httpx module's attribute, so reading
         # ``httpx.AsyncClient`` after ``__enter__`` returns a MagicMock
         # (which mock rejects as a spec target). The ``spec=`` calls
@@ -245,6 +245,15 @@ class TestProviderHealthProber:
         """HTTP 5xx responses are recorded as failures."""
         prober, tracker = _make_prober()
         with _patch_httpx(status_code=503):
+            await prober._probe_all()
+
+        summary = await tracker.get_summary("test-local")
+        assert summary.health_status == ProviderHealthStatus.DOWN
+
+    async def test_probe_records_rate_limited_as_failure(self) -> None:
+        """HTTP 429 is a 4xx but a rate-limited endpoint is NOT healthy."""
+        prober, tracker = _make_prober()
+        with _patch_httpx(status_code=429):
             await prober._probe_all()
 
         summary = await tracker.get_summary("test-local")

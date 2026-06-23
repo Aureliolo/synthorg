@@ -4,6 +4,7 @@ from typing import Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.api.dto import PaginatedResponse
 from synthorg.core.types import NotBlankStr
 from synthorg.ontology.models import (
     DriftAction,
@@ -220,3 +221,37 @@ class EntityListMeta(BaseModel):
         default=None,
         description="Drift aggregate (None when drift store unavailable)",
     )
+
+    @model_validator(mode="after")
+    def _validate_counts_sum(self) -> Self:
+        """Reject a count envelope whose parts do not sum to the total.
+
+        ``core_count + user_count`` must equal ``total_count``; enforcing
+        it here catches a controller bug before inconsistent counts reach
+        the dashboard.
+
+        Returns:
+            The validated ``Self`` instance.
+
+        Raises:
+            ValueError: When the core/user counts do not sum to the total.
+        """
+        if self.core_count + self.user_count != self.total_count:
+            msg = (
+                f"core_count ({self.core_count}) + user_count "
+                f"({self.user_count}) must equal total_count "
+                f"({self.total_count})"
+            )
+            raise ValueError(msg)
+        return self
+
+
+class EntityListResponse(PaginatedResponse[EntityResponse]):
+    """Entity-list page envelope enriched with aggregate count metadata.
+
+    Extends the standard paginated envelope with an :class:`EntityListMeta`
+    so the dashboard can render core/user/total counts (and, when a drift
+    store is wired, a drift aggregate) without a second round trip.
+    """
+
+    meta: EntityListMeta

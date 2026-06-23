@@ -22,6 +22,7 @@ from synthorg.memory.embedding.fine_tune_models import (
     FineTuneRun,
     FineTuneRunConfig,
 )
+from synthorg.memory.embedding.fine_tune_query import QueryGenerator
 from synthorg.memory.embedding.training_sources import TrainingDataSource
 from synthorg.memory.embedding.training_writer import split_and_write_pairs
 from synthorg.memory.errors import FineTuneDataSourceError
@@ -35,7 +36,7 @@ async def generate_run_training_data(  # noqa: PLR0913 -- deps threaded for test
     out_dir: str,
     *,
     training_data_source: TrainingDataSource | None,
-    llm_provider: object | None = None,
+    query_generator: QueryGenerator | None = None,
     progress_callback: ProgressCallback | None = None,
     cancellation: CancellationToken | None = None,
 ) -> tuple[Path, Path]:
@@ -77,7 +78,7 @@ async def generate_run_training_data(  # noqa: PLR0913 -- deps threaded for test
     return await generate_training_data(
         source_dir=cfg.source_dir,
         output_dir=out_dir,
-        llm_provider=llm_provider,
+        query_generator=query_generator,
         validation_split=cfg.validation_split,
         progress_callback=progress_callback,
         cancellation=cancellation,

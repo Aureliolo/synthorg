@@ -14,9 +14,11 @@ from synthorg.api.controllers.ontology._shared import (
     _entity_to_response,
     _ontology_service,
 )
-from synthorg.api.dto import ApiResponse, PaginatedResponse
+from synthorg.api.dto import ApiResponse
 from synthorg.api.dto_ontology import (
     CreateEntityRequest,
+    EntityListMeta,
+    EntityListResponse,
     EntityResponse,
     UpdateEntityRequest,
 )
@@ -109,11 +111,12 @@ class OntologyController(Controller):
                 description="Filter to entity definitions in this tier.",
             ),
         ] = None,
-    ) -> PaginatedResponse[EntityResponse]:
+    ) -> EntityListResponse:
         """List all entity definitions, filterable by tier.
 
         Returns:
-            ``PaginatedResponse[EntityResponse]`` instance.
+            ``EntityListResponse`` (paginated page plus aggregate count
+            metadata).
 
         Raises:
             ValidationError: Raised on the corresponding failure path.
@@ -137,13 +140,24 @@ class OntologyController(Controller):
         entities = await svc.list_entities(tier=tier_filter)
 
         responses = tuple(_entity_to_response(e) for e in entities)
+        # Aggregate counts span the full (pre-pagination) result so the
+        # dashboard can show core/user/total without a second request.
+        core_count = sum(1 for e in responses if e.tier == EntityTier.CORE)
+        list_meta = EntityListMeta(
+            total_count=len(responses),
+            core_count=core_count,
+            user_count=len(responses) - core_count,
+            # Drift aggregation needs the drift store, which this read path
+            # does not depend on; degrade honestly to None per the contract.
+            drift_summary=None,
+        )
         page, meta = paginate_cursor(
             responses,
             limit=limit,
             cursor=cursor,
             secret=cursor_secret_of(app_state),
         )
-        return PaginatedResponse(data=page, pagination=meta)
+        return EntityListResponse(data=page, pagination=meta, meta=list_meta)
 
     @get("/entities/{name:str}")
     async def get_entity(

@@ -35,13 +35,19 @@ from synthorg.observability import (
     log_exception_redacted,
     safe_error_description,
 )
+from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.workers import (
     WORKERS_DEAD_LETTER_ALREADY_TERMINAL,
+    WORKERS_DEAD_LETTER_CONSUMER_LOOP_DIED,
     WORKERS_DEAD_LETTER_CONSUMER_START_REJECTED,
     WORKERS_DEAD_LETTER_CONSUMER_STARTED,
     WORKERS_DEAD_LETTER_CONSUMER_STOPPED,
+    WORKERS_DEAD_LETTER_DEDUP_BYPASS_PERMANENT,
+    WORKERS_DEAD_LETTER_DEDUP_LOOKUP_FAILED,
+    WORKERS_DEAD_LETTER_DEDUP_MARK_FAILED,
     WORKERS_DEAD_LETTER_DUPLICATE_SUPPRESSED,
     WORKERS_DEAD_LETTER_FAILED,
+    WORKERS_DEAD_LETTER_RETRYABLE_EXHAUSTED,
     WORKERS_DEAD_LETTER_TRANSITIONED,
 )
 from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
@@ -210,6 +216,17 @@ class DeadLetterConsumer:
             self._running = True
             self._stop_event.clear()
             self._task = asyncio.create_task(self._consume_loop())
+            # Surface an unexpected loop death as a WARNING: without the
+            # done-callback a non-cancellation crash would be swallowed
+            # by the event loop and dead-lettered claims would stop
+            # being drained with no operator signal.
+            self._task.add_done_callback(
+                log_task_exceptions(
+                    logger,
+                    WORKERS_DEAD_LETTER_CONSUMER_LOOP_DIED,
+                    note="loop_died",
+                ),
+            )
             logger.info(WORKERS_DEAD_LETTER_CONSUMER_STARTED)
 
     async def stop(self) -> None:
@@ -257,6 +274,12 @@ class DeadLetterConsumer:
                 except TimeoutError:
                     self._stop_failed = True
                     drain_task.cancel()
+                    # Clear running state before re-raising: the consumer is
+                    # no longer draining, so ``is_running`` must not keep
+                    # reporting True to lifecycle managers after a timed-out
+                    # stop (the cancelled drain task self-terminates).
+                    self._running = False
+                    self._task = None
                     logger.error(
                         WORKERS_DEAD_LETTER_CONSUMER_STOPPED,
                         error="stop exceeded hard deadline; consumer unrestartable",
@@ -271,7 +294,22 @@ class DeadLetterConsumer:
         """Fetch and handle dead claims until stopped."""
         # lint-allow: long-running-loop-kill-switch -- _stop_event drives shutdown.
         while not self._stop_event.is_set():
-            pair = await self._task_queue.next_dead(timeout=_DEAD_POLL_SECONDS)
+            try:
+                pair = await self._task_queue.next_dead(timeout=_DEAD_POLL_SECONDS)
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                # A transient fetch failure (NATS reconnect, persistence
+                # blip) must not kill the drain loop -- otherwise dead claims
+                # pile up with no processing. Log, back off one poll
+                # interval to avoid a hot spin, then re-poll.
+                logger.warning(
+                    WORKERS_DEAD_LETTER_FAILED,
+                    reason="next_dead_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                await self._clock.sleep(_DEAD_POLL_SECONDS)
+                continue
             if pair is None:
                 continue
             claim, raw = pair
@@ -333,7 +371,15 @@ class DeadLetterConsumer:
                 WORKERS_DEAD_LETTER_ALREADY_TERMINAL,
                 task_id=claim.task_id,
             )
-        # NOT_FOUND falls through: the task is gone, nothing to fail.
+        elif outcome is DeadLetterOutcome.NOT_FOUND:
+            # The task was deleted from persistence before the dead-letter
+            # consumer reached it; nothing to fail, but log it (a dead-
+            # lettered task that cannot be found is notable for debugging).
+            logger.info(
+                WORKERS_DEAD_LETTER_ALREADY_TERMINAL,
+                task_id=claim.task_id,
+                reason="not_found",
+            )
         await self._mark_handled(claim)
         await JetStreamTaskQueue.ack(raw)
 
@@ -353,7 +399,7 @@ class DeadLetterConsumer:
         num_delivered = int(getattr(metadata, "num_delivered", 0))
         if num_delivered >= self._queue_config.max_deliver:
             logger.error(
-                WORKERS_DEAD_LETTER_FAILED,
+                WORKERS_DEAD_LETTER_RETRYABLE_EXHAUSTED,
                 task_id=claim.task_id,
                 reason="retryable_exhausted",
                 num_delivered=num_delivered,
@@ -368,9 +414,20 @@ class DeadLetterConsumer:
     async def _already_handled(self, claim: TaskClaim) -> bool:
         """Return ``True`` if this dead claim was already processed.
 
-        Fail-open on a transient lookup error (mirrors the worker): a
-        DB hiccup must not wedge the dead consumer; the redelivery
-        re-checks.
+        Split by retryability, mirroring ``Worker._is_completed``:
+
+        - **Retryable** lookup failure (transient blip): logged and
+          swallowed (fail-open); the un-acked message redelivers and the
+          next pass re-checks.
+        - **Non-retryable** failure (``is_retryable=False`` -- schema
+          drift, malformed query): re-raised (fail-closed). Returning
+          ``False`` would silently disable the dead-letter dedup guard for
+          every subsequent claim, degrading exactly-once to at-least-once
+          with no operator signal.
+
+        Raises:
+            QueryError: Re-raised when the dedup lookup fails
+                non-retryably.
         """
         if self._seen_claims is None:
             return False
@@ -379,13 +436,20 @@ class DeadLetterConsumer:
                 idempotency_key=NotBlankStr(claim.idempotency_key),
             )
         except QueryError as exc:
+            event = (
+                WORKERS_DEAD_LETTER_DEDUP_LOOKUP_FAILED
+                if exc.is_retryable
+                else WORKERS_DEAD_LETTER_DEDUP_BYPASS_PERMANENT
+            )
             logger.warning(
-                WORKERS_DEAD_LETTER_FAILED,
+                event,
                 task_id=claim.task_id,
                 reason="dedup_lookup_failed",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            if not exc.is_retryable:
+                raise
             return False
         if seen:
             logger.info(
@@ -396,7 +460,18 @@ class DeadLetterConsumer:
         return seen
 
     async def _mark_handled(self, claim: TaskClaim) -> None:
-        """Record the dead claim so a redelivery ack-skips. Fail-open."""
+        """Record the dead claim so a redelivery ack-skips.
+
+        Split by retryability, mirroring ``Worker._mark_completed``. The
+        mark is written *before* the JetStream ack (see ``_handle``), so a
+        non-retryable failure re-raises (fail-closed): the message stays
+        un-acked instead of being acked with no dedup row, which would let
+        every redelivery re-drive the fail-transition with no guard. A
+        retryable failure is swallowed (fail-open); the redelivery retries.
+
+        Raises:
+            QueryError: Re-raised when the dedup mark fails non-retryably.
+        """
         if self._seen_claims is None:
             return
         try:
@@ -407,10 +482,17 @@ class DeadLetterConsumer:
                 ttl_seconds=self._dedup_ttl_seconds,
             )
         except QueryError as exc:
+            event = (
+                WORKERS_DEAD_LETTER_DEDUP_MARK_FAILED
+                if exc.is_retryable
+                else WORKERS_DEAD_LETTER_DEDUP_BYPASS_PERMANENT
+            )
             logger.warning(
-                WORKERS_DEAD_LETTER_FAILED,
+                event,
                 task_id=claim.task_id,
                 reason="dedup_mark_failed",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            if not exc.is_retryable:
+                raise

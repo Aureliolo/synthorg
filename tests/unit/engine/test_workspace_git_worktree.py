@@ -16,6 +16,7 @@ from synthorg.engine.workspace.config import (
     PlannerWorktreesConfig,
     SemanticAnalysisConfig,
 )
+from synthorg.engine.workspace.disk_quota import DiskQuotaWatcher
 from synthorg.engine.workspace.git_worktree import PlannerWorktreeStrategy
 from synthorg.engine.workspace.models import (
     Workspace,
@@ -57,12 +58,14 @@ def _make_strategy(
     config: PlannerWorktreesConfig | None = None,
     repo_root: Path = Path("/fake/repo"),
     semantic_analyzer: object | None = None,
+    disk_quota_watcher: object | None = None,
 ) -> PlannerWorktreeStrategy:
     return PlannerWorktreeStrategy(
         config=config or _make_config(),
         repo_root=repo_root,
         cmd_timeout=60.0,
         semantic_analyzer=semantic_analyzer,  # type: ignore[arg-type]
+        disk_quota_watcher=disk_quota_watcher,  # type: ignore[arg-type]
     )
 
 
@@ -1299,3 +1302,18 @@ class TestDoSemanticAnalysis:
         mock_analyzer.analyze.assert_awaited_once()
         analyze_kwargs = mock_analyzer.analyze.call_args[1]
         assert "README.txt" not in analyze_kwargs["changed_files"]
+
+
+@pytest.mark.unit
+class TestDiskQuotaCheck:
+    """`_check_disk_quota` signals via the watcher; no-op when absent."""
+
+    async def test_invokes_watcher_when_wired(self) -> None:
+        watcher = AsyncMock(spec=DiskQuotaWatcher)
+        strategy = _make_strategy(disk_quota_watcher=watcher)
+        await strategy._check_disk_quota(make_workspace())
+        watcher.check_worktree.assert_awaited_once()
+
+    async def test_noop_when_absent(self) -> None:
+        strategy = _make_strategy()
+        await strategy._check_disk_quota(make_workspace())

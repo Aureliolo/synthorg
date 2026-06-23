@@ -64,6 +64,8 @@ class PremortemOutput(BaseModel):
     Attributes:
         failure_modes: Potential failure modes identified.
         assumptions: Key assumptions underlying the decision.
+        input_tokens: Prompt tokens consumed across premortem agent calls.
+        output_tokens: Response tokens generated across premortem agent calls.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -75,6 +77,16 @@ class PremortemOutput(BaseModel):
     assumptions: tuple[str, ...] = Field(
         default=(),
         description="Key assumptions underlying the decision",
+    )
+    input_tokens: int = Field(
+        default=0,
+        ge=0,
+        description="Prompt tokens consumed across premortem agent calls",
+    )
+    output_tokens: int = Field(
+        default=0,
+        ge=0,
+        description="Response tokens generated across premortem agent calls",
     )
 
 
@@ -179,6 +191,8 @@ class DefaultPremortemExecutor:
         return PremortemOutput(
             failure_modes=tuple(failure_modes),
             assumptions=tuple(assumptions),
+            input_tokens=sum(r.input_tokens for r in responses),
+            output_tokens=sum(r.output_tokens for r in responses),
         )
 
     @staticmethod

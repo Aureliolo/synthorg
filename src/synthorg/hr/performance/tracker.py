@@ -67,6 +67,7 @@ from synthorg.observability.events.inflection import (
     PERF_INFLECTION_EMISSION_FAILED,
 )
 from synthorg.observability.events.performance import (
+    PERF_AGENT_FORGOTTEN,
     PERF_BACKGROUND_TASK_FAILED,
     PERF_INFLECTION_SINK_BIND_REJECTED,
     PERF_INFLECTION_SINK_BOUND,
@@ -93,6 +94,10 @@ MAX_BATCH_SNAPSHOTS_LOOKUP: Final[int] = 1024
 # stalls the save indefinitely and the fail-open WARNING below never
 # fires, so the metric is neither persisted nor reported as lost.
 _PERSIST_TIMEOUT_SECONDS: Final[float] = 5.0
+
+# Quality scores are reported on a 0-10 axis; dividing by this normalises
+# a human override score into the snapshot's [0, 1] human-feedback signal.
+_QUALITY_SCORE_MAX: Final[float] = 10.0
 
 
 def _coerce_finite_weights(
@@ -174,6 +179,13 @@ class PerformanceTracker:
         self._quality_override_store = quality_override_store
         self._inflection_sink = inflection_sink
         self._trend_direction_cache: dict[tuple[str, str, str], TrendDirection] = {}
+        # Monotonic per-agent "forget" counter. Captured when an
+        # inflection-emission task is scheduled and re-checked under the
+        # lock before that task writes ``_trend_direction_cache``; a
+        # ``forget_agent`` that bumps the counter in between makes the
+        # stale task skip its writes so it cannot repopulate cache keys
+        # for an agent that has since been forgotten.
+        self._forget_generation: dict[str, int] = {}
         self._task_metrics: dict[str, list[TaskMetricRecord]] = {}
         self._collab_metrics: dict[str, list[CollaborationMetricRecord]] = {}
         self._contributions: dict[str, list[AgentContribution]] = {}
@@ -357,6 +369,7 @@ class PerformanceTracker:
             self._collab_metrics.clear()
             self._contributions.clear()
             self._trend_direction_cache.clear()
+            self._forget_generation.clear()
         logger.info(
             PERF_TRACKER_CLEARED,
             tasks_cancelled=tasks_cancelled,
@@ -364,6 +377,44 @@ class PerformanceTracker:
             collab_metrics_cleared=collab_metrics_cleared,
             contributions_cleared=contributions_cleared,
             trend_cache_cleared=trend_cache_cleared,
+        )
+
+    async def forget_agent(self, agent_id: NotBlankStr) -> None:
+        """Evict all in-memory metrics for a single departed agent.
+
+        Without this hook the per-agent ``_task_metrics`` /
+        ``_collab_metrics`` / ``_contributions`` dicts (and the
+        ``_trend_direction_cache`` keyed on ``agent_id``) accumulate
+        across agent churn for the process lifetime, since records are
+        only ever appended. Offboarding / deregistration calls this so a
+        retired agent's footprint is reclaimed without clearing every
+        other agent's metrics (unlike :meth:`aclear`).
+
+        Args:
+            agent_id: Identifier of the agent to forget.
+        """
+        agent_key = str(agent_id)
+        async with self._metrics_lock:
+            task_cleared = len(self._task_metrics.pop(agent_key, []))
+            collab_cleared = len(self._collab_metrics.pop(agent_key, []))
+            contrib_cleared = len(self._contributions.pop(agent_key, []))
+            stale_trends = [
+                key for key in self._trend_direction_cache if key[0] == agent_key
+            ]
+            for key in stale_trends:
+                del self._trend_direction_cache[key]
+            # Invalidate any inflection-emission task scheduled before this
+            # forget so it cannot repopulate the cache keys just cleared.
+            self._forget_generation[agent_key] = (
+                self._forget_generation.get(agent_key, 0) + 1
+            )
+        logger.info(
+            PERF_AGENT_FORGOTTEN,
+            agent_id=agent_key,
+            task_metrics_cleared=task_cleared,
+            collab_metrics_cleared=collab_cleared,
+            contributions_cleared=contrib_cleared,
+            trend_cache_cleared=len(stale_trends),
         )
 
     async def record_task_metric(
@@ -530,6 +581,7 @@ class PerformanceTracker:
         agent_id: NotBlankStr,
         *,
         now: datetime | None = None,
+        since: datetime | None = None,
     ) -> CollaborationScoreResult:
         """Compute collaboration score for an agent.
 
@@ -540,10 +592,18 @@ class PerformanceTracker:
             agent_id: Agent to evaluate.
             now: Reference time for override expiration check
                 (defaults to current UTC time).
+            since: Optional lower bound on record ``recorded_at``. When
+                set, records before ``since`` are excluded before scoring
+                so the score reflects the ``[since, now]`` window rather
+                than the agent's all-time collaboration history. An active
+                human override still wins regardless of ``since``.
 
         Returns:
             Collaboration score result.
         """
+        if now is None:
+            now = datetime.now(UTC)
+
         if self._override_store is not None:
             override = self._override_store.get_active_override(
                 agent_id,
@@ -571,6 +631,10 @@ class PerformanceTracker:
         # concurrent record writes.
         async with self._metrics_lock:
             records = tuple(self._collab_metrics.get(str(agent_id), []))
+        if since is not None:
+            # Clamp both ends: a windowed read must reflect ``[since, now]``,
+            # so records timestamped after ``now`` cannot leak in either.
+            records = tuple(r for r in records if since <= r.recorded_at <= now)
         return await self._collaboration_strategy.score(
             agent_id=agent_id,
             records=records,
@@ -702,12 +766,18 @@ class PerformanceTracker:
         agent_id: NotBlankStr,
         *,
         now: datetime | None = None,
+        since: datetime | None = None,
     ) -> AgentPerformanceSnapshot:
         """Compute a full performance snapshot for an agent.
 
         Args:
             agent_id: Agent to evaluate.
             now: Reference time (defaults to current UTC time).
+            since: Optional lower bound on task ``completed_at``. When set,
+                records before ``since`` are excluded before the rolling
+                windows and the overall quality average are computed, so a
+                caller observing ``[since, now]`` sees performance for that
+                window rather than the agent's all-time history.
 
         Returns:
             Complete performance snapshot with windows and trends.
@@ -716,7 +786,20 @@ class PerformanceTracker:
             now = datetime.now(UTC)
 
         agent_key = str(agent_id)
-        task_records = tuple(self._task_metrics.get(agent_key, []))
+        async with self._metrics_lock:
+            task_records = tuple(self._task_metrics.get(agent_key, []))
+            # Capture the forget epoch under the SAME lock as the records
+            # snapshot. If ``forget_agent`` runs after this point, the
+            # captured epoch is stale relative to the bumped counter, so the
+            # scheduled inflection task's guard skips its cache writes rather
+            # than repopulating the forgotten agent from pre-forget trends.
+            forget_epoch = self._forget_generation.get(agent_key, 0)
+        if since is not None:
+            # Clamp both ends so a ``[since, now]`` snapshot cannot include
+            # records completed after ``now``.
+            task_records = tuple(
+                r for r in task_records if since <= r.completed_at <= now
+            )
 
         # Compute windows.
         windows = self._window_strategy.compute_windows(
@@ -727,26 +810,51 @@ class PerformanceTracker:
         # Compute trends for quality and cost metrics.
         trends = self._compute_trends(task_records, windows, now=now)
 
-        # Emit inflection events for trend direction changes.
-        if self._inflection_sink is not None and trends:
+        # Emit inflection events for trend direction changes. Only on
+        # all-time reads: a windowed (``since``-bounded) snapshot is a
+        # historical query and must not mutate the live trend-direction
+        # cache or emit false inflections derived from partial history.
+        if since is None and self._inflection_sink is not None and trends:
             # Schedule inside the lock so a concurrent aclear() cannot
             # snapshot the tasks, cancel, and return before this task
             # is added to ``_background_tasks`` -- otherwise the new
             # task would survive the clear and could repopulate
             # ``_trend_direction_cache`` after aclear() returned.
             async with self._metrics_lock:
-                self._schedule_inflection_emission(agent_id, trends)
+                # Skip if the agent was forgotten between the records
+                # snapshot and now; scheduling with the captured epoch keeps
+                # the task's guard authoritative against a later forget too.
+                if self._forget_generation.get(agent_key, 0) == forget_epoch:
+                    self._schedule_inflection_emission(
+                        agent_id, trends, forget_epoch=forget_epoch
+                    )
 
         # Overall quality: average of all scored records.
         scored = [r.quality_score for r in task_records if r.quality_score is not None]
         overall_quality = round(sum(scored) / len(scored), 4) if scored else None
 
-        # Overall collaboration score (respects active overrides).
+        # Overall collaboration score (respects active overrides). Thread
+        # ``since`` so the collaboration leg is bounded to the same window
+        # as the quality average -- otherwise a windowed snapshot would mix
+        # ``[since, now]`` quality with all-time collaboration.
         collab_result = await self.get_collaboration_score(
             agent_id,
             now=now,
+            since=since,
         )
         overall_collab = collab_result.score if collab_result.confidence > 0.0 else None
+
+        # Direct human-feedback signal: an active human quality override
+        # (0-10) normalised to [0, 1]. Absent override -> None (no signal),
+        # so downstream consumers treat it as neutral rather than a zero.
+        human_feedback_score: float | None = None
+        if self._quality_override_store is not None:
+            hf_override = self._quality_override_store.get_active_override(
+                agent_id,
+                now=now,
+            )
+            if hf_override is not None:
+                human_feedback_score = round(hf_override.score / _QUALITY_SCORE_MAX, 4)
 
         snapshot = AgentPerformanceSnapshot(
             agent_id=agent_id,
@@ -755,6 +863,7 @@ class PerformanceTracker:
             trends=tuple(trends),
             overall_quality_score=overall_quality,
             overall_collaboration_score=overall_collab,
+            human_feedback_score=human_feedback_score,
         )
 
         logger.info(
@@ -872,7 +981,12 @@ class PerformanceTracker:
         if agent_id is not None:
             records = list(self._task_metrics.get(str(agent_id), []))
         else:
-            records = [r for recs in self._task_metrics.values() for r in recs]
+            # Snapshot ``.values()`` first: this is a sync method that
+            # cannot hold the async ``_metrics_lock``, so a concurrent
+            # ``record_task_metric``/``aclear`` mutating the dict mid-scan
+            # would otherwise raise "dictionary changed size during
+            # iteration".
+            records = [r for recs in list(self._task_metrics.values()) for r in recs]
 
         if since is not None:
             records = [r for r in records if r.completed_at >= since]
@@ -900,7 +1014,10 @@ class PerformanceTracker:
         if agent_id is not None:
             records = list(self._collab_metrics.get(str(agent_id), []))
         else:
-            records = [r for recs in self._collab_metrics.values() for r in recs]
+            # Snapshot ``.values()`` first (sync method, cannot hold the
+            # async lock) to avoid "dictionary changed size during
+            # iteration" under a concurrent writer.
+            records = [r for recs in list(self._collab_metrics.values()) for r in recs]
 
         if since is not None:
             records = [r for r in records if r.recorded_at >= since]
@@ -1071,12 +1188,19 @@ class PerformanceTracker:
         self,
         agent_id: NotBlankStr,
         trends: list[TrendResult],
+        *,
+        forget_epoch: int,
     ) -> None:
         """Schedule inflection emission as a background task.
 
         Compares each trend's direction against the cached previous
         direction.  Emits a ``PerformanceInflection`` for every
         direction change.  The task is tracked to prevent GC warnings.
+
+        ``forget_epoch`` is captured by the caller under the same lock as
+        the metrics snapshot the ``trends`` derive from, and re-checked in
+        :meth:`_do_emit_inflections` before any cache write, so a
+        ``forget_agent`` that races the snapshot cannot be repopulated.
 
         MUST be called with ``_metrics_lock`` held so the
         ``_background_tasks`` mutation is atomic with respect to
@@ -1087,7 +1211,7 @@ class PerformanceTracker:
         if self._closing:
             return
         task = asyncio.create_task(
-            self._do_emit_inflections(agent_id, trends),
+            self._do_emit_inflections(agent_id, trends, forget_epoch),
         )
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)
@@ -1096,6 +1220,7 @@ class PerformanceTracker:
         self,
         agent_id: NotBlankStr,
         trends: list[TrendResult],
+        forget_epoch: int,
     ) -> None:
         """Emit inflection events for trend direction changes.
 
@@ -1113,37 +1238,48 @@ class PerformanceTracker:
             return
 
         try:
-            for trend in trends:
-                cache_key = (
-                    str(agent_id),
-                    str(trend.metric_name),
-                    str(trend.window_size),
-                )
-                # Atomically read old direction and update cache (TOCTOU fix).
-                async with self._metrics_lock:
-                    old_direction = self._trend_direction_cache.get(
-                        cache_key,
+            # Read old directions and update the cache for the WHOLE batch
+            # under a single lock hold. A per-trend lock lets two concurrent
+            # emitters interleave -- one reads a direction the other has
+            # already overwritten -- and emit inflections that are artefacts
+            # of the interleaving rather than real direction changes.
+            pending: list[PerformanceInflection] = []
+            async with self._metrics_lock:
+                if self._forget_generation.get(str(agent_id), 0) != forget_epoch:
+                    # The agent was forgotten after this task was scheduled;
+                    # writing cache keys now would resurrect trend state for
+                    # an agent whose footprint was just reclaimed.
+                    return
+                for trend in trends:
+                    cache_key = (
+                        str(agent_id),
+                        str(trend.metric_name),
+                        str(trend.window_size),
                     )
+                    old_direction = self._trend_direction_cache.get(cache_key)
                     self._trend_direction_cache[cache_key] = trend.direction
-                # Emit outside lock to allow concurrent inflections.
-                if old_direction is not None and old_direction != trend.direction:
-                    inflection = PerformanceInflection(
-                        agent_id=agent_id,
-                        metric_name=trend.metric_name,
-                        window_size=trend.window_size,
-                        old_direction=old_direction,
-                        new_direction=trend.direction,
-                        slope=trend.slope,
-                    )
-                    logger.info(
-                        PERF_INFLECTION_DETECTED,
-                        agent_id=str(agent_id),
-                        metric=str(trend.metric_name),
-                        window=str(trend.window_size),
-                        old=old_direction.value,
-                        new=trend.direction.value,
-                    )
-                    await sink.emit(inflection)
+                    if old_direction is not None and old_direction != trend.direction:
+                        pending.append(
+                            PerformanceInflection(
+                                agent_id=agent_id,
+                                metric_name=trend.metric_name,
+                                window_size=trend.window_size,
+                                old_direction=old_direction,
+                                new_direction=trend.direction,
+                                slope=trend.slope,
+                            )
+                        )
+            # Emit outside the lock to allow concurrent inflections.
+            for inflection in pending:
+                logger.info(
+                    PERF_INFLECTION_DETECTED,
+                    agent_id=str(agent_id),
+                    metric=str(inflection.metric_name),
+                    window=str(inflection.window_size),
+                    old=inflection.old_direction.value,
+                    new=inflection.new_direction.value,
+                )
+                await sink.emit(inflection)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised

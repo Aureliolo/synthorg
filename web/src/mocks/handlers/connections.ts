@@ -3,12 +3,17 @@ import type {
   checkConnectionHealth,
   createConnection,
   getConnection,
-  listConnections,
   revealConnectionSecret,
   updateConnection,
 } from '@/api/endpoints/connections'
 import type { Connection, ConnectionType } from '@/api/types/integrations'
-import { apiError, successFor, voidSuccess } from './helpers'
+import {
+  apiError,
+  emptyPageEnvelope,
+  pageEnvelope,
+  successFor,
+  voidSuccess,
+} from './helpers'
 
 const NOW = '2026-04-11T12:00:00Z'
 
@@ -92,7 +97,7 @@ const mockConnections: Connection[] = [
 
 export const connectionsList = [
   http.get('/api/v1/connections', () =>
-    HttpResponse.json(successFor<typeof listConnections>(mockConnections)),
+    HttpResponse.json(pageEnvelope(mockConnections)),
   ),
   http.get('/api/v1/connections/:name', ({ params }) => {
     const conn = mockConnections.find((c) => c.name === params['name'])
@@ -151,7 +156,7 @@ export const connectionsList = [
 
 export const connectionsHandlers = [
   http.get('/api/v1/connections', () =>
-    HttpResponse.json(successFor<typeof listConnections>([])),
+    HttpResponse.json(emptyPageEnvelope<Connection>()),
   ),
   http.get('/api/v1/connections/:name', ({ params }) =>
     HttpResponse.json(

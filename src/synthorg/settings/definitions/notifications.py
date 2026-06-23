@@ -83,17 +83,19 @@ _r.register(
         namespace=SettingNamespace.NOTIFICATIONS,
         key="ntfy_default_url",
         type=SettingType.STRING,
-        default="https://ntfy.sh",
+        default="",
         description=(
             "Default ntfy server URL when a notification sink does not"
-            " specify one explicitly. Override to a self-hosted ntfy"
-            " endpoint to avoid leaking topic names to the public"
-            " ntfy.sh instance."
+            " specify one explicitly. Empty by default: an operator must"
+            " set an explicit endpoint (a self-hosted ntfy avoids leaking"
+            " topic names to the public ntfy.sh instance). HTTPS only."
         ),
         group="ntfy",
         level=SettingLevel.ADVANCED,
         restart_required=True,
-        validator_pattern=r"^https?://[\w.\-:]+(?:/.*)?$",
+        # Empty (unset) or an explicit https endpoint; http:// is rejected
+        # so topic names are never sent in plaintext.
+        validator_pattern=r"^(|https://[\w.\-:]+(?:/.*)?)$",
     )
 )
 

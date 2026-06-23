@@ -49,6 +49,8 @@ class InMemoryRedTeamReportRepository:
         """
         async with self._lock:
             if execution_id in self._reports:
+                # Repo stays log-free: the SubmitRedTeamReportTool caller
+                # owns the duplicate-submission audit log.
                 raise RedTeamReportAlreadyExistsError(execution_id=execution_id)
             self._reports[execution_id] = report
 
@@ -68,5 +70,8 @@ class InMemoryRedTeamReportRepository:
         """
         report = self._reports.get(execution_id)
         if report is None:
+            # Not-found is an expected, caller-handled condition (fail-open
+            # gate / degraded receipt); the callers own the log, so the repo
+            # stays log-free.
             raise RedTeamReportNotFoundError(execution_id=execution_id)
         return report

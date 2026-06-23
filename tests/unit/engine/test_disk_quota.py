@@ -89,6 +89,36 @@ class TestDiskQuotaStatus:
         with pytest.raises(ValidationError):
             status.status = "warning"  # type: ignore[misc]
 
+    def test_ok_with_usage_at_or_above_limit_rejected(self) -> None:
+        """``ok`` must not contradict a usage that reaches the limit."""
+        with pytest.raises(ValidationError, match="status='ok'"):
+            DiskQuotaStatus(
+                path=_TEST_PATH,
+                usage_gb=5.0,
+                limit_gb=5.0,
+                status="ok",
+            )
+
+    def test_exceeded_with_usage_below_limit_rejected(self) -> None:
+        """``exceeded`` must not contradict a usage below the limit."""
+        with pytest.raises(ValidationError, match="status='exceeded'"):
+            DiskQuotaStatus(
+                path=_TEST_PATH,
+                usage_gb=1.0,
+                limit_gb=5.0,
+                status="exceeded",
+            )
+
+    def test_error_sentinel_unconstrained(self) -> None:
+        """The ``error`` measurement-failure sentinel skips the consistency check."""
+        status = DiskQuotaStatus(
+            path=_TEST_PATH,
+            usage_gb=0.0,
+            limit_gb=5.0,
+            status="error",
+        )
+        assert status.status == "error"
+
 
 @pytest.mark.unit
 class TestDiskQuotaWatcher:

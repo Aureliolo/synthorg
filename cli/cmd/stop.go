@@ -1,10 +1,7 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
 	"time"
 
@@ -58,6 +55,15 @@ func runStop(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("building docker compose down args: %w", err)
 	}
 
+	// Confirm Docker is reachable BEFORE any config load, path resolution,
+	// or lock acquisition (mirrors start.go::startContainers): a missing
+	// Docker is an exit-4 failure, so detecting it up front avoids
+	// acquiring the lifecycle lock and doing filesystem work we cannot use.
+	info, err := docker.Detect(ctx)
+	if err != nil {
+		return fmt.Errorf("detecting docker: %w", err)
+	}
+
 	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
@@ -66,10 +72,6 @@ func runStop(cmd *cobra.Command, _ []string) error {
 	safeDir, err := safeStateDir(state)
 	if err != nil {
 		return fmt.Errorf("resolving data directory: %w", err)
-	}
-	composePath := filepath.Join(safeDir, "compose.yml")
-	if _, err := os.Stat(composePath); errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("compose.yml not found in %s", safeDir)
 	}
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
@@ -84,10 +86,13 @@ func runStop(cmd *cobra.Command, _ []string) error {
 			errOut.Warn(fmt.Sprintf("could not release lifecycle lock: %v", rerr))
 		}
 	}()
-
-	info, err := docker.Detect(ctx)
-	if err != nil {
-		return fmt.Errorf("detecting docker: %w", err)
+	// Confirm compose.yml exists INSIDE the lock: checking before the lock
+	// left a TOCTOU window where a concurrent wipe/uninstall could delete it
+	// before composeRunQuiet ran. assertComposeExists also surfaces
+	// non-ErrNotExist stat errors (e.g. permission denied) the inline check
+	// previously dropped.
+	if err := assertComposeExists(safeDir); err != nil {
+		return err
 	}
 
 	sp := out.StartSpinner("Stopping containers...")

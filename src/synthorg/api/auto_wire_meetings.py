@@ -198,12 +198,20 @@ def _missing_meeting_dependencies(
     return tuple(missing)
 
 
-def _build_protocol_registry() -> Mapping[MeetingProtocolType, MeetingProtocol]:
+def _build_protocol_registry(
+    strategy_config: StrategyConfig,
+) -> Mapping[MeetingProtocolType, MeetingProtocol]:
     """Create a registry of all meeting protocol implementations.
 
     Uses default per-protocol configs from the Pydantic models. The protocol
     type selected per meeting is determined by ``MeetingProtocolConfig.protocol``,
-    not by the registry.
+    not by the registry. The structured-phases protocol is wired with the
+    premortem and consensus-velocity dispatch hooks derived from
+    ``strategy_config`` so those strategy subsystems run in production.
+
+    Args:
+        strategy_config: Strategy configuration supplying the premortem
+            and consensus-velocity sub-configs.
 
     Returns:
         Mapping from protocol type to implementation.
@@ -212,6 +220,10 @@ def _build_protocol_registry() -> Mapping[MeetingProtocolType, MeetingProtocol]:
         RuntimeError: When the registry size doesn't match the protocol enum.
     """
     # Deferred imports to avoid heavy transitive deps at module level.
+    from synthorg.api._meeting_strategy_dispatch import (  # noqa: PLC0415
+        build_consensus_hook,
+        build_premortem_hook,
+    )
     from synthorg.communication.meeting.config import (  # noqa: PLC0415
         PositionPapersConfig,
         RoundRobinConfig,
@@ -236,6 +248,8 @@ def _build_protocol_registry() -> Mapping[MeetingProtocolType, MeetingProtocol]:
         ),
         MeetingProtocolType.STRUCTURED_PHASES: StructuredPhasesProtocol(
             StructuredPhasesConfig(),
+            consensus_hook=build_consensus_hook(strategy_config),
+            premortem_hook=build_premortem_hook(strategy_config),
         ),
     }
 
@@ -284,7 +298,7 @@ def _wire_meeting_orchestrator(
         A configured ``MeetingOrchestrator``.
     """
     try:
-        protocol_registry = _build_protocol_registry()
+        protocol_registry = _build_protocol_registry(strategy_config)
         missing = _missing_meeting_dependencies(
             agent_registry=agent_registry,
             provider_registry=provider_registry,
@@ -371,6 +385,10 @@ def _wire_meeting_scheduler(
     Returns:
         A configured ``MeetingScheduler`` instance.
     """
+    from synthorg.api._meeting_strategy_dispatch import (  # noqa: PLC0415
+        build_budget_scaler,
+    )
+
     try:
         resolver = _select_participant_resolver(agent_registry)
         scheduler = MeetingScheduler(
@@ -382,6 +400,7 @@ def _wire_meeting_scheduler(
                 if persistence is not None and persistence.is_connected
                 else None
             ),
+            budget_scaler=build_budget_scaler(effective_config.strategy),
         )
     except Exception as exc:
         log_exception_redacted(

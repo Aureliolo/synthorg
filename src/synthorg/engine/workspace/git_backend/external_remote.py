@@ -143,6 +143,18 @@ def _is_retryable_git_op(exc: Exception) -> bool:
     )
 
 
+def _rate_limit_retry_after(exc: Exception) -> float | None:
+    """Return a rate-limit error's ``Retry-After`` hint, if any.
+
+    Returns:
+        The seconds the forge advertised to wait, or ``None`` for any
+        other exception (the handler then keeps its computed backoff).
+    """
+    if isinstance(exc, GitBackendRateLimitError):
+        return exc.retry_after
+    return None
+
+
 def _matches(haystack: str, markers: tuple[str, ...]) -> bool:
     return any(marker in haystack for marker in markers)
 
@@ -194,6 +206,9 @@ class ExternalRemoteGitBackend:
             event=GIT_BACKEND_PUSH_RETRY,
             jitter=cfg.jitter,
             clock=self._clock,
+            # Honour a forge-supplied Retry-After (set on the rate-limit
+            # error by the forge REST helper) over the computed backoff.
+            delay_override=_rate_limit_retry_after,
         )
 
     def get_backend_type(self) -> GitBackendType:

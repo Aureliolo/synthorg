@@ -222,7 +222,7 @@ class _RecordingMetricRepo:
 
 @pytest.mark.unit
 class TestMetricPersistence:
-    """Audit 103: metrics persist durably so a restart does not lose them."""
+    """Metrics persist durably so a restart does not lose them."""
 
     async def test_task_metric_persisted_when_repo_attached(self) -> None:
         repo = _RecordingMetricRepo()
@@ -359,6 +359,37 @@ class TestGetSnapshot:
         # Trends should be computed (quality_score + cost)
         assert len(snapshot.trends) == 2
         assert snapshot.overall_quality_score == 7.5
+
+    async def test_since_bounds_records_for_overall_quality(self) -> None:
+        """``since`` clips records before the overall quality average."""
+        tracker = _make_tracker()
+        # An old, high-scoring record and a recent, low-scoring one. An
+        # observation window starting after the old record must reflect only
+        # the recent score, not the all-time average of the two.
+        await tracker.record_task_metric(
+            make_task_metric(
+                task_id="task-old",
+                completed_at=NOW - timedelta(days=40),
+                quality_score=9.0,
+            )
+        )
+        await tracker.record_task_metric(
+            make_task_metric(
+                task_id="task-recent",
+                completed_at=NOW - timedelta(days=1),
+                quality_score=3.0,
+            )
+        )
+
+        bounded = await tracker.get_snapshot(
+            NotBlankStr("agent-001"),
+            now=NOW,
+            since=NOW - timedelta(days=7),
+        )
+        unbounded = await tracker.get_snapshot(NotBlankStr("agent-001"), now=NOW)
+
+        assert bounded.overall_quality_score == 3.0
+        assert unbounded.overall_quality_score == 6.0
 
     async def test_snapshot_collaboration_score_included(self) -> None:
         """Snapshot includes collaboration score when confidence > 0."""
@@ -600,3 +631,28 @@ class TestMultipleAgents:
         assert snapshot.overall_quality_score is None
         assert snapshot.windows == ()
         assert snapshot.trends == ()
+
+
+@pytest.mark.unit
+class TestForgetAgent:
+    """PerformanceTracker.forget_agent eviction hook."""
+
+    async def test_forgets_only_the_named_agent(self) -> None:
+        tracker = _make_tracker()
+        await tracker.record_task_metric(
+            make_task_metric(agent_id="agent-001", completed_at=NOW)
+        )
+        await tracker.record_task_metric(
+            make_task_metric(agent_id="agent-002", completed_at=NOW)
+        )
+
+        await tracker.forget_agent("agent-001")
+
+        assert len(tracker.get_task_metrics(agent_id=NotBlankStr("agent-001"))) == 0
+        survivors = tracker.get_task_metrics(agent_id=NotBlankStr("agent-002"))
+        assert len(survivors) == 1
+
+    async def test_forget_unknown_agent_is_noop(self) -> None:
+        tracker = _make_tracker()
+        await tracker.forget_agent("ghost-agent")
+        assert len(tracker.get_task_metrics(agent_id=NotBlankStr("ghost-agent"))) == 0

@@ -18,7 +18,6 @@ the legacy synchronous behaviour.
 
 import asyncio
 import contextlib
-from collections import OrderedDict
 from datetime import UTC, datetime
 from typing import ClassVar, Final
 from uuid import uuid4
@@ -28,6 +27,7 @@ from synthorg.communication.event_stream._janitor import (
     janitor_loop,
     prune_idle_subscribers,
 )
+from synthorg.communication.event_stream._publish_ledger import PublishLedger
 from synthorg.communication.event_stream.types import (
     AgUiEventType,
     StreamEvent,
@@ -53,6 +53,12 @@ _DEFAULT_DEDUP_MAX_ENTRIES_PER_SESSION: Final[int] = 1024
 _DEFAULT_SUBSCRIBER_IDLE_TTL_SECONDS: Final[float] = 86400.0
 _DEFAULT_JANITOR_INTERVAL_SECONDS: Final[float] = 300.0
 _DEFAULT_JANITOR_STOP_TIMEOUT_SECONDS: Final[float] = 10.0
+# Bounded per-session SSE replay history. Recent events are retained so a
+# reconnecting client that sends ``Last-Event-ID`` can be replayed the gap
+# it missed while disconnected. Capped per session (ring buffer) and across
+# sessions (FIFO) so the buffer cannot grow without bound.
+_DEFAULT_HISTORY_PER_SESSION: Final[int] = 256
+_DEFAULT_HISTORY_MAX_SESSIONS: Final[int] = 1024
 
 
 class EventStreamHubUnrestartableError(ConflictError):
@@ -156,58 +162,45 @@ class EventStreamHub:
 
     __slots__ = (
         "_clock",
-        "_dedup_max_entries_per_session",
-        "_dedup_ttl_seconds",
         "_janitor_task",
+        "_ledger",
         "_lifecycle_lock",
         "_lifecycle_lock_loop",
         "_lock",
         "_lock_loop",
         "_max_queue_size",
         "_running",
-        "_seen_event_ids",
         "_stop_failed",
         "_subscribers",
     )
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 -- tunable bounds for queue / dedup / history
         self,
         max_queue_size: int = _DEFAULT_MAX_QUEUE_SIZE,
         *,
         dedup_ttl_seconds: float = _DEFAULT_DEDUP_TTL_SECONDS,
         dedup_max_entries_per_session: int = _DEFAULT_DEDUP_MAX_ENTRIES_PER_SESSION,
+        history_per_session: int = _DEFAULT_HISTORY_PER_SESSION,
+        history_max_sessions: int = _DEFAULT_HISTORY_MAX_SESSIONS,
         clock: Clock | None = None,
     ) -> None:
-        # Fail-fast on bad inputs; otherwise the trim loop in
-        # ``_record_published_locked`` would call ``popitem`` on an
-        # empty OrderedDict at publish time when
-        # ``dedup_max_entries_per_session`` is non-positive, and a
-        # negative TTL would short-circuit the eviction sweep into
-        # always-stale (every entry instantly "expired").
+        # ``PublishLedger`` validates the dedup / history bounds (a
+        # non-positive entry cap or negative TTL would break its trim /
+        # eviction loops at publish time).
         if max_queue_size < 1:
             msg = f"max_queue_size must be >= 1, got {max_queue_size}"
             raise ValueError(msg)
-        if dedup_ttl_seconds < 0:
-            msg = f"dedup_ttl_seconds must be >= 0, got {dedup_ttl_seconds}"
-            raise ValueError(msg)
-        if dedup_max_entries_per_session < 1:
-            msg = (
-                "dedup_max_entries_per_session must be >= 1, got "
-                f"{dedup_max_entries_per_session}"
-            )
-            raise ValueError(msg)
         self._max_queue_size = max_queue_size
-        self._dedup_ttl_seconds = dedup_ttl_seconds
-        self._dedup_max_entries_per_session = dedup_max_entries_per_session
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._subscribers: dict[str, list[_Subscriber]] = {}
-        # Per-session insertion-ordered map of ``event.id`` ->
-        # ``monotonic_seen_at``. Bounded per session and TTL-evicted on
-        # publish so a long-lived session cannot grow the dedup window
-        # without bound. Without this map, retried publishes (e.g. a
-        # webhook handler that catches a transient publish failure and
-        # retries) would emit the same event twice to all subscribers.
-        self._seen_event_ids: dict[str, OrderedDict[str, float]] = {}
+        # Per-session replay ring buffer + publish-dedup window, both
+        # consulted under ``self._lock``. See ``_publish_ledger``.
+        self._ledger = PublishLedger(
+            history_max_sessions=history_max_sessions,
+            history_per_session=history_per_session,
+            dedup_ttl_seconds=dedup_ttl_seconds,
+            dedup_max_entries_per_session=dedup_max_entries_per_session,
+        )
         # Loop-bound asyncio primitives are deferred until first use
         # so the hub can be safely re-used across event loops (test
         # scenarios where pytest-asyncio creates a fresh loop per
@@ -348,7 +341,7 @@ class EventStreamHub:
                         clock=self._clock,
                         idle_ttl_seconds=idle_ttl_seconds,
                         subscribers=self._subscribers,
-                        seen_event_ids=self._seen_event_ids,
+                        forget_session=self._ledger.forget_session,
                         lock=self._lock_for_current_loop(),
                     ),
                 ),
@@ -408,11 +401,20 @@ class EventStreamHub:
     async def subscribe(
         self,
         session_id: str,
+        *,
+        after_id: str | None = None,
     ) -> EventStreamSubscription:
         """Subscribe to events for a session.
 
         Args:
             session_id: Session to subscribe to.
+            after_id: When set (an SSE ``Last-Event-ID``), the retained
+                history events published strictly after that id are
+                replayed into the new subscriber's queue before any live
+                event is forwarded, so a reconnecting client recovers the
+                gap it missed. An unknown / evicted id replays the whole
+                retained buffer. The replay runs under the publish lock so
+                a concurrent publish cannot interleave ahead of the gap.
 
         Returns:
             An :class:`EventStreamSubscription` handle that delivers
@@ -425,6 +427,8 @@ class EventStreamHub:
         subscriber = _Subscriber(queue=queue, last_active=self._clock.monotonic())
         async with self._lock_for_current_loop():
             self._subscribers.setdefault(session_id, []).append(subscriber)
+            if after_id is not None:
+                self._ledger.replay_history(session_id, after_id, queue)
         return EventStreamSubscription(session_id, queue)
 
     async def unsubscribe(
@@ -455,7 +459,7 @@ class EventStreamHub:
                 # cleanup, the dedup map for a finished session would
                 # only shed entries on the rare case of a stray
                 # publish to that session.
-                self._seen_event_ids.pop(session_id, None)
+                self._ledger.forget_session(session_id)
 
     async def publish(self, event: StreamEvent) -> None:
         """Fan out an event to all subscribers for its session.
@@ -483,6 +487,10 @@ class EventStreamHub:
         """
         now = self._clock.monotonic()
         async with self._lock_for_current_loop():
+            # Record into the replay buffer before the no-subscriber
+            # early-return so events published during a client's
+            # reconnect gap are still replayable on resubscribe.
+            self._ledger.record_history(event)
             subs_snapshot = list(self._subscribers.get(event.session_id, ()))
             # If no subscribers, the event would be dropped anyway.
             # Don't record it in the dedup window: a later retry that
@@ -492,17 +500,17 @@ class EventStreamHub:
             # dedup-window state for that session so it cannot grow
             # without bound across publish-without-subscribers cycles.
             if not subs_snapshot:
-                self._seen_event_ids.pop(event.session_id, None)
+                self._ledger.forget_session(event.session_id)
                 return
-            if self._is_duplicate_locked(event, now):
+            if self._ledger.is_duplicate(event, now):
                 logger.warning(
                     EVENT_STREAM_HUB_PUBLISH_DEDUPED,
                     session_id=event.session_id,
                     event_id=event.id,
-                    ttl_seconds=self._dedup_ttl_seconds,
+                    ttl_seconds=self._ledger.dedup_ttl_seconds,
                 )
                 return
-            self._record_published_locked(event, now)
+            self._ledger.record_published(event, now)
             # Mutate ``last_active`` while the lock is still held so the
             # janitor's read at ``_prune_idle_subscribers`` sees a value
             # that happens-before the publish through ``_lock``. Doing
@@ -526,51 +534,6 @@ class EventStreamHub:
                     event_id=event.id,
                     note="Subscriber queue full, event dropped",
                 )
-
-    def _is_duplicate_locked(self, event: StreamEvent, now: float) -> bool:
-        """Return ``True`` if *event* was already published within the TTL.
-
-        Caller must hold ``self._lock``. Evicts expired entries from
-        the per-session window before testing membership so a stale
-        entry does not falsely register as a duplicate.
-        """
-        seen = self._seen_event_ids.get(event.session_id)
-        if seen is None:
-            return False
-        # ``dedup_ttl_seconds == 0`` is the documented "disable
-        # time-based eviction" knob: entries fall out only via the
-        # per-session size bound. Without this guard the eviction
-        # cutoff would equal ``now`` and every previously recorded
-        # entry would test as expired (its ``oldest_ts`` was captured
-        # at an earlier monotonic reading), draining the window on
-        # every publish and silently disabling deduplication too.
-        if self._dedup_ttl_seconds > 0:
-            cutoff = now - self._dedup_ttl_seconds
-            while seen:
-                oldest_id, oldest_ts = next(iter(seen.items()))
-                if oldest_ts >= cutoff:
-                    break
-                del seen[oldest_id]
-        if not seen:
-            del self._seen_event_ids[event.session_id]
-            return False
-        return event.id in seen
-
-    def _record_published_locked(
-        self,
-        event: StreamEvent,
-        now: float,
-    ) -> None:
-        """Record *event* as published in the per-session dedup window.
-
-        Caller must hold ``self._lock``. Bounds each session's window
-        by ``self._dedup_max_entries_per_session`` so a single noisy
-        session cannot exhaust memory.
-        """
-        seen = self._seen_event_ids.setdefault(event.session_id, OrderedDict())
-        seen[event.id] = now
-        while len(seen) > self._dedup_max_entries_per_session:
-            seen.popitem(last=False)
 
     async def publish_raw(
         self,

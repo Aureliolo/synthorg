@@ -79,6 +79,22 @@ class TestCacheHelpers:
         assert b == {"host": "b"}
 
     @pytest.mark.unit
+    async def test_cache_is_bounded(self) -> None:
+        """Inserts past the cap evict the oldest entries (FIFO)."""
+        well_known._card_cache.clear()
+        cap = well_known._CARD_CACHE_MAX_ENTRIES
+        for i in range(cap + 50):
+            await _put_cached_card(f"agent-{i}:host", {"i": i}, ttl=600)
+        try:
+            assert len(well_known._card_cache) <= cap
+            # Oldest inserted key is gone; the newest survives.
+            assert await _get_cached_card("agent-0:host", ttl=600) is None
+            newest = f"agent-{cap + 49}:host"
+            assert await _get_cached_card(newest, ttl=600) == {"i": cap + 49}
+        finally:
+            well_known._card_cache.clear()
+
+    @pytest.mark.unit
     async def test_expired_entry_returns_none(self) -> None:
         """Expired cache entry is evicted and returns None."""
         import time

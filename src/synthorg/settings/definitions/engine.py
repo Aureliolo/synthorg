@@ -201,6 +201,9 @@ _r.register(
         ),
         group="Safety",
         level=SettingLevel.ADVANCED,
+        # The flag is read once when the engine coroutines are wired, not
+        # per-run, so a DB edit only takes effect after a restart.
+        restart_required=True,
     )
 )
 

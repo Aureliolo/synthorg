@@ -516,7 +516,6 @@ describe('handleWsEvent', () => {
             {
               approver_id: 'agent-cto',
               algorithm: 'ed25519',
-              signature_bytes: 'aGVsbG8=',
               signed_at: '2026-04-21T00:00:00Z',
               chain_position: 1,
             },
@@ -587,7 +586,6 @@ describe('handleWsEvent', () => {
               {
                 approver_id: 'agent-cto',
                 algorithm: 'ed25519',
-                signature_bytes: 'aGVsbG8=',
                 signed_at: '2026-04-21T00:00:00Z',
                 chain_position: bad,
               },

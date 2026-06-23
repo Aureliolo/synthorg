@@ -19,9 +19,11 @@ from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.workers_errors import SeenClaimsPrunerUnrestartableError
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.workers import (
     WORKERS_SEEN_CLAIMS_PRUNE_FAILED,
     WORKERS_SEEN_CLAIMS_PRUNED,
+    WORKERS_SEEN_CLAIMS_PRUNER_LOOP_DIED,
     WORKERS_SEEN_CLAIMS_PRUNER_START_REJECTED,
     WORKERS_SEEN_CLAIMS_PRUNER_STARTED,
     WORKERS_SEEN_CLAIMS_PRUNER_STOPPED,
@@ -94,6 +96,17 @@ class SeenClaimsPruner:
             self._running = True
             self._stop_event.clear()
             self._task = asyncio.create_task(self._loop())
+            # Route an unexpected loop death to a WARNING log: without a
+            # done-callback a non-cancellation crash would vanish to the
+            # event loop's default handler and the pruner would silently
+            # stop reclaiming space.
+            self._task.add_done_callback(
+                log_task_exceptions(
+                    logger,
+                    WORKERS_SEEN_CLAIMS_PRUNER_LOOP_DIED,
+                    note="loop_died",
+                ),
+            )
             logger.info(
                 WORKERS_SEEN_CLAIMS_PRUNER_STARTED,
                 interval_seconds=self._interval_seconds,
@@ -144,6 +157,11 @@ class SeenClaimsPruner:
                 except TimeoutError:
                     self._stop_failed = True
                     drain_task.cancel()
+                    # Clear running state before re-raising so ``is_running``
+                    # does not keep reporting True after a timed-out stop (the
+                    # cancelled drain task self-terminates).
+                    self._running = False
+                    self._task = None
                     logger.error(
                         WORKERS_SEEN_CLAIMS_PRUNER_STOPPED,
                         error="stop exceeded hard deadline; pruner unrestartable",

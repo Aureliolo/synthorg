@@ -19,11 +19,12 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
+from synthorg.engine.assignment.service import TaskAssignmentService
 from synthorg.engine.coordination.models import CoordinationContext
 from synthorg.engine.coordination.service import MultiAgentCoordinator
-from synthorg.engine.decomposition.models import SubtaskDefinition
 from synthorg.engine.errors import ProjectNotFoundError
 from synthorg.engine.intake.engine import IntakeEngine
+from synthorg.engine.pipeline._solo_selection import select_solo_agent
 from synthorg.engine.pipeline.errors import (
     WorkIntakeRejectedError,
     WorkPipelineError,
@@ -58,7 +59,6 @@ from synthorg.observability.events.pipeline import (
     PIPELINE_RUN_COMPLETED,
     PIPELINE_RUN_FAILED,
     PIPELINE_RUN_STARTED,
-    PIPELINE_SOLO_AGENT_SELECTED,
     PIPELINE_TASK_MISSING,
     PIPELINE_TEAM_PATH_UNAVAILABLE,
     PIPELINE_WORK_INTAKE_REJECTED,
@@ -108,6 +108,7 @@ class DefaultWorkPipeline:
 
     __slots__ = (
         "_agent_registry",
+        "_assignment_service",
         "_clock",
         "_coordinator",
         "_intake_engine",
@@ -133,6 +134,7 @@ class DefaultWorkPipeline:
         agent_registry: AgentRegistryProtocol,
         clock: Clock | None = None,
         stakes_assessor: StakesAssessor | None = None,
+        assignment_service: TaskAssignmentService | None = None,
     ) -> None:
         self._intake_engine = intake_engine
         self._task_engine = task_engine
@@ -144,6 +146,11 @@ class DefaultWorkPipeline:
         self._agent_registry = agent_registry
         self._clock = clock if clock is not None else SystemClock()
         self._stakes_assessor = stakes_assessor or build_stakes_assessor()
+        # Solo-path assignment service: when wired, the single-agent
+        # pick routes through ``TaskAssignmentService`` so its status
+        # validation and project-team filter run in production. Absent
+        # -> the direct-scorer fallback below preserves prior behaviour.
+        self._assignment_service = assignment_service
         self._narrator: RunNarrator | None = None
 
     def attach_narrator(self, narrator: RunNarrator) -> None:
@@ -493,7 +500,12 @@ class DefaultWorkPipeline:
             worker execution service.
         """
         if not task.assigned_to:
-            assigned_id = self._select_solo_agent(task, agents)
+            assigned_id = select_solo_agent(
+                task,
+                agents,
+                scorer=self._scorer,
+                assignment_service=self._assignment_service,
+            )
             await self._task_engine.transition_task(
                 str(task.id),
                 TaskStatus.ASSIGNED,
@@ -509,67 +521,6 @@ class DefaultWorkPipeline:
             requested_by=work_item.requested_by,
         )
         return post.status
-
-    def _select_solo_agent(
-        self,
-        task: Task,
-        agents: tuple[AgentIdentity, ...],
-    ) -> str:
-        """Pick the top-scoring viable agent for the leaf task.
-
-        Returns:
-            The ID of the highest-scoring viable agent (tie-broken
-            by stable lexicographic id).
-
-        Raises:
-            WorkRoutingUndecidableError: When ``agents`` is empty or
-                no agent scored above
-                :attr:`AgentTaskScorer.min_score`.
-        """
-        if not agents:
-            msg = "no active agents available for solo execution"
-            logger.warning(
-                PIPELINE_ROUTING_UNDECIDABLE,
-                task_id=str(task.id),
-                reason="no_active_agents",
-                path="solo",
-                error_type=WorkRoutingUndecidableError.__name__,
-            )
-            raise WorkRoutingUndecidableError(msg)
-        proxy = SubtaskDefinition(
-            id=str(task.id),
-            title=task.title,
-            description=task.description,
-            estimated_complexity=task.estimated_complexity,
-        )
-        candidates = [self._scorer.score(agent, proxy) for agent in agents]
-        viable = [c for c in candidates if c.score >= self._scorer.min_score]
-        if not viable:
-            msg = (
-                "no agent scored above the routing threshold "
-                f"({self._scorer.min_score}) for solo execution"
-            )
-            logger.warning(
-                PIPELINE_ROUTING_UNDECIDABLE,
-                task_id=str(task.id),
-                reason="no_agent_above_threshold",
-                min_score=self._scorer.min_score,
-                candidate_count=len(candidates),
-                error_type=WorkRoutingUndecidableError.__name__,
-            )
-            raise WorkRoutingUndecidableError(msg)
-        best = max(
-            viable,
-            key=lambda c: (c.score, str(c.agent_identity.id)),
-        )
-        assigned_id = str(best.agent_identity.id)
-        logger.info(
-            PIPELINE_SOLO_AGENT_SELECTED,
-            task_id=str(task.id),
-            agent_id=assigned_id,
-            score=best.score,
-        )
-        return assigned_id
 
     async def _run_team(
         self,

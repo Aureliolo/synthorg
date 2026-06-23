@@ -309,6 +309,14 @@ func startDetached(ctx context.Context, info docker.Info, safeDir string, state 
 	if state.PersistenceBackend == "postgres" {
 		out.Step("Starting postgres container (backend will wait for it and apply migrations)")
 	}
+	// Re-stat compose.yml immediately before the compose run as
+	// defence-in-depth: the caller holds the lifecycle lock, so a
+	// lock-respecting process cannot remove the file mid-start, but a raw
+	// filesystem operation that bypasses the lock could. This keeps the
+	// helper self-contained against that out-of-band deletion.
+	if err := assertComposeExists(safeDir); err != nil {
+		return err
+	}
 	sp := out.StartSpinner("Starting containers...")
 	if err := composeRunQuiet(ctx, info, safeDir, "up", "-d"); err != nil {
 		sp.Error("Failed to start containers")
@@ -316,23 +324,8 @@ func startDetached(ctx context.Context, info docker.Info, safeDir string, state 
 	}
 	sp.Success("Containers started")
 
-	if !startNoWait {
-		sp = out.StartSpinner("Waiting for backend to become healthy...")
-		// localhost is correct: the CLI polls the docker-compose backend
-		// it just started on the same host, via the published port.
-		healthURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", state.BackendPort)
-		if err := health.WaitForHealthy(ctx, healthURL, healthTimeout, healthPollInterval, healthInitialDelay); err != nil {
-			sp.Error("Health check failed")
-			errOut.HintError("Run 'synthorg doctor' for diagnostics.")
-			return fmt.Errorf("health check did not pass: %w", err)
-		}
-		sp.Success("Backend healthy")
-		if state.PersistenceBackend == "postgres" {
-			out.Step("Postgres migrations checked/applied during backend startup")
-		}
-	} else {
-		out.Step("Health check skipped (--no-wait)")
-		out.HintGuidance("Run 'synthorg status --check' to verify health later.")
+	if err := waitForBackendHealthy(ctx, state, out, errOut, healthTimeout); err != nil {
+		return err
 	}
 
 	out.Blank()
@@ -353,6 +346,30 @@ func startDetached(ctx context.Context, info docker.Info, safeDir string, state 
 		out.HintNextStep("Images not verified -- run 'synthorg update' to pull and verify latest images.")
 	}
 	out.HintTip("Run 'synthorg status --watch' to monitor container health.")
+	return nil
+}
+
+// waitForBackendHealthy polls the started backend's readiness endpoint
+// until it is healthy or the timeout elapses, unless --no-wait was set.
+func waitForBackendHealthy(ctx context.Context, state config.State, out, errOut *ui.UI, healthTimeout time.Duration) error {
+	if startNoWait {
+		out.Step("Health check skipped (--no-wait)")
+		out.HintGuidance("Run 'synthorg status --check' to verify health later.")
+		return nil
+	}
+	sp := out.StartSpinner("Waiting for backend to become healthy...")
+	// localhost is correct: the CLI polls the docker-compose backend
+	// it just started on the same host, via the published port.
+	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", state.BackendPort)
+	if err := health.WaitForHealthy(ctx, healthURL, healthTimeout, healthPollInterval, healthInitialDelay); err != nil {
+		sp.Error("Health check failed")
+		errOut.HintError("Run 'synthorg doctor' for diagnostics.")
+		return fmt.Errorf("health check did not pass: %w", err)
+	}
+	sp.Success("Backend healthy")
+	if state.PersistenceBackend == "postgres" {
+		out.Step("Postgres migrations checked/applied during backend startup")
+	}
 	return nil
 }
 
@@ -437,6 +454,14 @@ func pullStartAndWait(ctx context.Context, cmd *cobra.Command, info docker.Info,
 		return err
 	}
 
+	// Re-stat compose.yml immediately before the compose run as
+	// defence-in-depth: the pull above can take a while, so an out-of-band
+	// deletion (a process that does not respect the lifecycle lock) during
+	// that window is caught here rather than relying on the caller's
+	// earlier check.
+	if err := assertComposeExists(safeDir); err != nil {
+		return err
+	}
 	sp := out.StartSpinner("Starting containers...")
 	if err := composeRunQuiet(ctx, info, safeDir, "up", "-d"); err != nil {
 		sp.Error("Failed to start containers")

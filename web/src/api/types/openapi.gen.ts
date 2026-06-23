@@ -6879,6 +6879,32 @@ export type components = {
              */
             readonly success: boolean;
         };
+        /** ApiResponse[OAuthInitiationResponse] */
+        readonly ApiResponse_OAuthInitiationResponse_: {
+            readonly data: components["schemas"]["OAuthInitiationResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[OAuthTokenStatusResponse] */
+        readonly ApiResponse_OAuthTokenStatusResponse_: {
+            readonly data: components["schemas"]["OAuthTokenStatusResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
         /** ApiResponse[OverrideResponse] */
         readonly ApiResponse_OverrideResponse_: {
             readonly data: components["schemas"]["OverrideResponse"] | null;
@@ -7207,6 +7233,19 @@ export type components = {
         /** ApiResponse[RestoreResponse] */
         readonly ApiResponse_RestoreResponse_: {
             readonly data: components["schemas"]["RestoreResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[RevealedSecretResponse] */
+        readonly ApiResponse_RevealedSecretResponse_: {
+            readonly data: components["schemas"]["RevealedSecretResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /**
@@ -8051,8 +8090,8 @@ export type components = {
             readonly decided_by: string | null;
             readonly decision_reason: string | null;
             readonly description: string;
-            /** @description Structured evidence for HITL approval */
-            readonly evidence_package: components["schemas"]["EvidencePackage"] | null;
+            /** @description Structured evidence for HITL approval (bytes redacted) */
+            readonly evidence_package: components["schemas"]["SafeEvidencePackage"] | null;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
@@ -10437,6 +10476,13 @@ export type components = {
             readonly entity_name: string;
             readonly recommendation: components["schemas"]["DriftAction"];
         };
+        /** DriftSummary */
+        readonly DriftSummary: {
+            /** @description Average divergence across all entities */
+            readonly avg_drift_score: number;
+            /** @description Count of entities above drift threshold */
+            readonly entities_with_drift: number;
+        };
         /** EdgeChange */
         readonly EdgeChange: {
             /** @enum {string} */
@@ -10520,6 +10566,35 @@ export type components = {
             readonly description: string;
             readonly name: string;
             readonly type_hint: string;
+        };
+        /** EntityListMeta */
+        readonly EntityListMeta: {
+            readonly core_count: number;
+            /** @description Drift aggregate (None when drift store unavailable) */
+            readonly drift_summary: components["schemas"]["DriftSummary"] | null;
+            readonly total_count: number;
+            readonly user_count: number;
+        };
+        /** EntityListResponse */
+        readonly EntityListResponse: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["EntityResponse"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly meta: components["schemas"]["EntityListMeta"];
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
         };
         /** EntityRelationInput */
         readonly EntityRelationInput: {
@@ -10817,72 +10892,6 @@ export type components = {
         /** EventBatch */
         readonly EventBatch: {
             readonly events: readonly components["schemas"]["AnonymizedOutcomeEvent"][];
-        };
-        /** EvidencePackage */
-        readonly EvidencePackage: {
-            /**
-             * Format: date-time
-             * @description Artifact creation timestamp
-             */
-            readonly created_at: string;
-            /** @description Stable evidence package UUID */
-            readonly id: string;
-            /**
-             * @description Whether the required signature threshold has been met.
-             *
-             *     Counts distinct approvers so a single approver cannot be
-             *     counted multiple times.
-             */
-            readonly is_fully_signed: boolean;
-            /** @description Additional key-value metadata */
-            readonly metadata: {
-                readonly [key: string]: unknown;
-            };
-            /** @description Plain-English explanation of the approval context */
-            readonly narrative: string;
-            /**
-             * @description Compressed reasoning steps
-             * @default []
-             */
-            readonly reasoning_trace: readonly string[];
-            /** @description Action options for the approver (1-3) */
-            readonly recommended_actions: readonly components["schemas"]["RecommendedAction"][];
-            readonly risk_level: components["schemas"]["ApprovalRiskLevel"];
-            /**
-             * @description Minimum signatures required before action executes
-             * @default 1
-             */
-            readonly signature_threshold: number;
-            /**
-             * @description Collected approver signatures
-             * @default []
-             */
-            readonly signatures: readonly components["schemas"]["EvidencePackageSignature"][];
-            /** @description Producing agent identifier */
-            readonly source_agent_id: string;
-            /** @description Related task identifier */
-            readonly task_id: string | null;
-            /** @description Short human-readable summary */
-            readonly title: string;
-        };
-        /** EvidencePackageSignature */
-        readonly EvidencePackageSignature: {
-            /**
-             * @description Signature algorithm
-             * @enum {string}
-             */
-            readonly algorithm: "ml-dsa-65" | "ed25519";
-            /** @description Approver identity */
-            readonly approver_id: string;
-            /** @description Position in the append-only audit chain */
-            readonly chain_position: number;
-            /** @description Raw signature bytes */
-            readonly signature_bytes: string;
-            /**
-             * Format: date-time
-             * @description Signature timestamp
-             */
-            readonly signed_at: string;
         };
         /** ExecutedToolCall */
         readonly ExecutedToolCall: {
@@ -11794,6 +11803,11 @@ export type components = {
              */
             readonly agents: readonly components["schemas"]["AgentActivity"][];
             /**
+             * @description Operator-tuned client poll cadence in seconds (cockpit.snapshot_interval_seconds).
+             * @default 5
+             */
+            readonly poll_interval_seconds: number;
+            /**
              * @description Agent ids flagged runaway
              * @default []
              */
@@ -12435,6 +12449,22 @@ export type components = {
                 readonly [key: string]: unknown;
             } | null;
         };
+        /** OAuthInitiationResponse */
+        readonly OAuthInitiationResponse: {
+            /** @description Provider authorization URL the user must visit. */
+            readonly authorization_url: string;
+            /** @description Opaque CSRF state token bound to this flow. */
+            readonly state_token: string;
+        };
+        /** OAuthTokenStatusResponse */
+        readonly OAuthTokenStatusResponse: {
+            /** @description The connection whose OAuth token status is reported. */
+            readonly connection_name: string;
+            /** @description True when a usable token exists, False when none, None when the secret store could not be read. */
+            readonly has_token: boolean | null;
+            /** @description ISO-8601 token expiry, or null when not applicable. */
+            readonly token_expires_at: string | null;
+        };
         /** OpenQuestionPayload */
         readonly OpenQuestionPayload: {
             /** @description The answer, present once the question is resolved */
@@ -13026,26 +13056,6 @@ export type components = {
         readonly PaginatedResponse_DriftReportResponse_: {
             /** @default [] */
             readonly data: readonly components["schemas"]["DriftReportResponse"][];
-            /**
-             * @description Data sources that failed gracefully (partial data)
-             * @default []
-             */
-            readonly degraded_sources: readonly string[];
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            readonly pagination: components["schemas"]["PaginationMeta"];
-            /**
-             * @description Whether the request succeeded (derived from ``error``).
-             *
-             *     Returns:
-             *         ``True`` or ``False`` reflecting the condition.
-             */
-            readonly success: boolean;
-        };
-        /** PaginatedResponse[EntityResponse] */
-        readonly PaginatedResponse_EntityResponse_: {
-            /** @default [] */
-            readonly data: readonly components["schemas"]["EntityResponse"][];
             /**
              * @description Data sources that failed gracefully (partial data)
              * @default []
@@ -15435,6 +15445,13 @@ export type components = {
              */
             readonly warn_rate: number;
         };
+        /** RevealedSecretResponse */
+        readonly RevealedSecretResponse: {
+            /** @description Name of the revealed credential field. */
+            readonly field: string;
+            /** @description Plaintext value of the credential field. */
+            readonly value: string;
+        };
         /**
          * ReviewRequirements
          * @description Review policy
@@ -15646,6 +15663,70 @@ export type components = {
          * @enum {string}
          */
         readonly RuleSeverity: "info" | "warning" | "critical";
+        /** SafeEvidencePackage */
+        readonly SafeEvidencePackage: {
+            /**
+             * Format: date-time
+             * @description Artifact creation timestamp
+             */
+            readonly created_at: string;
+            /** @description Stable evidence package UUID */
+            readonly id: string;
+            /**
+             * @description Whether the required signature threshold has been met.
+             *
+             *     Counts distinct approvers so a single approver cannot be
+             *     counted multiple times.
+             */
+            readonly is_fully_signed: boolean;
+            /** @description Additional key-value metadata */
+            readonly metadata: {
+                readonly [key: string]: unknown;
+            };
+            /** @description Plain-English explanation of the approval context */
+            readonly narrative: string;
+            /**
+             * @description Compressed reasoning steps
+             * @default []
+             */
+            readonly reasoning_trace: readonly string[];
+            /** @description Action options for the approver (1-3) */
+            readonly recommended_actions: readonly components["schemas"]["RecommendedAction"][];
+            readonly risk_level: components["schemas"]["ApprovalRiskLevel"];
+            /**
+             * @description Minimum signatures required before action executes
+             * @default 1
+             */
+            readonly signature_threshold: number;
+            /**
+             * @description Collected approver signatures (raw bytes redacted)
+             * @default []
+             */
+            readonly signatures: readonly components["schemas"]["SafeEvidencePackageSignature"][];
+            /** @description Producing agent identifier */
+            readonly source_agent_id: string;
+            /** @description Related task identifier */
+            readonly task_id: string | null;
+            /** @description Short human-readable summary */
+            readonly title: string;
+        };
+        /** SafeEvidencePackageSignature */
+        readonly SafeEvidencePackageSignature: {
+            /**
+             * @description Signature algorithm
+             * @enum {string}
+             */
+            readonly algorithm: "ml-dsa-65" | "ed25519";
+            /** @description Approver identity */
+            readonly approver_id: string;
+            /** @description Position in the append-only audit chain */
+            readonly chain_position: number;
+            /**
+             * Format: date-time
+             * @description Signature timestamp
+             */
+            readonly signed_at: string;
+        };
         /** SatisfactionHistory */
         readonly SatisfactionHistory: {
             /** @description Fraction of reviewed tasks accepted (0.0-1.0). */
@@ -22119,7 +22200,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_str_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_RevealedSecretResponse_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -24685,7 +24766,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_str_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_OAuthInitiationResponse_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -24715,7 +24796,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_OAuthTokenStatusResponse_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -24922,7 +25003,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PaginatedResponse_EntityResponse_"];
+                    readonly "application/json": components["schemas"]["EntityListResponse"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

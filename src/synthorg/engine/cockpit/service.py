@@ -32,6 +32,9 @@ from synthorg.persistence.flight_recorder_protocol import (
 logger = get_logger(__name__)
 
 _PERCENT_DIVISOR: Final[float] = 100.0
+# Fallback client poll cadence when the cockpit controller does not stamp
+# the operator-tuned ``cockpit.snapshot_interval_seconds`` onto a snapshot.
+_DEFAULT_SNAPSHOT_INTERVAL_SECONDS: Final[float] = 5.0
 _ACTIVE_STATUSES: Final[tuple[TaskStatus, ...]] = (
     TaskStatus.IN_PROGRESS,
     TaskStatus.BLOCKED,
@@ -88,6 +91,14 @@ class LiveActivitySnapshot(BaseModel):
     runaway_agents: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Agent ids flagged runaway",
+    )
+    poll_interval_seconds: float = Field(
+        default=_DEFAULT_SNAPSHOT_INTERVAL_SECONDS,
+        gt=0.0,
+        description=(
+            "Operator-tuned client poll cadence in seconds"
+            " (cockpit.snapshot_interval_seconds)."
+        ),
     )
 
 

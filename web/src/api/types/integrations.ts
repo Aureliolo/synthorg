@@ -5,8 +5,12 @@ export type {
   Connection,
   CreateConnectionRequest,
   HealthReport,
+  InitiateOAuthFlowRequest,
   InstallEntryRequest,
   InstallEntryResponse,
+  OAuthInitiationResponse,
+  OAuthTokenStatusResponse,
+  RevealedSecretResponse,
   UpdateConnectionRequest,
 } from './dtos.gen'
 
@@ -49,28 +53,6 @@ export function connectionTypeUsesWebhookReceipts(
   return (WEBHOOK_RECEIPT_CONNECTION_TYPES as readonly ConnectionType[]).includes(type)
 }
 
-/** Endpoint-only shapes that the controller layer uses but Pydantic
- *  models surface inline (no top-level ``components.schemas`` entry). */
-export interface RevealSecretResponse {
-  readonly field: string
-  readonly value: string
-}
-
-export type OauthInitiateRequest = {
-  readonly connection_name: string
-  readonly scopes?: readonly string[]
-}
-
-export interface OauthInitiateResponse {
-  readonly authorization_url: string
-  readonly state_token: string
-}
-
-export interface OauthTokenStatus {
-  readonly connection_name: string
-  readonly has_token: boolean | null
-  readonly token_expires_at: string | null
-}
 
 export interface TunnelStatus {
   readonly public_url: string | null

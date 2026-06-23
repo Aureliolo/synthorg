@@ -65,7 +65,7 @@ class ActorIdentity(BaseModel):
 
     actor_id: NotBlankStr
     kind: ActorKind
-    label: str | None = None
+    label: NotBlankStr | None = None
 
     @classmethod
     def system(cls, label: NotBlankStr) -> ActorIdentity:

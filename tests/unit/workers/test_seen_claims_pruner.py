@@ -6,12 +6,17 @@ stub.
 """
 
 import asyncio
+import contextlib
 from datetime import UTC, datetime, timedelta
 from typing import Final
 
 import pytest
+from structlog.testing import capture_logs
 
 from synthorg.core.types import NotBlankStr
+from synthorg.observability.events.workers import (
+    WORKERS_SEEN_CLAIMS_PRUNER_LOOP_DIED,
+)
 from synthorg.workers.seen_claims_pruner import SeenClaimsPruner
 from tests._shared.fake_clock import FakeClock
 from tests._shared.persistence import make_sqlite_seen_claims
@@ -89,3 +94,36 @@ async def test_loop_prunes_then_stops_cleanly() -> None:
         await pruner.stop()
         await pruner.stop()  # idempotent
         assert pruner.is_running is False
+
+
+async def test_loop_death_is_logged_via_done_callback() -> None:
+    async with make_sqlite_seen_claims() as repo:
+        pruner = SeenClaimsPruner(
+            seen_claims=repo,
+            interval_seconds=30.0,
+            clock=FakeClock(start=_BASE + timedelta(seconds=100)),
+        )
+        boom = RuntimeError("prune exploded")
+        died = asyncio.Event()
+
+        async def _explode() -> int:
+            died.set()
+            raise boom
+
+        # A non-cancellation crash in the loop body must surface through
+        # the done-callback rather than vanishing to the event loop.
+        pruner._prune_once = _explode  # type: ignore[method-assign]
+        with capture_logs() as logs:
+            await pruner.start()
+            task = pruner._task
+            assert task is not None
+            await asyncio.wait_for(died.wait(), _HARD_CAP_SECONDS)
+            with contextlib.suppress(RuntimeError):
+                await asyncio.wait_for(asyncio.shield(task), _HARD_CAP_SECONDS)
+            # Let the done-callback run on the next loop tick.
+            await asyncio.sleep(0)
+
+        assert any(
+            entry["event"] == WORKERS_SEEN_CLAIMS_PRUNER_LOOP_DIED for entry in logs
+        )
+        await pruner.stop()

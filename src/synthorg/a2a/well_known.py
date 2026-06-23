@@ -11,6 +11,7 @@ only mounted when ``a2a.enabled = True``.
 
 import asyncio
 import hashlib
+from typing import Final
 
 from litestar import Controller, Request, get
 from litestar.datastructures import State
@@ -45,6 +46,11 @@ logger = get_logger(__name__)
 
 # Module-level cache: (card_data, expires_at, fingerprint).
 _card_cache: dict[str, tuple[dict[str, JsonValue], float, str]] = {}
+# Hard cap on cached entries. The per-agent key is (agent_id, host_base),
+# so the cache would otherwise grow unbounded across agent churn and the
+# set of hosts that resolve the well-known endpoints. Expiry is lazy (only
+# on read), so without a cap a never-re-requested entry lingers forever.
+_CARD_CACHE_MAX_ENTRIES: Final[int] = 512
 # Module-level lock with process lifetime; never rebound across loops.
 _cache_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see above.
 # Module-level clock singleton; tests inject a FakeClock by passing
@@ -113,11 +119,38 @@ async def _put_cached_card(
         return
     active_clock = clock or _default_clock
     async with _cache_lock:
+        _evict_for_insert(cache_key, active_clock)
         _card_cache[cache_key] = (
             card_data,
             active_clock.monotonic() + ttl,
             fingerprint,
         )
+
+
+def _evict_for_insert(cache_key: str, active_clock: Clock) -> None:
+    """Make room for ``cache_key`` under the entry cap (caller holds the lock).
+
+    Refreshing an existing key moves it to the most-recent position. When
+    at capacity for a new key, expired entries are reclaimed first (cheap),
+    then the oldest-inserted entries are dropped (FIFO) until there is room.
+
+    Args:
+        cache_key: The key about to be (re)inserted.
+        active_clock: Clock used to identify expired entries.
+    """
+    if cache_key in _card_cache:
+        del _card_cache[cache_key]
+        return
+    if len(_card_cache) < _CARD_CACHE_MAX_ENTRIES:
+        return
+    now = active_clock.monotonic()
+    expired = [
+        key for key, (_, expires_at, _) in _card_cache.items() if now > expires_at
+    ]
+    for key in expired:
+        del _card_cache[key]
+    while len(_card_cache) >= _CARD_CACHE_MAX_ENTRIES:
+        del _card_cache[next(iter(_card_cache))]
 
 
 async def _resolve_company_name(app_state: AppState) -> str:

@@ -18,6 +18,7 @@ from synthorg.engine.prompt_safety import (
     TAG_CODE_DIFF,
     TAG_CONFIG_VALUE,
     TAG_CRITERIA_JSON,
+    TAG_KNOWLEDGE,
     TAG_LIVING_DOC,
     TAG_MEMORY_ENTRY,
     TAG_PEER_CONTRIBUTION,
@@ -311,6 +312,7 @@ class TestFenceTagRegistry:
             TAG_RESEARCH_SOURCE,
             TAG_LIVING_DOC,
             TAG_BRAIN_STATE,
+            TAG_KNOWLEDGE,
         ):
             assert tag in ALL_FENCE_TAGS
 

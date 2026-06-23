@@ -28,6 +28,9 @@ from synthorg.api.lifecycle_helpers.config_apply import (
     _apply_bridge_config,
     _apply_security_timeout_interval,
 )
+from synthorg.api.lifecycle_helpers.flight_recorder_retention import (
+    _flight_recorder_retention_loop,
+)
 from synthorg.api.lifecycle_helpers.persistence_autowire import (
     wire_persistence_services,
 )
@@ -256,6 +259,7 @@ async def _run_startup(  # noqa: PLR0913
     effective_config: RootConfig | None,
     on_ticket_cleanup_done: Callable[[asyncio.Task[None]], None],
     on_audit_retention_done: Callable[[asyncio.Task[None]], None],
+    on_flight_recorder_retention_done: Callable[[asyncio.Task[None]], None],
     on_webhook_cleanup_done: Callable[[asyncio.Task[None]], None],
 ) -> None:
     """Run the on-startup wiring once persistence is connected.
@@ -276,6 +280,8 @@ async def _run_startup(  # noqa: PLR0913
         effective_config: Root config needed for on-startup auto-wiring.
         on_ticket_cleanup_done: Done-callback for the ticket-cleanup loop.
         on_audit_retention_done: Done-callback for the audit-retention loop.
+        on_flight_recorder_retention_done: Done-callback for the
+            flight-recorder retention loop.
         on_webhook_cleanup_done: Done-callback for the webhook-cleanup loop.
 
     Raises:
@@ -640,6 +646,28 @@ async def _run_startup(  # noqa: PLR0913
         name="audit-retention",
     )
     tasks.audit_retention_task.add_done_callback(on_audit_retention_done)
+
+    # Flight-recorder retention purge loop (once every 24h). Idempotent:
+    # cancel any prior task before spawning a fresh one so tasks do not
+    # accumulate when lifespan re-enters.
+    if (
+        tasks.flight_recorder_retention_task is not None
+        and not tasks.flight_recorder_retention_task.done()
+    ):
+        tasks.flight_recorder_retention_task.cancel()
+        try:
+            await tasks.flight_recorder_retention_task
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+    tasks.flight_recorder_retention_task = asyncio.create_task(
+        _flight_recorder_retention_loop(app_state),
+        name="flight-recorder-retention",
+    )
+    tasks.flight_recorder_retention_task.add_done_callback(
+        on_flight_recorder_retention_done
+    )
 
     # Webhook-receipt sweep loop (once every 24h).  Idempotent: cancel any prior
     # sweep task before spawning a fresh one so tasks do not accumulate when

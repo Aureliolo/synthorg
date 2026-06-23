@@ -83,6 +83,21 @@ class TestListEntities:
         assert body["data"][0]["name"] == "Task"
         assert body["data"][0]["tier"] == "core"
 
+    async def test_includes_count_meta(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        svc = _inject_ontology_service(async_test_client)
+        entity = _make_entity()  # tier core
+        svc.list_entities.return_value = (entity,)
+
+        resp = await async_test_client.get("/api/v1/ontology/entities")
+        assert resp.status_code == 200
+        meta = resp.json()["meta"]
+        assert meta["total_count"] == 1
+        assert meta["core_count"] == 1
+        assert meta["user_count"] == 0
+        assert meta["drift_summary"] is None
+
     async def test_filter_by_tier(self, async_test_client: LoopAsyncClient) -> None:
         svc = _inject_ontology_service(async_test_client)
         svc.list_entities.return_value = ()

@@ -606,7 +606,7 @@ class TestExceptionHandlers:
             assert resp.status_code == 404
             body = resp.json()
             assert body["success"] is False
-            assert body["error"] == "Not found"
+            assert body["error"] == "Resource not found"
             _assert_error_detail(
                 body,
                 error_code=ErrorCode.ROUTE_NOT_FOUND,
@@ -615,7 +615,7 @@ class TestExceptionHandlers:
             )
 
     async def test_litestar_permission_denied_maps_to_403(self) -> None:
-        """PermissionDeniedException with no detail falls back to 'Forbidden'."""
+        """PermissionDeniedException with no detail returns 'Access denied'."""
 
         @get("/test")
         async def handler() -> None:
@@ -626,7 +626,7 @@ class TestExceptionHandlers:
             assert resp.status_code == 403
             body = resp.json()
             assert body["success"] is False
-            assert body["error"] == "Forbidden"
+            assert body["error"] == "Access denied"
             _assert_error_detail(
                 body,
                 error_code=ErrorCode.FORBIDDEN,
@@ -635,7 +635,7 @@ class TestExceptionHandlers:
             )
 
     async def test_permission_denied_scrubs_custom_detail(self) -> None:
-        """PermissionDeniedException always returns fixed 'Forbidden' message."""
+        """PermissionDeniedException always returns the fixed 'Access denied'."""
 
         @get("/test")
         async def handler() -> None:
@@ -645,7 +645,7 @@ class TestExceptionHandlers:
             resp = await client.get("/test")
             assert resp.status_code == 403
             body = resp.json()
-            assert body["error"] == "Forbidden"
+            assert body["error"] == "Access denied"
             _assert_error_detail(
                 body,
                 error_code=ErrorCode.FORBIDDEN,

@@ -73,6 +73,49 @@ class InitiateOAuthFlowRequest(BaseModel):
     )
 
 
+class OAuthInitiationResponse(BaseModel):
+    """Body model for the ``POST /oauth/initiate`` success payload.
+
+    A named DTO (replacing a bare ``dict[str, str]``) so the OpenAPI
+    schema documents the two fields a client must read.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    authorization_url: NotBlankStr = Field(
+        description="Provider authorization URL the user must visit.",
+    )
+    state_token: NotBlankStr = Field(
+        description="Opaque CSRF state token bound to this flow.",
+    )
+
+
+class OAuthTokenStatusResponse(BaseModel):
+    """Body model for the ``GET /oauth/status/{name}`` success payload.
+
+    A named DTO (replacing a bare ``dict[str, object]``) so the OpenAPI
+    schema documents the token-status fields. ``has_token=None`` is a
+    distinct third state signalling a secret-store outage (vs ``False``
+    meaning the user has not connected yet).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    connection_name: NotBlankStr = Field(
+        description="The connection whose OAuth token status is reported.",
+    )
+    has_token: bool | None = Field(
+        description=(
+            "True when a usable token exists, False when none, None when the"
+            " secret store could not be read."
+        ),
+    )
+    token_expires_at: str | None = Field(
+        default=None,
+        description="ISO-8601 token expiry, or null when not applicable.",
+    )
+
+
 class OAuthController(Controller):
     """OAuth flow management endpoints."""
 
@@ -91,13 +134,13 @@ class OAuthController(Controller):
         self,
         state: State,
         data: InitiateOAuthFlowRequest,
-    ) -> ApiResponse[dict[str, str]]:
+    ) -> ApiResponse[OAuthInitiationResponse]:
         """Initiate an OAuth authorization code flow.
 
         Returns the authorization URL for the user to visit.
 
         Returns:
-            ``ApiResponse[dict[str, str]]`` instance.
+            ``ApiResponse[OAuthInitiationResponse]`` instance.
 
         Raises:
             ValidationError: Raised on the corresponding failure path.
@@ -161,10 +204,10 @@ class OAuthController(Controller):
         )
 
         return ApiResponse(
-            data={
-                "authorization_url": auth_url,
-                "state_token": bound_state.state_token,
-            },
+            data=OAuthInitiationResponse(
+                authorization_url=auth_url,
+                state_token=bound_state.state_token,
+            ),
         )
 
     @get(
@@ -258,11 +301,11 @@ class OAuthController(Controller):
         self,
         state: State,
         connection_name: PathName,
-    ) -> ApiResponse[dict[str, object]]:
+    ) -> ApiResponse[OAuthTokenStatusResponse]:
         """Check the OAuth token status for a connection.
 
         Returns:
-            ``ApiResponse[dict[str, object]]`` instance.
+            ``ApiResponse[OAuthTokenStatusResponse]`` instance.
         """
         # ``ConnectionNotFoundError`` propagates with its class-level
         # 404 + ``CONNECTION_NOT_FOUND`` envelope.
@@ -309,9 +352,9 @@ class OAuthController(Controller):
         else:
             has_token = bool(expires_at) or has_access_token
         return ApiResponse(
-            data={
-                "connection_name": connection_name,
-                "has_token": has_token,
-                "token_expires_at": expires_at,
-            },
+            data=OAuthTokenStatusResponse(
+                connection_name=connection_name,
+                has_token=has_token,
+                token_expires_at=expires_at if isinstance(expires_at, str) else None,
+            ),
         )

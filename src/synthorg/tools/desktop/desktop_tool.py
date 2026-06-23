@@ -476,6 +476,11 @@ class DesktopTool(BaseTool):
         if decoded.get("status") != "ok":
             err_type = decoded.get("error_type", "DesktopDomainError")
             message = decoded.get("message", "executor returned an error")
+            logger.warning(
+                DESKTOP_EXECUTOR_FAILED,
+                operation=operation,
+                error_type=str(err_type),
+            )
             raise _map_executor_error(str(err_type), str(message), operation)
         return cast("ExecutorEnvelope", decoded)
 

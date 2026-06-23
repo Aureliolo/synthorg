@@ -29,6 +29,8 @@ FEATURE: FeatureModule = FeatureManifest(
         "LocalPathGitBackend",
         "ExternalRemoteGitBackend",
         "EnvironmentService",
+        "AstSemanticAnalyzer",
+        "DiskQuotaWatcher",
     ),
     depends_on=(),
 )

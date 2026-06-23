@@ -137,6 +137,19 @@ structured project state surfaced as a dedicated retrieval leg, not consolidated
 agent-memory snippets.
 """
 
+TAG_KNOWLEDGE: Final[str] = "knowledge"
+"""Wrap a curated knowledge-base entry flowing into an LLM call.
+
+Knowledge entries (project-scoped and global) are authored by agents and the
+operator, so on retrieval they are attacker-controllable exactly as brain
+state is. The retrieval facade wraps knowledge content under this tag before it
+reaches the resuming agent's context, so an upstream writer's embedded
+instructions are fenced rather than followed.
+
+Distinct from :data:`TAG_BRAIN_STATE`: knowledge is the curated reference
+corpus (project + global), not the long-horizon project-brain decision log.
+"""
+
 
 def _collect_fence_tags() -> frozenset[str]:
     """Collect every ``TAG_*`` fence-name constant defined in this module.

@@ -6,8 +6,12 @@ import (
 	"github.com/Aureliolo/synthorg/sidecar/internal/config"
 )
 
+// validAdminToken is at least minAdminTokenLength (32) characters so it
+// passes the loader's token-length floor.
+const validAdminToken = "test-admin-token-0123456789abcdef"
+
 func TestLoadDefaults(t *testing.T) {
-	t.Setenv("SIDECAR_ADMIN_TOKEN", "test-token-abc")
+	t.Setenv("SIDECAR_ADMIN_TOKEN", validAdminToken)
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -37,13 +41,13 @@ func TestLoadDefaults(t *testing.T) {
 	if len(cfg.AllowedHosts) != 0 {
 		t.Errorf("AllowedHosts = %v, want empty", cfg.AllowedHosts)
 	}
-	if cfg.AdminToken != "test-token-abc" {
-		t.Errorf("AdminToken = %q, want %q", cfg.AdminToken, "test-token-abc")
+	if cfg.AdminToken != validAdminToken {
+		t.Errorf("AdminToken = %q, want %q", cfg.AdminToken, validAdminToken)
 	}
 }
 
 func TestLoadAllowedHosts(t *testing.T) {
-	t.Setenv("SIDECAR_ADMIN_TOKEN", "tok")
+	t.Setenv("SIDECAR_ADMIN_TOKEN", validAdminToken)
 	t.Setenv("SIDECAR_ALLOWED_HOSTS", "api.example.com:443,db.local:5432")
 
 	cfg, err := config.Load()
@@ -62,7 +66,7 @@ func TestLoadAllowedHosts(t *testing.T) {
 }
 
 func TestLoadIPBasedHosts(t *testing.T) {
-	t.Setenv("SIDECAR_ADMIN_TOKEN", "tok")
+	t.Setenv("SIDECAR_ADMIN_TOKEN", validAdminToken)
 	t.Setenv("SIDECAR_ALLOWED_HOSTS", "93.184.216.34:443")
 
 	cfg, err := config.Load()
@@ -78,7 +82,7 @@ func TestLoadIPBasedHosts(t *testing.T) {
 }
 
 func TestLoadInvalidPortSkipped(t *testing.T) {
-	t.Setenv("SIDECAR_ADMIN_TOKEN", "tok")
+	t.Setenv("SIDECAR_ADMIN_TOKEN", validAdminToken)
 	t.Setenv("SIDECAR_ALLOWED_HOSTS", "good.com:443,bad.com:notaport,also-good.com:80")
 
 	cfg, err := config.Load()
@@ -91,7 +95,7 @@ func TestLoadInvalidPortSkipped(t *testing.T) {
 }
 
 func TestLoadPortOutOfRange(t *testing.T) {
-	t.Setenv("SIDECAR_ADMIN_TOKEN", "tok")
+	t.Setenv("SIDECAR_ADMIN_TOKEN", validAdminToken)
 	t.Setenv("SIDECAR_ALLOWED_HOSTS", "host.com:0,host.com:70000")
 
 	cfg, err := config.Load()
@@ -104,7 +108,7 @@ func TestLoadPortOutOfRange(t *testing.T) {
 }
 
 func TestLoadBoolFlags(t *testing.T) {
-	t.Setenv("SIDECAR_ADMIN_TOKEN", "tok")
+	t.Setenv("SIDECAR_ADMIN_TOKEN", validAdminToken)
 	t.Setenv("SIDECAR_DNS_ALLOWED", "0")
 	t.Setenv("SIDECAR_LOOPBACK_ALLOWED", "0")
 	t.Setenv("SIDECAR_ALLOW_ALL", "1")
@@ -125,7 +129,7 @@ func TestLoadBoolFlags(t *testing.T) {
 }
 
 func TestLoadCustomPorts(t *testing.T) {
-	t.Setenv("SIDECAR_ADMIN_TOKEN", "tok")
+	t.Setenv("SIDECAR_ADMIN_TOKEN", validAdminToken)
 	t.Setenv("SIDECAR_HEALTH_PORT", "9000")
 	t.Setenv("SIDECAR_PROXY_PORT", "9001")
 
@@ -142,7 +146,7 @@ func TestLoadCustomPorts(t *testing.T) {
 }
 
 func TestLoadPortConflict(t *testing.T) {
-	t.Setenv("SIDECAR_ADMIN_TOKEN", "tok")
+	t.Setenv("SIDECAR_ADMIN_TOKEN", validAdminToken)
 	t.Setenv("SIDECAR_HEALTH_PORT", "8080")
 	t.Setenv("SIDECAR_PROXY_PORT", "8080")
 
@@ -160,8 +164,16 @@ func TestLoadMissingAdminToken(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsShortAdminToken(t *testing.T) {
+	t.Setenv("SIDECAR_ADMIN_TOKEN", "short-token")
+	_, err := config.Load()
+	if err == nil {
+		t.Fatal("expected error for a too-short admin token, got nil")
+	}
+}
+
 func TestHostnameNormalizedToLower(t *testing.T) {
-	t.Setenv("SIDECAR_ADMIN_TOKEN", "tok")
+	t.Setenv("SIDECAR_ADMIN_TOKEN", validAdminToken)
 	t.Setenv("SIDECAR_ALLOWED_HOSTS", "API.Example.COM:443")
 
 	cfg, err := config.Load()

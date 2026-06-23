@@ -8,6 +8,10 @@ from typing import Final, Self
 import httpx
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.resilience import (
+    coerce_finite_nonneg_seconds,
+    parse_retry_after_seconds,
+)
 from synthorg.notifications.adapters._ssrf import (
     build_pinned_transport,
     resolve_outbound_target,
@@ -23,6 +27,7 @@ from synthorg.tools.network_validator import NetworkPolicy
 
 logger = get_logger(__name__)
 _DEFAULT_WEBHOOK_TIMEOUT_SECONDS: Final[float] = 10.0
+_HTTP_TOO_MANY_REQUESTS: Final[int] = 429
 
 
 def _escape_mrkdwn(text: str) -> str:
@@ -219,6 +224,8 @@ class SlackNotificationSink:
 
         Raises:
             RuntimeError: If called before ``start()``.
+            httpx.HTTPStatusError: On a non-2xx webhook response (incl. a
+                429 rate-limit, logged once with its Retry-After).
 
         Args:
             notification: The notification to deliver.
@@ -239,11 +246,36 @@ class SlackNotificationSink:
                 self._webhook_url,
                 json=payload,
             )
+            if response.status_code == _HTTP_TOO_MANY_REQUESTS:
+                # Surface the Retry-After hint so a throttled webhook is
+                # observable. raise_for_status below turns this into an
+                # HTTPStatusError; the handler skips re-logging it (see
+                # below) so a 429 is recorded exactly once.
+                logger.warning(
+                    NOTIFICATION_SLACK_FAILED,
+                    notification_id=str(notification.id),
+                    detail="rate_limited",
+                    retry_after_seconds=coerce_finite_nonneg_seconds(
+                        parse_retry_after_seconds(response.headers.get("retry-after"))
+                    ),
+                )
             response.raise_for_status()
             logger.info(
                 NOTIFICATION_SLACK_DELIVERED,
                 notification_id=str(notification.id),
             )
+        except httpx.HTTPStatusError as exc:
+            # A 429 was already logged above with its Retry-After; avoid the
+            # duplicate failure log (which would fire automated alerts twice
+            # per rate-limited delivery). Other statuses log here.
+            if exc.response.status_code != _HTTP_TOO_MANY_REQUESTS:
+                logger.warning(
+                    NOTIFICATION_SLACK_FAILED,
+                    notification_id=str(notification.id),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+            raise
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(

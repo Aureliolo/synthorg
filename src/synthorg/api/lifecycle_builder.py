@@ -29,6 +29,7 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.api import (
     API_AUDIT_RETENTION,
+    API_FLIGHT_RECORDER_RETENTION,
     API_WS_TICKET_CLEANUP,
 )
 from synthorg.observability.events.persistence.webhook_receipt import (
@@ -122,6 +123,10 @@ def _build_lifecycle(  # noqa: PLR0913
         API_AUDIT_RETENTION,
         "Audit retention task died unexpectedly",
     )
+    on_flight_recorder_retention_done = _make_cleanup_done_callback(
+        API_FLIGHT_RECORDER_RETENTION,
+        "Flight-recorder retention task died unexpectedly",
+    )
     on_webhook_cleanup_done = _make_cleanup_done_callback(
         PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP,
         "Webhook receipt cleanup task died unexpectedly",
@@ -143,6 +148,7 @@ def _build_lifecycle(  # noqa: PLR0913
             effective_config=effective_config,
             on_ticket_cleanup_done=on_ticket_cleanup_done,
             on_audit_retention_done=on_audit_retention_done,
+            on_flight_recorder_retention_done=on_flight_recorder_retention_done,
             on_webhook_cleanup_done=on_webhook_cleanup_done,
         )
 

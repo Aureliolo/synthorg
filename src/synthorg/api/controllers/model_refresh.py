@@ -25,7 +25,7 @@ from synthorg.api.dto_model_refresh import (
     RefreshStatusDTO,
     UpgradeRecommendationDTO,
 )
-from synthorg.api.guards import require_ceo_or_manager, require_write_access
+from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
@@ -79,7 +79,11 @@ class ModelRefreshController(Controller):
     """Upgrade-recommendation review + manual refresh endpoints."""
 
     path = "/providers/model-refresh"
-    guards = (require_write_access,)
+    # Read access at the controller level so OBSERVER / BOARD_MEMBER can
+    # GET recommendations + status; the mutating POSTs append their own
+    # require_ceo_or_manager route guard (Litestar appends route guards to
+    # controller guards), so writes still require CEO / Manager.
+    guards = (require_read_access,)
     tags = ("providers", "model-refresh")
 
     @get("/recommendations")
