@@ -89,11 +89,21 @@ function useEscalationPaging(
   resetPage: () => void
 } {
   const [page, setPage] = useState(1)
-  const pagedEscalations = useMemo(
-    () => visibleEscalations.slice((page - 1) * ESCALATION_PAGE_SIZE, page * ESCALATION_PAGE_SIZE),
-    [visibleEscalations, page],
-  )
   const loadedPageCount = Math.max(1, Math.ceil(visibleEscalations.length / ESCALATION_PAGE_SIZE))
+  // Clamp at read time rather than storing the bound via an effect: when
+  // the loaded list shrinks (a refresh, filter, or decision drops rows),
+  // a stored `page` can exceed `loadedPageCount` and slice to an empty
+  // list even though items still exist. Deriving `effectivePage` keeps the
+  // slice in range without a redundant render or a set-state-in-effect.
+  const effectivePage = Math.min(page, loadedPageCount)
+  const pagedEscalations = useMemo(
+    () =>
+      visibleEscalations.slice(
+        (effectivePage - 1) * ESCALATION_PAGE_SIZE,
+        effectivePage * ESCALATION_PAGE_SIZE,
+      ),
+    [visibleEscalations, effectivePage],
+  )
   const loadPage = useCallback(
     (target: number) => {
       const next = Math.max(1, target)
@@ -111,7 +121,7 @@ function useEscalationPaging(
     [loadedPageCount, hasMore, fetchMore],
   )
   const resetPage = useCallback(() => setPage(1), [])
-  return { page, pagedEscalations, loadPage, resetPage }
+  return { page: effectivePage, pagedEscalations, loadPage, resetPage }
 }
 
 type EmptyProps = ReturnType<typeof useEmptyStateProps>

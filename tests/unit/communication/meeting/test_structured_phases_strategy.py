@@ -10,6 +10,7 @@ import pytest
 
 from synthorg.communication.meeting.config import StructuredPhasesConfig
 from synthorg.communication.meeting.enums import MeetingPhase
+from synthorg.communication.meeting.hooks import PremortemHookResult
 from synthorg.communication.meeting.models import MeetingAgenda
 from synthorg.communication.meeting.protocol import AgentCaller
 from synthorg.communication.meeting.structured_phases import (
@@ -44,10 +45,12 @@ class TestPremortemDispatch:
             agent_caller: AgentCaller,
             token_budget: int,
             context_id: str,
-        ) -> str:
+        ) -> PremortemHookResult:
             del synthesis_text, participant_ids, agent_caller
             del token_budget, context_id
-            return "### Failure modes\n- the rollout stalls"
+            return PremortemHookResult(
+                text="### Failure modes\n- the rollout stalls",
+            )
 
         protocol = StructuredPhasesProtocol(
             config=StructuredPhasesConfig(),
@@ -66,6 +69,56 @@ class TestPremortemDispatch:
         assert "## Premortem Analysis" in minutes.summary
         assert "the rollout stalls" in minutes.summary
 
+    async def test_premortem_tokens_recorded_in_minutes(
+        self,
+        simple_agenda: MeetingAgenda,
+        leader_id: str,
+        participant_ids: tuple[str, ...],
+        meeting_id: str,
+    ) -> None:
+        async def _premortem_hook(
+            *,
+            synthesis_text: str,
+            participant_ids: tuple[str, ...],
+            agent_caller: AgentCaller,
+            token_budget: int,
+            context_id: str,
+        ) -> PremortemHookResult:
+            del synthesis_text, participant_ids, agent_caller
+            del token_budget, context_id
+            return PremortemHookResult(
+                text="### Failure modes\n- the rollout stalls",
+                input_tokens=123,
+                output_tokens=45,
+            )
+
+        protocol = StructuredPhasesProtocol(
+            config=StructuredPhasesConfig(),
+            premortem_hook=_premortem_hook,
+        )
+
+        minutes = await protocol.run(
+            meeting_id=meeting_id,
+            agenda=simple_agenda,
+            leader_id=leader_id,
+            participant_ids=participant_ids,
+            agent_caller=make_mock_agent_caller(),
+            token_budget=10000,
+        )
+
+        premortem_contribs = [
+            c for c in minutes.contributions if c.phase == MeetingPhase.PREMORTEM
+        ]
+        assert len(premortem_contribs) == 1
+        assert premortem_contribs[0].input_tokens == 123
+        assert premortem_contribs[0].output_tokens == 45
+        assert premortem_contribs[0].agent_id == leader_id
+        # The aggregate totals fold in the premortem usage; the minutes
+        # model validator independently enforces total == sum(contributions),
+        # so a successful build also proves the invariant holds.
+        assert minutes.total_input_tokens >= 123
+        assert minutes.total_output_tokens >= 45
+
     async def test_empty_premortem_leaves_summary_unchanged(
         self,
         simple_agenda: MeetingAgenda,
@@ -80,10 +133,10 @@ class TestPremortemDispatch:
             agent_caller: AgentCaller,
             token_budget: int,
             context_id: str,
-        ) -> str:
+        ) -> PremortemHookResult:
             del synthesis_text, participant_ids, agent_caller
             del token_budget, context_id
-            return ""
+            return PremortemHookResult(text="")
 
         protocol = StructuredPhasesProtocol(
             config=StructuredPhasesConfig(),

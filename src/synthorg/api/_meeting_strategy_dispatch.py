@@ -11,11 +11,12 @@ strategy package already depends on the meeting package).
 from collections.abc import Callable
 from typing import Final
 
-from synthorg.communication.meeting.protocol import AgentCaller
-from synthorg.communication.meeting.structured_phases import (
+from synthorg.communication.meeting.hooks import (
     ConsensusVelocityHook,
     PremortemHook,
+    PremortemHookResult,
 )
+from synthorg.communication.meeting.protocol import AgentCaller
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.strategy.consensus import ConsensusVelocityDetector
 from synthorg.engine.strategy.models import (
@@ -77,7 +78,7 @@ def build_premortem_hook(config: StrategyConfig) -> PremortemHook:
         agent_caller: AgentCaller,
         token_budget: int,
         context_id: str,
-    ) -> str:
+    ) -> PremortemHookResult:
         output = await executor.execute(
             synthesis_text=synthesis_text,
             participant_ids=tuple(NotBlankStr(pid) for pid in participant_ids),
@@ -86,7 +87,11 @@ def build_premortem_hook(config: StrategyConfig) -> PremortemHook:
             token_budget=token_budget,
             context_id=context_id,
         )
-        return _render_premortem(output)
+        return PremortemHookResult(
+            text=_render_premortem(output),
+            input_tokens=output.input_tokens,
+            output_tokens=output.output_tokens,
+        )
 
     return _hook
 

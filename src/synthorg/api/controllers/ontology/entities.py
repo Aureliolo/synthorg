@@ -142,7 +142,7 @@ class OntologyController(Controller):
         responses = tuple(_entity_to_response(e) for e in entities)
         # Aggregate counts span the full (pre-pagination) result so the
         # dashboard can show core/user/total without a second request.
-        core_count = sum(1 for e in responses if e.tier is EntityTier.CORE)
+        core_count = sum(1 for e in responses if e.tier == EntityTier.CORE)
         list_meta = EntityListMeta(
             total_count=len(responses),
             core_count=core_count,

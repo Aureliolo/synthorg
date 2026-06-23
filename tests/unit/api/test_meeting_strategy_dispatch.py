@@ -78,7 +78,7 @@ class TestPremortemHook:
             )
 
         hook = build_premortem_hook(StrategyConfig())
-        section = await hook(
+        result = await hook(
             synthesis_text="Ship the new caching layer on Friday.",
             participant_ids=("agent-a", "agent-b"),
             agent_caller=_caller,
@@ -86,7 +86,11 @@ class TestPremortemHook:
             context_id="mtg-1",
         )
 
-        assert "Failure modes" in section
+        assert "Failure modes" in result.text
+        # Token usage from the premortem agent calls is aggregated onto the
+        # result so the meeting layer can fold it into the budget/minutes.
+        assert result.input_tokens >= 10
+        assert result.output_tokens >= 20
 
     async def test_empty_when_no_signal(self) -> None:
         async def _caller(
@@ -105,7 +109,7 @@ class TestPremortemHook:
             )
 
         hook = build_premortem_hook(StrategyConfig())
-        section = await hook(
+        result = await hook(
             synthesis_text="Ship it.",
             participant_ids=(NotBlankStr("agent-a"),),
             agent_caller=_caller,
@@ -113,4 +117,7 @@ class TestPremortemHook:
             context_id="mtg-1",
         )
 
-        assert section == ""
+        assert result.text == ""
+        # Even when nothing surfaces, the tokens the agent calls consumed
+        # are still reported so they are not silently dropped from the budget.
+        assert result.input_tokens >= 1

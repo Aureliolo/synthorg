@@ -425,9 +425,6 @@ class PlannerWorktreeStrategy:
             event=WORKSPACE_MERGE_FAILED,
             error_cls=WorkspaceMergeError,
         )
-        # Signal disk-quota warning/exceeded for a ballooned worktree
-        # before merging it back (observability only; non-fatal).
-        await self._check_disk_quota(workspace)
         # Merge under lock.
         result, pre_merge_sha = await self._merge_under_lock(
             workspace=workspace,
@@ -475,6 +472,13 @@ class PlannerWorktreeStrategy:
                 error_cls=WorkspaceMergeError,
                 event=WORKSPACE_MERGE_FAILED,
             )
+
+            # Signal disk-quota warning/exceeded for a ballooned worktree
+            # before merging it back (observability only; non-fatal). Held
+            # under the same lock as the checkout/merge so a concurrent
+            # teardown cannot remove the worktree between the quota probe
+            # and the merge.
+            await self._check_disk_quota(workspace)
 
             start = self._clock.monotonic()
             pre_merge_sha = await self._checkout_and_capture_sha(

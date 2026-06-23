@@ -443,6 +443,55 @@ class TestCheckResponseRateLimit:
             _check_response(resp, "create branch")
         assert not isinstance(exc_info.value, GitHubRateLimitError)
 
+    def test_403_with_retry_after_is_rate_limit_not_auth(self) -> None:
+        resp = httpx.Response(
+            status_code=403,
+            headers={"Retry-After": "60"},
+            text="API rate limit exceeded",
+            request=httpx.Request("GET", "https://api.github.com/x"),
+        )
+        with pytest.raises(GitHubRateLimitError) as exc_info:
+            _check_response(resp, "list branches")
+        assert exc_info.value.retry_after_seconds == 60.0
+
+    def test_403_with_exhausted_ratelimit_remaining_is_rate_limit(self) -> None:
+        resp = httpx.Response(
+            status_code=403,
+            headers={"x-ratelimit-remaining": "0"},
+            text="API rate limit exceeded for installation",
+            request=httpx.Request("GET", "https://api.github.com/x"),
+        )
+        with pytest.raises(GitHubRateLimitError):
+            _check_response(resp, "list branches")
+
+    def test_403_secondary_rate_limit_body_is_rate_limit(self) -> None:
+        resp = httpx.Response(
+            status_code=403,
+            text="You have exceeded a secondary rate limit. Please wait.",
+            request=httpx.Request("POST", "https://api.github.com/x"),
+        )
+        with pytest.raises(GitHubRateLimitError):
+            _check_response(resp, "create branch")
+
+    def test_plain_403_without_rate_limit_signal_is_auth_error(self) -> None:
+        resp = httpx.Response(
+            status_code=403,
+            text="Resource not accessible by integration",
+            request=httpx.Request("POST", "https://api.github.com/x"),
+        )
+        with pytest.raises(GitHubAuthError) as exc_info:
+            _check_response(resp, "create branch")
+        assert not isinstance(exc_info.value, GitHubRateLimitError)
+
+    def test_401_is_auth_error(self) -> None:
+        resp = httpx.Response(
+            status_code=401,
+            text="Bad credentials",
+            request=httpx.Request("GET", "https://api.github.com/x"),
+        )
+        with pytest.raises(GitHubAuthError):
+            _check_response(resp, "list branches")
+
 
 class TestGitHubSanitization:
     """Response body sanitization tests."""

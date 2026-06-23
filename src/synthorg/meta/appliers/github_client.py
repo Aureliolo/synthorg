@@ -97,6 +97,8 @@ class GitHubRateLimitError(GitHubAPIError):
 logger = get_logger(__name__)
 
 _DEFAULT_TIMEOUT: Final[int] = 30
+_HTTP_UNAUTHORIZED: Final[int] = 401
+_HTTP_FORBIDDEN: Final[int] = 403
 _HTTP_TOO_MANY_REQUESTS: Final[int] = 429
 # Bounded retry for GitHub throttling. A 429 means the request was
 # rejected (not executed), so retrying any verb is idempotent-safe.
@@ -505,8 +507,10 @@ def _check_response(resp: httpx.Response, action: str) -> None:
         action: Human-readable action description for the error message.
 
     Raises:
-        GitHubAuthError: On 401/403 responses.
-        GitHubRateLimitError: On 429 responses (carries Retry-After).
+        GitHubAuthError: On 401, or 403 without rate-limit indicators.
+        GitHubRateLimitError: On 429, or 403 carrying a rate-limit
+            signal (Retry-After / x-ratelimit-remaining: 0 / secondary
+            rate-limit body). Carries Retry-After when present.
         GitHubAPIError: On other non-2xx responses.
     """
     if resp.is_success:
@@ -519,21 +523,36 @@ def _check_response(resp: httpx.Response, action: str) -> None:
         status_code=resp.status_code,
         response_body=body,
     )
-    if resp.status_code in {401, 403}:
-        raise GitHubAuthError(
-            status_code=resp.status_code,
-            action=action,
-            body=body,
+    # GitHub signals both primary and secondary rate limits with 403 (not
+    # only 429): a ``Retry-After`` header, ``x-ratelimit-remaining: 0``, or
+    # secondary-rate-limit body text. Classify those as rate limits BEFORE
+    # the plain auth 403 check so ``_send``'s retry handler (which only
+    # retries ``GitHubRateLimitError``) honours ``Retry-After`` instead of
+    # aborting permanently as an auth failure.
+    retry_after_header = resp.headers.get("retry-after")
+    is_rate_limited = resp.status_code == _HTTP_TOO_MANY_REQUESTS or (
+        resp.status_code == _HTTP_FORBIDDEN
+        and (
+            retry_after_header is not None
+            or resp.headers.get("x-ratelimit-remaining") == "0"
+            or "secondary rate limit" in raw.lower()
         )
-    if resp.status_code == _HTTP_TOO_MANY_REQUESTS:
+    )
+    if is_rate_limited:
         retry_after = coerce_finite_nonneg_seconds(
-            parse_retry_after_seconds(resp.headers.get("retry-after"))
+            parse_retry_after_seconds(retry_after_header)
         )
         raise GitHubRateLimitError(
             status_code=resp.status_code,
             action=action,
             body=body,
             retry_after_seconds=retry_after,
+        )
+    if resp.status_code in {_HTTP_UNAUTHORIZED, _HTTP_FORBIDDEN}:
+        raise GitHubAuthError(
+            status_code=resp.status_code,
+            action=action,
+            body=body,
         )
     raise GitHubAPIError(
         status_code=resp.status_code,

@@ -18,6 +18,7 @@ import asyncio
 import http.server
 import json
 import os
+import re
 import signal
 import sys
 import threading
@@ -51,6 +52,14 @@ _HEALTH_HOST_ENV_VAR: Final[str] = "SYNTHORG_FINE_TUNE_HEALTH_HOST"
 _MIN_TCP_PORT: Final[int] = 1
 _MAX_TCP_PORT: Final[int] = 65535
 _MAX_LOGGED_ENV_CHARS: Final[int] = 64
+# A health-probe host is only ever a compose service name, a DNS
+# hostname, an IPv4 literal, or a bracketed IPv6 literal. Constraining
+# the operator-supplied override to that shape before it reaches the
+# probe URL keeps a stray scheme / path / credential / whitespace out of
+# the request target (defence against an SSRF-shaped misconfiguration).
+_HEALTH_HOST_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"\A(?:[A-Za-z0-9._-]+|\[[0-9A-Fa-f:]+\])\Z",
+)
 
 
 def resolve_health_host() -> str:
@@ -78,7 +87,19 @@ def resolve_health_host() -> str:
             reason="blank-after-strip",
         )
         return _DEFAULT_HEALTH_HOST
-    return raw.strip()
+    host = raw.strip()
+    if _HEALTH_HOST_PATTERN.match(host) is None:
+        # A malformed override (embedded scheme, path, credentials, or
+        # whitespace) would let the probe URL point somewhere other than
+        # the sidecar healthz endpoint; reject it and fall back to the
+        # default service name rather than honour an SSRF-shaped value.
+        logger.warning(
+            CONFIG_VALIDATION_FAILED,
+            env_var=_HEALTH_HOST_ENV_VAR,
+            reason="invalid-hostname",
+        )
+        return _DEFAULT_HEALTH_HOST
+    return host
 
 
 def resolve_health_port() -> int:

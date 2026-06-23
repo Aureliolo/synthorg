@@ -1,3 +1,4 @@
+# module-kind: code
 """Solo-execution agent selection for the work pipeline.
 
 Extracted from :mod:`synthorg.engine.pipeline.service` so the pipeline

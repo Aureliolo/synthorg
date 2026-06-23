@@ -11,6 +11,7 @@ import {
   apiError,
   apiSuccess,
   emptyPage,
+  pageEnvelope,
   paginatedFor,
   voidSuccess,
 } from '@/mocks/handlers'
@@ -69,7 +70,7 @@ describe('useConnectionsStore', () => {
   it('fetches connections and merges health reports', async () => {
     server.use(
       http.get('/api/v1/connections', () =>
-        HttpResponse.json(apiSuccess([sampleConnection])),
+        HttpResponse.json(pageEnvelope([sampleConnection])),
       ),
       http.get('/api/v1/integrations/health', () =>
         HttpResponse.json(

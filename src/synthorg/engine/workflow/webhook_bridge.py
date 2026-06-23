@@ -508,26 +508,20 @@ class WebhookEventBridge:
     async def _forward(self, message: object) -> None:
         """Extract event data and call on_external_event.
 
-        Idempotent across bus redelivery: a message whose stable
-        ``Message.id`` has already been forwarded is skipped (and still
-        acked by the caller), so a forward-then-ack-failure redelivery
-        does not double-increment the strategy's event count. The id is
-        recorded only AFTER a successful forward, so a transient
-        ``on_external_event`` failure (which leaves the message un-acked)
-        is still retried on the next delivery.
+        Idempotent across bus redelivery at PER-PART granularity: each
+        forwarded ``DataPart`` is keyed by ``{message.id}:{part_index}``
+        and recorded immediately AFTER its successful ``on_external_event``.
+        So when one part forwards but a later part raises (leaving the
+        whole message un-acked), redelivery replays only the un-forwarded
+        parts -- the already-forwarded ones are skipped rather than
+        double-incrementing the strategy's event count. A transient
+        failure on a part is still retried on the next delivery.
         """
         from synthorg.communication.message import Message  # noqa: PLC0415
 
         if not isinstance(message, Message):
             return
-        delivery_id = str(message.id)
-        if delivery_id in self._seen_deliveries:
-            logger.debug(
-                WEBHOOK_BRIDGE_EVENT_FORWARDED,
-                reason="duplicate_delivery_suppressed",
-                delivery_id=delivery_id,
-            )
-            return
+        message_id = str(message.id)
         strategy, sprint = await self._scheduler.get_active_info()
         if strategy is None or sprint is None:
             logger.debug(
@@ -542,8 +536,19 @@ class WebhookEventBridge:
             )
             return
 
-        for part in message.parts:
+        for part_index, part in enumerate(message.parts):
             if not isinstance(part, DataPart):
+                continue
+            # Per-part dedup key: stable across redeliveries of the same
+            # message (same parts, same order), so an already-forwarded
+            # part is skipped while an un-forwarded sibling is retried.
+            delivery_id = f"{message_id}:{part_index}"
+            if delivery_id in self._seen_deliveries:
+                logger.debug(
+                    WEBHOOK_BRIDGE_EVENT_FORWARDED,
+                    reason="duplicate_delivery_suppressed",
+                    delivery_id=delivery_id,
+                )
                 continue
             try:
                 event = parse_typed("workflow.webhook", part.data, _WebhookEvent)
@@ -557,12 +562,12 @@ class WebhookEventBridge:
                 event.event_type,
                 event.payload,
             )
+            # Record only after a successful forward so a transient
+            # ``on_external_event`` failure (message left un-acked) is
+            # retried on redelivery instead of being suppressed.
+            self._record_delivery(delivery_id)
             logger.debug(
                 WEBHOOK_BRIDGE_EVENT_FORWARDED,
                 event_type=event.event_type,
                 connection_name=event.connection_name,
             )
-        # Record only after a successful forward so a transient
-        # ``on_external_event`` failure (message left un-acked) is retried
-        # on redelivery instead of being suppressed as a duplicate.
-        self._record_delivery(delivery_id)

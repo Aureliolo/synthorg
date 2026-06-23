@@ -155,10 +155,8 @@ class TestConnectionsController:
             name="gh",
             field="client_secret",
         )
-        assert response.data == {
-            "field": "client_secret",
-            "value": "real-secret-value",
-        }
+        assert response.data.field == "client_secret"
+        assert response.data.value == "real-secret-value"
 
     async def test_reveal_secret_missing_field_raises(self) -> None:
         from synthorg.api.controllers.connections import ConnectionsController
@@ -1091,7 +1089,7 @@ class TestOAuthController:
             state=state,
             connection_name="c1",
         )
-        assert response.data["has_token"] is False
+        assert response.data.has_token is False
 
 
 @pytest.mark.integration

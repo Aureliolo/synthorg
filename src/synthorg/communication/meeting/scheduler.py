@@ -827,7 +827,11 @@ class MeetingScheduler:
         if self._budget_scaler is None:
             return base_tokens
         try:
-            scaled = self._budget_scaler(base_tokens)
+            # Read through an ``object`` view: the annotation promises
+            # ``-> int`` but a misbehaving injected scaler can return any
+            # runtime type, and comparing a non-integer with ``<= 0`` below
+            # would raise ``TypeError`` outside the try and escape the method.
+            scaled_value: object = self._budget_scaler(base_tokens)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
@@ -837,6 +841,15 @@ class MeetingScheduler:
                 error=safe_error_description(exc),
             )
             return base_tokens
+        if not isinstance(scaled_value, int) or isinstance(scaled_value, bool):
+            logger.warning(
+                MEETING_BUDGET_SCALED,
+                note="budget scaler returned a non-integer; using base",
+                base_tokens=base_tokens,
+                scaled_tokens=scaled_value,
+            )
+            return base_tokens
+        scaled = scaled_value
         if scaled <= 0:
             logger.warning(
                 MEETING_BUDGET_SCALED,

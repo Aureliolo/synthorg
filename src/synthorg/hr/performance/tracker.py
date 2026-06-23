@@ -179,6 +179,13 @@ class PerformanceTracker:
         self._quality_override_store = quality_override_store
         self._inflection_sink = inflection_sink
         self._trend_direction_cache: dict[tuple[str, str, str], TrendDirection] = {}
+        # Monotonic per-agent "forget" counter. Captured when an
+        # inflection-emission task is scheduled and re-checked under the
+        # lock before that task writes ``_trend_direction_cache``; a
+        # ``forget_agent`` that bumps the counter in between makes the
+        # stale task skip its writes so it cannot repopulate cache keys
+        # for an agent that has since been forgotten.
+        self._forget_generation: dict[str, int] = {}
         self._task_metrics: dict[str, list[TaskMetricRecord]] = {}
         self._collab_metrics: dict[str, list[CollaborationMetricRecord]] = {}
         self._contributions: dict[str, list[AgentContribution]] = {}
@@ -362,6 +369,7 @@ class PerformanceTracker:
             self._collab_metrics.clear()
             self._contributions.clear()
             self._trend_direction_cache.clear()
+            self._forget_generation.clear()
         logger.info(
             PERF_TRACKER_CLEARED,
             tasks_cancelled=tasks_cancelled,
@@ -371,7 +379,7 @@ class PerformanceTracker:
             trend_cache_cleared=trend_cache_cleared,
         )
 
-    async def forget_agent(self, agent_id: str) -> None:
+    async def forget_agent(self, agent_id: NotBlankStr) -> None:
         """Evict all in-memory metrics for a single departed agent.
 
         Without this hook the per-agent ``_task_metrics`` /
@@ -395,6 +403,11 @@ class PerformanceTracker:
             ]
             for key in stale_trends:
                 del self._trend_direction_cache[key]
+            # Invalidate any inflection-emission task scheduled before this
+            # forget so it cannot repopulate the cache keys just cleared.
+            self._forget_generation[agent_key] = (
+                self._forget_generation.get(agent_key, 0) + 1
+            )
         logger.info(
             PERF_AGENT_FORGOTTEN,
             agent_id=agent_key,
@@ -588,6 +601,9 @@ class PerformanceTracker:
         Returns:
             Collaboration score result.
         """
+        if now is None:
+            now = datetime.now(UTC)
+
         if self._override_store is not None:
             override = self._override_store.get_active_override(
                 agent_id,
@@ -616,7 +632,9 @@ class PerformanceTracker:
         async with self._metrics_lock:
             records = tuple(self._collab_metrics.get(str(agent_id), []))
         if since is not None:
-            records = tuple(r for r in records if r.recorded_at >= since)
+            # Clamp both ends: a windowed read must reflect ``[since, now]``,
+            # so records timestamped after ``now`` cannot leak in either.
+            records = tuple(r for r in records if since <= r.recorded_at <= now)
         return await self._collaboration_strategy.score(
             agent_id=agent_id,
             records=records,
@@ -771,7 +789,11 @@ class PerformanceTracker:
         async with self._metrics_lock:
             task_records = tuple(self._task_metrics.get(agent_key, []))
         if since is not None:
-            task_records = tuple(r for r in task_records if r.completed_at >= since)
+            # Clamp both ends so a ``[since, now]`` snapshot cannot include
+            # records completed after ``now``.
+            task_records = tuple(
+                r for r in task_records if since <= r.completed_at <= now
+            )
 
         # Compute windows.
         windows = self._window_strategy.compute_windows(
@@ -782,8 +804,11 @@ class PerformanceTracker:
         # Compute trends for quality and cost metrics.
         trends = self._compute_trends(task_records, windows, now=now)
 
-        # Emit inflection events for trend direction changes.
-        if self._inflection_sink is not None and trends:
+        # Emit inflection events for trend direction changes. Only on
+        # all-time reads: a windowed (``since``-bounded) snapshot is a
+        # historical query and must not mutate the live trend-direction
+        # cache or emit false inflections derived from partial history.
+        if since is None and self._inflection_sink is not None and trends:
             # Schedule inside the lock so a concurrent aclear() cannot
             # snapshot the tasks, cancel, and return before this task
             # is added to ``_background_tasks`` -- otherwise the new
@@ -1166,8 +1191,9 @@ class PerformanceTracker:
         """
         if self._closing:
             return
+        forget_epoch = self._forget_generation.get(str(agent_id), 0)
         task = asyncio.create_task(
-            self._do_emit_inflections(agent_id, trends),
+            self._do_emit_inflections(agent_id, trends, forget_epoch),
         )
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)
@@ -1176,6 +1202,7 @@ class PerformanceTracker:
         self,
         agent_id: NotBlankStr,
         trends: list[TrendResult],
+        forget_epoch: int,
     ) -> None:
         """Emit inflection events for trend direction changes.
 
@@ -1200,6 +1227,11 @@ class PerformanceTracker:
             # of the interleaving rather than real direction changes.
             pending: list[PerformanceInflection] = []
             async with self._metrics_lock:
+                if self._forget_generation.get(str(agent_id), 0) != forget_epoch:
+                    # The agent was forgotten after this task was scheduled;
+                    # writing cache keys now would resurrect trend state for
+                    # an agent whose footprint was just reclaimed.
+                    return
                 for trend in trends:
                     cache_key = (
                         str(agent_id),

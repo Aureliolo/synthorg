@@ -447,7 +447,7 @@ class ConnectionsController(Controller):
         audit-logged (field name only, never the value).
 
         Returns:
-            ``ApiResponse[dict[str, str]]`` instance.
+            ``ApiResponse[RevealedSecretResponse]`` instance.
 
         Raises:
             SecretRetrievalNotFoundError: For a missing connection, an unset

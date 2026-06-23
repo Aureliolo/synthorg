@@ -13,7 +13,7 @@ thin coordinator (``__init__`` / ``get_protocol_type`` / ``run``).
 
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Final, Protocol, runtime_checkable
+from typing import Final
 
 from synthorg.communication.meeting._parsing import (
     parse_action_items,
@@ -32,6 +32,10 @@ from synthorg.communication.meeting.enums import (
     MeetingProtocolType,
 )
 from synthorg.communication.meeting.factory import build_conflict_detector
+from synthorg.communication.meeting.hooks import (
+    ConsensusVelocityHook,
+    PremortemHook,
+)
 from synthorg.communication.meeting.models import (
     MeetingAgenda,
     MeetingContribution,
@@ -59,45 +63,6 @@ logger = get_logger(__name__)
 #: Heading the premortem section is folded under when appended to the
 #: synthesis summary so action-item / decision parsing still scans it.
 _PREMORTEM_SECTION_HEADING: Final[str] = "## Premortem Analysis"
-
-
-@runtime_checkable
-class ConsensusVelocityHook(Protocol):
-    """Premature-consensus check over the gathered input positions.
-
-    Structurally typed in the meeting package so the strategy
-    subsystem (``engine.strategy.consensus``) can be injected without
-    ``communication.meeting`` importing ``engine.strategy`` (which would
-    close an import cycle: the strategy package already depends on the
-    meeting package). The api layer binds the concrete
-    ``ConsensusVelocityDetector`` + its config behind this signature.
-    """
-
-    def __call__(self, positions: tuple[str, ...]) -> bool:
-        """Return whether the positions show premature consensus."""
-        ...
-
-
-@runtime_checkable
-class PremortemHook(Protocol):
-    """Premortem analysis over the synthesis summary.
-
-    Returns the rendered premortem section text (empty when no failure
-    modes / assumptions surfaced). Structurally typed for the same
-    cycle-avoidance reason as :class:`ConsensusVelocityHook`.
-    """
-
-    async def __call__(
-        self,
-        *,
-        synthesis_text: str,
-        participant_ids: tuple[str, ...],
-        agent_caller: AgentCaller,
-        token_budget: int,
-        context_id: str,
-    ) -> str:
-        """Run premortem and return the rendered section (or empty)."""
-        ...
 
 
 class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
@@ -267,18 +232,21 @@ class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
         # Premortem: fold a failure-mode / assumption analysis of the
         # synthesised decision into the summary so decisions / action
         # items parsed below also scan it.
-        summary = await self._maybe_append_premortem(
+        summary, premortem_contribution = await self._maybe_append_premortem(
             meeting_id=meeting_id,
             summary=summary,
+            leader_id=leader_id,
             participant_ids=participant_ids,
             agent_caller=agent_caller,
             tracker=tracker,
+            turn_number=turn_number,
         )
 
         contributions = (
             *input_contributions,
             *discussion_contributions,
             synthesis_contribution,
+            *((premortem_contribution,) if premortem_contribution else ()),
         )
 
         decisions = parse_decisions(summary)
@@ -354,34 +322,44 @@ class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
             )
         return detected
 
-    async def _maybe_append_premortem(
+    async def _maybe_append_premortem(  # noqa: PLR0913
         self,
         *,
         meeting_id: str,
         summary: str,
+        leader_id: str,
         participant_ids: tuple[str, ...],
         agent_caller: AgentCaller,
         tracker: TokenTracker,
-    ) -> str:
+        turn_number: int,
+    ) -> tuple[str, MeetingContribution | None]:
         """Fold a premortem analysis section into the synthesis summary.
 
-        No-op (returns ``summary`` unchanged) when no premortem hook is
-        wired, the token budget is exhausted, or the analysis surfaced
-        nothing.
+        No-op (returns ``summary`` unchanged with no contribution) when no
+        premortem hook is wired, the token budget is exhausted, or the
+        analysis surfaced nothing and consumed no tokens.
+
+        When the premortem ran any agent calls, its token usage is recorded
+        on the ``tracker`` AND surfaced as a ``MeetingContribution`` so the
+        minutes' ``total_*_tokens`` (validated to equal the sum of
+        contributions) account for the premortem rather than tripping the
+        invariant.
 
         Returns:
-            The summary, with a premortem section appended when one was
-            produced.
+            ``(summary, contribution)`` where ``summary`` carries the
+            appended premortem section when one was produced and
+            ``contribution`` is the premortem's token-bearing contribution
+            (``None`` when nothing ran or no tokens were consumed).
         """
         if self._premortem_hook is None or tracker.is_exhausted:
-            return summary
+            return summary, None
         logger.info(
             MEETING_PHASE_STARTED,
             meeting_id=meeting_id,
             phase=MeetingPhase.PREMORTEM,
         )
         try:
-            section = await self._premortem_hook(
+            result = await self._premortem_hook(
                 synthesis_text=summary,
                 participant_ids=participant_ids,
                 agent_caller=agent_caller,
@@ -398,17 +376,37 @@ class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return summary
+            return summary, None
         logger.info(
             MEETING_PHASE_COMPLETED,
             meeting_id=meeting_id,
             phase=MeetingPhase.PREMORTEM,
         )
+        section = result.text
+        # Pair the tracker record with a contribution carrying the same
+        # counts so the minutes' total==sum(contributions) invariant holds.
+        # Attribute the aggregate premortem usage to the synthesis leader,
+        # who owns this phase. Skip both when the premortem was inert.
+        contribution: MeetingContribution | None = None
+        if result.input_tokens or result.output_tokens:
+            tracker.record(result.input_tokens, result.output_tokens)
+            contribution = MeetingContribution(
+                agent_id=leader_id,
+                content=section,
+                phase=MeetingPhase.PREMORTEM,
+                turn_number=turn_number,
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens,
+                timestamp=datetime.now(UTC),
+            )
         if not section.strip():
-            return summary
+            return summary, contribution
         logger.info(
             MEETING_PREMORTEM_APPENDED,
             meeting_id=meeting_id,
             section_length=len(section),
         )
-        return f"{summary}\n\n{_PREMORTEM_SECTION_HEADING}\n\n{section}"
+        return (
+            f"{summary}\n\n{_PREMORTEM_SECTION_HEADING}\n\n{section}",
+            contribution,
+        )

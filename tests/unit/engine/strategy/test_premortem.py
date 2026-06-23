@@ -394,6 +394,35 @@ class TestDefaultPremortemExecutor:
         assert any("database" in fm.description.lower() for fm in output.failure_modes)
 
     @pytest.mark.unit
+    async def test_aggregates_token_usage_across_responses(self) -> None:
+        """Output sums input/output tokens from every agent response."""
+        executor = DefaultPremortemExecutor()
+        config = PremortemConfig(participants=PremortemParticipation.ALL)
+
+        async def token_caller(
+            agent_id: str, prompt: str, tokens: int, context_id: str
+        ) -> AgentResponse:
+            del prompt, tokens, context_id
+            return AgentResponse(
+                agent_id=agent_id,
+                content="This could fail if the cache stampedes under load",
+                input_tokens=7,
+                output_tokens=11,
+            )
+
+        output = await executor.execute(
+            synthesis_text="Test decision",
+            participant_ids=("agent_1", "agent_2"),
+            agent_caller=token_caller,
+            config=config,
+            token_budget=1000,
+        )
+
+        # Two participants, each reporting 7 in / 11 out.
+        assert output.input_tokens == 14
+        assert output.output_tokens == 22
+
+    @pytest.mark.unit
     async def test_parses_assumption_responses(self) -> None:
         """Extracts assumptions from responses."""
         executor = DefaultPremortemExecutor()

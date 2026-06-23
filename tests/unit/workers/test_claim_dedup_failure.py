@@ -9,13 +9,13 @@ degrading exactly-once delivery to at-least-once.
 from datetime import UTC, datetime
 
 import pytest
-from typeguard import suppress_type_checks
 
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
-from synthorg.workers.claim import TaskClaim, TaskClaimStatus
+from synthorg.workers.claim import JetStreamTaskQueue, TaskClaim, TaskClaimStatus
 from synthorg.workers.config import QueueConfig
 from synthorg.workers.worker import Worker
+from tests._shared import mock_of
 from tests._shared.fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
@@ -61,15 +61,14 @@ def _worker(seen: _RaisingSeenClaims) -> Worker:
         # Never invoked: these tests call the dedup helpers directly.
         return TaskClaimStatus.SUCCESS
 
-    with suppress_type_checks():
-        return Worker(
-            queue_config=_queue_config(),
-            task_queue=object(),  # type: ignore[arg-type]
-            executor=_executor,
-            worker_id="dedup-test",
-            seen_claims=seen,
-            clock=FakeClock(start=datetime(2026, 5, 13, tzinfo=UTC)),
-        )
+    return Worker(
+        queue_config=_queue_config(),
+        task_queue=mock_of[JetStreamTaskQueue](),
+        executor=_executor,
+        worker_id="dedup-test",
+        seen_claims=seen,
+        clock=FakeClock(start=datetime(2026, 5, 13, tzinfo=UTC)),
+    )
 
 
 def _claim() -> TaskClaim:
