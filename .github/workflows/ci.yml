@@ -411,8 +411,14 @@ jobs:
     # confusing job cancellation. ``timeout-minutes`` here is only a
     # backstop above the session timeout, for the rare case where pytest
     # itself wedges (e.g. a collection hang) before the session timer can
-    # fire; it should never be the primary signal.
-    timeout-minutes: 7
+    # fire; it should never be the primary signal. It must comfortably
+    # exceed (job setup + the 300s ``--session-timeout`` + the post-fail
+    # all-threads dump, junit write, and artifact upload): at 7 min that
+    # margin was thin (setup ~90s + 300s session leaves ~30s for teardown),
+    # so the GHA timeout could fire first and mask the named session
+    # failure. 10 min restores a comfortable backstop without padding the
+    # healthy ~2-3 min run.
+    timeout-minutes: 10
     permissions:
       contents: read
     strategy:
