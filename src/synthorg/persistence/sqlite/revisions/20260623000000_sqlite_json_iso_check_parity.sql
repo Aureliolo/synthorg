@@ -98,11 +98,32 @@ INSERT INTO project_charters_new (
     approved_at, approved_by, forecast_id, correlation_id, task_id
 )
 SELECT
-    id, conversation_id, created_by, version, status, title, brief, goals,
-    constraints, success_criteria, in_scope, out_of_scope, envelope_amount,
-    envelope_currency, envelope_deadline, envelope_time_horizon, project_id,
-    proposed_project_name, proposed_project_description, created_at, updated_at,
-    approved_at, approved_by, forecast_id, correlation_id, task_id
+    id,
+    conversation_id,
+    created_by,
+    version,
+    status,
+    title,
+    brief,
+    goals,
+    constraints,
+    success_criteria,
+    in_scope,
+    out_of_scope,
+    envelope_amount,
+    envelope_currency,
+    envelope_deadline,
+    envelope_time_horizon,
+    project_id,
+    proposed_project_name,
+    proposed_project_description,
+    created_at,
+    updated_at,
+    approved_at,
+    approved_by,
+    forecast_id,
+    correlation_id,
+    task_id
 FROM project_charters;
 DROP TABLE project_charters;
 ALTER TABLE project_charters_new RENAME TO project_charters;
@@ -158,9 +179,22 @@ INSERT INTO project_brain_entries_new (
     supersedes_entry_id, tags, confidence, citations, payload
 )
 SELECT
-    project_id, entry_id, revision, entry_kind, title, rationale, status,
-    author, recorded_at, related_task_ids, related_entry_ids,
-    supersedes_entry_id, tags, confidence, citations, payload
+    project_id,
+    entry_id,
+    revision,
+    entry_kind,
+    title,
+    rationale,
+    status,
+    author,
+    recorded_at,
+    related_task_ids,
+    related_entry_ids,
+    supersedes_entry_id,
+    tags,
+    confidence,
+    citations,
+    payload
 FROM project_brain_entries;
 DROP TABLE project_brain_entries;
 ALTER TABLE project_brain_entries_new RENAME TO project_brain_entries;
@@ -186,7 +220,14 @@ CREATE TABLE ab_tests_new (
 );
 
 INSERT INTO ab_tests_new (id, name, status, variants, created_at, updated_at)
-SELECT id, name, status, variants, created_at, updated_at FROM ab_tests;
+SELECT
+    id,
+    name,
+    status,
+    variants,
+    created_at,
+    updated_at
+FROM ab_tests;
 DROP TABLE ab_tests;
 ALTER TABLE ab_tests_new RENAME TO ab_tests;
 
@@ -209,8 +250,15 @@ INSERT INTO pruning_requests_new (
     created_at, decided_at, decided_by
 )
 SELECT
-    agent_id, id, agent_name, evaluation, approval_id, status,
-    created_at, decided_at, decided_by
+    agent_id,
+    id,
+    agent_name,
+    evaluation,
+    approval_id,
+    status,
+    created_at,
+    decided_at,
+    decided_by
 FROM pruning_requests;
 DROP TABLE pruning_requests;
 ALTER TABLE pruning_requests_new RENAME TO pruning_requests;
