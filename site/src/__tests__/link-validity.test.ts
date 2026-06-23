@@ -111,9 +111,14 @@ function extractHrefs(file: string): LinkOccurrence[] {
       }
     }
     if (isMarkdown) {
+      // Strip inline code spans before scanning for markdown links: a code
+      // span like ``mock_of[T](**overrides)`` or ``VALIDATORS[t](resolution)``
+      // is Python expression syntax, not a ``[text](url)`` link, and must not
+      // be mistaken for one.
+      const codeless = line.replace(/`[^`]*`/g, "");
       mdPattern.lastIndex = 0;
       let match: RegExpExecArray | null;
-      while ((match = mdPattern.exec(line)) !== null) {
+      while ((match = mdPattern.exec(codeless)) !== null) {
         const href = match[1];
         if (href === undefined || href === "") continue;
         occurrences.push({ href, file, line: i + 1 });
@@ -124,26 +129,29 @@ function extractHrefs(file: string): LinkOccurrence[] {
 }
 
 /**
- * Slugify the way python-markdown's default ``toc`` extension does.
+ * Slugify the way python-markdown's default ``toc`` extension does (the
+ * slugifier Material for MkDocs / Zensical use unless overridden).
  *
- * The slugifier (matched against the rendered MkDocs HTML this repo
- * actually produces): lowercase, drop ``[^\w\s-]`` chars in place, then
- * convert each whitespace character individually to a dash without
- * collapsing runs.  This means a heading like ``Event Stream & HITL
- * Surface`` -- where ``&`` is stripped, leaving ``Event Stream  HITL
- * Surface`` with two consecutive spaces -- emits the slug
- * ``event-stream--hitl-surface`` (double dash), not the collapsed
- * ``event-stream-hitl-surface`` form.  Existing links across the docs
- * tree (verified in ``communication.md`` and ``agent-execution.md``) use
- * the double-dash form.
+ * Faithful to ``markdown.extensions.toc.slugify``:
+ *   1. An explicit attr-list id wins: ``## Auth {#auth}`` renders ``id="auth"``,
+ *      so the slug is taken verbatim from ``{#...}`` when present.
+ *   2. Otherwise: strip inline-code backticks, drop ``[^\w\s-]`` chars in
+ *      place (``\w`` keeps ASCII word chars INCLUDING underscore, so
+ *      ``RELEASE_BOT_APP_*`` -> ``release_bot_app_``), lowercase, then
+ *      collapse every run of dashes/whitespace into a single dash
+ *      (``re.sub(r'[-\s]+', '-')``).  A heading like ``AgentEngine <-> TaskEngine
+ *      Incremental Sync`` therefore slugifies to the single-dash
+ *      ``agentengine-taskengine-incremental-sync``.
  */
 function slugifyHeading(heading: string): string {
+  const explicit = /\{#([A-Za-z0-9_-]+)[^}]*\}\s*$/.exec(heading);
+  if (explicit) return explicit[1].toLowerCase();
   return heading
-    .toLowerCase()
     .replace(/`/g, "")
-    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/[^\w\s-]/g, "")
     .trim()
-    .replace(/\s/g, "-");
+    .toLowerCase()
+    .replace(/[-\s]+/g, "-");
 }
 
 /**
@@ -164,6 +172,15 @@ function headingSlugsFor(mdFile: string): Set<string> {
     const m = /^(#{1,6})\s+(.+?)\s*$/.exec(line);
     if (m) {
       slugs.add(slugifyHeading(m[2]));
+    }
+    // Explicit anchors usable as link targets but not derived from a
+    // heading: HTML ``<a id="x">`` / ``<a name="x">`` (MkDocs renders these
+    // verbatim) and attr-list ``{#x}`` ids attached to any block, not just
+    // headings.  Without these the resolver false-negatives on valid links.
+    const anchorPattern = /(?:\bid|\bname)\s*=\s*["']([A-Za-z0-9_-]+)["']|\{#([A-Za-z0-9_-]+)[^}]*\}/g;
+    let a: RegExpExecArray | null;
+    while ((a = anchorPattern.exec(line)) !== null) {
+      slugs.add((a[1] ?? a[2]).toLowerCase());
     }
   }
   headingCache.set(mdFile, slugs);
@@ -282,6 +299,13 @@ function resolveHref(href: string, sourceFile: string): ResolutionResult {
       // the earlier ``href.startsWith("#")`` branch).
       return { ok: true, reason: "same-page anchor (skipped)" };
     }
+    // Relative links to generated/static artefacts (e.g. the API reference
+    // ``reference.html`` and ``openapi.json`` emitted into ``docs/openapi/``
+    // by the OpenAPI build) are not markdown sources and only exist after
+    // that build, so they cannot be validated against the source tree.
+    if (pathOnly.endsWith(".html") || pathOnly.endsWith(".json")) {
+      return { ok: true, reason: "generated/static artefact (skipped)" };
+    }
     const sourceDir = dirname(sourceFile);
     let target = resolve(sourceDir, pathOnly);
     // MkDocs accepts ``../foo.md`` and emits ``../foo/`` at runtime;
@@ -399,25 +423,15 @@ describe("link-validity", () => {
     }
   });
 
-  // Pre-existing broken anchors in the docs tree.  These match a heading
-  // structure that has drifted out of sync with cross-references; they
-  // pre-date this test and need their own follow-up to resolve (heading
-  // renames are usually localised to a single doc, but the inbound
-  // links spread across multiple files).  Listed here so the test fails
-  // on NEW breakage while not blocking on existing debt.  Each entry
-  // matches the ``href`` plus the ``source-file:line`` pin so a later
-  // refactor that accidentally moves the broken link still surfaces.
-  const KNOWN_BROKEN_ANCHORS: ReadonlySet<string> = new Set([
-    "docs/design/agent-execution.md:329 :: engine.md#agentengine--taskengine-incremental-sync",
-    "docs/design/index.md:75 :: engine.md#task-decomposability-coordination-topology",
-    "docs/design/organization.md:32 :: engine.md#coordination-group-size-bounds",
-    "docs/design/organization.md:105 :: agents.md#seniority-authority-levels",
-    "docs/design/organization.md:180 :: agents.md#hiring-process",
-    "docs/guides/memory.md:373 :: ../design/memory.md#consolidation",
-    "docs/reference/claude-reference.md:98 :: ./github-environments.md#release_bot_app_",
-    "docs/reference/research.md:74 :: ../architecture/tech-stack.md#why-litestar-over-fastapi",
-    "docs/research/s1-multi-agent-decision.md:15 :: ../design/engine.md#task-decomposability-coordination-topology",
-  ]);
+  // Baseline of pre-existing broken anchors in the docs tree.  Empty: the
+  // docs cross-references that previously drifted out of sync with their
+  // target headings have been corrected, and the slugifier above now
+  // matches real MkDocs/Material output (explicit ``{#id}`` attr-lists,
+  // ``\w`` word chars including underscore, and collapsed dash runs), which
+  // cleared the remaining entries that were slugifier false-negatives.
+  // A NEW genuinely-broken anchor must be fixed at the source link, not
+  // re-added here.
+  const KNOWN_BROKEN_ANCHORS: ReadonlySet<string> = new Set([]);
 
   it("docs anchor targets resolve in their markdown source", () => {
     const failures: string[] = [];

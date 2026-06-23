@@ -7,8 +7,29 @@ import ExpandableArchitecture from "../components/ExpandableArchitecture.astro";
 import ParticleNetwork from "../components/ParticleNetwork.astro";
 import ScrollSyncPanel from "../components/ScrollSyncPanel.astro";
 import DashboardPreview from "../components/islands/DashboardPreview";
+import GitHubButton from "../components/GitHubButton.astro";
 
 const description = "An autonomous product studio you operate: a self-hostable platform where a synthetic organisation of role-based AI agents is designed to plan and deliver products under budgets and governance. Platform built and tested; the agent runtime is in active development.";
+
+const siteUrl = Astro.site;
+
+// Build-time GitHub stats so the Star/Fork buttons show a live-ish count
+// without shipping the third-party buttons.github.io script + iframe. Best
+// effort: an API failure (rate limit, offline) degrades to a count-less button.
+let githubStars: number | null = null;
+let githubForks: number | null = null;
+try {
+  const res = await fetch("https://api.github.com/repos/Aureliolo/synthorg", {
+    headers: { Accept: "application/vnd.github+json" },
+  });
+  if (res.ok) {
+    const data = await res.json();
+    githubStars = typeof data.stargazers_count === "number" ? data.stargazers_count : null;
+    githubForks = typeof data.forks_count === "number" ? data.forks_count : null;
+  }
+} catch {
+  // Intentionally swallowed: the count is decorative, not load-bearing.
+}
 ---
 
 <Base title="SynthOrg | Autonomous Product Studio" description={description} enableRecaptcha={true}>
@@ -54,11 +75,17 @@ const description = "An autonomous product studio you operate: a self-hostable p
         >
           License & Usage Restrictions
         </a>
-        <a class="github-button" href="https://github.com/Aureliolo/synthorg" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star Aureliolo/synthorg on GitHub">Star</a>
+        <GitHubButton
+          href="https://github.com/Aureliolo/synthorg"
+          label="Star"
+          ariaLabel="Star Aureliolo/synthorg on GitHub"
+          variant="star"
+          count={githubStars}
+        />
       </div>
 
       <!-- Scroll hint -->
-      <a href="#how-it-works" class="mt-12 inline-block text-gray-400 hover:text-gray-300 animate-bounce" aria-label="Scroll down for more details">
+      <a href="#how-it-works" class="mt-12 inline-block text-gray-400 hover:text-gray-300 animate-bounce motion-reduce:animate-none" aria-label="Scroll down for more details">
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
       </a>
     </div>
@@ -315,8 +342,20 @@ const description = "An autonomous product studio you operate: a self-hostable p
 
         <div class="flex flex-col sm:flex-row gap-4 items-center justify-center mt-8">
           <div class="flex gap-3">
-            <a class="github-button" href="https://github.com/Aureliolo/synthorg" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star Aureliolo/synthorg on GitHub">Star</a>
-            <a class="github-button" href="https://github.com/Aureliolo/synthorg/fork" data-icon="octicon-repo-forked" data-size="large" data-show-count="true" aria-label="Fork Aureliolo/synthorg on GitHub">Fork</a>
+            <GitHubButton
+              href="https://github.com/Aureliolo/synthorg"
+              label="Star"
+              ariaLabel="Star Aureliolo/synthorg on GitHub"
+              variant="star"
+              count={githubStars}
+            />
+            <GitHubButton
+              href="https://github.com/Aureliolo/synthorg/fork"
+              label="Fork"
+              ariaLabel="Fork Aureliolo/synthorg on GitHub"
+              variant="fork"
+              count={githubForks}
+            />
           </div>
           <a
             href="/docs/"
@@ -367,7 +406,7 @@ const description = "An autonomous product studio you operate: a self-hostable p
     "@type": "SoftwareApplication",
     "name": "SynthOrg",
     "description": description,
-    "url": Astro.site,
+    "url": siteUrl,
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Linux, macOS, Windows",
     "license": "https://github.com/Aureliolo/synthorg/blob/main/LICENSE",
@@ -376,5 +415,5 @@ const description = "An autonomous product studio you operate: a self-hostable p
       "name": "Aurelio",
       "url": "https://github.com/Aureliolo",
     },
-  })} />
+  }).replace(/</g, "\\u003c")} />
 </Base>

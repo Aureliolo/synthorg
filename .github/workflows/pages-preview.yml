@@ -216,8 +216,14 @@ jobs:
         with:
           working-directory: site
 
+      - name: Audit Astro dependencies
+        working-directory: site
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Build Astro
         working-directory: site
+        env:
+          PUBLIC_RECAPTCHA_SITE_KEY: ${{ vars.PUBLIC_RECAPTCHA_SITE_KEY }}
         run: npm run build
 
       # --- Copy install scripts into /get/ ---

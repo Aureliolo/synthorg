@@ -234,7 +234,7 @@ Two enforcement points maintain this boundary:
 1. **Task metadata validator**: `engine/_validation.py::validate_task_metadata()` runs at the engine input boundary before execution begins. It recursively scans all dict keys in `Task.metadata` (including nested dicts and dicts inside lists), rejecting any key matching credential patterns (`token`, `secret`, `api_key`, `password`, `bearer`) with an `EXECUTION_CREDENTIAL_ISOLATION_VIOLATION` error event (`execution.credential_isolation.violation`) and raises `ExecutionStateError`.
 2. **Sandbox credential manager**: `tools/sandbox/credential_manager.py::SandboxCredentialManager` strips 14 credential-like patterns from environment variable overrides before they enter sandbox containers. Stripped keys are logged via `SANDBOX_CREDENTIAL_STRIPPED`.
 
-See also: [Engine > Brain / Hands / Session](agent-execution.md#brain--hands--session).
+See also: [Engine > Brain / Hands / Session](agent-execution.md#brain-hands-session).
 
 ## Approval Timeout Policy
 

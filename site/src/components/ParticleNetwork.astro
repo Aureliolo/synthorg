@@ -15,6 +15,11 @@
 </div>
 
 <script>
+  // Driven by astro:page-load so the canvas re-initialises after a ClientRouter
+  // navigation back to a page that contains it; the astro:before-swap teardown
+  // registered inside init() (once-per-navigation) disconnects the observers
+  // and stops the RAF loop on the way out, so nothing leaks across swaps.
+  function init() {
   const canvas = document.getElementById("particle-network") as HTMLCanvasElement | null;
   const ctx = canvas?.getContext("2d") ?? null;
   if (canvas && ctx) {
@@ -240,4 +245,6 @@
 
     start();
   }
+  }
+  document.addEventListener("astro:page-load", init);
 </script>

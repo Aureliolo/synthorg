@@ -1,4 +1,6 @@
 ---
+import { Font } from "astro:assets";
+import { ClientRouter } from "astro:transitions";
 import "../styles/global.css";
 import Footer from "../components/Footer.astro";
 
@@ -8,6 +10,7 @@ interface Props {
   image?: string;
   type?: string;
   enableRecaptcha?: boolean;
+  noindex?: boolean;
 }
 
 const {
@@ -16,11 +19,27 @@ const {
   image = "/og-image.png",
   type = "website",
   enableRecaptcha = false,
+  noindex = false,
 } = Astro.props;
 
 const ogImageUrl = new URL(image, Astro.site);
-const canonicalUrl = Astro.url;
-const recaptchaSiteKey = import.meta.env.PUBLIC_RECAPTCHA_SITE_KEY || "6LdQkossAAAAADwxZo5bt8p6az7P3M6I_8k4_ypu";
+// Canonical strips the query string / hash so crawlers collapse URL variants
+// onto a single canonical address.
+const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
+// Sourced from env (see ContactForm.astro). Empty when unset, which suppresses
+// the loader + preconnect below so no broken reCAPTCHA call is made.
+const recaptchaSiteKey = import.meta.env.PUBLIC_RECAPTCHA_SITE_KEY ?? "";
+
+// Site-wide Organization structured data (built in frontmatter so the Astro
+// global is never referenced inside the inline JSON-LD script).
+const organizationLd = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "SynthOrg",
+  url: Astro.site,
+  logo: new URL("/favicon.svg", Astro.site).href,
+  sameAs: ["https://github.com/Aureliolo/synthorg"],
+};
 ---
 
 <!doctype html>
@@ -31,8 +50,16 @@ const recaptchaSiteKey = import.meta.env.PUBLIC_RECAPTCHA_SITE_KEY || "6LdQkossA
     <meta name="description" content={description} />
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
+    {noindex && <meta name="robots" content="noindex, nofollow" />}
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="canonical" href={canonicalUrl} />
+    <link rel="sitemap" type="application/xml" href="/sitemap-index.xml" />
+    {enableRecaptcha && recaptchaSiteKey && (
+      <>
+        <link rel="preconnect" href="https://www.google.com" />
+        <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
+      </>
+    )}
     <!-- Open Graph -->
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
@@ -45,59 +72,78 @@ const recaptchaSiteKey = import.meta.env.PUBLIC_RECAPTCHA_SITE_KEY || "6LdQkossA
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImageUrl} />
-    <!-- Self-hosted fonts (eliminates CLS and Google Fonts network dependency) -->
-    <link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+    {/* Self-hosted fonts via Astro Fonts API (eliminates CLS + Google Fonts
+        network dependency). Preload the three above-the-fold families; Geist
+        Mono is island-only (ComparisonTable / DashboardPreview), so it is
+        emitted without a preload hint. */}
+    <Font cssVariable="--font-inter" preload />
+    <Font cssVariable="--font-geist" preload />
+    <Font cssVariable="--font-jetbrains-mono" preload />
+    <Font cssVariable="--font-geist-mono" />
+    <ClientRouter />
+    <script type="application/ld+json" set:html={JSON.stringify(organizationLd).replace(/</g, "\\u003c")} />
   </head>
-  <body class="bg-[#0F1219] text-white font-['Inter',sans-serif] antialiased">
-    <main>
+  <body class="bg-[#0F1219] text-white font-sans antialiased">
+    <a
+      href="#main-content"
+      class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:rounded-lg focus:bg-violet-600 focus:text-white focus:font-semibold"
+    >
+      Skip to main content
+    </a>
+    <main id="main-content">
       <slot />
     </main>
     <Footer />
-    <!-- GitHub buttons (https://buttons.github.io/) -->
-    <script async defer src="https://buttons.github.io/buttons.js"></script>
-    {enableRecaptcha && (
-      <!-- Lazy-load reCAPTCHA v3 when the contact form scrolls into view,
-           with IntersectionObserver fallback and form submit guard -->
+    {/* Lazy-load reCAPTCHA v3 when the contact form scrolls into view, with an
+        IntersectionObserver + focus fallback. Driven by astro:page-load so it
+        re-arms after a ClientRouter (View Transitions) navigation; guards keep
+        it idempotent across swaps. */}
+    {enableRecaptcha && recaptchaSiteKey && (
       <script define:vars={{ recaptchaSiteKey }}>
         (function () {
-          var form = document.getElementById("contact-form");
-          if (!form) return;
+          if (window.__recaptchaWired) return;
+          window.__recaptchaWired = true;
 
-          var loading = false;
+          function init() {
+            var form = document.getElementById("contact-form");
+            if (!form || form.dataset.recaptchaInit) return;
+            form.dataset.recaptchaInit = "1";
 
-          function loadRecaptcha() {
-            if (loading) return;
-            loading = true;
-            var s = document.createElement("script");
-            s.src =
-              "https://www.google.com/recaptcha/api.js?render=" +
-              recaptchaSiteKey;
-            s.async = true;
-            s.onerror = function () {
-              loading = false;
-              console.warn("reCAPTCHA script failed to load");
-            };
-            document.head.appendChild(s);
+            var loading = false;
+            function loadRecaptcha() {
+              if (loading) return;
+              loading = true;
+              var s = document.createElement("script");
+              s.src =
+                "https://www.google.com/recaptcha/api.js?render=" +
+                recaptchaSiteKey;
+              s.async = true;
+              s.onerror = function () {
+                loading = false;
+                console.warn("reCAPTCHA script failed to load");
+              };
+              document.head.appendChild(s);
+            }
+
+            if ("IntersectionObserver" in window) {
+              var observer = new IntersectionObserver(
+                function (entries) {
+                  if (entries[0].isIntersecting) {
+                    loadRecaptcha();
+                    observer.disconnect();
+                  }
+                },
+                { rootMargin: "200px" },
+              );
+              observer.observe(form);
+            } else {
+              loadRecaptcha();
+            }
+
+            form.addEventListener("focusin", function () { loadRecaptcha(); }, { once: true });
           }
 
-          if ("IntersectionObserver" in window) {
-            var observer = new IntersectionObserver(
-              function (entries) {
-                if (entries[0].isIntersecting) {
-                  loadRecaptcha();
-                  observer.disconnect();
-                }
-              },
-              { rootMargin: "200px" },
-            );
-            observer.observe(form);
-          } else {
-            loadRecaptcha();
-          }
-
-          form.addEventListener("focusin", function () { loadRecaptcha(); }, { once: true });
+          document.addEventListener("astro:page-load", init);
         })();
       </script>
     )}

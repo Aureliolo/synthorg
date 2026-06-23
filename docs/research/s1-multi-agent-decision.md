@@ -13,7 +13,7 @@ last_reviewed: 2026-05-05
 # S1: Multi-Agent Architecture Decision
 
 **Issue**: #1254 (CRITICAL, blocks #1250 / #1251 / #1253)
-**Sources**: [arXiv:2603.27771](https://huggingface.co/papers/2603.27771) (Multi-Agent Risks), [arXiv:2603.26993](https://arxiv.org/abs/2603.26993) (Reliability Limits), [arXiv:2604.02460](https://arxiv.org/abs/2604.02460) (Single-Agent Outperforms). Prior baseline: [Kim et al. 2025 (arXiv:2512.08296)](https://arxiv.org/abs/2512.08296), [Multi-Agent Failure Audit](multi-agent-failure-audit.md) (#690), [Task & Workflow Engine §Task Decomposability](../design/engine.md#task-decomposability-coordination-topology), [Communication Coordination §Multi-Agent Failure Pattern Guardrails](../design/communication-coordination.md#multi-agent-failure-pattern-guardrails).
+**Sources**: [arXiv:2603.27771](https://huggingface.co/papers/2603.27771) (Multi-Agent Risks), [arXiv:2603.26993](https://arxiv.org/abs/2603.26993) (Reliability Limits), [arXiv:2604.02460](https://arxiv.org/abs/2604.02460) (Single-Agent Outperforms). Prior baseline: [Kim et al. 2025 (arXiv:2512.08296)](https://arxiv.org/abs/2512.08296), [Multi-Agent Failure Audit](multi-agent-failure-audit.md) (#690), [Task & Workflow Engine §Task Decomposability](../design/coordination.md#task-decomposability-coordination-topology), [Communication Coordination §Multi-Agent Failure Pattern Guardrails](../design/communication-coordination.md#multi-agent-failure-pattern-guardrails).
 
 ## Bottom line
 

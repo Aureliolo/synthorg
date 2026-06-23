@@ -34,7 +34,9 @@ const allTasks: TaskCard[] = [
 const columnNames = ["Backlog", "In Progress", "In Review", "Done"];
 const wipLimits: Record<string, number> = { "In Progress": 3 };
 
-function MiniCard({ task }: { task: TaskCard }) {
+// Memoised: the board recomputes every tick, but each task object keeps a
+// stable identity, so an unchanged card skips re-rendering.
+const MiniCard = React.memo(function MiniCard({ task }: { task: TaskCard }) {
   return (
     <div
       className="rounded-md p-2 border"
@@ -65,7 +67,7 @@ function MiniCard({ task }: { task: TaskCard }) {
       </div>
     </div>
   );
-}
+});
 
 export default function TaskBoardMini({ tick }: Props) {
   // Each task progresses through columns at different rates based on its id

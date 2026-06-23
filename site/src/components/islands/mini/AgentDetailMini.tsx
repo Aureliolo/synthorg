@@ -94,9 +94,10 @@ export default function AgentDetailMini({ tick }: Props) {
         </div>
         <div className="h-[72px] overflow-hidden relative">
           <div className="dp-activity-scroll">
-            {/* Duplicated array for infinite scroll effect; index key is intentional (static data) */}
+            {/* Duplicated once for a seamless infinite-scroll loop; the copy
+                prefix keeps each key stable and unique across the two halves. */}
             {[...activities, ...activities].map((a, i) => (
-              <div key={i} className="flex items-start gap-2 px-2 py-1">
+              <div key={`${i < activities.length ? "a" : "b"}-${a.time}`} className="flex items-start gap-2 px-2 py-1">
                 <span className="w-1 h-1 rounded-full mt-1.5 shrink-0" style={{ background: a.color }} />
                 <div className="min-w-0">
                   <span className="text-xs block truncate" style={{ color: "var(--dp-text-primary)" }}>

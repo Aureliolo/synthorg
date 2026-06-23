@@ -1,5 +1,9 @@
 ---
-const recaptchaSiteKey = import.meta.env.PUBLIC_RECAPTCHA_SITE_KEY || "6LdQkossAAAAADwxZo5bt8p6az7P3M6I_8k4_ypu";
+// reCAPTCHA v3 site key, sourced from env (PUBLIC_RECAPTCHA_SITE_KEY) rather
+// than committed: although v3 site keys are public by design, keeping it out of
+// source stops preview builds reusing the production key and removes a pinned
+// credential. When unset, the submit handler degrades to an email fallback.
+const recaptchaSiteKey = import.meta.env.PUBLIC_RECAPTCHA_SITE_KEY ?? "";
 ---
 
 <form
@@ -70,7 +74,7 @@ const recaptchaSiteKey = import.meta.env.PUBLIC_RECAPTCHA_SITE_KEY || "6LdQkossA
   <button
     type="submit"
     id="contact-submit"
-    class="w-full sm:w-auto px-8 py-3 bg-violet-600 hover:bg-violet-500 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+    class="w-full sm:w-auto px-8 py-3 bg-violet-600 hover:bg-violet-500 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0F1219]"
   >
     Send Message
   </button>
@@ -87,6 +91,9 @@ const recaptchaSiteKey = import.meta.env.PUBLIC_RECAPTCHA_SITE_KEY || "6LdQkossA
 </div>
 
 <script>
+  // Re-armed on astro:page-load so the handler binds after a ClientRouter nav;
+  // the dataset guard prevents a duplicate submit listener.
+  function initContactForm() {
   const form = document.querySelector<HTMLFormElement>("#contact-form");
   const submitBtn = document.querySelector<HTMLButtonElement>("#contact-submit");
   const successMsg = document.querySelector<HTMLElement>("#contact-success");
@@ -94,8 +101,10 @@ const recaptchaSiteKey = import.meta.env.PUBLIC_RECAPTCHA_SITE_KEY || "6LdQkossA
 
   if (!form || !submitBtn || !successMsg || !errorMsg) {
     // Fall back to native HTML form submission
-    console.error("ContactForm: required DOM elements not found");
+    return;
   } else {
+    if (form.dataset.submitBound) return;
+    form.dataset.submitBound = "1";
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
 
@@ -166,4 +175,6 @@ const recaptchaSiteKey = import.meta.env.PUBLIC_RECAPTCHA_SITE_KEY || "6LdQkossA
       }
     });
   }
+  }
+  document.addEventListener("astro:page-load", initContactForm);
 </script>

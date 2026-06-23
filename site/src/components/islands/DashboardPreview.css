@@ -1,5 +1,7 @@
 .dashboard-preview {
   --dp-accent: #38bdf8;
+  --dp-accent-10: color-mix(in srgb, var(--dp-accent) 10%, transparent);
+  --dp-accent-15: color-mix(in srgb, var(--dp-accent) 15%, transparent);
   --dp-success: #10b981;
   --dp-warning: #f59e0b;
   --dp-danger: #ef4444;
@@ -12,8 +14,8 @@
   --dp-text-muted: #8b95a5;
   --dp-border: #1e1e2e;
   --dp-border-bright: #2a2a3e;
-  --dp-font-sans: "Geist", "Inter", ui-sans-serif, system-ui, sans-serif;
-  --dp-font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, monospace;
+  --dp-font-sans: var(--font-geist), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --dp-font-mono: var(--font-geist-mono), var(--font-jetbrains-mono), ui-monospace, monospace;
 
   font-family: var(--dp-font-sans);
   color: var(--dp-text-primary);

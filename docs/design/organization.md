@@ -37,7 +37,7 @@ org chart. See [Operating Postures](#operating-postures).
     registry default **5**; **3-4 recommended** per research, adoption tracked
     on R1 #1250); an Enterprise Org with 50 agents does not run 50-agent
     coordination waves. See
-    [Task Decomposability & Coordination Topology](coordination.md#task-decomposability--coordination-topology)
+    [Task Decomposability & Coordination Topology](coordination.md#task-decomposability-coordination-topology)
     for the full bounds and [S1 Multi-Agent Architecture Decision §2](../research/s1-multi-agent-decision.md#section-2-team-size-bounds).
 
 See the [Template System](#template-system) section for details on how templates are defined,
@@ -139,7 +139,7 @@ graph TD
 ```
 
 Each node in the hierarchy corresponds to an [agent](agents.md) with a defined
-[seniority level](hr-lifecycle.md#seniority--authority-levels) that determines their authority,
+[seniority level](hr-lifecycle.md#seniority-authority-levels) that determines their authority,
 delegation rights, and typical model tier.
 
 ---

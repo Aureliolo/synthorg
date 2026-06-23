@@ -205,6 +205,8 @@ const architecture = [
 </div>
 
 <script>
+  // Re-armed on astro:page-load so the toggles work after a ClientRouter nav.
+  function initArchToggles() {
   const buttons = document.querySelectorAll<HTMLButtonElement>("[data-arch-toggle]");
   buttons.forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -238,4 +240,6 @@ const architecture = [
       }
     });
   });
+  }
+  document.addEventListener("astro:page-load", initArchToggles);
 </script>

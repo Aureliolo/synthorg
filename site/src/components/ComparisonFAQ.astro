@@ -33,6 +33,18 @@ const faqs = [
     answer: "We research each competitor by reviewing their official documentation, GitHub repository, and recent release notes. Evaluations follow a consistent rubric (full, partial, planned, none) applied equally to SynthOrg and every competitor. That said, frameworks evolve quickly and we may occasionally lag behind. If you spot an inaccuracy, please open a GitHub issue; we will correct it promptly.",
   },
 ];
+
+// FAQPage structured data, built from the same source as the rendered list so
+// the two cannot drift. Eligible for Google's FAQ rich result.
+const faqLd = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: faqs.map((f) => ({
+    "@type": "Question",
+    name: f.question,
+    acceptedAnswer: { "@type": "Answer", text: f.answer },
+  })),
+};
 ---
 
 <section class="py-16 px-6" id="faq">
@@ -67,3 +79,5 @@ const faqs = [
     </div>
   </div>
 </section>
+
+<script type="application/ld+json" set:html={JSON.stringify(faqLd).replace(/</g, "\\u003c")} />

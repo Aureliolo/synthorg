@@ -4,10 +4,23 @@ import fs from "node:fs";
 import path from "node:path";
 
 const scriptPath = path.resolve("../cli/scripts/install.sh");
-const content = fs.readFileSync(scriptPath, "utf-8");
+let content: string;
+try {
+  content = fs.readFileSync(scriptPath, "utf-8");
+} catch (err) {
+  throw new Error(
+    `install-sh.astro: could not read the CLI install script at ${scriptPath} ` +
+      `(cwd=${process.cwd()}). Ensure cli/scripts/install.sh exists and the build ` +
+      `runs from the site/ directory. Original error: ${(err as Error).message}`,
+  );
+}
 ---
 
-<Base title="install.sh | SynthOrg CLI Installer">
+<Base
+  title="SynthOrg CLI install script (Linux / macOS)"
+  description="Review the SynthOrg Linux and macOS install script (install.sh) before piping it to your shell."
+  noindex={true}
+>
   <section class="pt-16 pb-10 px-6">
     <div class="max-w-5xl mx-auto">
       <div class="flex items-center justify-between mb-6">
@@ -40,7 +53,7 @@ const content = fs.readFileSync(scriptPath, "utf-8");
             <span class="ml-2 text-xs text-gray-400 font-mono">install.sh</span>
           </div>
         </div>
-        <pre class="p-4 text-sm font-['JetBrains_Mono',monospace] text-gray-300 overflow-x-auto leading-relaxed"><code>{content}</code></pre>
+        <pre class="p-4 text-sm font-mono text-gray-300 overflow-x-auto leading-relaxed"><code>{content}</code></pre>
       </div>
     </div>
   </section>
