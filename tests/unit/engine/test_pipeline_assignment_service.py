@@ -1,9 +1,9 @@
 """B3: the solo path routes single-agent selection through the service.
 
-Proves ``DefaultWorkPipeline._select_solo_agent`` delegates to
-``TaskAssignmentService`` when one is wired, so the service's task-status
-validation runs in production (an invalid status is rejected) and a
-no-eligible result surfaces as a routing-undecidable error.
+Proves ``select_solo_agent`` delegates to ``TaskAssignmentService`` when
+one is wired, so the service's task-status validation runs in production
+(an invalid status is rejected) and a no-eligible result surfaces as a
+routing-undecidable error.
 """
 
 from datetime import date
@@ -17,17 +17,11 @@ from synthorg.engine.assignment.models import AssignmentRequest, AssignmentResul
 from synthorg.engine.assignment.registry import build_strategy_map
 from synthorg.engine.assignment.service import TaskAssignmentService
 from synthorg.engine.errors import TaskAssignmentError
-from synthorg.engine.intake.engine import IntakeEngine
+from synthorg.engine.pipeline._solo_selection import select_solo_agent
 from synthorg.engine.pipeline.errors import WorkRoutingUndecidableError
-from synthorg.engine.pipeline.policy.protocol import WorkRoutingPolicy
-from synthorg.engine.pipeline.service import DefaultWorkPipeline
 from synthorg.engine.routing.scorer import AgentTaskScorer
-from synthorg.engine.task_engine import TaskEngine
-from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
-from synthorg.persistence.project_protocol import ProjectRepository
-from synthorg.workers.execution_service import WorkerExecutionService
-from tests._shared import FakeClock, as_uuid, mock_of
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
 
@@ -76,51 +70,44 @@ class _NoSelectionStrategy:
         )
 
 
-def _pipeline(service: TaskAssignmentService) -> DefaultWorkPipeline:
-    scorer = AgentTaskScorer(min_score=_PERMISSIVE_MIN_SCORE)
-    return DefaultWorkPipeline(
-        intake_engine=mock_of[IntakeEngine](),
-        task_engine=mock_of[TaskEngine](),
-        project_repository=mock_of[ProjectRepository](),
-        routing_policy=mock_of[WorkRoutingPolicy](),
-        scorer=scorer,
-        worker_execution_service=mock_of[WorkerExecutionService](),
-        coordinator=None,
-        agent_registry=mock_of[AgentRegistryService](),
-        clock=FakeClock(),
-        assignment_service=service,
-    )
+def _scorer() -> AgentTaskScorer:
+    return AgentTaskScorer(min_score=_PERMISSIVE_MIN_SCORE)
 
 
 def _role_based_service() -> TaskAssignmentService:
-    scorer = AgentTaskScorer(min_score=_PERMISSIVE_MIN_SCORE)
-    strategy = build_strategy_map(scorer=scorer)["role_based"]
+    strategy = build_strategy_map(scorer=_scorer())["role_based"]
     return TaskAssignmentService(strategy)
 
 
 def test_solo_pick_routes_through_service() -> None:
-    pipeline = _pipeline(_role_based_service())
+    service = _role_based_service()
     agent = _agent("dev-1")
 
-    selected = pipeline._select_solo_agent(_task(), (agent,))
+    selected = select_solo_agent(
+        _task(), (agent,), scorer=_scorer(), assignment_service=service
+    )
 
     assert selected == str(agent.id)
 
 
 def test_non_assignable_status_is_rejected_by_service() -> None:
-    pipeline = _pipeline(_role_based_service())
+    service = _role_based_service()
     agent = _agent("dev-1")
 
     # IN_PROGRESS is not in the service's assignable-status set, so the
     # service rejects the request before any scoring happens.
     in_progress = _task(TaskStatus.IN_PROGRESS, assigned_to="agent-prior")
     with pytest.raises(TaskAssignmentError):
-        pipeline._select_solo_agent(in_progress, (agent,))
+        select_solo_agent(
+            in_progress, (agent,), scorer=_scorer(), assignment_service=service
+        )
 
 
 def test_no_selection_surfaces_routing_undecidable() -> None:
-    pipeline = _pipeline(TaskAssignmentService(_NoSelectionStrategy()))
+    service = TaskAssignmentService(_NoSelectionStrategy())
     agent = _agent("dev-1")
 
     with pytest.raises(WorkRoutingUndecidableError):
-        pipeline._select_solo_agent(_task(), (agent,))
+        select_solo_agent(
+            _task(), (agent,), scorer=_scorer(), assignment_service=service
+        )

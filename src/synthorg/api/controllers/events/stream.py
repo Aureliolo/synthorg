@@ -15,11 +15,11 @@ from litestar.datastructures import State
 from litestar.params import QueryParameter
 from litestar.response import ServerSentEvent
 
+from synthorg.api.controllers.events._hub_access import require_hub
 from synthorg.api.controllers.events._shared import (
     _SESSION_ID_PATTERN,
 )
 from synthorg.api.controllers.events._sse import (
-    _require_hub,
     _sse_event_stream,
     assert_sse_session_access,
 )
@@ -82,7 +82,7 @@ class EventStreamController(Controller):
                 ids cannot be enumerated by status code).
         """
         app_state: AppState = state.app_state
-        hub = _require_hub(app_state)
+        hub = require_hub(app_state)
         user = getattr(request, "user", None)
         # ``require_read_access`` guarantees an authenticated user; assert it
         # so a misconfigured guard chain fails closed rather than streaming

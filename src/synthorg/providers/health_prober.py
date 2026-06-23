@@ -13,8 +13,6 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Final
 
-import httpx
-
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -33,6 +31,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_HEALTH_PROBER_STARTED,
     PROVIDER_HEALTH_PROBER_STOPPED,
 )
+from synthorg.providers._probe_request import execute_probe
 from synthorg.providers.discovery_policy import (
     ProviderDiscoveryPolicy,
     is_url_allowed,
@@ -47,22 +46,14 @@ from synthorg.providers.health import ProviderHealthRecord, ProviderHealthTracke
 from synthorg.providers.health_prober_helpers import (
     build_auth_headers,
     build_ping_url,
-    truncate,
 )
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.network_validator import DnsValidationOk
-from synthorg.tools.ssrf import build_pinned_transport
 
 logger = get_logger(__name__)
 
 _DEFAULT_INTERVAL_SECONDS: Final[int] = 1800
-_PROBE_TIMEOUT_SECONDS: Final[float] = 10.0
-_HTTP_SERVER_ERROR_THRESHOLD: Final[int] = 500
-# A 429 is a 4xx (below the 5xx threshold) but a rate-limited endpoint
-# is NOT healthy: counting it as success would mask sustained throttling
-# behind a green health verdict.
-_HTTP_TOO_MANY_REQUESTS: Final[int] = 429
 
 
 class ProviderHealthProber:
@@ -520,7 +511,9 @@ class ProviderHealthProber:
         headers = build_auth_headers(auth_type, api_key)
 
         logger.debug(PROVIDER_HEALTH_PROBE_STARTED, provider=name)
-        result = await self._execute_probe(url, headers, validation=validation)
+        result = await execute_probe(
+            url, headers, clock=self._clock, validation=validation
+        )
         elapsed_ms, success, error_msg = result
 
         record = ProviderHealthRecord(
@@ -545,65 +538,3 @@ class ProviderHealthProber:
                 error=error_msg,
                 latency_ms=round(elapsed_ms, 1),
             )
-
-    async def _execute_probe(
-        self,
-        url: str,
-        headers: dict[str, str],
-        *,
-        validation: DnsValidationOk | None = None,
-    ) -> tuple[float, bool, str | None]:
-        """Execute the HTTP probe request.
-
-        Args:
-            url: URL to probe.
-            headers: Auth headers for the request.
-            validation: DNS pre-flight result; when it carries resolved
-                IPs the probe connects through a pinned transport so a
-                DNS rebind cannot redirect it after the allowlist check.
-
-        Returns:
-            Tuple of (elapsed_ms, success, error_message).
-
-        Raises:
-            asyncio.CancelledError: Re-raised if the task is cancelled
-                during the probe.
-        """
-        start = self._clock.monotonic()
-        success = False
-        error_msg: str | None = None
-        # ``transport=None`` is httpx's default-transport sentinel, so a
-        # literal-IP target (no IPs to pin) connects normally.
-        transport = (
-            build_pinned_transport(validation) if validation is not None else None
-        )
-
-        try:
-            async with httpx.AsyncClient(
-                timeout=_PROBE_TIMEOUT_SECONDS,
-                follow_redirects=False,
-                transport=transport,
-            ) as client:
-                resp = await client.get(url, headers=headers)
-                success = (
-                    resp.status_code < _HTTP_SERVER_ERROR_THRESHOLD
-                    and resp.status_code != _HTTP_TOO_MANY_REQUESTS
-                )
-                if not success:
-                    if resp.status_code == _HTTP_TOO_MANY_REQUESTS:
-                        retry_after = resp.headers.get("retry-after")
-                        error_msg = f"HTTP 429 rate limited (retry-after={retry_after})"
-                    else:
-                        error_msg = f"HTTP {resp.status_code}"
-        except httpx.ConnectError as exc:
-            error_msg = f"connect failed: {type(exc).__name__}"
-        except httpx.TimeoutException:
-            error_msg = "timeout"
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            error_msg = truncate(f"{type(exc).__name__}: {safe_error_description(exc)}")
-
-        elapsed_ms = (self._clock.monotonic() - start) * 1000
-        return elapsed_ms, success, error_msg

@@ -111,7 +111,7 @@ class TestEventStreamHubDedup:
         await hub.subscribe("session-1")
         for i in range(100):
             await hub.publish(_event(event_id=f"evt-{i}"))
-        seen = hub._seen_event_ids["session-1"]
+        seen = hub._ledger.seen_event_ids["session-1"]
         assert len(seen) <= 8
 
     async def test_unsubscribe_clears_dedup_window_for_session(self) -> None:
@@ -121,10 +121,10 @@ class TestEventStreamHubDedup:
         queue = await hub.subscribe("session-1")
 
         await hub.publish(_event(event_id="evt-001"))
-        assert "session-1" in hub._seen_event_ids
+        assert "session-1" in hub._ledger.seen_event_ids
 
         await hub.unsubscribe(queue)
-        assert "session-1" not in hub._seen_event_ids
+        assert "session-1" not in hub._ledger.seen_event_ids
 
     async def test_unsubscribe_with_remaining_subscribers_keeps_dedup(self) -> None:
         """Dedup window stays while any subscriber remains for the session."""
@@ -136,7 +136,7 @@ class TestEventStreamHubDedup:
         await hub.publish(_event(event_id="evt-001"))
         await hub.unsubscribe(q1)
         # Other subscriber still present, dedup map should persist.
-        assert "session-1" in hub._seen_event_ids
+        assert "session-1" in hub._ledger.seen_event_ids
 
     async def test_zero_ttl_disables_time_based_eviction(self) -> None:
         """``dedup_ttl_seconds=0`` keeps entries until the size bound."""

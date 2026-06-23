@@ -63,6 +63,7 @@ from synthorg.providers.url_utils import redact_url
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.browser._args import A11yImpact, BrowserToolArgs
+from synthorg.tools.browser._asset_paths import copy_if_stale, reject_path_traversal
 from synthorg.tools.browser._baseline import WorkspaceBaselineStore
 from synthorg.tools.browser._constants import (
     ACCESSIBILITY_SCAN_TIMEOUT_SECONDS,
@@ -1183,7 +1184,7 @@ class BrowserTool(BaseTool):
             return args.url
         if args.path:
             normalised = args.path.replace("\\", "/")
-            self._reject_path_traversal(normalised)
+            reject_path_traversal(normalised)
             container_rel = normalised.lstrip("/")
             return f"file://{CONTAINER_WORKSPACE_ROOT}/{container_rel}"
         logger.warning(
@@ -1195,35 +1196,6 @@ class BrowserTool(BaseTool):
         raise BrowserArgumentError(
             f"{args.mode!r} mode requires url or path",
         )
-
-    @staticmethod
-    def _reject_path_traversal(path: str) -> None:
-        """Reject `..` segments and absolute paths in the workspace-relative path.
-
-        Raises:
-            BrowserArgumentError: If the related operation fails.
-        """
-        if path.startswith("/"):
-            logger.warning(
-                BROWSER_ARGS_VALIDATION_FAILED,
-                reason="absolute_path_rejected",
-                error_type=BrowserArgumentError.__name__,
-            )
-            raise BrowserArgumentError(
-                "path must be workspace-relative, not absolute",
-                context={"path": path},
-            )
-        segments = path.split("/")
-        if any(segment == ".." for segment in segments):
-            logger.warning(
-                BROWSER_ARGS_VALIDATION_FAILED,
-                reason="path_traversal_rejected",
-                error_type=BrowserArgumentError.__name__,
-            )
-            raise BrowserArgumentError(
-                "path must not contain '..' segments",
-                context={"path": path},
-            )
 
     def _to_container_path(self, host_path: Path) -> str:
         """To container path.
@@ -1241,12 +1213,12 @@ class BrowserTool(BaseTool):
             target_dir = self._workspace / _DEPLOY_SUBDIR
             target_dir.mkdir(parents=True, exist_ok=True)
             executor_target = target_dir / _EXECUTOR_DEPLOY_NAME
-            executor_changed = self._copy_if_stale(
+            executor_changed = copy_if_stale(
                 _EXECUTOR_SOURCE_PATH,
                 executor_target,
             )
             axe_target = target_dir / _AXE_DEPLOY_NAME
-            axe_changed = self._copy_if_stale(AXE_BUNDLE_PATH, axe_target)
+            axe_changed = copy_if_stale(AXE_BUNDLE_PATH, axe_target)
             screenshots_root = self._workspace / SCREENSHOTS_SUBDIR
             screenshots_root.mkdir(parents=True, exist_ok=True)
         if executor_changed or axe_changed:

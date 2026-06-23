@@ -22,7 +22,6 @@ from synthorg.communication.event_stream.stream import (
     EventStreamSubscription,
 )
 from synthorg.communication.event_stream.types import StreamEvent
-from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.auth.config import AUTH_REVALIDATE_INTERVAL_SECONDS
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.auth.predicates import is_owner_or_ceo
@@ -288,19 +287,6 @@ async def assert_sse_session_access(
     )
     msg = "Session not found"
     raise NotFoundError(msg)
-
-
-def _require_hub(app_state: AppState) -> EventStreamHub:
-    """Return the hub or raise when unavailable.
-
-    Raises:
-        NotFoundError: Raised on the corresponding failure path.
-    """
-    hub = app_state.slice(CommunicationStateSlice).event_stream_hub
-    if hub is None:
-        msg = "Event stream not configured"
-        raise NotFoundError(msg)
-    return hub
 
 
 async def _serialise_stream_event(

@@ -100,13 +100,13 @@ class _PatchCtx:
         self._status_code = status_code
         self._side_effect = side_effect
         self._patcher = patch(
-            "synthorg.providers.health_prober.httpx.AsyncClient",
+            "synthorg.providers._probe_request.httpx.AsyncClient",
         )
         self.mock_client_cls: MagicMock | None = None
 
     def __enter__(self) -> _PatchCtx:
         # Capture the real classes BEFORE entering the patch context.
-        # ``patch("synthorg.providers.health_prober.httpx.AsyncClient")``
+        # ``patch("synthorg.providers._probe_request.httpx.AsyncClient")``
         # mutates the shared httpx module's attribute, so reading
         # ``httpx.AsyncClient`` after ``__enter__`` returns a MagicMock
         # (which mock rejects as a spec target). The ``spec=`` calls
