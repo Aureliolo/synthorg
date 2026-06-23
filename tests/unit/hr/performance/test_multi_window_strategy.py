@@ -210,7 +210,7 @@ class TestMultiWindowStrategy:
         strategy = self._make_strategy(windows=("weekly",))
         records = (make_task_metric(completed_at=NOW - timedelta(hours=1)),)
 
-        with pytest.raises(ValueError, match="Unrecognized window size"):
+        with pytest.raises(ValueError, match="Unrecognised window size"):
             strategy.compute_windows(records, now=NOW)
 
     def test_old_records_excluded_from_short_window(self) -> None:

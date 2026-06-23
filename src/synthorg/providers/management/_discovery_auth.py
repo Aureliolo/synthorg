@@ -12,13 +12,13 @@ from typing import Final
 from urllib.parse import urlparse
 
 from synthorg.config.schema import ProviderConfig
-from synthorg.core.url_redaction import redact_url
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import PROVIDER_DISCOVERY_FAILED
 from synthorg.providers._auth_type_descriptor import (
     AUTH_TYPE_DESCRIPTORS,
     DiscoveryAuthStyle,
 )
+from synthorg.providers.url_utils import redact_url
 
 logger = get_logger(__name__)
 

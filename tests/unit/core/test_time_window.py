@@ -32,5 +32,5 @@ class TestParseWindowDaysStrict:
 
     @pytest.mark.parametrize("label", ["7days", "7", "d", ""])
     def test_invalid_raises(self, label: str) -> None:
-        with pytest.raises(ValueError, match="Unrecognized window size format"):
+        with pytest.raises(ValueError, match="Unrecognised window size format"):
             parse_window_days_strict(label)
