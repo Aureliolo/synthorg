@@ -4,7 +4,11 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from synthorg.core.autonomy_enums import AutonomyLevel, compare_autonomy
+from synthorg.core.autonomy_enums import (
+    AutonomyLevel,
+    compare_autonomy,
+    step_down_autonomy,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -47,3 +51,25 @@ class TestCompareAutonomyProperties:
             assert result == 0
         else:
             assert result != 0
+
+
+class TestStepDownAutonomy:
+    @pytest.mark.parametrize(
+        ("level", "expected"),
+        [
+            (AutonomyLevel.FULL, AutonomyLevel.SEMI),
+            (AutonomyLevel.SEMI, AutonomyLevel.SUPERVISED),
+            (AutonomyLevel.SUPERVISED, AutonomyLevel.LOCKED),
+            (AutonomyLevel.LOCKED, AutonomyLevel.LOCKED),
+        ],
+    )
+    def test_steps_one_level_down(
+        self,
+        level: AutonomyLevel,
+        expected: AutonomyLevel,
+    ) -> None:
+        assert step_down_autonomy(level) == expected
+
+    @given(a=_autonomy_levels)
+    def test_never_increases_autonomy(self, a: AutonomyLevel) -> None:
+        assert compare_autonomy(step_down_autonomy(a), a) <= 0

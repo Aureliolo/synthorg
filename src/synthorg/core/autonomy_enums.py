@@ -33,6 +33,11 @@ if set(_AUTONOMY_RANK) != set(AutonomyLevel):
     raise RuntimeError(_autonomy_msg)
 
 
+_RANK_TO_AUTONOMY: dict[int, AutonomyLevel] = {
+    rank: level for level, rank in _AUTONOMY_RANK.items()
+}
+
+
 def compare_autonomy(a: AutonomyLevel, b: AutonomyLevel) -> int:
     """Compare two autonomy levels.
 
@@ -47,3 +52,21 @@ def compare_autonomy(a: AutonomyLevel, b: AutonomyLevel) -> int:
         Integer indicating relative autonomy.
     """
     return _AUTONOMY_RANK[a] - _AUTONOMY_RANK[b]
+
+
+def step_down_autonomy(level: AutonomyLevel) -> AutonomyLevel:
+    """Return the next-more-restrictive autonomy level (one step down).
+
+    LOCKED is the floor: stepping down from LOCKED returns LOCKED.
+
+    Args:
+        level: The current autonomy level.
+
+    Returns:
+        The autonomy level one rank more restrictive, or LOCKED when
+        already at the floor.
+    """
+    rank = _AUTONOMY_RANK[level]
+    if rank == 0:
+        return level
+    return _RANK_TO_AUTONOMY[rank - 1]

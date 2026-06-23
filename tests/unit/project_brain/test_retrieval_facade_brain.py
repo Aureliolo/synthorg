@@ -13,7 +13,12 @@ from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import SYSTEM_DOCS_AGENT_ID
 from synthorg.docs_engine.retrieval_facade import ProjectAwareMemoryFacade
-from synthorg.engine.prompt_safety import TAG_BRAIN_STATE
+from synthorg.engine.prompt_safety import TAG_BRAIN_STATE, TAG_KNOWLEDGE
+from synthorg.knowledge.constants import (
+    KNOWLEDGE_MEMORY_NAMESPACE,
+    KNOWLEDGE_PROJECT_TAG_PREFIX,
+    SYSTEM_KNOWLEDGE_AGENT_ID,
+)
 from synthorg.memory.backends.inmemory.adapter import InMemoryBackend
 from synthorg.memory.models import (
     MemoryEntry,
@@ -67,6 +72,42 @@ async def test_facade_surfaces_brain_state_wrapped(
     assert brain_hits, "brain entry should surface through the facade"
     assert f"</{TAG_BRAIN_STATE}>" in brain_hits[0].content
     assert "payments" in brain_hits[0].content
+
+
+async def _store_knowledge_chunk(backend: InMemoryBackend, content: str) -> None:
+    await backend.store(
+        SYSTEM_KNOWLEDGE_AGENT_ID,
+        MemoryStoreRequest(
+            category=MemoryCategory.KNOWLEDGE,
+            namespace=KNOWLEDGE_MEMORY_NAMESPACE,
+            content=NotBlankStr(content),
+            metadata=MemoryMetadata(
+                source=NotBlankStr("knowledge.indexer"),
+                tags=(NotBlankStr(f"{KNOWLEDGE_PROJECT_TAG_PREFIX}{_PROJECT}"),),
+            ),
+        ),
+    )
+
+
+async def test_facade_surfaces_knowledge_wrapped(
+    memory_backend: InMemoryBackend,
+) -> None:
+    """A knowledge entry surfaces through the facade fenced under knowledge."""
+    await _store_knowledge_chunk(
+        memory_backend, "Refunds must be approved by finance for payments over 1000"
+    )
+    facade = ProjectAwareMemoryFacade(backend=memory_backend, knowledge_enabled=True)
+
+    results = await facade.retrieve(
+        agent_id=_AGENT,
+        project_id=_PROJECT,
+        query=MemoryQuery(text=NotBlankStr("payments"), limit=10),
+    )
+
+    knowledge_hits = [r for r in results if f"<{TAG_KNOWLEDGE}>" in r.content]
+    assert knowledge_hits, "knowledge entry should surface through the facade"
+    assert f"</{TAG_KNOWLEDGE}>" in knowledge_hits[0].content
+    assert "payments" in knowledge_hits[0].content
 
 
 async def test_facade_without_brain_enabled_skips_leg(

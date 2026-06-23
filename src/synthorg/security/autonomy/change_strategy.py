@@ -2,7 +2,11 @@
 
 from datetime import UTC, datetime
 
-from synthorg.core.autonomy_enums import AutonomyLevel, compare_autonomy
+from synthorg.core.autonomy_enums import (
+    AutonomyLevel,
+    compare_autonomy,
+    step_down_autonomy,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
@@ -17,18 +21,29 @@ from synthorg.security.autonomy.models import AutonomyOverride
 
 logger = get_logger(__name__)
 
-# Mapping from DowngradeReason to the resulting autonomy level.
-_DOWNGRADE_MAP: dict[DowngradeReason, AutonomyLevel] = {
-    DowngradeReason.HIGH_ERROR_RATE: AutonomyLevel.SUPERVISED,
+# Reasons that downgrade to a fixed floor level regardless of the current
+# level. HIGH_ERROR_RATE is intentionally absent: a noisy run is a graded
+# signal, so it steps the agent down exactly one autonomy level rather than
+# slamming it to a fixed floor (see ``_STEP_DOWN_REASONS``).
+_FIXED_DOWNGRADE_MAP: dict[DowngradeReason, AutonomyLevel] = {
     DowngradeReason.BUDGET_EXHAUSTED: AutonomyLevel.SUPERVISED,
     DowngradeReason.RISK_BUDGET_EXHAUSTED: AutonomyLevel.SUPERVISED,
     DowngradeReason.SECURITY_INCIDENT: AutonomyLevel.LOCKED,
 }
 
-# Validate exhaustiveness at module load time.
-_missing_reasons = set(DowngradeReason) - set(_DOWNGRADE_MAP)
-if _missing_reasons:
-    _msg = f"_DOWNGRADE_MAP missing entries for: {_missing_reasons}"
+# Reasons that step the agent down exactly one autonomy level from its
+# current effective level (FULL -> SEMI -> SUPERVISED -> LOCKED).
+_STEP_DOWN_REASONS: frozenset[DowngradeReason] = frozenset(
+    {DowngradeReason.HIGH_ERROR_RATE},
+)
+
+# Validate exhaustiveness at module load time: every reason is either a
+# fixed-floor jump or a one-level step-down.
+_uncovered_reasons = (
+    set(DowngradeReason) - set(_FIXED_DOWNGRADE_MAP) - _STEP_DOWN_REASONS
+)
+if _uncovered_reasons:
+    _msg = f"DowngradeReason values not handled: {_uncovered_reasons}"
     raise RuntimeError(_msg)
 
 
@@ -36,13 +51,14 @@ class HumanOnlyPromotionStrategy:
     """Default strategy: promotions and recovery always require human approval.
 
     Downgrades are applied immediately based on the reason:
-    - ``HIGH_ERROR_RATE`` -> SUPERVISED (or current if more restrictive)
+    - ``HIGH_ERROR_RATE`` -> one level down from current
+      (FULL -> SEMI -> SUPERVISED -> LOCKED)
     - ``BUDGET_EXHAUSTED`` -> SUPERVISED (or current if more restrictive)
     - ``RISK_BUDGET_EXHAUSTED`` -> SUPERVISED (or current if more restrictive)
     - ``SECURITY_INCIDENT`` -> LOCKED
 
     Downgrades never *increase* autonomy: if the agent is already at
-    LOCKED, a HIGH_ERROR_RATE event keeps it at LOCKED (not SUPERVISED).
+    LOCKED, any downgrade event keeps it at LOCKED.
 
     This strategy tracks active overrides in memory. In production,
     overrides should be persisted to the persistence backend.
@@ -101,7 +117,6 @@ class HumanOnlyPromotionStrategy:
         Returns:
             The new autonomy level after downgrade.
         """
-        target_level = _DOWNGRADE_MAP[reason]
         existing = self._overrides.get(agent_id)
         original = (
             existing.original_level
@@ -112,6 +127,11 @@ class HumanOnlyPromotionStrategy:
         # Never increase autonomy -- if the agent is already at or below
         # the target level, keep the current (more restrictive) level.
         effective_current = existing.current_level if existing else original
+        if reason in _STEP_DOWN_REASONS:
+            # Graded downgrade: drop exactly one autonomy level from current.
+            target_level = step_down_autonomy(effective_current)
+        else:
+            target_level = _FIXED_DOWNGRADE_MAP[reason]
         new_level = (
             effective_current
             if compare_autonomy(effective_current, target_level) <= 0
