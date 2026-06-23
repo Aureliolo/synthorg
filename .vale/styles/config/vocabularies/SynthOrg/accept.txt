@@ -876,6 +876,7 @@ workflow_version
 workstreams
 worktree
 worktrees
+wretry
 writability
 write_context
 xai

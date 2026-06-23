@@ -381,10 +381,13 @@ jobs:
     # `failure` result here means the retries were exhausted -- a real,
     # standing problem (a dead PAT, a revoked scope, an account-wide block),
     # not a transient. Track it on its own title so it never masks or is
-    # masked by the dev-release regression issue. Skip on forks (no App
-    # token) and on the skip/cancel paths (`result == 'failure'` excludes
-    # `skipped` and `cancelled`, including the case where dev-release itself
-    # failed and the prune never ran).
+    # masked by the dev-release regression issue: the two report jobs cover
+    # disjoint failure domains (`cleanup-images` only runs when dev-release
+    # succeeds, so a dev-release failure and a cleanup failure can never both
+    # fire in one run). Skip on forks (no App token) and on the skip/cancel
+    # paths (`result == 'failure'` excludes `skipped` and `cancelled`,
+    # including the case where dev-release itself failed and the prune never
+    # ran).
     if: >-
       always()
       && !github.event.repository.fork
@@ -403,6 +406,7 @@ jobs:
       - name: Compose body
         id: body
         env:
+          RESULT: ${{ needs.cleanup-images.result }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           HEAD_SHA: ${{ github.sha }}
         run: |
@@ -410,7 +414,7 @@ jobs:
           {
             echo 'body<<TRACKING_ISSUE_BODY_EOF'
             cat <<EOF
-          The GHCR \`cleanup-images\` job failed AFTER its in-run retries on $HEAD_SHA, so this is a standing failure rather than a transient 401.
+          The GHCR \`cleanup-images\` job finished with result \`$RESULT\` AFTER its in-run retries on $HEAD_SHA, so this is a standing failure rather than a transient 401.
 
           Run: ${RUN_URL}
 

@@ -61,7 +61,9 @@ jobs:
     # mid-delete and must finish over many runs. 120 min lets one pass
     # clear ~6-7k versions, draining the big packages in a single run
     # during the historical backfill; steady-state runs finish in
-    # minutes well under the cap.
+    # minutes well under the cap. The wretry wrapper adds at most two 15s
+    # inter-attempt delays per pass, negligible against the 429-backoff-
+    # dominated runtime, so the cap stays sound.
     timeout-minutes: 120
     permissions:
       packages: write
@@ -113,6 +115,10 @@ jobs:
       # wretry re-runs the entire idempotent pass (already-deleted versions
       # are skipped on the retry), so a transient self-heals in-run while a
       # genuinely dead token still fails loudly after the attempts are spent.
+      # The nested `with:` is a string wretry parses as YAML after the runner
+      # interpolates the `${{ }}` expressions, so every wrapped input must stay
+      # a single scalar (no newline / structural YAML character) -- a colon or
+      # line break in a future input value would silently break the parse.
       - name: Prune old dev builds (keep newest 5)
         uses: Wandalen/wretry.action@031368a688929442750a679b6c35c622e93389f2 # v3.8.0
         with:
