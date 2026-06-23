@@ -105,35 +105,52 @@ jobs:
       # rest. `keep-n-tagged` is scoped to the `delete-tags` dev subset,
       # so releases are outside its reach; deleting an old multi-arch dev
       # manifest also removes its platform children.
+      # GHCR throws a spurious 401 ("Bad credentials") on a fraction of
+      # delete calls under concurrent delete/read load. The cleanup action
+      # backs off on 429 but treats a 401 as fatal and aborts the whole
+      # package leg on the first one, so a transient blip reds the run even
+      # though the token is valid (other legs delete fine in the same run).
+      # wretry re-runs the entire idempotent pass (already-deleted versions
+      # are skipped on the retry), so a transient self-heals in-run while a
+      # genuinely dead token still fails loudly after the attempts are spent.
       - name: Prune old dev builds (keep newest 5)
-        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        uses: Wandalen/wretry.action@031368a688929442750a679b6c35c622e93389f2 # v3.8.0
         with:
-          owner: ${{ github.repository_owner }}
-          package: ${{ matrix.package }}
-          token: ${{ secrets.GHCR_CLEANUP_TOKEN || secrets.GITHUB_TOKEN }}
-          use-regex: true
-          delete-tags: '^\d+\.\d+\.\d+-dev\.\d+$'
-          keep-n-tagged: 5
-          exclude-tags: '^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev)$'
-          validate: true
-          dry-run: ${{ inputs.dry-run }}
+          action: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+          attempt_limit: 3
+          attempt_delay: 15000
+          with: |
+            owner: ${{ github.repository_owner }}
+            package: ${{ matrix.package }}
+            token: ${{ secrets.GHCR_CLEANUP_TOKEN || secrets.GITHUB_TOKEN }}
+            use-regex: true
+            delete-tags: ^\d+\.\d+\.\d+-dev\.\d+$
+            keep-n-tagged: 5
+            exclude-tags: ^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev)$
+            validate: true
+            dry-run: ${{ inputs.dry-run }}
 
       # Pass 2 -- PR / scan short-sha images older than 7 days. The dev
       # version regex and floating `dev` are excluded so a recent dev
       # manifest (which also carries a sha-<short> tag) is never reaped
       # through its sha tag; only genuine PR/scan images match.
+      # Same transient-401 retry wrapper as pass 1; see that step's comment.
       - name: Prune PR/scan images older than 7 days
-        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        uses: Wandalen/wretry.action@031368a688929442750a679b6c35c622e93389f2 # v3.8.0
         with:
-          owner: ${{ github.repository_owner }}
-          package: ${{ matrix.package }}
-          token: ${{ secrets.GHCR_CLEANUP_TOKEN || secrets.GITHUB_TOKEN }}
-          use-regex: true
-          delete-tags: '^(sha|scan)-[0-9a-f]{6,}(-amd64|-arm64)?$'
-          older-than: 7 days
-          exclude-tags: '^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev|\d+\.\d+\.\d+-dev\.\d+)$'
-          validate: true
-          dry-run: ${{ inputs.dry-run }}
+          action: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+          attempt_limit: 3
+          attempt_delay: 15000
+          with: |
+            owner: ${{ github.repository_owner }}
+            package: ${{ matrix.package }}
+            token: ${{ secrets.GHCR_CLEANUP_TOKEN || secrets.GITHUB_TOKEN }}
+            use-regex: true
+            delete-tags: ^(sha|scan)-[0-9a-f]{6,}(-amd64|-arm64)?$
+            older-than: 7 days
+            exclude-tags: ^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev|\d+\.\d+\.\d+-dev\.\d+)$
+            validate: true
+            dry-run: ${{ inputs.dry-run }}
 
       # Pass 3 -- reap every orphan with no live parent. Two distinct
       # classes, both needed:
@@ -151,15 +168,20 @@ jobs:
       # dangling manifests; `validate` then asserts no surviving multi-arch
       # image lost a platform child. exclude-tags still protects every
       # release / kept-dev tag (delete-untagged only touches untagged).
+      # Same transient-401 retry wrapper as pass 1; see that step's comment.
       - name: Prune orphaned signatures and untagged manifests
-        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        uses: Wandalen/wretry.action@031368a688929442750a679b6c35c622e93389f2 # v3.8.0
         with:
-          owner: ${{ github.repository_owner }}
-          package: ${{ matrix.package }}
-          token: ${{ secrets.GHCR_CLEANUP_TOKEN || secrets.GITHUB_TOKEN }}
-          use-regex: true
-          delete-orphaned-images: true
-          delete-untagged: true
-          exclude-tags: '^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev|\d+\.\d+\.\d+-dev\.\d+)$'
-          validate: true
-          dry-run: ${{ inputs.dry-run }}
+          action: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+          attempt_limit: 3
+          attempt_delay: 15000
+          with: |
+            owner: ${{ github.repository_owner }}
+            package: ${{ matrix.package }}
+            token: ${{ secrets.GHCR_CLEANUP_TOKEN || secrets.GITHUB_TOKEN }}
+            use-regex: true
+            delete-orphaned-images: true
+            delete-untagged: true
+            exclude-tags: ^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev|\d+\.\d+\.\d+-dev\.\d+)$
+            validate: true
+            dry-run: ${{ inputs.dry-run }}
