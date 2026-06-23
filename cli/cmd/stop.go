@@ -58,6 +58,15 @@ func runStop(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("building docker compose down args: %w", err)
 	}
 
+	// Confirm Docker is reachable BEFORE any config load, path resolution,
+	// or lock acquisition (mirrors start.go::startContainers): a missing
+	// Docker is an exit-4 failure, so detecting it up front avoids
+	// acquiring the lifecycle lock and doing filesystem work we cannot use.
+	info, err := docker.Detect(ctx)
+	if err != nil {
+		return fmt.Errorf("detecting docker: %w", err)
+	}
+
 	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
@@ -84,11 +93,6 @@ func runStop(cmd *cobra.Command, _ []string) error {
 			errOut.Warn(fmt.Sprintf("could not release lifecycle lock: %v", rerr))
 		}
 	}()
-
-	info, err := docker.Detect(ctx)
-	if err != nil {
-		return fmt.Errorf("detecting docker: %w", err)
-	}
 
 	sp := out.StartSpinner("Stopping containers...")
 	if err := composeRunQuiet(ctx, info, safeDir, downArgs...); err != nil {

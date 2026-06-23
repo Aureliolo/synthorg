@@ -309,6 +309,12 @@ func startDetached(ctx context.Context, info docker.Info, safeDir string, state 
 	if state.PersistenceBackend == "postgres" {
 		out.Step("Starting postgres container (backend will wait for it and apply migrations)")
 	}
+	// Re-stat compose.yml immediately before the compose run so this
+	// helper is self-contained against a concurrent compose-file change
+	// between the caller's earlier check and this start.
+	if err := assertComposeExists(safeDir); err != nil {
+		return err
+	}
 	sp := out.StartSpinner("Starting containers...")
 	if err := composeRunQuiet(ctx, info, safeDir, "up", "-d"); err != nil {
 		sp.Error("Failed to start containers")
@@ -437,6 +443,12 @@ func pullStartAndWait(ctx context.Context, cmd *cobra.Command, info docker.Info,
 		return err
 	}
 
+	// Re-stat compose.yml immediately before the compose run: the pull
+	// above can take a while, so a concurrent compose-file change must
+	// be caught here rather than relying on the caller's earlier check.
+	if err := assertComposeExists(safeDir); err != nil {
+		return err
+	}
 	sp := out.StartSpinner("Starting containers...")
 	if err := composeRunQuiet(ctx, info, safeDir, "up", "-d"); err != nil {
 		sp.Error("Failed to start containers")
