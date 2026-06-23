@@ -94,7 +94,10 @@ function SortArrow({
   sortBy: { key: string; direction: "asc" | "desc" };
 }) {
   const active = sortBy.key === column;
-  const arrow = active && sortBy.direction === "desc" ? "\u25BC" : "\u25B2";
+  // Neutral up/down glyph for inactive (but sortable) columns; a single
+  // directional arrow only on the active column, so an unsorted column does
+  // not misleadingly imply ascending order.
+  const arrow = !active ? "\u21C5" : sortBy.direction === "desc" ? "\u25BC" : "\u25B2";
   return (
     <span className="sort-arrow" data-active={active ? "true" : "false"} aria-hidden="true">
       {arrow}
@@ -147,27 +150,54 @@ export default function ComparisonTable({
     };
   }, [hiddenColumns, fullWidth]);
 
-  // Escape key to exit full-width mode
+  // Escape key to exit full-width mode. When the column picker is also open it
+  // owns Escape (its handler closes the picker); this listener registers first,
+  // so guard against the picker being open to avoid one Escape collapsing both.
   useEffect(() => {
     if (!fullWidth) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setFullWidth(false);
+      if (e.key === "Escape" && !showColumnPicker) setFullWidth(false);
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [fullWidth]);
+  }, [fullWidth, showColumnPicker]);
 
-  // Close column picker on outside click
+  // Column picker: close on outside pointer (mouse + touch) or Escape, move
+  // focus into the panel on open, and restore focus to the trigger on Escape.
   const pickerRef = useRef<HTMLDivElement>(null);
+  const pickerBtnRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!showColumnPicker) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+    const handlePointer = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node;
+      if (
+        pickerRef.current &&
+        !pickerRef.current.contains(target) &&
+        pickerBtnRef.current &&
+        !pickerBtnRef.current.contains(target)
+      ) {
         setShowColumnPicker(false);
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        // Stop the same Escape from also reaching the full-width document
+        // listener (one keypress would otherwise trigger two state changes).
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setShowColumnPicker(false);
+        pickerBtnRef.current?.focus();
+      }
+    };
+    document.addEventListener("mousedown", handlePointer);
+    document.addEventListener("touchstart", handlePointer);
+    document.addEventListener("keydown", handleKey);
+    pickerRef.current?.querySelector<HTMLInputElement>("input")?.focus();
+    return () => {
+      document.removeEventListener("mousedown", handlePointer);
+      document.removeEventListener("touchstart", handlePointer);
+      document.removeEventListener("keydown", handleKey);
+    };
   }, [showColumnPicker]);
 
   // Visible dimensions
@@ -382,7 +412,7 @@ export default function ComparisonTable({
           ))}
         </select>
         {hasActiveFilter && (
-          <button className="ct-clear-btn" onClick={clearFilters}>
+          <button className="ct-clear-btn" onClick={clearFilters} aria-label="Clear all filters">
             Clear
           </button>
         )}
@@ -396,9 +426,11 @@ export default function ComparisonTable({
         <div className="ct-toolbar-actions">
           <div className="ct-column-picker-wrap">
             <button
+              ref={pickerBtnRef}
               className="ct-toolbar-btn"
               onClick={() => setShowColumnPicker((prev) => !prev)}
               aria-expanded={showColumnPicker}
+              aria-controls="ct-column-picker"
               aria-label="Toggle column visibility"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -411,7 +443,13 @@ export default function ComparisonTable({
               )}
             </button>
             {showColumnPicker && (
-              <div className="ct-column-picker" role="menu" ref={pickerRef}>
+              <div
+                className="ct-column-picker"
+                id="ct-column-picker"
+                role="group"
+                aria-label="Toggle visible columns"
+                ref={pickerRef}
+              >
                 {dimensions.map((dim) => (
                   <label key={dim.key} className="ct-column-option">
                     <input
@@ -512,7 +550,6 @@ export default function ComparisonTable({
                           onClick={() => toggleExpanded(comp.slug)}
                           aria-label={`${isExpanded ? "Collapse" : "Expand"} ${comp.name} details`}
                           aria-expanded={isExpanded}
-                          aria-controls={`details-${comp.slug}`}
                         >
                           <svg
                             width="14"
@@ -579,10 +616,7 @@ export default function ComparisonTable({
                       })}
                     </tr>
                     {isExpanded && (
-                      <tr
-                        className="ct-detail-row"
-                        id={`details-${comp.slug}`}
-                      >
+                      <tr className="ct-detail-row">
                         <td colSpan={4 + visibleDimensions.length}>
                           <div className="ct-detail-content" data-testid={`detail-${comp.slug}`}>
                             <div className="ct-detail-item ct-detail-description">
@@ -604,7 +638,7 @@ export default function ComparisonTable({
                                 )}
                               </span>
                             </div>
-                            {dimensions.map((dim) => {
+                            {visibleDimensions.map((dim) => {
                               const feat = comp.features[dim.key];
                               if (!feat?.note) return null;
                               return (

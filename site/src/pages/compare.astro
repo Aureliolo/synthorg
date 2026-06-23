@@ -9,8 +9,22 @@ import ComparisonFAQ from "../components/ComparisonFAQ.astro";
 import ComparisonTable from "../components/islands/ComparisonTable";
 import type { Dimension, Category, Competitor } from "../components/islands/ComparisonTable";
 
+// Resolve from the Astro project root (process.cwd()). The build always runs
+// with cwd=site/ (workflows pin working-directory: site), so ../data is the
+// repo-root data/ folder. import.meta.url is NOT usable here: Astro bundles
+// this frontmatter into dist/.prerender chunks, so at build time it points at
+// the emitted chunk, not this source file.
 const dataPath = path.resolve("../data/competitors.yaml");
-const raw = fs.readFileSync(dataPath, "utf-8");
+let raw: string;
+try {
+  raw = fs.readFileSync(dataPath, "utf-8");
+} catch (err) {
+  throw new Error(
+    `compare.astro: could not read the comparison data at ${dataPath} ` +
+      `(cwd=${process.cwd()}). The Astro build must run from the site/ directory ` +
+      `so the repo-root data/ folder resolves. Original error: ${(err as Error).message}`,
+  );
+}
 const data = yaml.load(raw) as {
   dimensions: Dimension[];
   categories: Category[];
@@ -28,6 +42,9 @@ const competitorCount = competitors.filter((c) => !c.is_synthorg).length;
 
 const title = `SynthOrg vs ${competitorCount}+ Agent Frameworks | Feature Comparison`;
 const description = `Interactive comparison of SynthOrg against ${competitorCount}+ agent orchestration frameworks, platforms, and research projects. Filter by category, sort by feature.`;
+
+const siteUrl = Astro.site;
+const pageUrl = new URL("/compare/", Astro.site).href;
 ---
 
 <Base title={title} description={description}>
@@ -39,7 +56,7 @@ const description = `Interactive comparison of SynthOrg against ${competitorCoun
   <section class="py-12 px-6" id="comparison-table">
     <div class="max-w-7xl mx-auto">
       <ComparisonTable
-        client:visible
+        client:load
         competitors={competitors}
         dimensions={dimensions}
         categories={categories}
@@ -164,13 +181,13 @@ const description = `Interactive comparison of SynthOrg against ${competitorCoun
     "@type": "WebPage",
     "name": title,
     "description": description,
-    "url": "https://synthorg.io/compare/",
+    "url": pageUrl,
     "mainEntity": {
       "@type": "SoftwareApplication",
       "name": "SynthOrg",
       "applicationCategory": "DeveloperApplication",
       "operatingSystem": "Cross-platform",
-      "url": "https://synthorg.io",
+      "url": siteUrl,
     },
   }).replace(/</g, "\\u003c")} />
 </Base>

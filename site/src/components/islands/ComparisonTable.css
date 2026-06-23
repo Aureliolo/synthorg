@@ -13,8 +13,8 @@
   --ct-text-muted: #64748b;
   --ct-border: #1e1e2e;
   --ct-border-bright: #2a2a3e;
-  --ct-font-sans: "Geist", "Inter", ui-sans-serif, system-ui, sans-serif;
-  --ct-font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, monospace;
+  --ct-font-sans: var(--font-geist), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --ct-font-mono: var(--font-geist-mono), var(--font-jetbrains-mono), ui-monospace, monospace;
   --ct-danger: #ef4444;
 }
 

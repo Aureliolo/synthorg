@@ -24,7 +24,7 @@
                 <span class="w-3 h-3 rounded-full bg-green-500/80"></span>
                 <span class="ml-3 text-sm text-gray-400 font-mono">setup wizard</span>
               </div>
-              <pre class="text-sm font-['JetBrains_Mono',monospace] text-gray-300 overflow-x-auto"><code><span class="text-violet-400">Choose a template</span>
+              <pre class="text-sm font-mono text-gray-300 overflow-x-auto"><code><span class="text-violet-400">Choose a template</span>
 
 <span class="text-gray-500">  Solo Builder</span>       <span class="text-teal-400">2 agents</span>   2 depts
 <span class="text-gray-500">  Tech Startup</span>       <span class="text-teal-400">5 agents</span>   3 depts
@@ -50,7 +50,7 @@
                 <span class="w-3 h-3 rounded-full bg-green-500/80"></span>
                 <span class="ml-3 text-sm text-gray-400 font-mono">REST API</span>
               </div>
-              <pre class="text-sm font-['JetBrains_Mono',monospace] text-gray-300 overflow-x-auto"><code><span class="text-violet-400">POST</span> /api/v1/setup/company
+              <pre class="text-sm font-mono text-gray-300 overflow-x-auto"><code><span class="text-violet-400">POST</span> /api/v1/setup/company
   <span class="text-teal-400">template</span>: "agency"
   <span class="text-teal-400">company_name</span>: "Acme AI Lab"
 
@@ -77,7 +77,7 @@
                 <span class="w-3 h-3 rounded-full bg-green-500/80"></span>
                 <span class="ml-3 text-sm text-gray-400 font-mono">activity log</span>
               </div>
-              <pre class="text-sm font-['JetBrains_Mono',monospace] text-gray-300 overflow-x-auto"><code><span class="text-violet-400">[TASK]</span>  #12 created: "Redesign checkout flow"
+              <pre class="text-sm font-mono text-gray-300 overflow-x-auto"><code><span class="text-violet-400">[TASK]</span>  #12 created: "Redesign checkout flow"
 <span class="text-teal-400">[ENGINE]</span> PM decomposed #12 into 4 subtasks
 <span class="text-teal-400">[ENGINE]</span> #12a -> UX Designer (role-based)
 <span class="text-teal-400">[ENGINE]</span> #12b -> Backend Dev (cost-aware)
@@ -101,7 +101,7 @@
                 <span class="w-3 h-3 rounded-full bg-green-500/80"></span>
                 <span class="ml-3 text-sm text-gray-400 font-mono">dashboard</span>
               </div>
-              <pre class="text-sm font-['JetBrains_Mono',monospace] text-gray-300 overflow-x-auto"><code><span class="text-violet-400">Agents active</span>:       12 across 5 departments
+              <pre class="text-sm font-mono text-gray-300 overflow-x-auto"><code><span class="text-violet-400">Agents active</span>:       12 across 5 departments
 <span class="text-violet-400">Tasks completed</span>:     47
 <span class="text-violet-400">Total cost</span>:          EUR 18.92
 <span class="text-violet-400">Coordination overhead</span>: 14% <span class="text-green-400">(healthy)</span>
@@ -280,7 +280,12 @@
 </section>
 
 <script>
+  // Driven by astro:page-load so the scroll-sync + SVG state re-initialises
+  // after a ClientRouter navigation; the astro:before-swap teardown inside
+  // init() disconnects the observer and the reduced-motion listener per swap.
+  function init() {
   const steps = document.querySelectorAll<HTMLDivElement>(".scroll-step");
+  if (!steps.length) return;
   const dots = document.querySelectorAll<HTMLButtonElement>(".step-dot");
 
   const labels = [
@@ -436,6 +441,12 @@
   if (prefersReduced.matches) {
     disableSvgAnimations();
   }
+  // Honour a reduced-motion change made after load (the initial check alone
+  // would leave the SMIL animations running for a user who switches mid-session).
+  const onMotionChange = (e: MediaQueryListEvent) => {
+    if (e.matches) disableSvgAnimations();
+  };
+  prefersReduced.addEventListener("change", onMotionChange);
 
   // Observer always runs (even with reduced motion; only animations are disabled)
   const observer = new IntersectionObserver(
@@ -454,6 +465,17 @@
   );
 
   steps.forEach((step) => observer.observe(step));
-  document.addEventListener("astro:before-swap", () => observer.disconnect(), { once: true });
+  document.addEventListener("astro:before-swap", () => {
+    observer.disconnect();
+    prefersReduced.removeEventListener("change", onMotionChange);
+  }, { once: true });
   setStep(0);
+  }
+  // Guard against stacking listeners across View Transitions: the module
+  // re-evaluates on each navigation, so register the page-load handler once.
+  const win = window as typeof window & { __scrollSyncPanelInitBound?: boolean };
+  if (!win.__scrollSyncPanelInitBound) {
+    document.addEventListener("astro:page-load", init);
+    win.__scrollSyncPanelInitBound = true;
+  }
 </script>

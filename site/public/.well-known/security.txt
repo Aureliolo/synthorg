@@ -1,0 +1,6 @@
+Contact: https://github.com/Aureliolo/synthorg/security/advisories/new
+Contact: mailto:info@synthorg.io
+Expires: 2027-06-23T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://synthorg.io/.well-known/security.txt
+Policy: https://github.com/Aureliolo/synthorg/security/policy

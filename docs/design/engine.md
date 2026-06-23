@@ -145,7 +145,7 @@ task:
 ```
 
 `task_structure` and `coordination_topology` are described in
-[Task Decomposability & Coordination Topology](coordination.md#task-decomposability--coordination-topology).
+[Task Decomposability & Coordination Topology](coordination.md#task-decomposability-coordination-topology).
 
 ---
 

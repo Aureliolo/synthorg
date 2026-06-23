@@ -11,13 +11,6 @@ interface TaskCard {
   assignee: string;
 }
 
-const priorityColors: Record<TaskCard["priority"], string> = {
-  critical: "#ef4444",
-  high: "#f59e0b",
-  medium: "#38bdf8",
-  low: "#94a3b8",
-};
-
 // All tasks in the system; they cycle through columns based on tick
 const allTasks: TaskCard[] = [
   { id: 1, title: "Init project", priority: "medium", assignee: "CTO" },
@@ -34,38 +27,27 @@ const allTasks: TaskCard[] = [
 const columnNames = ["Backlog", "In Progress", "In Review", "Done"];
 const wipLimits: Record<string, number> = { "In Progress": 3 };
 
-function MiniCard({ task }: { task: TaskCard }) {
+// Memoised: the board recomputes every tick, but each task object keeps a
+// stable identity, so an unchanged card skips re-rendering.
+const MiniCard = React.memo(function MiniCard({ task }: { task: TaskCard }) {
   return (
-    <div
-      className="rounded-md p-2 border"
-      style={{
-        background: "var(--dp-bg-card)",
-        borderColor: "var(--dp-border)",
-      }}
-    >
+    <div className="rounded-md p-2 border dp-bg-card dp-bd">
       <div className="flex items-center gap-1.5 mb-1">
         <span
-          className="w-1.5 h-1.5 rounded-full shrink-0"
-          style={{ background: priorityColors[task.priority] }}
+          className="w-1.5 h-1.5 rounded-full shrink-0 dp-prio"
+          data-priority={task.priority}
         />
-        <span className="text-xs truncate" style={{ color: "var(--dp-text-primary)" }}>
-          {task.title}
-        </span>
+        <span className="text-xs truncate dp-fg-primary">{task.title}</span>
       </div>
       <div className="flex items-center gap-1">
-        <span
-          className="w-3.5 h-3.5 rounded-full text-[6px] flex items-center justify-center font-bold"
-          style={{ background: "var(--dp-border-bright)", color: "var(--dp-text-secondary)" }}
-        >
+        <span className="w-3.5 h-3.5 rounded-full text-[6px] flex items-center justify-center font-bold dp-avatar">
           {task.assignee[0]}
         </span>
-        <span className="text-[8px]" style={{ color: "var(--dp-text-muted)" }}>
-          {task.assignee}
-        </span>
+        <span className="text-[8px] dp-fg-muted">{task.assignee}</span>
       </div>
     </div>
   );
-}
+});
 
 export default function TaskBoardMini({ tick }: Props) {
   // Each task progresses through columns at different rates based on its id
@@ -103,23 +85,11 @@ export default function TaskBoardMini({ tick }: Props) {
           return (
             <div key={name}>
               <div className="flex items-center justify-between mb-2 px-1">
-                <span className="text-xs font-semibold" style={{ color: "var(--dp-text-secondary)" }}>
-                  {name}
-                </span>
+                <span className="text-xs font-semibold dp-fg-secondary">{name}</span>
                 <span className="flex items-center gap-1">
-                  <span
-                    className="text-[10px] px-1 rounded"
-                    style={{ background: "var(--dp-border)", color: "var(--dp-text-muted)" }}
-                  >
-                    {tasks.length}
-                  </span>
+                  <span className="text-[10px] px-1 rounded dp-chip">{tasks.length}</span>
                   {wip && (
-                    <span
-                      className="text-[8px] px-1 rounded"
-                      style={{ background: "rgba(245, 158, 11, 0.15)", color: "var(--dp-warning)" }}
-                    >
-                      WIP {wip}
-                    </span>
+                    <span className="text-[8px] px-1 rounded dp-wip">WIP {wip}</span>
                   )}
                 </span>
               </div>
@@ -133,10 +103,7 @@ export default function TaskBoardMini({ tick }: Props) {
         })}
       </div>
       <div className="mt-3 text-center">
-        <span
-          className="text-xs px-2 py-0.5 rounded-full border inline-block"
-          style={{ color: "var(--dp-accent)", borderColor: "var(--dp-border-bright)", background: "var(--dp-bg-surface)" }}
-        >
+        <span className="text-xs px-2 py-0.5 rounded-full border inline-block dp-pill">
           Kanban, Agile sprints, or sequential pipelines
         </span>
       </div>

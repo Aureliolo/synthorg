@@ -15,6 +15,11 @@
 </div>
 
 <script>
+  // Driven by astro:page-load so the canvas re-initialises after a ClientRouter
+  // navigation back to a page that contains it; the astro:before-swap teardown
+  // registered inside init() (once-per-navigation) disconnects the observers
+  // and stops the RAF loop on the way out, so nothing leaks across swaps.
+  function init() {
   const canvas = document.getElementById("particle-network") as HTMLCanvasElement | null;
   const ctx = canvas?.getContext("2d") ?? null;
   if (canvas && ctx) {
@@ -195,16 +200,18 @@
       drawNodes();
     }
 
-    // Mouse tracking
-    canvas.addEventListener("mousemove", (e) => {
+    // Mouse tracking. Named handlers so astro:before-swap can detach them.
+    const onMouseMove = (e: MouseEvent): void => {
       const rect = canvas.getBoundingClientRect();
       mouseX = e.clientX - rect.left;
       mouseY = e.clientY - rect.top;
-    });
-    canvas.addEventListener("mouseleave", () => {
+    };
+    const onMouseLeave = (): void => {
       mouseX = -1000;
       mouseY = -1000;
-    });
+    };
+    canvas.addEventListener("mousemove", onMouseMove);
+    canvas.addEventListener("mouseleave", onMouseLeave);
 
     // Resize handling
     let resizeTimer: ReturnType<typeof setTimeout>;
@@ -236,8 +243,18 @@
       clearTimeout(resizeTimer);
       animating = false;
       prefersReduced.removeEventListener("change", onMotionChange);
+      canvas.removeEventListener("mousemove", onMouseMove);
+      canvas.removeEventListener("mouseleave", onMouseLeave);
     }, { once: true });
 
     start();
+  }
+  }
+  // Guard against stacking RAF loops / observers across View Transitions: the
+  // module re-evaluates on each navigation, so register the handler once.
+  const win = window as typeof window & { __particleNetworkInitBound?: boolean };
+  if (!win.__particleNetworkInitBound) {
+    document.addEventListener("astro:page-load", init);
+    win.__particleNetworkInitBound = true;
   }
 </script>

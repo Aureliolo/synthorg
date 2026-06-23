@@ -1,13 +1,25 @@
-# Cloudflare Pages cache headers (PR preview deployments).
-# GitHub Pages (production) does not support _headers.
-
-/_assets/*
-  ! Cache-Control
-  Cache-Control: public, max-age=31536000, immutable
-
-/fonts/*
-  ! Cache-Control
-  Cache-Control: public, max-age=31536000, immutable
+# Cloudflare Pages headers (PR preview deployments).
+# GitHub Pages (production) does not support _headers, so production hardening
+# is the <meta> CSP emitted by Astro (astro.config.mjs `csp`) plus markup
+# hygiene. These response headers are defence-in-depth on the preview surface
+# and the canary for header-level policy (HSTS, frame-ancestors, nosniff,
+# Permissions-Policy, COOP/CORP) that <meta> cannot express.
+# The production residual gap (which of these headers are absent on GitHub
+# Pages, and how to close it) is documented prominently in site/SECURITY.md.
 
 /*
   Cache-Control: public, max-age=3600
+  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Resource-Policy: same-origin
+
+# Hashed, content-addressed build output (JS, CSS, and Fonts-API woff2 under
+# /_assets/fonts/) is immutable and safe to cache for a year.
+/_assets/*
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable

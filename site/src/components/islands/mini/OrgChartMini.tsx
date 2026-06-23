@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
+import { useReducedMotion } from "../useReducedMotion";
 
 interface Props {
   tick: number;
@@ -38,15 +39,7 @@ const commPatterns: { from: string; to: string }[][] = [
 ];
 
 export default function OrgChartMini({ tick }: Props) {
-  const [prefersReduced, setPrefersReduced] = useState(false);
-
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setPrefersReduced(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setPrefersReduced(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
+  const prefersReduced = useReducedMotion();
 
   // Current active communication edges
   const activeComms = commPatterns[tick % commPatterns.length];

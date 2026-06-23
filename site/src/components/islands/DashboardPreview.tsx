@@ -4,58 +4,109 @@ import OrgChartMini from "./mini/OrgChartMini";
 import TaskBoardMini from "./mini/TaskBoardMini";
 import AgentDetailMini from "./mini/AgentDetailMini";
 import BudgetMini from "./mini/BudgetMini";
+import { useReducedMotion } from "./useReducedMotion";
 
-const pages = [
-  { label: "Org Chart", icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" },
-  { label: "Tasks", icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" },
-  { label: "Agent", icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" },
-  { label: "Budget", icon: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
-];
+// Single source of truth for the tabs: label, icon, and the component to render.
+// Adding a tab is one entry here (no parallel component-index array to keep in
+// sync).
+const PAGES = [
+  {
+    label: "Org Chart",
+    icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z",
+    Component: OrgChartMini,
+  },
+  {
+    label: "Tasks",
+    icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
+    Component: TaskBoardMini,
+  },
+  {
+    label: "Agent",
+    icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z",
+    Component: AgentDetailMini,
+  },
+  {
+    label: "Budget",
+    icon: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
+    Component: BudgetMini,
+  },
+] as const;
 
-const sidebarIcons = [
-  "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
-  pages[0].icon,
-  pages[1].icon,
-  pages[2].icon,
-  pages[3].icon,
-  "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z",
-];
+const HOME_ICON =
+  "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6";
+const SETTINGS_ICON =
+  "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z";
+const SIDEBAR_ICONS = [HOME_ICON, ...PAGES.map((p) => p.icon), SETTINGS_ICON];
 
 export default function DashboardPreview() {
   const [activeTab, setActiveTab] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [tick, setTick] = useState(0);
   const [pageKey, setPageKey] = useState(0);
+  const [isHidden, setIsHidden] = useState(
+    () => typeof document !== "undefined" && document.hidden,
+  );
+  const prefersReduced = useReducedMotion();
 
-  // Auto-cycle tabs
+  // Pause all motion when the tab is backgrounded so a left-open page does not
+  // keep re-rendering the mini-widgets every second. Sync once on mount so a
+  // background-tab mount does not run intervals until the first visibilitychange.
   useEffect(() => {
-    if (isPaused) return;
+    const onVisibility = () => setIsHidden(document.hidden);
+    onVisibility();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
+
+  // Motion runs only when not hovered/focused, not backgrounded, and the user
+  // has not requested reduced motion.
+  const animating = !isPaused && !isHidden && !prefersReduced;
+
+  // Auto-cycle tabs.
+  useEffect(() => {
+    if (!animating) return;
     const timer = setInterval(() => {
-      setActiveTab((t) => (t + 1) % pages.length);
+      setActiveTab((t) => (t + 1) % PAGES.length);
       setPageKey((k) => k + 1);
     }, 6000);
     return () => clearInterval(timer);
-  }, [isPaused]);
+  }, [animating]);
 
-  // Animation tick (1Hz)
+  // Animation tick (1 Hz) that drives the mini-widget counters.
   useEffect(() => {
+    if (!animating) return;
     const timer = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [animating]);
 
   const selectTab = useCallback((i: number) => {
-    const clamped = Math.max(0, Math.min(i, pages.length - 1));
+    const clamped = Math.max(0, Math.min(i, PAGES.length - 1));
     setActiveTab(clamped);
     setPageKey((k) => k + 1);
     setIsPaused(true);
   }, []);
 
-  const PageComponent = [OrgChartMini, TaskBoardMini, AgentDetailMini, BudgetMini][activeTab];
+  const onTabKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      const count = PAGES.length;
+      let next = activeTab;
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (activeTab + 1) % count;
+      else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = (activeTab - 1 + count) % count;
+      else if (e.key === "Home") next = 0;
+      else if (e.key === "End") next = count - 1;
+      else return;
+      e.preventDefault();
+      selectTab(next);
+      document.getElementById(`dp-tab-${next}`)?.focus();
+    },
+    [activeTab, selectTab],
+  );
+
+  const PageComponent = PAGES[activeTab].Component;
 
   return (
     <div
-      className="dashboard-preview rounded-xl overflow-hidden border max-w-4xl mx-auto"
-      style={{ background: "var(--dp-bg-base)", borderColor: "var(--dp-border)" }}
+      className="dashboard-preview rounded-xl overflow-hidden border max-w-4xl mx-auto dp-bg-base dp-bd"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={(e) => {
         if (!e.currentTarget.contains(document.activeElement)) {
@@ -72,19 +123,17 @@ export default function DashboardPreview() {
       <div className="flex">
         {/* Mock sidebar */}
         <div
-          className="hidden sm:flex flex-col items-center py-4 px-2 gap-3 shrink-0"
-          style={{ background: "var(--dp-bg-surface)", borderRight: "1px solid var(--dp-border)" }}
+          className="hidden sm:flex flex-col items-center py-4 px-2 gap-3 shrink-0 dp-sidebar"
+          aria-hidden="true"
         >
-          {sidebarIcons.map((d, i) => (
+          {SIDEBAR_ICONS.map((d, i) => (
             <div
               key={i}
-              className="w-8 h-8 flex items-center justify-center rounded"
-              style={{
-                color: i === activeTab + 1 ? "var(--dp-accent)" : "var(--dp-text-muted)",
-                background: i === activeTab + 1 ? "rgba(56, 189, 248, 0.1)" : "transparent",
-              }}
+              className={`w-8 h-8 flex items-center justify-center rounded dp-side-icon${
+                i === activeTab + 1 ? " dp-side-icon--active" : ""
+              }`}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d={d} />
               </svg>
             </div>
@@ -94,55 +143,39 @@ export default function DashboardPreview() {
         {/* Main content */}
         <div className="flex-1 min-w-0">
           {/* Header */}
-          <div
-            className="flex items-center justify-between px-4 py-2.5 border-b"
-            style={{ borderColor: "var(--dp-border)", background: "var(--dp-bg-surface)" }}
-          >
+          <div className="flex items-center justify-between px-4 py-2.5 border-b dp-bar">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold" style={{ color: "var(--dp-text-primary)" }}>
-                Acme AI Lab
-              </span>
-              <span
-                className="w-2 h-2 rounded-full"
-                style={{ background: "var(--dp-success)" }}
-              />
-              <span className="text-xs" style={{ color: "var(--dp-success)" }}>
-                Running
-              </span>
+              <span className="text-sm font-semibold dp-fg-primary">Acme AI Lab</span>
+              <span className="w-2 h-2 rounded-full dp-bg-success" aria-hidden="true" />
+              <span className="text-xs dp-fg-success">Running</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs px-2 py-0.5 rounded" style={{ background: "var(--dp-border)", color: "var(--dp-text-muted)" }}>
-                7 agents
-              </span>
-              <span className="text-xs px-2 py-0.5 rounded" style={{ background: "var(--dp-border)", color: "var(--dp-text-muted)" }}>
-                12 tasks
-              </span>
+              <span className="text-xs px-2 py-0.5 rounded dp-chip">7 agents</span>
+              <span className="text-xs px-2 py-0.5 rounded dp-chip">12 tasks</span>
             </div>
           </div>
 
           {/* Tab navigation */}
           <div
-            className="flex border-b"
-            style={{ borderColor: "var(--dp-border)" }}
+            className="flex border-b dp-bd"
             role="tablist"
             aria-label="Dashboard pages"
+            onKeyDown={onTabKeyDown}
           >
-            {pages.map((page, i) => (
+            {PAGES.map((page, i) => (
               <button
                 key={page.label}
                 id={`dp-tab-${i}`}
                 role="tab"
                 aria-selected={i === activeTab}
                 aria-controls="dp-tabpanel"
+                tabIndex={i === activeTab ? 0 : -1}
                 onClick={() => selectTab(i)}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm transition-colors border-b-2 cursor-pointer"
-                style={{
-                  color: i === activeTab ? "var(--dp-accent)" : "var(--dp-text-muted)",
-                  borderBottomColor: i === activeTab ? "var(--dp-accent)" : "transparent",
-                  background: "transparent",
-                }}
+                className={`flex items-center gap-1.5 px-4 py-2 text-sm transition-colors border-b-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 dp-tab${
+                  i === activeTab ? " dp-tab--active" : ""
+                }`}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d={page.icon} />
                 </svg>
                 {page.label}
@@ -164,37 +197,33 @@ export default function DashboardPreview() {
         </div>
       </div>
 
-      {/* Page navigation */}
-      <div
-        className="flex items-center justify-between px-2 py-1.5 border-t"
-        style={{ borderColor: "var(--dp-border)", background: "var(--dp-bg-surface)" }}
-      >
+      {/* Page navigation (a simple pager; the tablist above is the canonical
+          tab control). aria-current marks the active page without relying on
+          colour alone. */}
+      <div className="flex items-center justify-between px-2 py-1.5 border-t dp-bar">
         {/* Prev arrow */}
         <button
-          className="w-6 h-6 flex items-center justify-center rounded transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-          style={{ color: activeTab > 0 ? "var(--dp-text-secondary)" : "var(--dp-border-bright)" }}
+          className="w-6 h-6 flex items-center justify-center rounded transition-colors cursor-pointer disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 dp-arrow"
           onClick={() => selectTab(activeTab - 1)}
           aria-label="Previous page"
           disabled={activeTab === 0}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M15 19l-7-7 7-7" />
           </svg>
         </button>
 
         {/* Page indicators */}
         <div className="flex gap-1">
-          {pages.map((page, i) => (
+          {PAGES.map((page, i) => (
             <button
-              key={i}
-              className="px-3 py-1 rounded text-xs transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-              style={{
-                background: i === activeTab ? "rgba(56, 189, 248, 0.15)" : "transparent",
-                color: i === activeTab ? "var(--dp-accent)" : "var(--dp-text-muted)",
-                border: "none",
-              }}
+              key={page.label}
+              className={`px-3 py-1 rounded text-xs transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 dp-pager${
+                i === activeTab ? " dp-pager--active" : ""
+              }`}
               onClick={() => selectTab(i)}
               aria-label={`Go to ${page.label}`}
+              aria-current={i === activeTab ? "true" : undefined}
             >
               {page.label}
             </button>
@@ -203,13 +232,12 @@ export default function DashboardPreview() {
 
         {/* Next arrow */}
         <button
-          className="w-6 h-6 flex items-center justify-center rounded transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-          style={{ color: activeTab < pages.length - 1 ? "var(--dp-text-secondary)" : "var(--dp-border-bright)" }}
+          className="w-6 h-6 flex items-center justify-center rounded transition-colors cursor-pointer disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 dp-arrow"
           onClick={() => selectTab(activeTab + 1)}
           aria-label="Next page"
-          disabled={activeTab === pages.length - 1}
+          disabled={activeTab === PAGES.length - 1}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M9 5l7 7-7 7" />
           </svg>
         </button>

@@ -361,7 +361,7 @@ curl -X PATCH http://localhost:3001/api/v1/agents/${AGENT_NAME} \
   -d '{"autonomy_level": "semi"}'
 ```
 
-Valid values: `full`, `semi`, `supervised`, `locked`. Promotion to `full` is rejected for Juniors / Interns (see [Seniority levels](../design/hr-lifecycle.md#seniority--authority-levels)).
+Valid values: `full`, `semi`, `supervised`, `locked`. Promotion to `full` is rejected for Juniors / Interns (see [Seniority levels](../design/hr-lifecycle.md#seniority-authority-levels)).
 
 Automatic demotions happen on: sustained high error rate (one level down), budget exhausted (`supervised`), security incident (`locked`). Recovery from auto-downgrade is human-only.
 

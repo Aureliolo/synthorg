@@ -134,7 +134,7 @@ Strategies that only have an error string (`FailAndReassignStrategy`, `Checkpoin
     - **Use case**: recovery after brain failure when checkpoint persistence
       is not configured or the checkpoint is stale.
 
-    See [Brain / Hands / Session](agent-execution.md#brain--hands--session) for the full
+    See [Brain / Hands / Session](agent-execution.md#brain-hands-session) for the full
     architecture.
 
 ## Graceful Shutdown Protocol

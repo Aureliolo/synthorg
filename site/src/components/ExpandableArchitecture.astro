@@ -205,8 +205,13 @@ const architecture = [
 </div>
 
 <script>
+  // Re-armed on astro:page-load so the toggles work after a ClientRouter nav.
+  function initArchToggles() {
   const buttons = document.querySelectorAll<HTMLButtonElement>("[data-arch-toggle]");
   buttons.forEach((btn) => {
+    // Guard against duplicate click handlers stacking across navigations.
+    if (btn.dataset.archToggleBound === "1") return;
+    btn.dataset.archToggleBound = "1";
     btn.addEventListener("click", () => {
       const targetId = btn.getAttribute("aria-controls");
       if (!targetId) return;
@@ -238,4 +243,11 @@ const architecture = [
       }
     });
   });
+  }
+  // Register the page-load handler once across View Transitions.
+  const win = window as typeof window & { __archTogglesInitBound?: boolean };
+  if (!win.__archTogglesInitBound) {
+    document.addEventListener("astro:page-load", initArchToggles);
+    win.__archTogglesInitBound = true;
+  }
 </script>
