@@ -303,11 +303,18 @@ jobs:
 
           def add_csp_hashes(text):
               # Permit exactly the banner's <style>/<script> elements by adding
-              # their hashes to the page CSP. No-op on pages without a CSP meta
-              # (e.g. the merged docs build), where the elements load anyway.
-              text = re.sub(r"(script-src )", lambda m: m.group(1) + script_hash + " ", text, count=1)
-              text = re.sub(r"(style-src )", lambda m: m.group(1) + style_hash + " ", text, count=1)
-              return text
+              # their hashes to the page CSP. Scoped to the CSP <meta> tag only,
+              # so a docs page that merely mentions "script-src"/"style-src" in
+              # its body (or has no CSP meta at all) is never mutated; such pages
+              # load the elements anyway (no CSP to satisfy).
+              def patch_meta(m):
+                  tag = m.group(0)
+                  if "content-security-policy" not in tag.lower():
+                      return tag
+                  tag = re.sub(r"(script-src )", lambda mm: mm.group(1) + script_hash + " ", tag, count=1)
+                  tag = re.sub(r"(style-src )", lambda mm: mm.group(1) + style_hash + " ", tag, count=1)
+                  return tag
+              return re.sub(r"<meta\b[^>]*>", patch_meta, text)
 
           count = 0
           for f in pathlib.Path("_site").rglob("*.html"):

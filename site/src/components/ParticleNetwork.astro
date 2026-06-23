@@ -250,5 +250,11 @@
     start();
   }
   }
-  document.addEventListener("astro:page-load", init);
+  // Guard against stacking RAF loops / observers across View Transitions: the
+  // module re-evaluates on each navigation, so register the handler once.
+  const win = window as typeof window & { __particleNetworkInitBound?: boolean };
+  if (!win.__particleNetworkInitBound) {
+    document.addEventListener("astro:page-load", init);
+    win.__particleNetworkInitBound = true;
+  }
 </script>

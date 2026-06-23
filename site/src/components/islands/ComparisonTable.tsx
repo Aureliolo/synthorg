@@ -179,6 +179,10 @@ export default function ComparisonTable({
     };
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        // Stop the same Escape from also reaching the full-width document
+        // listener (one keypress would otherwise trigger two state changes).
+        e.preventDefault();
+        e.stopImmediatePropagation();
         setShowColumnPicker(false);
         pickerBtnRef.current?.focus();
       }

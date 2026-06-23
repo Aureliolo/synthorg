@@ -104,14 +104,21 @@ const organizationLd = {
           if (window.__recaptchaWired) return;
           window.__recaptchaWired = true;
 
+          // Persist across astro:page-load calls so a revisit to a contact-form
+          // page cannot append the reCAPTCHA <script> a second time.
+          var loading = false;
+
           function init() {
             var form = document.getElementById("contact-form");
             if (!form || form.dataset.recaptchaInit) return;
             form.dataset.recaptchaInit = "1";
 
-            var loading = false;
             function loadRecaptcha() {
-              if (loading) return;
+              if (
+                loading ||
+                window.grecaptcha ||
+                document.querySelector('script[src^="https://www.google.com/recaptcha/api.js"]')
+              ) return;
               loading = true;
               var s = document.createElement("script");
               s.src =

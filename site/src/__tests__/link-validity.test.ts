@@ -109,7 +109,9 @@ function extractHrefs(file: string): LinkOccurrence[] {
   // Markdown link pattern: ``[link text](url "optional title")``.  Scope
   // restricted to .md files because curly-quoted prose like ``[note](this)``
   // in TS strings would otherwise match.
-  const mdPattern = /\[(?:[^\]]+)\]\(([^\s)]+)(?:\s+"[^"]*")?\)/g;
+  // Allow an empty label (``[^\]]*``): code-span stripping above turns a
+  // code-only label like [`foo`](url) into [](url), which must still validate.
+  const mdPattern = /\[(?:[^\]]*)\]\(([^\s)]+)(?:\s+"[^"]*")?\)/g;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     for (const pattern of [attrPattern, objPattern]) {
@@ -156,7 +158,9 @@ function extractHrefs(file: string): LinkOccurrence[] {
  */
 function slugifyHeading(heading: string): string {
   const explicit = /\{#([A-Za-z0-9_-]+)[^}]*\}\s*$/.exec(heading);
-  if (explicit) return explicit[1].toLowerCase();
+  // Explicit author-written ids are case-sensitive (matches the anchor
+  // validator); only the generated-from-text slug below is lower-cased.
+  if (explicit) return explicit[1];
   return heading
     .replace(/`/g, "")
     .replace(/[^\w\s-]/g, "")
@@ -191,7 +195,7 @@ function headingSlugsFor(mdFile: string): Set<string> {
     const anchorPattern = /(?:\bid|\bname)\s*=\s*["']([A-Za-z0-9_-]+)["']|\{#([A-Za-z0-9_-]+)[^}]*\}/g;
     let a: RegExpExecArray | null;
     while ((a = anchorPattern.exec(line)) !== null) {
-      slugs.add((a[1] ?? a[2]).toLowerCase());
+      slugs.add(a[1] ?? a[2]);
     }
   }
   headingCache.set(mdFile, slugs);
