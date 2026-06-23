@@ -32,7 +32,7 @@ function autonomyLabel(level: string | null | undefined): string {
 }
 
 /** Clean, non-monospace category pill shared across cards and the hero. */
-export function CategoryPill({ category }: { category: string }) {
+function CategoryPill({ category }: { category: string }) {
   return (
     <span className="rounded-full border border-border bg-surface px-2 py-0.5 text-compact font-medium text-muted-foreground">
       {category}
@@ -40,7 +40,7 @@ export function CategoryPill({ category }: { category: string }) {
   )
 }
 
-export function TemplateCardMetadata({ template }: { template: TemplateInfoResponse }) {
+function TemplateCardMetadata({ template }: { template: TemplateInfoResponse }) {
   return (
     <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
       <div className="flex items-center gap-1.5">
@@ -64,7 +64,7 @@ export function TemplateCardMetadata({ template }: { template: TemplateInfoRespo
 }
 
 /** Deliberate compare toggle (replaces the ambient per-card checkbox). */
-export function CompareButton({
+function CompareButton({
   label,
   compared,
   disabled,

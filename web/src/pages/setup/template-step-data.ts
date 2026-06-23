@@ -19,8 +19,6 @@ import {
 export {
   GOAL_OPTIONS,
   OVERSIGHT_OPTIONS,
-  parseBuildGoal,
-  parseOversight,
 } from './template-recommendation'
 export type { BuildGoal, OversightPref, RankedTemplate } from './template-recommendation'
 

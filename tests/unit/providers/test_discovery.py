@@ -206,10 +206,15 @@ class TestDiscoverOllama:
                 "ollama-cloud",
             )
 
-            client.get.assert_called_once_with(
+            # Lists via the OpenAI /v1/models path (not native /api/tags).
+            # Capability enrichment additionally probes /api/version to detect
+            # whether the endpoint speaks the native Ollama API.
+            client.get.assert_any_call(
                 "http://127.0.0.1:11434/v1/models",
                 headers={"Host": "localhost"},
             )
+            called_urls = [call.args[0] for call in client.get.call_args_list]
+            assert not any("/api/tags" in url for url in called_urls)
         assert len(result) == 1
         assert result[0].id == "cloud-model-001"
 
@@ -729,14 +734,13 @@ class TestDiscoverModelsTrustedUrl:
                 trust_url=True,
             )
 
-            # The request should go to the original URL, not an IP-pinned one.
-            client.get.assert_called_once()
-            call_args = client.get.call_args
-            url = call_args[0][0]
-            assert "localhost" in url
-            # No Host header rewriting when trusted.
-            headers = call_args[1].get("headers", call_args.kwargs.get("headers", {}))
-            assert "Host" not in headers
+            # Every request (the /models list + the capability-enrichment
+            # /api/version probe) goes to the original URL, not an IP-pinned
+            # one, and carries no rewritten Host header.
+            assert client.get.call_count >= 1
+            for call in client.get.call_args_list:
+                assert "localhost" in call.args[0]
+                assert "Host" not in (call.kwargs.get("headers") or {})
 
     async def test_trusted_url_logs_ssrf_bypass(self) -> None:
         """trust_url=True logs the SSRF bypass event."""

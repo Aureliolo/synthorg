@@ -1,5 +1,4 @@
 import type { TemplateInfoResponse } from '@/api/types/setup'
-import { makeEnumParser } from '@/utils/type-guards'
 
 /** Template size tags used for the approachability heuristic. */
 const TAG_SOLO = 'solo'
@@ -34,9 +33,6 @@ export const OVERSIGHT_OPTIONS: readonly { value: OversightPref; label: string }
   { value: 'balanced', label: 'Balanced (semi-autonomous)' },
   { value: 'autonomous', label: 'Hands-off (full autonomy)' },
 ]
-
-export const parseBuildGoal = makeEnumParser<BuildGoal>(GOAL_OPTIONS.map((o) => o.value))
-export const parseOversight = makeEnumParser<OversightPref>(OVERSIGHT_OPTIONS.map((o) => o.value))
 
 export interface RecommendationIntent {
   goal: BuildGoal
@@ -119,8 +115,6 @@ const IDEAL_SCORE = GOAL_TAG_WEIGHT * 2 + AUTONOMY_EXACT_WEIGHT
 /** Lowest match% shown, so a weak-but-valid match never looks broken. */
 const MATCH_FLOOR_PERCENT = 40
 const FULL_PERCENT = 100
-/** Hero pick + this many alternatives. */
-export const ALTERNATIVE_COUNT = 2
 
 function clampPercent(score: number): number {
   const pct = Math.round((score / IDEAL_SCORE) * FULL_PERCENT)
