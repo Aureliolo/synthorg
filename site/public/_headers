@@ -4,6 +4,8 @@
 # hygiene. These response headers are defence-in-depth on the preview surface
 # and the canary for header-level policy (HSTS, frame-ancestors, nosniff,
 # Permissions-Policy, COOP/CORP) that <meta> cannot express.
+# The production residual gap (which of these headers are absent on GitHub
+# Pages, and how to close it) is documented prominently in site/SECURITY.md.
 
 /*
   Cache-Control: public, max-age=3600

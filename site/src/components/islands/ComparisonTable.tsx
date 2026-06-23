@@ -545,7 +545,6 @@ export default function ComparisonTable({
                           onClick={() => toggleExpanded(comp.slug)}
                           aria-label={`${isExpanded ? "Collapse" : "Expand"} ${comp.name} details`}
                           aria-expanded={isExpanded}
-                          aria-controls={`details-${comp.slug}`}
                         >
                           <svg
                             width="14"
@@ -612,10 +611,7 @@ export default function ComparisonTable({
                       })}
                     </tr>
                     {isExpanded && (
-                      <tr
-                        className="ct-detail-row"
-                        id={`details-${comp.slug}`}
-                      >
+                      <tr className="ct-detail-row">
                         <td colSpan={4 + visibleDimensions.length}>
                           <div className="ct-detail-content" data-testid={`detail-${comp.slug}`}>
                             <div className="ct-detail-item ct-detail-description">

@@ -11,11 +11,14 @@ interface TaskCard {
   assignee: string;
 }
 
+// Reference the shared DashboardPreview tokens (in scope via the
+// .dashboard-preview root this island renders under) so the priority palette
+// cannot drift from the CSS variables it mirrors.
 const priorityColors: Record<TaskCard["priority"], string> = {
-  critical: "#ef4444",
-  high: "#f59e0b",
-  medium: "#38bdf8",
-  low: "#94a3b8",
+  critical: "var(--dp-danger)",
+  high: "var(--dp-warning)",
+  medium: "var(--dp-accent)",
+  low: "var(--dp-text-secondary)",
 };
 
 // All tasks in the system; they cycle through columns based on tick

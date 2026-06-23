@@ -65,9 +65,9 @@ export default defineConfig({
         "object-src 'none'",
         "img-src 'self' data:",
         "font-src 'self'",
-        "connect-src 'self' https://www.google.com https://formcarry.com",
+        "connect-src 'self' https://www.google.com https://formcarry.com/s/",
         "frame-src https://www.google.com",
-        "form-action https://formcarry.com",
+        "form-action https://formcarry.com/s/",
         "upgrade-insecure-requests",
       ],
       scriptDirective: {

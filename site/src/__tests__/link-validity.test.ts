@@ -1,3 +1,7 @@
+// @vitest-environment node
+// Pure node:fs/path test with no DOM; opt out of the global jsdom env so an
+// accidental browser-API call here fails loudly instead of silently passing.
+
 /**
  * Link-validity test for the marketing site.
  *
@@ -19,16 +23,17 @@
  *    exist under `site/public/`.
  * 5. **External URLs** (`https?://…`, `mailto:`, `tel:`) are skipped: no
  *    network calls so the test stays deterministic in CI.
- * 6. **Relative anchors** (`#contact`, `#how-it-works`) are skipped at this
- *    layer; the page builder validates same-page anchor existence at build
- *    time.
+ * 6. **Same-page / cross-page anchors to Astro routes** (`#contact`,
+ *    `#how-it-works`, `/#contact`) are validated against the literal element
+ *    ids declared across the site's `.astro` pages + components. Same-page
+ *    anchors from markdown sources are left to the docs build.
  *
  * If a new dynamic route is added (Astro `[param].astro`) or a docs subtree
  * grows new conventions, extend the resolvers below rather than adding
  * special-case skips.
  */
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 
@@ -92,6 +97,12 @@ function extractHrefs(file: string): LinkOccurrence[] {
   // skipped: we cannot validate them statically.  The ``[^"$\n]`` /
   // ``[^'$\n]`` character class blocks template-literal capture
   // because a captured ``${`` would yield a useless dynamic href.
+  //
+  // These ``/g`` patterns are function-local: a fresh set is constructed on
+  // every ``extractHrefs`` call, so state never carries across files even
+  // though ``extractHrefs`` is invoked via ``flatMap``.  The per-line
+  // ``pattern.lastIndex = 0`` reset below guards the in-call reuse of the
+  // same object across the ``lines`` array.
   const attrPattern =
     /href\s*=\s*"([^"$\n]+)"|href\s*=\s*'([^'$\n]+)'|href\s*=\s*\{\s*"([^"$\n]+)"\s*\}|href\s*=\s*\{\s*'([^'$\n]+)'\s*\}/g;
   const objPattern = /href\s*:\s*"([^"$\n]+)"|href\s*:\s*'([^'$\n]+)'/g;
@@ -242,9 +253,43 @@ function resolvePublicAsset(pathname: string): string | null {
   return existsSync(candidate) ? candidate : null;
 }
 
+/**
+ * Literal element ids declared across every site ``.astro`` file (pages and
+ * components), lower-cased.  Used to validate same-page (``#foo``) and
+ * cross-page (``/#foo``) anchors targeting an Astro route: a page composes
+ * components, so an id may be declared in any ``.astro`` source, not only the
+ * resolved page file.  Validating against the union avoids false negatives on
+ * component-owned ids while still catching an id that was renamed/removed
+ * everywhere.  Memoised; only literal string ids are captured -- a dynamic
+ * ``id={expr}`` cannot be validated statically and is ignored.
+ */
+let astroIdCache: Set<string> | null = null;
+function astroAnchorIds(): Set<string> {
+  if (astroIdCache !== null) return astroIdCache;
+  const ids = new Set<string>();
+  const idPattern =
+    /\bid\s*=\s*(?:"([A-Za-z0-9_-]+)"|'([A-Za-z0-9_-]+)'|\{\s*"([A-Za-z0-9_-]+)"\s*\}|\{\s*'([A-Za-z0-9_-]+)'\s*\})/g;
+  for (const file of walk(SITE_SRC, (p) => p.endsWith(".astro"))) {
+    const src = readFileSync(file, "utf-8");
+    let m: RegExpExecArray | null;
+    while ((m = idPattern.exec(src)) !== null) {
+      ids.add((m[1] ?? m[2] ?? m[3] ?? m[4]).toLowerCase());
+    }
+  }
+  astroIdCache = ids;
+  return ids;
+}
+
 interface ResolutionResult {
   ok: boolean;
   reason?: string;
+  /**
+   * Failure category.  ``"anchor"`` means the target file resolved but the
+   * ``#fragment`` did not match a heading/element id; the anchor test owns
+   * these and the file-resolution test ignores them.  Branching on this
+   * discriminant is robust against ``reason`` wording changes.
+   */
+  kind?: "anchor";
   /** When the link targets a heading anchor, the markdown file we checked. */
   resolvedFile?: string;
 }
@@ -273,13 +318,28 @@ function resolveHref(href: string, sourceFile: string): ResolutionResult {
   ) {
     return { ok: true, reason: "external (skipped)" };
   }
-  // Same-page anchor: we cannot validate without parsing the rendered
-  // page, so skip.
+  // Same-page anchor.  From an ``.astro`` source we validate the fragment
+  // against the literal ids declared across the site's pages + components.
+  // From a markdown source the rendered same-page anchor is validated by the
+  // docs build, so skip it here.
   if (href.startsWith("#")) {
-    return { ok: true, reason: "same-page anchor (skipped)" };
+    const fragment = href.slice(1);
+    if (fragment === "" || !sourceFile.endsWith(".astro")) {
+      return { ok: true, reason: "same-page anchor (skipped)" };
+    }
+    if (astroAnchorIds().has(fragment.toLowerCase())) {
+      return { ok: true, reason: "same-page anchor" };
+    }
+    return {
+      ok: false,
+      kind: "anchor",
+      reason: `anchor #${fragment} not found in any site .astro id`,
+    };
   }
-  // Sitemap and similar generated artefacts: skip.
-  if (href === "/sitemap-index.xml") {
+  // Sitemap and similar generated artefacts: skip.  Pattern-matched so any
+  // @astrojs/sitemap output (sitemap-index.xml, sitemap-0.xml, ...) is
+  // covered, not just the index.
+  if (/^\/sitemap[\w.-]*\.xml$/.test(href)) {
     return { ok: true, reason: "generated by @astrojs/sitemap" };
   }
 
@@ -329,6 +389,7 @@ function resolveHref(href: string, sourceFile: string): ResolutionResult {
       if (!slugs.has(anchor)) {
         return {
           ok: false,
+          kind: "anchor",
           reason: `anchor #${anchor} not found in ${relative(REPO_ROOT, target)}`,
           resolvedFile: target,
         };
@@ -348,6 +409,7 @@ function resolveHref(href: string, sourceFile: string): ResolutionResult {
       if (!slugs.has(anchor)) {
         return {
           ok: false,
+          kind: "anchor",
           reason: `anchor #${anchor} not found in ${relative(REPO_ROOT, resolved)}`,
           resolvedFile: resolved,
         };
@@ -364,29 +426,51 @@ function resolveHref(href: string, sourceFile: string): ResolutionResult {
   // Astro route in site/src/pages.
   const astro = resolveAstroRoute(pathOnly);
   if (astro !== null) {
+    if (
+      anchor !== undefined &&
+      anchor !== "" &&
+      !astroAnchorIds().has(anchor.toLowerCase())
+    ) {
+      return {
+        ok: false,
+        kind: "anchor",
+        reason: `anchor #${anchor} not found in any site .astro id (page ${relative(REPO_ROOT, astro)})`,
+        resolvedFile: astro,
+      };
+    }
     return { ok: true, resolvedFile: astro };
   }
 
   return { ok: false, reason: `no Astro page or public asset for ${pathOnly}` };
 }
 
-const ASTRO_FILES = walk(SITE_SRC, (p) => p.endsWith(".astro"));
-const MARKDOWN_FILES = walk(DOCS_ROOT, (p) => p.endsWith(".md"));
-
-const ALL_LINKS: LinkOccurrence[] = [
-  ...ASTRO_FILES.flatMap(extractHrefs),
-  ...MARKDOWN_FILES.flatMap(extractHrefs),
-];
-
 describe("link-validity", () => {
+  // Populated in beforeAll (not at module-eval time) so a missing root tree
+  // surfaces as a readable test-setup failure with a stack trace pointing
+  // here, rather than an opaque module-load error.
+  let ALL_LINKS: LinkOccurrence[] = [];
+
+  beforeAll(() => {
+    const astroFiles = walk(SITE_SRC, (p) => p.endsWith(".astro"));
+    const markdownFiles = walk(DOCS_ROOT, (p) => p.endsWith(".md"));
+    ALL_LINKS = [
+      ...astroFiles.flatMap(extractHrefs),
+      ...markdownFiles.flatMap(extractHrefs),
+    ];
+  });
+
   it("collects a non-trivial number of internal links", () => {
     // Sanity check: if extraction silently breaks, the rest of this file
     // would pass with an empty list.  Pin a floor so a regression in the
-    // extractor surfaces immediately.
+    // extractor surfaces immediately.  Floor set to ~66% of the ~757 internal
+    // links observed across site/ + docs/ (2026-06-23); deliberately below the
+    // real count so routine docs-tree churn (the scan covers all docs/*.md,
+    // which evolve independently) does not false-fail, while a catastrophic
+    // extractor regression (which collapses toward zero) still trips it.
     const internal = ALL_LINKS.filter(
       (l) => !/^https?:\/\//.test(l.href) && !l.href.startsWith("#"),
     );
-    expect(internal.length).toBeGreaterThan(20);
+    expect(internal.length).toBeGreaterThan(500);
   });
 
   it("every internal link resolves to a real source artefact", () => {
@@ -401,11 +485,11 @@ describe("link-validity", () => {
       const result = cached ?? resolveHref(link.href, link.file);
       if (!cached) seen.set(cacheKey, result);
       if (result.ok) continue;
-      // The dedicated anchor-validation test below owns
-      // ``anchor #x not found`` failures (it has its own baseline for
-      // pre-existing breakage).  Skip them here so the file-resolution
-      // test stays focused on missing files / pages / assets.
-      if (result.reason?.startsWith("anchor ")) continue;
+      // The dedicated anchor-validation test below owns anchor failures (it
+      // has its own baseline for pre-existing breakage).  Branch on the
+      // ``kind`` discriminant, not the reason wording, so this stays focused
+      // on missing files / pages / assets.
+      if (result.kind === "anchor") continue;
       const rel = relative(REPO_ROOT, link.file).replace(/\\/g, "/");
       failures.push(`${rel}:${link.line}  href=${link.href}  ${result.reason}`);
     }
@@ -433,15 +517,18 @@ describe("link-validity", () => {
   // re-added here.
   const KNOWN_BROKEN_ANCHORS: ReadonlySet<string> = new Set([]);
 
-  it("docs anchor targets resolve in their markdown source", () => {
+  it("anchor targets resolve to a real heading or element id", () => {
     const failures: string[] = [];
     const baselineHits: string[] = [];
     for (const link of ALL_LINKS) {
       if (!link.href.includes("#")) continue;
-      if (link.href.startsWith("#")) continue;
       if (/^https?:\/\//.test(link.href)) continue;
+      // Same-page anchors are NOT skipped wholesale: resolveHref validates
+      // ``.astro`` fragments against the site's element ids and returns
+      // ``kind: "anchor"`` on a miss; markdown same-page anchors still
+      // resolve ``ok`` (validated by the docs build) and never reach here.
       const result = resolveHref(link.href, link.file);
-      if (!result.ok && result.reason?.startsWith("anchor ")) {
+      if (!result.ok && result.kind === "anchor") {
         const rel = relative(REPO_ROOT, link.file).replace(/\\/g, "/");
         const key = `${rel}:${link.line} :: ${link.href}`;
         if (KNOWN_BROKEN_ANCHORS.has(key)) {
@@ -451,21 +538,21 @@ describe("link-validity", () => {
         failures.push(`${rel}:${link.line}  ${link.href}  ${result.reason}`);
       }
     }
-    if (failures.length > 0) {
-      throw new Error(
-        `Found ${failures.length} new broken anchor target(s):\n${failures.join("\n")}`,
-      );
-    }
-    // If a baseline entry no longer matches a real broken link, drop it
-    // from the set so the baseline cannot grow stale in the other
-    // direction.
+    // If a baseline entry no longer matches a real broken link, drop it from
+    // the set so the baseline cannot grow stale in the other direction.
     const unused = [...KNOWN_BROKEN_ANCHORS].filter(
       (k) => !baselineHits.includes(k),
     );
-    if (unused.length > 0) {
-      throw new Error(
-        `KNOWN_BROKEN_ANCHORS contains ${unused.length} stale entries; remove them:\n${unused.join("\n")}`,
-      );
-    }
+    // ``soft`` so a new-broken-anchor failure and a stale-baseline failure are
+    // both reported in one run instead of the first masking the second.
+    expect
+      .soft(failures, `New broken anchor target(s):\n${failures.join("\n")}`)
+      .toEqual([]);
+    expect
+      .soft(
+        unused,
+        `KNOWN_BROKEN_ANCHORS contains stale entries; remove them:\n${unused.join("\n")}`,
+      )
+      .toEqual([]);
   });
 });

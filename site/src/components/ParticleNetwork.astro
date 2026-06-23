@@ -200,16 +200,18 @@
       drawNodes();
     }
 
-    // Mouse tracking
-    canvas.addEventListener("mousemove", (e) => {
+    // Mouse tracking. Named handlers so astro:before-swap can detach them.
+    const onMouseMove = (e: MouseEvent): void => {
       const rect = canvas.getBoundingClientRect();
       mouseX = e.clientX - rect.left;
       mouseY = e.clientY - rect.top;
-    });
-    canvas.addEventListener("mouseleave", () => {
+    };
+    const onMouseLeave = (): void => {
       mouseX = -1000;
       mouseY = -1000;
-    });
+    };
+    canvas.addEventListener("mousemove", onMouseMove);
+    canvas.addEventListener("mouseleave", onMouseLeave);
 
     // Resize handling
     let resizeTimer: ReturnType<typeof setTimeout>;
@@ -241,6 +243,8 @@
       clearTimeout(resizeTimer);
       animating = false;
       prefersReduced.removeEventListener("change", onMotionChange);
+      canvas.removeEventListener("mousemove", onMouseMove);
+      canvas.removeEventListener("mouseleave", onMouseLeave);
     }, { once: true });
 
     start();
