@@ -225,7 +225,7 @@ installation token (valid ≤1 hour) via the
 7. Confirm the action allowlist includes
    `actions/create-github-app-token@*`, `dataaxiom/ghcr-cleanup-action@*`,
    and `Wandalen/wretry.action@*` (all SHA-pinned in-workflow). The last
-   two back the GHCR prune job; a restricted-Actions fork that omits
+   two back the GHCR prune job; an Actions-restricted fork that omits
    `Wandalen/wretry.action@*` fails the cleanup at action-resolution time.
 8. Add the `MISTRAL_API_KEY` repository secret (a Mistral API key on
    the free Experiment tier). The release-notes Highlights step in
