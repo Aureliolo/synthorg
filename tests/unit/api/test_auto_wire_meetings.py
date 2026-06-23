@@ -35,7 +35,7 @@ class TestBuildProtocolRegistry:
     def test_returns_all_three_protocol_types(self) -> None:
         from synthorg.api.auto_wire_meetings import _build_protocol_registry
 
-        registry = _build_protocol_registry()
+        registry = _build_protocol_registry(StrategyConfig())
 
         assert MeetingProtocolType.ROUND_ROBIN in registry
         assert MeetingProtocolType.POSITION_PAPERS in registry
@@ -45,7 +45,7 @@ class TestBuildProtocolRegistry:
     def test_protocol_instances_report_correct_type(self) -> None:
         from synthorg.api.auto_wire_meetings import _build_protocol_registry
 
-        registry = _build_protocol_registry()
+        registry = _build_protocol_registry(StrategyConfig())
 
         for proto_type, proto_impl in registry.items():
             assert proto_impl.get_protocol_type() == proto_type

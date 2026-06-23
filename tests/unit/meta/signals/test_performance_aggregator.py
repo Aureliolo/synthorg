@@ -1,4 +1,4 @@
-"""Tests for the performance signal aggregator's window scoping."""
+"""Tests for the performance signal aggregator's observation scoping."""
 
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
@@ -36,55 +36,44 @@ def _snapshot(*sizes: str) -> AgentPerformanceSnapshot:
     )
 
 
-def _aggregator(snapshot: AgentPerformanceSnapshot) -> PerformanceSignalAggregator:
-    tracker = mock_of[PerformanceTracker](
-        get_snapshot=AsyncMock(return_value=snapshot),
-    )
-    return PerformanceSignalAggregator(
+def _aggregator(
+    snapshot: AgentPerformanceSnapshot,
+) -> tuple[PerformanceSignalAggregator, AsyncMock]:
+    get_snapshot = AsyncMock(return_value=snapshot)
+    tracker = mock_of[PerformanceTracker](get_snapshot=get_snapshot)
+    agg = PerformanceSignalAggregator(
         tracker=tracker,
         agent_ids_provider=lambda: ["agent-1"],
     )
+    return agg, get_snapshot
 
 
-class TestWindowFits:
-    @pytest.mark.parametrize(
-        ("size", "requested_days", "expected"),
-        [
-            ("7d", 30, True),
-            ("30d", 30, True),
-            ("90d", 30, False),
-            ("7d", 0, False),
-            # An unparseable label cannot be bounded, so it is included.
-            ("garbage", 5, True),
-        ],
-    )
-    def test_window_fits(
-        self,
-        size: str,
-        requested_days: int,
-        expected: bool,
-    ) -> None:
-        fits = PerformanceSignalAggregator._window_fits(size, requested_days)
-        assert fits is expected
+class TestObservationScoping:
+    async def test_forwards_since_and_until_to_snapshot(self) -> None:
+        agg, get_snapshot = _aggregator(_snapshot("7d"))
+        since = _UNTIL - timedelta(days=30)
 
+        await agg.aggregate(since=since, until=_UNTIL)
 
-class TestSinceScoping:
-    async def test_oversized_windows_excluded(self) -> None:
-        agg = _aggregator(_snapshot("7d", "30d", "90d"))
-        # A 10-day observation span admits only the 7d rolling window.
-        since = _UNTIL - timedelta(days=10)
+        # The observation window bounds the snapshot: ``until`` is the
+        # reference time and ``since`` clips the records that feed it.
+        get_snapshot.assert_awaited_once_with("agent-1", now=_UNTIL, since=since)
+
+    async def test_reports_every_rolling_window(self) -> None:
+        # Rolling windows are multi-horizon context; a short observation
+        # span must not drop the longer windows (a sub-day ``since`` is the
+        # common case for the chief-of-staff monitor).
+        agg, _ = _aggregator(_snapshot("7d", "30d", "90d"))
+        since = _UNTIL - timedelta(seconds=60)
+
         summary = await agg.aggregate(since=since, until=_UNTIL)
-        metric_names = {m.name for m in summary.metrics}
-        assert "success_rate_7d" in metric_names
-        assert "quality_7d" in metric_names
-        assert "success_rate_30d" not in metric_names
-        assert "quality_90d" not in metric_names
 
-    async def test_wide_span_includes_all_windows(self) -> None:
-        agg = _aggregator(_snapshot("7d", "30d", "90d"))
-        since = _UNTIL - timedelta(days=365)
-        summary = await agg.aggregate(since=since, until=_UNTIL)
         metric_names = {m.name for m in summary.metrics}
-        assert {"success_rate_7d", "success_rate_30d", "success_rate_90d"} <= (
-            metric_names
-        )
+        assert {
+            "success_rate_7d",
+            "success_rate_30d",
+            "success_rate_90d",
+            "quality_7d",
+            "quality_30d",
+            "quality_90d",
+        } <= metric_names

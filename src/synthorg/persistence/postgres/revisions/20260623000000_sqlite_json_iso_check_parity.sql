@@ -1,0 +1,21 @@
+-- Parity counterpart to the SQLite ``sqlite_json_iso_check_parity``
+-- revision. That revision rebuilds the SQLite TEXT-encoded tables to add
+-- the JSON_VALID / ISO-8601 / length / semantic CHECK guards that Postgres
+-- already enforces structurally:
+--
+--   * JSON columns are JSONB (project_charters goals/constraints/...,
+--     project_brain_entries related_*/tags/citations/payload,
+--     ab_tests.variants, pruning_requests.evaluation) -- JSONB only accepts
+--     valid JSON, and the array-typed columns carry JSONB_TYPEOF = 'array'
+--     checks from the native-types parity revision.
+--   * Timestamp columns are TIMESTAMPTZ (created_at / updated_at /
+--     approved_at / recorded_at / decided_at / envelope_deadline) -- the
+--     type rejects non-timestamp text natively, no LIKE guard needed.
+--   * String / length / status-enum / charter project-binding +
+--     approval-coupling CHECK constraints already live in the baseline
+--     schema for every table the SQLite revision touches.
+--
+-- Postgres therefore needs no DDL to reach the same integrity contract; this
+-- file exists so the two backends keep one revision per logical change
+-- (filename-suffix parity enforced by ``check_schema_drift.py``).
+DO $$ BEGIN END $$;

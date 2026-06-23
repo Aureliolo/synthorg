@@ -110,19 +110,15 @@ class PerformanceSignalAggregator:
         """Aggregate org-wide performance from individual snapshots.
 
         Args:
-            since: Start of observation window. Rolling windows whose
-                lookback exceeds the requested ``[since, until]`` span
-                are excluded so a 90d window does not leak data from
-                before ``since`` into a 7d observation.
-            until: End of observation window.
+            since: Start of the observation window. Bounds the task records
+                that feed every per-agent snapshot, so the org-wide quality
+                average and the rolling-window metrics reflect activity in
+                ``[since, until]`` rather than the agent's all-time history.
+            until: End of observation window (the snapshot reference time).
 
         Returns:
             Org-wide performance summary with per-window metrics.
         """
-        # A rolling window contributes only when its lookback fits inside
-        # the requested span; a larger window would report averages that
-        # extend before ``since`` and misrepresent the observation period.
-        requested_days = (until - since).days
         try:
             agent_ids = self._get_agent_ids()
             if not agent_ids:
@@ -135,7 +131,9 @@ class PerformanceSignalAggregator:
             window_quality: dict[str, list[float]] = {}
 
             for agent_id in agent_ids:
-                snapshot = await self._tracker.get_snapshot(agent_id, now=until)
+                snapshot = await self._tracker.get_snapshot(
+                    agent_id, now=until, since=since
+                )
                 q = snapshot.overall_quality_score
                 if q is not None:
                     quality_scores.append(q)
@@ -144,8 +142,6 @@ class PerformanceSignalAggregator:
                     collab_scores.append(c)
                 for window in snapshot.windows:
                     ws = window.window_size
-                    if not self._window_fits(ws, requested_days):
-                        continue
                     if window.success_rate is not None:
                         window_success.setdefault(ws, []).append(window.success_rate)
                     if window.avg_quality_score is not None:
@@ -189,22 +185,6 @@ class PerformanceSignalAggregator:
             return _EMPTY
         else:
             return summary
-
-    @staticmethod
-    def _window_fits(window_size: str, requested_days: int) -> bool:
-        """Whether a rolling window fits within the requested span.
-
-        A window with an unparseable size is conservatively included
-        (it cannot be bounded). A window whose lookback exceeds the
-        requested span is excluded.
-
-        Returns:
-            ``True`` if the window contributes to this observation.
-        """
-        wdays = _parse_window_days(window_size)
-        if wdays is None:
-            return True
-        return wdays <= requested_days
 
     def _get_agent_ids(self) -> tuple[str, ...]:
         """Get current active agent IDs from the provider.

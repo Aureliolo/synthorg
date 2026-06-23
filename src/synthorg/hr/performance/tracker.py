@@ -740,12 +740,18 @@ class PerformanceTracker:
         agent_id: NotBlankStr,
         *,
         now: datetime | None = None,
+        since: datetime | None = None,
     ) -> AgentPerformanceSnapshot:
         """Compute a full performance snapshot for an agent.
 
         Args:
             agent_id: Agent to evaluate.
             now: Reference time (defaults to current UTC time).
+            since: Optional lower bound on task ``completed_at``. When set,
+                records before ``since`` are excluded before the rolling
+                windows and the overall quality average are computed, so a
+                caller observing ``[since, now]`` sees performance for that
+                window rather than the agent's all-time history.
 
         Returns:
             Complete performance snapshot with windows and trends.
@@ -755,6 +761,8 @@ class PerformanceTracker:
 
         agent_key = str(agent_id)
         task_records = tuple(self._task_metrics.get(agent_key, []))
+        if since is not None:
+            task_records = tuple(r for r in task_records if r.completed_at >= since)
 
         # Compute windows.
         windows = self._window_strategy.compute_windows(

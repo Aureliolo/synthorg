@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.knowledge.service import KnowledgeService
 from synthorg.research.enums import ResearchSourceType
@@ -98,11 +99,10 @@ async def test_knowledge_source_maps_citation() -> None:
 # ── Web source ───────────────────────────────────────────────────────
 
 
-async def test_web_source_maps_locator_and_skips_empty_url() -> None:
+async def test_web_source_maps_locator() -> None:
     provider = FakeWebSearchProvider(
         [
             SearchResult(title="A", url="https://a.example", snippet="alpha"),
-            SearchResult(title="B", url="", snippet="no url"),
         ]
     )
     source = WebRetrievalSource(provider=provider, clock=FakeClock(start=_NOW))
@@ -115,6 +115,14 @@ async def test_web_source_maps_locator_and_skips_empty_url() -> None:
     assert isinstance(locator, WebSourceLocator)
     assert locator.url == "https://a.example"
     assert items[0].relevance_score == 1.0
+
+
+def test_search_result_rejects_blank_url() -> None:
+    # A web result without a usable URL is meaningless; the NotBlankStr
+    # field rejects it at the model boundary, so a blank-url result can
+    # never reach the retrieval source.
+    with pytest.raises(ValidationError):
+        SearchResult(title="B", url="", snippet="no url")
 
 
 # ── Academic source ──────────────────────────────────────────────────

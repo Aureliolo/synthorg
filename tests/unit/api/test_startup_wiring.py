@@ -456,7 +456,15 @@ class TestWireFineTuneOrchestrator:
     async def test_wires_orchestrator_and_runs_recovery(self) -> None:
         fake = FakePersistenceBackend()
         fake.fine_tune_runs.mark_interrupted.return_value = 0
-        state = _make_state(slices={PersistenceStateSlice: {"backend": fake}})
+        # Empty query-model setting keeps the LLM query generator off, so the
+        # orchestrator wires with the dependency-free extractive generator.
+        resolver = mock_of[ConfigResolver](
+            get_str=AsyncMock(spec=ConfigResolver.get_str, return_value=""),
+        )
+        state = _make_state(
+            config_resolver=resolver,
+            slices={PersistenceStateSlice: {"backend": fake}},
+        )
 
         with structlog.testing.capture_logs() as captured:
             await _wire_fine_tune_orchestrator(state)
@@ -466,6 +474,8 @@ class TestWireFineTuneOrchestrator:
         # No memory backend wired -> trajectory mode is unavailable, but the
         # orchestrator still wires so directory-mode runs work.
         assert orchestrator._training_data_source is None
+        # No LLM query generator without an opt-in model id.
+        assert orchestrator._query_generator is None
         fake.fine_tune_runs.mark_interrupted.assert_awaited_once()
         wired = [e for e in _wire_logs(captured) if e.get("note") == "wired"]
         assert len(wired) == 1
@@ -493,7 +503,12 @@ class TestWireFineTuneOrchestrator:
         assert isinstance(
             orchestrator._training_data_source, TrajectoryTrainingDataSource
         )
-        resolver.get_str.assert_awaited_once()
+        # get_str is consulted for the trajectory scorecard-history dir AND
+        # the (empty) fine-tune query-model setting; the empty model id keeps
+        # the LLM query generator off.
+        get_str_keys = {call.args[1] for call in resolver.get_str.await_args_list}
+        assert get_str_keys == {"scorecard_history_dir", "fine_tune_query_model"}
+        assert orchestrator._query_generator is None
         wired = [e for e in _wire_logs(captured) if e.get("note") == "wired"]
         assert wired[0]["trajectory_source"] is True
 

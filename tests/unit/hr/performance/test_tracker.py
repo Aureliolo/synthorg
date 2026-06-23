@@ -360,6 +360,37 @@ class TestGetSnapshot:
         assert len(snapshot.trends) == 2
         assert snapshot.overall_quality_score == 7.5
 
+    async def test_since_bounds_records_for_overall_quality(self) -> None:
+        """``since`` clips records before the overall quality average."""
+        tracker = _make_tracker()
+        # An old, high-scoring record and a recent, low-scoring one. An
+        # observation window starting after the old record must reflect only
+        # the recent score, not the all-time average of the two.
+        await tracker.record_task_metric(
+            make_task_metric(
+                task_id="task-old",
+                completed_at=NOW - timedelta(days=40),
+                quality_score=9.0,
+            )
+        )
+        await tracker.record_task_metric(
+            make_task_metric(
+                task_id="task-recent",
+                completed_at=NOW - timedelta(days=1),
+                quality_score=3.0,
+            )
+        )
+
+        bounded = await tracker.get_snapshot(
+            NotBlankStr("agent-001"),
+            now=NOW,
+            since=NOW - timedelta(days=7),
+        )
+        unbounded = await tracker.get_snapshot(NotBlankStr("agent-001"), now=NOW)
+
+        assert bounded.overall_quality_score == 3.0
+        assert unbounded.overall_quality_score == 6.0
+
     async def test_snapshot_collaboration_score_included(self) -> None:
         """Snapshot includes collaboration score when confidence > 0."""
         tracker = _make_tracker(
