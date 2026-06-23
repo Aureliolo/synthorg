@@ -15,7 +15,8 @@ from synthorg.hr.performance.collaboration_override_store import (
 )
 from synthorg.hr.performance.collaboration_protocol import CollaborationScoringStrategy
 from synthorg.hr.performance.llm_calibration_sampler import LlmCalibrationSampler
-from synthorg.hr.performance.models import CollaborationOverride
+from synthorg.hr.performance.models import CollaborationOverride, QualityOverride
+from synthorg.hr.performance.quality_override_store import QualityOverrideStore
 from synthorg.hr.performance.tracker import PerformanceTracker
 
 from .conftest import make_collab_metric
@@ -134,6 +135,33 @@ class TestOverridePrecedence:
         )
 
         assert snapshot.overall_collaboration_score == 8.0
+
+    async def test_quality_override_drives_human_feedback_score(self) -> None:
+        """An active human quality override populates human_feedback_score."""
+        quality_override_store = QualityOverrideStore()
+        quality_override_store.set_override(
+            QualityOverride(
+                agent_id=NotBlankStr("agent-001"),
+                score=7.0,
+                reason=NotBlankStr("Strong review feedback"),
+                applied_by=NotBlankStr("manager"),
+                applied_at=NOW,
+            ),
+        )
+        tracker = PerformanceTracker(quality_override_store=quality_override_store)
+
+        snapshot = await tracker.get_snapshot(NotBlankStr("agent-001"), now=NOW)
+
+        # 7.0 on the 0-10 axis normalises to 0.7.
+        assert snapshot.human_feedback_score == 0.7
+
+    async def test_no_quality_override_leaves_human_feedback_none(self) -> None:
+        """Without a human override the signal is None (neutral)."""
+        tracker = PerformanceTracker(quality_override_store=QualityOverrideStore())
+
+        snapshot = await tracker.get_snapshot(NotBlankStr("agent-001"), now=NOW)
+
+        assert snapshot.human_feedback_score is None
 
 
 @pytest.mark.unit

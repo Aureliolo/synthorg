@@ -95,6 +95,10 @@ MAX_BATCH_SNAPSHOTS_LOOKUP: Final[int] = 1024
 # fires, so the metric is neither persisted nor reported as lost.
 _PERSIST_TIMEOUT_SECONDS: Final[float] = 5.0
 
+# Quality scores are reported on a 0-10 axis; dividing by this normalises
+# a human override score into the snapshot's [0, 1] human-feedback signal.
+_QUALITY_SCORE_MAX: Final[float] = 10.0
+
 
 def _coerce_finite_weights(
     raw: Iterable[tuple[str, float]],
@@ -782,6 +786,18 @@ class PerformanceTracker:
         )
         overall_collab = collab_result.score if collab_result.confidence > 0.0 else None
 
+        # Direct human-feedback signal: an active human quality override
+        # (0-10) normalised to [0, 1]. Absent override -> None (no signal),
+        # so downstream consumers treat it as neutral rather than a zero.
+        human_feedback_score: float | None = None
+        if self._quality_override_store is not None:
+            hf_override = self._quality_override_store.get_active_override(
+                agent_id,
+                now=now,
+            )
+            if hf_override is not None:
+                human_feedback_score = round(hf_override.score / _QUALITY_SCORE_MAX, 4)
+
         snapshot = AgentPerformanceSnapshot(
             agent_id=agent_id,
             computed_at=now,
@@ -789,6 +805,7 @@ class PerformanceTracker:
             trends=tuple(trends),
             overall_quality_score=overall_quality,
             overall_collaboration_score=overall_collab,
+            human_feedback_score=human_feedback_score,
         )
 
         logger.info(

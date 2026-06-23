@@ -18,11 +18,11 @@ from synthorg.memory.embedding.fine_tune import (
     FineTuneStage,
     _chunk_text,
     _compute_metrics,
-    _generate_query,
     _scan_documents,
     deploy_checkpoint,
     generate_training_data,
 )
+from synthorg.memory.embedding.fine_tune_query import extractive_query
 from synthorg.memory.errors import (
     FineTuneCancelledError,
     FineTuneDependencyError,
@@ -150,7 +150,7 @@ class TestChunkText:
 @pytest.mark.unit
 class TestGenerateQuery:
     def test_extractive_fallback(self) -> None:
-        query = _generate_query("First sentence. Second.")
+        query = extractive_query("First sentence. Second.")
         assert "First sentence" in query
 
 

@@ -109,9 +109,9 @@ class TestWeightedTrustStrategy:
         ELEVATED and _check_human_approval returns True.
 
         Score calculation with quality=9.5, success_rate=0.99,
-        tasks_completed=100:
+        human_feedback_score=1.0:
           difficulty = 0.95, completion = 0.99, error = 1.0,
-          feedback = 1.0 → score ≈ 0.9825, above the 0.9 threshold.
+          feedback = 1.0 -> score ~= 0.9825, above the 0.9 threshold.
         """
         strategy = WeightedTrustStrategy(config=weighted_config)
         state = TrustState(
@@ -124,6 +124,7 @@ class TestWeightedTrustStrategy:
             quality=9.5,
             success_rate=0.99,
             tasks_completed=100,
+            human_feedback_score=1.0,
         )
 
         result = await strategy.evaluate(

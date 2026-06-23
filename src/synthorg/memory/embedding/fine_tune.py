@@ -3,7 +3,8 @@
 
 Five-stage offline pipeline for domain-specific embedding fine-tuning:
 
-1. Synthetic data generation (extractive fallback; LLM path stubbed)
+1. Synthetic data generation (pluggable query generator: extractive
+   default or LLM-backed)
 2. Hard negative mining (base model embedding + similarity search)
 3. Contrastive fine-tuning (InfoNCE loss, biencoder training)
 4. Evaluation (NDCG@10, Recall@10 comparison)
@@ -33,6 +34,10 @@ from typing import TYPE_CHECKING, Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.memory.embedding.cancellation import CancellationToken
+from synthorg.memory.embedding.fine_tune_query import (
+    ExtractiveQueryGenerator,
+    QueryGenerator,
+)
 from synthorg.memory.embedding.training_writer import split_and_write_pairs
 from synthorg.memory.errors import FineTuneDependencyError
 from synthorg.observability import get_logger
@@ -394,7 +399,7 @@ async def generate_training_data(  # noqa: PLR0913
     source_dir: str,
     output_dir: str,
     *,
-    llm_provider: object | None = None,
+    query_generator: QueryGenerator | None = None,
     validation_split: float = _DEFAULT_VALIDATION_SPLIT,
     progress_callback: ProgressCallback | None = None,
     cancellation: CancellationToken | None = None,
@@ -404,13 +409,12 @@ async def generate_training_data(  # noqa: PLR0913
     Generate synthetic query-document pairs from source documents.
     No manual annotation required.
 
-    Always generates simple extractive queries from chunk content.
-
     Args:
         source_dir: Directory containing org documents.
         output_dir: Directory to write training data.
-        llm_provider: Reserved for a future LLM-backed query path; currently
-            unused -- passing it does not change the generated output.
+        query_generator: Strategy that derives a retrieval query per
+            chunk. Defaults to the extractive generator when ``None``
+            (e.g. the sidecar path, which has no live provider).
         validation_split: Fraction held out for evaluation.
         progress_callback: Called with progress 0.0-1.0.
         cancellation: Checked between documents.
@@ -429,18 +433,16 @@ async def generate_training_data(  # noqa: PLR0913
         msg = f"No documents found in {source_dir}"
         raise ValueError(msg)
 
-    # ``llm_provider`` is reserved on the public signature for the future
-    # LLM-backed query path; the extractive generator below does not use
-    # it, so it is not threaded into ``_generate_query`` (which no longer
-    # accepts a misleading always-ignored argument).
-    _ = llm_provider
+    generator = (
+        query_generator if query_generator is not None else ExtractiveQueryGenerator()
+    )
     all_pairs: list[dict[str, str]] = []
     for i, (_path, content) in enumerate(docs):
         if cancellation is not None:
             cancellation.check()
         chunks = _chunk_text(content)
         for chunk in chunks:
-            query = _generate_query(chunk)
+            query = await generator.generate(chunk)
             all_pairs.append(
                 {"query": query, "positive_passage": chunk},
             )
@@ -452,20 +454,6 @@ async def generate_training_data(  # noqa: PLR0913
         output_dir,
         validation_split=validation_split,
     )
-
-
-def _generate_query(chunk: str) -> str:
-    """Generate an extractive retrieval query from a chunk.
-
-    Returns:
-        Result of type ``str``.
-    """
-    sentences = chunk.split(".")
-    first = sentences[0].strip() if sentences else chunk[:100]
-    if not first:
-        first = chunk[:100].strip()
-    first = first[:200]
-    return f"Find information about: {first}"
 
 
 # -- Stage 2: Hard negative mining ------------------------------------

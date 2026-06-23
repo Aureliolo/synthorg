@@ -27,6 +27,7 @@ def make_performance_snapshot(
     quality: float = 8.0,
     success_rate: float = 0.9,
     tasks_completed: int = 15,
+    human_feedback_score: float | None = None,
 ) -> AgentPerformanceSnapshot:
     """Build an ``AgentPerformanceSnapshot`` for testing.
 
@@ -35,6 +36,8 @@ def make_performance_snapshot(
         quality: Overall quality score (0.0-10.0).
         success_rate: Task success rate (0.0-1.0).
         tasks_completed: Number of successfully completed tasks.
+        human_feedback_score: Active human-feedback signal (0.0-1.0),
+            or ``None`` for no human override.
 
     Returns:
         A frozen performance snapshot.
@@ -68,6 +71,7 @@ def make_performance_snapshot(
         computed_at=datetime.now(UTC),
         windows=(window,),
         overall_quality_score=quality,
+        human_feedback_score=human_feedback_score,
     )
 
 

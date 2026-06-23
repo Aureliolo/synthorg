@@ -23,6 +23,7 @@ from synthorg.memory.embedding.fine_tune_models import (
     FineTuneStatus,
 )
 from synthorg.memory.embedding.fine_tune_pipeline import run_fine_tune_stages
+from synthorg.memory.embedding.fine_tune_query import QueryGenerator
 from synthorg.memory.embedding.fine_tune_run_helpers import (
     build_config,
     to_failed,
@@ -87,7 +88,9 @@ class FineTuneOrchestrator:
         checkpoint_repo: Repository for checkpoints (protocol-typed).
         settings_service: Runtime settings (for deploy stage).
         channels_plugin: WS plugin exposing ``publish(data, channels=...)``.
-        llm_provider: Optional LLM provider for data generation.
+        query_generator: Strategy that derives a retrieval query per
+            chunk during stage-1 data generation (LLM-backed or the
+            extractive default). ``None`` uses the extractive default.
         training_data_source: Optional real-trajectory data source. Required
             only when a run selects ``data_source=trajectory``; directory mode
             needs no source.
@@ -100,7 +103,7 @@ class FineTuneOrchestrator:
         checkpoint_repo: FineTuneCheckpointRepository,
         settings_service: object | None = None,
         channels_plugin: ChannelsPlugin | None = None,
-        llm_provider: object | None = None,
+        query_generator: QueryGenerator | None = None,
         training_data_source: TrainingDataSource | None = None,
         clock: Clock | None = None,
     ) -> None:
@@ -108,7 +111,7 @@ class FineTuneOrchestrator:
         self._checkpoint_repo = checkpoint_repo
         self._settings_service = settings_service
         self._channels_plugin = channels_plugin
-        self._llm_provider = llm_provider
+        self._query_generator = query_generator
         self._training_data_source = training_data_source
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._current_task: asyncio.Task[None] | None = None
@@ -447,7 +450,7 @@ class FineTuneOrchestrator:
             checkpoint_repo=self._checkpoint_repo,
             settings_service=self._settings_service,
             training_data_source=self._training_data_source,
-            llm_provider=self._llm_provider,
+            query_generator=self._query_generator,
             cancellation=self._cancellation,
             enter_stage=self._enter_stage,
             complete_stage=self._complete_stage,

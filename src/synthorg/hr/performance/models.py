@@ -562,6 +562,10 @@ class AgentPerformanceSnapshot(BaseModel):
         trends: Detected trends per metric.
         overall_quality_score: Aggregate quality score.
         overall_collaboration_score: Aggregate collaboration score.
+        human_feedback_score: Active human quality-override score
+            normalised to [0, 1], or ``None`` when no human override is
+            in effect. A direct human-feedback signal distinct from the
+            model-derived quality/collaboration scores.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -587,4 +591,10 @@ class AgentPerformanceSnapshot(BaseModel):
         ge=0.0,
         le=10.0,
         description="Aggregate collaboration score",
+    )
+    human_feedback_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Active human quality-override score, normalised to [0, 1]",
     )
