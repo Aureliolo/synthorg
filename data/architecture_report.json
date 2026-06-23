@@ -668,8 +668,8 @@
     },
     "src/synthorg/hr/performance/tracker.py": {
       "cap": 1100,
-      "loc": 1009,
-      "ratio": 0.917,
+      "loc": 1017,
+      "ratio": 0.925,
       "tier": "complex_service"
     },
     "src/synthorg/hr/promotion/service.py": {
@@ -1630,7 +1630,7 @@
     },
     "synthorg.hr.performance.tracker:PerformanceTracker": {
       "lcom4": 6,
-      "loc": 903
+      "loc": 911
     },
     "synthorg.hr.promotion.service:PromotionService": {
       "lcom4": 2,
