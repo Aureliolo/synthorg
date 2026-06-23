@@ -7,8 +7,12 @@ tier-classifiable model, and accepts when at least one model is
 seeded via the shared ``mock_providers`` fixture.
 """
 
-import pytest
+from unittest.mock import AsyncMock, patch
 
+import pytest
+from structlog.testing import capture_logs
+
+from synthorg.observability.events.setup import SETUP_POSTURE_SEED_FAILED
 from tests._shared import LoopAsyncClient
 
 
@@ -41,6 +45,37 @@ class TestSetupCompanyTemplateGating:
             assert data["company_name"] == "My Startup"
             assert data["template_applied"] == "solo_founder"
             assert data["department_count"] >= 1
+
+    async def test_posture_seed_failure_is_non_fatal(
+        self,
+        async_test_client: LoopAsyncClient,
+    ) -> None:
+        """A posture-seed failure logs a WARNING but setup still succeeds."""
+        from tests.unit.api.controllers.conftest import mock_providers
+
+        boom = RuntimeError("posture seed exploded")
+        with (
+            mock_providers(async_test_client),
+            patch(
+                "synthorg.api.controllers.setup.company._seed_posture_settings",
+                new_callable=AsyncMock,
+                side_effect=boom,
+            ),
+            capture_logs() as logs,
+        ):
+            resp = await async_test_client.post(
+                "/api/v1/setup/company",
+                json={
+                    "company_name": "Resilient Co",
+                    "template_name": "solo_founder",
+                },
+            )
+
+        assert resp.status_code == 201
+        assert resp.json()["success"] is True
+        failures = [e for e in logs if e.get("event") == SETUP_POSTURE_SEED_FAILED]
+        assert len(failures) == 1
+        assert failures[0]["error_type"] == "RuntimeError"
 
     async def test_company_with_template_rejects_empty_provider_set(
         self,

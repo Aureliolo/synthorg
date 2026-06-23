@@ -45,10 +45,12 @@ from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
-from synthorg.observability import get_logger
+from synthorg.core.critical_errors import reraise_critical
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.setup import (
     SETUP_AGENTS_AUTO_CREATED,
     SETUP_COMPANY_CREATED,
+    SETUP_POSTURE_SEED_FAILED,
 )
 from synthorg.settings.state import settings_service_of
 
@@ -132,8 +134,20 @@ class SetupCompanyController(Controller):
                 )
                 # Seed the template posture's settings-resident feature flags
                 # before /setup/complete runs post_setup_reinit, so the
-                # rebuilt runtime and boot wiring pick them up.
-                await _seed_posture_settings(settings_svc, tmpl_res.template)
+                # rebuilt runtime and boot wiring pick them up. Non-fatal:
+                # the company and agents are already persisted, so a seed
+                # failure logs a WARNING and lets setup succeed (the operator
+                # re-applies the posture) rather than aborting under the lock.
+                try:
+                    await _seed_posture_settings(settings_svc, tmpl_res.template)
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                    reraise_critical(exc)
+                    logger.warning(
+                        SETUP_POSTURE_SEED_FAILED,
+                        template=tmpl_res.template_applied,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
             else:
                 # Blank path: clear any agents persisted by a previous
                 # template selection so GET /setup/agents returns empty.

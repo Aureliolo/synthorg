@@ -95,6 +95,11 @@ _PROBLEM_JSON: Final[str] = "application/problem+json"
 
 _MAX_DETAIL_LEN: Final[int] = 512
 
+# Client-facing detail strings for the framework-level guards, named so the
+# wording stays consistent across handlers and OpenAPI examples.
+_DETAIL_ACCESS_DENIED: Final[str] = "Access denied"
+_DETAIL_RESOURCE_NOT_FOUND: Final[str] = "Resource not found"
+
 # Headers safe to forward from HTTPException to the client response.
 # ``retry-after`` is intentionally absent: the handler owns it canonically
 # (parsed into ``retry_after`` and re-emitted as a single ``Retry-After``),
@@ -860,7 +865,7 @@ def handle_permission_denied(
     _log_error(request, exc, status=403)
     return _build_response(
         request,
-        detail="Forbidden",
+        detail=_DETAIL_ACCESS_DENIED,
         error_code=ErrorCode.FORBIDDEN,
         error_category=ErrorCategory.AUTH,
         status_code=403,
@@ -968,7 +973,7 @@ def handle_not_found(
     )
     return _build_response(
         request,
-        detail="Not found",
+        detail=_DETAIL_RESOURCE_NOT_FOUND,
         error_code=ErrorCode.ROUTE_NOT_FOUND,
         error_category=ErrorCategory.NOT_FOUND,
         status_code=404,
