@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
+import { Pagination } from '@/components/ui/pagination'
 import { SearchFilterSort } from '@/components/ui/search-filter-sort'
 import { SectionCard } from '@/components/ui/section-card'
 import { SegmentedControl } from '@/components/ui/segmented-control'
@@ -117,7 +118,7 @@ function EscalationQueueBody({ q }: { q: EscalationQueue }) {
   }
   return (
     <ul className="flex flex-col gap-grid-gap">
-      {q.visibleEscalations.map((row) => (
+      {q.pagedEscalations.map((row) => (
         <li key={row.escalation.id}>
           <EscalationCard row={row} onReview={q.setSelectedId} />
         </li>
@@ -150,10 +151,15 @@ export default function EscalationQueuePage() {
 
       <EscalationQueueBody q={q} />
 
-      {q.hasMore && (
-        <Button variant="secondary" onClick={q.loadMore} disabled={q.loadingMore}>
-          {q.loadingMore ? 'Loading…' : 'Load more'}
-        </Button>
+      {(q.visibleEscalations.length > q.pageSize || q.hasMore) && (
+        <Pagination
+          page={q.page}
+          pageSize={q.pageSize}
+          total={undefined}
+          hidePageSize
+          onPageChange={q.loadPage}
+          ariaLabel="Escalation queue pages"
+        />
       )}
 
       <EscalationDetailDrawer
