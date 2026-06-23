@@ -223,10 +223,10 @@ installation token (valid ≤1 hour) via the
    from the App's settings page) and `RELEASE_BOT_APP_PRIVATE_KEY`
    (full PEM contents).
 7. Confirm the action allowlist includes
-   `actions/create-github-app-token@*`, `dataaxiom/ghcr-cleanup-action@*`,
-   and `Wandalen/wretry.action@*` (all SHA-pinned in-workflow). The last
-   two back the GHCR prune job; an Actions-restricted fork that omits
-   `Wandalen/wretry.action@*` fails the cleanup at action-resolution time.
+   `actions/create-github-app-token@*` and `dataaxiom/ghcr-cleanup-action@*`
+   (both SHA-pinned in-workflow). The latter backs the weekly GHCR prune
+   job; an Actions-restricted fork that omits it fails the cleanup at
+   action-resolution time.
 8. Add the `MISTRAL_API_KEY` repository secret (a Mistral API key on
    the free Experiment tier). The release-notes Highlights step in
    `release.yml` and the `test-highlights.yml` dry-run read it; a

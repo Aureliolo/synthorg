@@ -13,25 +13,16 @@ name: GHCR Cleanup
 #   - orphaned referrers    cosign sha256-<digest> + untagged whose parent
 #                           image was deleted above         -> reap
 #
-# Runs as a final isolated job of dev-release.yml (after the release tag
-# and downstream Docker/CLI workflows are safe) so it stays out of the
-# #1818-sensitive release-critical path, and is independently dispatchable
-# for the one-time backfill of the historical ~61k versions.
+# Runs weekly on its own schedule (and on manual dispatch for the one-time
+# backfill of the historical ~61k versions), fully decoupled from the
+# release path: a prune blip never touches a release run. The prune is
+# idempotent, so a transient GHCR 401 that reds a leg simply self-heals on
+# the next weekly run -- worst case a week's stale dev/PR versions linger.
 
 on:
-  workflow_call:
-    inputs:
-      dry-run:
-        description: "Log what would be deleted without deleting."
-        type: boolean
-        default: true
-    secrets:
-      GHCR_CLEANUP_TOKEN:
-        description: >-
-          Classic PAT with write:packages + delete:packages for the
-          user-owned GHCR packages. Optional: the step falls back to the
-          automatic GITHUB_TOKEN when this is absent.
-        required: false
+  schedule:
+    # Weekly, Mondays 04:00 UTC. Off-peak; housekeeping only.
+    - cron: "0 4 * * 1"
   workflow_dispatch:
     inputs:
       dry-run:
@@ -41,19 +32,49 @@ on:
 
 permissions: {}
 
-# One global mutex across BOTH triggers (workflow_call from dev-release
-# and manual workflow_dispatch): two cleanup runs must never delete
-# against the same packages at once. The trade-off -- a dev-release
-# cleanup queueing behind a long manual backfill -- is acceptable because
-# the cleanup job is off the release-critical path. cancel-in-progress is
-# false so a queued run is never dropped.
+# One global mutex across BOTH triggers (scheduled weekly run and manual
+# workflow_dispatch): two cleanup runs must never delete against the same
+# packages at once. The trade-off -- a scheduled cleanup queueing behind a
+# long manual backfill -- is acceptable because the cleanup is off the
+# release-critical path. cancel-in-progress is false so a queued run is
+# never dropped.
 concurrency:
   group: ghcr-cleanup
   cancel-in-progress: false
 
 jobs:
+  # Resolve the effective dry-run flag once, since the schedule trigger
+  # carries no inputs. A manual dispatch honours its own checkbox; the
+  # weekly run deletes only when the repository variable
+  # GHCR_CLEANUP_ENABLED is set to "true", and otherwise stays dry-run.
+  config:
+    name: Resolve dry-run
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    outputs:
+      dry-run: ${{ steps.resolve.outputs.dry-run }}
+    steps:
+      - name: Resolve dry-run
+        id: resolve
+        env:
+          EVENT: ${{ github.event_name }}
+          DISPATCH_DRY_RUN: ${{ inputs.dry-run }}
+          CLEANUP_ENABLED: ${{ vars.GHCR_CLEANUP_ENABLED }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            value="$DISPATCH_DRY_RUN"
+          elif [ "$CLEANUP_ENABLED" = "true" ]; then
+            value="false"
+          else
+            value="true"
+          fi
+          echo "dry-run=${value}" >> "$GITHUB_OUTPUT"
+
   cleanup:
     name: Prune ${{ matrix.package }}
+    needs: config
     runs-on: ubuntu-latest
     # GitHub throttles version deletions (the action backs off on each
     # 429), so a package's drain rate is capped regardless of work left.
@@ -61,9 +82,7 @@ jobs:
     # mid-delete and must finish over many runs. 120 min lets one pass
     # clear ~6-7k versions, draining the big packages in a single run
     # during the historical backfill; steady-state runs finish in
-    # minutes well under the cap. The wretry wrapper adds at most two 15s
-    # inter-attempt delays per pass, negligible against the 429-backoff-
-    # dominated runtime, so the cap stays sound.
+    # minutes well under the cap.
     timeout-minutes: 120
     permissions:
       packages: write
@@ -95,7 +114,7 @@ jobs:
       # fall back to the default GITHUB_TOKEN. Surface which identity is
       # doing the deleting so a live run is never silently attributed.
       - name: Warn when deleting with the default token
-        if: ${{ !inputs.dry-run }}
+        if: ${{ needs.config.outputs.dry-run == 'false' }}
         env:
           CLEANUP_PAT: ${{ secrets.GHCR_CLEANUP_TOKEN }}
         run: |
@@ -108,55 +127,40 @@ jobs:
       # so releases are outside its reach; deleting an old multi-arch dev
       # manifest also removes its platform children.
       # GHCR throws a spurious 401 ("Bad credentials") on a fraction of
-      # delete calls under concurrent delete/read load. The cleanup action
-      # backs off on 429 but treats a 401 as fatal and aborts the whole
-      # package leg on the first one, so a transient blip reds the run even
-      # though the token is valid (other legs delete fine in the same run).
-      # wretry re-runs the entire idempotent pass (already-deleted versions
-      # are skipped on the retry), so a transient self-heals in-run while a
-      # genuinely dead token still fails loudly after the attempts are spent.
-      # The nested `with:` is a string wretry parses as YAML after the runner
-      # interpolates the `${{ }}` expressions, so every wrapped input must stay
-      # a single scalar (no newline / structural YAML character) -- a colon or
-      # line break in a future input value would silently break the parse.
+      # delete calls under concurrent delete/read load; the cleanup action
+      # treats a 401 as fatal and aborts the leg. That is tolerated here:
+      # the prune is idempotent and reruns next week, so a transient blip
+      # just leaves a week's stale versions and self-heals.
       - name: Prune old dev builds (keep newest 5)
-        uses: Wandalen/wretry.action@e68c23e6309f2871ca8ae4763e7629b9c258e1ea # v3.8.0
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
         with:
-          action: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
-          attempt_limit: 3
-          attempt_delay: 15000
-          with: |
-            owner: ${{ github.repository_owner }}
-            package: ${{ matrix.package }}
-            token: ${{ secrets.GHCR_CLEANUP_TOKEN || secrets.GITHUB_TOKEN }}
-            use-regex: true
-            delete-tags: ^\d+\.\d+\.\d+-dev\.\d+$
-            keep-n-tagged: 5
-            exclude-tags: ^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev)$
-            validate: true
-            dry-run: ${{ inputs.dry-run }}
+          owner: ${{ github.repository_owner }}
+          package: ${{ matrix.package }}
+          token: ${{ secrets.GHCR_CLEANUP_TOKEN || secrets.GITHUB_TOKEN }}
+          use-regex: true
+          delete-tags: ^\d+\.\d+\.\d+-dev\.\d+$
+          keep-n-tagged: 5
+          exclude-tags: ^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev)$
+          validate: true
+          dry-run: ${{ needs.config.outputs.dry-run }}
 
       # Pass 2 -- PR / scan short-sha images older than 7 days. The dev
       # version regex and floating `dev` are excluded so a recent dev
       # manifest (which also carries a sha-<short> tag) is never reaped
       # through its sha tag; only genuine PR/scan images match.
-      # Same transient-401 retry wrapper as pass 1; see that step's comment.
+      # Same transient-401 tolerance as pass 1; see that step's comment.
       - name: Prune PR/scan images older than 7 days
-        uses: Wandalen/wretry.action@e68c23e6309f2871ca8ae4763e7629b9c258e1ea # v3.8.0
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
         with:
-          action: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
-          attempt_limit: 3
-          attempt_delay: 15000
-          with: |
-            owner: ${{ github.repository_owner }}
-            package: ${{ matrix.package }}
-            token: ${{ secrets.GHCR_CLEANUP_TOKEN || secrets.GITHUB_TOKEN }}
-            use-regex: true
-            delete-tags: ^(sha|scan)-[0-9a-f]{6,}(-amd64|-arm64)?$
-            older-than: 7 days
-            exclude-tags: ^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev|\d+\.\d+\.\d+-dev\.\d+)$
-            validate: true
-            dry-run: ${{ inputs.dry-run }}
+          owner: ${{ github.repository_owner }}
+          package: ${{ matrix.package }}
+          token: ${{ secrets.GHCR_CLEANUP_TOKEN || secrets.GITHUB_TOKEN }}
+          use-regex: true
+          delete-tags: ^(sha|scan)-[0-9a-f]{6,}(-amd64|-arm64)?$
+          older-than: 7 days
+          exclude-tags: ^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev|\d+\.\d+\.\d+-dev\.\d+)$
+          validate: true
+          dry-run: ${{ needs.config.outputs.dry-run }}
 
       # Pass 3 -- reap every orphan with no live parent. Two distinct
       # classes, both needed:
@@ -174,20 +178,16 @@ jobs:
       # dangling manifests; `validate` then asserts no surviving multi-arch
       # image lost a platform child. exclude-tags still protects every
       # release / kept-dev tag (delete-untagged only touches untagged).
-      # Same transient-401 retry wrapper as pass 1; see that step's comment.
+      # Same transient-401 tolerance as pass 1; see that step's comment.
       - name: Prune orphaned signatures and untagged manifests
-        uses: Wandalen/wretry.action@e68c23e6309f2871ca8ae4763e7629b9c258e1ea # v3.8.0
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
         with:
-          action: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
-          attempt_limit: 3
-          attempt_delay: 15000
-          with: |
-            owner: ${{ github.repository_owner }}
-            package: ${{ matrix.package }}
-            token: ${{ secrets.GHCR_CLEANUP_TOKEN || secrets.GITHUB_TOKEN }}
-            use-regex: true
-            delete-orphaned-images: true
-            delete-untagged: true
-            exclude-tags: ^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev|\d+\.\d+\.\d+-dev\.\d+)$
-            validate: true
-            dry-run: ${{ inputs.dry-run }}
+          owner: ${{ github.repository_owner }}
+          package: ${{ matrix.package }}
+          token: ${{ secrets.GHCR_CLEANUP_TOKEN || secrets.GITHUB_TOKEN }}
+          use-regex: true
+          delete-orphaned-images: true
+          delete-untagged: true
+          exclude-tags: ^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev|\d+\.\d+\.\d+-dev\.\d+)$
+          validate: true
+          dry-run: ${{ needs.config.outputs.dry-run }}
