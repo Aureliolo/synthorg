@@ -90,7 +90,7 @@ CREATE TABLE project_charters_new (
     )
 );
 
-INSERT INTO project_charters_new SELECT * FROM project_charters;
+INSERT INTO project_charters_new SELECT * FROM project_charters;  -- noqa: AM04
 DROP TABLE project_charters;
 ALTER TABLE project_charters_new RENAME TO project_charters;
 
@@ -139,7 +139,7 @@ CREATE TABLE project_brain_entries_new (
     FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
 );
 
-INSERT INTO project_brain_entries_new SELECT * FROM project_brain_entries;
+INSERT INTO project_brain_entries_new SELECT * FROM project_brain_entries;  -- noqa: AM04
 DROP TABLE project_brain_entries;
 ALTER TABLE project_brain_entries_new RENAME TO project_brain_entries;
 
@@ -163,7 +163,7 @@ CREATE TABLE ab_tests_new (
     updated_at TEXT NOT NULL CHECK (updated_at LIKE '%+00:00' OR updated_at LIKE '%Z')
 );
 
-INSERT INTO ab_tests_new SELECT * FROM ab_tests;
+INSERT INTO ab_tests_new SELECT * FROM ab_tests;  -- noqa: AM04
 DROP TABLE ab_tests;
 ALTER TABLE ab_tests_new RENAME TO ab_tests;
 
@@ -181,7 +181,7 @@ CREATE TABLE pruning_requests_new (
     decided_by TEXT
 );
 
-INSERT INTO pruning_requests_new SELECT * FROM pruning_requests;
+INSERT INTO pruning_requests_new SELECT * FROM pruning_requests;  -- noqa: AM04
 DROP TABLE pruning_requests;
 ALTER TABLE pruning_requests_new RENAME TO pruning_requests;
 

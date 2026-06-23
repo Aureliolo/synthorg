@@ -713,9 +713,9 @@ class SettingsService:
     ) -> SettingEntry:
         """Span-wrapped public entry point for a setting write.
 
-        SEC-1: the ``settings.set`` span carries only namespace/key,
-        never the value (which may be a secret); record_exception /
-        set_status are off so exception frame-locals are not serialised.
+        The ``settings.set`` span carries only namespace/key, never the
+        value (which may be a secret); record_exception / set_status are
+        off so exception frame-locals are not serialised.
 
         Returns:
             The persisted ``SettingEntry`` from :meth:`_set`.
@@ -849,9 +849,9 @@ class SettingsService:
     ) -> str:
         """Span-wrapped public entry point for a batch setting write.
 
-        SEC-1: the ``settings.set_many`` span carries only the batch
-        size, never namespaces / keys / values; record_exception /
-        set_status are off so exception frame-locals are not serialised.
+        The ``settings.set_many`` span carries only the batch size, never
+        namespaces / keys / values; record_exception / set_status are off
+        so exception frame-locals are not serialised.
 
         Returns:
             The shared ``updated_at`` ISO string from :meth:`_set_many`.
@@ -1098,9 +1098,9 @@ class SettingsService:
         Raises:
             SettingNotFoundError: If the key is not in the registry.
         """
-        # SEC-1: the span carries only namespace/key (never the value,
-        # which may be a secret). record_exception/set_status are off so
-        # an exception's frame-locals are not serialised into the span.
+        # The span carries only namespace/key (never the value, which may
+        # be a secret). record_exception/set_status are off so an
+        # exception's frame-locals are not serialised into the span.
         with _tracer.start_as_current_span(
             "settings.delete",
             attributes={"settings.namespace": namespace, "settings.key": key},
