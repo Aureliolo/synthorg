@@ -1,17 +1,17 @@
 ---
 import Base from "../../../layouts/Base.astro";
 import fs from "node:fs";
-import path from "node:path";
 
-const scriptPath = path.resolve("../cli/scripts/install.ps1");
+// Resolve relative to this module, not process.cwd(), so the build works
+// regardless of which directory it is invoked from.
+const scriptPath = new URL("../../../../../cli/scripts/install.ps1", import.meta.url);
 let content: string;
 try {
   content = fs.readFileSync(scriptPath, "utf-8");
 } catch (err) {
   throw new Error(
     `install-ps1.astro: could not read the CLI install script at ${scriptPath} ` +
-      `(cwd=${process.cwd()}). Ensure cli/scripts/install.ps1 exists and the build ` +
-      `runs from the site/ directory. Original error: ${(err as Error).message}`,
+      `Ensure cli/scripts/install.ps1 exists. Original error: ${(err as Error).message}`,
   );
 }
 ---

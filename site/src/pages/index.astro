@@ -20,7 +20,11 @@ let githubStars: number | null = null;
 let githubForks: number | null = null;
 try {
   const res = await fetch("https://api.github.com/repos/Aureliolo/synthorg", {
-    headers: { Accept: "application/vnd.github+json" },
+    headers: {
+      Accept: "application/vnd.github+json",
+      "User-Agent": "SynthOrg-Marketing-Site/1.0",
+    },
+    signal: AbortSignal.timeout(5000),
   });
   if (res.ok) {
     const data = await res.json();

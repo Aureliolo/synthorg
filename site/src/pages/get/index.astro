@@ -238,6 +238,9 @@ import Base from "../../layouts/Base.astro";
         }, 2000);
       }
       document.querySelectorAll<HTMLButtonElement>('.copy-btn').forEach(btn => {
+        // Guard against duplicate handlers stacking across ClientRouter navs.
+        if (btn.dataset.copyBound) return;
+        btn.dataset.copyBound = '1';
         btn.addEventListener('click', () => {
           const code = btn.getAttribute('data-code') ?? '';
           if (!navigator.clipboard) {

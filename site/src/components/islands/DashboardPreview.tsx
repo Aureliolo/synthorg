@@ -43,13 +43,17 @@ export default function DashboardPreview() {
   const [isPaused, setIsPaused] = useState(false);
   const [tick, setTick] = useState(0);
   const [pageKey, setPageKey] = useState(0);
-  const [isHidden, setIsHidden] = useState(false);
+  const [isHidden, setIsHidden] = useState(
+    () => typeof document !== "undefined" && document.hidden,
+  );
   const prefersReduced = useReducedMotion();
 
   // Pause all motion when the tab is backgrounded so a left-open page does not
-  // keep re-rendering the mini-widgets every second.
+  // keep re-rendering the mini-widgets every second. Sync once on mount so a
+  // background-tab mount does not run intervals until the first visibilitychange.
   useEffect(() => {
     const onVisibility = () => setIsHidden(document.hidden);
+    onVisibility();
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, []);
@@ -112,7 +116,7 @@ export default function DashboardPreview() {
       }}
       onFocus={() => setIsPaused(true)}
       onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget)) {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
           setIsPaused(false);
         }
       }}

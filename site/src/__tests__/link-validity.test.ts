@@ -280,6 +280,81 @@ function astroAnchorIds(): Set<string> {
   return ids;
 }
 
+const _COMPOSE_EXTENSIONS = [".astro", ".tsx", ".ts", ".jsx", ".js"];
+
+/**
+ * Resolve a relative import specifier from ``fromFile`` to an absolute source
+ * path within the site tree, trying the Astro/TS extension set and ``/index``
+ * forms the bundler accepts.  Returns ``null`` for bare specifiers
+ * (``node_modules`` / aliases) and unresolved paths.
+ */
+function resolveImport(spec: string, fromFile: string): string | null {
+  if (!spec.startsWith(".")) return null;
+  const base = resolve(dirname(fromFile), spec);
+  const candidates = [base];
+  for (const ext of _COMPOSE_EXTENSIONS) candidates.push(base + ext);
+  for (const ext of _COMPOSE_EXTENSIONS) candidates.push(join(base, `index${ext}`));
+  for (const cand of candidates) {
+    if (existsSync(cand) && statSync(cand).isFile()) return cand;
+  }
+  return null;
+}
+
+const _IMPORT_RE = /^\s*import\b[\s\S]*?\bfrom\s*["']([^"']+)["']/gm;
+
+/**
+ * Transitive closure of source files a route composes: the entry file plus
+ * every local module it imports (layout, islands, components), recursively.
+ * A page renders ids declared in any composed component, so route-scoped
+ * anchor validation must consider the whole closure, not just the entry file.
+ */
+function composedFiles(entryFile: string): Set<string> {
+  const seen = new Set<string>();
+  const stack = [entryFile];
+  while (stack.length > 0) {
+    const file = stack.pop() as string;
+    if (seen.has(file)) continue;
+    seen.add(file);
+    const src = readFileSync(file, "utf-8");
+    _IMPORT_RE.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = _IMPORT_RE.exec(src)) !== null) {
+      const resolved = resolveImport(m[1], file);
+      if (resolved !== null && !seen.has(resolved)) stack.push(resolved);
+    }
+  }
+  return seen;
+}
+
+const _ID_PATTERN =
+  /\bid\s*=\s*(?:"([A-Za-z0-9_-]+)"|'([A-Za-z0-9_-]+)'|\{\s*"([A-Za-z0-9_-]+)"\s*\}|\{\s*'([A-Za-z0-9_-]+)'\s*\})/g;
+
+/**
+ * Literal element ids reachable from a specific Astro route file: ids declared
+ * in the route's own source plus every component/layout it composes,
+ * lower-cased.  Memoised per route.  Scoping a cross-page ``/route#fragment``
+ * anchor to the composed closure (rather than the site-wide union) means a
+ * fragment that exists only on an unrelated page no longer masks a broken
+ * cross-page anchor.  Only literal string ids are captured; a dynamic
+ * ``id={expr}`` cannot be validated statically and is ignored.
+ */
+const routeIdCache = new Map<string, Set<string>>();
+function routeAnchorIds(routeFile: string): Set<string> {
+  const cached = routeIdCache.get(routeFile);
+  if (cached !== undefined) return cached;
+  const ids = new Set<string>();
+  for (const file of composedFiles(routeFile)) {
+    const src = readFileSync(file, "utf-8");
+    _ID_PATTERN.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = _ID_PATTERN.exec(src)) !== null) {
+      ids.add((m[1] ?? m[2] ?? m[3] ?? m[4]).toLowerCase());
+    }
+  }
+  routeIdCache.set(routeFile, ids);
+  return ids;
+}
+
 interface ResolutionResult {
   ok: boolean;
   reason?: string;
@@ -320,6 +395,9 @@ function resolveHref(href: string, sourceFile: string): ResolutionResult {
   }
   // Same-page anchor.  From an ``.astro`` source we validate the fragment
   // against the literal ids declared across the site's pages + components.
+  // This stays the site-wide union (not route-scoped): a component cannot
+  // statically know which page composes it, and a ``#frag`` in one component
+  // routinely targets an id owned by a sibling component on the rendered page.
   // From a markdown source the rendered same-page anchor is validated by the
   // docs build, so skip it here.
   if (href.startsWith("#")) {
@@ -426,15 +504,19 @@ function resolveHref(href: string, sourceFile: string): ResolutionResult {
   // Astro route in site/src/pages.
   const astro = resolveAstroRoute(pathOnly);
   if (astro !== null) {
+    // Cross-page anchor: validate against the ids the resolved route can
+    // actually render (its own source + composed components), not the
+    // site-wide union, so a fragment present only on an unrelated page does
+    // not let a broken cross-page anchor pass.
     if (
       anchor !== undefined &&
       anchor !== "" &&
-      !astroAnchorIds().has(anchor.toLowerCase())
+      !routeAnchorIds(astro).has(anchor.toLowerCase())
     ) {
       return {
         ok: false,
         kind: "anchor",
-        reason: `anchor #${anchor} not found in any site .astro id (page ${relative(REPO_ROOT, astro)})`,
+        reason: `anchor #${anchor} not found in route ${relative(REPO_ROOT, astro)} or its composed components`,
         resolvedFile: astro,
       };
     }

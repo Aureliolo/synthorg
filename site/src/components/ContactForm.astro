@@ -146,10 +146,17 @@ const recaptchaSiteKey = import.meta.env.PUBLIC_RECAPTCHA_SITE_KEY ?? "";
         return;
       }
       let timer: ReturnType<typeof setTimeout>;
-      await Promise.race([
-        new Promise<void>((resolve) => grecaptcha.ready(() => { clearTimeout(timer); resolve(); })),
-        new Promise<void>((_, reject) => { timer = setTimeout(() => reject(new Error("reCAPTCHA timeout")), 5000); }),
-      ]);
+      const readyPromise = new Promise<void>((resolve) => grecaptcha.ready(() => resolve()));
+      const timeoutPromise = new Promise<void>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("reCAPTCHA timeout")), 5000);
+      });
+      try {
+        // try/finally guarantees the timer is cleared even when grecaptcha.ready
+        // resolves synchronously (before `timer` would otherwise be assigned).
+        await Promise.race([readyPromise, timeoutPromise]);
+      } finally {
+        clearTimeout(timer);
+      }
       const token = await grecaptcha.execute(siteKey, { action: "contact" });
       captchaInput.value = token;
 

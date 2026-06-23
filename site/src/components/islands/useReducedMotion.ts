@@ -3,20 +3,19 @@ import { useEffect, useState } from "react";
 /**
  * Tracks the user's `prefers-reduced-motion` setting.
  *
- * The initial state is read synchronously from `matchMedia` (these islands only
- * ever run client-side), so a reduced-motion user never sees a first-paint
- * frame of animation before an effect corrects it. The effect only registers
- * the change listener.
+ * The initial state defaults to `true` (the conservative choice) so the
+ * server-rendered markup of these islands never animates before hydration; a
+ * reduced-motion user therefore never sees a first-paint frame of animation.
+ * The effect syncs to the real preference and registers the change listener
+ * once the client `matchMedia` is available.
  */
 export function useReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-  );
+  const [reduced, setReduced] = useState(true);
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setReduced(mq.matches);
+    sync();
     const onChange = (e: MediaQueryListEvent) => setReduced(e.matches);
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);

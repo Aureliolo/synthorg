@@ -424,7 +424,6 @@ export default function ComparisonTable({
               className="ct-toolbar-btn"
               onClick={() => setShowColumnPicker((prev) => !prev)}
               aria-expanded={showColumnPicker}
-              aria-haspopup="true"
               aria-controls="ct-column-picker"
               aria-label="Toggle column visibility"
             >

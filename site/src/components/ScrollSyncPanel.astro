@@ -471,5 +471,11 @@
   }, { once: true });
   setStep(0);
   }
-  document.addEventListener("astro:page-load", init);
+  // Guard against stacking listeners across View Transitions: the module
+  // re-evaluates on each navigation, so register the page-load handler once.
+  const win = window as typeof window & { __scrollSyncPanelInitBound?: boolean };
+  if (!win.__scrollSyncPanelInitBound) {
+    document.addEventListener("astro:page-load", init);
+    win.__scrollSyncPanelInitBound = true;
+  }
 </script>

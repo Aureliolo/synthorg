@@ -1,6 +1,5 @@
 ---
 import fs from "node:fs";
-import path from "node:path";
 import yaml from "js-yaml";
 
 import Base from "../layouts/Base.astro";
@@ -9,15 +8,16 @@ import ComparisonFAQ from "../components/ComparisonFAQ.astro";
 import ComparisonTable from "../components/islands/ComparisonTable";
 import type { Dimension, Category, Competitor } from "../components/islands/ComparisonTable";
 
-const dataPath = path.resolve("../data/competitors.yaml");
+// Resolve relative to this module, not process.cwd(), so the build works
+// regardless of which directory it is invoked from.
+const dataPath = new URL("../../../data/competitors.yaml", import.meta.url);
 let raw: string;
 try {
   raw = fs.readFileSync(dataPath, "utf-8");
 } catch (err) {
   throw new Error(
     `compare.astro: could not read the comparison data at ${dataPath} ` +
-      `(cwd=${process.cwd()}). The Astro build must run from the site/ directory ` +
-      `so the repo-root data/ folder resolves. Original error: ${(err as Error).message}`,
+      `Original error: ${(err as Error).message}`,
   );
 }
 const data = yaml.load(raw) as {
