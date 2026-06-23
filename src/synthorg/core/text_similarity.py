@@ -93,7 +93,14 @@ def word_overlap(
 
     Returns:
         Overlap ratio in ``[0.0, 1.0]``.
+
+    Raises:
+        ValueError: When ``empty_b`` falls outside ``[0.0, 1.0]`` and so
+            would break the documented return range.
     """
+    if not 0.0 <= empty_b <= 1.0:
+        msg = f"empty_b must be within [0.0, 1.0], got {empty_b}"
+        raise ValueError(msg)
     if not b:
         return empty_b
     return len(a & b) / len(b)

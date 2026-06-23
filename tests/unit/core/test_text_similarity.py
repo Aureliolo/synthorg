@@ -80,6 +80,11 @@ class TestWordOverlap:
         assert word_overlap(a, b) == 1.0
         assert word_overlap(b, a) == 0.5
 
+    @pytest.mark.parametrize("empty_b", [-0.1, 1.1, 2.0])
+    def test_out_of_range_empty_b_rejected(self, empty_b: float) -> None:
+        with pytest.raises(ValueError, match="empty_b must be within"):
+            word_overlap(frozenset({"a"}), frozenset(), empty_b=empty_b)
+
 
 @pytest.mark.unit
 class TestCosineWordSimilarity:

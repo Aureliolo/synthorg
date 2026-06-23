@@ -141,7 +141,11 @@ class _LlmRetryResponse(
         Returns:
             The value when it is a supported strategy, else ``None``.
         """
-        if value in {"semantic_only", "episodic_only", "skip"}:
+        if isinstance(value, str) and value in {
+            "semantic_only",
+            "episodic_only",
+            "skip",
+        }:
             return value
         return None
 

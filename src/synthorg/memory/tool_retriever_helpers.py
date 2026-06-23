@@ -4,6 +4,7 @@ Shared formatting, argument parsing, and result merging utilities used
 by ``ToolBasedInjectionStrategy`` and its reformulation loop.
 """
 
+import math
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -57,9 +58,13 @@ class MemorySearchArgs(
 
         Returns:
             The integer limit, or ``None`` when the value is absent or
-            not a real number (the caller applies the default).
+            not a finite real number (the caller applies the default).
         """
-        if isinstance(value, bool) or not isinstance(value, int | float):
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int | float)
+            or not math.isfinite(value)
+        ):
             return None
         return int(value)
 

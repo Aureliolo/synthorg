@@ -40,6 +40,6 @@ def parse_window_days_strict(window_size: str) -> int:
     """
     days = parse_window_days(window_size)
     if days is None:
-        msg = f"Unrecognized window size format: {window_size!r}. Expected '<N>d'."
+        msg = f"Unrecognised window size format: {window_size!r}. Expected '<N>d'."
         raise ValueError(msg)
     return days

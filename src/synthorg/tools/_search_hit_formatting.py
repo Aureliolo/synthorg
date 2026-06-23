@@ -3,9 +3,11 @@
 
 The living-docs and project-brain search tools render hits identically:
 a ``[label] identifier (score):`` header followed by the chunk body, with
-a blank line between hits. Only the body's untrusted-content fencing
-differs (brain entries are attacker-influenceable, living-doc bodies are
-not). This helper is the single source of truth for that layout.
+a blank line between hits. Both feed agent-authored content (brain
+entries and living-doc chunks alike are attacker-influenceable, since an
+upstream agent may have been prompt-injected when it wrote them), so each
+caller passes the fence ``wrap_tag`` appropriate to its source. This
+helper is the single source of truth for that layout.
 
 The knowledge search tool uses a distinct citation-anchored layout and
 keeps its own formatter.

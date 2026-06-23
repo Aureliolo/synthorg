@@ -15,6 +15,7 @@ from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.service import DocsService
+from synthorg.engine.prompt_safety import TAG_LIVING_DOC
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -129,6 +130,7 @@ class SearchLivingDocsTool(BaseTool):
                     for h in hits
                 ),
                 empty_msg="No matching living docs for this project.",
+                wrap_tag=TAG_LIVING_DOC,
             ),
             metadata={"hit_count": len(hits), "hits": hit_dicts},
         )

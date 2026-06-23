@@ -12,6 +12,7 @@ from typing import Final
 from urllib.parse import urlparse
 
 from synthorg.config.schema import ProviderConfig
+from synthorg.core.url_redaction import redact_url
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import PROVIDER_DISCOVERY_FAILED
 from synthorg.providers._auth_type_descriptor import (
@@ -74,13 +75,13 @@ def infer_preset_hint(base_url: str) -> str | None:
     """Infer the preset name from a provider base URL.
 
     Uses port-based heuristics for common local providers.
-    Recognized ports: 11434 (ollama), 1234 (lm-studio).
+    Recognised ports: 11434 (ollama), 1234 (lm-studio).
 
     Args:
         base_url: Provider base URL.
 
     Returns:
-        Preset name hint, or ``None`` if unrecognized.
+        Preset name hint, or ``None`` if unrecognised.
     """
     try:
         port = urlparse(base_url).port
@@ -88,7 +89,7 @@ def infer_preset_hint(base_url: str) -> str | None:
         logger.debug(
             PROVIDER_DISCOVERY_FAILED,
             reason="invalid_port_in_url",
-            base_url=base_url,
+            base_url=redact_url(base_url),
         )
         return None
     if port is None:

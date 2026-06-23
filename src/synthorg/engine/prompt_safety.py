@@ -104,6 +104,24 @@ retrieval hits presented to the synthesiser as the evidence corpus, not
 the raw output of a single tool call.
 """
 
+TAG_LIVING_DOC: Final[str] = "living-doc"
+"""Wrap a living-docs corpus chunk flowing into an agent's context.
+
+The living-docs corpus holds status reports, deliverables, and knowledge
+notes authored by agents while executing tasks. That content is derived
+from task briefs and tool output that may be attacker-controllable, so a
+chunk surfaced by the ``search_living_docs`` tool is treated as untrusted
+input: an upstream agent may have been prompt-injected when it produced
+the document. Wrapping each chunk under this tag keeps the retrieving
+agent from following instructions embedded in a stored document.
+
+Distinct from :data:`TAG_MEMORY_ENTRY` (consolidated agent-memory
+snippets) and :data:`TAG_BRAIN_STATE` (structured project-brain state):
+living docs are a dedicated doc-only retrieval tool path, so operators
+triaging an injection can trace the leak to the living-docs corpus
+specifically.
+"""
+
 TAG_BRAIN_STATE: Final[str] = "brain-state"
 """Wrap a long-horizon project-brain entry flowing into an LLM call.
 

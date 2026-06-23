@@ -13,7 +13,7 @@ from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.reformulation import QueryReformulator, SufficiencyChecker
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy
-from synthorg.memory.tool_retriever_helpers import merge_results
+from synthorg.memory.tool_retriever_helpers import MemorySearchArgs, merge_results
 from tests._shared import JsonDict
 
 
@@ -733,3 +733,26 @@ class TestMergeResults:
             "merge must sort by relevance so later unseen high-relevance "
             f"entries displace earlier low-relevance ones; got {ids}"
         )
+
+
+@pytest.mark.unit
+class TestMemorySearchArgsLimitCoercion:
+    """``_coerce_limit`` degrades non-finite / non-numeric limits to None."""
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            (5, 5),
+            (3.7, 3),
+            (True, None),
+            ("10", None),
+            (float("nan"), None),
+            (float("inf"), None),
+            (float("-inf"), None),
+        ],
+    )
+    def test_limit_coercion(self, raw: object, expected: int | None) -> None:
+        # A non-finite float must not raise from ``int(value)`` -- the
+        # caller applies the default limit instead.
+        args = MemorySearchArgs.model_validate({"query": "q", "limit": raw})
+        assert args.limit == expected

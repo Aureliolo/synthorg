@@ -143,6 +143,11 @@ class TestSearchLivingDocsTool:
             assert result.is_error is False
             assert cast(JsonDict, result.metadata)["hit_count"] >= 1
             assert "checkout-fix" in result.content
+            # Living-doc chunk bodies are agent-authored (and thus
+            # attacker-influenceable), so they are fenced under the
+            # ``living-doc`` tag before reaching the agent's context.
+            assert "<living-doc>" in result.content
+            assert "</living-doc>" in result.content
         finally:
             await backend.disconnect()
 

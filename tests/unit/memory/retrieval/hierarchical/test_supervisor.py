@@ -14,6 +14,7 @@ from synthorg.memory.retrieval.hierarchical.models import (
 )
 from synthorg.memory.retrieval.hierarchical.supervisor import (
     SupervisorRouter,
+    _LlmRetryResponse,
 )
 from synthorg.memory.retrieval.models import (
     FinalRetrievalResult,
@@ -257,3 +258,33 @@ class TestSupervisorRouterRetry:
             result,
         )
         assert correction is None
+
+
+@pytest.mark.unit
+class TestLlmRetryResponseStrategyValidator:
+    """``_nullify_unknown_strategy`` degrades unsupported values to None."""
+
+    @pytest.mark.parametrize(
+        "strategy",
+        ["semantic_only", "episodic_only", "skip"],
+    )
+    def test_supported_strategy_preserved(self, strategy: str) -> None:
+        response = _LlmRetryResponse.model_validate(
+            {"alternative_strategy": strategy},
+        )
+        assert response.alternative_strategy == strategy
+
+    @pytest.mark.parametrize(
+        "value",
+        ["unknown", {"k": "v"}, ["skip"], 3, None],
+    )
+    def test_unsupported_or_unhashable_value_degrades_to_none(
+        self,
+        value: object,
+    ) -> None:
+        # An unhashable dict/list must not raise TypeError on the set
+        # membership test -- the validator degrades it to None instead.
+        response = _LlmRetryResponse.model_validate(
+            {"alternative_strategy": value},
+        )
+        assert response.alternative_strategy is None

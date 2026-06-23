@@ -836,14 +836,14 @@ def _validate_task_ownership(
     "a2a-gateway"`` and are associated with the requesting peer
     via the ``a2a-inbound`` project.  All A2A tasks are accessible
     to any authenticated peer: the peer allowlist is the
-    authorization boundary.
+    authorisation boundary.
 
     Args:
         task: The task to check.
         peer_name: Authenticated peer name.
     """
     # All authenticated peers share the a2a task namespace; the peer
-    # allowlist is the authorization boundary.
+    # allowlist is the authorisation boundary.
 
 
 async def _handle_message_send(

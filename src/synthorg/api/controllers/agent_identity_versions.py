@@ -313,16 +313,12 @@ class AgentIdentityVersionController(Controller):
                 target.snapshot,
                 evolution_rationale=rationale,
             )
-        except AgentNotFoundError as exc:
+        except AgentNotFoundError:
             # Let the specific 404 AGENT_NOT_FOUND propagate via the
             # domain handler rather than collapsing it to the generic
-            # RESOURCE_NOT_FOUND, so clients can branch on the code.
-            logger.warning(
-                AGENT_IDENTITY_ROLLBACK_FAILED,
-                agent_id=agent_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
+            # RESOURCE_NOT_FOUND, so clients can branch on the code. No
+            # warning log: this is a routine client-facing not-found guard,
+            # not an operational fault.
             raise
         except ValueError as exc:
             # evolve_identity raises ValueError when immutable fields
