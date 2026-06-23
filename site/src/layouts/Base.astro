@@ -126,7 +126,10 @@ const organizationLd = {
                 recaptchaSiteKey;
               s.async = true;
               s.onerror = function () {
+                // Remove the failed element so the existing-script guard above
+                // does not block a later retry.
                 loading = false;
+                s.remove();
                 console.warn("reCAPTCHA script failed to load");
               };
               document.head.appendChild(s);

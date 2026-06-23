@@ -150,15 +150,17 @@ export default function ComparisonTable({
     };
   }, [hiddenColumns, fullWidth]);
 
-  // Escape key to exit full-width mode
+  // Escape key to exit full-width mode. When the column picker is also open it
+  // owns Escape (its handler closes the picker); this listener registers first,
+  // so guard against the picker being open to avoid one Escape collapsing both.
   useEffect(() => {
     if (!fullWidth) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setFullWidth(false);
+      if (e.key === "Escape" && !showColumnPicker) setFullWidth(false);
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [fullWidth]);
+  }, [fullWidth, showColumnPicker]);
 
   // Column picker: close on outside pointer (mouse + touch) or Escape, move
   // focus into the panel on open, and restore focus to the trigger on Escape.
