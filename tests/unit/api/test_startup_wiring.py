@@ -54,6 +54,7 @@ from synthorg.ontology.state import OntologyStateSlice
 from synthorg.persistence.approval_protocol import ApprovalRepository
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.state import PersistenceStateSlice
+from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.security.redteam.builder import RedTeamRuntime
 from synthorg.security.redteam.gate import RedTeamGateService
@@ -452,6 +453,45 @@ class TestWireFineTuneOrchestrator:
         await _wire_fine_tune_orchestrator(state)
 
         assert state.slice(MemoryStateSlice).fine_tune_orchestrator is None
+
+    async def test_unknown_query_provider_falls_back_to_extractive(self) -> None:
+        fake = FakePersistenceBackend()
+        fake.fine_tune_runs.mark_interrupted.return_value = 0
+
+        async def _get_str(_namespace: object, key: str) -> str:
+            return {
+                "fine_tune_query_model": "test-model",
+                "fine_tune_query_provider": "ghost-provider",
+            }.get(key, "")
+
+        resolver = mock_of[ConfigResolver](
+            get_str=AsyncMock(spec=ConfigResolver.get_str, side_effect=_get_str),
+        )
+        state = _make_state(
+            config_resolver=resolver,
+            provider_registry=ProviderRegistry(
+                {"test-provider": mock_of[BaseCompletionProvider]()},
+            ),
+            slices={PersistenceStateSlice: {"backend": fake}},
+        )
+
+        with structlog.testing.capture_logs() as captured:
+            await _wire_fine_tune_orchestrator(state)
+
+        orchestrator = state.slice(MemoryStateSlice).fine_tune_orchestrator
+        assert isinstance(orchestrator, FineTuneOrchestrator)
+        # An operator-named provider that is not registered must NOT silently
+        # substitute the first provider; the LLM query generator stays off and
+        # the misconfiguration is surfaced as an error.
+        assert orchestrator._query_generator is None
+        errors = [
+            e
+            for e in _wire_logs(captured)
+            if e.get("log_level") == "error"
+            and "not registered" in str(e.get("note", ""))
+        ]
+        assert len(errors) == 1
+        assert errors[0]["fine_tune_query_provider"] == "ghost-provider"
 
     async def test_wires_orchestrator_and_runs_recovery(self) -> None:
         fake = FakePersistenceBackend()

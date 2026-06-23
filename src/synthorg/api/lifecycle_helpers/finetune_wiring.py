@@ -112,16 +112,32 @@ async def _wire_fine_tune_orchestrator(app_state: AppState) -> None:
                     SettingNamespace.MEMORY, "fine_tune_query_provider"
                 )
             ).strip()
-            provider = (
-                registry.get(provider_name)
-                if provider_name and provider_name in registry
-                else registry.get(provider_names[0])
-            )
-            query_generator = build_query_generator(
-                provider=provider,
-                model=query_model,
-                cost_tracker=cost_tracker_of(app_state),
-            )
+            provider = None
+            if not provider_name:
+                # No explicit choice: default to the first registered provider.
+                provider = registry.get(provider_names[0])
+            elif provider_name in registry:
+                provider = registry.get(provider_name)
+            else:
+                # The operator named a provider that is not registered.
+                # Surface the misconfiguration rather than silently
+                # substituting a different provider; fall back to the
+                # extractive query generator (provider stays None).
+                logger.error(
+                    API_APP_STARTUP,
+                    service="fine_tune_orchestrator",
+                    note=(
+                        "fine_tune_query_provider names a provider that is "
+                        "not registered; using the extractive query generator"
+                    ),
+                    fine_tune_query_provider=provider_name,
+                )
+            if provider is not None:
+                query_generator = build_query_generator(
+                    provider=provider,
+                    model=query_model,
+                    cost_tracker=cost_tracker_of(app_state),
+                )
         elif query_model:
             # The operator explicitly configured an LLM query model but no
             # provider is registered (or the registry is not yet wired).

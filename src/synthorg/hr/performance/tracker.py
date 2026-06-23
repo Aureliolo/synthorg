@@ -788,6 +788,12 @@ class PerformanceTracker:
         agent_key = str(agent_id)
         async with self._metrics_lock:
             task_records = tuple(self._task_metrics.get(agent_key, []))
+            # Capture the forget epoch under the SAME lock as the records
+            # snapshot. If ``forget_agent`` runs after this point, the
+            # captured epoch is stale relative to the bumped counter, so the
+            # scheduled inflection task's guard skips its cache writes rather
+            # than repopulating the forgotten agent from pre-forget trends.
+            forget_epoch = self._forget_generation.get(agent_key, 0)
         if since is not None:
             # Clamp both ends so a ``[since, now]`` snapshot cannot include
             # records completed after ``now``.
@@ -815,7 +821,13 @@ class PerformanceTracker:
             # task would survive the clear and could repopulate
             # ``_trend_direction_cache`` after aclear() returned.
             async with self._metrics_lock:
-                self._schedule_inflection_emission(agent_id, trends)
+                # Skip if the agent was forgotten between the records
+                # snapshot and now; scheduling with the captured epoch keeps
+                # the task's guard authoritative against a later forget too.
+                if self._forget_generation.get(agent_key, 0) == forget_epoch:
+                    self._schedule_inflection_emission(
+                        agent_id, trends, forget_epoch=forget_epoch
+                    )
 
         # Overall quality: average of all scored records.
         scored = [r.quality_score for r in task_records if r.quality_score is not None]
@@ -1176,12 +1188,19 @@ class PerformanceTracker:
         self,
         agent_id: NotBlankStr,
         trends: list[TrendResult],
+        *,
+        forget_epoch: int,
     ) -> None:
         """Schedule inflection emission as a background task.
 
         Compares each trend's direction against the cached previous
         direction.  Emits a ``PerformanceInflection`` for every
         direction change.  The task is tracked to prevent GC warnings.
+
+        ``forget_epoch`` is captured by the caller under the same lock as
+        the metrics snapshot the ``trends`` derive from, and re-checked in
+        :meth:`_do_emit_inflections` before any cache write, so a
+        ``forget_agent`` that races the snapshot cannot be repopulated.
 
         MUST be called with ``_metrics_lock`` held so the
         ``_background_tasks`` mutation is atomic with respect to
@@ -1191,7 +1210,6 @@ class PerformanceTracker:
         """
         if self._closing:
             return
-        forget_epoch = self._forget_generation.get(str(agent_id), 0)
         task = asyncio.create_task(
             self._do_emit_inflections(agent_id, trends, forget_epoch),
         )

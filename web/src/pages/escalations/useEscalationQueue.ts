@@ -110,10 +110,10 @@ function useEscalationPaging(
       if (next > loadedPageCount) {
         if (!hasMore) return
         void fetchMore()
-        // Clamp to the last loaded page until the next batch resolves so
-        // the visible slice is never empty; a second navigation advances
-        // once the new rows have filled in.
-        setPage(loadedPageCount)
+        // Store the requested target; `effectivePage` clamps rendering to
+        // the last loaded page until the next batch resolves, then the
+        // operator lands on the page they asked for once rows fill in.
+        setPage(next)
         return
       }
       setPage(next)

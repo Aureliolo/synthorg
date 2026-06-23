@@ -202,19 +202,23 @@ class HttpGitHubClient:
     ) -> httpx.Response:
         """Issue *request*, retrying GitHub throttling with backoff.
 
-        Retries only on a 429 (raised as ``GitHubRateLimitError`` by
-        ``_check_response``), honouring the server's ``Retry-After``. Any
-        other status passes through unchecked so the caller (or a
-        follow-up ``_check_response``) can classify it.
+        Classifies throttling INSIDE the retry scope so the handler can
+        honour the server's ``Retry-After``. GitHub signals rate limits
+        with BOTH 429 and 403 (primary/secondary), so both are routed
+        through ``_check_response``: a throttled response raises
+        ``GitHubRateLimitError`` (retryable) while a genuine auth 403
+        raises ``GitHubAuthError`` (not retryable, propagates). Other
+        statuses pass through unchecked so the caller (or a follow-up
+        ``_check_response``) can classify them.
 
         Returns:
             The HTTP response (status unclassified except for the retried
-            429).
+            throttling cases).
         """
 
         async def _op() -> httpx.Response:
             resp = await request()
-            if resp.status_code == _HTTP_TOO_MANY_REQUESTS:
+            if resp.status_code in {_HTTP_TOO_MANY_REQUESTS, _HTTP_FORBIDDEN}:
                 _check_response(resp, action)
             return resp
 
