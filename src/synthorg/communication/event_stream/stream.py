@@ -341,7 +341,7 @@ class EventStreamHub:
                         clock=self._clock,
                         idle_ttl_seconds=idle_ttl_seconds,
                         subscribers=self._subscribers,
-                        seen_event_ids=self._ledger.seen_event_ids,
+                        forget_session=self._ledger.forget_session,
                         lock=self._lock_for_current_loop(),
                     ),
                 ),

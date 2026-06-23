@@ -10,7 +10,6 @@ fan-out hot path in ``stream.py`` stays focused on publish/subscribe.
 """
 
 import asyncio
-from collections import OrderedDict
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 
@@ -50,7 +49,7 @@ async def prune_idle_subscribers(
     clock: Clock,
     idle_ttl_seconds: float,
     subscribers: dict[str, list[_Subscriber]],
-    seen_event_ids: dict[str, OrderedDict[str, float]],
+    forget_session: Callable[[str], None],
     lock: asyncio.Lock,
 ) -> None:
     """Drop subscribers whose ``last_active`` is older than the TTL.
@@ -60,8 +59,9 @@ async def prune_idle_subscribers(
         idle_ttl_seconds: Inactivity window before a subscriber is evicted.
         subscribers: The hub's per-session subscriber lists (mutated in
             place under ``lock``).
-        seen_event_ids: The hub's per-session dedup windows (pruned in
-            lockstep when a session empties).
+        forget_session: Ledger hook to drop a session's dedup window when
+            its last subscriber is evicted (keeps the ledger internals
+            private rather than exposing the raw dedup map).
         lock: The hub's current-loop lock guarding the maps.
     """
     now = clock.monotonic()
@@ -75,7 +75,7 @@ async def prune_idle_subscribers(
                 subscribers[session_id] = kept
             else:
                 del subscribers[session_id]
-                seen_event_ids.pop(session_id, None)
+                forget_session(session_id)
     if pruned > 0:
         logger.info(
             EVENT_STREAM_HUB_JANITOR_PRUNED,

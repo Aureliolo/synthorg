@@ -107,6 +107,7 @@ API_WS_REVALIDATION_BUDGET_EXHAUSTED: Final[str] = (
 
 # SSE streaming
 API_SSE_PULL_MODEL_FAILED: Final[str] = "api.sse.pull_model_failed"
+API_SSE_INVALID_LAST_EVENT_ID: Final[str] = "api.sse.invalid_last_event_id"
 API_MODEL_OPERATION_FAILED: Final[str] = "api.model.operation_failed"
 API_OPENAPI_SCHEMA_ENHANCED: Final[str] = "api.openapi.schema_enhanced"
 API_RESOURCE_CONFLICT: Final[str] = "api.resource.conflict"

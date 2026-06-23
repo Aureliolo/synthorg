@@ -166,3 +166,15 @@ class TestLlmQueryGenerator:
         gen = LlmQueryGenerator(provider=provider, model="test-small-001")
         with pytest.raises(AuthenticationError):
             await gen.generate("body")
+
+    async def test_unexpected_error_propagates_not_silent_fallback(self) -> None:
+        """A non-provider exception is a defect: it propagates, never degrades.
+
+        Masking it as an extractive fallback would silently corrupt every
+        chunk while looking like routine behaviour, so the broad handler
+        re-raises after logging.
+        """
+        provider = _StubProvider(error=RuntimeError("broken wiring"))
+        gen = LlmQueryGenerator(provider=provider, model="test-small-001")
+        with pytest.raises(RuntimeError, match="broken wiring"):
+            await gen.generate("First sentence. rest")

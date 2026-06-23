@@ -9,9 +9,12 @@ deployed executor / axe bundles.
 import shutil
 from pathlib import Path
 
-from synthorg.observability import get_logger
-from synthorg.observability.events.browser import BROWSER_ARGS_VALIDATION_FAILED
-from synthorg.tools.browser.errors import BrowserArgumentError
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.browser import (
+    BROWSER_ARGS_VALIDATION_FAILED,
+    BROWSER_ASSET_DEPLOY_FAILED,
+)
+from synthorg.tools.browser.errors import BrowserArgumentError, BrowserLaunchError
 
 logger = get_logger(__name__)
 
@@ -51,8 +54,28 @@ def copy_if_stale(source: Path, target: Path) -> bool:
     Returns:
         ``True`` if the file was copied, ``False`` if the target was
         already up to date.
+
+    Raises:
+        BrowserLaunchError: If a filesystem error prevents staging the
+            asset (surfaced with deploy context instead of an opaque
+            ``OSError`` traceback with no log).
     """
-    if not target.exists() or (target.stat().st_mtime < source.stat().st_mtime):
-        shutil.copyfile(source, target)
-        return True
-    return False
+    try:
+        stale = not target.exists() or (target.stat().st_mtime < source.stat().st_mtime)
+        if stale:
+            shutil.copyfile(source, target)
+    except OSError as exc:
+        logger.error(
+            BROWSER_ASSET_DEPLOY_FAILED,
+            source=str(source),
+            target=str(target),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        msg = "failed to stage browser asset"
+        raise BrowserLaunchError(
+            msg,
+            context={"source": str(source), "target": str(target)},
+        ) from exc
+    else:
+        return stale

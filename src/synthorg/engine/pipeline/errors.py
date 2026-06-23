@@ -45,6 +45,21 @@ class WorkRoutingUndecidableError(WorkPipelineError):
     status_code: ClassVar[int] = 500
 
 
+class WorkPipelineConfigError(WorkPipelineError):
+    """Raised at boot when the pipeline is misconfigured (500).
+
+    Covers an unknown ``task_assignment.strategy`` name: failing the
+    pipeline build loudly beats silently degrading to the direct-scorer
+    path for the lifetime of the process, where the operator's intended
+    strategy never runs and the only signal is an easily-missed warning.
+    """
+
+    default_message: ClassVar[str] = "Work pipeline is misconfigured"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.INTERNAL_ERROR
+    status_code: ClassVar[int] = 500
+
+
 class WorkPipelineTeamPathUnavailableError(WorkPipelineError):
     """Raised when splittable work needs the coordinator but it is absent.
 

@@ -873,6 +873,7 @@ class PlannerWorktreeStrategy:
             logger.warning(
                 WORKSPACE_DISK_CHECK_ERROR,
                 workspace_id=workspace.workspace_id,
+                worktree_path=str(Path(workspace.worktree_path)),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

@@ -224,6 +224,8 @@ class SlackNotificationSink:
 
         Raises:
             RuntimeError: If called before ``start()``.
+            httpx.HTTPStatusError: On a non-2xx webhook response (incl. a
+                429 rate-limit, logged once with its Retry-After).
 
         Args:
             notification: The notification to deliver.
@@ -246,8 +248,9 @@ class SlackNotificationSink:
             )
             if response.status_code == _HTTP_TOO_MANY_REQUESTS:
                 # Surface the Retry-After hint so a throttled webhook is
-                # observable before raise_for_status turns it into a
-                # generic HTTP error the dispatcher retries.
+                # observable. raise_for_status below turns this into an
+                # HTTPStatusError; the handler skips re-logging it (see
+                # below) so a 429 is recorded exactly once.
                 logger.warning(
                     NOTIFICATION_SLACK_FAILED,
                     notification_id=str(notification.id),
@@ -261,6 +264,18 @@ class SlackNotificationSink:
                 NOTIFICATION_SLACK_DELIVERED,
                 notification_id=str(notification.id),
             )
+        except httpx.HTTPStatusError as exc:
+            # A 429 was already logged above with its Retry-After; avoid the
+            # duplicate failure log (which would fire automated alerts twice
+            # per rate-limited delivery). Other statuses log here.
+            if exc.response.status_code != _HTTP_TOO_MANY_REQUESTS:
+                logger.warning(
+                    NOTIFICATION_SLACK_FAILED,
+                    notification_id=str(notification.id),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+            raise
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(

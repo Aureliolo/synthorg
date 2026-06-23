@@ -129,6 +129,7 @@ def _select_via_service(
             reason="assignment_service_no_selection",
             path="solo",
             strategy=result.strategy_used,
+            assignment_reason=result.reason,
             error_type=WorkRoutingUndecidableError.__name__,
         )
         raise WorkRoutingUndecidableError(msg)

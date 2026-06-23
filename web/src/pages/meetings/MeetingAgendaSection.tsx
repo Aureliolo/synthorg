@@ -24,7 +24,8 @@ export function MeetingAgendaSection({ agenda, className }: MeetingAgendaSection
         {agenda.items.length > 0 && (
           <ol className="space-y-3">
             {agenda.items.map((item, idx) => (
-              <li key={`agenda-${item.title}`} className="flex gap-3">
+              // eslint-disable-next-line @eslint-react/no-array-index-key -- agenda items have no stable id and the ordered list is never reordered/filtered; title alone is not unique
+              <li key={`agenda-${idx}`} className="flex gap-3">
                 <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-accent/10 font-mono text-micro font-medium text-accent">
                   {idx + 1}
                 </span>

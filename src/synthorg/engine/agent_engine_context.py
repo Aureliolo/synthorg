@@ -289,6 +289,8 @@ class AgentEngineContextMixin:
                 task_id=task_id,
                 trim_tier=trim_tier,
                 reason="notifier callback raised",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     async def _read_notify_enabled(

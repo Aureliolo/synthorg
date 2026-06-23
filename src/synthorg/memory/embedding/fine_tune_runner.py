@@ -66,7 +66,17 @@ def resolve_health_host() -> str:
         The sidecar hostname (never blank).
     """
     raw = os.environ.get(_HEALTH_HOST_ENV_VAR)
-    if raw is None or not raw.strip():
+    if raw is None:
+        return _DEFAULT_HEALTH_HOST
+    if not raw.strip():
+        # Set-but-blank is an operator config mistake: log it (symmetric
+        # with resolve_health_port's CONFIG_VALIDATION_FAILED) rather than
+        # silently probing the default host under a misconfigured override.
+        logger.warning(
+            CONFIG_VALIDATION_FAILED,
+            env_var=_HEALTH_HOST_ENV_VAR,
+            reason="blank-after-strip",
+        )
         return _DEFAULT_HEALTH_HOST
     return raw.strip()
 

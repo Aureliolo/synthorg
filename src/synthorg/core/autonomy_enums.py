@@ -1,6 +1,7 @@
 """Autonomy levels and autonomy comparison."""
 
 from enum import StrEnum
+from types import MappingProxyType
 
 
 class AutonomyLevel(StrEnum):
@@ -17,12 +18,14 @@ class AutonomyLevel(StrEnum):
 
 
 # Ordering: LOCKED (most restrictive) < SUPERVISED < SEMI < FULL (least restrictive).
-_AUTONOMY_RANK: dict[AutonomyLevel, int] = {
-    AutonomyLevel.LOCKED: 0,
-    AutonomyLevel.SUPERVISED: 1,
-    AutonomyLevel.SEMI: 2,
-    AutonomyLevel.FULL: 3,
-}
+_AUTONOMY_RANK: MappingProxyType[AutonomyLevel, int] = MappingProxyType(
+    {
+        AutonomyLevel.LOCKED: 0,
+        AutonomyLevel.SUPERVISED: 1,
+        AutonomyLevel.SEMI: 2,
+        AutonomyLevel.FULL: 3,
+    }
+)
 
 # Fail loudly if the rank table drifts from the enum membership; a new member
 # left out of the table would otherwise raise a deferred KeyError at the first
@@ -33,9 +36,9 @@ if set(_AUTONOMY_RANK) != set(AutonomyLevel):
     raise RuntimeError(_autonomy_msg)
 
 
-_RANK_TO_AUTONOMY: dict[int, AutonomyLevel] = {
-    rank: level for level, rank in _AUTONOMY_RANK.items()
-}
+_RANK_TO_AUTONOMY: MappingProxyType[int, AutonomyLevel] = MappingProxyType(
+    {rank: level for level, rank in _AUTONOMY_RANK.items()}
+)
 
 
 def compare_autonomy(a: AutonomyLevel, b: AutonomyLevel) -> int:

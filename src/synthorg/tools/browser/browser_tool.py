@@ -19,7 +19,6 @@ process.
 import asyncio
 import json
 import re
-import shutil
 from pathlib import Path
 from typing import (
     ClassVar,
@@ -1229,15 +1228,3 @@ class BrowserTool(BaseTool):
                 executor_changed=executor_changed,
                 axe_changed=axe_changed,
             )
-
-    @staticmethod
-    def _copy_if_stale(source: Path, target: Path) -> bool:
-        """Copy if stale.
-
-        Returns:
-            ``True`` if the operation succeeds, ``False`` otherwise.
-        """
-        if not target.exists() or (target.stat().st_mtime < source.stat().st_mtime):
-            shutil.copyfile(source, target)
-            return True
-        return False

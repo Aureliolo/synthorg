@@ -18,7 +18,11 @@ import httpx
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import strip_trailing_slash
-from synthorg.core.resilience import GeneralRetryHandler
+from synthorg.core.resilience import (
+    GeneralRetryHandler,
+    coerce_finite_nonneg_seconds,
+    parse_retry_after_seconds,
+)
 from synthorg.meta.chief_of_staff.models import ProposalOutcome
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.models import ImprovementProposal, RolloutResult
@@ -66,9 +70,16 @@ class _TransientPostError(
     while preserving distinct status logging in the call site.
     """
 
-    def __init__(self, status: int | None, body: str = "") -> None:
+    def __init__(
+        self,
+        status: int | None,
+        body: str = "",
+        *,
+        retry_after_seconds: float | None = None,
+    ) -> None:
         self.status = status
         self.body = body
+        self.retry_after_seconds = retry_after_seconds
         super().__init__(
             f"transient post failure: status={status} body={body!r}",
         )
@@ -494,10 +505,16 @@ class HttpAnalyticsEmitter:
                 return
             if response.status_code == _TOO_MANY_REQUESTS:
                 # Rate limited: retry with backoff instead of dropping the
-                # batch on the blanket-4xx path below.
+                # batch on the blanket-4xx path below. Carry the server's
+                # Retry-After so the handler honours the advertised cooldown
+                # rather than its own (shorter) exponential backoff.
+                retry_after = coerce_finite_nonneg_seconds(
+                    parse_retry_after_seconds(response.headers.get("retry-after"))
+                )
                 raise _TransientPostError(
                     response.status_code,
                     _safe_response_text(response),
+                    retry_after_seconds=retry_after,
                 )
             if _CLIENT_ERROR_MIN <= response.status_code < _SERVER_ERROR_MIN:
                 logger.warning(
@@ -519,6 +536,11 @@ class HttpAnalyticsEmitter:
             cap=_BACKOFF_CAP_SECONDS,
             event=XDEPLOY_BATCH_FLUSH_RETRYING,
             jitter=False,
+            delay_override=lambda exc: (
+                exc.retry_after_seconds
+                if isinstance(exc, _TransientPostError)
+                else None
+            ),
         )
         try:
             await retry.execute(post_once, event_count=event_count)

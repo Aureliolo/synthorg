@@ -52,6 +52,18 @@ WORKERS_DEAD_LETTER_DUPLICATE_SUPPRESSED: Final[str] = (
     "workers.dead_letter.duplicate_suppressed"
 )
 WORKERS_DEAD_LETTER_FAILED: Final[str] = "workers.dead_letter.failed"
+WORKERS_DEAD_LETTER_DEDUP_LOOKUP_FAILED: Final[str] = (
+    "workers.dead_letter.dedup_lookup_failed"
+)
+WORKERS_DEAD_LETTER_DEDUP_MARK_FAILED: Final[str] = (
+    "workers.dead_letter.dedup_mark_failed"
+)
+WORKERS_DEAD_LETTER_DEDUP_BYPASS_PERMANENT: Final[str] = (
+    "workers.dead_letter.dedup_bypass_permanent"
+)
+WORKERS_DEAD_LETTER_RETRYABLE_EXHAUSTED: Final[str] = (
+    "workers.dead_letter.retryable_exhausted"
+)
 
 # seen_claims pruner (backend-side)
 WORKERS_SEEN_CLAIMS_PRUNER_STARTED: Final[str] = "workers.seen_claims_pruner.started"

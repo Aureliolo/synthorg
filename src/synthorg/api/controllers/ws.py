@@ -709,8 +709,13 @@ async def _authenticate_ws(
                 code=_WS_CLOSE_POLICY_VIOLATION,
                 reason="Auth timeout",
             )
-        except Exception:  # noqa: BLE001 -- best-effort close on a hung socket
-            logger.debug(API_WS_SEND_FAILED, reason="close_after_auth_timeout")
+        except Exception as exc:  # noqa: BLE001 -- best-effort close, criticals re-raised
+            reraise_critical(exc)
+            logger.debug(
+                API_WS_SEND_FAILED,
+                reason="close_after_auth_timeout",
+                error_type=type(exc).__name__,
+            )
         return None
     finally:
         await _release_preauth_slot(client_ip)

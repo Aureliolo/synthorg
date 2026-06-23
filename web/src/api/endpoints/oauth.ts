@@ -1,15 +1,15 @@
 import { apiClient, unwrap } from '../client'
 import type { ApiResponse } from '../types/http'
 import type {
-  OauthInitiateRequest,
-  OauthInitiateResponse,
-  OauthTokenStatus,
+  InitiateOAuthFlowRequest,
+  OAuthInitiationResponse,
+  OAuthTokenStatusResponse,
 } from '../types/integrations'
 
 export async function initiateOauth(
-  data: OauthInitiateRequest,
-): Promise<OauthInitiateResponse> {
-  const response = await apiClient.post<ApiResponse<OauthInitiateResponse>>(
+  data: InitiateOAuthFlowRequest,
+): Promise<OAuthInitiationResponse> {
+  const response = await apiClient.post<ApiResponse<OAuthInitiationResponse>>(
     '/oauth/initiate',
     data,
   )
@@ -18,8 +18,8 @@ export async function initiateOauth(
 
 export async function getOauthStatus(
   connectionName: string,
-): Promise<OauthTokenStatus> {
-  const response = await apiClient.get<ApiResponse<OauthTokenStatus>>(
+): Promise<OAuthTokenStatusResponse> {
+  const response = await apiClient.get<ApiResponse<OAuthTokenStatusResponse>>(
     `/oauth/status/${encodeURIComponent(connectionName)}`,
   )
   return unwrap(response)

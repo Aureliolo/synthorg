@@ -7,12 +7,14 @@ making this safe to run inside Docker containers.
 
 import base64
 import re
+from collections.abc import Awaitable, Callable
 from typing import ClassVar, Final, Self
 
 import httpx
 
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.resilience import (
+    GeneralRetryHandler,
     coerce_finite_nonneg_seconds,
     parse_retry_after_seconds,
 )
@@ -23,6 +25,7 @@ from synthorg.observability.events.meta import (
     META_CODE_BRANCH_CREATED,
     META_CODE_FILE_WRITTEN,
     META_CODE_GITHUB_API_FAILED,
+    META_CODE_GITHUB_RATE_LIMIT_RETRY,
     META_CODE_PR_CREATED,
 )
 
@@ -72,6 +75,12 @@ class GitHubRateLimitError(GitHubAPIError):
     """
 
     default_message: ClassVar[str] = "GitHub API rate limited"
+    # Throttling is transient: mark retryable (the base ``GitHubAPIError``
+    # defaults both flags to ``False``) so a retry wrapper branching on
+    # ``is_retryable`` / ``retryable`` actually backs off and retries
+    # rather than treating a 429 as a terminal API failure.
+    is_retryable: bool = True
+    retryable: ClassVar[bool] = True
 
     def __init__(
         self,
@@ -89,6 +98,11 @@ logger = get_logger(__name__)
 
 _DEFAULT_TIMEOUT: Final[int] = 30
 _HTTP_TOO_MANY_REQUESTS: Final[int] = 429
+# Bounded retry for GitHub throttling. A 429 means the request was
+# rejected (not executed), so retrying any verb is idempotent-safe.
+_RATE_LIMIT_MAX_ATTEMPTS: Final[int] = 4
+_RATE_LIMIT_BASE_SECONDS: Final[float] = 1.0
+_RATE_LIMIT_CAP_SECONDS: Final[float] = 30.0
 
 
 class HttpGitHubClient:
@@ -126,6 +140,21 @@ class HttpGitHubClient:
         # httpx.AsyncClient is not picklable, and the meta factory
         # deep-copies the appliers registry).
         self.__client: httpx.AsyncClient | None = None
+        # Retry GitHub throttling, honouring the server's Retry-After hint
+        # over the computed backoff. Only a 429 (GitHubRateLimitError) is
+        # retryable; auth / other API errors propagate immediately.
+        self._retry = GeneralRetryHandler(
+            retryable=lambda exc: isinstance(exc, GitHubRateLimitError),
+            max_attempts=_RATE_LIMIT_MAX_ATTEMPTS,
+            base=_RATE_LIMIT_BASE_SECONDS,
+            cap=_RATE_LIMIT_CAP_SECONDS,
+            event=META_CODE_GITHUB_RATE_LIMIT_RETRY,
+            delay_override=lambda exc: (
+                exc.retry_after_seconds
+                if isinstance(exc, GitHubRateLimitError)
+                else None
+            ),
+        )
 
     @property
     def _client(self) -> httpx.AsyncClient:
@@ -164,6 +193,31 @@ class HttpGitHubClient:
         """Close on context manager exit."""
         await self.aclose()
 
+    async def _send(
+        self,
+        request: Callable[[], Awaitable[httpx.Response]],
+        action: str,
+    ) -> httpx.Response:
+        """Issue *request*, retrying GitHub throttling with backoff.
+
+        Retries only on a 429 (raised as ``GitHubRateLimitError`` by
+        ``_check_response``), honouring the server's ``Retry-After``. Any
+        other status passes through unchecked so the caller (or a
+        follow-up ``_check_response``) can classify it.
+
+        Returns:
+            The HTTP response (status unclassified except for the retried
+            429).
+        """
+
+        async def _op() -> httpx.Response:
+            resp = await request()
+            if resp.status_code == _HTTP_TOO_MANY_REQUESTS:
+                _check_response(resp, action)
+            return resp
+
+        return await self._retry.execute(_op, action=action)
+
     async def create_branch(self, name: str) -> None:
         """Create a branch from the default branch HEAD.
 
@@ -175,9 +229,12 @@ class HttpGitHubClient:
             GitHubAPIError: On other API failures.
         """
         sha = await self._get_branch_sha(self._base_branch)
-        resp = await self._client.post(
-            f"/repos/{self._repo}/git/refs",
-            json={"ref": f"refs/heads/{name}", "sha": sha},
+        resp = await self._send(
+            lambda: self._client.post(
+                f"/repos/{self._repo}/git/refs",
+                json={"ref": f"refs/heads/{name}", "sha": sha},
+            ),
+            f"create branch '{name}'",
         )
         _check_response(resp, f"create branch '{name}'")
         logger.info(
@@ -241,15 +298,18 @@ class HttpGitHubClient:
             GitHubAuthError: On 401/403 responses.
             GitHubAPIError: On other API failures.
         """
-        resp = await self._client.post(
-            f"/repos/{self._repo}/pulls",
-            json={
-                "title": title,
-                "body": body,
-                "head": head,
-                "base": self._base_branch,
-                "draft": True,
-            },
+        resp = await self._send(
+            lambda: self._client.post(
+                f"/repos/{self._repo}/pulls",
+                json={
+                    "title": title,
+                    "body": body,
+                    "head": head,
+                    "base": self._base_branch,
+                    "draft": True,
+                },
+            ),
+            "create draft PR",
         )
         _check_response(resp, "create draft PR")
         pr_url: str = resp.json()["html_url"]
@@ -266,7 +326,9 @@ class HttpGitHubClient:
             GitHubAuthError: If the token is invalid or expired (401/403).
             GitHubAPIError: On other API failures.
         """
-        resp = await self._client.get("/user")
+        resp = await self._send(
+            lambda: self._client.get("/user"), "verify GitHub token"
+        )
         _check_response(resp, "verify GitHub token")
 
     async def delete_branch(self, name: str) -> None:
@@ -278,8 +340,11 @@ class HttpGitHubClient:
         Raises:
             GitHubAPIError: If the API call fails.
         """
-        resp = await self._client.delete(
-            f"/repos/{self._repo}/git/refs/heads/{name}",
+        resp = await self._send(
+            lambda: self._client.delete(
+                f"/repos/{self._repo}/git/refs/heads/{name}",
+            ),
+            f"delete branch '{name}'",
         )
         if resp.status_code == 422:  # noqa: PLR2004
             # Only suppress "reference does not exist" -- other 422s
@@ -297,8 +362,11 @@ class HttpGitHubClient:
         Returns:
             Resulting string.
         """
-        resp = await self._client.get(
-            f"/repos/{self._repo}/git/ref/heads/{branch}",
+        resp = await self._send(
+            lambda: self._client.get(
+                f"/repos/{self._repo}/git/ref/heads/{branch}",
+            ),
+            f"get SHA for branch '{branch}'",
         )
         _check_response(resp, f"get SHA for branch '{branch}'")
         sha: str = resp.json()["object"]["sha"]
@@ -314,9 +382,12 @@ class HttpGitHubClient:
         Returns:
             Resulting string.
         """
-        resp = await self._client.get(
-            f"/repos/{self._repo}/contents/{path}",
-            params={"ref": branch},
+        resp = await self._send(
+            lambda: self._client.get(
+                f"/repos/{self._repo}/contents/{path}",
+                params={"ref": branch},
+            ),
+            f"get SHA for file '{path}'",
         )
         _check_response(resp, f"get SHA for file '{path}'")
         sha: str = resp.json()["sha"]
@@ -341,9 +412,12 @@ class HttpGitHubClient:
         }
         if modify:
             payload["sha"] = await self._get_file_sha(branch, path)
-        resp = await self._client.put(
-            f"/repos/{self._repo}/contents/{path}",
-            json=payload,
+        resp = await self._send(
+            lambda: self._client.put(
+                f"/repos/{self._repo}/contents/{path}",
+                json=payload,
+            ),
+            f"push file '{path}'",
         )
         _check_response(resp, f"push file '{path}'")
 
@@ -355,14 +429,17 @@ class HttpGitHubClient:
     ) -> None:
         """Delete a file from a branch."""
         sha = await self._get_file_sha(branch, path)
-        resp = await self._client.request(
-            "DELETE",
-            f"/repos/{self._repo}/contents/{path}",
-            json={
-                "message": message,
-                "sha": sha,
-                "branch": branch,
-            },
+        resp = await self._send(
+            lambda: self._client.request(
+                "DELETE",
+                f"/repos/{self._repo}/contents/{path}",
+                json={
+                    "message": message,
+                    "sha": sha,
+                    "branch": branch,
+                },
+            ),
+            f"delete file '{path}'",
         )
         _check_response(resp, f"delete file '{path}'")
 

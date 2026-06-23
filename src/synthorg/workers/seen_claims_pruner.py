@@ -157,6 +157,11 @@ class SeenClaimsPruner:
                 except TimeoutError:
                     self._stop_failed = True
                     drain_task.cancel()
+                    # Clear running state before re-raising so ``is_running``
+                    # does not keep reporting True after a timed-out stop (the
+                    # cancelled drain task self-terminates).
+                    self._running = False
+                    self._task = None
                     logger.error(
                         WORKERS_SEEN_CLAIMS_PRUNER_STOPPED,
                         error="stop exceeded hard deadline; pruner unrestartable",

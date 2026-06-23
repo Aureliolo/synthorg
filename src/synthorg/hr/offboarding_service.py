@@ -11,6 +11,7 @@ from synthorg.communication.enums import MessageType
 from synthorg.communication.errors import CommunicationError
 from synthorg.communication.message import Message, TextPart
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE, paginate
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
@@ -40,6 +41,7 @@ from synthorg.observability.events.hr import (
     HR_FIRING_NOTIFICATION_FAILED,
     HR_FIRING_REASSIGNMENT_FAILED,
     HR_FIRING_TEAM_NOTIFIED,
+    HR_OFFBOARDING_PERFORMANCE_EVICTION_FAILED,
 )
 from synthorg.persistence.task_protocol import TaskFilterSpec, TaskRepository
 
@@ -348,7 +350,19 @@ class OffboardingService:
         """
         if self._performance_tracker is None:
             return
-        await self._performance_tracker.forget_agent(agent_id)
+        try:
+            await self._performance_tracker.forget_agent(agent_id)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            # Honour the non-fatal contract: the agent is already
+            # terminated, so an in-memory eviction failure must not abort
+            # offboarding and lose the completion record.
+            logger.warning(
+                HR_OFFBOARDING_PERFORMANCE_EVICTION_FAILED,
+                agent_id=agent_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def _terminate_agent(self, agent_id: str) -> None:
         """Terminate an agent in the registry.

@@ -100,6 +100,11 @@ function useEscalationPaging(
       if (next > loadedPageCount) {
         if (!hasMore) return
         void fetchMore()
+        // Clamp to the last loaded page until the next batch resolves so
+        // the visible slice is never empty; a second navigation advances
+        // once the new rows have filled in.
+        setPage(loadedPageCount)
+        return
       }
       setPage(next)
     },
@@ -231,6 +236,7 @@ export function useEscalationQueue(): EscalationQueue {
     },
     [resetPage],
   )
+  const retry = useCallback(() => void fetchEscalations(), [fetchEscalations])
 
   return {
     escalations,
@@ -251,7 +257,7 @@ export function useEscalationQueue(): EscalationQueue {
     handleStatusChange,
     handlePriorityChange,
     handleSortChange,
-    retry: () => void fetchEscalations(),
+    retry,
     loadPage,
   }
 }

@@ -50,6 +50,11 @@ async def _resolve_loop_enabled(app_state: AppState) -> bool:
         SettingNamespace.COCKPIT.value, "flight_recorder_retention_loop_enabled"
     )
     if app_state.slice(SettingsStateSlice).config_resolver is None:
+        logger.debug(
+            API_FLIGHT_RECORDER_RETENTION,
+            note="settings resolver unavailable; using registered default",
+            fallback_enabled=fallback,
+        )
         return fallback
     try:
         return await config_resolver_of(app_state).get_bool(
@@ -87,6 +92,11 @@ async def _resolve_retention_days(app_state: AppState) -> int:
         SettingNamespace.COCKPIT.value, "flight_recorder_retention_days"
     )
     if app_state.slice(SettingsStateSlice).config_resolver is None:
+        logger.debug(
+            API_FLIGHT_RECORDER_RETENTION,
+            note="settings resolver unavailable; using registered default",
+            fallback_days=fallback,
+        )
         return fallback
     try:
         days = await config_resolver_of(app_state).get_int(
@@ -118,6 +128,10 @@ async def _retention_tick(app_state: AppState) -> None:
     """Single iteration of the flight-recorder retention sweep."""
     days = await _resolve_retention_days(app_state)
     if app_state.slice(PersistenceStateSlice).backend is None:
+        logger.debug(
+            API_FLIGHT_RECORDER_RETENTION,
+            note="flight-recorder retention skipped; no persistence backend",
+        )
         return
     cutoff = app_state.clock.now() - timedelta(days=days)
     try:

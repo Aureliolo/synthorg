@@ -90,7 +90,20 @@ CREATE TABLE project_charters_new (
     )
 );
 
-INSERT INTO project_charters_new SELECT * FROM project_charters;  -- noqa: AM04
+INSERT INTO project_charters_new (
+    id, conversation_id, created_by, version, status, title, brief, goals,
+    constraints, success_criteria, in_scope, out_of_scope, envelope_amount,
+    envelope_currency, envelope_deadline, envelope_time_horizon, project_id,
+    proposed_project_name, proposed_project_description, created_at, updated_at,
+    approved_at, approved_by, forecast_id, correlation_id, task_id
+)
+SELECT
+    id, conversation_id, created_by, version, status, title, brief, goals,
+    constraints, success_criteria, in_scope, out_of_scope, envelope_amount,
+    envelope_currency, envelope_deadline, envelope_time_horizon, project_id,
+    proposed_project_name, proposed_project_description, created_at, updated_at,
+    approved_at, approved_by, forecast_id, correlation_id, task_id
+FROM project_charters;
 DROP TABLE project_charters;
 ALTER TABLE project_charters_new RENAME TO project_charters;
 
@@ -139,7 +152,16 @@ CREATE TABLE project_brain_entries_new (
     FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
 );
 
-INSERT INTO project_brain_entries_new SELECT * FROM project_brain_entries;  -- noqa: AM04
+INSERT INTO project_brain_entries_new (
+    project_id, entry_id, revision, entry_kind, title, rationale, status,
+    author, recorded_at, related_task_ids, related_entry_ids,
+    supersedes_entry_id, tags, confidence, citations, payload
+)
+SELECT
+    project_id, entry_id, revision, entry_kind, title, rationale, status,
+    author, recorded_at, related_task_ids, related_entry_ids,
+    supersedes_entry_id, tags, confidence, citations, payload
+FROM project_brain_entries;
 DROP TABLE project_brain_entries;
 ALTER TABLE project_brain_entries_new RENAME TO project_brain_entries;
 
@@ -163,7 +185,8 @@ CREATE TABLE ab_tests_new (
     updated_at TEXT NOT NULL CHECK (updated_at LIKE '%+00:00' OR updated_at LIKE '%Z')
 );
 
-INSERT INTO ab_tests_new SELECT * FROM ab_tests;  -- noqa: AM04
+INSERT INTO ab_tests_new (id, name, status, variants, created_at, updated_at)
+SELECT id, name, status, variants, created_at, updated_at FROM ab_tests;
 DROP TABLE ab_tests;
 ALTER TABLE ab_tests_new RENAME TO ab_tests;
 
@@ -181,7 +204,14 @@ CREATE TABLE pruning_requests_new (
     decided_by TEXT
 );
 
-INSERT INTO pruning_requests_new SELECT * FROM pruning_requests;  -- noqa: AM04
+INSERT INTO pruning_requests_new (
+    agent_id, id, agent_name, evaluation, approval_id, status,
+    created_at, decided_at, decided_by
+)
+SELECT
+    agent_id, id, agent_name, evaluation, approval_id, status,
+    created_at, decided_at, decided_by
+FROM pruning_requests;
 DROP TABLE pruning_requests;
 ALTER TABLE pruning_requests_new RENAME TO pruning_requests;
 

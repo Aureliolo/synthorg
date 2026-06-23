@@ -1,10 +1,7 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
 	"time"
 
@@ -76,10 +73,6 @@ func runStop(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("resolving data directory: %w", err)
 	}
-	composePath := filepath.Join(safeDir, "compose.yml")
-	if _, err := os.Stat(composePath); errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("compose.yml not found in %s", safeDir)
-	}
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 	// Hold the lifecycle lock across the `compose down` so a concurrent start
@@ -93,6 +86,14 @@ func runStop(cmd *cobra.Command, _ []string) error {
 			errOut.Warn(fmt.Sprintf("could not release lifecycle lock: %v", rerr))
 		}
 	}()
+	// Confirm compose.yml exists INSIDE the lock: checking before the lock
+	// left a TOCTOU window where a concurrent wipe/uninstall could delete it
+	// before composeRunQuiet ran. assertComposeExists also surfaces
+	// non-ErrNotExist stat errors (e.g. permission denied) the inline check
+	// previously dropped.
+	if err := assertComposeExists(safeDir); err != nil {
+		return err
+	}
 
 	sp := out.StartSpinner("Stopping containers...")
 	if err := composeRunQuiet(ctx, info, safeDir, downArgs...); err != nil {

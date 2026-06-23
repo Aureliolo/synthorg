@@ -32,6 +32,7 @@ from synthorg.engine.prompt_safety import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
+    MEMORY_FINE_TUNE_QUERY_GENERATION_ERROR,
     MEMORY_FINE_TUNE_QUERY_LLM_FALLBACK,
 )
 from synthorg.providers.cost_recording import cost_recording_scope
@@ -121,9 +122,6 @@ class LlmQueryGenerator:
         max_query_tokens: Token ceiling for the generated query.
         temperature: Sampling temperature.
         cost_tracker: Optional tracker for cost attribution.
-
-    Raises:
-        ValueError: If ``model`` is blank.
     """
 
     def __init__(
@@ -135,8 +133,13 @@ class LlmQueryGenerator:
         temperature: float = _DEFAULT_TEMPERATURE,
         cost_tracker: CostTracker | None = None,
     ) -> None:
-        if not model or not model.strip():
-            msg = "model must be a non-blank string"
+        # ``model`` is annotated ``NotBlankStr`` for callers, but this is a
+        # plain class (not a Pydantic model) so the annotation is not
+        # runtime-enforced. Validate here so a direct constructor call --
+        # bypassing the blank-guarding ``build_query_generator`` factory --
+        # cannot silently configure an unusable empty model id.
+        if not model.strip():
+            msg = "model must be a non-blank model id"
             raise ValueError(msg)
         self._provider = provider
         self._model = model
@@ -149,9 +152,12 @@ class LlmQueryGenerator:
     async def generate(self, chunk: str) -> str:
         """Generate a retrieval query for ``chunk`` via the LLM.
 
-        Falls back to :func:`extractive_query` for a transient provider
-        error or an empty completion. A non-retryable provider error
-        propagates so a misconfigured model fails the run fast.
+        Falls back to :func:`extractive_query` only for a *retryable*
+        provider error or an empty completion. A non-retryable provider
+        error (logged ERROR) propagates so a misconfigured model fails the
+        run fast; an unexpected non-provider exception (a programming
+        defect, also logged ERROR) likewise propagates rather than masking
+        the defect as a routine extractive fallback.
 
         Returns:
             The generated query, or the extractive fallback.
@@ -183,7 +189,9 @@ class LlmQueryGenerator:
                 )
         except ProviderError as exc:
             if not exc.is_retryable:
-                logger.warning(
+                # Permanent failure (bad model id, auth): ERROR so it can
+                # trigger alerts, then propagate to fail the run fast.
+                logger.error(
                     MEMORY_FINE_TUNE_QUERY_LLM_FALLBACK,
                     model=self._model,
                     retryable=False,
@@ -199,15 +207,19 @@ class LlmQueryGenerator:
                 error=safe_error_description(exc),
             )
             return extractive_query(chunk)
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        except Exception as exc:
             reraise_critical(exc)
-            logger.warning(
-                MEMORY_FINE_TUNE_QUERY_LLM_FALLBACK,
+            # A non-ProviderError is a programming defect (broken provider
+            # wiring, wrong calling convention), not a transient blip: ERROR
+            # and re-raise rather than silently degrading every chunk to the
+            # extractive fallback while looking like routine behaviour.
+            logger.error(
+                MEMORY_FINE_TUNE_QUERY_GENERATION_ERROR,
                 model=self._model,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return extractive_query(chunk)
+            raise
         query = _normalise_llm_query(response.content or "")
         return query or extractive_query(chunk)
 

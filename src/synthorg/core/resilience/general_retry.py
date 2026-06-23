@@ -108,6 +108,11 @@ class GeneralRetryHandler:
         jitter: If True, sleep for a uniform random duration in
             ``[0, computed_delay]``; otherwise sleep for the full
             ``computed_delay``.
+        delay_override: Optional hook called with the caught exception
+            before each sleep. When it returns a non-``None`` value
+            greater than the computed backoff, that value is used as the
+            sleep instead (NOT re-capped) so a server-supplied
+            ``Retry-After`` hint is honoured even when it exceeds ``cap``.
 
     Raises:
         ValueError: If ``max_attempts < 1``, ``base`` is non-finite
@@ -128,6 +133,7 @@ class GeneralRetryHandler:
         event: str,
         jitter: bool = True,
         clock: Clock | None = None,
+        delay_override: Callable[[Exception], float | None] | None = None,
     ) -> None:
         if max_attempts < 1:
             msg = f"max_attempts must be >= 1, got {max_attempts}"
@@ -172,6 +178,7 @@ class GeneralRetryHandler:
         self._event = event
         self._jitter = jitter
         self._clock: Clock = clock if clock is not None else SystemClock()
+        self._delay_override = delay_override
 
     @property
     def max_attempts(self) -> int:
@@ -225,6 +232,12 @@ class GeneralRetryHandler:
                     )
                     raise
                 delay = self._compute_delay(attempt)
+                if self._delay_override is not None:
+                    override = self._delay_override(exc)
+                    if override is not None and override > delay:
+                        # Honour a server-supplied Retry-After even past
+                        # ``cap``: the server is telling us the real cooldown.
+                        delay = override
                 self._log_attempt(attempt, delay, "retrying", exc, safe_ctx)
                 if delay > 0:
                     await self._clock.sleep(delay)

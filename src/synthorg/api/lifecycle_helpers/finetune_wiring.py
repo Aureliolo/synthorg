@@ -120,6 +120,19 @@ async def _wire_fine_tune_orchestrator(app_state: AppState) -> None:
                     model=query_model,
                     cost_tracker=cost_tracker_of(app_state),
                 )
+            else:
+                # The operator explicitly configured an LLM query model but
+                # no provider is registered. Surface the intent-discard
+                # rather than silently falling back to extractive queries.
+                logger.warning(
+                    API_APP_STARTUP,
+                    service="fine_tune_orchestrator",
+                    note=(
+                        "fine_tune_query_model is set but no provider is "
+                        "registered; using the extractive query generator"
+                    ),
+                    fine_tune_query_model=query_model,
+                )
         orchestrator = FineTuneOrchestrator(
             run_repo=run_repo,
             checkpoint_repo=checkpoint_repo,

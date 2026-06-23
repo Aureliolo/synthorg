@@ -6892,6 +6892,19 @@ export type components = {
              */
             readonly success: boolean;
         };
+        /** ApiResponse[OAuthTokenStatusResponse] */
+        readonly ApiResponse_OAuthTokenStatusResponse_: {
+            readonly data: components["schemas"]["OAuthTokenStatusResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
         /** ApiResponse[OverrideResponse] */
         readonly ApiResponse_OverrideResponse_: {
             readonly data: components["schemas"]["OverrideResponse"] | null;
@@ -12442,6 +12455,15 @@ export type components = {
             readonly authorization_url: string;
             /** @description Opaque CSRF state token bound to this flow. */
             readonly state_token: string;
+        };
+        /** OAuthTokenStatusResponse */
+        readonly OAuthTokenStatusResponse: {
+            /** @description The connection whose OAuth token status is reported. */
+            readonly connection_name: string;
+            /** @description True when a usable token exists, False when none, None when the secret store could not be read. */
+            readonly has_token: boolean | null;
+            /** @description ISO-8601 token expiry, or null when not applicable. */
+            readonly token_expires_at: string | null;
         };
         /** OpenQuestionPayload */
         readonly OpenQuestionPayload: {
@@ -24774,7 +24796,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_OAuthTokenStatusResponse_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

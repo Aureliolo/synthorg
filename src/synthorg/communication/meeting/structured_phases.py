@@ -13,7 +13,7 @@ thin coordinator (``__init__`` / ``get_protocol_type`` / ``run``).
 
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 from synthorg.communication.meeting._parsing import (
     parse_action_items,
@@ -41,13 +41,16 @@ from synthorg.communication.meeting.protocol import (
     AgentCaller,
     ConflictDetector,
 )
-from synthorg.observability import get_logger
+from synthorg.core.critical_errors import reraise_critical
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meeting import (
     MEETING_BUDGET_EXHAUSTED,
+    MEETING_CONSENSUS_VELOCITY_FAILED,
     MEETING_CONSENSUS_VELOCITY_FORCED,
     MEETING_PHASE_COMPLETED,
     MEETING_PHASE_STARTED,
     MEETING_PREMORTEM_APPENDED,
+    MEETING_PREMORTEM_FAILED,
     MEETING_TOKENS_RECORDED,
 )
 
@@ -55,7 +58,7 @@ logger = get_logger(__name__)
 
 #: Heading the premortem section is folded under when appended to the
 #: synthesis summary so action-item / decision parsing still scans it.
-_PREMORTEM_SECTION_HEADING: str = "## Premortem Analysis"
+_PREMORTEM_SECTION_HEADING: Final[str] = "## Premortem Analysis"
 
 
 @runtime_checkable
@@ -330,7 +333,19 @@ class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
         if self._consensus_hook is None:
             return False
         positions = tuple(content for _, content in inputs)
-        detected = self._consensus_hook(positions)
+        try:
+            detected = self._consensus_hook(positions)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            # Advisory check only: a hook failure must not abort the meeting
+            # and discard all phase output. Skip the forced-discussion nudge.
+            logger.warning(
+                MEETING_CONSENSUS_VELOCITY_FAILED,
+                meeting_id=meeting_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return False
         if detected:
             logger.info(
                 MEETING_CONSENSUS_VELOCITY_FORCED,
@@ -365,13 +380,25 @@ class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
             meeting_id=meeting_id,
             phase=MeetingPhase.PREMORTEM,
         )
-        section = await self._premortem_hook(
-            synthesis_text=summary,
-            participant_ids=participant_ids,
-            agent_caller=agent_caller,
-            token_budget=tracker.remaining,
-            context_id=meeting_id,
-        )
+        try:
+            section = await self._premortem_hook(
+                synthesis_text=summary,
+                participant_ids=participant_ids,
+                agent_caller=agent_caller,
+                token_budget=tracker.remaining,
+                context_id=meeting_id,
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            # Best-effort phase: a hook failure returns the summary without
+            # a premortem section rather than discarding the whole meeting.
+            logger.warning(
+                MEETING_PREMORTEM_FAILED,
+                meeting_id=meeting_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return summary
         logger.info(
             MEETING_PHASE_COMPLETED,
             meeting_id=meeting_id,

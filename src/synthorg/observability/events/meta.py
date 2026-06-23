@@ -121,6 +121,7 @@ META_CODE_PR_CREATED: Final[str] = "meta.code.pr_created"
 META_CODE_FILE_WRITTEN: Final[str] = "meta.code.file_written"
 META_CODE_SCOPE_VIOLATION: Final[str] = "meta.code.scope_violation"
 META_CODE_GITHUB_API_FAILED: Final[str] = "meta.code.github_api_failed"
+META_CODE_GITHUB_RATE_LIMIT_RETRY: Final[str] = "meta.code.github_rate_limit_retry"
 META_CODE_GITHUB_CREDS_VALID: Final[str] = "meta.code.github_creds_valid"
 META_CODE_GITHUB_CREDS_INVALID: Final[str] = "meta.code.github_creds_invalid"
 

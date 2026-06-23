@@ -22,7 +22,8 @@ func newTestServer() *health.Server {
 	return health.NewServer(0, al, testToken, hosts, false, nil)
 }
 
-func TestHealthzOK(t *testing.T) {
+func TestHandleHealthz_ok(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer()
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	w := httptest.NewRecorder()
@@ -44,7 +45,8 @@ func TestHealthzOK(t *testing.T) {
 	}
 }
 
-func TestHealthzNoAuth(t *testing.T) {
+func TestHandleHealthz_no_auth_required(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer()
 	// Health check must work WITHOUT auth (Docker healthcheck).
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
@@ -56,7 +58,8 @@ func TestHealthzNoAuth(t *testing.T) {
 	}
 }
 
-func TestGetRulesRequiresAuth(t *testing.T) {
+func TestHandleGetRules_requires_auth(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer()
 	req := httptest.NewRequest(http.MethodGet, "/rules", nil)
 	w := httptest.NewRecorder()
@@ -67,7 +70,8 @@ func TestGetRulesRequiresAuth(t *testing.T) {
 	}
 }
 
-func TestGetRulesWithAuth(t *testing.T) {
+func TestHandleGetRules_with_auth(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer()
 	req := httptest.NewRequest(http.MethodGet, "/rules", nil)
 	req.Header.Set("Authorization", "Bearer "+testToken)
@@ -92,7 +96,8 @@ func TestGetRulesWithAuth(t *testing.T) {
 	}
 }
 
-func TestGetRulesWrongToken(t *testing.T) {
+func TestHandleGetRules_wrong_token(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer()
 	req := httptest.NewRequest(http.MethodGet, "/rules", nil)
 	req.Header.Set("Authorization", "Bearer wrong-token")
@@ -104,7 +109,8 @@ func TestGetRulesWrongToken(t *testing.T) {
 	}
 }
 
-func TestPutRulesRequiresAuth(t *testing.T) {
+func TestHandlePutRules_requires_auth(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer()
 	body := `{"allowed_hosts":["new.com:80"],"allow_all":false}`
 	req := httptest.NewRequest(http.MethodPut, "/rules", strings.NewReader(body))
@@ -116,7 +122,8 @@ func TestPutRulesRequiresAuth(t *testing.T) {
 	}
 }
 
-func TestPutRulesUpdatesAllowlist(t *testing.T) {
+func TestHandlePutRules_updates_allowlist(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer()
 	body := `{"allowed_hosts":["new.example.com:80"],"allow_all":false}`
 	req := httptest.NewRequest(http.MethodPut, "/rules", strings.NewReader(body))
@@ -139,13 +146,17 @@ func TestPutRulesUpdatesAllowlist(t *testing.T) {
 	if err := json.Unmarshal(w2.Body.Bytes(), &result); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
-	hosts := result["allowed_hosts"].([]any)
+	hosts, ok := result["allowed_hosts"].([]any)
+	if !ok {
+		t.Fatalf("allowed_hosts missing or not an array: %v", result["allowed_hosts"])
+	}
 	if len(hosts) != 1 || hosts[0] != "new.example.com:80" {
 		t.Errorf("allowed_hosts = %v, want [new.example.com:80]", hosts)
 	}
 }
 
-func TestPutRulesAllowAll(t *testing.T) {
+func TestHandlePutRules_allow_all(t *testing.T) {
+	t.Parallel()
 	srv := newTestServer()
 	body := `{"allowed_hosts":[],"allow_all":true}`
 	req := httptest.NewRequest(http.MethodPut, "/rules", strings.NewReader(body))

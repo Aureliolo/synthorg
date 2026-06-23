@@ -222,7 +222,7 @@ class _RecordingMetricRepo:
 
 @pytest.mark.unit
 class TestMetricPersistence:
-    """Audit 103: metrics persist durably so a restart does not lose them."""
+    """Metrics persist durably so a restart does not lose them."""
 
     async def test_task_metric_persisted_when_repo_attached(self) -> None:
         repo = _RecordingMetricRepo()

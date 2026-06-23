@@ -78,6 +78,9 @@ HR_HIRING_INSTANTIATION_FAILED: Final[str] = "hr.hiring.instantiation_failed"
 HR_FIRING_REASSIGNMENT_FAILED: Final[str] = "hr.firing.reassignment_failed"
 HR_FIRING_ARCHIVAL_FAILED: Final[str] = "hr.firing.archival_failed"
 HR_FIRING_NOTIFICATION_FAILED: Final[str] = "hr.firing.notification_failed"
+HR_OFFBOARDING_PERFORMANCE_EVICTION_FAILED: Final[str] = (
+    "hr.offboarding.performance_eviction_failed"
+)
 HR_ARCHIVAL_ENTRY_FAILED: Final[str] = "hr.archival.entry_failed"
 
 # ── Activity timeline ──────────────────────────────────────────

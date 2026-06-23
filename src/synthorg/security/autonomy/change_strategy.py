@@ -1,6 +1,7 @@
 """Human-only promotion strategy -- the default autonomy change strategy."""
 
 from datetime import UTC, datetime
+from types import MappingProxyType
 
 from synthorg.core.autonomy_enums import (
     AutonomyLevel,
@@ -25,11 +26,15 @@ logger = get_logger(__name__)
 # level. HIGH_ERROR_RATE is intentionally absent: a noisy run is a graded
 # signal, so it steps the agent down exactly one autonomy level rather than
 # slamming it to a fixed floor (see ``_STEP_DOWN_REASONS``).
-_FIXED_DOWNGRADE_MAP: dict[DowngradeReason, AutonomyLevel] = {
-    DowngradeReason.BUDGET_EXHAUSTED: AutonomyLevel.SUPERVISED,
-    DowngradeReason.RISK_BUDGET_EXHAUSTED: AutonomyLevel.SUPERVISED,
-    DowngradeReason.SECURITY_INCIDENT: AutonomyLevel.LOCKED,
-}
+_FIXED_DOWNGRADE_MAP: MappingProxyType[DowngradeReason, AutonomyLevel] = (
+    MappingProxyType(
+        {
+            DowngradeReason.BUDGET_EXHAUSTED: AutonomyLevel.SUPERVISED,
+            DowngradeReason.RISK_BUDGET_EXHAUSTED: AutonomyLevel.SUPERVISED,
+            DowngradeReason.SECURITY_INCIDENT: AutonomyLevel.LOCKED,
+        }
+    )
+)
 
 # Reasons that step the agent down exactly one autonomy level from its
 # current effective level (FULL -> SEMI -> SUPERVISED -> LOCKED).
@@ -55,7 +60,7 @@ class HumanOnlyPromotionStrategy:
       (FULL -> SEMI -> SUPERVISED -> LOCKED)
     - ``BUDGET_EXHAUSTED`` -> SUPERVISED (or current if more restrictive)
     - ``RISK_BUDGET_EXHAUSTED`` -> SUPERVISED (or current if more restrictive)
-    - ``SECURITY_INCIDENT`` -> LOCKED
+    - ``SECURITY_INCIDENT`` -> LOCKED (or current if more restrictive)
 
     Downgrades never *increase* autonomy: if the agent is already at
     LOCKED, any downgrade event keeps it at LOCKED.

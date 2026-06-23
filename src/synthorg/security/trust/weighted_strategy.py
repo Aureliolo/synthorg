@@ -150,9 +150,14 @@ class WeightedTrustStrategy:
 
         # Direct human-feedback signal: the snapshot's active human
         # quality-override score (already normalised to [0, 1]). Absent
-        # override -> 0.0, so the weight simply contributes nothing rather
-        # than inventing a proxy.
-        human_feedback_factor = snapshot.human_feedback_score or 0.0
+        # override (``None``) -> 0.0, so the weight contributes nothing
+        # rather than inventing a proxy. Use an explicit ``is not None``
+        # test so a genuine ``0.0`` override is not conflated with absence.
+        human_feedback_factor = (
+            snapshot.human_feedback_score
+            if snapshot.human_feedback_score is not None
+            else 0.0
+        )
 
         score = (
             self._weights.task_difficulty * difficulty_factor

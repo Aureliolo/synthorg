@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -149,14 +149,17 @@ export function CheckpointTable() {
   const [sortKey, setSortKey] = useState<CheckpointSortKey>('created_at')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
-  const handleSort = (key: CheckpointSortKey) => {
-    if (key === sortKey) {
-      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'))
-    } else {
-      setSortKey(key)
-      setSortDir('desc')
-    }
-  }
+  const handleSort = useCallback(
+    (key: CheckpointSortKey) => {
+      if (key === sortKey) {
+        setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+      } else {
+        setSortKey(key)
+        setSortDir('desc')
+      }
+    },
+    [sortKey],
+  )
 
   const sortedCheckpoints = useMemo(() => {
     const valueOf = SORT_VALUE[sortKey]

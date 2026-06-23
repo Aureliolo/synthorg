@@ -32,7 +32,7 @@ function deptCardClassName(isDropTarget: boolean | undefined, isEmpty: boolean):
   // rendered size exactly.  Earlier versions clamped the card above
   // the computed height, leaving dead whitespace when toggles were off.
   return cn(
-    'relative flex h-full w-full flex-col rounded-xl border p-card transition-colors duration-200',
+    'relative flex h-full w-full flex-col rounded-xl border p-card transition-colors duration-[var(--so-transition-default)]',
     'min-w-[220px]',
     isDropTarget && 'border-accent bg-accent/5',
     !isDropTarget && isEmpty && 'border-dashed border-border bg-card/20',
@@ -147,7 +147,7 @@ function DeptBudgetBar({ displayName, budgetPercent, utilizationPercent }: DeptB
         >
           <div
             className={cn(
-              'h-full rounded-full transition-all duration-300',
+              'h-full rounded-full transition-all duration-[var(--so-transition-medium)]',
               utilizationBarClass(utilizationPercent),
             )}
             style={{ width: `${utilizationPercent}%` }}

@@ -61,7 +61,7 @@ function CharterBudgetRow({
   onAmountChange,
 }: CharterBudgetRowProps) {
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
+    <div className="grid gap-grid-gap sm:grid-cols-2">
       <InputField
         label="Budget"
         type="number"
@@ -166,7 +166,7 @@ function CharterDraftCardInner({
         <LabelledList label="Goals" items={charter.goals} />
         <LabelledList label="Constraints" items={charter.constraints} />
         <LabelledList label="Success criteria" items={charter.success_criteria} />
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-grid-gap sm:grid-cols-2">
           <LabelledList label="In scope" items={charter.scope.in_scope} />
           <LabelledList label="Out of scope" items={charter.scope.out_of_scope} />
         </div>

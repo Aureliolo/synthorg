@@ -38,6 +38,7 @@ BROWSER_BASELINE_SIDECAR_WRITTEN: Final[str] = "browser.baseline.sidecar_written
 BROWSER_ARGS_VALIDATION_FAILED: Final[str] = "browser.args.validation_failed"
 BROWSER_EXECUTOR_FAILED: Final[str] = "browser.executor.failed"
 BROWSER_ASSETS_DEPLOYED: Final[str] = "browser.assets.deployed"
+BROWSER_ASSET_DEPLOY_FAILED: Final[str] = "browser.assets.deploy_failed"
 
 BROWSER_SPEC_START: Final[str] = "browser.spec.start"
 BROWSER_SPEC_SUCCESS: Final[str] = "browser.spec.success"

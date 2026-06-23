@@ -203,6 +203,8 @@ class NtfyNotificationSink:
 
         Raises:
             RuntimeError: If called before ``start()``.
+            httpx.HTTPStatusError: On a non-2xx response (incl. a 429
+                rate-limit, logged once with its Retry-After).
 
         Args:
             notification: The notification to deliver.
@@ -237,9 +239,10 @@ class NtfyNotificationSink:
                 headers=headers,
             )
             if response.status_code == _HTTP_TOO_MANY_REQUESTS:
-                # Surface the Retry-After hint so a throttled ntfy server
-                # is observable before raise_for_status turns it into a
-                # generic HTTP error the dispatcher retries.
+                # Surface the Retry-After hint so a throttled ntfy server is
+                # observable. raise_for_status below turns this into an
+                # HTTPStatusError; the handler skips re-logging it so a 429
+                # is recorded exactly once.
                 logger.warning(
                     NOTIFICATION_NTFY_FAILED,
                     notification_id=str(notification.id),
@@ -254,6 +257,17 @@ class NtfyNotificationSink:
                 notification_id=str(notification.id),
                 status_code=response.status_code,
             )
+        except httpx.HTTPStatusError as exc:
+            # A 429 was already logged above with its Retry-After; avoid the
+            # duplicate failure log. Other statuses log here.
+            if exc.response.status_code != _HTTP_TOO_MANY_REQUESTS:
+                logger.warning(
+                    NOTIFICATION_NTFY_FAILED,
+                    notification_id=str(notification.id),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+            raise
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(

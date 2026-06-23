@@ -150,4 +150,7 @@ class RevealedSecretResponse(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     field: NotBlankStr = Field(description="Name of the revealed credential field.")
+    # Deliberately a bare ``str`` (not ``NotBlankStr``): a credential value
+    # can legitimately be empty (e.g. an optional, unset field), so blank is
+    # a valid revealed value rather than a validation error.
     value: str = Field(description="Plaintext value of the credential field.")

@@ -40,7 +40,10 @@ from synthorg.hr.seniority import SeniorityLevel
 from synthorg.meta.appliers._architecture_contract import AppliedArchitectureChange
 from synthorg.meta.models import ArchitectureChange, PromptChange, RollbackOperation
 from synthorg.observability import get_logger
-from synthorg.observability.events.meta import META_APPLY_FAILED
+from synthorg.observability.events.meta import (
+    META_APPLY_FAILED,
+    META_ROLLBACK_PRINCIPLE_REMOVED,
+)
 from synthorg.organization.department_record import DepartmentRecord
 from synthorg.organization.enums import DepartmentName
 from synthorg.organization.services import DepartmentService
@@ -175,6 +178,7 @@ class DurablePromptApplierContext:
     async def delete_principle(self, principle_id: str) -> None:
         """Delete a previously-created active principle (rollback)."""
         await self._repo.delete(NotBlankStr(principle_id))
+        logger.debug(META_ROLLBACK_PRINCIPLE_REMOVED, principle_id=principle_id)
 
     async def refresh_snapshot(self) -> None:
         """Reload the cached read provider after a successful apply."""

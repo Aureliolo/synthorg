@@ -113,6 +113,14 @@ COS_GROUP_INVITE_PARK_FAILED: Final[str] = (
 COS_GROUP_INVITE_ACCEPTED: Final[str] = "chief_of_staff.group_chat.invite_accepted"
 COS_GROUP_INVITE_DECLINED: Final[str] = "chief_of_staff.group_chat.invite_declined"
 
+# -- Conversational approval-resume facade -----------------------------
+
+COS_RESUME_PROPOSAL_TRANSITION: Final[str] = "chief_of_staff.resume.proposal_transition"
+COS_RESUME_INVITE_TRANSITION: Final[str] = "chief_of_staff.resume.invite_transition"
+COS_RESUME_PARTICIPANT_ADMITTED: Final[str] = (
+    "chief_of_staff.resume.participant_admitted"
+)
+
 # -- Direct MCP acting under trust -------------------------------------
 
 COS_ACT_REQUESTED: Final[str] = "chief_of_staff.act.requested"

@@ -10,18 +10,11 @@ scoped to a single host process. The repo is single-shot per
 import asyncio
 
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger
-from synthorg.observability.events.red_team import (
-    RED_TEAM_REPORT_QUERY_FAILED,
-    RED_TEAM_REPORT_SAVE_FAILED,
-)
 from synthorg.security.redteam.errors import (
     RedTeamReportAlreadyExistsError,
     RedTeamReportNotFoundError,
 )
 from synthorg.security.redteam.models import RedTeamReport
-
-logger = get_logger(__name__)
 
 
 class InMemoryRedTeamReportRepository:
@@ -56,11 +49,8 @@ class InMemoryRedTeamReportRepository:
         """
         async with self._lock:
             if execution_id in self._reports:
-                logger.warning(
-                    RED_TEAM_REPORT_SAVE_FAILED,
-                    execution_id=execution_id,
-                    reason="already_exists",
-                )
+                # Repo stays log-free: the SubmitRedTeamReportTool caller
+                # owns the duplicate-submission audit log.
                 raise RedTeamReportAlreadyExistsError(execution_id=execution_id)
             self._reports[execution_id] = report
 
@@ -80,10 +70,8 @@ class InMemoryRedTeamReportRepository:
         """
         report = self._reports.get(execution_id)
         if report is None:
-            logger.warning(
-                RED_TEAM_REPORT_QUERY_FAILED,
-                execution_id=execution_id,
-                reason="not_found",
-            )
+            # Not-found is an expected, caller-handled condition (fail-open
+            # gate / degraded receipt); the callers own the log, so the repo
+            # stays log-free.
             raise RedTeamReportNotFoundError(execution_id=execution_id)
         return report

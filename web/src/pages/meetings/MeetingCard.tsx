@@ -69,12 +69,11 @@ function MeetingTokenBar({ meeting }: { meeting: MeetingResponse }) {
     <div className="h-1 w-full overflow-hidden rounded-full bg-border">
       <div
         className={cn(
-          'h-full rounded-full transition-all duration-[var(--so-transition-progress)]',
+          'h-full rounded-full transition-all duration-[var(--so-transition-progress)] ease-in-out',
           tokenBarColorClass(tokenPercent),
         )}
         style={{
           width: `${tokenPercent}%`,
-          transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
         }}
       />
     </div>
@@ -89,7 +88,7 @@ function MeetingCardImpl({ meeting, className }: MeetingCardProps) {
       to={ROUTES.MEETING_DETAIL.replace(':meetingId', meeting.meeting_id)}
       className={cn(
         'flex flex-col gap-3 rounded-lg border border-border bg-card p-card',
-        'transition-all duration-200 hover:bg-card-hover hover:-translate-y-px',
+        'transition-all duration-[var(--so-transition-default)] hover:bg-card-hover hover:-translate-y-px',
         'hover:shadow-[var(--so-shadow-card-hover)]',
         className,
       )}

@@ -33,6 +33,15 @@ from synthorg.api.state import AppState
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.types import NotBlankStr
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_SSE_INVALID_LAST_EVENT_ID
+
+logger = get_logger(__name__)
+
+# Event ids are UUID-shaped; cap the reconnect header so a crafted
+# oversized ``Last-Event-ID`` cannot drive repeated linear scans over the
+# per-session replay buffer.
+_MAX_LAST_EVENT_ID_LENGTH: int = 64
 
 
 class EventStreamController(Controller):
@@ -95,6 +104,15 @@ class EventStreamController(Controller):
         # the ``Last-Event-ID`` header so the hub can replay the gap it
         # missed while disconnected.
         after_id = request.headers.get("last-event-id") or None
+        if after_id is not None and len(after_id) > _MAX_LAST_EVENT_ID_LENGTH:
+            # Oversized header: a real event id is UUID-shaped, so drop the
+            # crafted value and fall back to a normal (no-replay) subscribe.
+            logger.warning(
+                API_SSE_INVALID_LAST_EVENT_ID,
+                session_id=session_id,
+                length=len(after_id),
+            )
+            after_id = None
         return ServerSentEvent(
             content=_sse_event_stream(
                 hub,

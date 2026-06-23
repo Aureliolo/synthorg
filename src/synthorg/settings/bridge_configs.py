@@ -161,6 +161,51 @@ class NotificationsBridgeConfig(BaseModel):
             raise ValueError(msg)
         return value
 
+    @field_validator("ntfy_default_url")
+    @classmethod
+    def _validate_ntfy_default_url(cls, value: str) -> str:
+        """Validate the ntfy default server URL is HTTPS (or empty).
+
+        HTTPS is required so topic names (which can be sensitive) are not
+        sent in plaintext. Surfacing a clear message here -- rather than
+        relying on the field ``pattern`` alone -- means an operator who
+        supplies an ``http://`` URL sees the security requirement instead
+        of an opaque regex-mismatch ``ValidationError``.
+
+        Returns:
+            The unchanged *value* (empty string permitted to mean "no
+            default ntfy server configured").
+
+        Raises:
+            ValueError: If *value* is non-empty and is not a canonical
+                ``https`` URL, has surrounding whitespace, or carries a
+                reserved port.
+        """
+        if value == "":
+            return value
+        if value != value.strip():
+            msg = "ntfy_default_url must not have leading or trailing whitespace"
+            raise ValueError(msg)
+        parsed = urlsplit(value)
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            msg = (
+                "ntfy_default_url must use a numeric port in 1..65535"
+                " when one is supplied"
+            )
+            raise ValueError(msg) from exc
+        if port == 0:
+            msg = "ntfy_default_url must use a port in 1..65535 (0 is reserved)"
+            raise ValueError(msg)
+        if parsed.scheme != "https" or not parsed.hostname:
+            msg = (
+                "ntfy_default_url must be an https URL with a host so topic"
+                " names are not sent in plaintext"
+            )
+            raise ValueError(msg)
+        return value
+
 
 class ToolsBridgeConfig(BaseModel):
     """Operator-tunable timeouts and resource limits for tool execution.

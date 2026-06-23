@@ -63,8 +63,6 @@ function EscalationCard({ row, onReview }: { row: EscalationResponse; onReview: 
       title={e.conflict.subject}
       action={
         <span
-          role="img"
-          aria-label={`Status ${status}`}
           className={cn(
             'inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium',
             ESCALATION_STATUS_BADGE_COLORS[status],
@@ -95,7 +93,11 @@ function EscalationCard({ row, onReview }: { row: EscalationResponse; onReview: 
         )}
       </dl>
       <div className="mt-grid-gap flex justify-end">
-        <Button variant="secondary" onClick={() => onReview(e.id)}>
+        <Button
+          variant="secondary"
+          aria-label={`Review escalation: ${e.conflict.subject}`}
+          onClick={() => onReview(e.id)}
+        >
           Review
         </Button>
       </div>

@@ -40,8 +40,8 @@ class ApprovalSignature(BaseModel):
     connection: NotBlankStr
     method: NotBlankStr
     resolved_url: NotBlankStr
-    body_hash: str
-    headers_hash: str
+    body_hash: NotBlankStr
+    headers_hash: NotBlankStr
 
     @classmethod
     def build(

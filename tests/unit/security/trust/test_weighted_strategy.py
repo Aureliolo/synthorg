@@ -224,6 +224,53 @@ class TestWeightedTrustStrategy:
         # Score should be lower without quality contribution
         assert result.score < 0.8
 
+    async def test_none_human_feedback_scores_as_zero(
+        self,
+        weighted_config: TrustConfig,
+    ) -> None:
+        """A missing human-feedback score contributes 0.0, not a default.
+
+        Two otherwise-identical snapshots differing only in
+        ``human_feedback_score`` (``None`` vs ``1.0``) must yield a
+        strictly lower composite score for the ``None`` case, proving the
+        feedback factor degrades to zero rather than silently assuming a
+        positive default.
+        """
+        strategy = WeightedTrustStrategy(config=weighted_config)
+        state = TrustState(
+            agent_id=NotBlankStr("agent-001"),
+            global_level=ToolAccessLevel.SANDBOXED,
+        )
+        with_feedback = make_performance_snapshot(
+            "agent-001",
+            quality=9.0,
+            success_rate=0.95,
+            tasks_completed=20,
+            human_feedback_score=1.0,
+        )
+        without_feedback = make_performance_snapshot(
+            "agent-001",
+            quality=9.0,
+            success_rate=0.95,
+            tasks_completed=20,
+            human_feedback_score=None,
+        )
+
+        scored_with = await strategy.evaluate(
+            agent_id=NotBlankStr("agent-001"),
+            current_state=state,
+            snapshot=with_feedback,
+        )
+        scored_without = await strategy.evaluate(
+            agent_id=NotBlankStr("agent-001"),
+            current_state=state,
+            snapshot=without_feedback,
+        )
+
+        assert scored_with.score is not None
+        assert scored_without.score is not None
+        assert scored_without.score < scored_with.score
+
     async def test_evaluate_empty_windows(
         self,
         weighted_config: TrustConfig,

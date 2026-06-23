@@ -33,6 +33,12 @@ the discussion (devil's-advocate) round to run even though the leader's
 conflict check found none."""
 MEETING_PREMORTEM_APPENDED: Final[str] = "meeting.premortem.appended"
 """A premortem analysis section was folded into the synthesis summary."""
+MEETING_CONSENSUS_VELOCITY_FAILED: Final[str] = "meeting.consensus_velocity.failed"
+"""The injected consensus-velocity hook raised; the advisory check is
+skipped (discussion not force-forced) rather than aborting the meeting."""
+MEETING_PREMORTEM_FAILED: Final[str] = "meeting.premortem.failed"
+"""The injected premortem hook raised; the synthesis summary is returned
+without a premortem section rather than aborting the meeting."""
 
 # Output generation
 MEETING_SUMMARY_GENERATED: Final[str] = "meeting.summary.generated"

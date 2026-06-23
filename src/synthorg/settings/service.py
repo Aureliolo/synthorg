@@ -745,6 +745,9 @@ class SettingsService:
     ) -> SettingEntry:
         """Validate, encrypt, and persist a setting value with optional CAS.
 
+        Call only from :meth:`set`; every caller must route through the
+        span-wrapped public method so the write stays traced.
+
         Pass ``expected_updated_at=""`` for first-write semantics.
         Raises ``VersionConflictError`` on CAS miss,
         ``SettingNotFoundError`` / ``SettingValidationError`` /
@@ -876,6 +879,9 @@ class SettingsService:
         import_source: SettingsImportSource = SettingsImportSource.DIRECT_SET,
     ) -> str:
         """Atomically persist multiple setting values with per-key CAS.
+
+        Call only from :meth:`set_many`; every caller must route through
+        the span-wrapped public method so the batch write stays traced.
 
         Each element is ``(namespace, key, value)``.  The service
         validates and (if sensitive) encrypts every value, then
@@ -1132,7 +1138,32 @@ class SettingsService:
             await self._publish_change(namespace, key, definition)
 
     async def delete_namespace(self, namespace: str) -> int:
+        """Span-wrapped public entry point for a whole-namespace delete.
+
+        See :meth:`_delete_namespace` for the full contract (audit log,
+        per-key republish semantics, raised exceptions). Wrapping here
+        keeps the credentials-bearing namespace-delete path under a trace
+        span like ``set`` / ``set_many`` / ``delete``, with
+        ``record_exception=False`` / ``set_status_on_exception=False`` so a
+        failure does not serialise in-scope secret values into the OTel
+        error attributes.
+
+        Returns:
+            Number of override rows actually removed.
+        """
+        with _tracer.start_as_current_span(
+            "settings.delete_namespace",
+            attributes={"settings.namespace": namespace},
+            record_exception=False,
+            set_status_on_exception=False,
+        ):
+            return await self._delete_namespace(namespace)
+
+    async def _delete_namespace(self, namespace: str) -> int:
         """Delete every DB override under *namespace*.
+
+        Call only from :meth:`delete_namespace`; all callers must route
+        through the span-wrapped public method.
 
         Reverts each affected key to the next source in its chain
         (env, default).  Emits a single

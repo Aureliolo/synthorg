@@ -7,9 +7,9 @@ to the workspace manager -- this module only signals.
 
 import asyncio
 from pathlib import Path
-from typing import Final, Literal
+from typing import Final, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -45,6 +45,34 @@ class DiskQuotaStatus(BaseModel):
     status: Literal["ok", "warning", "exceeded", "error"] = Field(
         description="Quota status",
     )
+
+    @model_validator(mode="after")
+    def _validate_status_consistency(self) -> Self:
+        """Reject a status that contradicts the usage/limit relationship.
+
+        ``ok`` requires ``usage_gb < limit_gb`` and ``exceeded`` requires
+        ``usage_gb >= limit_gb``. ``warning`` (a band the model does not
+        carry the threshold for) and ``error`` (a measurement-failure
+        sentinel) are unconstrained.
+
+        Returns:
+            The validated ``Self`` instance.
+
+        Raises:
+            ValueError: When the status contradicts the usage/limit pair.
+        """
+        if self.status == "exceeded" and self.usage_gb < self.limit_gb:
+            msg = (
+                f"status='exceeded' but usage_gb={self.usage_gb} "
+                f"< limit_gb={self.limit_gb}"
+            )
+            raise ValueError(msg)
+        if self.status == "ok" and self.usage_gb >= self.limit_gb:
+            msg = (
+                f"status='ok' but usage_gb={self.usage_gb} >= limit_gb={self.limit_gb}"
+            )
+            raise ValueError(msg)
+        return self
 
 
 def _compute_dir_size_bytes(path: Path) -> int:

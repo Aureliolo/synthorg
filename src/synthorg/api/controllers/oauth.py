@@ -90,6 +90,32 @@ class OAuthInitiationResponse(BaseModel):
     )
 
 
+class OAuthTokenStatusResponse(BaseModel):
+    """Body model for the ``GET /oauth/status/{name}`` success payload.
+
+    A named DTO (replacing a bare ``dict[str, object]``) so the OpenAPI
+    schema documents the token-status fields. ``has_token=None`` is a
+    distinct third state signalling a secret-store outage (vs ``False``
+    meaning the user has not connected yet).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    connection_name: NotBlankStr = Field(
+        description="The connection whose OAuth token status is reported.",
+    )
+    has_token: bool | None = Field(
+        description=(
+            "True when a usable token exists, False when none, None when the"
+            " secret store could not be read."
+        ),
+    )
+    token_expires_at: str | None = Field(
+        default=None,
+        description="ISO-8601 token expiry, or null when not applicable.",
+    )
+
+
 class OAuthController(Controller):
     """OAuth flow management endpoints."""
 
@@ -275,11 +301,11 @@ class OAuthController(Controller):
         self,
         state: State,
         connection_name: PathName,
-    ) -> ApiResponse[dict[str, object]]:
+    ) -> ApiResponse[OAuthTokenStatusResponse]:
         """Check the OAuth token status for a connection.
 
         Returns:
-            ``ApiResponse[dict[str, object]]`` instance.
+            ``ApiResponse[OAuthTokenStatusResponse]`` instance.
         """
         # ``ConnectionNotFoundError`` propagates with its class-level
         # 404 + ``CONNECTION_NOT_FOUND`` envelope.
@@ -326,9 +352,9 @@ class OAuthController(Controller):
         else:
             has_token = bool(expires_at) or has_access_token
         return ApiResponse(
-            data={
-                "connection_name": connection_name,
-                "has_token": has_token,
-                "token_expires_at": expires_at,
-            },
+            data=OAuthTokenStatusResponse(
+                connection_name=connection_name,
+                has_token=has_token,
+                token_expires_at=expires_at if isinstance(expires_at, str) else None,
+            ),
         )

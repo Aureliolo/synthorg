@@ -16,6 +16,8 @@ no locking of its own.
 
 import asyncio
 from collections import OrderedDict, deque
+from collections.abc import Mapping
+from types import MappingProxyType
 
 from synthorg.communication.event_stream.types import StreamEvent
 from synthorg.observability import get_logger
@@ -66,8 +68,8 @@ class PublishLedger:
         self._history_per_session = history_per_session
         self._dedup_ttl_seconds = dedup_ttl_seconds
         self._dedup_max_entries_per_session = dedup_max_entries_per_session
-        # Insertion-ordered (LRU) so the FIFO session-cap eviction drops the
-        # least-recently-published session.
+        # Recency-ordered (``move_to_end`` on every re-publish) so the
+        # session-cap eviction drops the least-recently-published session.
         self._history: OrderedDict[str, deque[StreamEvent]] = OrderedDict()
         # Per-session ``event.id`` -> ``monotonic_seen_at``.
         self._seen: dict[str, OrderedDict[str, float]] = {}
@@ -78,9 +80,15 @@ class PublishLedger:
         return self._dedup_ttl_seconds
 
     @property
-    def seen_event_ids(self) -> dict[str, OrderedDict[str, float]]:
-        """The live dedup map (the idle-subscriber janitor prunes it)."""
-        return self._seen
+    def seen_event_ids(self) -> Mapping[str, OrderedDict[str, float]]:
+        """Read-only view of the per-session dedup windows.
+
+        Exposed for introspection (tests, diagnostics) only. Mutation runs
+        solely through ``record_published`` / ``forget_session``; the
+        idle-subscriber janitor calls ``forget_session`` rather than poking
+        this map, so the dedup windows stay encapsulated.
+        """
+        return MappingProxyType(self._seen)
 
     def forget_session(self, session_id: str) -> None:
         """Drop a session's dedup window (history is retained for replay)."""
@@ -91,9 +99,9 @@ class PublishLedger:
 
         Bounds memory two ways: each session's ``deque`` has a fixed
         ``maxlen`` (oldest event evicted) and the number of tracked sessions
-        is FIFO-capped (least-recently-published session evicted). An
-        immediate-retry of the same id is skipped so the buffer carries no
-        adjacent duplicates.
+        is LRU-capped (least-recently-published session evicted). A
+        re-publish of an event id already in the buffer is skipped so a
+        reconnecting client never replays the same event twice.
         """
         hist = self._history.get(event.session_id)
         if hist is None:
@@ -103,7 +111,13 @@ class PublishLedger:
             self._history[event.session_id] = hist
         else:
             self._history.move_to_end(event.session_id)
-            if hist and hist[-1].id == event.id:
+            # Full-buffer membership check, NOT just the adjacent tail: the
+            # no-subscriber publish path clears the dedup window via
+            # ``forget_session``, so a retried event arriving after other
+            # events would otherwise be appended twice and replayed twice on
+            # reconnect. The deque is bounded (``history_per_session``), so
+            # the scan is O(n) over a small ring under the hub publish lock.
+            if any(existing.id == event.id for existing in hist):
                 return
         hist.append(event)
 
@@ -133,8 +147,9 @@ class PublishLedger:
             if recorded.id == after_id:
                 start = index + 1
                 break
+        pending = events[start:]
         replayed = 0
-        for recorded in events[start:]:
+        for recorded in pending:
             try:
                 queue.put_nowait(recorded)
             except asyncio.QueueFull:
@@ -143,6 +158,8 @@ class PublishLedger:
                     session_id=session_id,
                     event_id=recorded.id,
                     note="Replay queue full; remaining history dropped",
+                    events_replayed=replayed,
+                    events_skipped=len(pending) - replayed,
                 )
                 break
             replayed += 1
