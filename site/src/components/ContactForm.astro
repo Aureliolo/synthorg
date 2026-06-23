@@ -14,7 +14,7 @@ const recaptchaSiteKey = import.meta.env.PUBLIC_RECAPTCHA_SITE_KEY ?? "";
   data-recaptcha-key={recaptchaSiteKey}
 >
   <!-- Honeypot -->
-  <input type="text" name="_gotcha" style="display:none" tabindex="-1" autocomplete="off" />
+  <input type="text" name="_gotcha" class="hidden" tabindex="-1" autocomplete="off" />
 
   <div class="grid md:grid-cols-2 gap-6 mb-6">
     <div>
@@ -193,5 +193,12 @@ const recaptchaSiteKey = import.meta.env.PUBLIC_RECAPTCHA_SITE_KEY ?? "";
     }
   });
   }
-  document.addEventListener("astro:page-load", initContactForm);
+  // Guard against stacking listeners across View Transitions: the module
+  // re-evaluates on each navigation, so register the page-load handler once.
+  // (The form dataset guard only dedupes the submit binding per DOM instance.)
+  const win = window as typeof window & { __contactFormInitBound?: boolean };
+  if (!win.__contactFormInitBound) {
+    document.addEventListener("astro:page-load", initContactForm);
+    win.__contactFormInitBound = true;
+  }
 </script>

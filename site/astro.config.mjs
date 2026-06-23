@@ -48,6 +48,11 @@ export default defineConfig({
     assets: "_assets",
     inlineStylesheets: "auto",
   },
+  // Astro 7's compressHTML strips whitespace between inline elements (e.g.
+  // `</span>The` and `· <a>` separators collapse to no space). Disable it so
+  // significant inter-element whitespace is preserved; HTTP gzip/brotli on the
+  // host recovers the marginal size difference.
+  compressHTML: false,
   // Strict Content Security Policy, emitted as a <meta http-equiv> on every
   // page (the only header-free mechanism that works on GitHub Pages, our
   // production host). Astro auto-hashes every bundled + inline script/style, so

@@ -106,8 +106,7 @@ export default function DashboardPreview() {
 
   return (
     <div
-      className="dashboard-preview rounded-xl overflow-hidden border max-w-4xl mx-auto"
-      style={{ background: "var(--dp-bg-base)", borderColor: "var(--dp-border)" }}
+      className="dashboard-preview rounded-xl overflow-hidden border max-w-4xl mx-auto dp-bg-base dp-bd"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={(e) => {
         if (!e.currentTarget.contains(document.activeElement)) {
@@ -124,18 +123,15 @@ export default function DashboardPreview() {
       <div className="flex">
         {/* Mock sidebar */}
         <div
-          className="hidden sm:flex flex-col items-center py-4 px-2 gap-3 shrink-0"
-          style={{ background: "var(--dp-bg-surface)", borderRight: "1px solid var(--dp-border)" }}
+          className="hidden sm:flex flex-col items-center py-4 px-2 gap-3 shrink-0 dp-sidebar"
           aria-hidden="true"
         >
           {SIDEBAR_ICONS.map((d, i) => (
             <div
               key={i}
-              className="w-8 h-8 flex items-center justify-center rounded"
-              style={{
-                color: i === activeTab + 1 ? "var(--dp-accent)" : "var(--dp-text-muted)",
-                background: i === activeTab + 1 ? "var(--dp-accent-10)" : "transparent",
-              }}
+              className={`w-8 h-8 flex items-center justify-center rounded dp-side-icon${
+                i === activeTab + 1 ? " dp-side-icon--active" : ""
+              }`}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d={d} />
@@ -147,37 +143,21 @@ export default function DashboardPreview() {
         {/* Main content */}
         <div className="flex-1 min-w-0">
           {/* Header */}
-          <div
-            className="flex items-center justify-between px-4 py-2.5 border-b"
-            style={{ borderColor: "var(--dp-border)", background: "var(--dp-bg-surface)" }}
-          >
+          <div className="flex items-center justify-between px-4 py-2.5 border-b dp-bar">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold" style={{ color: "var(--dp-text-primary)" }}>
-                Acme AI Lab
-              </span>
-              <span
-                className="w-2 h-2 rounded-full"
-                style={{ background: "var(--dp-success)" }}
-                aria-hidden="true"
-              />
-              <span className="text-xs" style={{ color: "var(--dp-success)" }}>
-                Running
-              </span>
+              <span className="text-sm font-semibold dp-fg-primary">Acme AI Lab</span>
+              <span className="w-2 h-2 rounded-full dp-bg-success" aria-hidden="true" />
+              <span className="text-xs dp-fg-success">Running</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs px-2 py-0.5 rounded" style={{ background: "var(--dp-border)", color: "var(--dp-text-muted)" }}>
-                7 agents
-              </span>
-              <span className="text-xs px-2 py-0.5 rounded" style={{ background: "var(--dp-border)", color: "var(--dp-text-muted)" }}>
-                12 tasks
-              </span>
+              <span className="text-xs px-2 py-0.5 rounded dp-chip">7 agents</span>
+              <span className="text-xs px-2 py-0.5 rounded dp-chip">12 tasks</span>
             </div>
           </div>
 
           {/* Tab navigation */}
           <div
-            className="flex border-b"
-            style={{ borderColor: "var(--dp-border)" }}
+            className="flex border-b dp-bd"
             role="tablist"
             aria-label="Dashboard pages"
             onKeyDown={onTabKeyDown}
@@ -191,12 +171,9 @@ export default function DashboardPreview() {
                 aria-controls="dp-tabpanel"
                 tabIndex={i === activeTab ? 0 : -1}
                 onClick={() => selectTab(i)}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm transition-colors border-b-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-                style={{
-                  color: i === activeTab ? "var(--dp-accent)" : "var(--dp-text-muted)",
-                  borderBottomColor: i === activeTab ? "var(--dp-accent)" : "transparent",
-                  background: "transparent",
-                }}
+                className={`flex items-center gap-1.5 px-4 py-2 text-sm transition-colors border-b-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 dp-tab${
+                  i === activeTab ? " dp-tab--active" : ""
+                }`}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d={page.icon} />
@@ -223,14 +200,10 @@ export default function DashboardPreview() {
       {/* Page navigation (a simple pager; the tablist above is the canonical
           tab control). aria-current marks the active page without relying on
           colour alone. */}
-      <div
-        className="flex items-center justify-between px-2 py-1.5 border-t"
-        style={{ borderColor: "var(--dp-border)", background: "var(--dp-bg-surface)" }}
-      >
+      <div className="flex items-center justify-between px-2 py-1.5 border-t dp-bar">
         {/* Prev arrow */}
         <button
-          className="w-6 h-6 flex items-center justify-center rounded transition-colors cursor-pointer disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-          style={{ color: activeTab > 0 ? "var(--dp-text-secondary)" : "var(--dp-border-bright)" }}
+          className="w-6 h-6 flex items-center justify-center rounded transition-colors cursor-pointer disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 dp-arrow"
           onClick={() => selectTab(activeTab - 1)}
           aria-label="Previous page"
           disabled={activeTab === 0}
@@ -245,12 +218,9 @@ export default function DashboardPreview() {
           {PAGES.map((page, i) => (
             <button
               key={page.label}
-              className="px-3 py-1 rounded text-xs transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-              style={{
-                background: i === activeTab ? "var(--dp-accent-15)" : "transparent",
-                color: i === activeTab ? "var(--dp-accent)" : "var(--dp-text-muted)",
-                border: "none",
-              }}
+              className={`px-3 py-1 rounded text-xs transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 dp-pager${
+                i === activeTab ? " dp-pager--active" : ""
+              }`}
               onClick={() => selectTab(i)}
               aria-label={`Go to ${page.label}`}
               aria-current={i === activeTab ? "true" : undefined}
@@ -262,8 +232,7 @@ export default function DashboardPreview() {
 
         {/* Next arrow */}
         <button
-          className="w-6 h-6 flex items-center justify-center rounded transition-colors cursor-pointer disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-          style={{ color: activeTab < PAGES.length - 1 ? "var(--dp-text-secondary)" : "var(--dp-border-bright)" }}
+          className="w-6 h-6 flex items-center justify-center rounded transition-colors cursor-pointer disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 dp-arrow"
           onClick={() => selectTab(activeTab + 1)}
           aria-label="Next page"
           disabled={activeTab === PAGES.length - 1}

@@ -21,6 +21,77 @@
   color: var(--dp-text-primary);
 }
 
+/* ------------------------------------------------------------------ */
+/* CSP-safe token utilities.                                          */
+/* The site ships a strict Content-Security-Policy that blocks inline */
+/* `style=` attributes (CSP hashes cover <style> elements, not style  */
+/* attributes). These classes replace what used to be inline styles   */
+/* on the dashboard islands so the tokens apply under the strict CSP. */
+/* ------------------------------------------------------------------ */
+.dp-bg-base { background: var(--dp-bg-base); }
+.dp-bg-surface { background: var(--dp-bg-surface); }
+.dp-bg-card { background: var(--dp-bg-card); }
+.dp-bg-success { background: var(--dp-success); }
+.dp-bd { border-color: var(--dp-border); }
+.dp-bd-bright { border-color: var(--dp-border-bright); }
+.dp-fg-primary { color: var(--dp-text-primary); }
+.dp-fg-secondary { color: var(--dp-text-secondary); }
+.dp-fg-muted { color: var(--dp-text-muted); }
+.dp-fg-accent { color: var(--dp-accent); }
+.dp-fg-success { color: var(--dp-success); }
+.dp-mono { font-family: var(--dp-font-mono); }
+
+/* Surfaces combining background + border colour. */
+.dp-bar { background: var(--dp-bg-surface); border-color: var(--dp-border); }
+.dp-card { background: var(--dp-bg-card); border-color: var(--dp-border); }
+.dp-pill { background: var(--dp-bg-surface); border-color: var(--dp-border-bright); color: var(--dp-accent); }
+.dp-sidebar { background: var(--dp-bg-surface); border-right: 1px solid var(--dp-border); }
+
+/* Sidebar icon button: base + active. */
+.dp-side-icon { color: var(--dp-text-muted); background: transparent; }
+.dp-side-icon--active { color: var(--dp-accent); background: var(--dp-accent-10); }
+
+/* Tab: base + active. */
+.dp-tab { color: var(--dp-text-muted); border-bottom-color: transparent; background: transparent; }
+.dp-tab--active { color: var(--dp-accent); border-bottom-color: var(--dp-accent); }
+
+/* Pager arrows + page indicators. The arrow's disabled colour matches the
+   first/last-page boundary the markup already encodes via `disabled`. */
+.dp-arrow { color: var(--dp-text-secondary); background: transparent; border: none; }
+.dp-arrow:disabled { color: var(--dp-border-bright); }
+.dp-pager { color: var(--dp-text-muted); background: transparent; border: none; }
+.dp-pager--active { color: var(--dp-accent); background: var(--dp-accent-15); }
+
+/* Chips / badges / avatars. */
+.dp-chip { background: var(--dp-border); color: var(--dp-text-muted); }
+.dp-tag { background: var(--dp-border); color: var(--dp-text-secondary); }
+.dp-avatar { background: var(--dp-border-bright); color: var(--dp-text-secondary); }
+.dp-avatar-lg { background: var(--dp-border-bright); color: var(--dp-accent); }
+.dp-wip { background: color-mix(in srgb, var(--dp-warning) 15%, transparent); color: var(--dp-warning); }
+.dp-badge-success { background: color-mix(in srgb, var(--dp-success) 15%, transparent); color: var(--dp-success); }
+
+/* Data-driven tones from the fixed token palette (dot background + text). */
+.dp-dot[data-tone="success"] { background: var(--dp-success); }
+.dp-dot[data-tone="accent"] { background: var(--dp-accent); }
+.dp-dot[data-tone="warning"] { background: var(--dp-warning); }
+.dp-tone[data-tone="primary"] { color: var(--dp-text-primary); }
+.dp-tone[data-tone="success"] { color: var(--dp-success); }
+.dp-tone[data-tone="accent"] { color: var(--dp-accent); }
+.dp-tone[data-tone="warning"] { color: var(--dp-warning); }
+
+/* Task priority dot. */
+.dp-prio[data-priority="critical"] { background: var(--dp-danger); }
+.dp-prio[data-priority="high"] { background: var(--dp-warning); }
+.dp-prio[data-priority="medium"] { background: var(--dp-accent); }
+.dp-prio[data-priority="low"] { background: var(--dp-text-secondary); }
+
+/* Spend-by-agent bars (fixed dataset; width + colour per agent). */
+.dp-track { background: var(--dp-border); }
+.dp-spend[data-agent="CTO"] { width: 40%; background: #a78bfa; }
+.dp-spend[data-agent="Engineer"] { width: 35%; background: #38bdf8; }
+.dp-spend[data-agent="QA"] { width: 15%; background: #2dd4bf; }
+.dp-spend[data-agent="Design"] { width: 10%; background: #f59e0b; }
+
 /* Page transition */
 .dp-page-enter {
   animation: dp-slide-in 400ms ease-in-out;

@@ -1,17 +1,21 @@
 ---
 import Base from "../../../layouts/Base.astro";
 import fs from "node:fs";
+import path from "node:path";
 
-// Resolve relative to this module, not process.cwd(), so the build works
-// regardless of which directory it is invoked from.
-const scriptPath = new URL("../../../../../cli/scripts/install.sh", import.meta.url);
+// Resolve from the Astro project root (process.cwd()). The build always runs
+// with cwd=site/ (workflows pin working-directory: site). import.meta.url is
+// NOT usable here: Astro bundles this frontmatter into dist/.prerender chunks,
+// so at build time it points at the emitted chunk, not this source file.
+const scriptPath = path.resolve("../cli/scripts/install.sh");
 let content: string;
 try {
   content = fs.readFileSync(scriptPath, "utf-8");
 } catch (err) {
   throw new Error(
     `install-sh.astro: could not read the CLI install script at ${scriptPath} ` +
-      `Ensure cli/scripts/install.sh exists. Original error: ${(err as Error).message}`,
+      `(cwd=${process.cwd()}). Ensure cli/scripts/install.sh exists and the build ` +
+      `runs from the site/ directory. Original error: ${(err as Error).message}`,
   );
 }
 ---

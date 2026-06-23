@@ -4,12 +4,17 @@ interface Props {
   tick: number;
 }
 
+// Widths and bar colours live in DashboardPreview.css keyed by `data-agent`
+// (the strict site CSP blocks inline styles, so per-bar colour cannot be set
+// via a style attribute here).
 const agentSpend = [
-  { name: "CTO", pct: 40, color: "#a78bfa" },
-  { name: "Engineer", pct: 35, color: "#38bdf8" },
-  { name: "QA", pct: 15, color: "#2dd4bf" },
-  { name: "Design", pct: 10, color: "#f59e0b" },
+  { name: "CTO", pct: 40 },
+  { name: "Engineer", pct: 35 },
+  { name: "QA", pct: 15 },
+  { name: "Design", pct: 10 },
 ];
+
+type Tone = "primary" | "success" | "warning" | "accent";
 
 export default function BudgetMini({ tick }: Props) {
   const sparkGradId = useId();
@@ -25,7 +30,7 @@ export default function BudgetMini({ tick }: Props) {
   const circumference = Math.PI * radius; // half circle
   const dashOffset = circumference * (1 - gaugeValue / 100);
 
-  const forecastColor = parseFloat(forecast) <= 500 ? "var(--dp-success)" : "var(--dp-warning)";
+  const forecastTone: Tone = parseFloat(forecast) <= 500 ? "success" : "warning";
 
   return (
     <div className="w-full px-2">
@@ -64,16 +69,14 @@ export default function BudgetMini({ tick }: Props) {
         {/* Metric cards */}
         <div className="grid grid-cols-2 gap-1.5 flex-1">
           {[
-            { label: "Monthly Budget", value: "EUR 500.00", color: "var(--dp-text-primary)" },
-            { label: "Spent", value: `EUR ${spent}`, color: "var(--dp-warning)" },
-            { label: "Remaining", value: `EUR ${remaining}`, color: "var(--dp-success)" },
-            { label: "Forecast", value: `EUR ${forecast}`, color: forecastColor },
+            { label: "Monthly Budget", value: "EUR 500.00", tone: "primary" as Tone },
+            { label: "Spent", value: `EUR ${spent}`, tone: "warning" as Tone },
+            { label: "Remaining", value: `EUR ${remaining}`, tone: "success" as Tone },
+            { label: "Forecast", value: `EUR ${forecast}`, tone: forecastTone },
           ].map((m) => (
-            <div key={m.label} className="rounded p-1.5" style={{ background: "var(--dp-bg-card)", border: "1px solid var(--dp-border)" }}>
-              <div className="text-[9px]" style={{ color: "var(--dp-text-muted)" }}>
-                {m.label}
-              </div>
-              <div className="text-xs font-semibold" style={{ color: m.color, fontFamily: "var(--dp-font-mono)" }}>
+            <div key={m.label} className="rounded p-1.5 border dp-bg-card dp-bd">
+              <div className="text-[9px] dp-fg-muted">{m.label}</div>
+              <div className="text-xs font-semibold dp-mono dp-tone" data-tone={m.tone}>
                 {m.value}
               </div>
             </div>
@@ -82,34 +85,28 @@ export default function BudgetMini({ tick }: Props) {
       </div>
 
       {/* Agent spend breakdown */}
-      <div className="rounded-md p-2" style={{ background: "var(--dp-bg-card)", border: "1px solid var(--dp-border)" }}>
-        <div className="text-xs font-semibold mb-2" style={{ color: "var(--dp-text-secondary)" }}>
-          Spend by Agent
-        </div>
+      <div className="rounded-md p-2 border dp-bg-card dp-bd">
+        <div className="text-xs font-semibold mb-2 dp-fg-secondary">Spend by Agent</div>
         <div className="space-y-1.5">
           {agentSpend.map((a) => (
             <div key={a.name} className="flex items-center gap-2">
-              <span className="text-xs w-12" style={{ color: "var(--dp-text-secondary)" }}>
-                {a.name}
-              </span>
-              <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "var(--dp-border)" }}>
+              <span className="text-xs w-12 dp-fg-secondary">{a.name}</span>
+              <div className="flex-1 h-2 rounded-full overflow-hidden dp-track">
                 <div
-                  className="h-full rounded-full transition-all duration-1000"
-                  style={{ width: `${a.pct}%`, background: a.color }}
+                  className="h-full rounded-full transition-all duration-1000 dp-spend"
+                  data-agent={a.name}
                 />
               </div>
-              <span className="text-xs w-6 text-right" style={{ color: "var(--dp-text-muted)" }}>
-                {a.pct}%
-              </span>
+              <span className="text-xs w-6 text-right dp-fg-muted">{a.pct}%</span>
             </div>
           ))}
         </div>
 
         {/* Mini sparkline */}
-        <div className="mt-2 pt-2 border-t" style={{ borderColor: "var(--dp-border)" }}>
+        <div className="mt-2 pt-2 border-t dp-bd">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-[9px]" style={{ color: "var(--dp-text-muted)" }}>7-day trend</span>
-            <span className="text-[9px]" style={{ color: "var(--dp-success)" }}>-3.2%</span>
+            <span className="text-[9px] dp-fg-muted">7-day trend</span>
+            <span className="text-[9px] dp-fg-success">-3.2%</span>
           </div>
           <svg viewBox="0 0 200 24" className="w-full h-5" aria-hidden="true">
             <defs>
@@ -136,10 +133,7 @@ export default function BudgetMini({ tick }: Props) {
       </div>
 
       <div className="mt-2 text-center">
-        <span
-          className="text-xs px-2 py-0.5 rounded-full border inline-block"
-          style={{ color: "var(--dp-accent)", borderColor: "var(--dp-border-bright)", background: "var(--dp-bg-surface)" }}
-        >
+        <span className="text-xs px-2 py-0.5 rounded-full border inline-block dp-pill">
           Per-token cost tracking with hierarchical budget cascades
         </span>
       </div>

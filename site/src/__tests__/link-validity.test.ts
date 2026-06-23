@@ -255,7 +255,7 @@ function resolvePublicAsset(pathname: string): string | null {
 
 /**
  * Literal element ids declared across every site ``.astro`` file (pages and
- * components), lower-cased.  Used to validate same-page (``#foo``) and
+ * components), case-sensitive.  Used to validate same-page (``#foo``) and
  * cross-page (``/#foo``) anchors targeting an Astro route: a page composes
  * components, so an id may be declared in any ``.astro`` source, not only the
  * resolved page file.  Validating against the union avoids false negatives on
@@ -273,7 +273,7 @@ function astroAnchorIds(): Set<string> {
     const src = readFileSync(file, "utf-8");
     let m: RegExpExecArray | null;
     while ((m = idPattern.exec(src)) !== null) {
-      ids.add((m[1] ?? m[2] ?? m[3] ?? m[4]).toLowerCase());
+      ids.add(m[1] ?? m[2] ?? m[3] ?? m[4]);
     }
   }
   astroIdCache = ids;
@@ -332,7 +332,7 @@ const _ID_PATTERN =
 /**
  * Literal element ids reachable from a specific Astro route file: ids declared
  * in the route's own source plus every component/layout it composes,
- * lower-cased.  Memoised per route.  Scoping a cross-page ``/route#fragment``
+ * case-sensitive.  Memoised per route.  Scoping a cross-page ``/route#fragment``
  * anchor to the composed closure (rather than the site-wide union) means a
  * fragment that exists only on an unrelated page no longer masks a broken
  * cross-page anchor.  Only literal string ids are captured; a dynamic
@@ -348,7 +348,7 @@ function routeAnchorIds(routeFile: string): Set<string> {
     _ID_PATTERN.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = _ID_PATTERN.exec(src)) !== null) {
-      ids.add((m[1] ?? m[2] ?? m[3] ?? m[4]).toLowerCase());
+      ids.add(m[1] ?? m[2] ?? m[3] ?? m[4]);
     }
   }
   routeIdCache.set(routeFile, ids);
@@ -405,13 +405,26 @@ function resolveHref(href: string, sourceFile: string): ResolutionResult {
     if (fragment === "" || !sourceFile.endsWith(".astro")) {
       return { ok: true, reason: "same-page anchor (skipped)" };
     }
-    if (astroAnchorIds().has(fragment.toLowerCase())) {
+    // A page file has a known route, so its same-page anchors can be scoped to
+    // the ids that route actually renders (its source + composed components).
+    // A shared component cannot know which page composes it, so it falls back
+    // to the site-wide union. Fragment matching is case-sensitive (HTML ids
+    // and URL fragments are case-sensitive).
+    const sourceRoute = relative(SITE_PAGES, sourceFile);
+    const isPageRoute =
+      sourceRoute !== "" &&
+      !sourceRoute.startsWith("..") &&
+      !sourceRoute.startsWith("/");
+    const ids = isPageRoute ? routeAnchorIds(sourceFile) : astroAnchorIds();
+    if (ids.has(fragment)) {
       return { ok: true, reason: "same-page anchor" };
     }
     return {
       ok: false,
       kind: "anchor",
-      reason: `anchor #${fragment} not found in any site .astro id`,
+      reason: `anchor #${fragment} not found in ${
+        isPageRoute ? `route ${relative(REPO_ROOT, sourceFile)} or its composed components` : "any site .astro id"
+      }`,
     };
   }
   // Sitemap and similar generated artefacts: skip.  Pattern-matched so any
@@ -511,7 +524,7 @@ function resolveHref(href: string, sourceFile: string): ResolutionResult {
     if (
       anchor !== undefined &&
       anchor !== "" &&
-      !routeAnchorIds(astro).has(anchor.toLowerCase())
+      !routeAnchorIds(astro).has(anchor)
     ) {
       return {
         ok: false,

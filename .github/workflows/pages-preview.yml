@@ -252,7 +252,7 @@ jobs:
           HEAD_SHA: ${{ needs.metadata.outputs.head_sha }}
         run: |
           python3 << 'PYEOF'
-          import os, pathlib, re
+          import os, pathlib, re, hashlib, base64
           from datetime import datetime, timezone
 
           pr_number = os.environ["PR_NUMBER"]
@@ -260,15 +260,20 @@ jobs:
           # Truncate to milliseconds; Safari rejects microsecond-precision ISO timestamps
           build_iso = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
-          style = (
-              "background:linear-gradient(90deg,#f59e0b,#d97706);"
-              "color:#000;text-align:center;padding:10px 16px;"
-              "font-weight:600;font-size:14px;position:sticky;"
-              "top:0;z-index:9999;"
-              "box-shadow:0 2px 4px rgba(0,0,0,0.15)"
+          # The site ships a strict CSP (style-src/script-src 'self' + hashes, no
+          # 'unsafe-inline'), so the banner cannot use inline style= or an inline
+          # <script>. Deliver the styling as a <style> element and the clock as a
+          # <script> element, then add each element's sha256 to the page CSP below
+          # (element hashes need no 'unsafe-hashes').
+          banner_css = (
+              ".preview-banner{background:linear-gradient(90deg,#f59e0b,#d97706);"
+              "color:#000;text-align:center;padding:10px 16px;font-weight:600;"
+              "font-size:14px;position:sticky;top:0;z-index:9999;"
+              "box-shadow:0 2px 4px rgba(0,0,0,0.15)}"
+              ".preview-banner code{background:rgba(0,0,0,0.1);padding:2px 6px;"
+              "border-radius:3px;font-size:12px}"
           )
-          time_ago_js = (
-              "<script>"
+          banner_js = (
               "(function(){"
               f"var t=new Date('{build_iso}').getTime();"
               "function u(){"
@@ -278,23 +283,38 @@ jobs:
               "document.getElementById('preview-age').textContent=s}"
               "u();setInterval(u,30000)"
               "})()"
-              "</script>"
           )
           banner = (
-              f'<div style="{style}">'
+              f"<style>{banner_css}</style>"
+              '<div class="preview-banner">'
               f"Development Preview &middot; PR #{pr_number}"
-              f' &middot; <code style="background:rgba(0,0,0,0.1);'
-              f'padding:2px 6px;border-radius:3px;font-size:12px">'
-              f"{short_sha}</code>"
-              f' &middot; built <span id="preview-age"></span>'
-              f"</div>"
-              f"{time_ago_js}"
+              f" &middot; <code>{short_sha}</code>"
+              ' &middot; built <span id="preview-age"></span>'
+              "</div>"
+              f"<script>{banner_js}</script>"
           )
+
+          def csp_hash(s):
+              digest = hashlib.sha256(s.encode("utf-8")).digest()
+              return "'sha256-" + base64.b64encode(digest).decode("ascii") + "'"
+
+          style_hash = csp_hash(banner_css)
+          script_hash = csp_hash(banner_js)
+
+          def add_csp_hashes(text):
+              # Permit exactly the banner's <style>/<script> elements by adding
+              # their hashes to the page CSP. No-op on pages without a CSP meta
+              # (e.g. the merged docs build), where the elements load anyway.
+              text = re.sub(r"(script-src )", lambda m: m.group(1) + script_hash + " ", text, count=1)
+              text = re.sub(r"(style-src )", lambda m: m.group(1) + style_hash + " ", text, count=1)
+              return text
+
           count = 0
           for f in pathlib.Path("_site").rglob("*.html"):
               text = f.read_text(encoding="utf-8")
               updated = re.sub(r"(<body[^>]*>)", lambda m: m.group(1) + banner, text, count=1)
               if updated != text:
+                  updated = add_csp_hashes(updated)
                   f.write_text(updated, encoding="utf-8")
                   count += 1
           print(f"Injected preview banner into {count} HTML files")
