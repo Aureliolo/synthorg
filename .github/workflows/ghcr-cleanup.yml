@@ -51,6 +51,7 @@ jobs:
     name: Resolve dry-run
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions: {}
     outputs:
       dry-run: ${{ steps.resolve.outputs.dry-run }}
     steps:
@@ -113,7 +114,7 @@ jobs:
       # fall back to the default GITHUB_TOKEN. Surface which identity is
       # doing the deleting so a live run is never silently attributed.
       - name: Warn when deleting with the default token
-        if: ${{ !inputs.dry-run }}
+        if: ${{ needs.config.outputs.dry-run == 'false' }}
         env:
           CLEANUP_PAT: ${{ secrets.GHCR_CLEANUP_TOKEN }}
         run: |
