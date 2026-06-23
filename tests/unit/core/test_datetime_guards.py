@@ -63,6 +63,31 @@ class TestValidateTimeRange:
         with pytest.raises(ValueError, match="must be before"):
             validate_time_range(_EARLY, _EARLY, event="test.event")
 
+    def test_inverted_range_emits_warning_event(self) -> None:
+        """The bound event fires before the raise: this is the whole
+        reason the logging variant exists, so assert it explicitly."""
+        import structlog
+
+        with (
+            structlog.testing.capture_logs() as events,
+            pytest.raises(ValueError, match="must be before"),
+        ):
+            validate_time_range(_LATE, _EARLY, event="test.event")
+
+        warnings = [e for e in events if e.get("event") == "test.event"]
+        assert warnings, f"expected a test.event warning; got: {events}"
+        assert warnings[0]["start"] == _LATE.isoformat()
+        assert warnings[0]["end"] == _EARLY.isoformat()
+
+    def test_valid_range_emits_no_warning_event(self) -> None:
+        """A well-ordered range passes silently with no event."""
+        import structlog
+
+        with structlog.testing.capture_logs() as events:
+            validate_time_range(_EARLY, _LATE, event="test.event")
+
+        assert [e for e in events if e.get("event") == "test.event"] == []
+
 
 @pytest.mark.unit
 class TestValidateTimeWindow:

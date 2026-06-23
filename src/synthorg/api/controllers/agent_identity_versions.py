@@ -313,14 +313,15 @@ class AgentIdentityVersionController(Controller):
                 target.snapshot,
                 evolution_rationale=rationale,
             )
-        except AgentNotFoundError:
+        except AgentNotFoundError as exc:
             # Let the specific 404 AGENT_NOT_FOUND propagate via the
             # domain handler rather than collapsing it to the generic
             # RESOURCE_NOT_FOUND, so clients can branch on the code.
             logger.warning(
                 AGENT_IDENTITY_ROLLBACK_FAILED,
                 agent_id=agent_id,
-                error="agent not found",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         except ValueError as exc:

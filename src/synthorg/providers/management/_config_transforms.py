@@ -3,9 +3,9 @@
 
 Pure transforms between the request DTOs (``CreateProviderRequest`` /
 ``UpdateProviderRequest``) and the persisted :class:`ProviderConfig`,
-plus the versioned-envelope serialiser. Split out of the former
-``_helpers`` god-module so the request-to-config mapping logic stays
-cohesive and separate from discovery-auth and litellm parsing.
+plus the versioned-envelope serialiser. This module is the single owner
+of request-to-config mapping, kept distinct from discovery-auth and
+litellm parsing so those concerns evolve independently.
 """
 
 from datetime import UTC, datetime

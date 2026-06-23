@@ -211,15 +211,18 @@ async def preflight_review_gate(
         # identifiers via this endpoint.  The id is already in logs.
         not_found_msg = "Associated task could not be found"
         raise NotFoundError(not_found_msg) from exc
-    except TaskInternalError:
+    except TaskInternalError as exc:
         # A task-engine internal fault is a 500 ENGINE_ERROR, not a
         # not-wired-yet 503: let it propagate via handle_domain_error
-        # rather than mislabelling it SERVICE_UNAVAILABLE. The warning is
-        # emitted by the centralised handler for 5xx.
+        # rather than mislabelling it SERVICE_UNAVAILABLE. The centralised
+        # handler also logs the 5xx; this approval-scoped warning carries
+        # the fault type so the audit event stands alone without a join.
         logger.warning(
             APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
             approval_id=approval_id,
             task_id=task_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise
 
@@ -300,15 +303,18 @@ async def try_review_gate_transition(  # noqa: PLR0913
         # Generic message: do not echo task UUIDs to clients via 409.
         conflict_msg = "A concurrent modification was detected; retry the request"
         raise ConflictError(conflict_msg) from exc
-    except TaskInternalError:
+    except TaskInternalError as exc:
         # A task-engine internal fault is a 500 ENGINE_ERROR, not a
         # not-wired-yet 503: let it propagate via handle_domain_error
-        # rather than mislabelling it SERVICE_UNAVAILABLE. The warning is
-        # emitted by the centralised handler for 5xx.
+        # rather than mislabelling it SERVICE_UNAVAILABLE. The centralised
+        # handler also logs the 5xx; this approval-scoped warning carries
+        # the fault type so the audit event stands alone without a join.
         logger.warning(
             APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
             approval_id=approval_id,
             task_id=task_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise
 

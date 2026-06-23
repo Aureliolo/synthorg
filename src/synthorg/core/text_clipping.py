@@ -13,9 +13,18 @@ def clip_text(text: str, limit: int) -> str:
 
     Args:
         text: The text to truncate.
-        limit: Maximum character count to retain.
+        limit: Maximum character count to retain; must be non-negative.
 
     Returns:
         ``text`` truncated to ``limit`` characters.
+
+    Raises:
+        ValueError: When ``limit`` is negative. A bare slice would read a
+            negative ``limit`` as an offset-from-the-end and silently drop
+            characters from the wrong side, so a wrong-sign caller fails
+            loudly here instead of corrupting the output.
     """
+    if limit < 0:
+        msg = f"limit must be non-negative, got {limit}"
+        raise ValueError(msg)
     return text[:limit]

@@ -2,9 +2,9 @@
 """Discovery-auth headers and preset hints for provider management.
 
 Builds the per-auth-type HTTP headers used by model discovery and the
-port-based preset heuristic for local providers. Split out of the former
-``_helpers`` god-module so the discovery-auth concern stays separate from
-config transforms and litellm parsing.
+port-based preset heuristic for local providers. This module owns the
+discovery-auth concern alone, kept distinct from config transforms and
+litellm parsing so header construction never risks touching them.
 """
 
 from types import MappingProxyType

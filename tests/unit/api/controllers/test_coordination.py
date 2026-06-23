@@ -8,6 +8,7 @@ from uuid import uuid4
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.task_enums import CoordinationTopology
 from synthorg.engine.coordination.attribution import (
     CoordinationResultWithAttribution,
@@ -270,6 +271,7 @@ class TestCoordinationControllerErrors:
         # rides the COORDINATION_FAILED WS event instead).
         assert resp.status_code == 500
         assert resp.json()["success"] is False
+        assert resp.json()["error_detail"]["error_code"] == ErrorCode.ENGINE_ERROR
 
 
 @pytest.mark.unit

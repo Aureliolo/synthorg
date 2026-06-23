@@ -356,6 +356,7 @@ class TestRestoreBackup:
             )
 
         assert exc_info.value.status_code == 409
+        assert exc_info.value.error_code == ErrorCode.BACKUP_IN_PROGRESS
 
     async def test_restore_raises_422_on_manifest_error(self) -> None:
         state, service = _make_state_and_service()

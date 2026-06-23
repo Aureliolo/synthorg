@@ -3,9 +3,9 @@
 
 Reads LiteLLM's built-in ``model_cost`` database into typed
 ``ProviderModelConfig`` entries (pricing + context), preferring shorter
-model identifiers over dated variants. Split out of the former
-``_helpers`` god-module so the litellm parsing concern stays separate
-from config transforms and discovery auth.
+model identifiers over dated variants. This module owns the litellm
+parsing concern alone, kept distinct from config transforms and
+discovery auth.
 """
 
 import re

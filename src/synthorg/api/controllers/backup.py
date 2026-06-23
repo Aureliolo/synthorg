@@ -461,10 +461,9 @@ class BackupController(Controller):
             # ``handle_backup_error`` maps it to 404 with the
             # domain-specific ``RECORD_NOT_FOUND`` envelope; the prior
             # translation to generic ``NotFoundError`` dropped the
-            # discriminating error code. ``ManifestError`` and
-            # ``BackupInProgressError`` below stay translated by
-            # design (they carry potentially internal detail in their
-            # messages and the controller authors a sanitized 4xx).
+            # discriminating error code. ``ManifestError`` below stays
+            # translated by design (it carries potentially internal detail
+            # in its message and the controller authors a sanitized 4xx).
             raise
         except ManifestError as exc:
             logger.warning(

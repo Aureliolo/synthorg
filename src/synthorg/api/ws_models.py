@@ -183,7 +183,14 @@ class WsEvent(BaseModel):
 
     @model_validator(mode="after")
     def _deep_copy_payload(self) -> Self:
-        """Return deep copy payload."""
+        """Isolate ``payload`` from caller mutation after construction.
+
+        A caller holding the source dict could otherwise mutate this
+        frozen event's view; deep-copying severs that shared reference.
+
+        Returns:
+            ``Self`` with an isolated ``payload`` copy.
+        """
         object.__setattr__(self, "payload", copy.deepcopy(self.payload))
         return self
 

@@ -400,8 +400,8 @@ async def _dispatch_method(
     :func:`parse_rpc_params` validates the params dict against the
     method-specific :class:`~synthorg.a2a.rpc_params.A2ARpcParams`
     discriminated union.  Each typed variant routes to a dedicated
-    handler via ``match`` -- the dispatch table that previously held
-    string-keyed callables is no longer needed.
+    handler via ``match`` so the compiler checks exhaustiveness over the
+    union rather than a runtime string-keyed lookup.
 
     Args:
         app_state: Application state container.

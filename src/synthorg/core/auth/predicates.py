@@ -8,9 +8,12 @@ layer can share one definition without reaching up into the API layer.
 
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.auth.roles import HumanRole
+from synthorg.core.types import NotBlankStr
 
 
-def is_owner_or_ceo(requester: AuthenticatedUser, owner_user_id: str | None) -> bool:
+def is_owner_or_ceo(
+    requester: AuthenticatedUser, owner_user_id: NotBlankStr | None
+) -> bool:
     """Return whether *requester* owns the resource or is the CEO.
 
     The shared owner-or-CEO authorisation predicate: a caller may act on

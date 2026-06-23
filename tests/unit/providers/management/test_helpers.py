@@ -78,6 +78,43 @@ class TestBuildDiscoveryHeaders:
         headers = build_discovery_headers(config, None)
         assert headers is None
 
+    def test_api_key_returns_bearer(self) -> None:
+        """API-key auth threads the catalog-resolved key into a Bearer header."""
+        config = _make_config(auth_type=AuthType.API_KEY)
+        headers = build_discovery_headers(config, "sk-resolved")
+        assert headers == {"Authorization": "Bearer sk-resolved"}
+
+    def test_api_key_absent_returns_none(self) -> None:
+        """API-key auth with no resolved credential returns None."""
+        config = _make_config(auth_type=AuthType.API_KEY)
+        assert build_discovery_headers(config, None) is None
+
+    def test_custom_header_returns_named_header(self) -> None:
+        """Custom-header auth returns the configured header name/value pair."""
+        config = _make_config(
+            auth_type=AuthType.CUSTOM_HEADER,
+            custom_header_name="X-Api-Token",
+            custom_header_value="secret-value",
+        )
+        headers = build_discovery_headers(config, None)
+        assert headers == {"X-Api-Token": "secret-value"}
+
+    def test_none_auth_returns_none(self) -> None:
+        """``AuthType.NONE`` needs no headers."""
+        config = _make_config(auth_type=AuthType.NONE)
+        assert build_discovery_headers(config, None) is None
+
+    def test_oauth_unsupported_returns_none(self) -> None:
+        """OAuth discovery is unsupported and yields no headers."""
+        config = _make_config(
+            auth_type=AuthType.OAUTH,
+            oauth_token_url="https://example/oauth/token",
+            oauth_client_id="client-id",
+            oauth_client_secret="client-secret",
+            connection_name="provider-oauth",
+        )
+        assert build_discovery_headers(config, None) is None
+
 
 @pytest.mark.unit
 class TestApplyCredentialUpdates:
@@ -207,6 +244,39 @@ class TestApplyUpdateAuthTransitions:
             mock_logger.warning.call_args.args[0]
             == "provider.management.update_auth_type_unexpected"
         )
+
+    def test_explicit_none_nulls_out_field(self) -> None:
+        """An explicitly-``None`` PATCH field clears the stored value.
+
+        ``model_fields_set`` distinguishes an omitted field from one sent
+        as ``None``; a regression to a ``value is not None`` gate would
+        make clearing ``base_url`` via PATCH impossible.
+        """
+        existing = _make_config(base_url="http://example/api")
+        request = UpdateProviderRequest(base_url=None)
+        result = apply_update(existing, request)
+        assert result.base_url is None
+
+    def test_omitted_field_is_preserved(self) -> None:
+        """A field absent from the request keeps its existing value."""
+        existing = _make_config(base_url="http://example/api")
+        result = apply_update(existing, UpdateProviderRequest())
+        assert result.base_url == "http://example/api"
+
+    def test_unset_connection_name_preserves_existing(self) -> None:
+        """Without a ``connection_name`` override (the ``_UNSET`` default)
+        and no auth switch, the existing connection reference survives."""
+        existing = _make_config(
+            auth_type=AuthType.API_KEY,
+            connection_name="provider-keep",
+            base_url="http://example/api",
+        )
+        # Update only base_url; no auth_type change, no connection override.
+        result = apply_update(
+            existing, UpdateProviderRequest(base_url="http://new/api")
+        )
+        assert result.connection_name == "provider-keep"
+        assert result.base_url == "http://new/api"
 
 
 @pytest.mark.unit

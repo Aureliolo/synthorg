@@ -28,8 +28,8 @@ def require_resource_or_404[T](  # noqa: PLR0913 -- intentional rich kwargs surf
     """Return ``resource`` or raise the supplied NotFoundError subclass.
 
     The single canonical spelling for the ``if resource is None: log
-    then raise`` pattern that recurred across 17+ controller call
-    sites.  The helper:
+    then raise`` pattern, so every controller emits the same structured
+    miss event and the same domain-specific 404 envelope.  The helper:
 
     1. Logs ``log_event`` at WARNING with structured kwargs so the
        miss is observable in the audit trail.
