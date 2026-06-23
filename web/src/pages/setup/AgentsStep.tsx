@@ -1,14 +1,15 @@
 import { useEffect, useMemo } from 'react'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
-import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
+import { SectionCard } from '@/components/ui/section-card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { resolveAgentModels } from '@/utils/setup-validation'
 import { useClearStepRevalidationOnMount, useGoToStep, useStepCompletionSync } from './_hooks'
 import { MiniOrgChart } from './MiniOrgChart'
-import { SetupAgentCard } from './SetupAgentCard'
-import { Users } from 'lucide-react'
+import { SetupAgentsTable } from './SetupAgentsTable'
+import { ChevronDown, Users } from 'lucide-react'
 import type { SetupAgentSummary } from '@/api/types/setup'
 
 type UnresolvedAgent = ReturnType<typeof resolveAgentModels>[number]
@@ -257,32 +258,49 @@ export function AgentsStep() {
 
       <AgentsStepBanners c={c} />
 
-      {/* Mini org chart */}
-      <MiniOrgChart agents={c.agents} />
+      <OrgChartDisclosure agents={c.agents} />
 
-      {/* Agent cards. Clamp the total stagger so a large roster (20+
-          agents) doesn't push the last card's entrance past ~300ms. */}
-      <StaggerGroup
-        className="space-y-section-gap"
-        staggerDelay={Math.min(0.03, 0.3 / Math.max(c.agents.length, 1))}
-      >
-        {c.agents.map((agent, index) => (
-          // eslint-disable-next-line @eslint-react/no-array-index-key -- names are user-editable and may duplicate; index as tiebreaker
-          <StaggerItem key={`${agent.name}-${index}`}>
-            <SetupAgentCard
-              agent={agent}
-              index={index}
-              providers={c.providers}
-              personalityPresets={c.personalityPresets}
-              personalityPresetsLoading={c.personalityPresetsLoading}
-              onNameChange={c.handleNameChange}
-              onModelChange={c.handleModelChange}
-              onRandomizeName={c.handleRandomizeName}
-              onPersonalityChange={c.handlePersonalityChange}
-            />
-          </StaggerItem>
-        ))}
-      </StaggerGroup>
+      <SectionCard title="Roster" icon={Users}>
+        <SetupAgentsTable
+          agents={c.agents}
+          providers={c.providers}
+          personalityPresets={c.personalityPresets}
+          personalityPresetsLoading={c.personalityPresetsLoading}
+          onNameChange={c.handleNameChange}
+          onModelChange={c.handleModelChange}
+          onRandomizeName={c.handleRandomizeName}
+          onPersonalityChange={c.handlePersonalityChange}
+        />
+      </SectionCard>
     </div>
+  )
+}
+
+/**
+ * The visual org chart, collapsed by default: the dense table is the primary
+ * editing surface, so the chart is opt-in supporting context rather than a
+ * sparse band eating the top of the screen.
+ */
+function OrgChartDisclosure({ agents }: { agents: readonly SetupAgentSummary[] }) {
+  return (
+    <details className="group space-y-3">
+      <summary
+        className={cn(
+          'list-none [&::-webkit-details-marker]:hidden',
+          'flex cursor-pointer items-center justify-between',
+          'rounded-lg border border-border bg-card p-card',
+          'text-sm font-semibold text-foreground',
+          'transition-colors duration-[var(--so-transition-fast)]',
+          'hover:bg-card-hover hover:border-bright',
+        )}
+      >
+        <span>Org chart</span>
+        <ChevronDown
+          aria-hidden="true"
+          className="size-4 text-text-muted transition-transform group-open:rotate-180"
+        />
+      </summary>
+      <MiniOrgChart agents={agents} />
+    </details>
   )
 }

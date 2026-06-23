@@ -95,12 +95,15 @@ export function WizardModeStep() {
   const handleSelect = useCallback((mode: WizardMode) => {
     setWizardMode(mode)
     markStepComplete('mode')
-    // Auto-advance to the next step after mode selection
-    const order = useSetupWizardStore.getState().stepOrder
+    // Advance to the first INCOMPLETE step under the (possibly mode-switched)
+    // order, not the hardcoded next step: when resuming a part-finished setup
+    // this lands on the real resume point (e.g. Agents) instead of replaying
+    // Template. ``setWizardMode`` already recomputed ``stepOrder``.
+    const state = useSetupWizardStore.getState()
+    const order = state.stepOrder
     const modeIdx = order.indexOf('mode')
-    if (modeIdx >= 0 && modeIdx < order.length - 1) {
-      void navigate(`/setup/${order[modeIdx + 1]}`)
-    }
+    const target = order.find((s) => !state.stepsCompleted[s]) ?? order[modeIdx + 1]
+    if (target) void navigate(`/setup/${target}`)
   }, [setWizardMode, markStepComplete, navigate])
 
   // Arrow keys move focus between the radio options (roving tabindex); the
@@ -122,8 +125,8 @@ export function WizardModeStep() {
   const tabbableIndex = selectedIndex === -1 ? 0 : selectedIndex
 
   return (
-    <div className="space-y-section-gap">
-      <div className="space-y-2">
+    <div className="mx-auto w-full max-w-3xl space-y-section-gap">
+      <div className="space-y-2 text-center">
         <h2 className="text-lg font-semibold text-foreground">How would you like to set up?</h2>
         <p className="text-sm text-muted-foreground">
           Choose how much control you want over the initial configuration.

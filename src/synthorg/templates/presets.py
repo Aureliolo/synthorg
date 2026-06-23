@@ -6,9 +6,9 @@ backed by the Faker library.
 """
 
 import functools
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
     # Faker stays import-free at runtime: the library is heavy and the
@@ -171,6 +171,46 @@ def validate_preset_references(
     return tuple(issues)
 
 
+# Agents display as a clean "First Last"; cap each part so a long compound
+# locale surname (e.g. "O Huaillearan-O Maoilin") cannot overflow the UI.
+_MAX_NAME_PART_LEN: Final[int] = 14
+_NAME_PART_ATTEMPTS: Final[int] = 6
+
+
+def _short_name_part(generate: Callable[[], str]) -> str:
+    """Pick a single-token name part within the length cap.
+
+    ``Faker.first_name`` / ``last_name`` can return compound, hyphenated, or
+    overlong values for some locales. Retry a few times for a clean single
+    token within ``_MAX_NAME_PART_LEN``, then fall back to the leading token
+    truncated so a name is always produced.
+
+    Args:
+        generate: A Faker part generator (``first_name`` / ``last_name``).
+
+    Returns:
+        A single-token name part, capped in length.
+    """
+    fallback = ""
+    for _ in range(_NAME_PART_ATTEMPTS):
+        tokens = generate().strip().split()
+        token = tokens[0] if tokens else ""
+        if token and "-" not in token and len(token) <= _MAX_NAME_PART_LEN:
+            return token
+        if not fallback and token:
+            fallback = token[:_MAX_NAME_PART_LEN]
+    return fallback or "Agent"
+
+
+def _two_part_name(first: Callable[[], str], last: Callable[[], str]) -> str:
+    """Compose a clean ``First Last`` name from Faker part generators.
+
+    Returns:
+        A two-token ``First Last`` string, each part capped in length.
+    """
+    return f"{_short_name_part(first)} {_short_name_part(last)}"
+
+
 def generate_auto_name(
     role: str,  # noqa: ARG001
     *,
@@ -203,7 +243,7 @@ def generate_auto_name(
             fake.seed_instance(seed)
         else:
             fake = _get_faker(tuple(locale_list))
-        return str(fake.name())
+        return _two_part_name(fake.first_name, fake.last_name)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         from synthorg.observability.events.template import (  # noqa: PLC0415
@@ -221,7 +261,7 @@ def generate_auto_name(
         fallback = Faker(["en_US"])
         if seed is not None:
             fallback.seed_instance(seed)
-        return str(fallback.name())
+        return _two_part_name(fallback.first_name, fallback.last_name)
 
 
 @functools.lru_cache(maxsize=128)

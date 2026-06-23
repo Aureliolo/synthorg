@@ -38,6 +38,8 @@ class ModelMetadata(BaseModel):
         family: Parsed model family (e.g. ``"example-large"``).
         generation: Parsed generation/recency as a sortable number
             (e.g. ``4.5`` for a ``4-5`` version), higher is newer.
+        parameter_count: Total model parameters, when known. A coarse
+            size/strength signal the matcher uses to rank quality.
         release_date: Parsed release date, when derivable from the id.
         metadata_source: Provenance of this metadata record.
     """
@@ -51,6 +53,11 @@ class ModelMetadata(BaseModel):
         default=None,
         gt=0,
         description="Maximum output tokens, when known",
+    )
+    parameter_count: int | None = Field(
+        default=None,
+        gt=0,
+        description="Total model parameters, when known (size/strength signal)",
     )
     family: NotBlankStr | None = Field(
         default=None,

@@ -9,6 +9,8 @@ export interface AgentModelPickerProps {
   providers: Readonly<Record<string, ProviderConfig>>
   onChange: (provider: string, modelId: string) => void
   disabled?: boolean
+  /** Visually hide the "Model" label (e.g. inside a labelled table column). */
+  hideLabel?: boolean | undefined
 }
 
 const OTHER_FAMILY = 'Other'
@@ -99,6 +101,7 @@ export function AgentModelPicker({
   providers,
   onChange,
   disabled,
+  hideLabel,
 }: AgentModelPickerProps) {
   const groups = useMemo(() => buildModelGroups(providers), [providers])
   const hasModels = groups.some((g) => g.options.length > 0)
@@ -110,6 +113,7 @@ export function AgentModelPicker({
   return (
     <SelectField
       label="Model"
+      hideLabel={hideLabel}
       groups={groups}
       value={currentValue}
       onChange={(val) => {

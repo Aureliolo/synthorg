@@ -31,20 +31,13 @@ from synthorg.templates.model_matcher_config import (
     ModelMatcherConfig,
     derive_tier,
 )
+from synthorg.templates.model_matcher_priority import priority_ranker
 from synthorg.templates.model_requirements import ModelRequirement, ModelTier
 
 logger = get_logger(__name__)
 
 # Number of known capability flags scored by capability-fit.
 _CAPABILITY_COUNT: Final[int] = 3
-
-# Latency stand-in (ms) for models without a measured latency, so they
-# sort last on the speed axis without using inf (frozen models forbid it).
-_LATENCY_UNKNOWN_MS: Final[int] = 10_000_000
-
-# Weight of the (pool-normalised) generation axis in the balanced blend;
-# the remainder weights cheapness. 0.5 splits quality and cost evenly.
-_BALANCED_GENERATION_WEIGHT: Final[float] = 0.5
 
 
 class _ProviderWithModels(Protocol):
@@ -150,8 +143,12 @@ class CapabilityFitStrategy:
     ) -> bool:
         """Return ``True`` when *model* clears every hard requirement.
 
-        Fail-closed: a required capability against ``unknown`` metadata is
-        a hard fail (we cannot prove the capability is present).
+        Optimistic: a required capability is a hard fail only when the model
+        is *known* to lack it (``litellm`` / ``probe`` metadata with the flag
+        False). A model with ``unknown`` metadata is allowed through -- most
+        modern models support tools/reasoning, and excluding every
+        un-probed cloud model would leave agents unassigned. ``_score``
+        ranks proven-capable models above these unknowns.
         """
         if model.max_context < requirement.min_context:
             return False
@@ -163,7 +160,7 @@ class CapabilityFitStrategy:
             (requirement.requires_reasoning, meta.supports_reasoning),
         )
         for required, supported in required_checks:
-            if required and (unknown or not supported):
+            if required and not unknown and not supported:
                 logger.debug(
                     TEMPLATE_MODEL_MATCH_SKIPPED,
                     model=model.id,
@@ -280,68 +277,13 @@ class CapabilityFitStrategy:
         """
         if len(pool) <= 1:
             return config.priority_max_bonus
-        value_of = _priority_ranker(pool, priority)
+        value_of = priority_ranker(pool, priority)
         values = [value_of(m) for m in pool]
         val_min, val_max = min(values), max(values)
         span = val_max - val_min
         if span <= 0.0:
             return config.priority_max_bonus
         return config.priority_max_bonus * (value_of(model) - val_min) / span
-
-
-def _model_generation(model: ProviderModelConfig) -> float:
-    """Return the model's generation, or ``0.0`` when unknown.
-
-    Returns:
-        The parsed ``metadata.generation`` or ``0.0``.
-    """
-    return model.metadata.generation if model.metadata.generation is not None else 0.0
-
-
-def _priority_ranker(
-    pool: Sequence[ProviderModelConfig],
-    priority: str,
-) -> Callable[[ProviderModelConfig], float]:
-    """Build a higher-is-better value function for *priority* over *pool*.
-
-    For ``balanced`` the generation and cost axes are normalised to
-    ``[0, 1]`` within *pool* before blending, so the two incomparable
-    scales contribute evenly instead of generation dominating.
-
-    Returns:
-        A callable mapping a model to its priority-axis value.
-    """
-    if priority != "balanced":
-        return lambda m: _priority_value(m, priority)
-
-    gens = [_model_generation(m) for m in pool]
-    costs = [m.cost_per_1k_input for m in pool]
-    gen_min, gen_span = min(gens), (max(gens) - min(gens)) or 1.0
-    cost_min, cost_span = min(costs), (max(costs) - min(costs)) or 1.0
-
-    def balanced(model: ProviderModelConfig) -> float:
-        norm_gen = (_model_generation(model) - gen_min) / gen_span
-        norm_cost = (model.cost_per_1k_input - cost_min) / cost_span
-        return _BALANCED_GENERATION_WEIGHT * norm_gen + (
-            1.0 - _BALANCED_GENERATION_WEIGHT
-        ) * (1.0 - norm_cost)
-
-    return balanced
-
-
-def _priority_value(model: ProviderModelConfig, priority: str) -> float:
-    """Higher-is-better value of *model* on a single (non-balanced) axis.
-
-    Returns:
-        ``generation`` for quality (and as the default), negative cost
-        for cost, and negative latency for speed.
-    """
-    if priority == "cost":
-        return -model.cost_per_1k_input
-    if priority == "speed":
-        latency = model.estimated_latency_ms
-        return -float(latency if latency is not None else _LATENCY_UNKNOWN_MS)
-    return _model_generation(model)
 
 
 _DEFAULT_STRATEGY: ModelSelectionStrategy = CapabilityFitStrategy()
@@ -509,17 +451,23 @@ def _match_agent(
     filters in any provider, returns ``None`` rather than assigning a
     non-compliant model. The caller leaves such an agent unassigned.
 
+    All providers' models are scored in ONE pool so the priority-axis
+    normalisation (strength / cost) spans local + cloud: a frontier 756B
+    cloud model and a small local one are ranked on the same scale instead
+    of each topping its own provider's pool and erasing the size gap.
+
     Returns:
         The best ``ModelMatch`` across all providers, or ``None`` when no
         model satisfies the hard capability requirements.
     """
-    best_provider: str | None = None
-    best_model: ProviderModelConfig | None = None
-    best_score = 0.0
+    pool: list[ProviderModelConfig] = []
+    owner: dict[int, str] = {}
     for pname, pcfg in providers.items():
-        model, score = match_model(req, pcfg.models, cfg, strategy)
-        if model is not None and (best_model is None or score > best_score):
-            best_provider, best_model, best_score = pname, model, score
+        for model in pcfg.models:
+            pool.append(model)
+            owner[id(model)] = pname
+    best_model, best_score = match_model(req, tuple(pool), cfg, strategy)
+    best_provider = owner.get(id(best_model)) if best_model is not None else None
 
     if best_provider is not None and best_model is not None:
         logger.debug(

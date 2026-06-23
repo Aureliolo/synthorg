@@ -1,326 +1,200 @@
 import { useMemo } from 'react'
-import type { SeniorityLevel } from '@/api/types/enums'
-import type { SetupAgentSummary } from '@/api/types/setup'
+import { Avatar } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
 import { seniorityRank } from '@/utils/agents'
+import type { SetupAgentSummary } from '@/api/types/setup'
 
 export interface MiniOrgChartProps {
   agents: readonly SetupAgentSummary[]
   className?: string
 }
 
-interface DeptNode {
-  name: string
-  agents: SetupAgentSummary[]
-  /** Agent with the highest-ranked level in the department. */
-  headAgent: SetupAgentSummary | null
+interface OrgTreeNode {
+  agent: SetupAgentSummary
+  isLead: boolean
+  deptLabel: string | null
+  children: OrgTreeNode[]
 }
 
-/** Team size threshold for compact layout. */
-const SMALL_TEAM_THRESHOLD = 5
-const LARGE_AVATAR_RADIUS = 16
-const SMALL_AVATAR_RADIUS = 14
-const LARGE_NODE_WIDTH = 140
-const SMALL_NODE_WIDTH = 120
-const AGENT_SPACING_GAP = 10
-/** Root company node radius. */
-const ROOT_RADIUS = 10
-/**
- * In-chart text sizes as design tokens. Per `web/CLAUDE.md`,
- * chart `fontSize` must use `var(--so-text-*)` tokens so the chart
- * scales with the typography density axis.  Modern browsers resolve
- * CSS variables inside SVG presentation attributes.
- */
-const FONT_SIZE_AGENT = 'var(--so-text-micro)'
-const FONT_SIZE_DEPT_LARGE = 'var(--so-text-compact)'
-const FONT_SIZE_DEPT_SMALL = 'var(--so-text-micro)'
-/** Bottom padding below agent row in the SVG viewport. */
-const SVG_BOTTOM_PADDING = 20
-/** Horizontal padding on each side of the chart. */
-const SVG_HORIZONTAL_PADDING = 20
-
-/**
- * Levels that get emphasized styling (department leaders, executives).
- * Seniority *ordering* lives in ``@/utils/agents`` (`SENIORITY_RANK`
- * / `seniorityRank`) so this file doesn't re-derive the same ladder.
- */
-const LEADER_LEVELS: ReadonlySet<SeniorityLevel> = new Set([
-  'c_suite', 'vp', 'director', 'principal', 'lead',
-])
-
-function getInitials(name: string): string {
-  return name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((w) => w[0] ?? '')
-    .join('')
-    .toUpperCase()
+function humanizeDept(dept: string): string {
+  return dept
+    .replaceAll('_', ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-/**
- * Format a snake_case department name as a Title-Case label.
- *
- * Example: ``quality_assurance`` → ``Quality Assurance``.
- */
-function formatDeptName(snake: string): string {
-  return snake
-    .split(/[_\s]+/)
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ')
+// Role-title authority, highest first, independent of the `level` field: the
+// template can leave a CEO at `level: mid`, so ranking purely on seniority
+// would crown a senior IC. Role wins, seniority only tie-breaks.
+const ROLE_RANKS: readonly (readonly [RegExp, number])[] = [
+  [/\bceo\b|chief executive|founder/, 5],
+  [/^chief|\bc[a-z]o\b/, 4],
+  [/vice president|\bvp\b/, 3],
+  [/director|head of/, 2],
+  [/lead|principal|manager/, 1],
+]
+
+function roleRank(role: string): number {
+  const r = role.toLowerCase()
+  for (const [pattern, rank] of ROLE_RANKS) {
+    if (pattern.test(r)) return rank
+  }
+  return 0
+}
+
+function headScore(agent: SetupAgentSummary): number {
+  // Role dominates; seniority (0-7) only separates equal roles.
+  return roleRank(agent.role) * 100 + seniorityRank(agent.level ?? null)
 }
 
 function pickHead(agents: readonly SetupAgentSummary[]): SetupAgentSummary | null {
   if (agents.length === 0) return null
   let head = agents[0]!
   for (const agent of agents) {
-    if (seniorityRank(agent.level ?? null) > seniorityRank(head.level ?? null)) head = agent
+    if (headScore(agent) > headScore(head)) head = agent
   }
   return head
 }
 
-interface AgentNodeProps {
-  agent: SetupAgentSummary
-  agentX: number
-  agentY: number
-  deptX: number
-  deptY: number
-  radius: number
-  deptHalfHeight: number
-  isHead: boolean
+function groupByDept(
+  agents: readonly SetupAgentSummary[],
+): Map<string, SetupAgentSummary[]> {
+  const byDept = new Map<string, SetupAgentSummary[]>()
+  for (const agent of agents) {
+    const arr = byDept.get(agent.department) ?? []
+    arr.push(agent)
+    byDept.set(agent.department, arr)
+  }
+  return byDept
 }
 
-type AgentTier = 'head' | 'leader' | 'member'
+/** The leadership department roots the tree: the one named ~"executive",
+ *  else whichever department owns the highest-authority agent. */
+function pickRootDept(
+  byDept: Map<string, SetupAgentSummary[]>,
+  companyHead: SetupAgentSummary,
+): string {
+  for (const dept of byDept.keys()) {
+    if (dept.toLowerCase().replace(/[\s_]/g, '').includes('executive')) return dept
+  }
+  return companyHead.department
+}
+
+function memberLeaf(agent: SetupAgentSummary): OrgTreeNode {
+  return { agent, isLead: false, deptLabel: null, children: [] }
+}
+
+/** A department head node with its remaining members as reports. */
+function deptHeadNode(dept: string, members: SetupAgentSummary[]): OrgTreeNode | null {
+  const head = pickHead(members)
+  if (!head) return null
+  return {
+    agent: head,
+    isLead: true,
+    deptLabel: humanizeDept(dept),
+    children: members.filter((m) => m !== head).map(memberLeaf),
+  }
+}
 
 /**
- * Classify an agent for node styling. Department heads outrank leaders
- * (c-suite / vp / director / principal / lead), who outrank members.
+ * Reporting tree: the company head (top role in the leadership department)
+ * roots it; each other department's head reports to the company head, and a
+ * department's remaining members report to their head. The leadership
+ * department's other members report to the company head directly.
  */
-function agentTier(agent: SetupAgentSummary, isHead: boolean): AgentTier {
-  if (isHead) return 'head'
-  if (agent.level != null && LEADER_LEVELS.has(agent.level)) return 'leader'
-  return 'member'
-}
+function buildOrgTree(agents: readonly SetupAgentSummary[]): OrgTreeNode | null {
+  const companyHead = pickHead(agents)
+  if (!companyHead) return null
+  const byDept = groupByDept(agents)
+  const rootDept = pickRootDept(byDept, companyHead)
+  const root = pickHead(byDept.get(rootDept) ?? agents) ?? companyHead
 
-const NODE_STROKE_CLASS: Record<AgentTier, string> = {
-  head: 'stroke-accent',
-  leader: 'stroke-accent/70',
-  member: 'stroke-accent/30',
-}
-
-const NODE_FILL_CLASS: Record<AgentTier, string> = {
-  head: 'fill-accent/15',
-  leader: 'fill-card',
-  member: 'fill-card',
-}
-
-const NODE_STROKE_WIDTH: Record<AgentTier, string> = {
-  head: 'var(--so-stroke-thin)',
-  leader: 'var(--so-stroke-thin)',
-  member: 'var(--so-stroke-hairline)',
-}
-
-function AgentNode({
-  agent, agentX, agentY, deptX, deptY, radius, deptHalfHeight, isHead,
-}: AgentNodeProps) {
-  const tier = agentTier(agent, isHead)
-  const effectiveRadius = isHead ? radius + 2 : radius
-  const titleSuffix = agent.level ? ` · ${agent.level.replace('_', '-')}` : ''
-  return (
-    <g>
-      {/* <title> as a direct child of <g> (not nested in <circle>): Safari
-          / VoiceOver only reliably expose a group-level title, so the
-          per-agent name is read out for AT. */}
-      <title>{`${agent.name} -- ${agent.role}${titleSuffix}${isHead ? ' (head)' : ''}`}</title>
-      <line
-        x1={deptX}
-        y1={deptY + deptHalfHeight}
-        x2={agentX}
-        y2={agentY - effectiveRadius}
-        className={cn('stroke-border', isHead && 'stroke-accent/50')}
-        strokeWidth="var(--so-stroke-hairline)"
-      />
-      <circle
-        cx={agentX}
-        cy={agentY}
-        r={effectiveRadius}
-        className={cn(NODE_FILL_CLASS[tier], NODE_STROKE_CLASS[tier])}
-        strokeWidth={NODE_STROKE_WIDTH[tier]}
-      />
-      <text
-        x={agentX}
-        y={agentY + 3}
-        textAnchor="middle"
-        className={cn('fill-foreground', isHead ? 'font-semibold' : 'font-medium')}
-        fontSize={FONT_SIZE_AGENT}
-      >
-        {getInitials(agent.name)}
-      </text>
-    </g>
-  )
-}
-
-interface DepartmentGroupProps {
-  pos: { x: number; y: number; dept: DeptNode }
-  nodeWidth: number
-  nodeHeight: number
-  avatarRadius: number
-  vGap: number
-  isSmallTeam: boolean
-}
-
-function DepartmentGroup({
-  pos, nodeWidth, nodeHeight, avatarRadius, vGap, isSmallTeam,
-}: DepartmentGroupProps) {
-  const label = formatDeptName(pos.dept.name)
-  return (
-    <g>
-      <rect
-        x={pos.x - nodeWidth / 2}
-        y={pos.y - nodeHeight / 2}
-        width={nodeWidth}
-        height={nodeHeight}
-        rx={6}
-        className="fill-surface stroke-border"
-        strokeWidth="var(--so-stroke-hairline)"
-      />
-      <text
-        x={pos.x}
-        y={pos.y + 4}
-        textAnchor="middle"
-        className="fill-foreground"
-        fontSize={isSmallTeam ? FONT_SIZE_DEPT_LARGE : FONT_SIZE_DEPT_SMALL}
-      >
-        {label}
-      </text>
-
-      {pos.dept.agents.map((agent, agentIdx) => {
-        const agentSpacing = avatarRadius * 2 + AGENT_SPACING_GAP
-        const centerOffset = agentIdx - (pos.dept.agents.length - 1) / 2
-        const agentX = pos.x + centerOffset * agentSpacing
-        const agentY = pos.y + vGap
-        // Object identity: ``headAgent`` is picked from the same
-        // ``agents`` array via ``pickHead``, so reference equality is
-        // safe.  Matching by name would mis-mark every agent sharing
-        // a name with the head (setup templates can repeat names).
-        const isHead = pos.dept.headAgent === agent
-        return (
-          <AgentNode
-            // eslint-disable-next-line @eslint-react/no-array-index-key -- setup agents can share names; index as tiebreaker
-            key={`${agent.name}-${agentIdx}`}
-            agent={agent}
-            agentX={agentX}
-            agentY={agentY}
-            deptX={pos.x}
-            deptY={pos.y}
-            radius={avatarRadius}
-            deptHalfHeight={nodeHeight / 2}
-            isHead={isHead}
-          />
-        )
-      })}
-    </g>
-  )
-}
-
-export function MiniOrgChart({ agents, className }: MiniOrgChartProps) {
-  const departments = useMemo<DeptNode[]>(() => {
-    const deptMap = new Map<string, SetupAgentSummary[]>()
-    for (const agent of agents) {
-      const dept = agent.department || 'unassigned'
-      const existing = deptMap.get(dept)
-      if (existing) {
-        existing.push(agent)
-      } else {
-        deptMap.set(dept, [agent])
-      }
+  const children: OrgTreeNode[] = []
+  for (const [dept, members] of byDept) {
+    if (dept === rootDept) {
+      children.push(...members.filter((m) => m !== root).map(memberLeaf))
+    } else {
+      const node = deptHeadNode(dept, members)
+      if (node) children.push(node)
     }
-    return [...deptMap.entries()].map(([name, deptAgents]) => ({
-      name,
-      agents: deptAgents,
-      headAgent: pickHead(deptAgents),
-    }))
-  }, [agents])
+  }
+  return { agent: root, isLead: true, deptLabel: humanizeDept(rootDept), children }
+}
 
-  if (agents.length === 0) return null
-
-  const isSmallTeam = agents.length <= SMALL_TEAM_THRESHOLD
-  const avatarRadius = isSmallTeam ? LARGE_AVATAR_RADIUS : SMALL_AVATAR_RADIUS
-  // Budget head bump (+2) + stroke width so the head circle can't
-  // visually overflow the computed row height.
-  const agentRowHalfHeight = avatarRadius + 3
-  const nodeWidth = isSmallTeam ? LARGE_NODE_WIDTH : SMALL_NODE_WIDTH
-  const nodeHeight = 32
-  const hGap = isSmallTeam ? 40 : 24
-  const vGap = isSmallTeam ? 56 : 48
-
-  const deptWidths = departments.map((d) =>
-    Math.max(nodeWidth, d.agents.length * (avatarRadius * 2 + AGENT_SPACING_GAP)),
+function OrgRound({ node }: { node: OrgTreeNode }) {
+  return (
+    <div
+      className="flex w-24 flex-col items-center gap-1"
+      title={`${node.agent.name} - ${node.agent.role}`}
+    >
+      <Avatar
+        name={node.agent.name}
+        size="sm"
+        className={cn(node.isLead && 'ring-2 ring-accent/60')}
+      />
+      <span className="w-full truncate text-center text-[11px] leading-tight text-foreground">
+        {node.agent.name}
+      </span>
+      {node.deptLabel ? (
+        <span className="w-full truncate text-center text-[9px] uppercase tracking-wide text-text-muted">
+          {node.deptLabel}
+        </span>
+      ) : (
+        <span className="w-full truncate text-center text-[9px] leading-tight text-text-muted">
+          {node.agent.role}
+        </span>
+      )}
+    </div>
   )
-  const totalWidth = deptWidths.reduce((sum, w) => sum + w + hGap, 0) - hGap
-  const svgWidth = Math.max(totalWidth + SVG_HORIZONTAL_PADDING * 2, 300)
+}
 
-  // Vertical layout (single row per department; agents laid horizontally
-  // below the dept box -- NOT stacked). Positions:
-  //   root center      y = ROOT_RADIUS + 6
-  //   dept center      y = vGap
-  //   agent center     y = vGap + vGap = 2 * vGap
-  //   agent bottom     y = 2 * vGap + agentRowHalfHeight
-  const rootY = ROOT_RADIUS + 6
-  const deptY = vGap
-  const agentY = 2 * vGap
-  const svgHeight = agentY + agentRowHalfHeight + SVG_BOTTOM_PADDING
+/** Horizontal connector segment above a child: half-width for the first/last
+ *  sibling so the segments join into one continuous bus, full-width between. */
+function busClass(index: number, count: number): string {
+  if (count === 1) return 'hidden'
+  if (index === 0) return 'left-1/2 right-0'
+  if (index === count - 1) return 'left-0 right-1/2'
+  return 'inset-x-0'
+}
 
-  let xOffset = (svgWidth - totalWidth) / 2
-  const deptPositions = departments.map((dept, i) => {
-    const width = deptWidths[i]!
-    const x = xOffset + width / 2
-    xOffset += width + hGap
-    return { x, y: deptY, dept }
-  })
+function OrgBranch({ node }: { node: OrgTreeNode }) {
+  return (
+    <div className="flex flex-col items-center">
+      <OrgRound node={node} />
+      {node.children.length > 0 && (
+        <>
+          <div className="h-4 w-px bg-border" />
+          <div className="flex items-start">
+            {node.children.map((kid, i) => (
+              <div
+                // eslint-disable-next-line @eslint-react/no-array-index-key -- agents can share names; index is the stable tiebreaker
+                key={`${kid.agent.name}-${i}`}
+                className="relative flex flex-col items-center px-2.5 pt-4"
+              >
+                <span className={cn('absolute top-0 h-px bg-border', busClass(i, node.children.length))} />
+                <span className="absolute left-1/2 top-0 h-4 w-px -translate-x-1/2 bg-border" />
+                <OrgBranch node={kid} />
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
 
-  const rootX = svgWidth / 2
-
+/**
+ * Simple top-down organisation chart: the company head connects to department
+ * leads, who connect to their members, with small agent rounds + department
+ * labels. A lightweight, read-only alternative to the full react-flow org view.
+ */
+export function MiniOrgChart({ agents, className }: MiniOrgChartProps) {
+  const tree = useMemo(() => buildOrgTree(agents), [agents])
+  if (!tree) return null
   return (
     <div className={cn('overflow-x-auto rounded-lg border border-border bg-card p-card', className)}>
-      <svg
-        viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-        width="100%"
-        className="mx-auto block"
-        // Constrain max width so the chart doesn't scale up absurdly on
-        // very wide screens -- we want it legible, not gigantic. Only the
-        // computed maxWidth stays inline (it is dynamic); the static
-        // display / centring move to classes.
-        style={{ maxWidth: svgWidth }}
-        role="img"
-        aria-label="Organization chart"
-      >
-        <circle cx={rootX} cy={rootY} r={ROOT_RADIUS} className="fill-accent" />
-
-        {deptPositions.map((pos) => (
-          <line
-            key={`root-${pos.dept.name}`}
-            x1={rootX}
-            y1={rootY + ROOT_RADIUS}
-            x2={pos.x}
-            y2={pos.y - nodeHeight / 2}
-            className="stroke-border"
-            strokeWidth="var(--so-stroke-hairline)"
-          />
-        ))}
-
-        {deptPositions.map((pos) => (
-          <DepartmentGroup
-            key={pos.dept.name}
-            pos={pos}
-            nodeWidth={nodeWidth}
-            nodeHeight={nodeHeight}
-            avatarRadius={avatarRadius}
-            vGap={vGap}
-            isSmallTeam={isSmallTeam}
-          />
-        ))}
-      </svg>
+      <div className="flex min-w-fit justify-center px-2 py-2">
+        <OrgBranch node={tree} />
+      </div>
     </div>
   )
 }

@@ -29,6 +29,7 @@ type PersistedSetupState = Pick<
   | 'budgetCap'
   | 'companyResponse'
   | 'selectedTemplate'
+  | 'blankSelected'
   | 'templateVariables'
   | 'themeSettings'
 >
@@ -54,6 +55,7 @@ const persistOptions: PersistOptions<SetupWizardState, PersistedSetupState> = {
     // branch when the company has actually already been created.
     companyResponse: state.companyResponse,
     selectedTemplate: state.selectedTemplate,
+    blankSelected: state.blankSelected,
     templateVariables: state.templateVariables,
     themeSettings: state.themeSettings,
   }),

@@ -3,6 +3,7 @@ import type { ErrorInfo, ReactNode } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { createLogger } from '@/lib/logger'
 import { Button } from './button'
+import { ErrorTechnicalDetails } from './error-technical-details'
 
 const log = createLogger('ErrorBoundary')
 
@@ -98,6 +99,7 @@ function DefaultErrorFallback({
           <p className="max-w-md text-sm text-muted-foreground">{message}</p>
         </div>
         <Button type="button" onClick={resetErrorBoundary}>Try Again</Button>
+        <ErrorTechnicalDetails technical={error.stack ?? `${error.name}: ${error.message}`} />
       </div>
     )
   }

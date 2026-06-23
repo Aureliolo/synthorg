@@ -2,6 +2,7 @@ import type { StoreApi } from 'zustand'
 import {
   createFromPreset,
   createProvider as apiCreateProvider,
+  deleteProvider as apiDeleteProvider,
   listPresets,
   listProviders,
   probeLocal,
@@ -277,6 +278,38 @@ async function testProviderConnectionImpl(
   }
 }
 
+async function deleteProviderImpl(
+  set: WizSet,
+  get: WizGet,
+  name: string,
+): Promise<boolean> {
+  set({ providersMutationError: null })
+  try {
+    await apiDeleteProvider(name)
+    set((s) => ({
+      providers: Object.fromEntries(
+        Object.entries(s.providers).filter(([key]) => key !== name),
+      ),
+    }))
+    get().recomputeAgentsRevalidation()
+    useToastStore.getState().add({
+      variant: 'success',
+      title: `Provider '${name}' removed`,
+    })
+    return true
+  } catch (err) {
+    const msg = getErrorMessage(err)
+    log.error('deleteProvider failed:', msg)
+    set({ providersMutationError: msg })
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, 'Failed to remove provider'),
+      description: msg,
+    })
+    return false
+  }
+}
+
 async function probeLocalProvidersImpl(
   set: WizSet,
   reset: boolean,
@@ -345,6 +378,7 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (
     createProviderFromPresetFullImpl(set, get, data),
   createProviderCustom: (data) => createProviderCustomImpl(set, get, data),
   testProviderConnection: (name) => testProviderConnectionImpl(set, name),
+  deleteProvider: (name) => deleteProviderImpl(set, get, name),
   probeLocalProviders: () =>
     probeLocalProvidersImpl(
       set,

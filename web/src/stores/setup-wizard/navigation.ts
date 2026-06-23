@@ -1,3 +1,4 @@
+import { getSetupStatus } from '@/api/endpoints/setup'
 import { resolveAgentModels } from '@/utils/setup-validation'
 import type { NavigationSlice, SliceCreator, WizardMode, WizardStep } from './types'
 
@@ -128,6 +129,29 @@ function canNavigateToImpl(get: WizGet, step: WizardStep): boolean {
   return true
 }
 
+async function reconcileCompletionFromBackendImpl(set: WizSet): Promise<void> {
+  try {
+    const status = await getSetupStatus()
+    set((s) => {
+      const completed = { ...s.stepsCompleted }
+      if (status.has_providers) completed.providers = true
+      // A created company implies its template was applied and a mode was
+      // chosen in a prior session; mark those so the operator is not sent
+      // back through the mode picker / Template on resume. ``agents`` is
+      // deliberately left to the Agents step's own model-resolution check.
+      if (status.has_company) {
+        completed.company = true
+        completed.template = true
+        completed.mode = true
+      }
+      return { stepsCompleted: completed, statusReconciled: true }
+    })
+  } catch {
+    // Best-effort: unblock the URL-sync even when the status probe fails.
+    set({ statusReconciled: true })
+  }
+}
+
 function recomputeAgentsRevalidationImpl(set: WizSet, get: WizGet): void {
   const { agents, providers, stepsCompleted } = get()
   if (!stepsCompleted.agents) {
@@ -157,6 +181,7 @@ export const createNavigationSlice: SliceCreator<NavigationSlice> = (
   needsAdmin: false,
   accountCreated: false,
   wizardMode: 'guided',
+  statusReconciled: false,
 
   setStep: (step) => setStepImpl(set, get, step),
   markStepComplete(step) {
@@ -178,6 +203,7 @@ export const createNavigationSlice: SliceCreator<NavigationSlice> = (
   recomputeAgentsRevalidation: () =>
     recomputeAgentsRevalidationImpl(set, get),
   canNavigateTo: (step) => canNavigateToImpl(get, step),
+  reconcileCompletionFromBackend: () => reconcileCompletionFromBackendImpl(set),
   setNeedsAdmin(needsAdmin) {
     const { wizardMode } = get()
     const stepOrder = getStepOrder(needsAdmin, wizardMode)

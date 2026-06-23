@@ -149,6 +149,32 @@ function handleUnauthorizedImpl(
   }
 }
 
+// A genuine network error during the bootstrap session check (the backend
+// is briefly unreachable, e.g. a dev backend restart) is transient: retry a
+// few times so a logged-in user is not stranded on the loading screen or
+// bounced to login while the server comes back. A 401 is decisive (real
+// expiry) and never retried; a 5xx / parse error keeps the existing
+// single-shot "unknown" behaviour.
+const SESSION_CHECK_NETWORK_RETRIES = 3
+const SESSION_CHECK_RETRY_MS = 1_000
+
+function _retryDelay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
+}
+
+/** Decide the next step for a failed bootstrap session check. */
+function _classifyCheckError(
+  err: unknown,
+  attempt: number,
+): 'unauthenticated' | 'unknown' | 'retry' {
+  if (isAxiosError(err) && err.response?.status === 401) return 'unauthenticated'
+  const unreachable = isAxiosError(err) && err.response === undefined
+  if (unreachable && attempt < SESSION_CHECK_NETWORK_RETRIES) return 'retry'
+  return 'unknown'
+}
+
 async function checkSessionImpl(
   set: (partial: Partial<AuthState>) => void,
 ): Promise<void> {
@@ -156,15 +182,20 @@ async function checkSessionImpl(
     set({ authStatus: 'authenticated', user: DEV_USER })
     return
   }
-  try {
-    const user = await authApi.getMe()
-    set({ authStatus: 'authenticated', user })
-  } catch (err) {
-    if (isAxiosError(err) && err.response?.status === 401) {
-      set({ authStatus: 'unauthenticated', user: null })
-    } else {
-      log.error('Session check failed:', getErrorMessage(err))
-      set({ authStatus: 'unknown', user: null })
+  for (let attempt = 0; attempt <= SESSION_CHECK_NETWORK_RETRIES; attempt++) {
+    try {
+      const user = await authApi.getMe()
+      set({ authStatus: 'authenticated', user })
+      return
+    } catch (err) {
+      const outcome = _classifyCheckError(err, attempt)
+      if (outcome === 'retry') {
+        await _retryDelay(SESSION_CHECK_RETRY_MS)
+        continue
+      }
+      if (outcome === 'unknown') log.error('Session check failed:', getErrorMessage(err))
+      set({ authStatus: outcome, user: null })
+      return
     }
   }
 }

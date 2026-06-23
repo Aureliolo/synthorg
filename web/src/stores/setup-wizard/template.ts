@@ -11,6 +11,7 @@ export const createTemplateSlice: SliceCreator<TemplateSlice> = (set, get) => ({
   templatesLoading: false,
   templatesError: null,
   selectedTemplate: null,
+  blankSelected: false,
   comparedTemplates: [],
   templateVariables: {},
 
@@ -26,7 +27,11 @@ export const createTemplateSlice: SliceCreator<TemplateSlice> = (set, get) => ({
   },
 
   selectTemplate(name) {
-    set({ selectedTemplate: name })
+    set({ selectedTemplate: name, blankSelected: false })
+  },
+
+  selectBlank() {
+    set({ selectedTemplate: null, blankSelected: true })
   },
 
   toggleCompare(name) {

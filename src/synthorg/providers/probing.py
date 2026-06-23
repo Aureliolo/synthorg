@@ -6,12 +6,15 @@ candidate).  SSRF validation is intentionally skipped because
 candidate URLs come from hardcoded preset definitions.
 """
 
+import asyncio
 import json
-from typing import Final
+from collections.abc import Mapping
+from typing import Final, Protocol
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
+from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import strip_trailing_slash
@@ -275,6 +278,157 @@ def _parse_ollama_models(
             continue
         models.append(ProviderModelConfig(id=name))
     return tuple(models)
+
+
+def parse_ollama_show(
+    model_id: str,
+    show: Mapping[str, JsonValue],
+) -> ProviderModelConfig:
+    """Build an enriched model config from an Ollama ``/api/show`` response.
+
+    Ollama's ``/api/tags`` listing carries no capability data, so a bare
+    ``ProviderModelConfig(id=...)`` inherits the all-False capability defaults
+    and the model matcher's fail-closed hard filters reject it for every
+    tool/vision/reasoning-requiring agent. ``/api/show`` exposes the real
+    ``capabilities`` array (``tools`` / ``vision`` / ``thinking``) and the
+    architecture's ``context_length``; project them onto the metadata so the
+    matcher can classify the model honestly.
+
+    Args:
+        model_id: The model name from the ``/api/tags`` listing.
+        show: Parsed ``/api/show`` JSON for that model.
+
+    Returns:
+        Enriched model config; capability-less (listing defaults) when the
+        response omits ``capabilities`` rather than guessing.
+    """
+    raw_caps = show.get("capabilities")
+    caps = (
+        {c for c in raw_caps if isinstance(c, str)}
+        if isinstance(raw_caps, list)
+        else set()
+    )
+    metadata = ModelMetadata(
+        supports_tools="tools" in caps,
+        supports_vision="vision" in caps,
+        supports_reasoning="thinking" in caps,
+        # Parameter count is a coarse size/strength signal the matcher uses to
+        # rank quality so a frontier cloud model beats a small local one.
+        parameter_count=_ollama_parameter_count(show),
+        # "probe" provenance is load-bearing: the matcher's hard filter
+        # fail-closes on "unknown"-source metadata even when a capability flag
+        # is True (it cannot trust the source), so leaving the default would
+        # discard the very capabilities we just read from /api/show.
+        metadata_source="probe",
+    )
+    context_length = _ollama_context_length(show)
+    if context_length is None:
+        return ProviderModelConfig(id=model_id, metadata=metadata)
+    return ProviderModelConfig(
+        id=model_id,
+        max_context=context_length,
+        metadata=metadata,
+    )
+
+
+class JsonFetch(Protocol):
+    """Discovery's SSRF-validated JSON fetcher (GET, or POST when ``body`` set)."""
+
+    async def __call__(
+        self,
+        url: str,
+        preset_name: str | None,
+        *,
+        headers: dict[str, str] | None = ...,
+        trust_url: bool = ...,
+        body: dict[str, JsonValue] | None = ...,
+    ) -> dict[str, JsonValue] | None:
+        """Fetch JSON from *url*, returning ``None`` on any failure."""
+        ...
+
+
+async def enrich_models_via_show(
+    show_url: str,
+    models: tuple[ProviderModelConfig, ...],
+    *,
+    headers: dict[str, str] | None,
+    trust_url: bool,
+    fetch_json: JsonFetch,
+) -> tuple[ProviderModelConfig, ...]:
+    """Enrich each model with capabilities from an Ollama ``/api/show`` probe.
+
+    The ``/api/tags`` and OpenAI ``/models`` listings carry no capabilities, so
+    a bare model fails the matcher's capability hard-filter. ``/api/show``
+    returns the real tool/vision/reasoning flags + context window. A per-model
+    miss degrades to the un-enriched model, never drops it. ``fetch_json`` is
+    injected (discovery owns the SSRF-validated HTTP layer) to avoid an import
+    cycle.
+
+    Args:
+        show_url: The provider's ``/api/show`` endpoint.
+        models: Models parsed from the listing (id only).
+        headers: Optional auth headers.
+        trust_url: Skip SSRF validation when True (local providers).
+        fetch_json: The discovery JSON fetcher (GET, or POST when ``body`` set).
+
+    Returns:
+        The models with capability metadata applied where ``/api/show`` answered.
+    """
+
+    async def _enrich(model: ProviderModelConfig) -> ProviderModelConfig:
+        show = await fetch_json(
+            show_url,
+            "ollama",
+            headers=headers,
+            trust_url=trust_url,
+            body={"model": model.id},
+        )
+        return model if show is None else parse_ollama_show(model.id, show)
+
+    async with asyncio.TaskGroup() as tg:
+        tasks = [tg.create_task(_enrich(model)) for model in models]
+    return tuple(task.result() for task in tasks)
+
+
+def _ollama_context_length(show: Mapping[str, JsonValue]) -> int | None:
+    """Extract the context window from an Ollama ``/api/show`` ``model_info``.
+
+    The key is architecture-prefixed (e.g. ``gemma4.context_length``), so
+    match on the suffix rather than a fixed key.
+
+    Args:
+        show: Parsed ``/api/show`` JSON.
+
+    Returns:
+        Context length in tokens, or ``None`` when absent / invalid.
+    """
+    info = show.get("model_info")
+    if not isinstance(info, dict):
+        return None
+    for key, value in info.items():
+        if key.endswith(".context_length") and isinstance(value, int) and value > 0:
+            return value
+    return None
+
+
+def _ollama_parameter_count(show: Mapping[str, JsonValue]) -> int | None:
+    """Extract total parameter count from an Ollama ``/api/show`` response.
+
+    Reads ``model_info["general.parameter_count"]`` (e.g. ``480000000000``).
+
+    Args:
+        show: Parsed ``/api/show`` JSON.
+
+    Returns:
+        Parameter count, or ``None`` when absent / invalid.
+    """
+    info = show.get("model_info")
+    if not isinstance(info, dict):
+        return None
+    value = info.get("general.parameter_count")
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    return None
 
 
 def _parse_standard_models(

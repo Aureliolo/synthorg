@@ -59,6 +59,30 @@ function WizardNextButton({
   )
 }
 
+interface NavVisibility {
+  showBack: boolean
+  showNext: boolean
+  showReason: boolean
+}
+
+/** Which navigation controls the current step shows. Extracted to keep the
+ *  component under the complexity cap. */
+function navVisibility(
+  currentIdx: number,
+  total: number,
+  hideNext: boolean | undefined,
+  nextDisabled: boolean | undefined,
+  nextDisabledReason: string | null | undefined,
+): NavVisibility {
+  // Relies on the step-order invariant (see navigation.ts): ``complete`` is
+  // always the final entry, so the last index is the terminal step.
+  const showNext = currentIdx !== total - 1 && !hideNext
+  // Gate on showNext (not just !isLast) so the disabled-reason caption never
+  // renders orphaned when the Next control itself is hidden.
+  const showReason = showNext && Boolean(nextDisabled) && Boolean(nextDisabledReason)
+  return { showBack: currentIdx !== 0, showNext, showReason }
+}
+
 export function WizardNavigation({
   stepOrder,
   currentStep,
@@ -72,33 +96,36 @@ export function WizardNavigation({
 }: WizardNavigationProps) {
   const rawIdx = stepOrder.indexOf(currentStep)
   const currentIdx = rawIdx === -1 ? 0 : rawIdx
-  const isFirst = currentIdx === 0
-  // Relies on the step-order invariant (see navigation.ts): ``complete`` is
-  // always the final entry, so the last index is the terminal step.
-  const isLast = currentIdx === stepOrder.length - 1
-  const showNext = !isLast && !hideNext
-  // Stable id for the disabled-reason caption so the Next button can
-  // associate it via aria-describedby. Only attached on the button
-  // when the caption is actually rendered.
+  // Stable id for the disabled-reason caption so the Next button can associate
+  // it via aria-describedby. Only attached when the caption renders.
   const reasonId = useId()
-  // Gate on showNext (not just !isLast) so the disabled-reason caption
-  // never renders orphaned when the Next control itself is hidden.
-  const showReason = showNext && Boolean(nextDisabled) && Boolean(nextDisabledReason)
+  const { showBack, showNext, showReason } = navVisibility(
+    currentIdx,
+    stepOrder.length,
+    hideNext,
+    nextDisabled,
+    nextDisabledReason,
+  )
+  // Render nothing when there is neither a Back nor a Next control (e.g. the
+  // first step auto-advances on selection): an empty bar would still draw its
+  // top border as a stray divider line.
+  if (!showBack && !showNext) return null
 
   return (
     <div className="flex flex-col gap-2 border-t border-border pt-card">
       <div className="flex items-center justify-between gap-grid-gap">
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={onBack}
-          disabled={isFirst}
-          className="gap-2"
-          title={isFirst ? 'This is the first step.' : undefined}
-        >
-          <ArrowLeft className="size-4" aria-hidden="true" />
-          Back
-        </Button>
+        {/* Back is omitted entirely on the first step (rather than shown
+            disabled), so a dead control never appears where there is nowhere
+            to go back to. The empty span preserves the justify-between layout
+            so Next stays right-aligned. */}
+        {showBack ? (
+          <Button type="button" variant="ghost" onClick={onBack} className="gap-2">
+            <ArrowLeft className="size-4" aria-hidden="true" />
+            Back
+          </Button>
+        ) : (
+          <span />
+        )}
         {showNext && (
           <WizardNextButton
             onNext={onNext}

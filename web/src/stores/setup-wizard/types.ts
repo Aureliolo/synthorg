@@ -55,6 +55,14 @@ export interface NavigationSlice {
   needsAdmin: boolean
   accountCreated: boolean
   wizardMode: WizardMode
+  /**
+   * True once ``reconcileCompletionFromBackend`` has run this session.
+   * Step-completion is persisted in localStorage but the provider/agent
+   * DATA is not, so a reload would otherwise unmark already-finished steps
+   * and bounce the operator backwards. The URL-sync waits on this flag
+   * before redirecting away from a step the URL requested.
+   */
+  statusReconciled: boolean
   setStep: (step: WizardStep) => void
   markStepComplete: (step: WizardStep) => void
   markStepIncomplete: (step: WizardStep) => void
@@ -70,6 +78,14 @@ export interface NavigationSlice {
    */
   recomputeAgentsRevalidation: () => void
   canNavigateTo: (step: WizardStep) => boolean
+  /**
+   * Mark steps complete from the authoritative backend setup status
+   * (``has_providers`` / ``has_company`` / ``has_agents``) so a mid-setup
+   * reload resumes at the right step instead of replaying finished ones.
+   * Best-effort: sets ``statusReconciled`` even on fetch failure so the
+   * URL-sync never blocks forever.
+   */
+  reconcileCompletionFromBackend: () => Promise<void>
   setNeedsAdmin: (needsAdmin: boolean) => void
   setAccountCreated: (created: boolean) => void
   setWizardMode: (mode: WizardMode) => void
@@ -80,10 +96,14 @@ export interface TemplateSlice {
   templatesLoading: boolean
   templatesError: string | null
   selectedTemplate: string | null
+  /** True when the user chose to start from a blank organisation (no template);
+   *  a deliberate, complete choice distinct from "nothing selected yet". */
+  blankSelected: boolean
   comparedTemplates: string[]
   templateVariables: Record<string, string | number | boolean>
   fetchTemplates: () => Promise<void>
   selectTemplate: (name: string) => void
+  selectBlank: () => void
   toggleCompare: (name: string) => boolean
   clearComparison: () => void
   setTemplateVariable: (key: string, value: string | number | boolean) => void
@@ -230,6 +250,13 @@ export interface ProvidersSlice {
   createProviderFromPresetFull: (data: CreateFromPresetRequest) => Promise<ProviderConfig | null>
   createProviderCustom: (data: CreateProviderRequest) => Promise<ProviderConfig | null>
   testProviderConnection: (name: string) => Promise<TestConnectionResponse>
+  /**
+   * Remove a configured provider. Returns ``true`` on success, ``false`` on
+   * failure (the store owns the error toast). Agents that referenced the
+   * removed provider re-flag as unresolved on the next revalidation. Removing
+   * then re-adding is also how an operator re-runs model discovery.
+   */
+  deleteProvider: (name: string) => Promise<boolean>
   /** Kick off the batch local-provider probe. Idempotent on repeated calls. */
   probeLocalProviders: () => Promise<void>
   /** Force a fresh probe round (clears prior results before re-running). */

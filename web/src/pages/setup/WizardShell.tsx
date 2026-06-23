@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, type NavigateFunction } from 'react-router'
+import { cn } from '@/lib/utils'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { AnimatedPresence } from '@/components/ui/animated-presence'
 import { ToastContainer } from '@/components/ui/toast'
@@ -126,6 +127,7 @@ function useWizardReEntryToast(
   completeStepDone: boolean,
   stepOrder: readonly WizardStep[],
   stepsCompleted: Record<WizardStep, boolean>,
+  statusReconciled: boolean,
 ): void {
   const reEntryToastShownRef = useRef(false)
   // Capture the mount-time value via useRef's initialiser so the render
@@ -133,19 +135,23 @@ function useWizardReEntryToast(
   // only honours the argument on the first render, which is exactly the
   // "did the company already exist when this wizard mounted" signal.
   const companyExistedAtMountRef = useRef(companyPresent)
-  const stepsCompletedAtMountRef = useRef(stepsCompleted)
   useEffect(() => {
     if (reEntryToastShownRef.current) return
     if (!companyExistedAtMountRef.current) return
     if (!companyPresent) return
     if (completeStepDone) return
     if (!stepOrder.includes('complete')) return
+    // Wait for the backend reconcile before naming the resume step: pre-
+    // reconcile `stepsCompleted` has providers/company still false, so the
+    // toast would point at an already-finished step (the "land on Providers"
+    // bug). Once reconciled, the live map reflects what the server has.
+    if (!statusReconciled) return
     reEntryToastShownRef.current = true
     // Point the operator at the actual first-incomplete step rather than
     // "Complete": providers / agents rehydrate empty and re-block on reload,
     // so canNavigateTo('complete') is false until they re-verify. Telling them
     // to "finish from Complete" would be unfollowable.
-    const firstIncomplete = stepOrder.find((s) => !stepsCompletedAtMountRef.current[s])
+    const firstIncomplete = stepOrder.find((s) => !stepsCompleted[s])
     const target = firstIncomplete ?? 'complete'
     useToastStore.getState().add({
       variant: 'info',
@@ -153,7 +159,7 @@ function useWizardReEntryToast(
       description:
         `Your company was created in a previous session. Continue from the ${STEP_TITLES[target]} step.`,
     })
-  }, [companyPresent, completeStepDone, stepOrder])
+  }, [companyPresent, completeStepDone, stepOrder, stepsCompleted, statusReconciled])
 }
 
 interface WizardUrlSyncArgs {
@@ -163,6 +169,26 @@ interface WizardUrlSyncArgs {
   setStep: (step: WizardStep) => void
   stepsCompleted: Record<WizardStep, boolean>
   navigate: NavigateFunction
+  statusReconciled: boolean
+}
+
+/**
+ * Reconcile finished steps from the backend once on mount so a reload does not
+ * bounce the operator backwards past steps the server already has.
+ */
+function useBackendReconcileOnMount(): void {
+  const reconcile = useSetupWizardStore((s) => s.reconcileCompletionFromBackend)
+  useEffect(() => {
+    void reconcile()
+  }, [reconcile])
+}
+
+/** Progress-bar steps: the full order minus steps hidden from the bar. */
+function useProgressSteps(stepOrder: readonly WizardStep[]): WizardStep[] {
+  return useMemo(
+    () => stepOrder.filter((s) => !HIDDEN_PROGRESS_STEPS.has(s)),
+    [stepOrder],
+  )
 }
 
 /** Keep the store's current step in sync with the `:step` URL param. */
@@ -173,6 +199,7 @@ function useWizardUrlSync({
   setStep,
   stepsCompleted,
   navigate,
+  statusReconciled,
 }: WizardUrlSyncArgs): void {
   // The effect re-fires whenever stepOrder / canNavigateTo / stepsCompleted
   // change identity, even while `urlStep` stays on the same blocked or
@@ -190,12 +217,26 @@ function useWizardUrlSync({
   )
   useEffect(() => {
     if (!urlStep) {
-      void navigate(`/setup/${stepOrder[0]}`, { replace: true })
+      // Resume at the first incomplete step rather than always step 0, so a
+      // mid-setup reload (or re-login) drops the operator back where they were
+      // instead of replaying the mode picker / Template they already finished.
+      // Hold until the backend reconcile lands: choosing pre-reconcile would
+      // pick a step the server has already finished (the "land on Providers"
+      // bug) and the URL would then pin the operator there.
+      if (!statusReconciled) return
+      const resumeStep = stepOrder.find((s) => !stepsCompleted[s]) ?? stepOrder[0]
+      void navigate(`/setup/${resumeStep}`, { replace: true })
       return
     }
     if (isWizardStep(urlStep, stepOrder)) {
       if (canNavigateTo(urlStep)) {
         lastToastKeyRef.current = null
+        setStep(urlStep)
+      } else if (!statusReconciled) {
+        // Backend reconcile still pending: the requested step may become
+        // reachable once finished steps are re-marked. Hold (no bounce, no
+        // toast); this effect re-runs when stepsCompleted / statusReconciled
+        // update.
         setStep(urlStep)
       } else {
         const firstIncomplete = stepOrder.find((s) => !stepsCompleted[s])
@@ -214,7 +255,21 @@ function useWizardUrlSync({
       })
       void navigate(`/setup/${stepOrder[0]}`, { replace: true })
     }
-  }, [urlStep, stepOrder, canNavigateTo, setStep, stepsCompleted, navigate, toastOnce])
+  }, [urlStep, stepOrder, canNavigateTo, setStep, stepsCompleted, navigate, toastOnce, statusReconciled])
+}
+
+/** Re-entry toast + URL/step reconciliation for a resumed wizard. */
+function useWizardResume(
+  args: WizardUrlSyncArgs & { companyPresent: boolean },
+): void {
+  useWizardReEntryToast(
+    args.companyPresent,
+    args.stepsCompleted.complete,
+    args.stepOrder,
+    args.stepsCompleted,
+    args.statusReconciled,
+  )
+  useWizardUrlSync(args)
 }
 
 interface WizardStepNavigation {
@@ -272,11 +327,98 @@ function useWizardStepChrome(
   }, [currentStep, scrollRef])
 }
 
+interface ScrollHints {
+  top: boolean
+  bottom: boolean
+}
+
+/**
+ * Dynamic scroll affordance for the wizard's scrollbar-free content column.
+ * Reports whether content is clipped above / below the current scroll position
+ * so the shell can fade in a hint at that edge -- a smarter, quieter signal
+ * than an always-visible scrollbar. Recomputed on scroll, on container/content
+ * resize, and whenever the step changes (content height + scroll reset).
+ */
+function useScrollAffordance(
+  scrollRef: React.RefObject<HTMLDivElement | null>,
+  contentRef: React.RefObject<HTMLDivElement | null>,
+  currentStep: WizardStep,
+): ScrollHints {
+  const [hints, setHints] = useState<ScrollHints>({ top: false, bottom: false })
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const update = () => {
+      const maxScroll = el.scrollHeight - el.clientHeight
+      const top = el.scrollTop > 1
+      const bottom = el.scrollTop < maxScroll - 1
+      setHints((prev) => (prev.top === top && prev.bottom === bottom ? prev : { top, bottom }))
+    }
+    // Defer the first measure out of the effect body so it reads post-layout
+    // metrics (and never sets state synchronously during commit).
+    const raf = requestAnimationFrame(update)
+    el.addEventListener('scroll', update, { passive: true })
+    const observer = new ResizeObserver(update)
+    observer.observe(el)
+    if (contentRef.current) observer.observe(contentRef.current)
+    return () => {
+      cancelAnimationFrame(raf)
+      el.removeEventListener('scroll', update)
+      observer.disconnect()
+    }
+  }, [scrollRef, contentRef, currentStep])
+  return hints
+}
+
+/** Scrollbar-free content column with dynamic edge-fade scroll hints. */
+function WizardScrollArea({
+  scrollRef,
+  contentRef,
+  hints,
+  center,
+  children,
+}: {
+  scrollRef: React.RefObject<HTMLDivElement | null>
+  contentRef: React.RefObject<HTMLDivElement | null>
+  hints: ScrollHints
+  /** Vertically centre the content (focused choice screens like the mode step)
+   *  rather than top-aligning it (content steps, so the heading stays put and
+   *  doesn't jump as the body grows). */
+  center: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <div className="relative min-h-0 flex-1">
+      <div ref={scrollRef} className="no-scrollbar flex h-full flex-col overflow-y-auto">
+        <div ref={contentRef} className={cn('w-full py-8', center && 'my-auto')}>
+          {children}
+        </div>
+      </div>
+      {/* Dynamic scroll affordance: a quiet fade at any clipped edge, instead
+          of an always-visible scrollbar. */}
+      <div
+        aria-hidden="true"
+        className={cn(
+          'pointer-events-none absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-background to-transparent transition-opacity duration-[var(--so-transition-medium)]',
+          hints.top ? 'opacity-100' : 'opacity-0',
+        )}
+      />
+      <div
+        aria-hidden="true"
+        className={cn(
+          'pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-background to-transparent transition-opacity duration-[var(--so-transition-medium)]',
+          hints.bottom ? 'opacity-100' : 'opacity-0',
+        )}
+      />
+    </div>
+  )
+}
+
 export function WizardShell() {
   const navigate = useNavigate()
   const { step: urlStep } = useParams<{ step?: string }>()
   const scrollRef = useRef<HTMLDivElement>(null)
-
+  const contentRef = useRef<HTMLDivElement>(null)
   const currentStep = useSetupWizardStore((s) => s.currentStep)
   const stepOrder = useSetupWizardStore((s) => s.stepOrder)
   const stepsCompleted = useSetupWizardStore((s) => s.stepsCompleted)
@@ -284,12 +426,17 @@ export function WizardShell() {
   const setStep = useSetupWizardStore((s) => s.setStep)
   const canNavigateTo = useSetupWizardStore((s) => s.canNavigateTo)
   const companyResponse = useSetupWizardStore((s) => s.companyResponse)
+  const statusReconciled = useSetupWizardStore((s) => s.statusReconciled)
   const stepComplete = stepsCompleted[currentStep]
   const nextDisabledReason = useNextDisabledReason(currentStep, stepComplete)
 
-  useWizardReEntryToast(companyResponse !== null, stepsCompleted.complete, stepOrder, stepsCompleted)
-  useWizardUrlSync({ urlStep, stepOrder, canNavigateTo, setStep, stepsCompleted, navigate })
+  useBackendReconcileOnMount()
+  useWizardResume({
+    urlStep, stepOrder, canNavigateTo, setStep, stepsCompleted, navigate,
+    statusReconciled, companyPresent: companyResponse !== null,
+  })
   useWizardStepChrome(currentStep, scrollRef)
+  const scrollHints = useScrollAffordance(scrollRef, contentRef, currentStep)
   const { handleStepClick, handleBack, handleNext } = useWizardStepNavigation(
     currentStep,
     stepOrder,
@@ -297,11 +444,7 @@ export function WizardShell() {
     navigate,
   )
 
-  // Steps shown in the progress bar (filter out hidden steps)
-  const progressSteps = useMemo(
-    () => stepOrder.filter((s) => !HIDDEN_PROGRESS_STEPS.has(s)),
-    [stepOrder],
-  )
+  const progressSteps = useProgressSteps(stepOrder)
 
   if (!urlStep) {
     return <WizardSkeleton />
@@ -319,31 +462,32 @@ export function WizardShell() {
     // own overflow; only the content column scrolls, so the navigation
     // stays pinned at the bottom instead of forcing a scroll-to-find-Next.
     <div className="flex h-dvh flex-col items-center overflow-hidden bg-background">
-      <div className="flex w-full max-w-4xl flex-1 flex-col overflow-hidden px-4">
+      <div className="flex w-full max-w-5xl flex-1 flex-col overflow-hidden px-4">
         <h1 className="sr-only">SynthOrg setup wizard</h1>
 
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto py-8">
-          {/* Progress bar (hidden for mode selection step) */}
-          {showProgress && (
-            <div className="mb-8">
-              <WizardProgress
-                stepOrder={progressSteps}
-                currentStep={currentStep}
-                stepsCompleted={stepsCompleted}
-                stepsNeedRevalidation={stepsNeedRevalidation}
-                canNavigateTo={canNavigateTo}
-                onStepClick={handleStepClick}
-              />
-            </div>
-          )}
+        {/* Progress bar pinned at the top (outside the scroll region) so the
+            stepper stays put while the step content below it centres / scrolls.
+            Hidden for the mode selection step. */}
+        {showProgress && (
+          <div className="shrink-0 pt-8">
+            <WizardProgress
+              stepOrder={progressSteps}
+              currentStep={currentStep}
+              stepsCompleted={stepsCompleted}
+              stepsNeedRevalidation={stepsNeedRevalidation}
+              canNavigateTo={canNavigateTo}
+              onStepClick={handleStepClick}
+            />
+          </div>
+        )}
 
-          {/* Step content */}
+        <WizardScrollArea scrollRef={scrollRef} contentRef={contentRef} hints={scrollHints} center={isModeStep}>
           <ErrorBoundary level="page">
             <AnimatedPresence routeKey={currentStep}>
               <StepComponent />
             </AnimatedPresence>
           </ErrorBoundary>
-        </div>
+        </WizardScrollArea>
 
         {/* Navigation: pinned outside the scroll region (shrink-0) so it is
             always reachable. Shown on every step; the mode step hides Next

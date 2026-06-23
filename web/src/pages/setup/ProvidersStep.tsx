@@ -111,6 +111,7 @@ interface ProvidersStepController {
   handleAddCloudCounterpart: (cloudPresetName: string) => void
   handleConfigureManually: () => void
   handleReprobe: () => Promise<void>
+  handleDeleteProvider: (name: string) => void
   onRetryProviders: () => void
   onRetryPresets: () => void
 }
@@ -206,6 +207,9 @@ function useProvidersStepController(): ProvidersStepController {
   const onRetryPresets = useCallback(() => {
     void useSetupWizardStore.getState().fetchPresets()
   }, [])
+  const handleDeleteProvider = useCallback((name: string) => {
+    void useSetupWizardStore.getState().deleteProvider(name)
+  }, [])
 
   return {
     providers, presets, probeResults, probeErrors, probeGlobalError, probing,
@@ -213,6 +217,7 @@ function useProvidersStepController(): ProvidersStepController {
     validation, hasConfiguredProviders,
     modalOpen, modalPreset, setModalOpen, modalOverrides,
     handleSelectCloud, handleAddLocal, handleAddCloudCounterpart, handleConfigureManually, handleReprobe,
+    handleDeleteProvider,
     onRetryProviders,
     onRetryPresets,
   }
@@ -306,6 +311,7 @@ interface ProvidersPresetSectionProps {
   onAddCloudCounterpart: (cloudPresetName: string) => void
   onReprobe: () => Promise<void>
   onConfigureManually: () => void
+  onRemoveProvider: (name: string) => void
   onRetryPresets: () => void
 }
 
@@ -322,6 +328,7 @@ function ProvidersPresetSection({
   onAddCloudCounterpart,
   onReprobe,
   onConfigureManually,
+  onRemoveProvider,
   onRetryPresets,
 }: ProvidersPresetSectionProps) {
   if (presetsLoading) {
@@ -348,6 +355,7 @@ function ProvidersPresetSection({
       onAddCloudCounterpart={onAddCloudCounterpart}
       onReprobe={onReprobe}
       onConfigureManually={onConfigureManually}
+      onRemoveProvider={onRemoveProvider}
     />
   )
 }
@@ -426,6 +434,7 @@ export function ProvidersStep() {
         onAddCloudCounterpart={c.handleAddCloudCounterpart}
         onReprobe={c.handleReprobe}
         onConfigureManually={c.handleConfigureManually}
+        onRemoveProvider={c.handleDeleteProvider}
         onRetryPresets={c.onRetryPresets}
       />
 
