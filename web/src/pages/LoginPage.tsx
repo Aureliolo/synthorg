@@ -171,7 +171,7 @@ function LoginHeading({ mode }: { mode: Mode }) {
         {mode === 'setup' ? 'Create Admin Account' : 'Sign In'}
       </h1>
       {mode === 'setup' && (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-text-secondary">
           Set up your administrator account to get started.
         </p>
       )}
@@ -282,7 +282,7 @@ export default function LoginPage() {
           <p className="text-center font-sans text-2xl font-bold text-accent">SynthOrg</p>
 
           {mode === 'loading' ? (
-            <p className="text-center text-sm text-muted-foreground">Checking setup status...</p>
+            <p className="text-center text-sm text-text-secondary">Checking setup status...</p>
           ) : (
             <LoginFields mode={mode} minPasswordLength={minPasswordLength} form={form} />
           )}

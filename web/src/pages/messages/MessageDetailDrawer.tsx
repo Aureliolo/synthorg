@@ -91,7 +91,7 @@ function MessageDetailContent({ message }: MessageDetailContentProps) {
         <Avatar name={message.sender} size="lg" />
         <div>
           <div className="font-mono text-sm font-medium text-foreground">{message.sender}</div>
-          <div className="font-mono text-xs text-muted-foreground">to {message.to}</div>
+          <div className="font-mono text-xs text-text-secondary">to {message.to}</div>
         </div>
       </div>
 
@@ -111,7 +111,7 @@ function MessageDetailContent({ message }: MessageDetailContentProps) {
 
       {/* Content */}
       <div>
-        <h3 className="mb-1 text-micro font-semibold uppercase tracking-wider text-muted-foreground">Content</h3>
+        <h3 className="mb-1 text-micro font-semibold uppercase tracking-wider text-text-secondary">Content</h3>
         <p className="whitespace-pre-wrap text-sm text-foreground">
           {messageText(message)}
         </p>
@@ -119,7 +119,7 @@ function MessageDetailContent({ message }: MessageDetailContentProps) {
 
       {/* Metadata */}
       <div>
-        <h3 className="mb-2 text-micro font-semibold uppercase tracking-wider text-muted-foreground">Details</h3>
+        <h3 className="mb-2 text-micro font-semibold uppercase tracking-wider text-text-secondary">Details</h3>
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
           <MetadataRow label="Channel" value={message.channel} mono />
           <MetadataRow label="Timestamp" value={formatDateTime(message.timestamp)} mono />
@@ -150,7 +150,7 @@ function MessageDetailContent({ message }: MessageDetailContentProps) {
       {/* Attachments */}
       {messageAttachments.length > 0 && (
         <div>
-          <h3 className="mb-2 text-micro font-semibold uppercase tracking-wider text-muted-foreground">Attachments</h3>
+          <h3 className="mb-2 text-micro font-semibold uppercase tracking-wider text-text-secondary">Attachments</h3>
           <AttachmentList attachments={messageAttachments} />
         </div>
       )}
@@ -167,7 +167,7 @@ interface MetadataRowProps {
 function MetadataRow({ label, value, mono }: MetadataRowProps) {
   return (
     <>
-      <dt className="text-muted-foreground">{label}</dt>
+      <dt className="text-text-secondary">{label}</dt>
       <dd className={cn('text-foreground', mono && 'font-mono')}>{value}</dd>
     </>
   )

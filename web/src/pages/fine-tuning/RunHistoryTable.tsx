@@ -56,10 +56,10 @@ const RunRow = memo(function RunRow({ run }: { run: FineTuneRun }) {
           <span className="text-xs">{formatStage(run.stage)}</span>
         </span>
       </td>
-      <td className="py-2 pr-4 text-xs text-muted-foreground">
+      <td className="py-2 pr-4 text-xs text-text-secondary">
         {countActiveStagesCompleted(run.stages_completed)}/{ACTIVE_STAGES.size}
       </td>
-      <td className="py-2 font-mono text-xs text-muted-foreground">
+      <td className="py-2 font-mono text-xs text-text-secondary">
         {run.config.source_dir}
       </td>
     </tr>
@@ -84,7 +84,7 @@ export function RunHistoryTable() {
       <div className="overflow-x-auto">
         <table className="w-full min-w-[28rem] text-sm">
           <thead>
-            <tr className="border-b border-border text-left text-muted-foreground">
+            <tr className="border-b border-border text-left text-text-secondary">
               <th className="pb-2 pr-4">Date</th>
               <th className="pb-2 pr-4">Duration</th>
               <th className="pb-2 pr-4">Status</th>

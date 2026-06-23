@@ -107,7 +107,7 @@ function CoordinationMetricsRow({ record }: { record: CoordinationMetricsRecord 
   return (
     <tr className="border-t border-border">
       <td className="py-2 pr-4 font-mono text-xs text-foreground">{record.task_id}</td>
-      <td className="py-2 pr-4 font-mono text-xs text-muted-foreground">
+      <td className="py-2 pr-4 font-mono text-xs text-text-secondary">
         {record.agent_id ?? 'system'}
       </td>
       <td className="py-2 pr-4 text-right tabular-nums">{record.team_size}</td>
@@ -123,7 +123,7 @@ function CoordinationMetricsRow({ record }: { record: CoordinationMetricsRecord 
       <td className="py-2 pr-4 text-right tabular-nums">
         {metricValue(metrics.error_amplification?.value)}
       </td>
-      <td className="py-2 text-xs text-muted-foreground">{formatDateTime(record.computed_at)}</td>
+      <td className="py-2 text-xs text-text-secondary">{formatDateTime(record.computed_at)}</td>
     </tr>
   )
 }
@@ -140,7 +140,7 @@ function CoordinationMetricsTable({
       <div className="overflow-x-auto">
         <table className="w-full min-w-[44rem] text-sm">
           <thead>
-            <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <tr className="text-left text-xs uppercase tracking-wide text-text-secondary">
               <th className="py-2 pr-4 font-medium">Task</th>
               <th className="py-2 pr-4 font-medium">Lead agent</th>
               <th className="py-2 pr-4 text-right font-medium">Team</th>

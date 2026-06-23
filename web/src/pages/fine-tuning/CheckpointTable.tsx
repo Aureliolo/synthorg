@@ -76,7 +76,7 @@ const CheckpointRow = memo(function CheckpointRow({ checkpoint: cp, onDeploy, on
             <MetricDelta value={cp.eval_metrics.improvement_ndcg} />
           </span>
         ) : (
-          <span className="text-muted-foreground">--</span>
+          <span className="text-text-secondary">--</span>
         )}
       </td>
       <td className="py-2 pr-4">
@@ -86,7 +86,7 @@ const CheckpointRow = memo(function CheckpointRow({ checkpoint: cp, onDeploy, on
             <MetricDelta value={cp.eval_metrics.improvement_recall} />
           </span>
         ) : (
-          <span className="text-muted-foreground">--</span>
+          <span className="text-text-secondary">--</span>
         )}
       </td>
       <td className="py-2 pr-4 font-mono text-xs">
@@ -177,7 +177,7 @@ export function CheckpointTable() {
     <div className="overflow-x-auto">
       <table className="w-full min-w-[40rem] text-sm">
         <thead>
-          <tr className="border-b border-border text-left text-muted-foreground">
+          <tr className="border-b border-border text-left text-text-secondary">
             <SortHeader label="Date" sortKey="created_at" active={sortKey} direction={sortDir} onSort={handleSort} />
             <th className="pb-2 pr-4">Base Model</th>
             <SortHeader label="Docs" sortKey="doc_count" active={sortKey} direction={sortDir} onSort={handleSort} />
