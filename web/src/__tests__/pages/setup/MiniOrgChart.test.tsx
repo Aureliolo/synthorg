@@ -16,15 +16,16 @@ function agent(overrides: Partial<SetupAgentSummary>): SetupAgentSummary {
   }
 }
 
-/**
- * SVG `<title>` child nodes are the tooltip mechanism used across
- * MiniOrgChart's agent circles and department labels. Testing Library's
- * `getByTitle` doesn't match SVG `<title>` elements by content reliably
- * across jsdom versions, so we query directly from the container.
- */
-function getTitles(container: HTMLElement): string[] {
-  return Array.from(container.querySelectorAll('title')).map(
-    (t) => t.textContent,
+/** Agent rounds expose `${name} - ${role}` via the HTML `title` attribute. */
+function agentTitles(container: HTMLElement): string[] {
+  return Array.from(container.querySelectorAll('[title]')).map(
+    (el) => el.getAttribute('title') ?? '',
+  )
+}
+
+function deptLabels(container: HTMLElement): string[] {
+  return Array.from(container.querySelectorAll('span')).map(
+    (el) => el.textContent,
   )
 }
 
@@ -43,94 +44,83 @@ describe('MiniOrgChart', () => {
         ]}
       />,
     )
-    const texts = Array.from(container.querySelectorAll('text')).map(
-      (el) => el.textContent,
-    )
-    expect(texts).toContain('Quality Assurance')
-    expect(texts).toContain('Creative Marketing')
-    // No truncation ellipsis -- covers both the ASCII `...` form
-    // and the Unicode ellipsis `\u2026`, so a regression that
-    // switches to either style would still fail.
-    for (const t of texts) expect(t).not.toMatch(/(?:\.{2,}|\u2026)$/)
+    const labels = deptLabels(container)
+    expect(labels).toContain('Quality Assurance')
+    expect(labels).toContain('Creative Marketing')
   })
 
-  it('marks the highest-seniority agent in each department as the head', () => {
+  it('labels an empty department as "Unassigned"', () => {
+    const { container } = render(
+      <MiniOrgChart agents={[agent({ name: 'Orphan One', department: '' })]} />,
+    )
+    expect(deptLabels(container)).toContain('Unassigned')
+  })
+
+  it('renders every agent with an accessible title of name and role', () => {
     const { container } = render(
       <MiniOrgChart
         agents={[
-          agent({ name: 'Ada Junior', role: 'Junior Dev', level: 'junior' }),
-          agent({ name: 'Bill Lead', role: 'Lead Dev', level: 'lead' }),
-          agent({ name: 'Cal Mid', role: 'Dev', level: 'mid' }),
+          agent({ name: 'Alpha', role: 'Engineer', department: 'engineering' }),
+          agent({ name: 'Beta', role: 'Designer', department: 'design' }),
+          agent({ name: 'Gamma', role: 'Engineer', department: 'engineering' }),
         ]}
       />,
     )
-    const titles = getTitles(container)
-    const headTitles = titles.filter((t) => t.includes('(head)'))
-    expect(headTitles).toHaveLength(1)
-    expect(headTitles[0]).toContain('Bill Lead')
-    expect(headTitles[0]).toContain('Lead Dev')
-    expect(headTitles[0]).toContain('lead')
+    const titles = agentTitles(container)
+    expect(titles).toContain('Alpha - Engineer')
+    expect(titles).toContain('Beta - Designer')
+    expect(titles).toContain('Gamma - Engineer')
   })
 
-  it('when all agents have null level, still picks exactly one head (first-encountered tiebreak)', () => {
+  it('shows a per-department headcount next to each label', () => {
     const { container } = render(
       <MiniOrgChart
         agents={[
-          agent({ name: 'Unlevelled A', level: null }),
-          agent({ name: 'Unlevelled B', level: null }),
+          agent({ name: 'A', department: 'engineering' }),
+          agent({ name: 'B', department: 'engineering' }),
+          agent({ name: 'C', department: 'design' }),
         ]}
       />,
     )
-    const titles = getTitles(container)
-    // Both agent titles present (rendered without level suffix).
-    expect(titles.some((t) => t.startsWith('Unlevelled A'))).toBe(true)
-    expect(titles.some((t) => t.startsWith('Unlevelled B'))).toBe(true)
-    // ``pickHead`` still designates one agent as head even when all
-    // levels are null: the first agent encountered in the insertion
-    // order becomes the head via the ``levelRank === -1`` tiebreak.
-    expect(titles.filter((t) => t.includes('(head)'))).toHaveLength(1)
+    const labels = deptLabels(container)
+    // Both department labels and their counts are present.
+    expect(labels).toContain('Engineering')
+    expect(labels).toContain('Design')
+    expect(labels).toContain('2')
+    expect(labels).toContain('1')
   })
 
-  it('picks a c_suite executive as head even over a lead in the same dept', () => {
+  it('puts the department holding the most senior agent on top, others below', () => {
     const { container } = render(
       <MiniOrgChart
         agents={[
           agent({ name: 'Exec One', role: 'CEO', department: 'executive', level: 'c_suite' }),
-          agent({ name: 'Lead One', role: 'Team Lead', department: 'executive', level: 'lead' }),
+          agent({ name: 'Dev One', role: 'Engineer', department: 'engineering', level: 'mid' }),
+          agent({ name: 'Designer One', role: 'Designer', department: 'design', level: 'mid' }),
         ]}
       />,
     )
-    const titles = getTitles(container)
-    const headTitles = titles.filter((t) => t.includes('(head)'))
-    expect(headTitles).toHaveLength(1)
-    expect(headTitles[0]).toContain('Exec One')
-    expect(headTitles[0]).toContain('CEO')
-    expect(headTitles[0]).toContain('c-suite')
+    // Leadership box renders before the subordinate row in document order.
+    const labels = deptLabels(container).filter((t) =>
+      ['Executive', 'Engineering', 'Design'].includes(t),
+    )
+    expect(labels[0]).toBe('Executive')
+    // Connector lines are drawn (border-coloured rules) once a hierarchy exists.
+    expect(container.querySelectorAll('.bg-border').length).toBeGreaterThan(0)
   })
 
-  it('groups unknown department under "unassigned" when empty', () => {
-    const { container } = render(
-      <MiniOrgChart agents={[agent({ name: 'Orphan One', department: '' })]} />,
-    )
-    const labels = Array.from(container.querySelectorAll('text')).map(
-      (el) => el.textContent,
-    )
-    expect(labels).toContain('Unassigned')
-  })
-
-  it('renders every agent as a node with an accessible title', () => {
+  it('falls back to a flat row (no connectors) when no department clearly leads', () => {
     const { container } = render(
       <MiniOrgChart
         agents={[
-          agent({ name: 'Alpha', department: 'engineering' }),
-          agent({ name: 'Beta', department: 'design' }),
-          agent({ name: 'Gamma', department: 'engineering' }),
+          agent({ name: 'Dev One', department: 'engineering', level: 'mid' }),
+          agent({ name: 'Designer One', department: 'design', level: 'mid' }),
         ]}
       />,
     )
-    const titles = getTitles(container)
-    expect(titles.some((t) => t.startsWith('Alpha'))).toBe(true)
-    expect(titles.some((t) => t.startsWith('Beta'))).toBe(true)
-    expect(titles.some((t) => t.startsWith('Gamma'))).toBe(true)
+    // Equal-rank departments: no leadership box, so no connector rules.
+    expect(container.querySelectorAll('.bg-border')).toHaveLength(0)
+    expect(deptLabels(container)).toContain('Engineering')
+    expect(deptLabels(container)).toContain('Design')
   })
 })

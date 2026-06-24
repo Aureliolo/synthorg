@@ -12,9 +12,24 @@ interface Department {
   name: string
   label: string
   agents: SetupAgentSummary[]
+  rank: number
+}
+
+// Seniority rank per agent level; a department inherits the rank of its most
+// senior agent, so the one holding the c-suite sits at the top of the chart.
+const LEVEL_RANK: Record<string, number> = {
+  c_suite: 8,
+  vp: 7,
+  director: 6,
+  principal: 5,
+  lead: 4,
+  senior: 3,
+  mid: 2,
+  junior: 1,
 }
 
 function humanizeDept(dept: string): string {
+  if (!dept) return 'Unassigned'
   return dept.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
@@ -23,12 +38,38 @@ function buildDepartments(agents: readonly SetupAgentSummary[]): Department[] {
   for (const agent of agents) {
     let dept = byDept.get(agent.department)
     if (!dept) {
-      dept = { name: agent.department, label: humanizeDept(agent.department), agents: [] }
+      dept = {
+        name: agent.department,
+        label: humanizeDept(agent.department),
+        agents: [],
+        rank: 0,
+      }
       byDept.set(agent.department, dept)
     }
     dept.agents.push(agent)
+    const rank = agent.level ? (LEVEL_RANK[agent.level] ?? 0) : 0
+    if (rank > dept.rank) dept.rank = rank
   }
   return [...byDept.values()]
+}
+
+/**
+ * Split departments into the single leadership department (the one whose most
+ * senior agent outranks every other department) and the rest that report to
+ * it. Returns a null lead when no department clearly sits above the others, so
+ * the caller falls back to a flat row instead of inventing a hierarchy.
+ */
+function splitLeadership(depts: Department[]): {
+  lead: Department | null
+  rest: Department[]
+} {
+  if (depts.length < 2) return { lead: null, rest: depts }
+  const sorted = [...depts].sort((a, b) => b.rank - a.rank)
+  const [top, second] = sorted
+  if (top && second && top.rank > second.rank) {
+    return { lead: top, rest: sorted.slice(1) }
+  }
+  return { lead: null, rest: depts }
 }
 
 function AgentRound({ agent }: { agent: SetupAgentSummary }) {
@@ -47,7 +88,7 @@ function AgentRound({ agent }: { agent: SetupAgentSummary }) {
 
 function DepartmentBox({ dept }: { dept: Department }) {
   return (
-    <div className="flex min-w-[13rem] flex-1 flex-col gap-3 rounded-lg border border-border bg-card p-card">
+    <div className="flex min-w-[11rem] flex-col gap-3 rounded-lg border border-border bg-card p-card">
       <div className="flex items-center gap-2">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground">
           {dept.label}
@@ -68,18 +109,78 @@ function DepartmentBox({ dept }: { dept: Department }) {
 }
 
 /**
- * Department-grouped org overview: one box per department holding its agents as
- * simple rounds. No reporting lines or lead emphasis -- a quiet structural
- * snapshot rather than a hierarchy chart.
+ * One subordinate department under the leadership box. Draws the connector
+ * stub: a horizontal bus segment (half-width on the outer columns so the bus
+ * starts/ends at the first/last branch) plus a vertical branch down to the
+ * box. A lone child draws only the vertical branch.
+ */
+function ChildColumn({
+  dept,
+  first,
+  last,
+  single,
+}: {
+  dept: Department
+  first: boolean
+  last: boolean
+  single: boolean
+}) {
+  return (
+    <div className="flex flex-1 flex-col items-center">
+      <div className="relative h-5 w-full" aria-hidden>
+        {!single && (
+          <div
+            className={cn(
+              'absolute top-0 h-px bg-border',
+              first ? 'left-1/2 right-0' : last ? 'left-0 right-1/2' : 'left-0 right-0',
+            )}
+          />
+        )}
+        <div className="absolute left-1/2 top-0 h-5 w-px -translate-x-1/2 bg-border" />
+      </div>
+      <div className="w-full px-1.5">
+        <DepartmentBox dept={dept} />
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Compact org preview: the leadership department on top, the departments that
+ * report to it on a connected row below, each box holding its agents as little
+ * avatar rounds with a headcount. When no department clearly leads, falls back
+ * to a flat wrapped row of boxes rather than fabricating reporting lines.
  */
 export function MiniOrgChart({ agents, className }: MiniOrgChartProps) {
   const departments = useMemo(() => buildDepartments(agents), [agents])
+  const { lead, rest } = useMemo(() => splitLeadership(departments), [departments])
   if (departments.length === 0) return null
+
+  if (!lead) {
+    return (
+      <div className={cn('flex flex-wrap gap-3', className)}>
+        {rest.map((dept) => (
+          <DepartmentBox key={dept.name} dept={dept} />
+        ))}
+      </div>
+    )
+  }
+
   return (
-    <div className={cn('flex flex-wrap gap-3', className)}>
-      {departments.map((dept) => (
-        <DepartmentBox key={dept.name} dept={dept} />
-      ))}
+    <div className={cn('flex flex-col items-center', className)}>
+      <DepartmentBox dept={lead} />
+      <div className="h-5 w-px bg-border" aria-hidden />
+      <div className="flex w-full items-start overflow-x-auto">
+        {rest.map((dept, index) => (
+          <ChildColumn
+            key={dept.name}
+            dept={dept}
+            first={index === 0}
+            last={index === rest.length - 1}
+            single={rest.length === 1}
+          />
+        ))}
+      </div>
     </div>
   )
 }
