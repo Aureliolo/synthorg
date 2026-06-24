@@ -9,10 +9,11 @@ to the newest matching configured model and pinning a concrete id, and
 composite.  Selection is pluggable via :class:`ModelSelectionStrategy`.
 """
 
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from datetime import date
 from fnmatch import fnmatch
-from typing import Final, Protocol, runtime_checkable
+from typing import Final, NamedTuple, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 
@@ -32,6 +33,11 @@ from synthorg.templates.model_matcher_config import (
     derive_tier,
 )
 from synthorg.templates.model_matcher_priority import priority_ranker
+from synthorg.templates.model_matcher_tiering import (
+    effective_level,
+    rank_by_quality,
+    select_tiered,
+)
 from synthorg.templates.model_requirements import ModelRequirement, ModelTier
 
 logger = get_logger(__name__)
@@ -80,6 +86,43 @@ class ModelSelectionStrategy(Protocol):
         ...
 
 
+def passes_hard_filters(
+    model: ProviderModelConfig,
+    requirement: ModelRequirement,
+) -> bool:
+    """Return ``True`` when *model* clears every hard requirement.
+
+    Optimistic: a required capability is a hard fail only when the model is
+    *known* to lack it (``litellm`` / ``probe`` metadata with the flag False).
+    A model with ``unknown`` metadata is allowed through -- most modern models
+    support tools/reasoning, and excluding every un-probed cloud model would
+    leave agents unassigned.
+
+    Returns:
+        True when the model meets the context floor and every required
+        capability it is known to possess (or has unknown metadata for).
+    """
+    if model.max_context < requirement.min_context:
+        return False
+    meta = model.metadata
+    unknown = meta.metadata_source == "unknown"
+    required_checks = (
+        (requirement.requires_tools, meta.supports_tools),
+        (requirement.requires_vision, meta.supports_vision),
+        (requirement.requires_reasoning, meta.supports_reasoning),
+    )
+    for required, supported in required_checks:
+        if required and not unknown and not supported:
+            logger.debug(
+                TEMPLATE_MODEL_MATCH_SKIPPED,
+                model=model.id,
+                reason="capability_unmet",
+                metadata_unknown=unknown,
+            )
+            return False
+    return True
+
+
 class CapabilityFitStrategy:
     """Default capability-aware selection strategy.
 
@@ -112,7 +155,7 @@ class CapabilityFitStrategy:
                 return None, 0.0
             return self._newest(pinned), 1.0
 
-        survivors = [m for m in candidates if self._passes_hard_filters(m, requirement)]
+        survivors = [m for m in candidates if passes_hard_filters(m, requirement)]
         if not survivors:
             return None, 0.0
 
@@ -135,40 +178,6 @@ class CapabilityFitStrategy:
             (m, self._score(m, requirement, survivors, config)) for m in survivors
         ]
         return max(scored, key=lambda pair: pair[1])
-
-    def _passes_hard_filters(
-        self,
-        model: ProviderModelConfig,
-        requirement: ModelRequirement,
-    ) -> bool:
-        """Return ``True`` when *model* clears every hard requirement.
-
-        Optimistic: a required capability is a hard fail only when the model
-        is *known* to lack it (``litellm`` / ``probe`` metadata with the flag
-        False). A model with ``unknown`` metadata is allowed through -- most
-        modern models support tools/reasoning, and excluding every
-        un-probed cloud model would leave agents unassigned. ``_score``
-        ranks proven-capable models above these unknowns.
-        """
-        if model.max_context < requirement.min_context:
-            return False
-        meta = model.metadata
-        unknown = meta.metadata_source == "unknown"
-        required_checks = (
-            (requirement.requires_tools, meta.supports_tools),
-            (requirement.requires_vision, meta.supports_vision),
-            (requirement.requires_reasoning, meta.supports_reasoning),
-        )
-        for required, supported in required_checks:
-            if required and not unknown and not supported:
-                logger.debug(
-                    TEMPLATE_MODEL_MATCH_SKIPPED,
-                    model=model.id,
-                    reason="capability_unmet",
-                    metadata_unknown=unknown,
-                )
-                return False
-        return True
 
     def _ref_matches(
         self,
@@ -419,6 +428,9 @@ def match_all_agents(
     )
 
     cfg = matcher_config if matcher_config is not None else DEFAULT_MATCHER_CONFIG
+    selector = strategy if strategy is not None else _DEFAULT_STRATEGY
+    pool, owner = _build_pool(providers)
+    ctx = _MatchContext(pool, owner, Counter(), cfg, selector)
     results: list[ModelMatch] = []
 
     for idx, agent in enumerate(agents):
@@ -431,34 +443,35 @@ def match_all_agents(
         )
         if req is None:
             continue
-        match = _match_agent(idx, req, providers, cfg, strategy)
+        match = _match_agent(idx, agent, req, ctx)
         if match is not None:
             results.append(match)
 
     return results
 
 
-def _match_agent(
-    idx: int,
-    req: ModelRequirement,
+# Reported match score for a seniority-tiered assignment: a deliberate
+# level-band pick, not a fuzzy capability match, so it carries full confidence.
+_TIERED_MATCH_SCORE: Final[float] = 1.0
+
+
+class _MatchContext(NamedTuple):
+    """Shared batch-matching state: the unified pool + running family spread."""
+
+    pool: tuple[ProviderModelConfig, ...]
+    owner: dict[int, str]
+    family_usage: Counter[str]
+    config: ModelMatcherConfig
+    strategy: ModelSelectionStrategy
+
+
+def _build_pool(
     providers: Mapping[str, _ProviderWithModels],
-    cfg: ModelMatcherConfig,
-    strategy: ModelSelectionStrategy | None,
-) -> ModelMatch | None:
-    """Find the best model for one resolved requirement across providers.
-
-    Fail-closed: when no model clears the requirement's hard capability
-    filters in any provider, returns ``None`` rather than assigning a
-    non-compliant model. The caller leaves such an agent unassigned.
-
-    All providers' models are scored in ONE pool so the priority-axis
-    normalisation (strength / cost) spans local + cloud: a frontier 756B
-    cloud model and a small local one are ranked on the same scale instead
-    of each topping its own provider's pool and erasing the size gap.
+) -> tuple[tuple[ProviderModelConfig, ...], dict[int, str]]:
+    """Flatten every provider's models into one pool + an id->provider map.
 
     Returns:
-        The best ``ModelMatch`` across all providers, or ``None`` when no
-        model satisfies the hard capability requirements.
+        ``(pool, owner)`` where ``owner`` maps ``id(model)`` to its provider.
     """
     pool: list[ProviderModelConfig] = []
     owner: dict[int, str] = {}
@@ -466,27 +479,75 @@ def _match_agent(
         for model in pcfg.models:
             pool.append(model)
             owner[id(model)] = pname
-    best_model, best_score = match_model(req, tuple(pool), cfg, strategy)
-    best_provider = owner.get(id(best_model)) if best_model is not None else None
+    return tuple(pool), owner
 
-    if best_provider is not None and best_model is not None:
-        logger.debug(
-            TEMPLATE_MODEL_MATCH_SUCCESS,
-            agent_index=idx,
-            provider=best_provider,
-            model=best_model.id,
-            score=best_score,
-        )
-        return ModelMatch(
-            agent_index=idx,
-            provider_name=best_provider,
-            model_id=best_model.id,
-            tier=derive_tier(best_model, cfg),
-            score=best_score,
-        )
-    logger.debug(
-        TEMPLATE_MODEL_MATCH_FAILED,
-        agent_index=idx,
-        reason="no_compliant_model",
+
+def _agent_level(agent: Mapping[str, object]) -> str | None:
+    """Return the agent's effective seniority (role reconciled with level).
+
+    Returns:
+        The more-senior of the ``level`` field and the role-implied level, so
+        a CEO stamped ``level: mid`` still bands as executive.
+    """
+    raw_level = agent.get("level")
+    raw_role = agent.get("role")
+    return effective_level(
+        raw_level if isinstance(raw_level, str) else None,
+        raw_role if isinstance(raw_role, str) else None,
     )
-    return None
+
+
+def _match_agent(
+    idx: int,
+    agent: Mapping[str, object],
+    req: ModelRequirement,
+    ctx: _MatchContext,
+) -> ModelMatch | None:
+    """Assign one agent a model across the unified provider pool.
+
+    An explicit id / family / pattern reference is honoured via the strategy
+    (pin the newest match). Otherwise the agent's seniority level selects a
+    band of the quality-ranked eligible models and the least-used family wins,
+    so a roster spreads across model lines instead of all landing on the single
+    strongest model.
+
+    Returns:
+        The ``ModelMatch``, or ``None`` when nothing clears the hard filters.
+    """
+    if (
+        req.model_id is not None
+        or req.family is not None
+        or req.model_pattern is not None
+    ):
+        model, score = ctx.strategy.select(req, ctx.pool, ctx.config)
+    else:
+        eligible = rank_by_quality(
+            [m for m in ctx.pool if passes_hard_filters(m, req)],
+        )
+        model = select_tiered(eligible, _agent_level(agent), ctx.family_usage)
+        score = _TIERED_MATCH_SCORE if model is not None else 0.0
+
+    provider = ctx.owner.get(id(model)) if model is not None else None
+    if model is None or provider is None:
+        logger.debug(
+            TEMPLATE_MODEL_MATCH_FAILED,
+            agent_index=idx,
+            reason="no_compliant_model",
+        )
+        return None
+
+    ctx.family_usage[model.metadata.family or model.id] += 1
+    logger.debug(
+        TEMPLATE_MODEL_MATCH_SUCCESS,
+        agent_index=idx,
+        provider=provider,
+        model=model.id,
+        score=score,
+    )
+    return ModelMatch(
+        agent_index=idx,
+        provider_name=provider,
+        model_id=model.id,
+        tier=derive_tier(model, ctx.config),
+        score=score,
+    )

@@ -12399,6 +12399,8 @@ export type components = {
              * @enum {string}
              */
             readonly metadata_source: "litellm" | "preset" | "probe" | "unknown";
+            /** @description Total model parameters, when known (size/strength signal) */
+            readonly parameter_count: number | null;
             /**
              * Format: date
              * @description Parsed release date, when derivable from the id

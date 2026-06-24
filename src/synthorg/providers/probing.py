@@ -8,6 +8,7 @@ candidate URLs come from hardcoded preset definitions.
 
 import asyncio
 import json
+import re
 from collections.abc import Mapping
 from typing import Final, Protocol
 
@@ -308,6 +309,7 @@ def parse_ollama_show(
         if isinstance(raw_caps, list)
         else set()
     )
+    family, generation = parse_ollama_identity(model_id)
     metadata = ModelMetadata(
         supports_tools="tools" in caps,
         supports_vision="vision" in caps,
@@ -315,6 +317,10 @@ def parse_ollama_show(
         # Parameter count is a coarse size/strength signal the matcher uses to
         # rank quality so a frontier cloud model beats a small local one.
         parameter_count=_ollama_parameter_count(show),
+        # Family + generation let the matcher group versions of one model line,
+        # pin the newest, and spread agents across distinct families.
+        family=family,
+        generation=generation,
         # "probe" provenance is load-bearing: the matcher's hard filter
         # fail-closes on "unknown"-source metadata even when a capability flag
         # is True (it cannot trust the source), so leaving the default would
@@ -409,6 +415,39 @@ def _ollama_context_length(show: Mapping[str, JsonValue]) -> int | None:
         if key.endswith(".context_length") and isinstance(value, int) and value > 0:
             return value
     return None
+
+
+_OLLAMA_FAMILY_RE: Final = re.compile(r"^[a-z]+")
+_OLLAMA_GENERATION_RE: Final = re.compile(r"\d+(?:\.\d+)?")
+_MIN_FAMILY_LEN: Final[int] = 2
+
+
+def parse_ollama_identity(model_id: str) -> tuple[str | None, float | None]:
+    """Extract a coarse family + generation from an Ollama model id.
+
+    Ollama ids embed the model line and version in the name (``deepseek-v4-pro``,
+    ``glm-5.2``, ``gemma4:26b``). The family is the leading alphabetic run and
+    the generation is the first version number, so the matcher can group
+    versions of one model line, pin the newest, and spread across distinct
+    families. Heuristic, not authoritative: an unrecognised shape yields
+    ``(None, None)`` rather than a wrong guess.
+
+    Args:
+        model_id: The model id from the listing (tag included).
+
+    Returns:
+        ``(family, generation)``; either element is ``None`` when not derivable.
+    """
+    base = model_id.split(":", 1)[0].lower()
+    fam_match = _OLLAMA_FAMILY_RE.match(base)
+    family = (
+        fam_match.group(0)
+        if fam_match and len(fam_match.group(0)) >= _MIN_FAMILY_LEN
+        else None
+    )
+    gen_match = _OLLAMA_GENERATION_RE.search(base)
+    generation = float(gen_match.group(0)) if gen_match else None
+    return family, generation
 
 
 def _ollama_parameter_count(show: Mapping[str, JsonValue]) -> int | None:

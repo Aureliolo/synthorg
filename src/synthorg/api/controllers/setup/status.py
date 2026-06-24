@@ -44,8 +44,7 @@ from synthorg.observability.events.setup import (
     SETUP_TEMPLATES_LISTED,
 )
 from synthorg.persistence.state import persistence_of
-from synthorg.providers.state import ProvidersStateSlice
-from synthorg.settings.state import settings_service_of
+from synthorg.settings.state import config_resolver_of, settings_service_of
 
 logger = get_logger(__name__)
 
@@ -81,15 +80,21 @@ class SetupStatusController(Controller):
 
         needs_admin = await _check_needs_admin(persistence_of(app_state))
         needs_setup = await _check_needs_setup(settings_svc)
-        provider_registry = app_state.slice(ProvidersStateSlice).registry
-        has_providers = provider_registry is not None and len(provider_registry) > 0
         async with asyncio.TaskGroup() as tg:
+            pr_task = tg.create_task(
+                config_resolver_of(app_state).get_provider_configs(),
+            )
             co_task = tg.create_task(_check_has_company(settings_svc))
             ag_task = tg.create_task(_check_has_agents(settings_svc))
             nl_task = tg.create_task(_check_has_name_locales(settings_svc))
             pw_task = tg.create_task(
                 _resolve_min_password_length(settings_svc),
             )
+        # ``has_providers`` reflects CONFIGURED (persisted) providers -- the same
+        # source ``GET /providers`` lists -- not the runtime registry, which is
+        # only wired after setup completes and reads empty mid-setup, bouncing
+        # the resume flow back to the Providers step.
+        has_providers = len(pr_task.result()) > 0
         has_company = co_task.result()
         has_agents = ag_task.result()
         has_name_locales = nl_task.result()
