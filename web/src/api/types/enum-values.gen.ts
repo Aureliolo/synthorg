@@ -848,6 +848,7 @@ export const SETTING_NAMESPACE_VALUES = [
     'charter',
     'demo',
     'appearance',
+    'org_chart',
 ] as const
 export type SettingNamespace = (typeof SETTING_NAMESPACE_VALUES)[number]
 

@@ -1,7 +1,10 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { getNamespaceSettings, updateSetting } from '@/api/endpoints/settings'
+import { createLogger } from '@/lib/logger'
+import { useToastStore } from '@/stores/toast'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 
-import { ORG_CHART_PREFS_PERSIST_NAME } from './org-chart-prefs-teardown'
+const log = createLogger('org-chart-prefs')
 
 /**
  * Particle-flow mode for the Org Chart's hierarchy edges.
@@ -22,67 +25,145 @@ export type ParticleFlowMode = 'always' | 'live' | 'off'
  */
 export const LIVE_EDGE_ACTIVE_MS = 3000
 
-interface OrgChartPrefsState {
-  /** Animation mode for the hierarchy edge particles. */
-  particleFlowMode: ParticleFlowMode
-  /** Whether to show the inline "+ Add agent" affordance on department cards. */
-  showAddAgentButton: boolean
-  /** Whether to show the "LEAD" badge on the dept-head agent. */
-  showLeadBadge: boolean
-  /** Whether to show the budget percent + utilization bar on dept cards. */
-  showBudgetBar: boolean
-  /** Whether to show the per-agent status dots row on dept cards. */
-  showStatusDots: boolean
-  /** Whether the minimap is visible in the bottom-right corner. */
-  showMinimap: boolean
+const PARTICLE_FLOW_MODES = ['always', 'live', 'off'] as const satisfies readonly ParticleFlowMode[]
 
+interface OrgChartPrefs {
+  particleFlowMode: ParticleFlowMode
+  showAddAgentButton: boolean
+  showLeadBadge: boolean
+  showBudgetBar: boolean
+  showStatusDots: boolean
+  showMinimap: boolean
+}
+
+interface OrgChartPrefsState extends OrgChartPrefs {
+  /** True once preferences have been hydrated from the backend at least once. */
+  hydrated: boolean
   setParticleFlowMode: (mode: ParticleFlowMode) => void
   setShowAddAgentButton: (show: boolean) => void
   setShowLeadBadge: (show: boolean) => void
   setShowBudgetBar: (show: boolean) => void
   setShowStatusDots: (show: boolean) => void
   setShowMinimap: (show: boolean) => void
+  /**
+   * Load org-chart view preferences from the backend (`org_chart` settings
+   * namespace) and apply them. The dashboard is a pure API consumer: the
+   * backend is the source of truth and there is no client-side copy, so this
+   * runs when the org chart mounts. Failures degrade to the defaults.
+   */
+  hydrate: () => Promise<void>
 }
 
-export const useOrgChartPrefs = create<OrgChartPrefsState>()(
-  persist(
-    (set) => ({
-      // Default to 'live' -- particles only animate on edges
-      // with recent message activity, so an idle org looks calm
-      // and the edges light up when work actually flows through
-      // them.  Users can still switch to 'always' or 'off' via
-      // the toolbar.
-      particleFlowMode: 'live',
-      showAddAgentButton: true,
-      showLeadBadge: true,
-      showBudgetBar: true,
-      // Status dots are off by default -- with particle flow also
-      // on by default, enabling both produced visual noise that
-      // users read as "broken lines".  Dots remain available via
-      // the toolbar toggle for operators who actually want to see
-      // per-agent runtime state on the chart.
-      showStatusDots: false,
-      // Minimap is off by default -- users explicitly opt in via
-      // the toolbar toggle.  Their choice is persisted after that
-      // so it only prompts once.
-      showMinimap: false,
+const DEFAULTS: OrgChartPrefs = {
+  // Default to 'live' -- particles only animate on edges with recent message
+  // activity, so an idle org looks calm and edges light up when work flows.
+  particleFlowMode: 'live',
+  showAddAgentButton: true,
+  showLeadBadge: true,
+  showBudgetBar: true,
+  // Off by default -- with particle flow also on, both at once reads as noise.
+  showStatusDots: false,
+  // Off by default -- users explicitly opt in via the toolbar toggle.
+  showMinimap: false,
+}
 
-      setParticleFlowMode: (mode) => set({ particleFlowMode: mode }),
-      setShowAddAgentButton: (show) => set({ showAddAgentButton: show }),
-      setShowLeadBadge: (show) => set({ showLeadBadge: show }),
-      setShowBudgetBar: (show) => set({ showBudgetBar: show }),
-      setShowStatusDots: (show) => set({ showStatusDots: show }),
-      setShowMinimap: (show) => set({ showMinimap: show }),
-    }),
-    {
-      name: ORG_CHART_PREFS_PERSIST_NAME,
-      // Internal Zustand-persist schema marker.  NOT a product
-      // version -- this is just the localStorage cache invalidation
-      // key.  Bumping it makes the middleware discard any old
-      // stored shape and fall back to the initial state above.
-      // Keep at 1 during dev; use `migrate` for future schema
-      // changes rather than incrementing this.
-      version: 1,
-    },
-  ),
-)
+// Map each preference to its backend `org_chart.*` settings key (snake_case).
+const BACKEND_KEY = {
+  particleFlowMode: 'particle_flow_mode',
+  showAddAgentButton: 'show_add_agent_button',
+  showLeadBadge: 'show_lead_badge',
+  showBudgetBar: 'show_budget_bar',
+  showStatusDots: 'show_status_dots',
+  showMinimap: 'show_minimap',
+} as const satisfies Record<keyof OrgChartPrefs, string>
+
+const FRONTEND_KEY: Record<string, keyof OrgChartPrefs> = {
+  particle_flow_mode: 'particleFlowMode',
+  show_add_agent_button: 'showAddAgentButton',
+  show_lead_badge: 'showLeadBadge',
+  show_budget_bar: 'showBudgetBar',
+  show_status_dots: 'showStatusDots',
+  show_minimap: 'showMinimap',
+}
+
+function isParticleFlowMode(value: string): value is ParticleFlowMode {
+  return (PARTICLE_FLOW_MODES as readonly string[]).includes(value)
+}
+
+/** Persist a single org-chart preference to the backend; toast on failure. */
+async function persistPref(key: keyof OrgChartPrefs, value: string): Promise<void> {
+  try {
+    await updateSetting('org_chart', BACKEND_KEY[key], { value })
+  } catch (err) {
+    log.error('Failed to save org-chart preference:', getErrorMessage(err))
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, 'Failed to save org chart preference'),
+      description: getErrorMessage(err),
+    })
+  }
+}
+
+function persistBool(key: keyof OrgChartPrefs, value: boolean): void {
+  void persistPref(key, value ? 'true' : 'false')
+}
+
+export const useOrgChartPrefs = create<OrgChartPrefsState>()((set) => ({
+  ...DEFAULTS,
+  hydrated: false,
+
+  setParticleFlowMode: (mode) => {
+    set({ particleFlowMode: mode })
+    void persistPref('particleFlowMode', mode)
+  },
+  setShowAddAgentButton: (show) => {
+    set({ showAddAgentButton: show })
+    persistBool('showAddAgentButton', show)
+  },
+  setShowLeadBadge: (show) => {
+    set({ showLeadBadge: show })
+    persistBool('showLeadBadge', show)
+  },
+  setShowBudgetBar: (show) => {
+    set({ showBudgetBar: show })
+    persistBool('showBudgetBar', show)
+  },
+  setShowStatusDots: (show) => {
+    set({ showStatusDots: show })
+    persistBool('showStatusDots', show)
+  },
+  setShowMinimap: (show) => {
+    set({ showMinimap: show })
+    persistBool('showMinimap', show)
+  },
+
+  hydrate: async (): Promise<void> => {
+    try {
+      const entries = await getNamespaceSettings('org_chart')
+      const patch: Partial<OrgChartPrefs> = {}
+      for (const entry of entries) {
+        const key = FRONTEND_KEY[entry.definition.key]
+        if (key === undefined) continue
+        if (key === 'particleFlowMode') {
+          if (isParticleFlowMode(entry.value)) patch.particleFlowMode = entry.value
+        } else {
+          patch[key] = entry.value === 'true'
+        }
+      }
+      set({ ...patch, hydrated: true })
+    } catch (err) {
+      log.warn('Failed to hydrate org-chart prefs from backend, using defaults:', getErrorMessage(err))
+      set({ hydrated: true })
+    }
+  },
+}))
+
+/**
+ * Reset the singleton store to defaults. The store no longer persists to
+ * ``localStorage`` (the backend is the source of truth), so the only cross-test
+ * leak is in-memory state in a shared Vitest worker; the global ``afterEach``
+ * in ``test-setup.tsx`` calls this to clear it.
+ */
+export function resetOrgChartPrefs(): void {
+  useOrgChartPrefs.setState({ ...DEFAULTS, hydrated: false })
+}

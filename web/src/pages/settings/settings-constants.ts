@@ -51,6 +51,7 @@ export const NAMESPACE_ORDER: readonly SettingNamespace[] = [
   'workers',
   'client',
   'appearance',
+  'org_chart',
 ] as const
 
 /** Human-readable display names for setting namespaces. */
@@ -84,6 +85,7 @@ export const NAMESPACE_DISPLAY_NAMES: Readonly<Record<SettingNamespace, string>>
   cockpit: 'Mission Control',
   demo: 'Demo',
   appearance: 'Appearance',
+  org_chart: 'Org Chart',
 }
 
 /** Settings that should never be shown in the GUI (internal/system-managed). */

@@ -35,7 +35,7 @@ import { useToastStore } from '@/stores/toast'
 import { defaultHandlers } from '@/mocks/handlers'
 import { cookieJar, installCookieShim } from '@/cookie-shim'
 import { installStorageShim } from '@/storage-shim'
-import { cancelOrgChartPrefsPersist } from '@/stores/org-chart-prefs-teardown'
+import { resetOrgChartPrefs } from '@/stores/org-chart-prefs'
 // Pure helper: clears the per-endpoint 429 breaker so a tripped breaker in
 // one test cannot leak into the next. The module imports only the logger
 // (no `@/api/client` side effects), so it is safe in this global setup.
@@ -307,11 +307,10 @@ afterEach(() => {
   // so we do not transitively load ``@/api/client`` (see top-of-file
   // comment).  The shim is a no-op when localStorage is unavailable.
   cancelSetupWizardPersist()
-  // Org-chart-prefs store also uses Zustand ``persist``; same
-  // side-effect-free teardown pattern -- drops the persisted key so
-  // toolbar toggles a test sets do not bleed into the next test in
-  // the same Vitest worker.
-  cancelOrgChartPrefsPersist()
+  // Org-chart-prefs store is backend-sourced (no client persistence); reset
+  // its in-memory singleton state so toolbar toggles a test sets do not bleed
+  // into the next test in the same Vitest worker.
+  resetOrgChartPrefs()
   // MCP-catalog ``setSearchQuery`` schedules a 200ms debounce
   // ``setTimeout``; clear any pending handle so it cannot outlive
   // the test and trip the active-handle gate.
