@@ -220,6 +220,15 @@ html {
   body,
   #root {
     height: 100%;
+    /*
+     * The app shell (AppLayout) owns the viewport and scrolls its OWN inner
+     * regions (the `<main>` content area, popovers, drawers). The document
+     * itself must never scroll: otherwise a second, document-level scrollbar
+     * appears on top of the inner content scroll ("2 scrollbars"). Locking
+     * overflow here keeps a single scrollbar -- the inner one that belongs to
+     * whatever region is actually scrolling.
+     */
+    overflow: hidden;
   }
   /*
    * Stop a scroll inside ``#root`` from chaining out to the document.
