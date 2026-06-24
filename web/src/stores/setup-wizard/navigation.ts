@@ -137,12 +137,27 @@ async function reconcileCompletionFromBackendImpl(set: WizSet): Promise<void> {
       if (status.has_providers) completed.providers = true
       // A created company implies its template was applied and a mode was
       // chosen in a prior session; mark those so the operator is not sent
-      // back through the mode picker / Template on resume. ``agents`` is
-      // deliberately left to the Agents step's own model-resolution check.
+      // back through the mode picker / Template on resume.
       if (status.has_company) {
         completed.company = true
         completed.template = true
         completed.mode = true
+      }
+      // Persisted agents (auto-created with the template, each carrying a
+      // model assignment) mean the Agents step was satisfied in the prior
+      // session; mark it complete so a resume does not bounce the operator
+      // back through Agents on the way to Complete. The Agents step's own
+      // ``recomputeAgentsRevalidation`` still raises a soft revalidation
+      // badge once the roster rehydrates if a model no longer resolves, and
+      // the backend completion gate rejects an agent whose provider/model
+      // was deleted -- so existence here cannot smuggle a broken roster
+      // through. ``theme`` is a cosmetic, defaulted, client-only choice with
+      // no backend signal; once the substantive setup (agents) exists, a
+      // resume must not re-block on re-picking a theme -- it stays reachable
+      // via the progress bar and is changeable later in Settings.
+      if (status.has_agents) {
+        completed.agents = true
+        completed.theme = true
       }
       return { stepsCompleted: completed, statusReconciled: true }
     })

@@ -410,6 +410,58 @@ describe('setup wizard store', () => {
     })
   })
 
+  describe('reconcileCompletionFromBackend', () => {
+    function stubStatus(over: {
+      has_providers: boolean
+      has_company: boolean
+      has_agents: boolean
+    }): void {
+      server.use(
+        http.get('/api/v1/setup/status', () =>
+          HttpResponse.json(
+            apiSuccess({
+              needs_admin: false,
+              needs_setup: true,
+              has_name_locales: true,
+              min_password_length: 12,
+              ...over,
+            }),
+          ),
+        ),
+      )
+    }
+
+    it('marks agents + theme complete when the backend reports persisted agents', async () => {
+      // The resume bug: a backend with company + providers + agents bounced
+      // the operator back to Agents because the reconcile ignored has_agents
+      // (and never satisfied the cosmetic theme step), so canNavigateTo
+      // ('complete') stayed false.
+      stubStatus({ has_providers: true, has_company: true, has_agents: true })
+
+      await useSetupWizardStore.getState().reconcileCompletionFromBackend()
+
+      const state = useSetupWizardStore.getState()
+      expect(state.statusReconciled).toBe(true)
+      expect(state.stepsCompleted.providers).toBe(true)
+      expect(state.stepsCompleted.company).toBe(true)
+      expect(state.stepsCompleted.agents).toBe(true)
+      expect(state.stepsCompleted.theme).toBe(true)
+      expect(state.canNavigateTo('complete')).toBe(true)
+    })
+
+    it('leaves agents + theme incomplete when no agents are persisted yet', async () => {
+      stubStatus({ has_providers: true, has_company: true, has_agents: false })
+
+      await useSetupWizardStore.getState().reconcileCompletionFromBackend()
+
+      const state = useSetupWizardStore.getState()
+      expect(state.stepsCompleted.company).toBe(true)
+      expect(state.stepsCompleted.agents).toBe(false)
+      expect(state.stepsCompleted.theme).toBe(false)
+      expect(state.canNavigateTo('complete')).toBe(false)
+    })
+  })
+
   describe('template actions', () => {
     it('selects a template', () => {
       useSetupWizardStore.getState().selectTemplate('startup')
