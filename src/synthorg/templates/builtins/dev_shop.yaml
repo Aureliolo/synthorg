@@ -151,7 +151,7 @@ template:
     - role: "DevOps/SRE Engineer"
       level: "mid"
       model:
-        priority: "speed"
+        priority: "balanced"
         requires_tools: true
       personality_preset: "process_optimizer"
       department: "operations"

@@ -85,7 +85,7 @@ template:
     - role: "Data Analyst"
       level: "mid"
       model:
-        priority: "cost"
+        priority: "balanced"
         requires_tools: true
       personality_preset: "data_driven_optimizer"
       department: "operations"

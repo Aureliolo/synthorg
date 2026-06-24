@@ -46,15 +46,19 @@ template:
   communication: "meeting_based"
 
   departments:
-    # Remove inherited executive department
+    # Executive leadership steers the product studio.
     - name: "executive"
-      _remove: true
+      budget_percent: 10
+      head_role: "CEO"
+      reporting_lines:
+        - subordinate: "CTO"
+          supervisor: "CEO"
     # Override inherited departments
     - name: "product"
-      budget_percent: 25
+      budget_percent: 20
       head_role: "Product Manager"
     - name: "engineering"
-      budget_percent: 35
+      budget_percent: 30
       head_role: "Backend Developer"
       head_merge_id: "backend-senior"
       policies:
@@ -94,13 +98,21 @@ template:
       head_role: "Data Analyst"
 
   agents:
-    # Remove inherited executive agents
+    # Executive leadership: strategic, reasoning-heavy work -> top-tier models.
     - role: "CEO"
+      level: "c_suite"
       department: "executive"
-      _remove: true
+      model:
+        priority: "quality"
+        requires_reasoning: true
+      personality_preset: "strategic_planner"
     - role: "CTO"
+      level: "c_suite"
       department: "executive"
-      _remove: true
+      model:
+        priority: "quality"
+        requires_reasoning: true
+      personality_preset: "pragmatic_builder"
     # Override first Full-Stack Developer (matched by role+department): change personality
     - role: "Full-Stack Developer"
       level: "senior"

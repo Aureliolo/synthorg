@@ -255,7 +255,7 @@ async def _apply_pack_to_settings(
         msg = f"Template pack {data.pack_name!r} not found"
         raise NotFoundError(msg) from exc
 
-    pack_agents = expand_template_agents(loaded.template)
+    pack_agents = expand_template_agents(loaded)
 
     async with _AGENT_LOCK:
         current_agents = await _read_setting_list(app_state, "agents")

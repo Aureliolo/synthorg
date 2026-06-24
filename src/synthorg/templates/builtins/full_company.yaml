@@ -236,7 +236,7 @@ template:
     - role: "DevOps/SRE Engineer"
       level: "mid"
       model:
-        priority: "speed"
+        priority: "balanced"
         requires_tools: true
       personality_preset: "disciplined_executor"
       department: "engineering"
@@ -260,7 +260,7 @@ template:
 {% else %}
       level: "mid"
       model:
-        priority: "cost"
+        priority: "balanced"
         requires_tools: true
       personality_preset: "eager_learner"
 {% endif %}
@@ -279,7 +279,7 @@ template:
 {% else %}
       level: "mid"
       model:
-        priority: "cost"
+        priority: "balanced"
         requires_tools: true
       personality_preset: "team_diplomat"
 {% endif %}

@@ -358,16 +358,19 @@ class TemplateResult(NamedTuple):
     department_count: int
     template_applied: str | None
     template: CompanyTemplate | None
+    loaded: LoadedTemplate | None
 
 
 def resolve_template(template_name: str | None) -> TemplateResult:
     """Validate template and extract department data.
 
     Returns:
-        ``TemplateResult`` instance.
+        ``TemplateResult`` instance. ``loaded`` carries the full
+        :class:`LoadedTemplate` so callers can render through the shared
+        renderer pipeline (resolving inheritance) rather than the raw template.
     """
     if template_name is None:
-        return TemplateResult("", 0, None, None)
+        return TemplateResult("", 0, None, None, None)
 
     loaded = load_template_safe(template_name)
     departments_json = departments_to_json(
@@ -378,6 +381,7 @@ def resolve_template(template_name: str | None) -> TemplateResult:
         len(loaded.template.departments),
         template_name,
         loaded.template,
+        loaded,
     )
 
 

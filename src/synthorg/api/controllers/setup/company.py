@@ -121,9 +121,9 @@ class SetupCompanyController(Controller):
             )
 
             agent_summaries: tuple[SetupAgentSummary, ...] = ()
-            if tmpl_res.template is not None:
+            if tmpl_res.loaded is not None and tmpl_res.template is not None:
                 agent_summaries = await _auto_create_template_agents(
-                    tmpl_res.template,
+                    tmpl_res.loaded,
                     app_state,
                     settings_svc,
                 )
