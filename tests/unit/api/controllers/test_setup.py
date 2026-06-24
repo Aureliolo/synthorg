@@ -15,6 +15,7 @@ from hypothesis import strategies as st
 
 from synthorg.api.controllers.setup_agents import normalize_description
 from synthorg.api.state import AppState
+from synthorg.config.model_metadata import ModelMetadata
 from synthorg.hr.state import agent_registry_of
 from synthorg.persistence.state import persistence_of
 from synthorg.providers.base import BaseCompletionProvider
@@ -676,6 +677,9 @@ def _setup_mock_providers(
     mock_model.cost_per_1k_output = 0.02
     mock_model.max_context = 200_000
     mock_model.estimated_latency_ms = 100
+    # Real metadata so the matcher's numeric tier/quality reads see int|None,
+    # not MagicMock children (unknown source -> optimistic capability match).
+    mock_model.metadata = ModelMetadata()
     mock_provider_config = MagicMock()
     mock_provider_config.models = (mock_model,)
 

@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock
 
 from synthorg.api.state import AppState
+from synthorg.config.model_metadata import ModelMetadata
 from synthorg.providers.state import ProvidersStateSlice
 from tests._shared import LoopAsyncClient
 
@@ -18,6 +19,9 @@ def _build_mock_provider_management() -> MagicMock:
     mock_model.cost_per_1k_output = 0.02
     mock_model.max_context = 200_000
     mock_model.estimated_latency_ms = 100
+    # Real metadata so the matcher's numeric tier/quality reads see int|None,
+    # not MagicMock children (unknown source -> optimistic capability match).
+    mock_model.metadata = ModelMetadata()
     mock_provider_config = MagicMock()
     mock_provider_config.models = (mock_model,)
 
