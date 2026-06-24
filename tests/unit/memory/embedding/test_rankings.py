@@ -93,6 +93,9 @@ class TestLMEBRankings:
     def test_tiers_consistent_with_params(self) -> None:
         """GPU_FULL >= 7B, GPU_CONSUMER 1-7B, CPU < 1B."""
         for ranking in LMEB_RANKINGS:
+            # params_billions is float | None on the shared model (non-LMEB
+            # entries omit it); every LMEB ranking carries it.
+            assert ranking.params_billions is not None
             if ranking.tier == DeploymentTier.GPU_FULL:
                 assert ranking.params_billions >= 7.0, (
                     f"{ranking.model_id}: {ranking.params_billions}B "
@@ -114,7 +117,10 @@ class TestLMEBRankings:
 
     def test_sorted_by_overall_descending(self) -> None:
         """Rankings should be sorted by overall score descending."""
-        scores = [r.overall for r in LMEB_RANKINGS]
+        # overall is float | None on the shared model; every LMEB ranking sets
+        # it, so the filter keeps them all (asserted) and narrows for sorted().
+        scores = [r.overall for r in LMEB_RANKINGS if r.overall is not None]
+        assert len(scores) == len(LMEB_RANKINGS)
         assert scores == sorted(scores, reverse=True)
 
     def test_all_three_tiers_represented(self) -> None:
