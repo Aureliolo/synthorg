@@ -80,11 +80,15 @@ describe('ProvidersPage', () => {
   })
 
   it('renders provider cards when data is available', () => {
-    const providers = [makeProvider('anthropic'), makeProvider('openai')]
+    const providers = [makeProvider('example-provider'), makeProvider('test-provider')]
     hookReturn = { ...defaultReturn, filteredProviders: providers, providers }
     renderPage()
-    expect(screen.getByText('anthropic')).toBeInTheDocument()
-    expect(screen.getByText('openai')).toBeInTheDocument()
+    // A provider name can surface in more than one region (the grid card plus
+    // routing/management references) and Motion's StaggerItem renders a
+    // measurement copy under jsdom, so assert presence with getAllByText
+    // rather than a brittle single-match getByText.
+    expect(screen.getAllByText('example-provider').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('test-provider').length).toBeGreaterThan(0)
   })
 
   it('renders error banner when error is set', () => {
