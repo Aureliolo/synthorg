@@ -377,9 +377,7 @@ async def persist_company_settings(
     All of these are backend-owned company state: ``template_applied`` so a
     resume knows which template to regenerate from, and ``currency`` /
     ``budget`` / ``model_tier_profile`` so the operator's company-level
-    choices survive a resume and are reachable over the API by any client
-    (they used to be cosmetic frontend-only inputs that never reached the
-    backend).
+    choices survive a resume and are reachable over the API by any client.
     """
     await settings_svc.set("company", "description", fields.description or "")
     await settings_svc.set("company", "departments", fields.departments_json or "[]")

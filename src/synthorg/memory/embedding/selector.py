@@ -14,6 +14,7 @@ import re
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.rankings import (
     EMBEDDING_RANKINGS,
@@ -71,7 +72,7 @@ def _base_family(name: str) -> str:
     Returns:
         The lowercased base family.
     """
-    base = re.split(r"[:@]", name.strip().lower(), maxsplit=1)[0]
+    base = re.split(r"[:@]", normalize_ascii_lowercase(name), maxsplit=1)[0]
     return _SIZE_SUFFIX_RE.sub("", base)
 
 
@@ -82,7 +83,8 @@ def _size_token(name: str) -> str | None:
         The lowercased size token without its separator, or ``None`` when the
         id carries no size suffix (a family/base id).
     """
-    match = _SIZE_SUFFIX_RE.search(re.split(r"[:@]", name.strip().lower())[0])
+    base = re.split(r"[:@]", normalize_ascii_lowercase(name))[0]
+    match = _SIZE_SUFFIX_RE.search(base)
     return match.group(0).lstrip("-") if match else None
 
 

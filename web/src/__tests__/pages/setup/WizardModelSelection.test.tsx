@@ -1,9 +1,9 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const getModelRecommendations = vi.fn()
-const getNamespaceSettings = vi.fn()
-const updateSetting = vi.fn()
+const getModelRecommendations = vi.fn<() => Promise<unknown>>()
+const getNamespaceSettings = vi.fn<(ns: string) => Promise<unknown>>()
+const updateSetting = vi.fn<(ns: string, key: string, data: unknown) => Promise<unknown>>()
 
 vi.mock('@/api/endpoints/setup', () => ({
   getModelRecommendations: () => getModelRecommendations(),
@@ -35,24 +35,24 @@ describe('WizardModelSelection', () => {
   it('prefills the recommended models and the dims hint', async () => {
     render(<WizardModelSelection />)
     await waitFor(() => expect(screen.getByLabelText('Coordination model')).toBeInTheDocument())
-    expect((screen.getByLabelText('Coordination model') as HTMLSelectElement).value).toBe(
-      'big-model',
-    )
-    expect((screen.getByLabelText('Embedding model') as HTMLSelectElement).value).toBe(
+    expect(screen.getByLabelText<HTMLSelectElement>('Coordination model').value).toBe('big-model')
+    expect(screen.getByLabelText<HTMLSelectElement>('Embedding model').value).toBe(
       'qwen3-embedding:8b',
     )
     expect(screen.getByText(/4096 dimensions/)).toBeInTheDocument()
   })
 
   it('prefers a persisted value over the recommendation', async () => {
-    getNamespaceSettings.mockImplementation(async (ns: string) =>
-      ns === 'coordination'
-        ? [{ definition: { key: 'decomposition_model' }, value: 'small-model' }]
-        : [],
+    getNamespaceSettings.mockImplementation((ns: string) =>
+      Promise.resolve(
+        ns === 'coordination'
+          ? [{ definition: { key: 'decomposition_model' }, value: 'small-model' }]
+          : [],
+      ),
     )
     render(<WizardModelSelection />)
     await waitFor(() =>
-      expect((screen.getByLabelText('Coordination model') as HTMLSelectElement).value).toBe(
+      expect(screen.getByLabelText<HTMLSelectElement>('Coordination model').value).toBe(
         'small-model',
       ),
     )

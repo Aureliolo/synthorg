@@ -40,6 +40,16 @@ mandatory_rules:
     header: Web Dashboard Design System
     gate: scripts/check_web_design_system.py
 
+  - id: claude-md::frontend-is-a-pure-api-consumer
+    file: CLAUDE.md
+    header: Frontend Is A Pure API Consumer
+    gate: scripts/check_no_client_state_persistence.py
+
+  - id: web-claude-md::pure-api-consumer
+    file: web/CLAUDE.md
+    header: Pure API Consumer
+    gate: scripts/check_no_client_state_persistence.py
+
   - id: claude-md::regional-defaults
     file: CLAUDE.md
     header: Regional Defaults

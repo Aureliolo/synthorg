@@ -192,7 +192,6 @@ class SetupCompanyRequest(BaseModel):
     currency: str | None = Field(
         default=None,
         max_length=10,
-        examples=["USD", "EUR"],
         description="Display-currency code; None means unset (no privileged default).",
     )
     budget: float | None = Field(

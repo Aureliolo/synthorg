@@ -26,7 +26,7 @@ template:
     - name: "wip_limit"
       description: "Work-in-progress limit per column"
       var_type: "int"
-      default: 5
+      default: 2
       hidden: true
 
   company:

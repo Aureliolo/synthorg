@@ -255,6 +255,7 @@ VALID_SETTINGS_NAMESPACES: Final[frozenset[str]] = frozenset(
     {
         "a2a",
         "api",
+        "appearance",
         "backup",
         "budget",
         "charter",
@@ -263,6 +264,7 @@ VALID_SETTINGS_NAMESPACES: Final[frozenset[str]] = frozenset(
         "communication",
         "company",
         "coordination",
+        "dashboard",
         "demo",
         "engine",
         "external_api",
@@ -273,6 +275,7 @@ VALID_SETTINGS_NAMESPACES: Final[frozenset[str]] = frozenset(
         "notifications",
         "objectives",
         "observability",
+        "org_chart",
         "providers",
         "research",
         "security",

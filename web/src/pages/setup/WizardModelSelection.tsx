@@ -35,6 +35,50 @@ interface ModelSelectionState {
   selectEmbedding: (value: string) => void
 }
 
+interface LoadHandlers {
+  setRecs: (value: SetupModelRecommendationsResponse) => void
+  setChoices: (value: ModelChoices) => void
+  setError: (value: string) => void
+  setLoading: (value: boolean) => void
+}
+
+// Prefill from the persisted value when the operator has already chosen one;
+// otherwise fall back to the backend recommendation, then to empty.
+function buildChoices(
+  recommendations: SetupModelRecommendationsResponse,
+  coordination: readonly SettingEntry[],
+  memory: readonly SettingEntry[],
+): ModelChoices {
+  return {
+    decomposition:
+      valueOf(coordination, DECOMPOSITION_KEY) ??
+      recommendations.decomposition_recommended ??
+      '',
+    embedding:
+      valueOf(memory, EMBEDDING_KEY) ?? recommendations.embedding_recommended ?? '',
+  }
+}
+
+async function loadModelSelection(
+  isCancelled: () => boolean,
+  handlers: LoadHandlers,
+): Promise<void> {
+  try {
+    const [recommendations, coordination, memory] = await Promise.all([
+      getModelRecommendations(),
+      getNamespaceSettings('coordination'),
+      getNamespaceSettings('memory'),
+    ])
+    if (isCancelled()) return
+    handlers.setRecs(recommendations)
+    handlers.setChoices(buildChoices(recommendations, coordination, memory))
+  } catch (caught) {
+    if (!isCancelled()) handlers.setError(getErrorMessage(caught))
+  } finally {
+    if (!isCancelled()) handlers.setLoading(false)
+  }
+}
+
 function useWizardModelSelection(): ModelSelectionState {
   const [recs, setRecs] = useState<SetupModelRecommendationsResponse | null>(null)
   const [choices, setChoices] = useState<ModelChoices>({ decomposition: '', embedding: '' })
@@ -44,31 +88,10 @@ function useWizardModelSelection(): ModelSelectionState {
 
   useEffect(() => {
     let cancelled = false
-    void (async () => {
-      try {
-        const [recommendations, coordination, memory] = await Promise.all([
-          getModelRecommendations(),
-          getNamespaceSettings('coordination'),
-          getNamespaceSettings('memory'),
-        ])
-        if (cancelled) return
-        setRecs(recommendations)
-        // Prefill from the persisted value when the operator has already
-        // chosen one; otherwise fall back to the backend recommendation.
-        setChoices({
-          decomposition:
-            valueOf(coordination, DECOMPOSITION_KEY) ??
-            recommendations.decomposition_recommended ??
-            '',
-          embedding:
-            valueOf(memory, EMBEDDING_KEY) ?? recommendations.embedding_recommended ?? '',
-        })
-      } catch (caught) {
-        if (!cancelled) setError(getErrorMessage(caught))
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    })()
+    void loadModelSelection(
+      () => cancelled,
+      { setRecs, setChoices, setError, setLoading },
+    )
     return () => {
       cancelled = true
     }
@@ -77,13 +100,15 @@ function useWizardModelSelection(): ModelSelectionState {
   const selectDecomposition = useCallback(
     (value: string) => {
       setChoices((prev) => ({ ...prev, decomposition: value }))
-      void updateSetting('coordination', DECOMPOSITION_KEY, { value }).catch((caught) => {
-        addToast({
-          variant: 'error',
-          title: 'Could not save the coordination model',
-          description: getErrorMessage(caught),
-        })
-      })
+      void updateSetting('coordination', DECOMPOSITION_KEY, { value }).catch(
+        (caught: unknown) => {
+          addToast({
+            variant: 'error',
+            title: 'Could not save the coordination model',
+            description: getErrorMessage(caught),
+          })
+        },
+      )
     },
     [addToast],
   )
@@ -94,7 +119,7 @@ function useWizardModelSelection(): ModelSelectionState {
       // Persist only the model id; setup completion resolves the matching
       // embedder_dims for the chosen model, and ingest captures the real
       // dimensions if they differ.
-      void updateSetting('memory', EMBEDDING_KEY, { value }).catch((caught) => {
+      void updateSetting('memory', EMBEDDING_KEY, { value }).catch((caught: unknown) => {
         addToast({
           variant: 'error',
           title: 'Could not save the embedding model',

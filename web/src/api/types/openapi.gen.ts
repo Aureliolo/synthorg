@@ -16110,11 +16110,7 @@ export type components = {
              * @example Pied Piper
              */
             readonly company_name: string;
-            /**
-             * @description Display-currency code; None means unset (no privileged default).
-             * @example USD
-             * @example EUR
-             */
+            /** @description Display-currency code; None means unset (no privileged default). */
             readonly currency?: string | null;
             /**
              * @description Optional company description.
