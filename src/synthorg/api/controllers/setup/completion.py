@@ -15,7 +15,6 @@ from typing import Final
 from litestar import Controller, post
 from litestar.datastructures import State
 
-from synthorg._core.features import require_service
 from synthorg.api.controllers.setup._embedder_setup import (
     auto_select_embedder,
 )
@@ -58,6 +57,7 @@ from synthorg.observability.events.setup import (
     SETUP_COMPLETE_CHECK_ERROR,
     SETUP_COMPLETE_SERIALIZED,
     SETUP_COMPLETED,
+    SETUP_DECOMPOSITION_MODEL_SELECTED,
     SETUP_NO_AGENTS,
     SETUP_NO_COMPANY,
     SETUP_NO_PROVIDERS,
@@ -158,10 +158,17 @@ async def _run_embedder_auto_select(
     Returns:
         The ``str`` value when present, ``None`` otherwise.
     """
-    provider_registry = require_service(
-        app_state.slice(ProvidersStateSlice).registry, "Provider Registry"
-    )
-    provider_names = provider_registry.list_providers()
+    # A company that booted empty (no providers at startup) has no runtime
+    # registry until post_setup_reinit rebuilds it from the persisted configs
+    # AFTER this best-effort step. Hard-requiring the runtime registry here
+    # would 503 the whole completion on exactly the wizard flow it must
+    # support, so fall back to the persisted providers for the embedder preset
+    # hint -- mirroring the same allowance in ``_validate_completion_prereqs``.
+    provider_registry = app_state.slice(ProvidersStateSlice).registry
+    if provider_registry is not None:
+        provider_names: list[str] = list(provider_registry.list_providers())
+    else:
+        provider_names = list(await provider_management_of(app_state).list_providers())
     provider_preset_name = provider_names[0] if provider_names else None
     has_gpu = await _read_has_gpu_setting(settings_svc)
     try:
@@ -181,6 +188,67 @@ async def _run_embedder_auto_select(
             error=safe_error_description(exc),
         )
         return "Embedder auto-selection raised an unexpected error."
+
+
+def _pick_decomposition_model(agents: list[dict[str, object]]) -> str | None:
+    """Choose a capable model id for the coordinator's decomposition strategy.
+
+    Prefers a top-tier (``large``) agent's model -- the strongest the catalogue
+    supports -- so the coordinator decomposes work with a capable model,
+    falling back to any agent that carries a model assignment.
+
+    Returns:
+        A model id, or ``None`` when no agent carries a model.
+    """
+
+    def _model_id(agent: dict[str, object]) -> str | None:
+        model = agent.get("model")
+        if isinstance(model, dict):
+            model_id = model.get("model_id")
+            if isinstance(model_id, str) and model_id.strip():
+                return model_id
+        return None
+
+    large = [a for a in agents if a.get("tier") == "large"]
+    for pool in (large, agents):
+        for agent in pool:
+            model_id = _model_id(agent)
+            if model_id is not None:
+                return model_id
+    return None
+
+
+async def _ensure_decomposition_model(
+    app_state: AppState,
+    settings_svc: SettingsServiceProtocol,
+) -> None:
+    """Auto-select the coordinator's decomposition model when unset.
+
+    The coordinator builds eagerly once a provider is configured and requires a
+    non-blank ``coordination.decomposition_model``; the wizard never prompts for
+    it, so a fresh setup would otherwise fail the runtime rebuild on
+    ``/setup/complete``. Derive a sensible default from the matched agent roster
+    (the most senior agent's model) and persist it, so the operator is never
+    asked to hand-enter a model id they were never shown.
+    """
+    entry = await settings_svc.get("coordination", "decomposition_model")
+    current = entry.value
+    if isinstance(current, str) and current.strip():
+        return
+    model_id = _pick_decomposition_model(await get_existing_agents(settings_svc))
+    if model_id is None:
+        available = await _collect_model_ids(app_state)
+        model_id = available[0] if available else None
+    if model_id is None:
+        logger.warning(
+            SETUP_COMPLETE_CHECK_ERROR,
+            check="auto_select_decomposition_model",
+            error_type="NoModelAvailable",
+            error="no catalogue model available for the decomposition model",
+        )
+        return
+    await settings_svc.set("coordination", "decomposition_model", model_id)
+    logger.info(SETUP_DECOMPOSITION_MODEL_SELECTED, model_id=model_id)
 
 
 async def _read_has_gpu_setting(settings_svc: SettingsServiceProtocol) -> bool | None:
@@ -267,6 +335,10 @@ class SetupCompletionController(Controller):
             embedder_failure_reason = await _run_embedder_auto_select(
                 app_state, settings_svc
             )
+            # The coordinator builds eagerly during reinit and requires a
+            # non-blank decomposition model; the wizard never asks for one, so
+            # pick a sensible default from the matched roster before the rebuild.
+            await _ensure_decomposition_model(app_state, settings_svc)
             # Reload providers + bootstrap agents BEFORE persisting the
             # completion flag. ``_post_setup_reinit`` propagates failures
             # so a broken provider config or bootstrap error leaves the

@@ -18,6 +18,9 @@ SETUP_AGENT_CREATED: Final[str] = "setup.agent.created"
 
 # Setup completion
 SETUP_COMPLETED: Final[str] = "setup.flow.completed"
+SETUP_DECOMPOSITION_MODEL_SELECTED: Final[str] = (
+    "setup.coordination.decomposition_model_selected"
+)
 
 # Setup reset (via CLI or settings delete)
 SETUP_RESET: Final[str] = "setup.flow.reset"

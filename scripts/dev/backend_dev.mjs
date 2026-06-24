@@ -26,6 +26,13 @@ const out = createWriteStream(logPath, { flags: 'w' })
 const localDirs = {
   SYNTHORG_LOG_DIR: join(tmpdir(), 'synthorg-local', 'logs'),
   SYNTHORG_MEMORY_DIR: join(tmpdir(), 'synthorg-local', 'memory'),
+  // The container env carries a Postgres URL, so without an explicit artifact
+  // dir the backend derives the agent workspace root as the Docker volume path
+  // `/data/agent-workspaces` -- not an absolute path on native Windows (it
+  // resolves to drive-relative `\data\...`), which fails the runtime-services
+  // rebuild on `/setup/complete` with `workspace must be an absolute path`.
+  // Pin it to a Windows-absolute temp dir, matching the LOG/MEMORY overrides.
+  SYNTHORG_ARTIFACT_DIR: join(tmpdir(), 'synthorg-local', 'data'),
 }
 for (const dir of Object.values(localDirs)) mkdirSync(dir, { recursive: true })
 

@@ -17,6 +17,7 @@ because ``SelfImprovementService`` is the consumer of ``ab_test_repo``.
 
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.pagination import collect_all
 from synthorg.core.role_catalog import BUILTIN_ROLES
 from synthorg.core.role_record import RoleRecord
@@ -68,6 +69,18 @@ async def wire_meta_apply(app_state: AppState) -> None:
         return
     try:
         await _wire(app_state)
+    except ServiceUnavailableError as exc:
+        # A company that has not finished setup has no Workflow Service yet,
+        # which _wire depends on. That is the expected pre-setup state, not a
+        # failure: log at INFO like the persistence-absent branch above and
+        # leave the appliers unwired rather than emitting an alarming WARNING
+        # on every boot-empty start.
+        logger.info(
+            API_APP_STARTUP,
+            service="self_improvement",
+            note="dependency absent; meta-loop apply paths unwired",
+            error=safe_error_description(exc),
+        )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
