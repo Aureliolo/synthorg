@@ -33,6 +33,9 @@ from synthorg.api.controllers.setup._runtime_wiring import (
 from synthorg.api.controllers.setup._runtime_wiring import (
     COMPLETE_LOCK as _COMPLETE_LOCK,
 )
+from synthorg.api.controllers.setup._template_helpers import (
+    resolve_template as _resolve_template,
+)
 from synthorg.api.controllers.setup.company_helpers import (
     CompanyPersist as _CompanyPersist,
 )
@@ -41,9 +44,6 @@ from synthorg.api.controllers.setup.company_helpers import (
 )
 from synthorg.api.controllers.setup.company_helpers import (
     persist_company_settings as _persist_company_settings,
-)
-from synthorg.api.controllers.setup.company_helpers import (
-    resolve_template as _resolve_template,
 )
 from synthorg.api.controllers.setup_agents import (
     get_existing_agents,

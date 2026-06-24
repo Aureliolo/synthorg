@@ -745,7 +745,7 @@ class TestExtractTemplateDepartments:
     """Unit tests for the _load_template_safe + _departments_to_json helpers."""
 
     def test_valid_template(self) -> None:
-        from synthorg.api.controllers.setup.company_helpers import (
+        from synthorg.api.controllers.setup._template_helpers import (
             load_template_safe as _load_template_safe,
         )
         from synthorg.api.controllers.setup_agents import departments_to_json
@@ -758,7 +758,7 @@ class TestExtractTemplateDepartments:
         assert departments[0]["name"] in {"executive", "engineering"}
 
     def test_invalid_template(self) -> None:
-        from synthorg.api.controllers.setup.company_helpers import (
+        from synthorg.api.controllers.setup._template_helpers import (
             load_template_safe as _load_template_safe,
         )
         from synthorg.core.domain_errors import NotFoundError
