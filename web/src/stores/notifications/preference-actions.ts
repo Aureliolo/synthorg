@@ -2,7 +2,7 @@ import type {
   NotificationCategory,
   NotificationRoute,
 } from '@/types/notifications'
-import { debouncedPersist } from './persistence'
+import { persistPreferences } from './persistence'
 import type { NotificationsGet, NotificationsSet } from './types'
 
 export function createPreferenceActions(
@@ -23,7 +23,7 @@ export function createPreferenceActions(
           },
         },
       }))
-      debouncedPersist(get())
+      void persistPreferences(get().preferences)
     },
 
     resetRouteOverride(category: NotificationCategory): void {
@@ -34,21 +34,22 @@ export function createPreferenceActions(
           preferences: { ...state.preferences, routeOverrides: rest },
         }
       })
-      debouncedPersist(get())
+      void persistPreferences(get().preferences)
     },
 
     setGlobalMute(muted: boolean): void {
       set((state) => ({
         preferences: { ...state.preferences, globalMute: muted },
       }))
-      debouncedPersist(get())
+      void persistPreferences(get().preferences)
     },
 
     setBrowserPermission(perm: NotificationPermission): void {
+      // The browser Notification permission is per-device runtime state mirrored
+      // from the browser API; it is NOT persisted to the backend preferences.
       set((state) => ({
         preferences: { ...state.preferences, browserPermission: perm },
       }))
-      debouncedPersist(get())
     },
   }
 }

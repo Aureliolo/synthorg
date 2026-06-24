@@ -1,10 +1,9 @@
-import { countUnread, debouncedPersist } from './persistence'
-import type { NotificationsGet, NotificationsSet } from './types'
+import { countUnread } from './persistence'
+import type { NotificationsSet } from './types'
 
-export function createListActions(
-  set: NotificationsSet,
-  get: NotificationsGet,
-) {
+// Drawer items are an ephemeral session buffer (never persisted client-side),
+// so list mutations only update in-memory state; there is nothing to flush.
+export function createListActions(set: NotificationsSet) {
   return {
     markRead(id: string): void {
       set((state) => {
@@ -13,7 +12,6 @@ export function createListActions(
         )
         return { items, unreadCount: countUnread(items) }
       })
-      debouncedPersist(get())
     },
 
     markAllRead(): void {
@@ -21,7 +19,6 @@ export function createListActions(
         const items = state.items.map((item) => ({ ...item, read: true }))
         return { items, unreadCount: 0 }
       })
-      debouncedPersist(get())
     },
 
     dismiss(id: string): void {
@@ -29,7 +26,6 @@ export function createListActions(
         const items = state.items.filter((item) => item.id !== id)
         return { items, unreadCount: countUnread(items) }
       })
-      debouncedPersist(get())
     },
 
     markReadBatch(ids: readonly string[]): void {
@@ -40,7 +36,6 @@ export function createListActions(
         )
         return { items: updated, unreadCount: countUnread(updated) }
       })
-      debouncedPersist(get())
     },
 
     dismissBatch(ids: readonly string[]): void {
@@ -49,12 +44,10 @@ export function createListActions(
         const items = state.items.filter((item) => !idSet.has(item.id))
         return { items, unreadCount: countUnread(items) }
       })
-      debouncedPersist(get())
     },
 
     clearAll(): void {
       set({ items: [], unreadCount: 0 })
-      debouncedPersist(get())
     },
   }
 }

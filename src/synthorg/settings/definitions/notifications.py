@@ -1,7 +1,8 @@
 """Notifications namespace setting definitions.
 
 Covers HTTP and SMTP client timeouts for the Slack, ntfy, and email
-notification sink adapters.
+notification sink adapters, plus the dashboard's notification-routing
+preferences (backend source of truth; the web client persists nothing).
 """
 
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
@@ -9,6 +10,21 @@ from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import get_registry
 
 _r = get_registry()
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.NOTIFICATIONS,
+        key="preferences",
+        type=SettingType.JSON,
+        default='{"routeOverrides": {}, "globalMute": false}',
+        description=(
+            "Dashboard notification-routing preferences (per-category route "
+            "overrides and the global mute flag) as a JSON object. The browser "
+            "Notification permission is per-device and is NOT stored here."
+        ),
+        group="Dashboard",
+    )
+)
 
 _r.register(
     SettingDefinition(

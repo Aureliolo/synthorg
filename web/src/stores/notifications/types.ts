@@ -28,6 +28,12 @@ export interface NotificationsState {
   unreadCount: number
   preferences: NotificationPreferences
 
+  /**
+   * Load routing preferences from the backend ``notifications`` settings
+   * namespace (pure API consumer: no client-side copy). Runs once the authed
+   * shell mounts; failures degrade to the defaults.
+   */
+  hydrate: () => Promise<void>
   enqueue: (params: EnqueueParams) => string
   markRead: (id: string) => void
   markAllRead: () => void

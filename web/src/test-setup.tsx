@@ -5,7 +5,6 @@ import { afterAll, afterEach, beforeAll, beforeEach, vi } from 'vitest'
 import { MotionGlobalConfig } from 'motion/react'
 import { setupServer } from 'msw/node'
 import { cancelPendingMcpCatalogSearch } from '@/stores/mcp-catalog/_state'
-import { cancelPendingPersist } from '@/stores/notifications'
 import { cancelSetupWizardPersist } from '@/stores/setup-wizard/teardown'
 import { useThemeStore } from '@/stores/theme'
 import { useToastStore } from '@/stores/toast'
@@ -299,9 +298,6 @@ beforeEach(() => {
 // listener registers ITS OWN teardown call in this block.
 afterEach(() => {
   useToastStore.getState().dismissAll()
-  // Notifications store debounces localStorage persistence with a 300ms
-  // setTimeout; drop any pending handle so it does not outlive the test.
-  cancelPendingPersist()
   // Setup-wizard store wraps itself in Zustand ``persist``; clear the
   // localStorage key directly via the side-effect-free teardown shim
   // so we do not transitively load ``@/api/client`` (see top-of-file

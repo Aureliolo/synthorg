@@ -1,3 +1,7 @@
+import { getNamespaceSettings, updateSetting } from '@/api/endpoints/settings'
+import { createLogger } from '@/lib/logger'
+import { useToastStore } from '@/stores/toast'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import type {
   NotificationCategory,
   NotificationItem,
@@ -8,12 +12,13 @@ import {
   CATEGORY_CONFIGS,
   DEFAULT_PREFERENCES,
 } from '@/types/notifications'
-import type { NotificationsState } from './types'
 
-const STALE_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
-const PERSIST_DEBOUNCE_MS = 300
-const STORAGE_KEY_ITEMS = 'so_notifications'
-const STORAGE_KEY_PREFS = 'so_notification_prefs'
+const log = createLogger('notifications-persistence')
+
+// Backend settings key holding the routing preferences as a JSON blob. The
+// dashboard is a pure API consumer: routing preferences live in the
+// ``notifications`` settings namespace, not the browser.
+const PREFS_SETTING_KEY = 'preferences'
 
 const VALID_CATEGORIES = new Set(Object.keys(CATEGORY_CONFIGS))
 
@@ -21,72 +26,12 @@ const VALID_CATEGORIES = new Set(Object.keys(CATEGORY_CONFIGS))
 function isNotificationCategory(value: string): value is NotificationCategory {
   return VALID_CATEGORIES.has(value)
 }
-const VALID_SEVERITIES: ReadonlySet<string> = new Set([
-  'info',
-  'warning',
-  'error',
-  'critical',
-])
+
 const VALID_ROUTES: ReadonlySet<string> = new Set([
   'drawer',
   'toast',
   'browser',
 ])
-
-// Module-scoped (escapes Zustand state) on purpose: the persist
-// debounce timer must survive the store's set() boundary; cleanup
-// is wired through cancelPendingPersist() from test-setup.tsx.
-let persistTimer: ReturnType<typeof setTimeout> | null = null
-
-function pruneStale(
-  items: readonly NotificationItem[],
-): readonly NotificationItem[] {
-  const cutoff = Date.now() - STALE_THRESHOLD_MS
-  return items.filter((item) => new Date(item.timestamp).getTime() > cutoff)
-}
-
-const ITEM_REQUIRED_STRING_FIELDS = [
-  'id',
-  'category',
-  'severity',
-  'title',
-  'timestamp',
-] as const
-
-function isValidDispatchedTo(value: unknown): boolean {
-  if (!Array.isArray(value)) return false
-  // Validate each entry is a known route string; corrupt
-  // localStorage entries shouldn't rehydrate into NotificationItem.
-  return value.every(
-    (entry) => typeof entry === 'string' && VALID_ROUTES.has(entry),
-  )
-}
-
-function isValidItem(item: unknown): item is NotificationItem {
-  if (typeof item !== 'object' || item === null) return false
-  const obj = item as Record<string, unknown>
-  for (const field of ITEM_REQUIRED_STRING_FIELDS) {
-    if (typeof obj[field] !== 'string') return false
-  }
-  return (
-    VALID_CATEGORIES.has(obj['category'] as string)
-    && VALID_SEVERITIES.has(obj['severity'] as string)
-    && typeof obj['read'] === 'boolean'
-    && isValidDispatchedTo(obj['dispatchedTo'])
-  )
-}
-
-export function hydrateItems(): readonly NotificationItem[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_ITEMS)
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) return []
-    return pruneStale(parsed.filter(isValidItem))
-  } catch {
-    return []
-  }
-}
 
 function sanitizeRouteOverrides(
   raw: unknown,
@@ -105,54 +50,61 @@ function sanitizeRouteOverrides(
   return out
 }
 
-export function hydratePrefs(): NotificationPreferences {
+/**
+ * Notification drawer items are an ephemeral, session-only buffer of the live
+ * WebSocket notification stream -- they are never persisted client-side (the
+ * backend is the source of truth and the Activity feed is the durable history).
+ * The store seeds empty and accumulates from live events.
+ */
+export function hydrateItems(): readonly NotificationItem[] {
+  return []
+}
+
+/**
+ * Load notification-routing preferences from the backend ``notifications``
+ * settings namespace. ``browserPermission`` is per-device and is NOT stored
+ * backend-side, so it is left at the default here and re-synced at runtime
+ * from the browser Notification API. Degrades to defaults on failure.
+ */
+export async function hydratePreferences(): Promise<NotificationPreferences> {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_PREFS)
-    if (!raw) return DEFAULT_PREFERENCES
-    const parsed = JSON.parse(raw) as unknown
-    if (typeof parsed !== 'object' || parsed === null) {
-      return DEFAULT_PREFERENCES
-    }
+    const entries = await getNamespaceSettings('notifications')
+    const entry = entries.find((e) => e.definition.key === PREFS_SETTING_KEY)
+    if (entry === undefined || entry.value === '') return DEFAULT_PREFERENCES
+    const parsed = JSON.parse(entry.value) as unknown
+    if (typeof parsed !== 'object' || parsed === null) return DEFAULT_PREFERENCES
     const candidate = parsed as Partial<NotificationPreferences>
     return {
       ...DEFAULT_PREFERENCES,
-      ...candidate,
-      // Validate the deserialized routeOverrides map: drop unknown
-      // categories and non-allowlisted route strings before merging
-      // so corrupt or stale localStorage data can't crash route
-      // handling later at runtime.
+      globalMute: candidate.globalMute === true,
       routeOverrides: sanitizeRouteOverrides(candidate.routeOverrides),
     }
-  } catch {
+  } catch (err) {
+    log.warn('Failed to hydrate notification preferences, using defaults:', getErrorMessage(err))
     return DEFAULT_PREFERENCES
   }
 }
 
-export function debouncedPersist(state: NotificationsState): void {
-  if (persistTimer !== null) clearTimeout(persistTimer)
-  persistTimer = setTimeout(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(state.items))
-      localStorage.setItem(
-        STORAGE_KEY_PREFS,
-        JSON.stringify(state.preferences),
-      )
-    } catch {
-      // QuotaExceededError -- silently ignore
-    }
-  }, PERSIST_DEBOUNCE_MS)
-}
-
 /**
- * Clear the pending debounce timer without flushing. Intended for tests
- * that enqueue notifications but finish before the persist interval
- * elapses; without this the timer outlives the test boundary and the
- * active-handle gate fails the test.
+ * Persist the routing preferences to the backend. Only the backend-owned
+ * fields (route overrides + global mute) are written; the per-device browser
+ * permission is excluded. Toasts on failure (store-mutation contract).
  */
-export function cancelPendingPersist(): void {
-  if (persistTimer !== null) {
-    clearTimeout(persistTimer)
-    persistTimer = null
+export async function persistPreferences(prefs: NotificationPreferences): Promise<void> {
+  try {
+    await updateSetting('notifications', PREFS_SETTING_KEY, {
+      value: JSON.stringify({
+        routeOverrides: prefs.routeOverrides,
+        globalMute: prefs.globalMute,
+      }),
+    })
+  } catch (err) {
+    log.error('Failed to save notification preferences:', getErrorMessage(err))
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, 'Failed to save notification preferences'),
+      description: getErrorMessage(err),
+    })
   }
 }
 
@@ -160,9 +112,7 @@ export function countUnread(items: readonly NotificationItem[]): number {
   return items.filter((i) => !i.read).length
 }
 
-// Module-scoped nextId persisted across enqueue calls. Initialised
-// against hydrated items at store-create time (see aggregator) so
-// post-reload IDs don't collide with stored ones.
+// Module-scoped nextId persisted across enqueue calls within a session.
 let nextId = 0
 
 export function setNextIdFromHydrated(

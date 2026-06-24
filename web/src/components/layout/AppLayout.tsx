@@ -22,6 +22,7 @@ import { RouteBoundary } from '@/router/RouteBoundary'
 import type { CommandItem } from '@/hooks/useCommandPalette'
 import { useRegisterCommands } from '@/hooks/useCommandPalette'
 import { useGlobalNotifications } from '@/hooks/useGlobalNotifications'
+import { useNotificationsStore } from '@/stores/notifications'
 import {
   useThemeStore,
   COLOR_PALETTES,
@@ -232,11 +233,13 @@ export default function AppLayout() {
   useDocumentTitle(location.pathname)
   useNotificationNavigateBridge()
 
-  // Hydrate appearance preferences from the backend (pure API consumer: the
-  // theme is backend-owned, with no client-side copy) once the authed shell
-  // mounts. Failures degrade to the defaults already applied at store init.
+  // Hydrate backend-owned preferences (pure API consumer: no client-side
+  // copies) once the authed shell mounts: appearance/theme axes and the
+  // notification routing preferences. Failures degrade to the defaults already
+  // applied at store init.
   useEffect(() => {
     void useThemeStore.getState().hydrate()
+    void useNotificationsStore.getState().hydrate()
   }, [])
 
   const openSidebarOverlay = useCallback(() => setSidebarOverlayOpen(true), [])
