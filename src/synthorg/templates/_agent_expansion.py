@@ -6,6 +6,7 @@ auto-name generation, name deduplication, personality preset/inline
 resolution, model-requirement resolution, and merge directive handling.
 """
 
+import re
 from collections.abc import Mapping
 from typing import Final
 
@@ -36,7 +37,34 @@ _DEFAULT_MODEL_ALIAS: Final[str] = "medium"
 # Default department when not specified in template agent config.
 _DEFAULT_DEPARTMENT = DEFAULT_MERGE_DEPARTMENT
 
+# Seniority a role title implies, used only to default the DISPLAYED level when
+# a template omits it -- so an exec never silently renders as "mid". This does
+# NOT drive model selection (the matcher tiers by capability demand, not rank).
+_ROLE_LEVEL_DEFAULTS: Final[tuple[tuple[re.Pattern[str], str], ...]] = (
+    (
+        re.compile(r"\bceo\b|chief executive|founder|president", re.IGNORECASE),
+        "c_suite",
+    ),
+    (re.compile(r"^chief|\bc[a-z]o\b", re.IGNORECASE), "c_suite"),
+    (re.compile(r"vice president|\bvp\b", re.IGNORECASE), "vp"),
+    (re.compile(r"director|head of", re.IGNORECASE), "director"),
+    (re.compile(r"\blead\b|principal", re.IGNORECASE), "lead"),
+)
+_DEFAULT_LEVEL: Final[str] = "mid"
+
 logger = get_logger(__name__)
+
+
+def _default_level(role: str) -> str:
+    """Infer a sensible level from a role title when none is declared.
+
+    Returns:
+        The role-implied seniority, or ``"mid"`` when nothing matches.
+    """
+    for pattern, level in _ROLE_LEVEL_DEFAULTS:
+        if pattern.search(role):
+            return level
+    return _DEFAULT_LEVEL
 
 
 def _expand_agents(
@@ -131,7 +159,7 @@ def _expand_single_agent(  # noqa: PLR0913
         "name": name,
         "role": role,
         "department": agent.get("department", _DEFAULT_DEPARTMENT),
-        "level": agent.get("level", "mid"),
+        "level": agent.get("level") or _default_level(role),
     }
 
     personality = resolve_agent_personality(

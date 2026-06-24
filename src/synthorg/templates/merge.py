@@ -235,7 +235,12 @@ def _apply_child_agent(
 
     if matched_entry is not None:
         matched_entry.matched = True
-        matched_entry.agent = clean
+        # Merge, do not replace: a child override changes the fields it names
+        # and inherits the rest from the parent. Replacing would silently drop
+        # an unspecified field (e.g. an exec's ``level``, which then defaults
+        # to "mid" at expansion).
+        parent_agent = matched_entry.agent or {}
+        matched_entry.agent = {**parent_agent, **clean}
     else:
         appended.append(clean)
 

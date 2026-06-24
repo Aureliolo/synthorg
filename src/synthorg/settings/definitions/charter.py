@@ -40,8 +40,11 @@ _r.register(
         namespace=SettingNamespace.CHARTER,
         key="interview_model",
         type=SettingType.STRING,
-        default="example-small-001",
-        description=_BOOTSTRAP_NOTE + "Model identifier for charter-interview turns.",
+        default="example-large-001",
+        description=_BOOTSTRAP_NOTE
+        + "Model identifier for charter-interview turns. This is a deep,"
+        " human-in-the-loop elicitation, so it should be a top-tier"
+        " reasoning-capable model -- not a small/cheap one.",
         group="Charter",
         level=SettingLevel.ADVANCED,
         read_only_post_init=True,

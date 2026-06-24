@@ -22,6 +22,10 @@ from typing import NamedTuple
 
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.core.normalization import strip_trailing_slash
+from synthorg.providers.ollama_usage_tier import (
+    OLLAMA_LIBRARY_HOST,
+    resolve_usage_tiers,
+)
 from synthorg.providers.probing import JsonFetch, enrich_models_via_show
 
 _OLLAMA_VERSION_PATH = "/api/version"
@@ -144,7 +148,8 @@ async def enrich_discovered_models(
     if not models:
         return models
     native_base = _strip_openai_suffix(base_url)
-    if await _is_ollama_native(native_base, fetch):
+    is_native = await _is_ollama_native(native_base, fetch)
+    if is_native:
         models = await enrich_models_via_show(
             _join(native_base, _OLLAMA_SHOW_PATH),
             models,
@@ -152,4 +157,39 @@ async def enrich_discovered_models(
             trust_url=fetch.trust_url,
             fetch_json=fetch.fetch_json,
         )
-    return await asyncio.to_thread(_enrich_unknown_via_litellm, models, preset_name)
+    models = await asyncio.to_thread(_enrich_unknown_via_litellm, models, preset_name)
+    return await _apply_usage_tiers(
+        models, native_base=native_base, is_native=is_native
+    )
+
+
+async def _apply_usage_tiers(
+    models: tuple[ProviderModelConfig, ...],
+    *,
+    native_base: str,
+    is_native: bool,
+) -> tuple[ProviderModelConfig, ...]:
+    """Stamp each model's ``cost_tier`` (real ollama level, else approximated).
+
+    The real per-model usage level is scraped from the model page only for
+    ollama.com cloud (a local server has no library page); otherwise the tier
+    is approximated from parameter count. See
+    :mod:`synthorg.providers.ollama_usage_tier`.
+
+    Returns:
+        The models with ``cost_tier`` set where resolvable.
+    """
+    host = OLLAMA_LIBRARY_HOST if (is_native and "ollama.com" in native_base) else None
+    tiers = await resolve_usage_tiers(
+        {model.id: model.metadata.parameter_count for model in models},
+        host=host,
+    )
+    enriched: list[ProviderModelConfig] = []
+    for model in models:
+        tier = tiers.get(model.id)
+        if tier is None or model.metadata.cost_tier == tier:
+            enriched.append(model)
+            continue
+        new_metadata = model.metadata.model_copy(update={"cost_tier": tier})
+        enriched.append(model.model_copy(update={"metadata": new_metadata}))
+    return tuple(enriched)

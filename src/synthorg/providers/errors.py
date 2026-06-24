@@ -192,6 +192,24 @@ class RateLimitError(ProviderError):
         super().__init__(message, context=context)
 
 
+class ProviderQuotaExceededError(RateLimitError):
+    """Plan usage quota/allowance exhausted -- NOT a transient rate limit.
+
+    ollama cloud bills a flat plan with session/weekly usage limits and exposes
+    no API to pre-check remaining quota (tracking: ollama/ollama#12532; the
+    quota-API requests ollama/ollama#15663 and #16448 are also open). We cannot
+    avoid the block ahead of time, so the caller runs until ollama returns it
+    and it surfaces here. Marked non-retryable: retrying a depleted allowance
+    cannot recover it within the window. Inherits the ``RATE_LIMITED`` code as
+    an inheritance alias (quota exhaustion is a form of rate limiting; clients
+    branch on ``is_retryable`` for behaviour).
+    """
+
+    is_retryable = False
+    retryable: ClassVar[bool] = False
+    default_message: ClassVar[str] = "Provider usage quota exceeded"
+
+
 class ModelNotFoundError(ProviderError):
     """Requested model does not exist or is not available."""
 

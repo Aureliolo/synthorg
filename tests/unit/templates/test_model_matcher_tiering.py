@@ -1,4 +1,4 @@
-"""Tests for seniority-tiered, family-aware model selection."""
+"""Tests for capability-demand model selection (tiering + domination)."""
 
 from collections import Counter
 
@@ -6,23 +6,26 @@ import pytest
 
 from synthorg.config.model_metadata import MetadataSource, ModelMetadata
 from synthorg.config.schema import ProviderModelConfig
-from synthorg.providers.probing import parse_ollama_identity
 from synthorg.templates.model_matcher import match_all_agents
 from synthorg.templates.model_matcher_tiering import (
-    effective_level,
+    demand_tier,
+    prune_dominated,
     rank_by_quality,
-    select_tiered,
+    select_for_demand,
 )
+from synthorg.templates.model_requirements import ModelPriority, ModelRequirement
 
 
 def _model(  # noqa: PLR0913 -- keyword-only test factory
     model_id: str,
     *,
-    parameter_count: int | None = None,
+    cost_tier: int | None = None,
     family: str | None = None,
     generation: float | None = None,
+    parameter_count: int | None = None,
     max_context: int = 200_000,
     tools: bool = True,
+    reasoning: bool = True,
     source: MetadataSource = "probe",
 ) -> ProviderModelConfig:
     """Build a ProviderModelConfig with the metadata the tiering reads."""
@@ -32,7 +35,9 @@ def _model(  # noqa: PLR0913 -- keyword-only test factory
         max_context=max_context,
         metadata=ModelMetadata(
             supports_tools=tools,
+            supports_reasoning=reasoning,
             parameter_count=parameter_count,
+            cost_tier=cost_tier,
             family=family,
             generation=generation,
             metadata_source=source,
@@ -46,134 +51,138 @@ class _Provider:
 
 
 @pytest.mark.unit
-class TestParseOllamaIdentity:
+class TestDemandTier:
     @pytest.mark.parametrize(
-        ("model_id", "expected"),
+        ("priority", "reasoning", "expected"),
         [
-            ("deepseek-v4-pro", ("deepseek", 4.0)),
-            ("glm-5.2", ("glm", 5.2)),
-            ("kimi-k2.7-code", ("kimi", 2.7)),
-            ("gemma4:26b-a4b-it-q4_K_M", ("gemma", 4.0)),
-            ("qwen3.5:397b", ("qwen", 3.5)),
-            ("nemotron-3-ultra", ("nemotron", 3.0)),
+            ("quality", True, 4),
+            ("quality", False, 3),
+            ("balanced", True, 3),
+            ("balanced", False, 2),
+            ("cost", False, 1),
+            ("speed", False, 1),
         ],
     )
-    def test_extracts_family_and_generation(
-        self, model_id: str, expected: tuple[str | None, float | None]
+    def test_maps_demand_to_tier(
+        self, priority: ModelPriority, reasoning: bool, expected: int
     ) -> None:
-        assert parse_ollama_identity(model_id) == expected
-
-    def test_single_letter_prefix_is_not_a_family(self) -> None:
-        # Below the minimum family length -> no guess rather than a wrong one.
-        assert parse_ollama_identity("x9") == (None, 9.0)
+        req = ModelRequirement(priority=priority, requires_reasoning=reasoning)
+        assert demand_tier(req) == expected
 
 
 @pytest.mark.unit
-class TestEffectiveLevel:
-    @pytest.mark.parametrize(
-        ("level", "role", "expected"),
-        [
-            ("mid", "CEO", "c_suite"),
-            ("mid", "Chief Technology Officer", "c_suite"),
-            ("mid", "CTO", "c_suite"),
-            ("junior", "VP of Sales", "vp"),
-            ("senior", "Backend Developer", "senior"),
-            ("junior", "Engineering Lead", "lead"),
-            (None, "Data Analyst", None),
-        ],
-    )
-    def test_reconciles_level_with_role(
-        self, level: str | None, role: str, expected: str | None
-    ) -> None:
-        assert effective_level(level, role) == expected
+class TestPruneDominated:
+    def test_drops_older_sibling_in_same_tier(self) -> None:
+        # glm-5.2 (tier 3, newer) dominates glm-4.7 (tier 3, older) -> drop 4.7.
+        newer = _model("glm-5.2", cost_tier=3, family="glm", generation=5.2)
+        older = _model("glm-4.7", cost_tier=3, family="glm", generation=4.7)
+        kept = {m.id for m in prune_dominated([older, newer])}
+        assert kept == {"glm-5.2"}
+
+    def test_collapses_redundant_family_versions(self) -> None:
+        kimis = [
+            _model("kimi-k2.5", cost_tier=3, family="kimi", generation=2.5),
+            _model("kimi-k2.6", cost_tier=3, family="kimi", generation=2.6),
+            _model("kimi-k2.7", cost_tier=3, family="kimi", generation=2.7),
+        ]
+        kept = {m.id for m in prune_dominated(kimis)}
+        assert kept == {"kimi-k2.7"}
+
+    def test_keeps_distinct_families_in_one_tier(self) -> None:
+        models = [
+            _model("glm-5.2", cost_tier=3, family="glm", generation=5.2),
+            _model("kimi-k2.7", cost_tier=3, family="kimi", generation=2.7),
+        ]
+        assert len(prune_dominated(models)) == 2
+
+    def test_keeps_same_family_in_different_tiers(self) -> None:
+        # A cheaper sibling in a lower tier is a valid budget option, not dominated.
+        models = [
+            _model("glm-5.2", cost_tier=4, family="glm", generation=5.2),
+            _model("glm-mini", cost_tier=2, family="glm", generation=5.0),
+        ]
+        assert len(prune_dominated(models)) == 2
+
+    def test_passes_through_unclassifiable(self) -> None:
+        model = _model("mystery", cost_tier=None, family=None)
+        assert prune_dominated([model]) == [model]
+
+
+@pytest.mark.unit
+class TestSelectForDemand:
+    def test_picks_nearest_available_tier(self) -> None:
+        heavy = _model("heavy", cost_tier=4, family="a")
+        light = _model("light", cost_tier=2, family="b")
+        assert select_for_demand([heavy, light], 4, Counter()) is heavy
+        # target 1: light (dist 1) beats heavy (dist 3).
+        assert select_for_demand([heavy, light], 1, Counter()) is light
+
+    def test_spreads_across_families_in_a_tier(self) -> None:
+        alpha = _model("a1", cost_tier=3, family="alpha")
+        beta = _model("b1", cost_tier=3, family="beta")
+        usage: Counter[str] = Counter()
+        first = select_for_demand([alpha, beta], 3, usage)
+        assert first is not None
+        assert first.metadata.family is not None
+        usage[first.metadata.family] += 1
+        second = select_for_demand([alpha, beta], 3, usage)
+        assert second is not None
+        assert second.metadata.family != first.metadata.family
+
+    def test_empty_returns_none(self) -> None:
+        assert select_for_demand([], 3, Counter()) is None
 
 
 @pytest.mark.unit
 class TestRankByQuality:
-    def test_orders_strongest_first(self) -> None:
+    def test_orders_by_generation_then_size(self) -> None:
         ranked = rank_by_quality(
             [
-                _model("small", parameter_count=50),
-                _model("big", parameter_count=500),
-                _model("mid", parameter_count=100),
+                _model("old-big", generation=3.0, parameter_count=500),
+                _model("new-small", generation=5.0, parameter_count=100),
             ]
         )
-        assert [m.id for m in ranked] == ["big", "mid", "small"]
+        assert ranked[0].id == "new-small"
 
 
 @pytest.mark.unit
-class TestSelectTiered:
-    def _ranked(self) -> list[ProviderModelConfig]:
-        return rank_by_quality(
-            [_model(f"m{p}", parameter_count=p) for p in (500, 400, 300, 200, 100)]
-        )
-
-    def test_executive_draws_from_the_strongest(self) -> None:
-        chosen = select_tiered(self._ranked(), "c_suite", Counter())
-        assert chosen is not None
-        assert chosen.metadata.parameter_count == 500
-
-    def test_junior_draws_from_the_smaller_models(self) -> None:
-        chosen = select_tiered(self._ranked(), "junior", Counter())
-        assert chosen is not None
-        assert chosen.metadata.parameter_count is not None
-        assert chosen.metadata.parameter_count <= 200
-
-    def test_spreads_across_families_in_the_same_band(self) -> None:
-        models = rank_by_quality(
-            [
-                _model("a1", parameter_count=100, family="alpha"),
-                _model("a2", parameter_count=95, family="alpha"),
-                _model("b1", parameter_count=90, family="beta"),
-                _model("b2", parameter_count=85, family="beta"),
-            ]
-        )
-        usage: Counter[str] = Counter()
-        first = select_tiered(models, "mid", usage)
-        assert first is not None
-        assert first.metadata.family is not None
-        usage[first.metadata.family] += 1
-        second = select_tiered(models, "mid", usage)
-        assert second is not None
-        assert second.metadata.family != first.metadata.family
-
-    def test_empty_pool_returns_none(self) -> None:
-        assert select_tiered([], "mid", Counter()) is None
-
-
-@pytest.mark.unit
-class TestMatchAllAgentsTiered:
-    def test_executive_outranks_junior_despite_level_field(self) -> None:
-        models = tuple(
-            _model(f"model-{p}b", parameter_count=p * 1_000_000_000)
-            for p in (1600, 500, 100, 30)
-        )
-        providers = {"cloud": _Provider(*models)}
+class TestMatchAllAgentsDemandDriven:
+    def test_hard_work_outranks_routine_regardless_of_order(self) -> None:
+        providers = {
+            "cloud": _Provider(
+                _model("frontier", cost_tier=4, family="deep", generation=4.0),
+                _model("mid", cost_tier=2, family="gem", generation=4.0),
+                _model("cheap", cost_tier=1, family="min", generation=3.0),
+            )
+        }
+        # Routine role listed first; the demanding role must still claim the
+        # heavy model (demand-order assignment).
         agents: list[dict[str, object]] = [
-            {"role": "CEO", "level": "mid"},
-            {"role": "Data Analyst", "level": "junior"},
+            {"role": "QA", "model_requirement": {"priority": "cost"}},
+            {
+                "role": "Researcher",
+                "model_requirement": {
+                    "priority": "quality",
+                    "requires_reasoning": True,
+                },
+            },
         ]
         matches = match_all_agents(agents, providers)
         by_index = {m.agent_index: m.model_id for m in matches}
-        assert by_index[0] == "model-1600b"
-        assert by_index[1] != by_index[0]
+        assert by_index[1] == "frontier"
+        assert by_index[0] == "cheap"
 
-    def test_varied_roster_spreads_across_distinct_models(self) -> None:
-        models = tuple(
-            _model(
-                f"fam{i}-m",
-                parameter_count=(10 - i) * 1_000_000_000,
-                family=f"fam{i}",
+    def test_dominated_model_is_never_assigned(self) -> None:
+        providers = {
+            "cloud": _Provider(
+                _model("glm-5.2", cost_tier=3, family="glm", generation=5.2),
+                _model("glm-4.7", cost_tier=3, family="glm", generation=4.7),
             )
-            for i in range(8)
-        )
-        providers = {"cloud": _Provider(*models)}
-        # A realistic roster spans levels; each level draws from its own band so
-        # the assignment fans out across the catalogue instead of stacking.
-        levels = ["c_suite", "senior", "mid", "mid", "junior", "junior"]
+        }
         agents: list[dict[str, object]] = [
-            {"role": f"Role {i}", "level": lv} for i, lv in enumerate(levels)
+            {"role": "A", "model_requirement": {"priority": "quality"}},
+            {"role": "B", "model_requirement": {"priority": "quality"}},
         ]
-        matches = match_all_agents(agents, providers)
-        chosen = {m.model_id for m in matches}
-        assert len(chosen) >= 4
+        chosen = {m.model_id for m in match_all_agents(agents, providers)}
+        assert "glm-4.7" not in chosen
+        assert chosen == {"glm-5.2"}

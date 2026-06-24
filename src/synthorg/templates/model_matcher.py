@@ -34,9 +34,9 @@ from synthorg.templates.model_matcher_config import (
 )
 from synthorg.templates.model_matcher_priority import priority_ranker
 from synthorg.templates.model_matcher_tiering import (
-    effective_level,
-    rank_by_quality,
-    select_tiered,
+    demand_tier,
+    prune_dominated,
+    select_for_demand,
 )
 from synthorg.templates.model_requirements import ModelRequirement, ModelTier
 
@@ -430,9 +430,12 @@ def match_all_agents(
     cfg = matcher_config if matcher_config is not None else DEFAULT_MATCHER_CONFIG
     selector = strategy if strategy is not None else _DEFAULT_STRATEGY
     pool, owner = _build_pool(providers)
-    ctx = _MatchContext(pool, owner, Counter(), cfg, selector)
-    results: list[ModelMatch] = []
+    # Domination pruning: drop the older sibling when a same-family model in
+    # the same cost tier is strictly stronger (same price, worse).
+    pruned = tuple(prune_dominated(pool))
+    ctx = _MatchContext(pruned, owner, Counter(), cfg, selector)
 
+    resolved: list[tuple[int, ModelRequirement]] = []
     for idx, agent in enumerate(agents):
         req = _resolve_agent_requirement(
             agent,
@@ -441,17 +444,23 @@ def match_all_agents(
             parse_model_requirement,
             resolve_model_requirement,
         )
-        if req is None:
-            continue
-        match = _match_agent(idx, agent, req, ctx)
-        if match is not None:
-            results.append(match)
+        if req is not None:
+            resolved.append((idx, req))
+    # Assign the most-demanding roles first so the strongest models go to the
+    # work that needs them, never wasted on a low-demand role that grabbed one.
+    resolved.sort(key=lambda pair: demand_tier(pair[1]), reverse=True)
 
+    results = [
+        match
+        for idx, req in resolved
+        if (match := _match_agent(idx, req, ctx)) is not None
+    ]
+    results.sort(key=lambda match: match.agent_index)
     return results
 
 
-# Reported match score for a seniority-tiered assignment: a deliberate
-# level-band pick, not a fuzzy capability match, so it carries full confidence.
+# Reported match score for a demand-tier assignment: a deliberate tier pick,
+# not a fuzzy capability match, so it carries full confidence.
 _TIERED_MATCH_SCORE: Final[float] = 1.0
 
 
@@ -482,34 +491,18 @@ def _build_pool(
     return tuple(pool), owner
 
 
-def _agent_level(agent: Mapping[str, object]) -> str | None:
-    """Return the agent's effective seniority (role reconciled with level).
-
-    Returns:
-        The more-senior of the ``level`` field and the role-implied level, so
-        a CEO stamped ``level: mid`` still bands as executive.
-    """
-    raw_level = agent.get("level")
-    raw_role = agent.get("role")
-    return effective_level(
-        raw_level if isinstance(raw_level, str) else None,
-        raw_role if isinstance(raw_role, str) else None,
-    )
-
-
 def _match_agent(
     idx: int,
-    agent: Mapping[str, object],
     req: ModelRequirement,
     ctx: _MatchContext,
 ) -> ModelMatch | None:
     """Assign one agent a model across the unified provider pool.
 
     An explicit id / family / pattern reference is honoured via the strategy
-    (pin the newest match). Otherwise the agent's seniority level selects a
-    band of the quality-ranked eligible models and the least-used family wins,
-    so a roster spreads across model lines instead of all landing on the single
-    strongest model.
+    (pin the newest match). Otherwise the role's declared capability demand
+    selects a cost tier, and the agent draws the least-used family at (or
+    nearest) that tier, so the model matches the work's difficulty and the
+    roster fans out across model lines.
 
     Returns:
         The ``ModelMatch``, or ``None`` when nothing clears the hard filters.
@@ -521,10 +514,8 @@ def _match_agent(
     ):
         model, score = ctx.strategy.select(req, ctx.pool, ctx.config)
     else:
-        eligible = rank_by_quality(
-            [m for m in ctx.pool if passes_hard_filters(m, req)],
-        )
-        model = select_tiered(eligible, _agent_level(agent), ctx.family_usage)
+        eligible = [m for m in ctx.pool if passes_hard_filters(m, req)]
+        model = select_for_demand(eligible, demand_tier(req), ctx.family_usage)
         score = _TIERED_MATCH_SCORE if model is not None else 0.0
 
     provider = ctx.owner.get(id(model)) if model is not None else None

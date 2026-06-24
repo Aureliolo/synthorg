@@ -40,6 +40,10 @@ class ModelMetadata(BaseModel):
             (e.g. ``4.5`` for a ``4-5`` version), higher is newer.
         parameter_count: Total model parameters, when known. A coarse
             size/strength signal the matcher uses to rank quality.
+        cost_tier: Resource/pricing tier 1-4 (light -> extra heavy). For
+            ollama this is the real per-model usage level scraped from the
+            web page (the API does not expose it); for other providers it is
+            derived from cost/size. Drives cost-aware tiering in the matcher.
         release_date: Parsed release date, when derivable from the id.
         metadata_source: Provenance of this metadata record.
     """
@@ -58,6 +62,12 @@ class ModelMetadata(BaseModel):
         default=None,
         gt=0,
         description="Total model parameters, when known (size/strength signal)",
+    )
+    cost_tier: int | None = Field(
+        default=None,
+        ge=1,
+        le=4,
+        description="Resource/pricing tier 1-4 (light -> extra heavy)",
     )
     family: NotBlankStr | None = Field(
         default=None,

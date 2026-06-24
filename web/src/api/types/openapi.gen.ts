@@ -12387,6 +12387,8 @@ export type components = {
          * @description Capability and family/generation metadata (enriched at ingest)
          */
         readonly ModelMetadata: {
+            /** @description Resource/pricing tier 1-4 (light -> extra heavy) */
+            readonly cost_tier: number | null;
             /** @description Parsed model family (e.g. 'example-large') */
             readonly family: string | null;
             /** @description Sortable generation/recency (higher is newer) */

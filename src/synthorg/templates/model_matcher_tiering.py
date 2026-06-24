@@ -1,99 +1,83 @@
 # module-kind: code
-"""Seniority-tiered model selection with family-aware spread.
+"""Capability-demand model selection with domination pruning + family spread.
 
-Replaces winner-take-all selection (every quality agent getting the single
-biggest model) with a level-driven assignment: rank the eligible models by a
-coarse quality signal, map the agent's seniority to a band of that ranking,
-and pick within the band -- preferring the least-used family so agents spread
-across the available model lines instead of all landing on one.
+The model an agent gets is driven by **how hard its work is**, not its org
+rank: a role's declared demand (``priority`` + ``requires_*``) maps to a cost
+tier, and the agent draws from that tier. Hard, reasoning-heavy work pulls the
+heavy models; routine work the light ones -- which on ollama (where bigger =
+both more capable and more quota-hungry) is also the cost-optimal allocation.
+
+Two refinements keep the result clean:
+
+* **Domination pruning** -- within one cost tier, an older model of the same
+  family is strictly dominated by its newer sibling (same price, worse), so it
+  is dropped. The matcher never assigns ``glm-4.7`` when ``glm-5.2`` is the
+  same tier, nor ``kimi-k2.5``/``k2.6`` when ``k2.7`` exists.
+* **Family spread** -- among equally-suitable models in a tier, the least-used
+  family wins, so a roster fans out across model lines instead of stacking.
 """
 
-import re
 from collections import Counter
 from collections.abc import Sequence
 from typing import Final
 
 from synthorg.config.schema import ProviderModelConfig
+from synthorg.templates.model_requirements import ModelRequirement
 
-# Seniority levels low-to-high; the matcher bands and the role-vs-level
-# reconciliation both rank against this order.
-_SENIORITY_ORDER: Final[tuple[str, ...]] = (
-    "junior",
-    "mid",
-    "senior",
-    "principal",
-    "lead",
-    "director",
-    "vp",
-    "c_suite",
-)
+_TIER_QUALITY_REASONING: Final[int] = 4
+_TIER_HIGH: Final[int] = 3
+_TIER_BALANCED: Final[int] = 2
+_TIER_ECONOMICAL: Final[int] = 1
 
-# Role title -> implied seniority, highest first. A template can leave a CEO at
-# ``level: mid``; the role still puts them in the executive band so leadership
-# is never assigned a smaller model than its own reports.
-_ROLE_LEVEL_RULES: Final[tuple[tuple[str, str], ...]] = (
-    (r"\bceo\b|chief executive|founder|president", "c_suite"),
-    (r"^chief|\bc[a-z]o\b", "c_suite"),
-    (r"vice president|\bvp\b", "vp"),
-    (r"director|head of", "director"),
-    (r"\blead\b|principal", "lead"),
-)
+# Capability floor: within one cost tier, family-spread must not pick a model
+# far weaker than the tier's strongest (a tiny model is poor value at the same
+# price). Only models at least this fraction of the band's best size compete
+# for the spread, so a 1B never beats a same-tier 26B just for variety.
+_SPREAD_MIN_QUALITY_FRACTION: Final[float] = 0.125
 
 
-def _role_level(role: str) -> str | None:
-    """Return the seniority a role title implies, or ``None``."""
-    lowered = role.lower()
-    for pattern, level in _ROLE_LEVEL_RULES:
-        if re.search(pattern, lowered):
-            return level
-    return None
+def demand_tier(requirement: ModelRequirement) -> int:
+    """Map a role's declared capability demand to a target cost tier (1-4).
 
-
-def effective_level(level: str | None, role: str | None) -> str | None:
-    """Reconcile an agent's ``level`` field with the seniority its role implies.
-
-    Returns the more-senior of the two, so a CEO stamped ``level: mid`` still
-    bands as executive.
+    The signal is the work's difficulty as the template declares it, not org
+    seniority: reasoning-heavy quality work draws the heaviest tier, routine
+    cost/speed work the lightest.
 
     Returns:
-        The higher-ranked level string, or ``level`` when neither is known.
+        A 1-4 target tier.
     """
-    role_level = _role_level(role or "")
-    candidates = [lv for lv in (level, role_level) if lv in _SENIORITY_ORDER]
-    if not candidates:
-        return level
-    return max(candidates, key=_SENIORITY_ORDER.index)
+    if requirement.priority == "quality" and requirement.requires_reasoning:
+        return _TIER_QUALITY_REASONING
+    if requirement.priority == "quality" or requirement.requires_reasoning:
+        return _TIER_HIGH
+    if requirement.priority in ("cost", "speed"):
+        return _TIER_ECONOMICAL
+    return _TIER_BALANCED
 
 
-# Per-level band as ``(low, high)`` fractions of the quality-desc ranked list:
-# c-suite/exec draw from the strongest models, juniors from the smallest, with
-# overlap so adjacent levels can share when the catalogue is thin.
-_LEVEL_BANDS: Final[dict[str, tuple[float, float]]] = {
-    "c_suite": (0.0, 0.2),
-    "vp": (0.0, 0.25),
-    "director": (0.1, 0.35),
-    "lead": (0.1, 0.4),
-    "principal": (0.15, 0.45),
-    "senior": (0.25, 0.55),
-    "mid": (0.45, 0.8),
-    "junior": (0.7, 1.0),
-}
-# Unknown level lands mid-catalogue rather than at either extreme.
-_DEFAULT_BAND: Final[tuple[float, float]] = (0.45, 0.8)
-
-
-def _quality_key(model: ProviderModelConfig) -> tuple[float, float, int]:
-    """Sort key ranking a model by coarse strength (higher is stronger).
+def _capability_count(model: ProviderModelConfig) -> int:
+    """Return how many capability flags a model declares.
 
     Returns:
-        ``(parameter_count, generation, max_context)`` with missing values
-        treated as zero, so a larger / newer / longer-context model sorts
-        ahead.
+        Count of supported capabilities (tools/vision/reasoning).
+    """
+    meta = model.metadata
+    return sum((meta.supports_tools, meta.supports_vision, meta.supports_reasoning))
+
+
+def _quality_key(model: ProviderModelConfig) -> tuple[float, float, int, int]:
+    """Sort key ranking a model by capability strength (higher is stronger).
+
+    Returns:
+        ``(generation, parameter_count, capability_count, max_context)`` with
+        missing values treated as zero, so a newer / larger / more-capable
+        model sorts ahead.
     """
     meta = model.metadata
     return (
-        float(meta.parameter_count) if meta.parameter_count is not None else 0.0,
         meta.generation if meta.generation is not None else 0.0,
+        float(meta.parameter_count) if meta.parameter_count is not None else 0.0,
+        _capability_count(model),
         model.max_context,
     )
 
@@ -109,45 +93,101 @@ def rank_by_quality(
     return sorted(models, key=_quality_key, reverse=True)
 
 
-def _level_band(level: str | None, count: int) -> tuple[int, int]:
-    """Resolve a seniority level to ``[lo, hi)`` indices in a ranked list.
+def _effective_tier(model: ProviderModelConfig) -> int:
+    """Resolve a model's cost tier, defaulting to balanced when unknown.
 
     Returns:
-        Half-open index bounds into a ``count``-long quality-desc ranking.
+        The model's ``cost_tier`` (1-4), or the balanced tier when unset.
     """
-    lo_frac, hi_frac = _LEVEL_BANDS.get(level or "", _DEFAULT_BAND)
-    lo = int(lo_frac * count)
-    hi = max(lo + 1, int(hi_frac * count))
-    return lo, min(hi, count)
+    return (
+        model.metadata.cost_tier
+        if model.metadata.cost_tier is not None
+        else _TIER_BALANCED
+    )
 
 
-def select_tiered(
-    eligible_ranked: Sequence[ProviderModelConfig],
-    level: str | None,
+def prune_dominated(
+    models: Sequence[ProviderModelConfig],
+) -> list[ProviderModelConfig]:
+    """Drop models dominated within their (cost tier, family) group.
+
+    Two models of the same family in the same cost tier cost the same to run,
+    so only the stronger (newer/larger/more-capable) one is ever worth using.
+    Models without a resolvable tier or family pass through untouched (they
+    cannot be safely compared).
+
+    Returns:
+        The surviving models (best-per-(tier, family) plus the unclassifiable).
+    """
+    best_by_group: dict[tuple[int, str], ProviderModelConfig] = {}
+    passthrough: list[ProviderModelConfig] = []
+    for model in models:
+        family = model.metadata.family
+        tier = model.metadata.cost_tier
+        if family is None or tier is None:
+            passthrough.append(model)
+            continue
+        group = (tier, family)
+        incumbent = best_by_group.get(group)
+        if incumbent is None or _quality_key(model) > _quality_key(incumbent):
+            best_by_group[group] = model
+    return [*best_by_group.values(), *passthrough]
+
+
+def select_for_demand(
+    eligible: Sequence[ProviderModelConfig],
+    target_tier: int,
     family_usage: Counter[str],
 ) -> ProviderModelConfig | None:
-    """Pick a model for an agent's seniority band, spreading across families.
+    """Pick a model nearest the target cost tier, spreading across families.
 
-    *eligible_ranked* must already be quality-desc ordered and hard-filtered
-    for the agent's requirement. The agent's level selects a band; within it
-    the least-used family wins (ties resolve to the stronger model, since the
-    band is quality-ordered), so a roster spreads across model lines instead
-    of stacking on one.
+    Chooses from the models whose tier is closest to *target_tier* (the best
+    achievable when nothing sits exactly at it), then prefers the least-used
+    family so a roster fans out; ties resolve to the stronger model.
 
     Args:
-        eligible_ranked: Hard-filter-passing models, strongest first.
-        level: The agent's seniority level (``None`` -> mid band).
+        eligible: Hard-filter-passing, domination-pruned candidates.
+        target_tier: The role's demand tier (1-4).
         family_usage: Running per-family assignment counts, updated by caller.
 
     Returns:
         The chosen model, or ``None`` when nothing is eligible.
     """
-    if not eligible_ranked:
+    if not eligible:
         return None
-    lo, hi = _level_band(level, len(eligible_ranked))
-    band = eligible_ranked[lo:hi] or eligible_ranked
-    best_index = min(
-        range(len(band)),
-        key=lambda i: (family_usage[band[i].metadata.family or band[i].id], i),
+    nearest = min(abs(_effective_tier(m) - target_tier) for m in eligible)
+    band = rank_by_quality(
+        [m for m in eligible if abs(_effective_tier(m) - target_tier) == nearest]
     )
-    return band[best_index]
+    spread_pool = _within_quality_floor(band)
+    best_index = min(
+        range(len(spread_pool)),
+        key=lambda i: (
+            family_usage[spread_pool[i].metadata.family or spread_pool[i].id],
+            i,
+        ),
+    )
+    return spread_pool[best_index]
+
+
+def _within_quality_floor(
+    band: Sequence[ProviderModelConfig],
+) -> list[ProviderModelConfig]:
+    """Restrict spread candidates to models near the band's top capability.
+
+    Returns:
+        Models whose parameter count is at least the floor fraction of the
+        band's largest (size-unknown models kept), so family-spread cannot
+        pick a far-weaker model at the same cost. Falls back to the full band
+        when nothing qualifies.
+    """
+    best_params = max((m.metadata.parameter_count or 0 for m in band), default=0)
+    if best_params <= 0:
+        return list(band)
+    floor = best_params * _SPREAD_MIN_QUALITY_FRACTION
+    kept = [
+        m
+        for m in band
+        if m.metadata.parameter_count is None or m.metadata.parameter_count >= floor
+    ]
+    return kept or list(band)
