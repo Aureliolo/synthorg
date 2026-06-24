@@ -44,6 +44,7 @@ const SETTING_NAMESPACE_TABLE: Record<SettingNamespace, true> = {
   external_api: true,
   cockpit: true,
   demo: true,
+  appearance: true,
 }
 
 /**

@@ -1,6 +1,8 @@
 import { create } from 'zustand'
+import { getNamespaceSettings, resetSetting, updateSetting } from '@/api/endpoints/settings'
 import { createLogger } from '@/lib/logger'
-import { asObjectRecord } from '@/utils/parse'
+import { useToastStore } from '@/stores/toast'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 
 const log = createLogger('theme')
 
@@ -25,12 +27,21 @@ export interface ThemePreferences {
 export interface ThemeState extends ThemePreferences {
   popoverOpen: boolean
   reducedMotionDetected: boolean
+  /** True once preferences have been hydrated from the backend at least once. */
+  hydrated: boolean
   setColorPalette: (value: ColorPalette) => void
   setDensity: (value: Density) => void
   setTypography: (value: Typography) => void
   setAnimation: (value: AnimationPreset) => void
   setSidebarMode: (value: SidebarMode) => void
   setPopoverOpen: (open: boolean) => void
+  /**
+   * Load appearance preferences from the backend (`appearance` settings
+   * namespace) and apply them. The dashboard is a pure API consumer: the
+   * backend is the source of truth and there is no client-side copy, so this
+   * runs once the authed shell mounts. Failures degrade to defaults.
+   */
+  hydrate: () => Promise<void>
   reset: () => void
   /**
    * Detach the matchMedia listener installed at store creation.
@@ -59,13 +70,29 @@ export interface ThemeState extends ThemePreferences {
 // Constants
 // ---------------------------------------------------------------------------
 
-const STORAGE_KEY = 'so_theme_preferences'
-
 export const COLOR_PALETTES = ['warm-ops', 'ice-station', 'stealth', 'signal', 'neon'] as const satisfies readonly ColorPalette[]
 export const DENSITIES = ['dense', 'balanced', 'medium', 'sparse'] as const satisfies readonly Density[]
 export const TYPOGRAPHIES = ['geist', 'jetbrains', 'ibm-plex'] as const satisfies readonly Typography[]
 export const ANIMATION_PRESETS = ['minimal', 'spring', 'instant', 'status-driven', 'aggressive'] as const satisfies readonly AnimationPreset[]
 export const SIDEBAR_MODES = ['rail', 'collapsible', 'hidden', 'persistent', 'compact'] as const satisfies readonly SidebarMode[]
+
+// Map each preference axis to its backend `appearance.*` settings key. The
+// frontend uses camelCase; the backend namespace uses snake_case.
+const BACKEND_KEY = {
+  colorPalette: 'color_palette',
+  density: 'density',
+  typography: 'typography',
+  animation: 'animation',
+  sidebarMode: 'sidebar_mode',
+} as const satisfies Record<keyof ThemePreferences, string>
+
+const FRONTEND_KEY: Record<string, keyof ThemePreferences> = {
+  color_palette: 'colorPalette',
+  density: 'density',
+  typography: 'typography',
+  animation: 'animation',
+  sidebar_mode: 'sidebarMode',
+}
 
 // CSS classes for each axis (applied to <html>)
 const THEME_CLASSES = COLOR_PALETTES.map((p) => `theme-${p}`)
@@ -128,30 +155,6 @@ function mergeStoredPrefs(
   }
 }
 
-/** Exported for testing only -- the store already calls this at creation time. */
-export function loadPreferences(): ThemePreferences {
-  const defaults = getDefaultPreferences()
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return defaults
-    const parsed: unknown = JSON.parse(raw)
-    const obj = asObjectRecord(parsed)
-    if (!obj) return defaults
-    return mergeStoredPrefs(obj, defaults)
-  } catch (err) {
-    log.warn('Failed to load preferences, using defaults:', err)
-    return defaults
-  }
-}
-
-function savePreferences(prefs: ThemePreferences): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs))
-  } catch (err) {
-    log.warn('Failed to save preferences (localStorage may be unavailable):', err)
-  }
-}
-
 /** Guard against CSS class name injection -- only lowercase alphanumeric and hyphens. */
 const CSS_CLASS_SAFE = /^[a-z0-9-]+$/
 
@@ -196,6 +199,20 @@ function getPrefs(state: ThemeState): ThemePreferences {
   }
 }
 
+/** Persist a single appearance preference to the backend; toast on failure. */
+async function persistPref(key: keyof ThemePreferences, value: string): Promise<void> {
+  try {
+    await updateSetting('appearance', BACKEND_KEY[key], { value })
+  } catch (err) {
+    log.error('Failed to save appearance preference:', getErrorMessage(err))
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, 'Failed to save appearance'),
+      description: getErrorMessage(err),
+    })
+  }
+}
+
 function applyPrefPatch(
   set: (partial: Partial<ThemeState>) => void,
   get: () => ThemeState,
@@ -203,8 +220,42 @@ function applyPrefPatch(
 ): void {
   set(patch)
   const prefs = { ...getPrefs(get()), ...patch }
-  savePreferences(prefs)
   applyThemeClasses(prefs)
+  for (const [key, value] of Object.entries(patch)) {
+    void persistPref(key as keyof ThemePreferences, value)
+  }
+}
+
+/** Hydrate preferences from the backend appearance namespace; degrade to defaults. */
+async function hydrateAppearance(set: (partial: Partial<ThemeState>) => void): Promise<void> {
+  try {
+    const entries = await getNamespaceSettings('appearance')
+    const obj: Record<string, unknown> = {}
+    for (const entry of entries) {
+      const frontendKey = FRONTEND_KEY[entry.definition.key]
+      if (frontendKey !== undefined) obj[frontendKey] = entry.value
+    }
+    const prefs = mergeStoredPrefs(obj, getDefaultPreferences())
+    applyThemeClasses(prefs)
+    set({ ...prefs, hydrated: true })
+  } catch (err) {
+    // Degrade to the already-applied defaults; a logged-out shell (the
+    // settings GET is authed) or a transient failure must not break paint.
+    log.warn('Failed to hydrate appearance from backend, using defaults:', getErrorMessage(err))
+    set({ hydrated: true })
+  }
+}
+
+/** Restore default preferences and clear the backend appearance overrides. */
+function resetAppearance(set: (partial: Partial<ThemeState>) => void): void {
+  const defaults = getDefaultPreferences()
+  set({ ...defaults })
+  applyThemeClasses(defaults)
+  for (const backendKey of Object.values(BACKEND_KEY)) {
+    void resetSetting('appearance', backendKey).catch((err: unknown) => {
+      log.warn('Failed to reset appearance preference:', getErrorMessage(err))
+    })
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -212,11 +263,14 @@ function applyPrefPatch(
 // ---------------------------------------------------------------------------
 
 export const useThemeStore = create<ThemeState>()((set, get) => {
-  const initial = loadPreferences()
+  // Start from defaults and apply them synchronously so the shell is styled
+  // before the backend hydrate lands. The backend is the source of truth;
+  // ``hydrate()`` (called once the authed shell mounts) overlays the operator's
+  // stored choices. The default palette adds no class, so a default install
+  // shows no flash.
+  const initial = getDefaultPreferences()
   const reducedMotion = detectReducedMotion()
 
-  // Apply initial theme classes synchronously (wrapped for resilience;
-  // a corrupted localStorage value that bypasses isValid would crash the app)
   try {
     applyThemeClasses(initial)
   } catch (err) {
@@ -235,34 +289,22 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
   // Factored out so both the initial store creation AND `reattach()`
   // drive the same code path. Idempotent: a second call while the
   // listener is still attached is a no-op, so per-test
-  // reattach/teardown remains symmetric under the active-handle
-  // gate.
+  // reattach/teardown remains symmetric under the active-handle gate.
   //
-  // The handler CANNOT be invoked synchronously here because this
-  // function runs inside the Zustand creator before the store's
-  // initial state is returned -- ``get()`` would see partial /
-  // undefined fields and could write bogus preferences. Initial
-  // alignment to ``mql.matches`` happens via the ``reducedMotion``
-  // variable threaded into the store's returned object; a synthetic
-  // replay is only safe once the store is fully constructed, which
-  // is why ``reattach()`` (not the initial attach) is responsible
-  // for firing the handler.
+  // The OS reduced-motion preference is a RUNTIME presentation override: it
+  // applies classes + updates state but does NOT write to the backend, so one
+  // client's OS setting never clobbers the operator's stored animation choice.
   const attachReducedMotionListener = (): void => {
     if (mql && reducedMotionHandler) return
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
     mql = window.matchMedia('(prefers-reduced-motion: reduce)')
     reducedMotionHandler = (e) => {
       set({ reducedMotionDetected: e.matches })
-      // Follow OS reduced-motion preference: always switch to minimal when
-      // OS requests it; revert to default when OS lifts the preference
-      // (unless user already chose minimal).
       const state = get()
       const defaults = getDefaultPreferences()
       if (state.animation === defaults.animation || (e.matches && state.animation !== 'minimal')) {
         const newAnimation: AnimationPreset = e.matches ? 'minimal' : 'status-driven'
-        const prefs = { ...getPrefs(state), animation: newAnimation }
-        savePreferences(prefs)
-        applyThemeClasses(prefs)
+        applyThemeClasses({ ...getPrefs(state), animation: newAnimation })
         set({ animation: newAnimation })
       }
     }
@@ -275,6 +317,7 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
     ...initial,
     popoverOpen: false,
     reducedMotionDetected: reducedMotion,
+    hydrated: false,
 
     setColorPalette: (colorPalette) => {
       applyPrefPatch(set, get, { colorPalette })
@@ -294,15 +337,10 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
 
     setPopoverOpen: (popoverOpen) => set({ popoverOpen }),
 
+    hydrate: () => hydrateAppearance(set),
+
     reset: () => {
-      const defaults = getDefaultPreferences()
-      set({ ...defaults })
-      applyThemeClasses(defaults)
-      try {
-        localStorage.removeItem(STORAGE_KEY)
-      } catch (err) {
-        log.warn('Failed to clear stored preferences:', err)
-      }
+      resetAppearance(set)
     },
 
     teardown: (): void => {
@@ -319,18 +357,9 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
       // listener (after a prior ``teardown()``). Calling
       // ``reattach()`` on an already-attached store must be a
       // no-op -- otherwise repeated calls would drive the handler
-      // on every invocation, causing avoidable ``savePreferences``
-      // localStorage writes and ``applyThemeClasses`` DOM churn.
+      // on every invocation, causing avoidable DOM churn.
       const wasDetached = !(mql && reducedMotionHandler)
       attachReducedMotionListener()
-      // Safe to invoke the handler synchronously here: the store is
-      // fully constructed by the time ``reattach()`` is callable, so
-      // ``get()`` inside the handler returns complete state. The
-      // replay mirrors today's OS preference (or the test's mocked
-      // ``matchMedia`` value) into the store immediately, rather
-      // than waiting for the next ``change`` event that may never
-      // fire in tests. Initial store construction skips this replay
-      // (see ``attachReducedMotionListener``).
       if (wasDetached && mql && reducedMotionHandler) {
         reducedMotionHandler({ matches: mql.matches } as MediaQueryListEvent)
       }

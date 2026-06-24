@@ -13,10 +13,11 @@ import type { CompletionSlice, SliceCreator, ThemeSettings } from './types'
  *
  * The wizard collects ``ThemeSettings`` (a narrower shape with no
  * typography axis); the dashboard-wide ``useThemeStore`` exposes
- * per-axis setters that persist to ``localStorage`` and apply the
- * matching CSS classes to ``<html>``.  We forward each axis through
- * the existing setters so users see the theme they picked during
- * setup the moment the wizard hands off to the dashboard.
+ * per-axis setters that apply the matching CSS classes to ``<html>``
+ * and persist each axis to the backend ``appearance`` settings (the
+ * theme is backend-owned, never stored client-side). We forward each
+ * axis through the existing setters so users see the theme they
+ * picked during setup the moment the wizard hands off to the dashboard.
  */
 function persistWizardTheme(settings: ThemeSettings): void {
   const theme = useThemeStore.getState()
@@ -133,7 +134,8 @@ export const createCompletionSlice: SliceCreator<CompletionSlice> = (set, get) =
           : null
       // Forward the wizard's collected theme into the persistent theme store so
       // the dashboard renders the chosen palette / density / animation / sidebar
-      // mode immediately after hand-off. This is a pure client-side side-effect:
+      // mode immediately after hand-off (the setters also persist each axis to
+      // the backend appearance settings). This is a best-effort side-effect:
       // the backend has already persisted ``setup_complete=true``, so a theme
       // store failure must NOT be reported as a completion failure (that would
       // surface a Retry that re-POSTs /setup/complete and 409s). Degrade to a

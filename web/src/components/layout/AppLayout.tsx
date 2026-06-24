@@ -232,6 +232,13 @@ export default function AppLayout() {
   useDocumentTitle(location.pathname)
   useNotificationNavigateBridge()
 
+  // Hydrate appearance preferences from the backend (pure API consumer: the
+  // theme is backend-owned, with no client-side copy) once the authed shell
+  // mounts. Failures degrade to the defaults already applied at store init.
+  useEffect(() => {
+    void useThemeStore.getState().hydrate()
+  }, [])
+
   const openSidebarOverlay = useCallback(() => setSidebarOverlayOpen(true), [])
   const closeSidebarOverlay = useCallback(() => setSidebarOverlayOpen(false), [])
 
