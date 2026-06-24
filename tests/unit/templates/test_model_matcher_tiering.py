@@ -8,6 +8,8 @@ from synthorg.config.model_metadata import MetadataSource, ModelMetadata
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.templates.model_matcher import match_all_agents
 from synthorg.templates.model_matcher_tiering import (
+    DEFAULT_TIER_OVERRIDES,
+    _effective_tier,
     demand_tier,
     prune_dominated,
     rank_by_quality,
@@ -173,10 +175,12 @@ class TestMatchAllAgentsDemandDriven:
         assert by_index[0] == "cheap"
 
     def test_dominated_model_is_never_assigned(self) -> None:
+        # Neutral family names so the result depends only on domination, not on
+        # any curated tier override that ships keyed to a real model id.
         providers = {
             "cloud": _Provider(
-                _model("glm-5.2", cost_tier=3, family="glm", generation=5.2),
-                _model("glm-4.7", cost_tier=3, family="glm", generation=4.7),
+                _model("fam-2.0", cost_tier=3, family="fam", generation=2.0),
+                _model("fam-1.0", cost_tier=3, family="fam", generation=1.0),
             )
         }
         agents: list[dict[str, object]] = [
@@ -184,5 +188,63 @@ class TestMatchAllAgentsDemandDriven:
             {"role": "B", "model_requirement": {"priority": "quality"}},
         ]
         chosen = {m.model_id for m in match_all_agents(agents, providers)}
-        assert "glm-4.7" not in chosen
-        assert chosen == {"glm-5.2"}
+        assert "fam-1.0" not in chosen
+        assert chosen == {"fam-2.0"}
+
+
+_ONE_B: int = 1_000_000_000
+_TWENTY_B: int = 20_000_000_000
+
+
+@pytest.mark.unit
+class TestUsableFloor:
+    def test_sub_floor_model_not_auto_assigned_when_usable_exists(self) -> None:
+        # A 1B model cannot run an agent loop; a cost role must still get the
+        # usable 20B rather than the cheapest-but-useless tiny model.
+        providers = {
+            "local": _Provider(
+                _model("tiny", cost_tier=1, family="t", parameter_count=_ONE_B),
+                _model("usable", cost_tier=1, family="u", parameter_count=_TWENTY_B),
+            )
+        }
+        agents: list[dict[str, object]] = [
+            {"role": "QA", "model_requirement": {"priority": "cost"}},
+        ]
+        matches = match_all_agents(agents, providers)
+        assert matches[0].model_id == "usable"
+
+    def test_falls_back_to_sub_floor_when_nothing_clears(self) -> None:
+        # A small-only catalogue still yields a match rather than an unassigned
+        # agent -- a tiny model beats no model at all.
+        providers = {
+            "local": _Provider(
+                _model("tiny", cost_tier=1, family="t", parameter_count=_ONE_B),
+            )
+        }
+        agents: list[dict[str, object]] = [
+            {"role": "QA", "model_requirement": {"priority": "cost"}},
+        ]
+        matches = match_all_agents(agents, providers)
+        assert matches[0].model_id == "tiny"
+
+
+@pytest.mark.unit
+class TestTierOverride:
+    def test_default_override_promotes_glm_to_top_tier(self) -> None:
+        model = _model("glm-5.2", cost_tier=3, family="glm", generation=5.2)
+        # Scraped usage tier is 3; the curated override promotes it to 4 so the
+        # matcher reaches for it on the hardest (tier-4) work.
+        assert _effective_tier(model) == 3
+        assert _effective_tier(model, DEFAULT_TIER_OVERRIDES) == 4
+
+    def test_override_by_family(self) -> None:
+        model = _model("acme-1", cost_tier=1, family="acme", generation=1.0)
+        assert _effective_tier(model, {"acme": 4}) == 4
+
+    def test_override_by_id_beats_family(self) -> None:
+        model = _model("acme-1", cost_tier=1, family="acme", generation=1.0)
+        assert _effective_tier(model, {"acme": 2, "acme-1": 4}) == 4
+
+    def test_demotion_lowers_tier(self) -> None:
+        model = _model("weak", cost_tier=4, family="weak", generation=1.0)
+        assert _effective_tier(model, {"weak": 1}) == 1

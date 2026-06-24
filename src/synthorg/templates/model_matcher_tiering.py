@@ -18,7 +18,8 @@ Two refinements keep the result clean:
 """
 
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from types import MappingProxyType
 from typing import Final
 
 from synthorg.config.schema import ProviderModelConfig
@@ -28,6 +29,19 @@ _TIER_QUALITY_REASONING: Final[int] = 4
 _TIER_HIGH: Final[int] = 3
 _TIER_BALANCED: Final[int] = 2
 _TIER_ECONOMICAL: Final[int] = 1
+
+# Curated tier overrides keyed by model id (preferred) or family: promote or
+# demote a model across cost tiers, overriding its scraped usage tier in both
+# directions. A model whose ollama usage tier understates its real capability
+# -- glm-5.2 is priced tier-3 on quota yet ranks top-tier on reasoning
+# benchmarks -- is promoted so the matcher reaches for it on the hardest work;
+# the same hook demotes a known-weak model. Operator-tunable via
+# ``ModelMatcherConfig.tier_overrides``; lives here (not a settings scalar) so
+# the curated default ships with the matcher.
+DEFAULT_TIER_OVERRIDES: Final[Mapping[str, int]] = MappingProxyType(
+    {"glm-5.2": _TIER_QUALITY_REASONING},
+)
+_NO_TIER_OVERRIDES: Final[Mapping[str, int]] = MappingProxyType({})
 
 # Capability floor: within one cost tier, family-spread must not pick a model
 # far weaker than the tier's strongest (a tiny model is poor value at the same
@@ -93,12 +107,35 @@ def rank_by_quality(
     return sorted(models, key=_quality_key, reverse=True)
 
 
-def _effective_tier(model: ProviderModelConfig) -> int:
-    """Resolve a model's cost tier, defaulting to balanced when unknown.
+def _tier_override(
+    model: ProviderModelConfig,
+    overrides: Mapping[str, int],
+) -> int | None:
+    """Return the configured tier override for a model, if any.
 
     Returns:
-        The model's ``cost_tier`` (1-4), or the balanced tier when unset.
+        The override tier (by id, then family), or ``None`` when unset.
     """
+    by_id = overrides.get(model.id)
+    if by_id is not None:
+        return by_id
+    family = model.metadata.family
+    return overrides.get(family) if family is not None else None
+
+
+def _effective_tier(
+    model: ProviderModelConfig,
+    overrides: Mapping[str, int] = _NO_TIER_OVERRIDES,
+) -> int:
+    """Resolve a model's cost tier: override, else scraped, else balanced.
+
+    Returns:
+        The effective tier (1-4) -- a curated override wins, otherwise the
+        model's ``cost_tier``, otherwise the balanced tier.
+    """
+    override = _tier_override(model, overrides)
+    if override is not None:
+        return override
     return (
         model.metadata.cost_tier
         if model.metadata.cost_tier is not None
@@ -108,13 +145,15 @@ def _effective_tier(model: ProviderModelConfig) -> int:
 
 def prune_dominated(
     models: Sequence[ProviderModelConfig],
+    overrides: Mapping[str, int] = _NO_TIER_OVERRIDES,
 ) -> list[ProviderModelConfig]:
     """Drop models dominated within their (cost tier, family) group.
 
     Two models of the same family in the same cost tier cost the same to run,
     so only the stronger (newer/larger/more-capable) one is ever worth using.
-    Models without a resolvable tier or family pass through untouched (they
-    cannot be safely compared).
+    The grouping tier honours *overrides* so a promoted model is compared in
+    its promoted tier. Models without a resolvable tier or family pass through
+    untouched (they cannot be safely compared).
 
     Returns:
         The surviving models (best-per-(tier, family) plus the unclassifiable).
@@ -123,7 +162,8 @@ def prune_dominated(
     passthrough: list[ProviderModelConfig] = []
     for model in models:
         family = model.metadata.family
-        tier = model.metadata.cost_tier
+        override = _tier_override(model, overrides)
+        tier = override if override is not None else model.metadata.cost_tier
         if family is None or tier is None:
             passthrough.append(model)
             continue
@@ -138,27 +178,31 @@ def select_for_demand(
     eligible: Sequence[ProviderModelConfig],
     target_tier: int,
     family_usage: Counter[str],
+    overrides: Mapping[str, int] = _NO_TIER_OVERRIDES,
 ) -> ProviderModelConfig | None:
     """Pick a model nearest the target cost tier, spreading across families.
 
-    Chooses from the models whose tier is closest to *target_tier* (the best
-    achievable when nothing sits exactly at it), then prefers the least-used
-    family so a roster fans out; ties resolve to the stronger model.
+    Chooses from the models whose tier (after *overrides*) is closest to
+    *target_tier* (the best achievable when nothing sits exactly at it), then
+    prefers the least-used family so a roster fans out; ties resolve to the
+    stronger model.
 
     Args:
         eligible: Hard-filter-passing, domination-pruned candidates.
         target_tier: The role's demand tier (1-4).
         family_usage: Running per-family assignment counts, updated by caller.
+        overrides: Curated tier overrides applied to each model's tier.
 
     Returns:
         The chosen model, or ``None`` when nothing is eligible.
     """
     if not eligible:
         return None
-    nearest = min(abs(_effective_tier(m) - target_tier) for m in eligible)
-    band = rank_by_quality(
-        [m for m in eligible if abs(_effective_tier(m) - target_tier) == nearest]
-    )
+    distance = {
+        id(m): abs(_effective_tier(m, overrides) - target_tier) for m in eligible
+    }
+    nearest = min(distance.values())
+    band = rank_by_quality([m for m in eligible if distance[id(m)] == nearest])
     spread_pool = _within_quality_floor(band)
     best_index = min(
         range(len(spread_pool)),

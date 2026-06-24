@@ -431,8 +431,9 @@ def match_all_agents(
     selector = strategy if strategy is not None else _DEFAULT_STRATEGY
     pool, owner = _build_pool(providers)
     # Domination pruning: drop the older sibling when a same-family model in
-    # the same cost tier is strictly stronger (same price, worse).
-    pruned = tuple(prune_dominated(pool))
+    # the same cost tier is strictly stronger (same price, worse). Tier
+    # overrides apply so a promoted model is compared in its promoted tier.
+    pruned = tuple(prune_dominated(pool, cfg.tier_overrides))
     ctx = _MatchContext(pruned, owner, Counter(), cfg, selector)
 
     resolved: list[tuple[int, ModelRequirement]] = []
@@ -491,6 +492,30 @@ def _build_pool(
     return tuple(pool), owner
 
 
+def _above_usable_floor(
+    models: Sequence[ProviderModelConfig],
+    min_parameters: int,
+) -> list[ProviderModelConfig]:
+    """Drop models with a known parameter count below the usable floor.
+
+    A model too small to run an agent loop (a 1B on QA, say) is never
+    auto-assigned. Size-unknown models pass (cloud models often omit the
+    count). Falls back to the full set when the floor would empty it, so a
+    small-only catalogue still yields a match rather than leaving the agent
+    unassigned.
+
+    Returns:
+        The models at or above the floor, or all of *models* when none clear it.
+    """
+    kept = [
+        m
+        for m in models
+        if m.metadata.parameter_count is None
+        or m.metadata.parameter_count >= min_parameters
+    ]
+    return kept or list(models)
+
+
 def _match_agent(
     idx: int,
     req: ModelRequirement,
@@ -515,7 +540,10 @@ def _match_agent(
         model, score = ctx.strategy.select(req, ctx.pool, ctx.config)
     else:
         eligible = [m for m in ctx.pool if passes_hard_filters(m, req)]
-        model = select_for_demand(eligible, demand_tier(req), ctx.family_usage)
+        eligible = _above_usable_floor(eligible, ctx.config.min_usable_parameters)
+        model = select_for_demand(
+            eligible, demand_tier(req), ctx.family_usage, ctx.config.tier_overrides
+        )
         score = _TIERED_MATCH_SCORE if model is not None else 0.0
 
     provider = ctx.owner.get(id(model)) if model is not None else None

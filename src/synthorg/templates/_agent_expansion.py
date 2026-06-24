@@ -67,6 +67,28 @@ def _default_level(role: str) -> str:
     return _DEFAULT_LEVEL
 
 
+# Level marking a strategic role whose work (strategy, delegation, trade-offs)
+# is genuinely reasoning-heavy -- so a spec-less one earns the top demand.
+_STRATEGIC_LEVEL: Final[str] = "c_suite"
+
+
+def _is_strategic(agent: dict[str, object]) -> bool:
+    """Return whether an agent occupies a strategic (c-suite) role.
+
+    Uses the explicit ``level`` when present, else the role-title default, so
+    a department ``head_role`` exec (no explicit level) is still recognised.
+
+    Returns:
+        True when the agent's effective level is the strategic tier.
+    """
+    role = agent.get("role")
+    if not isinstance(role, str):
+        return False
+    level = agent.get("level")
+    effective = level if isinstance(level, str) and level else _default_level(role)
+    return effective == _STRATEGIC_LEVEL
+
+
 def _expand_agents(
     raw_agents: list[dict[str, object]],
     *,
@@ -248,6 +270,13 @@ def _resolve_model_requirement(
         overrides = {"model_id": model_raw.strip()}
     else:
         overrides = {}
+
+    # A strategic role declared only as a department head_role carries no model
+    # block, so it would inherit the generic balanced preset (a mid-tier model).
+    # Strategy work is reasoning-heavy, so default a spec-less exec to the top
+    # capability demand -- a CEO must not silently land below its own CTO.
+    if not overrides and _is_strategic(agent):
+        overrides = {"priority": "quality", "requires_reasoning": True}
 
     try:
         return resolve_model_requirement(preset, overrides)

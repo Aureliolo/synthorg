@@ -811,3 +811,53 @@ class TestJinja2PlaceholderAutoName:
         assert isinstance(name, str)
         assert "__JINJA2__" not in name
         assert len(name) > 0
+
+
+@pytest.mark.unit
+class TestStrategicModelDefault:
+    def test_spec_less_ceo_defaults_to_quality_reasoning(self) -> None:
+        """A head-role exec with no model block earns the top demand."""
+        from synthorg.templates._agent_expansion import _expand_single_agent
+
+        agent: dict[str, object] = {"role": "CEO", "department": "executive"}
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        req = result["model_requirement"]
+        assert isinstance(req, dict)
+        assert req["priority"] == "quality"
+        assert req["requires_reasoning"] is True
+
+    def test_explicit_c_suite_level_without_role_match(self) -> None:
+        """An explicit c_suite level marks a role strategic even off-title."""
+        from synthorg.templates._agent_expansion import _expand_single_agent
+
+        agent: dict[str, object] = {"role": "Head Coach", "level": "c_suite"}
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        req = result["model_requirement"]
+        assert isinstance(req, dict)
+        assert req["priority"] == "quality"
+        assert req["requires_reasoning"] is True
+
+    def test_non_strategic_role_keeps_preset_default(self) -> None:
+        """A non-exec role is not force-promoted to quality+reasoning."""
+        from synthorg.templates._agent_expansion import _expand_single_agent
+
+        agent: dict[str, object] = {"role": "Developer", "department": "engineering"}
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        req = result["model_requirement"]
+        assert isinstance(req, dict)
+        # Not forced to the strategic default (preset/balanced governs instead).
+        assert not (req["priority"] == "quality" and req["requires_reasoning"] is True)
+
+    def test_explicit_model_block_on_exec_is_respected(self) -> None:
+        """An exec with an explicit model block is not overridden."""
+        from synthorg.templates._agent_expansion import _expand_single_agent
+
+        agent: dict[str, object] = {
+            "role": "CEO",
+            "department": "executive",
+            "model": {"priority": "speed"},
+        }
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        req = result["model_requirement"]
+        assert isinstance(req, dict)
+        assert req["priority"] == "speed"
