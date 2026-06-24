@@ -235,13 +235,12 @@ async def auto_select_embedder(
         provider_preset_name,
         has_gpu=has_gpu,
     )
+    # The selector falls back to all tiers internally when the inferred tier
+    # has no ranked match, so a single call covers the CPU-host case too.
     ranking = select_embedding_model(
         available_model_ids,
         deployment_tier=tier,
     )
-    if ranking is None:
-        # Try without tier filter as fallback.
-        ranking = select_embedding_model(available_model_ids)
     if ranking is None:
         reason = "no ranked embedding model available for configured providers"
         logger.warning(
@@ -281,7 +280,8 @@ async def auto_select_embedder(
         MEMORY_EMBEDDER_AUTO_SELECTED,
         model_id=ranking.model_id,
         tier=tier.value,
-        overall_score=ranking.overall,
+        ranking_source=ranking.source,
+        ranking_model=ranking.ranking_model_id,
         dims=ranking.output_dims,
     )
     return None
