@@ -13,6 +13,7 @@ import {
   unwrapVoid,
   apiClient,
 } from '@/api/client'
+import { cookieJar } from '@/cookie-shim'
 import { ErrorCategory, ErrorCode, type ErrorDetail } from '@/api/types/errors'
 import type { ApiResponse, PaginatedResponse } from '@/api/types/http'
 
@@ -353,7 +354,14 @@ describe('apiClient request interceptor (CSRF)', () => {
   })
 
   it('does not attach CSRF token when cookie is absent', () => {
+    // The request interceptor reads the csrf_token cookie through the cookie
+    // shim. The global setup seeds that cookie for the mutating-request tests,
+    // so to exercise the truly-absent path we clear it from the jar here (the
+    // global afterEach re-seeds it for the next test). The getCsrfToken mock is
+    // ineffective because backend-sourced stores load `@/api/client` -- and its
+    // interceptor's live csrf binding -- before this file's vi.mock applies.
     csrfMock.mockReturnValue(null)
+    delete cookieJar['csrf_token']
     const fulfilled = getRequestInterceptor()
     const result = fulfilled({ method: 'post', headers: {} }) as { headers: Record<string, string> }
     expect(result.headers['X-CSRF-Token']).toBeUndefined()
