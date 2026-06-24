@@ -113,7 +113,7 @@ function DepartmentBox({
   return (
     <div
       className={cn(
-        'flex min-w-[12rem] flex-col gap-4 rounded-xl border bg-card p-card shadow-sm',
+        'flex w-fit max-w-[14rem] flex-col gap-4 rounded-xl border bg-card p-card shadow-sm',
         highlight ? 'border-primary/40 bg-primary/5' : 'border-border',
       )}
     >
@@ -161,19 +161,19 @@ function ChildColumn({
   single: boolean
 }) {
   return (
-    <div className="flex flex-1 flex-col items-center">
-      <div className="relative h-7 w-full" aria-hidden>
+    <div className="relative flex flex-col items-center pt-7">
+      <div className="absolute inset-x-0 top-0 h-7" aria-hidden>
         {!single && (
           <div
             className={cn(
               'absolute top-0 h-px bg-border',
-              first ? 'left-1/2 right-0' : last ? 'left-0 right-1/2' : 'left-0 right-0',
+              first ? 'left-1/2 right-0' : last ? 'left-0 right-1/2' : 'inset-x-0',
             )}
           />
         )}
         <div className="absolute left-1/2 top-0 h-7 w-px -translate-x-1/2 bg-border" />
       </div>
-      <div className="w-full px-2">
+      <div className="px-3">
         <DepartmentBox dept={dept} />
       </div>
     </div>
@@ -205,16 +205,18 @@ export function MiniOrgChart({ agents, className }: MiniOrgChartProps) {
     <div className={cn('flex flex-col items-center py-4', className)}>
       <DepartmentBox dept={lead} highlight />
       <div className="h-7 w-px bg-border" aria-hidden />
-      <div className="flex w-full items-start justify-center overflow-x-auto pb-2">
-        {rest.map((dept, index) => (
-          <ChildColumn
-            key={dept.name}
-            dept={dept}
-            first={index === 0}
-            last={index === rest.length - 1}
-            single={rest.length === 1}
-          />
-        ))}
+      <div className="w-full overflow-x-auto pb-2">
+        <div className="mx-auto flex w-max items-start">
+          {rest.map((dept, index) => (
+            <ChildColumn
+              key={dept.name}
+              dept={dept}
+              first={index === 0}
+              last={index === rest.length - 1}
+              single={rest.length === 1}
+            />
+          ))}
+        </div>
       </div>
     </div>
   )
