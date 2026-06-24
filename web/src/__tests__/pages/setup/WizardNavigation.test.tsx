@@ -33,7 +33,10 @@ describe('WizardNavigation', () => {
     expect(screen.getByRole('button', { name: /back/i })).not.toBeDisabled()
   })
 
-  it('disables Back on the first step', () => {
+  it('omits Back on the first step', () => {
+    // The component drops the Back control entirely on the first step (rather
+    // than showing it disabled) so a dead button never appears where there is
+    // nowhere to go back to; the layout span keeps Next right-aligned.
     render(
       <WizardNavigation
         stepOrder={ORDER}
@@ -42,7 +45,7 @@ describe('WizardNavigation', () => {
         onNext={vi.fn()}
       />,
     )
-    expect(screen.getByRole('button', { name: /back/i })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: /back/i })).not.toBeInTheDocument()
   })
 
   it('renders Next on a normal step', () => {

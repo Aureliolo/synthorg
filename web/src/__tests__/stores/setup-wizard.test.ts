@@ -362,11 +362,14 @@ describe('setup wizard store', () => {
       expect(state.currentStep).toBe('mode')
     })
 
-    it('re-blocks providers and agents steps when the providers map is empty after rehydration', async () => {
-      // The ``providers`` map is not persisted, so it rehydrates to ``{}``.
-      // A payload that persisted ``stepsCompleted.providers/agents = true`` (and
-      // currentStep='complete') must not let the user resume on Complete with an
-      // empty provider map: both steps re-block and the wizard snaps to providers.
+    it('preserves persisted step flags on rehydration (backend reconcile owns correction)', async () => {
+      // ``providers`` / ``agents`` data is not persisted, but the merge no
+      // longer second-guesses the persisted completion flags by re-blocking on
+      // empty data. ``reconcileCompletionFromBackend`` (run on wizard mount) is
+      // now the single source of truth: it hydrates the data from the backend
+      // and re-derives the flags. So rehydration keeps the persisted flags +
+      // currentStep as-is, and the URL-sync holds (``statusReconciled``) until
+      // the reconcile lands -- a stale flag here is never acted on first.
       const persistName = useSetupWizardStore.persist.getOptions().name ?? ''
       const payload = {
         state: {
@@ -391,9 +394,10 @@ describe('setup wizard store', () => {
 
       const state = useSetupWizardStore.getState()
       expect(state.providers).toEqual({})
-      expect(state.stepsCompleted.providers).toBe(false)
-      expect(state.stepsCompleted.agents).toBe(false)
-      expect(state.currentStep).toBe('providers')
+      expect(state.stepsCompleted.providers).toBe(true)
+      expect(state.stepsCompleted.agents).toBe(true)
+      expect(state.currentStep).toBe('complete')
+      expect(state.statusReconciled).toBe(false)
     })
 
     it('resets agentsFetched to false after rehydration so the agents step re-fetches', async () => {
@@ -431,17 +435,55 @@ describe('setup wizard store', () => {
       )
     }
 
-    it('marks agents + theme complete when the backend reports persisted agents', async () => {
-      // The resume bug: a backend with company + providers + agents bounced
-      // the operator back to Agents because the reconcile ignored has_agents
-      // (and never satisfied the cosmetic theme step), so canNavigateTo
-      // ('complete') stayed false.
+    function agentRow(over: Record<string, unknown>): Record<string, unknown> {
+      return {
+        name: 'Agent',
+        role: 'engineer',
+        department: 'engineering',
+        level: 'mid',
+        model_provider: 'provider-default',
+        model_id: 'model-default',
+        tier: 'medium',
+        personality_preset: 'balanced',
+        ...over,
+      }
+    }
+
+    function stubAgents(rows: ReadonlyArray<Record<string, unknown>>): void {
+      // ``getAgents`` paginates, so the roster must arrive in a paginated
+      // envelope (a plain ``apiSuccess`` array trips "Unexpected API response").
+      server.use(
+        http.get('/api/v1/setup/agents', () =>
+          HttpResponse.json({
+            data: rows,
+            error: null,
+            error_detail: null,
+            pagination: { limit: 200, next_cursor: null, has_more: false },
+            success: true,
+            degraded_sources: [],
+          }),
+        ),
+      )
+    }
+
+    it('hydrates agents + marks agents/theme complete when the backend has a roster', async () => {
+      // The root-cause fix: the backend is the single source of truth on
+      // resume. The reconcile must HYDRATE the real roster into the store (so
+      // a resume that lands on Review renders agents, not zero) AND derive the
+      // step flags from has_*. statusReconciled flips only after the data
+      // lands, so the URL-sync never bounces / flashes an empty Complete.
       stubStatus({ has_providers: true, has_company: true, has_agents: true })
+      stubAgents([
+        agentRow({ name: 'CEO Agent', role: 'CEO', department: 'executive', model_id: 'glm-5.2' }),
+        agentRow({ name: 'CTO Agent', role: 'CTO', department: 'executive', model_id: 'deepseek-v4-pro' }),
+      ])
 
       await useSetupWizardStore.getState().reconcileCompletionFromBackend()
 
       const state = useSetupWizardStore.getState()
       expect(state.statusReconciled).toBe(true)
+      // Data hydrated, not just flags -- this is what kept Review at 0 agents.
+      expect(state.agents).toHaveLength(2)
       expect(state.stepsCompleted.providers).toBe(true)
       expect(state.stepsCompleted.company).toBe(true)
       expect(state.stepsCompleted.agents).toBe(true)
@@ -449,13 +491,19 @@ describe('setup wizard store', () => {
       expect(state.canNavigateTo('complete')).toBe(true)
     })
 
-    it('leaves agents + theme incomplete when no agents are persisted yet', async () => {
-      stubStatus({ has_providers: true, has_company: true, has_agents: false })
+    it('self-corrects a stale providers flag when the backend no longer has providers', async () => {
+      // A stale localStorage flag (data deleted server-side since last session)
+      // must be derived back to incomplete -- the merge no longer re-blocks, so
+      // the reconcile owns this correction (both-ways derivation from has_*).
+      useSetupWizardStore.setState((s) => ({
+        stepsCompleted: { ...s.stepsCompleted, providers: true, agents: true },
+      }))
+      stubStatus({ has_providers: false, has_company: true, has_agents: false })
 
       await useSetupWizardStore.getState().reconcileCompletionFromBackend()
 
       const state = useSetupWizardStore.getState()
-      expect(state.stepsCompleted.company).toBe(true)
+      expect(state.stepsCompleted.providers).toBe(false)
       expect(state.stepsCompleted.agents).toBe(false)
       expect(state.stepsCompleted.theme).toBe(false)
       expect(state.canNavigateTo('complete')).toBe(false)

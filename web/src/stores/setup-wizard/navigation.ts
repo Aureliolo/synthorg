@@ -129,40 +129,55 @@ function canNavigateToImpl(get: WizGet, step: WizardStep): boolean {
   return true
 }
 
-async function reconcileCompletionFromBackendImpl(set: WizSet): Promise<void> {
+async function reconcileCompletionFromBackendImpl(
+  set: WizSet,
+  get: WizGet,
+): Promise<void> {
   try {
     const status = await getSetupStatus()
+    // The backend is the single source of truth on resume. The wizard's
+    // ``agents`` / ``providers`` data is NOT persisted (it rehydrates empty),
+    // and the per-step fetch only fires when that step is physically visited
+    // -- so a resume that lands on Review would otherwise render an empty
+    // roster while the server holds the real one. Hydrate the actual data
+    // from the backend HERE, and flip ``statusReconciled`` only AFTER it
+    // lands, so the URL-sync holds the operator on the requested step (no
+    // bounce, no toast) until the store reflects reality -- never flashing a
+    // zero-agent Complete screen. ``fetchAgents`` / ``fetchProviders`` swallow
+    // their own errors into ``*Error`` state, so ``allSettled`` is belt-and-
+    // braces; a failed hydration falls back to the per-step lazy fetch.
+    await Promise.allSettled([
+      status.has_providers ? get().fetchProviders() : Promise.resolve(),
+      status.has_agents ? get().fetchAgents() : Promise.resolve(),
+    ])
     set((s) => {
       const completed = { ...s.stepsCompleted }
-      if (status.has_providers) completed.providers = true
-      // A created company implies its template was applied and a mode was
-      // chosen in a prior session; mark those so the operator is not sent
-      // back through the mode picker / Template on resume.
+      // Providers + agents carry unambiguous backend signals, so derive both
+      // ways: a stale localStorage flag (the data was deleted server-side
+      // since the last session) self-corrects to incomplete instead of
+      // letting the operator sail past an empty step.
+      completed.providers = status.has_providers
+      completed.agents = status.has_agents
+      // A created company implies its template + mode were chosen in a prior
+      // session; only ever set these TRUE -- they are pre-company UI steps
+      // with no backend signal to falsify them mid-forward-flow (before the
+      // company exists), so a fresh wizard must not have them cleared here.
       if (status.has_company) {
         completed.company = true
         completed.template = true
         completed.mode = true
       }
-      // Persisted agents (auto-created with the template, each carrying a
-      // model assignment) mean the Agents step was satisfied in the prior
-      // session; mark it complete so a resume does not bounce the operator
-      // back through Agents on the way to Complete. The Agents step's own
-      // ``recomputeAgentsRevalidation`` still raises a soft revalidation
-      // badge once the roster rehydrates if a model no longer resolves, and
-      // the backend completion gate rejects an agent whose provider/model
-      // was deleted -- so existence here cannot smuggle a broken roster
-      // through. ``theme`` is a cosmetic, defaulted, client-only choice with
-      // no backend signal; once the substantive setup (agents) exists, a
-      // resume must not re-block on re-picking a theme -- it stays reachable
-      // via the progress bar and is changeable later in Settings.
-      if (status.has_agents) {
-        completed.agents = true
-        completed.theme = true
-      }
+      // ``theme`` is a cosmetic, defaulted, client-only choice with no backend
+      // signal; once the substantive setup (agents) exists, a resume must not
+      // re-block on re-picking a theme -- it stays reachable via the progress
+      // bar and is changeable later in Settings.
+      if (status.has_agents) completed.theme = true
       return { stepsCompleted: completed, statusReconciled: true }
     })
   } catch {
-    // Best-effort: unblock the URL-sync even when the status probe fails.
+    // Best-effort: unblock the URL-sync even when the status probe fails. The
+    // per-step lazy fetch (Agents / Providers step on mount) remains the
+    // fallback that hydrates the data once those steps are visited.
     set({ statusReconciled: true })
   }
 }
@@ -218,7 +233,8 @@ export const createNavigationSlice: SliceCreator<NavigationSlice> = (
   recomputeAgentsRevalidation: () =>
     recomputeAgentsRevalidationImpl(set, get),
   canNavigateTo: (step) => canNavigateToImpl(get, step),
-  reconcileCompletionFromBackend: () => reconcileCompletionFromBackendImpl(set),
+  reconcileCompletionFromBackend: () =>
+    reconcileCompletionFromBackendImpl(set, get),
   setNeedsAdmin(needsAdmin) {
     const { wizardMode } = get()
     const stepOrder = getStepOrder(needsAdmin, wizardMode)

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ErrorBanner } from '@/components/ui/error-banner'
+import { Skeleton } from '@/components/ui/skeleton'
 import { SkipWizardForm } from './SkipWizardForm'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useSetupStore } from '@/stores/setup'
@@ -156,10 +157,31 @@ export function CompleteStep() {
   const completing = useSetupWizardStore((s) => s.completing)
   const completionError = useSetupWizardStore((s) => s.completionError)
   const completionWarning = useSetupWizardStore((s) => s.completionWarning)
+  const statusReconciled = useSetupWizardStore((s) => s.statusReconciled)
   const wizardCompleteSetup = useSetupWizardStore((s) => s.completeSetup)
 
   const { confirmOpen, setConfirmOpen, finishAndNavigate, handleComplete } =
     useCompleteStepActions(companyResponse, wizardCompleteSetup)
+
+  if (companyResponse && !statusReconciled) {
+    // On resume the backend reconcile (wizard mount) is still hydrating the
+    // real agents + providers into the store. Render a skeleton rather than
+    // the summary so the roster + counts never flash empty before the server
+    // data lands. ``statusReconciled`` always flips (the reconcile sets it
+    // even on probe failure), so this is never a permanent state.
+    return (
+      <div className="space-y-section-gap">
+        <div className="space-y-2">
+          <h2 className="text-lg font-semibold text-foreground">Review &amp; Complete</h2>
+          <p className="text-sm text-muted-foreground">
+            Review your organization before launching.
+          </p>
+        </div>
+        <Skeleton className="h-40 w-full" />
+        <Skeleton className="h-32 w-full" />
+      </div>
+    )
+  }
 
   if (!companyResponse) {
     // Reaching Complete without a generated company means the Company step

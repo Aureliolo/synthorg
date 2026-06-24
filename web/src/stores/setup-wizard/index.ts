@@ -90,61 +90,6 @@ function buildStepsCompleted(
   return stepsCompleted
 }
 
-function isRehydratedMapEmpty(value: unknown): boolean {
-  // The ``providers`` map is intentionally NOT persisted, so it always
-  // rehydrates to the slice default (``{}``). Treat any non-object or
-  // empty-object value as "not yet (re)loaded".
-  return (
-    value == null
-    || typeof value !== 'object'
-    || Object.keys(value).length === 0
-  )
-}
-
-function unmarkAgentsIfEmptyRehydration(
-  stepsCompleted: Record<WizardStep, boolean>,
-  stepOrder: readonly WizardStep[],
-  merged: SetupWizardState,
-): void {
-  // The ``agents`` slice fetches asynchronously on mount, so a payload that
-  // persisted ``stepsCompleted.agents = true`` is racing the (re)fetch. The
-  // agents step also depends on ``providers`` (a prior step) to resolve agent
-  // models, and ``providers`` is not persisted either. Re-mark the step as
-  // incomplete when EITHER the rehydrated agents list OR the providers map is
-  // empty, so the user is never silently allowed past the agents page (or onto
-  // Complete) with a stale "configured" badge over an empty provider map.
-  const rehydratedAgents = (merged as { agents?: readonly unknown[] }).agents
-  const rehydratedProviders = (merged as { providers?: unknown }).providers
-  if (
-    stepOrder.includes('agents')
-    && stepsCompleted.agents
-    && (!Array.isArray(rehydratedAgents)
-      || rehydratedAgents.length === 0
-      || isRehydratedMapEmpty(rehydratedProviders))
-  ) {
-    stepsCompleted.agents = false
-  }
-}
-
-function unmarkProvidersIfEmptyRehydration(
-  stepsCompleted: Record<WizardStep, boolean>,
-  stepOrder: readonly WizardStep[],
-  merged: SetupWizardState,
-): void {
-  // ``providers`` is not persisted but ``stepsCompleted.providers`` is, so the
-  // two diverge after a reload: the progress bar would show a green tick for
-  // the Providers step while the live map is empty. Clear the completion flag
-  // so the step re-validates on visit and downstream steps stay gated.
-  const rehydratedProviders = (merged as { providers?: unknown }).providers
-  if (
-    stepOrder.includes('providers')
-    && stepsCompleted.providers
-    && isRehydratedMapEmpty(rehydratedProviders)
-  ) {
-    stepsCompleted.providers = false
-  }
-}
-
 function snapCurrentStepToSafe(
   merged: SetupWizardState,
   stepOrder: readonly WizardStep[],
@@ -182,8 +127,14 @@ function mergePersistedSetupState(
   }
   const stepOrder = getStepOrder(merged.needsAdmin, merged.wizardMode)
   const stepsCompleted = buildStepsCompleted(merged.stepsCompleted, stepOrder)
-  unmarkProvidersIfEmptyRehydration(stepsCompleted, stepOrder, merged)
-  unmarkAgentsIfEmptyRehydration(stepsCompleted, stepOrder, merged)
+  // The merge no longer second-guesses the persisted completion flags by
+  // re-blocking steps whose (non-persisted) data rehydrates empty. That was a
+  // band-aid for the data-vs-flag drift; the real fix lives in
+  // ``reconcileCompletionFromBackend`` (run on wizard mount), which is the
+  // single source of truth: it hydrates agents + providers from the backend
+  // and re-derives the flags from ``has_*``. The URL-sync holds the operator
+  // until that reconcile lands (``statusReconciled``), so a stale flag here
+  // cannot be acted on before the backend corrects it.
   return snapCurrentStepToSafe(merged, stepOrder, stepsCompleted)
 }
 
