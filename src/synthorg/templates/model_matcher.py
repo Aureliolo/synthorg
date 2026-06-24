@@ -11,9 +11,10 @@ composite.  Selection is pluggable via :class:`ModelSelectionStrategy`.
 
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import date
 from fnmatch import fnmatch
-from typing import Final, NamedTuple, Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 
@@ -126,10 +127,11 @@ def passes_hard_filters(
 class CapabilityFitStrategy:
     """Default capability-aware selection strategy.
 
-    Phase A hard-filters on declared capability requirements (fail-closed
-    against unknown metadata); phase B pins the newest model matching a
-    family/pattern reference; phase C scores survivors on an absolute
-    capability / context / priority composite.
+    Phase A hard-filters on declared capability requirements (optimistic for
+    un-probed metadata -- a required capability fails only when the model is
+    *known* to lack it; see :func:`passes_hard_filters`); phase B pins the
+    newest model matching a family/pattern reference; phase C scores survivors
+    on an absolute capability / context / priority composite.
     """
 
     def select(
@@ -422,17 +424,12 @@ def match_all_agents(
             no-op, so an unset profile leaves matching unchanged.
 
     Returns:
-        List of ``ModelMatch`` results. An agent is omitted when no
-        model clears its hard capability requirements (fail-closed),
-        when no models exist anywhere, or when requirement resolution
-        fails. Callers handle an omitted agent (left unassigned at setup).
+        List of ``ModelMatch`` results. An agent is omitted when no model
+        clears its hard capability requirements (a model the agent's required
+        capability is *known* to lack), when no models exist anywhere, or when
+        requirement resolution fails. Callers handle an omitted agent (left
+        unassigned at setup).
     """
-    from synthorg.templates.model_requirements import (  # noqa: PLC0415
-        ModelRequirement,
-        parse_model_requirement,
-        resolve_model_requirement,
-    )
-
     cfg = matcher_config if matcher_config is not None else DEFAULT_MATCHER_CONFIG
     selector = strategy if strategy is not None else _DEFAULT_STRATEGY
     pool, owner = _build_pool(providers)
@@ -441,6 +438,32 @@ def match_all_agents(
     # overrides apply so a promoted model is compared in its promoted tier.
     pruned = tuple(prune_dominated(pool, cfg.tier_overrides))
     ctx = _MatchContext(pruned, owner, Counter(), cfg, selector)
+
+    resolved = _resolve_demand_ordered(agents, tier_profile)
+    results = [
+        match
+        for idx, req in resolved
+        if (match := _match_agent(idx, req, ctx)) is not None
+    ]
+    results.sort(key=lambda match: match.agent_index)
+    return results
+
+
+def _resolve_demand_ordered(
+    agents: Sequence[Mapping[str, object]],
+    tier_profile: str,
+) -> list[tuple[int, ModelRequirement]]:
+    """Resolve each agent's requirement, bias by tier profile, sort by demand.
+
+    Returns:
+        ``(index, requirement)`` pairs, most-demanding role first, so the
+        strongest models go to the work that needs them.
+    """
+    from synthorg.templates.model_requirements import (  # noqa: PLC0415
+        ModelRequirement,
+        parse_model_requirement,
+        resolve_model_requirement,
+    )
 
     resolved: list[tuple[int, ModelRequirement]] = []
     for idx, agent in enumerate(agents):
@@ -451,26 +474,18 @@ def match_all_agents(
             parse_model_requirement,
             resolve_model_requirement,
         )
-        if req is not None:
-            # The company model-tier profile biases the whole roster cheaper
-            # ('economy') or stronger ('premium') by nudging each agent's
-            # resolved priority one rung along the cost<->quality ladder;
-            # 'balanced' is a no-op, so a profile-less call is unchanged.
-            shifted = shift_priority(req.priority, tier_profile)
-            if shifted != req.priority:
-                req = req.model_copy(update={"priority": shifted})
-            resolved.append((idx, req))
-    # Assign the most-demanding roles first so the strongest models go to the
-    # work that needs them, never wasted on a low-demand role that grabbed one.
+        if req is None:
+            continue
+        # The company model-tier profile biases the whole roster cheaper
+        # ('economy') or stronger ('premium') by nudging each agent's resolved
+        # priority one rung along the cost<->quality ladder; 'balanced' is a
+        # no-op, so a profile-less call is unchanged.
+        shifted = shift_priority(req.priority, tier_profile)
+        if shifted != req.priority:
+            req = req.model_copy(update={"priority": shifted})
+        resolved.append((idx, req))
     resolved.sort(key=lambda pair: demand_tier(pair[1]), reverse=True)
-
-    results = [
-        match
-        for idx, req in resolved
-        if (match := _match_agent(idx, req, ctx)) is not None
-    ]
-    results.sort(key=lambda match: match.agent_index)
-    return results
+    return resolved
 
 
 # Reported match score for a demand-tier assignment: a deliberate tier pick,
@@ -478,8 +493,14 @@ def match_all_agents(
 _TIERED_MATCH_SCORE: Final[float] = 1.0
 
 
-class _MatchContext(NamedTuple):
-    """Shared batch-matching state: the unified pool + running family spread."""
+@dataclass(slots=True)
+class _MatchContext:
+    """Shared batch-matching state: the unified pool + running family spread.
+
+    A dataclass (not a ``NamedTuple``) makes the mutability honest:
+    ``family_usage`` is a live ``Counter`` that ``_match_agent`` increments
+    after each assignment so later agents draw the least-used family.
+    """
 
     pool: tuple[ProviderModelConfig, ...]
     owner: dict[int, str]

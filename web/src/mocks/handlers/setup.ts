@@ -6,6 +6,7 @@ import type {
   getAgents,
   getAvailableLocales,
   getCompany,
+  getModelRecommendations,
   getNameLocales,
   getSetupStatus,
   listPersonalityPresets,
@@ -135,6 +136,17 @@ export const setupHandlers = [
   http.get('/api/v1/setup/agents', () =>
     HttpResponse.json(paginatedEnvelopeFor<typeof getAgents>()),
   ),
+  http.get('/api/v1/setup/model-recommendations', () =>
+    HttpResponse.json(
+      successFor<typeof getModelRecommendations>({
+        decomposition_recommended: 'model-default',
+        decomposition_candidates: ['model-default'],
+        embedding_recommended: 'embed-default',
+        embedding_recommended_dims: 1024,
+        embedding_candidates: ['embed-default'],
+      }),
+    ),
+  ),
   http.put('/api/v1/setup/agents/:index/model', async ({ request }) => {
     const body = (await request.json()) as {
       model_provider: string
@@ -182,7 +194,9 @@ export const setupHandlers = [
     ),
   ),
   http.get('/api/v1/setup/name-locales', () =>
-    HttpResponse.json(successFor<typeof getNameLocales>({ locales: [] })),
+    // Backend returns the ``__all__`` sentinel (never an empty array) when no
+    // explicit locales are persisted; mirror that so tests exercise the real shape.
+    HttpResponse.json(successFor<typeof getNameLocales>({ locales: ['__all__'] })),
   ),
   http.put('/api/v1/setup/name-locales', async ({ request }) => {
     const body = (await request.json()) as { locales: string[] }

@@ -1,72 +1,100 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-
-const getModelRecommendations = vi.fn<() => Promise<unknown>>()
-const getNamespaceSettings = vi.fn<(ns: string) => Promise<unknown>>()
-const updateSetting = vi.fn<(ns: string, key: string, data: unknown) => Promise<unknown>>()
-
-vi.mock('@/api/endpoints/setup', () => ({
-  getModelRecommendations: () => getModelRecommendations(),
-}))
-vi.mock('@/api/endpoints/settings', () => ({
-  getNamespaceSettings: (ns: string) => getNamespaceSettings(ns),
-  updateSetting: (ns: string, key: string, data: unknown) => updateSetting(ns, key, data),
-}))
-
-// Import after the mocks so the component binds to the stubbed endpoints.
-const { WizardModelSelection } = await import('@/pages/setup/WizardModelSelection')
+import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { http, HttpResponse } from 'msw'
+import { describe, it, expect } from 'vitest'
+import { WizardModelSelection } from '@/pages/setup/WizardModelSelection'
+import { renderWithRouter } from '@/__tests__/test-utils'
+import { apiSuccess } from '@/mocks/handlers'
+import { buildSettingEntry } from '@/mocks/handlers/settings'
+import { server } from '@/test-setup'
 
 const RECS = {
-  decomposition_recommended: 'big-model',
-  decomposition_candidates: ['big-model', 'small-model'],
-  embedding_recommended: 'qwen3-embedding:8b',
+  decomposition_recommended: 'large-model-001',
+  decomposition_candidates: ['large-model-001', 'small-model-001'],
+  embedding_recommended: 'embed-large-001',
   embedding_recommended_dims: 4096,
-  embedding_candidates: ['qwen3-embedding:8b', 'nomic-embed-text'],
+  embedding_candidates: ['embed-large-001', 'embed-small-001'],
+}
+
+function recommendationsHandler() {
+  return http.get('/api/v1/setup/model-recommendations', () =>
+    HttpResponse.json(apiSuccess(RECS)),
+  )
 }
 
 describe('WizardModelSelection', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    getNamespaceSettings.mockResolvedValue([])
-    updateSetting.mockResolvedValue({})
-    getModelRecommendations.mockResolvedValue(RECS)
-  })
-
   it('prefills the recommended models and the dims hint', async () => {
-    render(<WizardModelSelection />)
-    await waitFor(() => expect(screen.getByLabelText('Coordination model')).toBeInTheDocument())
-    expect(screen.getByLabelText<HTMLSelectElement>('Coordination model').value).toBe('big-model')
-    expect(screen.getByLabelText<HTMLSelectElement>('Embedding model').value).toBe(
-      'qwen3-embedding:8b',
+    server.use(recommendationsHandler())
+    renderWithRouter(<WizardModelSelection />)
+    await waitFor(() =>
+      expect(screen.getByLabelText('Coordination model')).toBeInTheDocument(),
     )
+    expect(
+      screen.getByLabelText<HTMLSelectElement>('Coordination model').value,
+    ).toBe('large-model-001')
+    expect(
+      screen.getByLabelText<HTMLSelectElement>('Embedding model').value,
+    ).toBe('embed-large-001')
     expect(screen.getByText(/4096 dimensions/)).toBeInTheDocument()
   })
 
   it('prefers a persisted value over the recommendation', async () => {
-    getNamespaceSettings.mockImplementation((ns: string) =>
-      Promise.resolve(
-        ns === 'coordination'
-          ? [{ definition: { key: 'decomposition_model' }, value: 'small-model' }]
-          : [],
+    server.use(
+      recommendationsHandler(),
+      http.get('/api/v1/settings/coordination', () =>
+        HttpResponse.json(
+          apiSuccess([
+            buildSettingEntry({
+              value: 'small-model-001',
+              definition: { namespace: 'coordination', key: 'decomposition_model' },
+            }),
+          ]),
+        ),
       ),
     )
-    render(<WizardModelSelection />)
+    renderWithRouter(<WizardModelSelection />)
     await waitFor(() =>
-      expect(screen.getByLabelText<HTMLSelectElement>('Coordination model').value).toBe(
-        'small-model',
-      ),
+      expect(
+        screen.getByLabelText<HTMLSelectElement>('Coordination model').value,
+      ).toBe('small-model-001'),
     )
   })
 
   it('persists an override through the settings API', async () => {
-    render(<WizardModelSelection />)
-    await waitFor(() => expect(screen.getByLabelText('Coordination model')).toBeInTheDocument())
+    let lastPut: { namespace: string; key: string; value: string } | null = null
+    server.use(
+      recommendationsHandler(),
+      http.put('/api/v1/settings/:namespace/:key', async ({ params, request }) => {
+        const body = (await request.json()) as { value: string }
+        lastPut = {
+          namespace: String(params['namespace']),
+          key: String(params['key']),
+          value: body.value,
+        }
+        return HttpResponse.json(
+          apiSuccess(
+            buildSettingEntry({
+              value: body.value,
+              definition: {
+                namespace: 'coordination',
+                key: String(params['key']),
+              },
+            }),
+          ),
+        )
+      }),
+    )
+    renderWithRouter(<WizardModelSelection />)
+    await waitFor(() =>
+      expect(screen.getByLabelText('Coordination model')).toBeInTheDocument(),
+    )
     fireEvent.change(screen.getByLabelText('Coordination model'), {
-      target: { value: 'small-model' },
+      target: { value: 'small-model-001' },
     })
     await waitFor(() =>
-      expect(updateSetting).toHaveBeenCalledWith('coordination', 'decomposition_model', {
-        value: 'small-model',
+      expect(lastPut).toEqual({
+        namespace: 'coordination',
+        key: 'decomposition_model',
+        value: 'small-model-001',
       }),
     )
   })

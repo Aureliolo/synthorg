@@ -29,7 +29,7 @@ function useCompleteStepActions(
   const [confirmOpen, setConfirmOpen] = useState(false)
 
   const finishAndNavigate = useCallback(() => {
-    useSetupStore.setState({ setupComplete: true })
+    useSetupStore.getState().markSetupComplete()
     useToastStore.getState().add({
       variant: 'success',
       title: `Setup complete! Welcome to ${companyResponse?.company_name ?? 'your organization'}.`,

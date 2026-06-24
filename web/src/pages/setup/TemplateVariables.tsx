@@ -116,7 +116,7 @@ export function TemplateVariables({
   if (visible.length === 0) return null
 
   return (
-    <div className="space-y-4 rounded-lg border border-border bg-card p-card">
+    <div className="space-y-section-gap rounded-lg border border-border bg-card p-card">
       <div className="space-y-1">
         <h3 className="text-sm font-semibold text-foreground">Template Variables</h3>
         <p className="text-xs text-muted-foreground">

@@ -46,6 +46,7 @@ class ProviderLifecycleConflictError(ConflictError):
 
 ProviderErrorLabel = Literal[
     "rate_limit",
+    "quota_exceeded",
     "timeout",
     "connection",
     "internal",
@@ -200,9 +201,11 @@ class ProviderQuotaExceededError(RateLimitError):
     quota-API requests ollama/ollama#15663 and #16448 are also open). We cannot
     avoid the block ahead of time, so the caller runs until ollama returns it
     and it surfaces here. Marked non-retryable: retrying a depleted allowance
-    cannot recover it within the window. Inherits the ``RATE_LIMITED`` code as
-    an inheritance alias (quota exhaustion is a form of rate limiting; clients
-    branch on ``is_retryable`` for behaviour).
+    cannot recover it within the window. ``RATE_LIMITED`` is a generic
+    per-category fallback in the error-code-uniqueness gate's ``SHAREABLE_CODES``
+    list, so inheriting it from ``RateLimitError`` is allowed; clients branch on
+    ``is_retryable`` (not ``error_code``) to tell a depleted quota from a
+    transient rate limit.
     """
 
     is_retryable = False
@@ -397,6 +400,9 @@ class ProviderPersistenceError(ProviderError):
 
 
 _ERROR_CLASS_MAP: Final[dict[type[BaseException], ProviderErrorLabel]] = {
+    # Direct entry before the RateLimitError isinstance fallback so a depleted
+    # plan quota (non-retryable) is countable apart from a transient throttle.
+    ProviderQuotaExceededError: "quota_exceeded",
     RateLimitError: "rate_limit",
     ProviderTimeoutError: "timeout",
     ProviderConnectionError: "connection",

@@ -136,12 +136,11 @@ function useWizardModelSelection(): ModelSelectionState {
 /**
  * Coordinator + memory model pickers for the final wizard step.
  *
- * Surfaces the two models the operator was previously never shown: the
- * coordinator's decomposition model and the memory embedding model. Both are
- * prefilled with a sensible recommendation (the most senior agent's model and
- * the best-ranked embedder in the catalogue) and overridable from the full
- * candidate lists. Each change writes straight through the settings API, so
- * the choice survives independently of the wizard and is editable later in
+ * Exposes the coordinator's decomposition model and the memory embedding model.
+ * Both are prefilled with a sensible recommendation (a top-cost-tier agent's
+ * model and the best-ranked embedder in the catalogue) and overridable from the
+ * full candidate lists. Each change writes straight through the settings API,
+ * so the choice survives independently of the wizard and is editable later in
  * Settings.
  */
 export function WizardModelSelection() {
@@ -167,7 +166,7 @@ export function WizardModelSelection() {
 
   const embeddingDims = recs.embedding_recommended_dims
   return (
-    <section className="space-y-4 rounded-lg border border-border bg-card p-card">
+    <section className="space-y-section-gap rounded-lg border border-border bg-card p-card">
       <div className="space-y-1">
         <h3 className="text-sm font-semibold text-foreground">Coordination &amp; memory models</h3>
         <p className="text-xs text-muted-foreground">

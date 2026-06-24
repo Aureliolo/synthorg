@@ -21,6 +21,7 @@ from synthorg.core.normalization import strip_trailing_slash
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
+    PROVIDER_CAPABILITY_ENRICHMENT_FAILED,
     PROVIDER_PROBE_COMPLETED,
     PROVIDER_PROBE_HIT,
     PROVIDER_PROBE_MISS,
@@ -382,14 +383,25 @@ async def enrich_models_via_show(
     """
 
     async def _enrich(model: ProviderModelConfig) -> ProviderModelConfig:
-        show = await fetch_json(
-            show_url,
-            "ollama",
-            headers=headers,
-            trust_url=trust_url,
-            body={"model": model.id},
-        )
-        return model if show is None else parse_ollama_show(model.id, show)
+        try:
+            show = await fetch_json(
+                show_url,
+                "ollama",
+                headers=headers,
+                trust_url=trust_url,
+                body={"model": model.id},
+            )
+            return model if show is None else parse_ollama_show(model.id, show)
+        except Exception as exc:  # noqa: BLE001 -- best-effort per model: criticals re-raised, any other failure leaves this one model un-enriched without aborting the batch
+            reraise_critical(exc)
+            logger.warning(
+                PROVIDER_CAPABILITY_ENRICHMENT_FAILED,
+                stage="ollama_show",
+                model=model.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return model
 
     async with asyncio.TaskGroup() as tg:
         tasks = [tg.create_task(_enrich(model)) for model in models]

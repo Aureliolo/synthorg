@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { MiniOrgChart } from '@/pages/setup/MiniOrgChart'
 import type { SetupAgentSummary } from '@/api/types/setup'
 
@@ -25,7 +25,7 @@ function agentTitles(container: HTMLElement): string[] {
 
 function deptLabels(container: HTMLElement): string[] {
   return Array.from(container.querySelectorAll('span')).map(
-    (el) => el.textContent,
+    (el) => el.textContent ?? '',
   )
 }
 
@@ -36,7 +36,7 @@ describe('MiniOrgChart', () => {
   })
 
   it('formats snake_case department names as Title Case labels', () => {
-    const { container } = render(
+    render(
       <MiniOrgChart
         agents={[
           agent({ name: 'Alice A', department: 'quality_assurance' }),
@@ -44,16 +44,15 @@ describe('MiniOrgChart', () => {
         ]}
       />,
     )
-    const labels = deptLabels(container)
-    expect(labels).toContain('Quality Assurance')
-    expect(labels).toContain('Creative Marketing')
+    expect(screen.getByText('Quality Assurance')).toBeInTheDocument()
+    expect(screen.getByText('Creative Marketing')).toBeInTheDocument()
   })
 
   it('labels an empty department as "Unassigned"', () => {
-    const { container } = render(
+    render(
       <MiniOrgChart agents={[agent({ name: 'Orphan One', department: '' })]} />,
     )
-    expect(deptLabels(container)).toContain('Unassigned')
+    expect(screen.getByText('Unassigned')).toBeInTheDocument()
   })
 
   it('renders every agent with an accessible title of name and role', () => {

@@ -4,6 +4,7 @@ import { useThemeStore } from '@/stores/theme'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
+import { DEFAULT_BUDGET } from './company'
 import { getStepOrder, initialStepsCompleted, initialStepsNeedRevalidation } from './navigation'
 import { DEFAULT_THEME } from './theme'
 import type { CompletionSlice, SliceCreator, ThemeSettings } from './types'
@@ -67,18 +68,23 @@ function getInitialState() {
     templatesLoading: false,
     templatesError: null,
     selectedTemplate: null,
+    blankSelected: false,
     comparedTemplates: [],
     templateVariables: {},
 
     companyName: '',
     companyDescription: '',
     currency: DEFAULT_CURRENCY,
+    budget: DEFAULT_BUDGET,
+    modelTierProfile: 'balanced' as const,
     budgetCapEnabled: false,
     budgetCap: null,
     companyResponse: null,
     companyLoading: false,
     companyError: null,
     companyErrorCode: null,
+
+    statusReconciled: false,
 
     agents: [],
     agentsLoading: false,

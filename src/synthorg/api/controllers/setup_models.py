@@ -189,7 +189,7 @@ class SetupCompanyRequest(BaseModel):
         examples=["consulting-firm", "blank"],
         description="Optional company template to apply; None creates a blank company.",
     )
-    currency: str | None = Field(
+    currency: NotBlankStr | None = Field(
         default=None,
         max_length=10,
         description="Display-currency code; None means unset (no privileged default).",
@@ -261,7 +261,7 @@ class SetupCompanyResponse(BaseModel):
     description: str | None
     template_applied: NotBlankStr | None
     department_count: int = Field(ge=0)
-    currency: str | None = None
+    currency: NotBlankStr | None = None
     budget: float | None = Field(default=None, ge=0)
     model_tier_profile: Literal["economy", "balanced", "premium"] = "balanced"
     agents: tuple[SetupAgentSummary, ...] = ()
@@ -300,6 +300,28 @@ class SetupModelRecommendationsResponse(BaseModel):
     embedding_recommended: NotBlankStr | None = None
     embedding_recommended_dims: int | None = Field(default=None, ge=1)
     embedding_candidates: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _validate_embedding_pairing(self) -> Self:
+        """Dims and a recommended embedder must be present together.
+
+        Returns:
+            The validated instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When exactly one of ``embedding_recommended`` and
+                ``embedding_recommended_dims`` is set (the wizard cannot
+                prefill a dimension with no model, or vice versa).
+        """
+        if (self.embedding_recommended is None) != (
+            self.embedding_recommended_dims is None
+        ):
+            msg = (
+                "embedding_recommended and embedding_recommended_dims must be "
+                "set together or both omitted"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class SetupAgentRequest(BaseModel):

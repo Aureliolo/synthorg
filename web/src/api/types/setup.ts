@@ -2,7 +2,6 @@
 
 export type {
   AvailableLocalesResponse,
-  DiscoverModelsResponse,
   PersonalityPresetInfoResponse as PersonalityPresetInfo,
   SetupAgentRequest,
   SetupAgentResponse,

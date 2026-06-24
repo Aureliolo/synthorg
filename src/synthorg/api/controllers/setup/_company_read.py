@@ -70,6 +70,7 @@ def _department_count(departments_raw: str | None) -> int:
     try:
         parsed = json.loads(departments_raw)
     except json.JSONDecodeError:
+        logger.warning(SETUP_STATUS_SETTINGS_UNAVAILABLE, setting="departments")
         return 0
     return len(parsed) if isinstance(parsed, list) else 0
 
@@ -85,6 +86,7 @@ def _parse_budget(raw: str | None) -> float | None:
     try:
         return float(raw)
     except ValueError:
+        logger.warning(SETUP_STATUS_SETTINGS_UNAVAILABLE, setting="budget")
         return None
 
 

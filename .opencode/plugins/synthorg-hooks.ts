@@ -25,6 +25,7 @@
  *   PreToolUse (Edit|Write): scripts/check_pre_pr_review_triage_gate.sh
  *   PreToolUse (Edit|Write): scripts/check_no_throttle_override_creation.sh
  *   PreToolUse (Edit|Write): scripts/check_no_audit_scratch_scripts.sh
+ *   PreToolUse (Edit|Write): scripts/check_no_client_state_persistence_hook.sh
  *   PostToolUse (Edit|Write): scripts/check_web_design_system.py
  *   PostToolUse (Edit|Write): scripts/check_backend_regional_defaults.py
  *   PostToolUse (Bash): scripts/record_push_throttle.sh
@@ -320,6 +321,23 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
             {
               const outcome = runHookScript(
                 "scripts/check_no_audit_scratch_scripts.sh",
+                filePathInput,
+                5000,
+              );
+              const denyReason = denyReasonFromOutcome(outcome);
+              if (denyReason) {
+                throw new Error(denyReason);
+              }
+            }
+
+            // check_no_client_state_persistence_hook.sh: block client-side state
+            // persistence (localStorage / sessionStorage / indexedDB / zustand
+            // persist) in web/src/ before the write lands. The dashboard is a
+            // pure API consumer; the backend is the single source of truth.
+            // Mirrors the corresponding hook in .claude/settings.json.
+            {
+              const outcome = runHookScript(
+                "scripts/check_no_client_state_persistence_hook.sh",
                 filePathInput,
                 5000,
               );

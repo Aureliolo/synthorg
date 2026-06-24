@@ -9,12 +9,18 @@ interface SetupState {
   /** Whether the last fetch attempt failed. */
   error: boolean
   fetchSetupStatus: () => Promise<void>
+  /** Mark setup complete locally after the backend confirms completion. */
+  markSetupComplete: () => void
 }
 
 export const useSetupStore = create<SetupState>()((set, get) => ({
   setupComplete: IS_DEV_AUTH_BYPASS ? true : null,
   loading: false,
   error: false,
+
+  markSetupComplete() {
+    set({ setupComplete: true })
+  },
 
   async fetchSetupStatus() {
     if (get().loading) return

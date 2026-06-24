@@ -54,15 +54,14 @@ const CSRF_SEED_VALUE = 'test-csrf-token'
 installCookieShim()
 
 // jsdom's `window.localStorage` / `sessionStorage` schedule a
-// `setTimeout(0)` per write to dispatch a `storage` event. The
-// dashboard touches localStorage from two paths: Zustand `persist`
-// middleware (setup-wizard, org-chart-prefs) and direct
-// `localStorage.setItem` calls (theme, notifications), so any test
-// that mutates one of those stores adds dispatch overhead per write.
-// The shim in `@/storage-shim` patches `Storage.prototype` so writes
-// go through a Map-backed in-memory store; no app or test code
-// subscribes to the `storage` event, so the dispatch is dead weight
-// in the test runner.
+// `setTimeout(0)` per write to dispatch a `storage` event. The dashboard is a
+// pure API consumer and persists no app state client-side, but the few
+// allowlisted client-storage paths (the auth/CSRF cookie shim, the
+// build-version check, per-device canvas/draft state) still touch
+// `localStorage`, so a test exercising one adds dispatch overhead per write.
+// The shim in `@/storage-shim` patches `Storage.prototype` so writes go through
+// a Map-backed in-memory store; no app or test code subscribes to the `storage`
+// event, so the dispatch is dead weight in the test runner.
 installStorageShim()
 
 // Global MSW server: every default endpoint handler is registered up front

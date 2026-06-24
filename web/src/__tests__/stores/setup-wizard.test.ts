@@ -321,10 +321,9 @@ describe('setup wizard store', () => {
     })
 
     it('rehydrates companyResponse + selectedTemplate from the backend (no client copy)', async () => {
-      // companyResponse is no longer persisted client-side; on resume the
-      // reconcile rebuilds it from GET /setup/company so Review renders the
-      // real company and the applied template is restored -- which is what
-      // prevents a blank re-apply from wiping the roster.
+      // On resume the reconcile rebuilds companyResponse from GET /setup/company
+      // so Review renders the real company and the applied template is restored
+      // -- which prevents a blank re-apply from wiping the roster.
       stubStatus({ has_providers: true, has_company: true, has_agents: true })
       stubAgents([
         agentRow({ name: 'CEO Agent', role: 'CEO', department: 'executive' }),
@@ -354,8 +353,8 @@ describe('setup wizard store', () => {
     })
 
     it('self-corrects a stale providers flag when the backend no longer has providers', async () => {
-      // A stale localStorage flag (data deleted server-side since last session)
-      // must be derived back to incomplete -- the merge no longer re-blocks, so
+      // A stale client-side completion flag (step marked done but the backend
+      // data was deleted since last session) must be derived back to incomplete;
       // the reconcile owns this correction (both-ways derivation from has_*).
       useSetupWizardStore.setState((s) => ({
         stepsCompleted: { ...s.stepsCompleted, providers: true, agents: true },

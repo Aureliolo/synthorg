@@ -71,7 +71,7 @@ function useSkipWizardSubmit(): SkipWizardSubmit {
         // surfaces the warning with an explicit continue CTA.
         return
       }
-      useSetupStore.setState({ setupComplete: true })
+      useSetupStore.getState().markSetupComplete()
       // The post-setup guidance card shows on the dashboard until dismissed
       // (backend-owned dashboard.post_setup_guidance_dismissed); no client-side
       // first-run flag is set here.

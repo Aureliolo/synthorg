@@ -7,7 +7,7 @@ import type { CompanySlice, SliceCreator } from './types'
 const log = createLogger('setup-wizard:company')
 
 /** Sensible default monthly budget shown until the operator changes it. */
-const DEFAULT_BUDGET = 500
+export const DEFAULT_BUDGET = 500
 
 export const createCompanySlice: SliceCreator<CompanySlice> = (set, get) => ({
   companyName: '',

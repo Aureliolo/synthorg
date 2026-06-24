@@ -14,6 +14,8 @@ so a recoverable throttle stays retryable while a depleted plan does not.
 
 from typing import Final
 
+from synthorg.observability import safe_error_description
+
 _QUOTA_EXHAUSTION_SIGNATURES: Final[tuple[str, ...]] = (
     "quota",
     "usage limit",
@@ -33,5 +35,5 @@ def is_quota_exhaustion(exc: Exception) -> bool:
         caller surfaces it as non-retryable rather than retrying a depleted
         allowance that cannot recover within the window.
     """
-    text = str(exc).lower()
+    text = safe_error_description(exc).lower()
     return any(signature in text for signature in _QUOTA_EXHAUSTION_SIGNATURES)

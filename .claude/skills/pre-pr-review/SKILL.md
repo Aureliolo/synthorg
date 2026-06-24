@@ -141,7 +141,18 @@ Determine if agent review can be skipped:
   - **Exception for diagram changes**: even when auto-skipping, if any changed `.md` file contains a ` ```d2 ` or ` ```mermaid ` fence, run the `diagram-syntax-validator` agent (per Phase 3) before continuing. Its entire purpose is to catch broken diagrams in docs-only PRs, the one scenario where auto-skip would otherwise bypass it.
 - If auto-skipping, inform user: "Skipping agent review (no substantive code changes detected). Running automated checks only."
 
-## Phase 2: Automated Checks (always run)
+## Phase 2: Automated Checks (only when the branch is not fully pushed)
+
+**Push-state gate (run FIRST).** The pre-push hook already runs ruff, ruff-format, mypy (affected), the unit suite (affected), eslint-web, and every convention gate. If the current branch is fully pushed to its upstream, those gates have already passed on exactly this tree, so re-running them here is pure duplicated wall-clock. Detect the push state:
+
+```bash
+git rev-list --left-right --count @{u}...HEAD
+```
+
+- If the command fails (no upstream) OR the right-hand count is non-zero (local commits not yet pushed) OR there are uncommitted/untracked changes, the branch is NOT fully pushed: run the checks below.
+- If the upstream exists AND both counts are `0` AND the working tree is clean, the branch IS fully pushed: **skip the entire Phase 2 check run** (ruff/mypy/pytest/web/go) and proceed to Phase 3. Inform the user: "Branch is fully pushed; pre-push gate already ran the automated checks. Skipping Phase 2."
+
+When the branch is not fully pushed, run the checks below.
 
 **Python checks (steps 1-5):** Skip if no `src_py` or `test_py` files changed; ruff, mypy, and pytest only operate on Python files and running them is unnecessary for web/docker/CI/docs/site-only changes.
 

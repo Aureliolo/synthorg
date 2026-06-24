@@ -26,7 +26,11 @@ from typing import Final
 
 import httpx
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.provider import (
+    PROVIDER_OLLAMA_USAGE_TIER_SCRAPE_FAILED,
+)
 
 logger = get_logger(__name__)
 
@@ -66,6 +70,7 @@ _TIER3_MAX_PARAMS: Final[int] = 600_000_000_000
 # ollama.com (and a slow page cannot stall discovery indefinitely).
 _SCRAPE_CONCURRENCY: Final[int] = 6
 _SCRAPE_TIMEOUT_S: Final[float] = 10.0
+_SCRAPE_CONNECT_TIMEOUT_S: Final[float] = 5.0
 
 
 def approximate_tier_from_params(parameter_count: int | None) -> int | None:
@@ -129,15 +134,14 @@ async def _scrape_tier(
     url = f"{host}{_LIBRARY_PATH.format(slug=_page_slug(model_id))}"
     try:
         async with semaphore:
-            resp = await client.get(
-                url, timeout=_SCRAPE_TIMEOUT_S, follow_redirects=True
-            )
+            resp = await client.get(url, follow_redirects=True)
         if resp.status_code != httpx.codes.OK:
             return None
         return parse_usage_tier(resp.text)
-    except (TimeoutError, httpx.HTTPError) as exc:
+    except Exception as exc:  # noqa: BLE001 -- best-effort scrape: criticals re-raised, any other failure falls back to the approximation
+        reraise_critical(exc)
         logger.warning(
-            "provider.ollama.usage_tier_scrape_failed",
+            PROVIDER_OLLAMA_USAGE_TIER_SCRAPE_FAILED,
             model=model_id,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
@@ -167,14 +171,19 @@ async def resolve_usage_tiers(
         return approx
 
     semaphore = asyncio.Semaphore(_SCRAPE_CONCURRENCY)
-    async with httpx.AsyncClient() as client:
-        scraped = await asyncio.gather(
-            *(
+    timeout = httpx.Timeout(_SCRAPE_TIMEOUT_S, connect=_SCRAPE_CONNECT_TIMEOUT_S)
+    model_ids = list(model_params)
+    async with (
+        httpx.AsyncClient(timeout=timeout) as client,
+        asyncio.TaskGroup() as tg,
+    ):
+        tasks = [
+            tg.create_task(
                 _scrape_tier(mid, host=host, client=client, semaphore=semaphore)
-                for mid in model_params
             )
-        )
+            for mid in model_ids
+        ]
     return {
-        mid: (scraped_tier if scraped_tier is not None else approx[mid])
-        for mid, scraped_tier in zip(model_params, scraped, strict=True)
+        mid: (task.result() if task.result() is not None else approx[mid])
+        for mid, task in zip(model_ids, tasks, strict=True)
     }

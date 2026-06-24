@@ -114,11 +114,24 @@ async def _validate_completion_prereqs(
     if not has_agents:
         logger.info(SETUP_NO_AGENTS, note="allowed_for_quick_setup")
 
-    # Accept a configured provider from either the live runtime registry or the
-    # persisted provider config. A backend restart before completion empties the
-    # in-memory registry while the persisted providers remain; post_setup_reinit
-    # rebuilds the registry from those persisted configs, so gating only on the
-    # runtime registry would wrongly block completion after such a restart.
+    await _assert_provider_configured(app_state)
+    if has_agents:
+        await _validate_persisted_agents(app_state, settings_svc)
+    return has_agents
+
+
+async def _assert_provider_configured(app_state: AppState) -> None:
+    """Raise unless a provider exists in the registry or persisted config.
+
+    Accept a configured provider from either the live runtime registry or the
+    persisted provider config. A backend restart before completion empties the
+    in-memory registry while the persisted providers remain; ``post_setup_reinit``
+    rebuilds the registry from those persisted configs, so gating only on the
+    runtime registry would wrongly block completion after such a restart.
+
+    Raises:
+        ValidationError: When no provider is configured anywhere.
+    """
     provider_registry = app_state.slice(ProvidersStateSlice).registry
     has_runtime_provider = provider_registry is not None and len(provider_registry) > 0
     if (
@@ -129,21 +142,25 @@ async def _validate_completion_prereqs(
         logger.warning(SETUP_NO_PROVIDERS)
         raise ValidationError(msg)
 
-    # Cross-check persisted agents against provider_management config so
-    # an agent whose provider/model was deleted between agent creation
-    # and setup completion cannot pass through as ``complete``. Skip
-    # when provider_management is empty: in-process test fixtures
-    # populate the runtime registry without seeding the config, but
-    # production always has both populated together.
-    if has_agents:
-        persisted_agents = await get_existing_agents(settings_svc)
-        providers_map = await provider_management_of(app_state).list_providers()
-        if providers_map:
-            validate_persisted_agents_against_providers(
-                providers_map,
-                persisted_agents,
-            )
-    return has_agents
+
+async def _validate_persisted_agents(
+    app_state: AppState,
+    settings_svc: SettingsServiceProtocol,
+) -> None:
+    """Reject persisted agents whose provider/model was deleted since creation.
+
+    Skipped when ``provider_management`` is empty: in-process test fixtures
+    populate the runtime registry without seeding the config, but production
+    always has both populated together.
+
+    Raises:
+        ValidationError: When a persisted agent references a now-absent
+            provider or model.
+    """
+    persisted_agents = await get_existing_agents(settings_svc)
+    providers_map = await provider_management_of(app_state).list_providers()
+    if providers_map:
+        validate_persisted_agents_against_providers(providers_map, persisted_agents)
 
 
 async def _run_embedder_auto_select(
@@ -197,14 +214,15 @@ async def _ensure_decomposition_model(
     app_state: AppState,
     settings_svc: SettingsServiceProtocol,
 ) -> None:
-    """Auto-select the coordinator's decomposition model when unset.
+    """Auto-select the coordinator's decomposition model as a safety net.
 
     The coordinator builds eagerly once a provider is configured and requires a
-    non-blank ``coordination.decomposition_model``; the wizard never prompts for
-    it, so a fresh setup would otherwise fail the runtime rebuild on
-    ``/setup/complete``. Derive a sensible default from the matched agent roster
-    (the most senior agent's model) and persist it, so the operator is never
-    asked to hand-enter a model id they were never shown.
+    non-blank ``coordination.decomposition_model``. The wizard's model-selection
+    panel prefills a recommendation, but the operator can advance without
+    choosing one, so this fills a sensible default from the matched agent roster
+    (a top-cost-tier agent's model, falling back to any catalogue model) before
+    the runtime rebuild on ``/setup/complete`` -- a blank model would otherwise
+    fail the rebuild.
     """
     entry = await settings_svc.get("coordination", "decomposition_model")
     current = entry.value
@@ -219,7 +237,11 @@ async def _ensure_decomposition_model(
             SETUP_COMPLETE_CHECK_ERROR,
             check="auto_select_decomposition_model",
             error_type="NoModelAvailable",
-            error="no catalogue model available for the decomposition model",
+            error=(
+                "no catalogue model available for the decomposition model; "
+                "the coordinator rebuild on /setup/complete will require a "
+                "model to be configured first"
+            ),
         )
         return
     await settings_svc.set("coordination", "decomposition_model", model_id)
@@ -305,25 +327,9 @@ class SetupCompletionController(Controller):
             _waited = asyncio.get_running_loop().time() - _t_before
             if _waited > _LOCK_CONTENTION_LOG_THRESHOLD_SECONDS:
                 logger.info(SETUP_COMPLETE_SERIALIZED, waited_seconds=round(_waited, 3))
-            await _check_setup_not_complete(settings_svc)
-            has_agents = await _validate_completion_prereqs(app_state, settings_svc)
-            embedder_failure_reason = await _run_embedder_auto_select(
+            embedder_failure_reason = await _finalize_completion(
                 app_state, settings_svc
             )
-            # The coordinator builds eagerly during reinit and requires a
-            # non-blank decomposition model; the wizard never asks for one, so
-            # pick a sensible default from the matched roster before the rebuild.
-            await _ensure_decomposition_model(app_state, settings_svc)
-            # Reload providers + bootstrap agents BEFORE persisting the
-            # completion flag. ``_post_setup_reinit`` propagates failures
-            # so a broken provider config or bootstrap error leaves the
-            # flag at ``false``; the operator fixes the underlying issue
-            # and retries. Without this ordering, the frontend would
-            # believe setup succeeded while the runtime is half-configured.
-            del has_agents
-            await _post_setup_reinit(app_state)
-            await settings_svc.set("api", "setup_complete", "true")
-            logger.info(SETUP_COMPLETED)
             return ApiResponse(
                 data=SetupCompleteResponse(
                     setup_complete=True,
@@ -331,3 +337,34 @@ class SetupCompletionController(Controller):
                     embedder_failure_reason=embedder_failure_reason,
                 ),
             )
+
+
+async def _finalize_completion(
+    app_state: AppState,
+    settings_svc: SettingsServiceProtocol,
+) -> str | None:
+    """Run the gated completion sequence under the held ``_COMPLETE_LOCK``.
+
+    Validates prerequisites, runs best-effort embedder auto-selection, ensures a
+    decomposition model, rebuilds the runtime, and persists the completion flag
+    only after the rebuild returns clean.
+
+    Returns:
+        The embedder auto-selection failure reason, or ``None`` on success.
+    """
+    await _check_setup_not_complete(settings_svc)
+    await _validate_completion_prereqs(app_state, settings_svc)
+    embedder_failure_reason = await _run_embedder_auto_select(app_state, settings_svc)
+    # The coordinator builds eagerly during reinit and requires a non-blank
+    # decomposition model; the wizard's picker is optional, so fill a sensible
+    # default from the matched roster before the rebuild.
+    await _ensure_decomposition_model(app_state, settings_svc)
+    # Reload providers + bootstrap agents BEFORE persisting the completion flag.
+    # ``_post_setup_reinit`` propagates failures so a broken provider config or
+    # bootstrap error leaves the flag at ``false``; the operator fixes the
+    # underlying issue and retries. Without this ordering, the frontend would
+    # believe setup succeeded while the runtime is half-configured.
+    await _post_setup_reinit(app_state)
+    await settings_svc.set("api", "setup_complete", "true")
+    logger.info(SETUP_COMPLETED)
+    return embedder_failure_reason

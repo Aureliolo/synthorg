@@ -16,6 +16,7 @@ opt-in.
 
 import asyncio
 
+from synthorg.config.posture_config import PostureConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import SETUP_POSTURE_SEEDED
 from synthorg.settings.service import SettingsService
@@ -53,11 +54,6 @@ async def seed_posture_settings(
     Returns:
         The seeded posture name, or ``None`` when no posture applied.
     """
-    from synthorg.meta.config import (  # noqa: PLC0415
-        SelfImprovementConfig,
-        load_self_improvement_config,
-    )
-
     # ``resolve_template_posture`` walks the template inheritance chain and
     # reads pack/parent YAML files from disk; offload the synchronous file
     # I/O so it does not block the event loop during setup.
@@ -69,6 +65,24 @@ async def seed_posture_settings(
     )
     if posture is None:
         return None
+    await _write_posture_flags(settings_svc, posture)
+    logger.info(SETUP_POSTURE_SEEDED, posture=posture.name)
+    return posture.name
+
+
+async def _write_posture_flags(
+    settings_svc: SettingsService,
+    posture: PostureConfig,
+) -> None:
+    """Write the posture's settings-resident feature flags.
+
+    Re-validates the self-improvement blob so the persisted JSON is coherent
+    (``model_copy`` bypasses validators; the boot loader re-validates).
+    """
+    from synthorg.meta.config import (  # noqa: PLC0415
+        SelfImprovementConfig,
+        load_self_improvement_config,
+    )
 
     base = await load_self_improvement_config(settings_svc)
     updated = base.model_copy(
@@ -84,8 +98,6 @@ async def seed_posture_settings(
             ),
         },
     )
-    # Re-validate so the persisted blob is guaranteed coherent (model_copy
-    # bypasses validators; load_self_improvement_config re-validates at boot).
     coherent = SelfImprovementConfig.model_validate(updated.model_dump())
     await settings_svc.set("meta", "self_improvement", coherent.model_dump_json())
     await settings_svc.set(
@@ -98,5 +110,3 @@ async def seed_posture_settings(
         "auto_downgrade_enabled",
         _bool_setting(posture.auto_downgrade),
     )
-    logger.info(SETUP_POSTURE_SEEDED, posture=posture.name)
-    return posture.name

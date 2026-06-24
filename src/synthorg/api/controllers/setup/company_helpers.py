@@ -9,7 +9,7 @@ agent-side helpers (bootstrap, model selection, tier coverage) live in
 
 import json
 from collections.abc import Sequence
-from typing import Final, NamedTuple
+from typing import Final, Literal, NamedTuple
 
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.collections import dedupe_preserving_order
@@ -17,6 +17,7 @@ from synthorg.core.domain_errors import (
     ConflictError,
     ValidationError,
 )
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import (
     SETUP_ALREADY_COMPLETE,
@@ -354,13 +355,13 @@ class CompanyPersist(NamedTuple):
     of this; it is all reachable over the API by any client.
     """
 
-    company_name: str
+    company_name: NotBlankStr
     description: str | None
     departments_json: str
     template_applied: str | None
     currency: str | None
     budget: float | None
-    model_tier_profile: str
+    model_tier_profile: Literal["economy", "balanced", "premium"]
 
 
 async def persist_company_settings(

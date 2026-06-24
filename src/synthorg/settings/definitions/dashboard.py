@@ -1,11 +1,10 @@
 """Dashboard UI-preference setting definitions.
 
-Miscellaneous dashboard UI preferences that the web client used to keep in
-``localStorage``. The dashboard is a pure API consumer: these are the backend
-source of truth, hydrated on load and written through the settings API. Only
-genuinely per-device ephemeral state (canvas pan/zoom viewport, in-progress
-form drafts) stays client-side; everything an operator would expect to follow
-their account lives here.
+Miscellaneous dashboard UI preferences persisted backend-side. The dashboard is
+a pure API consumer: these are the backend source of truth, hydrated on load and
+written through the settings API. Only genuinely per-device ephemeral state
+(canvas pan/zoom viewport, in-progress form drafts) stays client-side;
+everything an operator would expect to follow their account lives here.
 """
 
 from synthorg.settings.enums import SettingNamespace, SettingType

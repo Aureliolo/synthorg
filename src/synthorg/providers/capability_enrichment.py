@@ -1,7 +1,7 @@
 # module-kind: integration
 """Layered capability enrichment for discovered provider models.
 
-A model from an OpenAI-compatible ``/models`` listing (or an Ollama
+A model from a ``/v1``-style ``/models`` listing (or an Ollama
 ``/api/tags``) carries no capability flags, so the matcher cannot tell
 whether an agent can call tools on it. This resolves the flags once, at
 discovery, from the best available source -- so the matcher, runtime
@@ -21,12 +21,20 @@ import asyncio
 from typing import NamedTuple
 
 from synthorg.config.schema import ProviderModelConfig
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import strip_trailing_slash
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.provider import (
+    PROVIDER_CAPABILITY_ENRICHMENT_FAILED,
+    PROVIDER_OLLAMA_USAGE_TIER_APPLY_FAILED,
+)
 from synthorg.providers.ollama_usage_tier import (
     OLLAMA_LIBRARY_HOST,
     resolve_usage_tiers,
 )
 from synthorg.providers.probing import JsonFetch, enrich_models_via_show
+
+logger = get_logger(__name__)
 
 _OLLAMA_VERSION_PATH = "/api/version"
 _OLLAMA_SHOW_PATH = "/api/show"
@@ -49,11 +57,11 @@ def _join(base_url: str, suffix: str) -> str:
     return f"{strip_trailing_slash(base_url)}{suffix}"
 
 
-def _strip_openai_suffix(base_url: str) -> str:
+def _strip_v1_suffix(base_url: str) -> str:
     """Strip a trailing ``/v1`` so a native Ollama path can be derived.
 
-    ``ollama-cloud`` lists via the OpenAI-compatible ``{base}/v1/models`` but
-    exposes capabilities through the native ``{base}/api/show``.
+    ``ollama-cloud`` lists via the ``{base}/v1/models`` endpoint but exposes
+    capabilities through the native ``{base}/api/show``.
 
     Args:
         base_url: The provider base URL (possibly ending in ``/v1``).
@@ -147,7 +155,7 @@ async def enrich_discovered_models(
     """
     if not models:
         return models
-    native_base = _strip_openai_suffix(base_url)
+    native_base = _strip_v1_suffix(base_url)
     is_native = await _is_ollama_native(native_base, fetch)
     if is_native:
         models = await enrich_models_via_show(
@@ -157,10 +165,60 @@ async def enrich_discovered_models(
             trust_url=fetch.trust_url,
             fetch_json=fetch.fetch_json,
         )
-    models = await asyncio.to_thread(_enrich_unknown_via_litellm, models, preset_name)
-    return await _apply_usage_tiers(
+    models = await _enrich_via_litellm_safe(models, preset_name)
+    return await _apply_usage_tiers_safe(
         models, native_base=native_base, is_native=is_native
     )
+
+
+async def _enrich_via_litellm_safe(
+    models: tuple[ProviderModelConfig, ...],
+    preset_name: str | None,
+) -> tuple[ProviderModelConfig, ...]:
+    """Run the LiteLLM enrichment off-thread, degrading to the input on failure.
+
+    A LiteLLM import error or unexpected lookup failure must leave the models
+    un-enriched rather than abort the whole discovery run.
+
+    Returns:
+        The enriched models, or the input unchanged when enrichment failed.
+    """
+    try:
+        return await asyncio.to_thread(_enrich_unknown_via_litellm, models, preset_name)
+    except Exception as exc:  # noqa: BLE001 -- best-effort: criticals re-raised, any other failure leaves models unknown
+        reraise_critical(exc)
+        logger.warning(
+            PROVIDER_CAPABILITY_ENRICHMENT_FAILED,
+            stage="litellm",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return models
+
+
+async def _apply_usage_tiers_safe(
+    models: tuple[ProviderModelConfig, ...],
+    *,
+    native_base: str,
+    is_native: bool,
+) -> tuple[ProviderModelConfig, ...]:
+    """Apply usage tiers, degrading to the input on any scrape/resolve failure.
+
+    Returns:
+        The tier-stamped models, or the input unchanged when tiering failed.
+    """
+    try:
+        return await _apply_usage_tiers(
+            models, native_base=native_base, is_native=is_native
+        )
+    except Exception as exc:  # noqa: BLE001 -- best-effort: criticals re-raised, any other failure leaves cost_tier unset
+        reraise_critical(exc)
+        logger.warning(
+            PROVIDER_OLLAMA_USAGE_TIER_APPLY_FAILED,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return models
 
 
 async def _apply_usage_tiers(

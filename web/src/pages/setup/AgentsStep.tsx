@@ -205,8 +205,11 @@ function useAgentsStepController(): AgentsStepController {
 }
 
 function AgentsStepBanners({ c }: { c: AgentsStepController }) {
+  // Persistent polite live region so a banner appearing after an action (an
+  // agent edit breaking a model, a preset fetch failing) is announced. Collapse
+  // when empty so it adds no gap in the parent ``space-y-section-gap`` flow.
   return (
-    <>
+    <div aria-live="polite" className="space-y-section-gap empty:hidden">
       {c.agentsError && (
         <ErrorBanner
           title="Could not update agent"
@@ -230,7 +233,7 @@ function AgentsStepBanners({ c }: { c: AgentsStepController }) {
           onOpenProviders={c.goToProvidersStep}
         />
       )}
-    </>
+    </div>
   )
 }
 

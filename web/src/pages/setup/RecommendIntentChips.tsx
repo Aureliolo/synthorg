@@ -19,8 +19,7 @@ function Chip({
   return (
     <button
       type="button"
-      role="radio"
-      aria-checked={selected}
+      aria-pressed={selected}
       onClick={onClick}
       className={cn(
         'rounded-full border px-3 py-1.5 text-sm font-medium transition-colors',
@@ -48,7 +47,7 @@ function ChipRow<T extends string>({ label, options, value, onChange }: ChipRowP
       <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </span>
-      <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-2">
+      <div role="group" aria-label={label} className="flex flex-wrap gap-2">
         {options.map((opt) => (
           <Chip
             key={opt.value}
@@ -86,7 +85,7 @@ export function IntentChips({
   const onOversight = (value: OversightPref) =>
     setOversight(value === oversight ? 'any' : value)
   return (
-    <div className="space-y-4 rounded-lg border border-border bg-card/40 p-card">
+    <div className="space-y-section-gap rounded-lg border border-border bg-card/40 p-card">
       <div className="flex items-center gap-2">
         <Sparkles className="size-4 text-accent" aria-hidden="true" />
         <h3 className="text-sm font-semibold text-foreground">Recommend for me</h3>

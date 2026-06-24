@@ -793,11 +793,12 @@ repos:
         name: no-client-state-persistence gate (web dashboard persists no app state client-side)
         entry: uv run python scripts/check_no_client_state_persistence.py
         language: system
-        # Trigger on any web source edit + the gate itself: a new
-        # localStorage / sessionStorage / indexedDB access or zustand
+        # Trigger on any web source edit, the gate itself, AND this hook wiring:
+        # a new localStorage / sessionStorage / indexedDB access or zustand
         # ``persist`` middleware outside the allowlist fails before the diff
-        # ships. The backend is the single source of truth (web/CLAUDE.md).
-        files: ^(web/src/.*\.tsx?|scripts/check_no_client_state_persistence\.py)$
+        # ships, and weakening the hook config re-runs the gate. The backend is
+        # the single source of truth (web/CLAUDE.md).
+        files: ^(web/src/.*\.tsx?|scripts/check_no_client_state_persistence\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-commit, pre-push]
 

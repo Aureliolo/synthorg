@@ -148,6 +148,21 @@ PROVIDER_DISCOVERY_ALLOWLIST_UPDATED: Final[str] = (
 )
 PROVIDER_DISCOVERY_URL_ALLOWED: Final[str] = "provider.discovery.url_allowed"
 
+# ── Ollama usage-tier scraping ──────────────────────────────
+
+PROVIDER_OLLAMA_USAGE_TIER_SCRAPE_FAILED: Final[str] = (
+    "provider.ollama.usage_tier_scrape_failed"
+)
+PROVIDER_OLLAMA_USAGE_TIER_APPLY_FAILED: Final[str] = (
+    "provider.ollama.usage_tier_apply_failed"
+)
+
+# ── Capability enrichment ───────────────────────────────────
+
+PROVIDER_CAPABILITY_ENRICHMENT_FAILED: Final[str] = (
+    "provider.capability_enrichment.failed"
+)
+
 # ── LiteLLM model database lookup ───────────────────────────
 
 PROVIDER_LITELLM_LOOKUP_SKIPPED: Final[str] = "provider.litellm.lookup_skipped"

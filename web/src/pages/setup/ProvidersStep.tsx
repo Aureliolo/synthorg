@@ -39,7 +39,7 @@ async function addDetectedLocalProvider(presetName: string, detectedUrl: string)
     preset: sanitizeForLog(presetName),
     error: sanitizeForLog(fetchErrMsg),
   })
-  useSetupWizardStore.setState({ providersError: null })
+  useSetupWizardStore.getState().clearProvidersError()
   useToastStore.getState().add({
     variant: 'warning',
     title: 'Provider added; could not refresh the list',
@@ -140,7 +140,7 @@ function useProvidersStepController(): ProvidersStepController {
   useEffect(() => {
     const s = useSetupWizardStore.getState()
     if (!s.providersFetched) {
-      useSetupWizardStore.setState({ providersError: null })
+      s.clearProvidersError()
       void s.fetchProviders()
     }
     if (!s.presetsFetched) void s.fetchPresets()
@@ -160,7 +160,7 @@ function useProvidersStepController(): ProvidersStepController {
   // Opening the modal clears the prior mutation error so a stale "could not
   // save" banner from an earlier attempt doesn't greet the next open.
   const openModal = useCallback((presetName: string | null) => {
-    useSetupWizardStore.setState({ providersMutationError: null })
+    useSetupWizardStore.getState().clearProvidersMutationError()
     setModalPreset(presetName)
     setModalOpen(true)
   }, [])
@@ -392,7 +392,7 @@ export function ProvidersStep() {
 
   if (c.providersLoading && Object.keys(c.providers).length === 0) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-section-gap">
         <Skeleton className="h-24 rounded-lg" />
         <Skeleton className="h-48 rounded-lg" />
       </div>

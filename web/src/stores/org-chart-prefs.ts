@@ -194,10 +194,10 @@ export const useOrgChartPrefs = create<OrgChartPrefsState>()((set, get) => ({
 }))
 
 /**
- * Reset the singleton store to defaults. The store no longer persists to
- * ``localStorage`` (the backend is the source of truth), so the only cross-test
- * leak is in-memory state in a shared Vitest worker; the global ``afterEach``
- * in ``test-setup.tsx`` calls this to clear it.
+ * Reset the singleton store to defaults. The store holds in-memory state only
+ * (the backend is the source of truth), so the only cross-test leak is in-memory
+ * state in a shared Vitest worker; the global ``afterEach`` in ``test-setup.tsx``
+ * calls this to clear it.
  */
 export function resetOrgChartPrefs(): void {
   useOrgChartPrefs.setState({ ...DEFAULTS, hydrated: false })

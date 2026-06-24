@@ -202,19 +202,30 @@ export function SetupAgentsTable({
   const groups = useMemo(() => groupByDepartment(agents), [agents])
   const placeholderText = personalityPlaceholder(personalityPresetsLoading, personalityPresets.length)
 
-  const rowFor = (item: { agent: SetupAgentSummary; index: number }) => (
-    <SetupAgentRow
-      key={`${item.agent.name}-${item.index}`}
-      agent={item.agent}
-      index={item.index}
-      providers={providers}
-      personalityOptions={personalityOptions}
-      personalityPlaceholderText={placeholderText}
-      onNameChange={onNameChange}
-      onModelChange={onModelChange}
-      onRandomizeName={onRandomizeName}
-      onPersonalityChange={onPersonalityChange}
-    />
+  const rowFor = useCallback(
+    (item: { agent: SetupAgentSummary; index: number }) => (
+      <SetupAgentRow
+        key={`${item.agent.name}-${item.index}`}
+        agent={item.agent}
+        index={item.index}
+        providers={providers}
+        personalityOptions={personalityOptions}
+        personalityPlaceholderText={placeholderText}
+        onNameChange={onNameChange}
+        onModelChange={onModelChange}
+        onRandomizeName={onRandomizeName}
+        onPersonalityChange={onPersonalityChange}
+      />
+    ),
+    [
+      providers,
+      personalityOptions,
+      placeholderText,
+      onNameChange,
+      onModelChange,
+      onRandomizeName,
+      onPersonalityChange,
+    ],
   )
 
   return (

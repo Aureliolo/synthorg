@@ -1,7 +1,15 @@
+import { isAxiosError } from 'axios'
 import { getCompany, getSetupStatus } from '@/api/endpoints/setup'
+import { createLogger } from '@/lib/logger'
 import { isCurrencyCode } from '@/utils/currencies'
+import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import { resolveAgentModels } from '@/utils/setup-validation'
 import type { NavigationSlice, SliceCreator, WizardMode, WizardStep } from './types'
+
+const log = createLogger('setup-wizard:navigation')
+
+const HTTP_NOT_FOUND = 404
 
 // Invariant: ``complete`` MUST stay the final entry in every step-order
 // constant below. ``WizardNavigation`` derives ``isLast`` from the last index,
@@ -158,7 +166,7 @@ async function reconcileCompletionFromBackendImpl(
       status.has_providers ? get().fetchProviders() : Promise.resolve(),
       status.has_agents ? get().fetchAgents() : Promise.resolve(),
       status.has_company ? get().fetchTemplates() : Promise.resolve(),
-      status.has_company ? getCompany().catch(() => null) : Promise.resolve(null),
+      status.has_company ? getCompany().catch(handleResumeCompanyError) : Promise.resolve(null),
     ])
     set((s) => {
       const completed = { ...s.stepsCompleted }
@@ -206,12 +214,32 @@ async function reconcileCompletionFromBackendImpl(
       }
       return { stepsCompleted: completed, statusReconciled: true }
     })
-  } catch {
+  } catch (err) {
     // Best-effort: unblock the URL-sync even when the status probe fails. The
     // per-step lazy fetch (Agents / Providers step on mount) remains the
-    // fallback that hydrates the data once those steps are visited.
+    // fallback that hydrates the data once those steps are visited. Log so a
+    // programming error in the reconcile path is not swallowed silently.
+    log.warn('setup_wizard.reconcile_failed', {
+      error: sanitizeForLog(getErrorMessage(err)),
+    })
     set({ statusReconciled: true })
   }
+}
+
+/**
+ * Resolve a `getCompany` failure during resume reconciliation.
+ *
+ * A 404 is expected before a company exists (the wizard starts blank); any
+ * other failure is logged so it is not silently absorbed. Always returns
+ * `null` so the reconcile continues with no company.
+ */
+function handleResumeCompanyError(err: unknown): null {
+  if (!(isAxiosError(err) && err.response?.status === HTTP_NOT_FOUND)) {
+    log.warn('setup_wizard.reconcile_get_company_failed', {
+      error: sanitizeForLog(getErrorMessage(err)),
+    })
+  }
+  return null
 }
 
 function recomputeAgentsRevalidationImpl(set: WizSet, get: WizGet): void {

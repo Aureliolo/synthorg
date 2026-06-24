@@ -107,8 +107,10 @@ def _ranking_sort_key(ranking: EmbeddingModelRanking) -> tuple[int, float]:
     """Sort key applying the LMEB > MTEB > curated priority, best-first.
 
     Returns:
-        A ``(group, -score)`` tuple; the scales are NOT mixed across groups
-        (LMEB and MTEB are orthogonal), so grouping comes first.
+        A ``(group, value)`` tuple. LMEB and MTEB use ``-score`` so a higher
+        benchmark score sorts first; curated uses ``+curated_rank`` so a lower
+        hand-set rank sorts first. Scales are NOT mixed across groups (LMEB and
+        MTEB are orthogonal), so grouping comes first.
     """
     group = {"lmeb": 0, "mteb": 1, "curated": 2}[ranking.source]
     if ranking.source == "lmeb":

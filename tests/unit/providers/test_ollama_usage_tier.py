@@ -5,6 +5,7 @@ import pytest
 from synthorg.providers.ollama_usage_tier import (
     approximate_tier_from_params,
     parse_usage_tier,
+    resolve_usage_tiers,
 )
 
 
@@ -50,3 +51,20 @@ class TestApproximateTier:
         self, parameter_count: int | None, expected: int | None
     ) -> None:
         assert approximate_tier_from_params(parameter_count) == expected
+
+
+@pytest.mark.unit
+class TestResolveUsageTiers:
+    """``resolve_usage_tiers`` with ``host=None`` returns the approximation."""
+
+    async def test_host_none_approximates_without_scraping(self) -> None:
+        params = {
+            "small:8b": 8_000_000_000,
+            "huge:1t": 1_600_000_000_000,
+            "unknown": None,
+        }
+        result = await resolve_usage_tiers(params, host=None)
+        assert result == {"small:8b": 1, "huge:1t": 4, "unknown": None}
+
+    async def test_empty_mapping_returns_empty(self) -> None:
+        assert await resolve_usage_tiers({}, host=None) == {}

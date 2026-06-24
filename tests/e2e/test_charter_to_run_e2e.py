@@ -17,7 +17,7 @@ Zero real LLM spend: every provider is scripted/deterministic.
 from collections.abc import AsyncGenerator
 from datetime import date, datetime
 from pathlib import Path
-from uuid import uuid4, uuid5
+from uuid import uuid5
 
 import pytest
 
@@ -66,7 +66,7 @@ from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.workers.runtime_builder import build_runtime_services
-from tests._shared import FakeClock, make_app_state, mock_of
+from tests._shared import FakeClock, as_uuid, make_app_state, mock_of
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 from tests.unit.api.fakes import FakePersistenceBackend
 
@@ -353,7 +353,7 @@ class _FakeForecastRepo:
 
 def _make_agent(name: str, skill: str, *, level: SeniorityLevel) -> AgentIdentity:
     return AgentIdentity(
-        id=uuid4(),
+        id=as_uuid(name),
         name=name,
         role="developer",
         department="engineering",

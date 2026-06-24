@@ -86,7 +86,10 @@ async function fetchProvidersImpl(
 // stops the modal fetch effect from self-feeding a request storm even if
 // a caller re-fires it; the modal/component guards are defence in depth.
 async function fetchPresetsImpl(set: WizSet, get: WizGet): Promise<void> {
-  if (get().presets.length > 0 || get().presetsLoading) return
+  // Guard on ``presetsFetched`` (not ``presets.length``) so a backend that
+  // returns an empty preset list is still treated as fetched and the effect
+  // does not re-fire on every mount, matching ``fetchProvidersImpl``.
+  if (get().presetsFetched || get().presetsLoading) return
   set({ presetsLoading: true, presetsError: null })
   try {
     const presets = await listPresets()
@@ -365,6 +368,8 @@ export const createProvidersSlice: SliceCreator<ProvidersSlice> = (
   providersMutationError: null,
   providersWarning: null,
 
+  clearProvidersError: () => set({ providersError: null }),
+  clearProvidersMutationError: () => set({ providersMutationError: null }),
   fetchProviders: () => fetchProvidersImpl(set, get),
   fetchPresets: () => fetchPresetsImpl(set, get),
   createProviderFromPreset: (presetName, name, apiKey, baseUrl) =>

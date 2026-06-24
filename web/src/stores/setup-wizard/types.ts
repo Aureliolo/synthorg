@@ -30,9 +30,9 @@ export type WizardMode = 'guided' | 'quick'
 
 export type ThemeSettings = {
   palette: 'warm-ops' | 'ice-station' | 'stealth' | 'signal' | 'neon'
-  density: 'dense' | 'balanced' | 'sparse'
+  density: 'dense' | 'balanced' | 'medium' | 'sparse'
   animation: 'minimal' | 'status-driven' | 'spring' | 'instant'
-  sidebar: 'rail' | 'collapsible' | 'hidden' | 'compact'
+  sidebar: 'rail' | 'collapsible' | 'hidden' | 'persistent' | 'compact'
   typography: 'default'
 }
 
@@ -236,6 +236,10 @@ export interface ProvidersSlice {
    * load-error title.
    */
   providersMutationError: string | null
+  /** Clear the page-level provider load error (e.g. on a fresh fetch). */
+  clearProvidersError: () => void
+  /** Clear the provider create/update mutation error (e.g. on modal open). */
+  clearProvidersMutationError: () => void
   fetchProviders: () => Promise<void>
   fetchPresets: () => Promise<void>
   /**

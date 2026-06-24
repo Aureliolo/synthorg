@@ -165,7 +165,7 @@ function CompareTray({
   onCompare: () => void
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card/60 px-3 py-2">
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card/60 p-card">
       <span className="text-xs font-medium text-muted-foreground">Comparing</span>
       {templates.map((t) => (
         <span

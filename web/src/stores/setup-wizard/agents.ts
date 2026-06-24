@@ -6,14 +6,15 @@ import {
   updateAgentName as apiUpdateAgentName,
   updateAgentPersonality as apiUpdateAgentPersonality,
 } from '@/api/endpoints/setup'
+import type { StoreApi } from 'zustand'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
-import type { AgentsSlice, SliceCreator } from './types'
+import type { AgentsSlice, SliceCreator, SetupWizardState } from './types'
 
 const log = createLogger('setup-wizard:agents')
 
-type WizSet = Parameters<SliceCreator<AgentsSlice>>[0]
+type WizSet = StoreApi<SetupWizardState>['setState']
 
 /**
  * Report a failed in-wizard agent mutation. Agent cards sit mid-list inside a

@@ -22,8 +22,8 @@ export interface StepCompletionSyncOptions {
 /**
  * Sync a step's completion flag in the wizard store from a per-step
  * validation boolean computed in the component. Centralises the
- * `markStepComplete / markStepIncomplete` effect that the per-step
- * pages (Company, Providers, Agents) previously each wrote by hand.
+ * `markStepComplete / markStepIncomplete` effect so the per-step pages
+ * (Company, Providers, Agents) share one validated completion signal.
  */
 export function useStepCompletionSync(
   step: WizardStep,

@@ -60,8 +60,13 @@ if [[ -z "$CONTENT" ]]; then
     exit 0
 fi
 
-# Member-access storage usage, or zustand persist middleware import.
-if grep -qE '(localStorage|sessionStorage)\.|\bindexedDB\b' <<<"$CONTENT" \
+# Member- or bracket-access storage usage, or zustand persist middleware import.
+# This is a fast edit-time first line of defence; the pre-push gate
+# (scripts/check_no_client_state_persistence.py) is the authoritative check --
+# it strips comments and matches on word boundaries, so it also catches a bare
+# ``const x = localStorage`` alias that this raw-content grep deliberately does
+# not (matching a bare token here would false-positive on prose mentions).
+if grep -qE '(localStorage|sessionStorage)(\.|\[)|\bindexedDB\b' <<<"$CONTENT" \
     || grep -qE "persist.*zustand/middleware|zustand/middleware.*persist" <<<"$CONTENT"; then
     REASON="Client-side state persistence is forbidden in the web dashboard (it is a pure API consumer; the backend is the single source of truth -- see web/CLAUDE.md). Move this state to a backend settings namespace and hydrate it via the REST API on mount. For genuinely per-device transient UX (canvas viewport, in-progress drafts), add the file to the allowlist in scripts/check_no_client_state_persistence.py AND this hook with a documented reason."
     jq -nc \
