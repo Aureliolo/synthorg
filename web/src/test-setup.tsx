@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, vi } from 'vitest'
 import { MotionGlobalConfig } from 'motion/react'
 import { setupServer } from 'msw/node'
 import { cancelPendingMcpCatalogSearch } from '@/stores/mcp-catalog/_state'
-import { cancelSetupWizardPersist } from '@/stores/setup-wizard/teardown'
+import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useThemeStore } from '@/stores/theme'
 import { useToastStore } from '@/stores/toast'
 // NOTE: meetings, approvals, scaling stores are intentionally NOT
@@ -299,11 +299,10 @@ beforeEach(() => {
 // listener registers ITS OWN teardown call in this block.
 afterEach(() => {
   useToastStore.getState().dismissAll()
-  // Setup-wizard store wraps itself in Zustand ``persist``; clear the
-  // localStorage key directly via the side-effect-free teardown shim
-  // so we do not transitively load ``@/api/client`` (see top-of-file
-  // comment).  The shim is a no-op when localStorage is unavailable.
-  cancelSetupWizardPersist()
+  // Setup-wizard store is backend-sourced (a pure API consumer, no client
+  // persistence); reset its in-memory singleton so a test's wizard state does
+  // not bleed into the next test in the same Vitest worker.
+  useSetupWizardStore.getState().reset()
   // Org-chart-prefs store is backend-sourced (no client persistence); reset
   // its in-memory singleton state so toolbar toggles a test sets do not bleed
   // into the next test in the same Vitest worker.
