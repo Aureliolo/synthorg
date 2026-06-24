@@ -53,7 +53,7 @@ Values marked `sensitive=True` (API keys, webhook URLs, passwords) are Fernet-en
 | `coordination` | Coordination metrics, error taxonomy, orchestration ratio alerts |
 | `observability` | Log level, correlation tracking, sink overrides, custom sinks |
 | `appearance` | Dashboard theme axes (colour palette, density, typography, animation, sidebar mode) |
-| `dashboard` | Misc dashboard UI preferences (sidebar collapsed, command recents, advanced-mode toggles, dismissals) |
+| `dashboard` | Misc dashboard UI preferences (sidebar collapsed, recent commands, advanced-mode toggles, dismissals) |
 | `org_chart` | Org-chart view preferences (particle flow, badges, status dots, minimap, collapsed departments) |
 | `backup` | Enabled, schedule, compression, retention count/age |
 | `cockpit` | Flight-recorder run replay, stuck/runaway thresholds, snapshot cadence, steering proposer and active-directive limits |

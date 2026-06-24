@@ -25,7 +25,7 @@ function agentTitles(container: HTMLElement): string[] {
 
 function deptLabels(container: HTMLElement): string[] {
   return Array.from(container.querySelectorAll('span')).map(
-    (el) => el.textContent ?? '',
+    (el) => el.textContent,
   )
 }
 
