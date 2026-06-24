@@ -28,6 +28,9 @@ from synthorg.api.controllers.setup._runtime_wiring import (
     COMPLETE_LOCK as _COMPLETE_LOCK,
 )
 from synthorg.api.controllers.setup.company_helpers import (
+    CompanyPersist as _CompanyPersist,
+)
+from synthorg.api.controllers.setup.company_helpers import (
     check_setup_not_complete as _check_setup_not_complete,
 )
 from synthorg.api.controllers.setup.company_helpers import (
@@ -137,6 +140,16 @@ class SetupCompanyController(Controller):
         tmpl_res = await asyncio.to_thread(_resolve_template, data.template_name)
         description = normalize_description(data.description)
 
+        # Company name + budget are dedicated company-level fields, not template
+        # variables, but the template Jinja still references {{ company_name }}
+        # / {{ budget }}. Feed the real company-level values in as render
+        # variables alongside the genuine template-variable overrides (sprint
+        # length, WIP limit, ...); the company fields win over any stray var.
+        render_vars: dict[str, object] = dict(data.template_variables)
+        render_vars["company_name"] = data.company_name
+        if data.budget is not None:
+            render_vars["budget"] = data.budget
+
         # Serialise the whole check / persist / agents-write sequence
         # under _COMPLETE_LOCK so a concurrent ``/setup/complete``
         # (which holds the same lock) cannot reinit against a
@@ -168,10 +181,15 @@ class SetupCompanyController(Controller):
                     raise ConflictError(msg)
             await _persist_company_settings(
                 settings_svc,
-                data.company_name,
-                description,
-                tmpl_res.departments_json,
-                tmpl_res.template_applied,
+                _CompanyPersist(
+                    company_name=data.company_name,
+                    description=description,
+                    departments_json=tmpl_res.departments_json,
+                    template_applied=tmpl_res.template_applied,
+                    currency=data.currency,
+                    budget=data.budget,
+                    model_tier_profile=data.model_tier_profile,
+                ),
             )
 
             agent_summaries: tuple[SetupAgentSummary, ...] = ()
@@ -180,6 +198,7 @@ class SetupCompanyController(Controller):
                     tmpl_res.loaded,
                     app_state,
                     settings_svc,
+                    variables=render_vars,
                 )
                 logger.info(
                     SETUP_AGENTS_AUTO_CREATED,
@@ -222,6 +241,9 @@ class SetupCompanyController(Controller):
                 description=description,
                 template_applied=tmpl_res.template_applied,
                 department_count=tmpl_res.department_count,
+                currency=data.currency,
+                budget=data.budget,
+                model_tier_profile=data.model_tier_profile,
                 agents=agent_summaries,
             ),
         )

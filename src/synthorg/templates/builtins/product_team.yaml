@@ -23,25 +23,20 @@ template:
   posture: "knowledge_heavy"
 
   variables:
-    - name: "company_name"
-      description: "Name of your company"
-      default: "Product Co"
-    - name: "budget"
-      description: "Monthly budget in the company's configured currency"
-      var_type: "float"
-      default: 80.0
     - name: "sprint_length"
       description: "Sprint duration in days"
       var_type: "int"
       default: 14
+      hidden: true
     - name: "wip_limit"
       description: "Work-in-progress limit per column"
       var_type: "int"
-      default: 3
+      default: 5
+      hidden: true
 
   company:
     type: "product_team"
-    budget_monthly: {{ budget | default(80.0) }}
+    budget_monthly: {{ budget | default(500.0) }}
 
   communication: "meeting_based"
 

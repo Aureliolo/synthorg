@@ -86,6 +86,8 @@ async def auto_create_template_agents(
     loaded: LoadedTemplate,
     app_state: AppState,
     settings_svc: SettingsServiceProtocol,
+    *,
+    variables: Mapping[str, object] | None = None,
 ) -> tuple[SetupAgentSummary, ...]:
     """Render template agents, match models, persist, and return summaries.
 
@@ -145,6 +147,7 @@ async def auto_create_template_agents(
         loaded,
         locales=locales,
         custom_presets=custom_presets,
+        variables=variables,
     )
     providers = prov_task.result()
     _validate_tier_coverage(providers)

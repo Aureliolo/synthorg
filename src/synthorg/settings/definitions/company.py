@@ -132,3 +132,44 @@ _r.register(
         group="Structure",
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMPANY,
+        key="currency",
+        type=SettingType.STRING,
+        default=None,
+        description=(
+            "Display-currency code (e.g. USD, EUR). No region is privileged; "
+            "left unset until the operator chooses one."
+        ),
+        group="General",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMPANY,
+        key="budget",
+        type=SettingType.FLOAT,
+        default=None,
+        description="Monthly company budget in the configured currency.",
+        group="General",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMPANY,
+        key="model_tier_profile",
+        type=SettingType.ENUM,
+        default="balanced",
+        description=(
+            "Bias for model-tier assignment across agents: 'economy' favours "
+            "cheaper tiers, 'premium' favours stronger ones, 'balanced' is "
+            "neutral. Consumed by the setup model matcher."
+        ),
+        group="General",
+        enum_values=("economy", "balanced", "premium"),
+    )
+)

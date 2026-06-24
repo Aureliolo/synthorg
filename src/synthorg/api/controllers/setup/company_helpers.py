@@ -385,46 +385,49 @@ def resolve_template(template_name: str | None) -> TemplateResult:
     )
 
 
+class CompanyPersist(NamedTuple):
+    """The backend-owned company-level fields written at company creation.
+
+    Bundled into one value object so the persist call stays a single
+    argument and these fields move together. The frontend persists none
+    of this; it is all reachable over the API by any client.
+    """
+
+    company_name: str
+    description: str | None
+    departments_json: str
+    template_applied: str | None
+    currency: str | None
+    budget: float | None
+    model_tier_profile: str
+
+
 async def persist_company_settings(
     settings_svc: SettingsServiceProtocol,
-    company_name: str,
-    description: str | None,
-    departments_json: str,
-    template_applied: str | None = None,
+    fields: CompanyPersist,
 ) -> None:
-    """Write description, departments, template, then company name as the marker.
+    """Write company-level fields, then company name as the setup marker.
 
     ``check_has_company`` treats ``company_name`` as the setup-complete
     marker, so write it last; a failure in an earlier ``set`` then
     leaves the instance reading as un-initialised rather than as
     half-initialised.
 
-    ``template_applied`` is persisted as a distinct setting (it is otherwise
-    only present in the POST response and the agents blob) so the resumed
-    wizard can rehydrate which template built the company -- without it, a
-    resume cannot reconstruct ``companyResponse`` and a re-apply would run
-    template-less, wiping the roster.
+    All of these are backend-owned company state: ``template_applied`` so a
+    resume knows which template to regenerate from, and ``currency`` /
+    ``budget`` / ``model_tier_profile`` so the operator's company-level
+    choices survive a resume and are reachable over the API by any client
+    (they used to be cosmetic frontend-only inputs that never reached the
+    backend).
     """
-    await settings_svc.set(
-        "company",
-        "description",
-        description or "",
-    )
-    await settings_svc.set(
-        "company",
-        "departments",
-        departments_json or "[]",
-    )
-    await settings_svc.set(
-        "company",
-        "template_applied",
-        template_applied or "",
-    )
-    await settings_svc.set(
-        "company",
-        "company_name",
-        company_name,
-    )
+    await settings_svc.set("company", "description", fields.description or "")
+    await settings_svc.set("company", "departments", fields.departments_json or "[]")
+    await settings_svc.set("company", "template_applied", fields.template_applied or "")
+    await settings_svc.set("company", "currency", fields.currency or "")
+    await settings_svc.set("company", "model_tier_profile", fields.model_tier_profile)
+    if fields.budget is not None:
+        await settings_svc.set("company", "budget", str(fields.budget))
+    await settings_svc.set("company", "company_name", fields.company_name)
 
 
 def load_template_safe(template_name: str) -> LoadedTemplate:

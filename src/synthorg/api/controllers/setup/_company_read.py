@@ -11,6 +11,7 @@ instead of falling back to a blank "finish with defaults" form.
 """
 
 import json
+from typing import Literal
 
 from synthorg.api.controllers.setup.company_helpers import check_has_company
 from synthorg.api.controllers.setup_agents import (
@@ -73,6 +74,33 @@ def _department_count(departments_raw: str | None) -> int:
     return len(parsed) if isinstance(parsed, list) else 0
 
 
+def _parse_budget(raw: str | None) -> float | None:
+    """Parse the persisted budget string to a float, or None when unset/invalid.
+
+    Returns:
+        The budget as a float, or ``None``.
+    """
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        return None
+
+
+def _normalize_profile(raw: str | None) -> Literal["economy", "balanced", "premium"]:
+    """Coerce the persisted tier profile to a known value, defaulting balanced.
+
+    Returns:
+        One of the three valid model-tier profiles.
+    """
+    if raw == "economy":
+        return "economy"
+    if raw == "premium":
+        return "premium"
+    return "balanced"
+
+
 async def build_company_response(
     settings_svc: SettingsServiceProtocol,
 ) -> SetupCompanyResponse | None:
@@ -89,12 +117,17 @@ async def build_company_response(
     description = await _read_db_value(settings_svc, "description")
     template_applied = await _read_db_value(settings_svc, "template_applied")
     departments_raw = await _read_db_value(settings_svc, "departments")
+    currency = await _read_db_value(settings_svc, "currency")
+    profile = await _read_db_value(settings_svc, "model_tier_profile")
     agents = agents_to_summaries(await get_existing_agents(settings_svc))
     return SetupCompanyResponse(
         company_name=name,
         description=description,
         template_applied=template_applied,
         department_count=_department_count(departments_raw),
+        currency=currency,
+        budget=_parse_budget(await _read_db_value(settings_svc, "budget")),
+        model_tier_profile=_normalize_profile(profile),
         agents=agents,
     )
 

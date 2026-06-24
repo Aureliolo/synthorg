@@ -189,6 +189,32 @@ class SetupCompanyRequest(BaseModel):
         examples=["consulting-firm", "blank"],
         description="Optional company template to apply; None creates a blank company.",
     )
+    currency: str | None = Field(
+        default=None,
+        max_length=10,
+        examples=["USD", "EUR"],
+        description="Display-currency code; None means unset (no privileged default).",
+    )
+    budget: float | None = Field(
+        default=None,
+        ge=0,
+        examples=[500.0],
+        description="Monthly budget; None uses the template default.",
+    )
+    model_tier_profile: Literal["economy", "balanced", "premium"] = Field(
+        default="balanced",
+        description=(
+            "Bias for model-tier assignment across agents: economy favours "
+            "cheaper tiers, premium favours stronger ones, balanced is neutral."
+        ),
+    )
+    template_variables: dict[str, str | int | float | bool] = Field(
+        default_factory=dict,
+        description=(
+            "Genuine template-variable overrides (e.g. sprint length, WIP "
+            "limit). Company name + budget are dedicated fields, not variables."
+        ),
+    )
 
 
 class SetupAgentSummary(BaseModel):
@@ -236,6 +262,9 @@ class SetupCompanyResponse(BaseModel):
     description: str | None
     template_applied: NotBlankStr | None
     department_count: int = Field(ge=0)
+    currency: str | None = None
+    budget: float | None = Field(default=None, ge=0)
+    model_tier_profile: Literal["economy", "balanced", "premium"] = "balanced"
     agents: tuple[SetupAgentSummary, ...] = ()
 
     @computed_field

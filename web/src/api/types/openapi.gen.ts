@@ -16070,22 +16070,43 @@ export type components = {
         /** SetupCompanyRequest */
         readonly SetupCompanyRequest: {
             /**
+             * @description Monthly budget; None uses the template default.
+             * @example 500
+             */
+            readonly budget?: number | null;
+            /**
              * @description Company display name.
              * @example Hooli
              * @example Pied Piper
              */
             readonly company_name: string;
             /**
+             * @description Display-currency code; None means unset (no privileged default).
+             * @example USD
+             * @example EUR
+             */
+            readonly currency?: string | null;
+            /**
              * @description Optional company description.
              * @example Boutique consultancy specializing in agentic ops
              */
             readonly description?: string | null;
+            /**
+             * @description Bias for model-tier assignment across agents: economy favours cheaper tiers, premium favours stronger ones, balanced is neutral.
+             * @default balanced
+             * @enum {string}
+             */
+            readonly model_tier_profile: "economy" | "balanced" | "premium";
             /**
              * @description Optional company template to apply; None creates a blank company.
              * @example consulting-firm
              * @example blank
              */
             readonly template_name?: string | null;
+            /** @description Genuine template-variable overrides (e.g. sprint length, WIP limit). Company name + budget are dedicated fields, not variables. */
+            readonly template_variables?: {
+                readonly [key: string]: string | number | boolean;
+            };
         };
         /** SetupCompanyResponse */
         readonly SetupCompanyResponse: {
@@ -16098,9 +16119,16 @@ export type components = {
             readonly agent_count: number;
             /** @default [] */
             readonly agents: readonly components["schemas"]["SetupAgentSummary"][];
+            readonly budget: number | null;
             readonly company_name: string;
+            readonly currency: string | null;
             readonly department_count: number;
             readonly description: string | null;
+            /**
+             * @default balanced
+             * @enum {string}
+             */
+            readonly model_tier_profile: "economy" | "balanced" | "premium";
             readonly template_applied: string | null;
         };
         /** SetupCompleteResponse */

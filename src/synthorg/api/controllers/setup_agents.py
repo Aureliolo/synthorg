@@ -48,6 +48,7 @@ def expand_template_agents(
     locales: list[str] | None = None,
     *,
     custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
+    variables: Mapping[str, object] | None = None,
 ) -> list[dict[str, object]]:
     """Expand a template into persistable agent dicts via the renderer.
 
@@ -67,6 +68,8 @@ def expand_template_agents(
             uses all Latin-script locales.
         custom_presets: Optional mapping of custom preset names to
             personality config dicts (checked before builtins).
+        variables: User-supplied template variable overrides (company name,
+            budget, and any genuine template variables) fed to the renderer.
 
     Returns:
         List of agent config dicts each carrying a ``model_requirement``
@@ -78,7 +81,12 @@ def expand_template_agents(
     """
     from synthorg.templates.renderer import render_template  # noqa: PLC0415
 
-    cfg = render_template(loaded, locales=locales, custom_presets=custom_presets)
+    cfg = render_template(
+        loaded,
+        variables=dict(variables) if variables else None,
+        locales=locales,
+        custom_presets=custom_presets,
+    )
     return [_agent_config_to_dict(agent) for agent in cfg.agents]
 
 
