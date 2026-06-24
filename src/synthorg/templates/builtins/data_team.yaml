@@ -79,7 +79,7 @@ template:
     - role: "Backend Developer"
       level: "mid"
       model:
-        priority: "cost"
+        priority: "balanced"
         requires_tools: true
       personality_preset: "pragmatic_builder"
       department: "engineering"

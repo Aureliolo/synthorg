@@ -90,7 +90,7 @@ template:
       merge_id: "fullstack-mid"
       level: "mid"
       model:
-        priority: "cost"
+        priority: "balanced"
         requires_tools: true
       personality_preset: "team_diplomat"
       department: "engineering"
