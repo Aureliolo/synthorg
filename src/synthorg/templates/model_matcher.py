@@ -32,7 +32,7 @@ from synthorg.templates.model_matcher_config import (
     ModelMatcherConfig,
     derive_tier,
 )
-from synthorg.templates.model_matcher_priority import priority_ranker
+from synthorg.templates.model_matcher_priority import priority_ranker, shift_priority
 from synthorg.templates.model_matcher_tiering import (
     demand_tier,
     prune_dominated,
@@ -398,6 +398,8 @@ def match_all_agents(
     providers: Mapping[str, _ProviderWithModels],
     matcher_config: ModelMatcherConfig | None = None,
     strategy: ModelSelectionStrategy | None = None,
+    *,
+    tier_profile: str = "balanced",
 ) -> list[ModelMatch]:
     """Batch-match template agents to provider models.
 
@@ -414,6 +416,10 @@ def match_all_agents(
         matcher_config: Operator-tunable score weights. ``None`` uses the
             default projected from ``EngineBridgeConfig``.
         strategy: Selection strategy. ``None`` uses the default.
+        tier_profile: Company model-tier profile ('economy' | 'balanced' |
+            'premium') that nudges each agent's resolved priority one rung
+            along the cost<->quality ladder before matching; 'balanced' is a
+            no-op, so an unset profile leaves matching unchanged.
 
     Returns:
         List of ``ModelMatch`` results. An agent is omitted when no
@@ -446,6 +452,13 @@ def match_all_agents(
             resolve_model_requirement,
         )
         if req is not None:
+            # The company model-tier profile biases the whole roster cheaper
+            # ('economy') or stronger ('premium') by nudging each agent's
+            # resolved priority one rung along the cost<->quality ladder;
+            # 'balanced' is a no-op, so a profile-less call is unchanged.
+            shifted = shift_priority(req.priority, tier_profile)
+            if shifted != req.priority:
+                req = req.model_copy(update={"priority": shifted})
             resolved.append((idx, req))
     # Assign the most-demanding roles first so the strongest models go to the
     # work that needs them, never wasted on a low-demand role that grabbed one.

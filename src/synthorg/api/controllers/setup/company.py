@@ -199,6 +199,7 @@ class SetupCompanyController(Controller):
                     app_state,
                     settings_svc,
                     variables=render_vars,
+                    tier_profile=data.model_tier_profile,
                 )
                 logger.info(
                     SETUP_AGENTS_AUTO_CREATED,

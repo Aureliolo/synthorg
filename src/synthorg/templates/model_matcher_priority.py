@@ -25,6 +25,41 @@ _BALANCED_STRENGTH_WEIGHT: Final[float] = 0.5
 # remainder lets a newer model edge out an older one of the same size.
 _STRENGTH_PARAM_WEIGHT: Final[float] = 0.7
 
+# Cost<->quality ladder the company model-tier profile shifts an agent's
+# priority along: 'economy' nudges one rung cheaper, 'premium' one rung
+# stronger, 'balanced' leaves it untouched. The 'speed' axis is orthogonal
+# (latency, not cost/quality) and is never shifted, so a fast role stays fast
+# regardless of the profile.
+_PRIORITY_LADDER: Final[tuple[str, ...]] = ("cost", "balanced", "quality")
+
+
+def shift_priority(priority: str, tier_profile: str) -> str:
+    """Shift a priority along the cost<->quality ladder per the tier profile.
+
+    Preserves relative ordering across the roster (a quality role stays
+    stronger than a cost role) while biasing the whole company cheaper or
+    stronger; the company default 'balanced' is a no-op.
+
+    Args:
+        priority: The agent's resolved optimisation axis.
+        tier_profile: One of 'economy', 'balanced', 'premium'.
+
+    Returns:
+        The shifted priority, unchanged for 'balanced', the 'speed' axis, or
+        any unrecognised priority value.
+    """
+    if tier_profile == "premium":
+        step = 1
+    elif tier_profile == "economy":
+        step = -1
+    else:
+        return priority
+    if priority not in _PRIORITY_LADDER:
+        return priority
+    raw_idx = _PRIORITY_LADDER.index(priority) + step
+    new_idx = min(max(raw_idx, 0), len(_PRIORITY_LADDER) - 1)
+    return _PRIORITY_LADDER[new_idx]
+
 
 def _model_generation(model: ProviderModelConfig) -> float:
     """Return the model's generation, or ``0.0`` when unknown.

@@ -88,6 +88,7 @@ async def auto_create_template_agents(
     settings_svc: SettingsServiceProtocol,
     *,
     variables: Mapping[str, object] | None = None,
+    tier_profile: str = "balanced",
 ) -> tuple[SetupAgentSummary, ...]:
     """Render template agents, match models, persist, and return summaries.
 
@@ -152,7 +153,9 @@ async def auto_create_template_agents(
     providers = prov_task.result()
     _validate_tier_coverage(providers)
     matcher_config = matcher_task.result()
-    agents = match_and_assign_models(agents, providers, matcher_config)
+    agents = match_and_assign_models(
+        agents, providers, matcher_config, tier_profile=tier_profile
+    )
 
     async with AGENT_LOCK:
         await settings_svc.set(
