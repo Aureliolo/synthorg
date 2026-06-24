@@ -10,6 +10,7 @@ import { useSetupStore } from '@/stores/setup'
 import { useToastStore } from '@/stores/toast'
 import { MiniOrgChart } from './MiniOrgChart'
 import { SetupSummary } from './SetupSummary'
+import { WizardModelSelection } from './WizardModelSelection'
 import { CheckCircle } from 'lucide-react'
 import type { SetupCompanyResponse } from '@/api/types/setup'
 
@@ -222,6 +223,8 @@ export function CompleteStep() {
         providers={providers}
         currency={currency}
       />
+
+      <WizardModelSelection />
 
       <CompleteStepFooter
         completionError={completionError}

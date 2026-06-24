@@ -167,6 +167,35 @@ async def auto_create_template_agents(
     return agents_to_summaries(agents)
 
 
+def pick_decomposition_model(agents: list[dict[str, object]]) -> str | None:
+    """Choose a capable model id for the coordinator's decomposition strategy.
+
+    Prefers a top-tier (``large``) agent's model -- the strongest the catalogue
+    supports -- so the coordinator decomposes work with a capable model,
+    falling back to any agent that carries a model assignment. Shared by the
+    completion auto-select and the wizard's model-recommendations endpoint.
+
+    Returns:
+        A model id, or ``None`` when no agent carries a model.
+    """
+
+    def _model_id(agent: dict[str, object]) -> str | None:
+        model = agent.get("model")
+        if isinstance(model, dict):
+            model_id = model.get("model_id")
+            if isinstance(model_id, str) and model_id.strip():
+                return model_id
+        return None
+
+    large = [a for a in agents if a.get("tier") == "large"]
+    for pool in (large, agents):
+        for agent in pool:
+            model_id = _model_id(agent)
+            if model_id is not None:
+                return model_id
+    return None
+
+
 async def collect_model_ids(app_state: AppState) -> tuple[str, ...]:
     """Extract model IDs from provider configs for embedding selection.
 
@@ -230,6 +259,21 @@ async def auto_select_embedder(
         MEMORY_EMBEDDER_AUTO_SELECT_FAILED,
         MEMORY_EMBEDDER_AUTO_SELECTED,
     )
+
+    # Respect an operator-chosen embedder (e.g. set via the wizard's override):
+    # keep the chosen model rather than clobbering it with an auto-selection,
+    # but resolve embedder_dims for that model so the vector store is
+    # provisioned with the right dimensionality (ingest captures the real dims
+    # later if they differ). A model in no ranking leaves dims untouched.
+    existing = await settings_svc.get("memory", "embedder_model")
+    if isinstance(existing.value, str) and existing.value.strip():
+        chosen = select_embedding_model((existing.value,))
+        if chosen is not None:
+            await settings_svc.set_many(
+                [("memory", "embedder_dims", str(chosen.output_dims))],
+                expected_updated_at_map={},
+            )
+        return None
 
     tier = infer_deployment_tier(
         provider_preset_name,

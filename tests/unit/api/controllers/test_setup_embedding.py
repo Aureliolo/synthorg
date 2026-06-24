@@ -1,10 +1,14 @@
 """Tests for embedding auto-selection during setup."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.api.controllers.setup._embedder_setup import auto_select_embedder
+from synthorg.api.controllers.setup._embedder_setup import (
+    auto_select_embedder,
+    pick_decomposition_model,
+)
 from synthorg.memory.embedding.rankings import LMEB_RANKINGS
 
 
@@ -75,3 +79,40 @@ class TestAutoSelectEmbedder:
         values = _set_many_values(settings_svc)
         assert ("memory", "embedder_model") in values
         assert ("memory", "embedder_dims") in values
+
+    async def test_respects_operator_chosen_embedder(self) -> None:
+        """An already-set embedder is kept; only its dims are (re)resolved."""
+        top = LMEB_RANKINGS[0]
+        settings_svc = _mock_settings_svc()
+        settings_svc.get = AsyncMock(return_value=SimpleNamespace(value=top.model_id))
+
+        # A different model is also available, but the operator's choice wins.
+        await auto_select_embedder(
+            settings_svc=settings_svc,
+            available_model_ids=("some-other-embedder", top.model_id),
+        )
+
+        values = _set_many_values(settings_svc)
+        # The model is NOT rewritten; only the matching dims are persisted.
+        assert ("memory", "embedder_model") not in values
+        assert values[("memory", "embedder_dims")] == str(top.output_dims)
+
+
+@pytest.mark.unit
+class TestPickDecompositionModel:
+    def test_prefers_large_tier_agent_model(self) -> None:
+        agents: list[dict[str, object]] = [
+            {"tier": "small", "model": {"model_id": "small-model"}},
+            {"tier": "large", "model": {"model_id": "large-model"}},
+        ]
+        assert pick_decomposition_model(agents) == "large-model"
+
+    def test_falls_back_to_any_agent_with_a_model(self) -> None:
+        agents: list[dict[str, object]] = [
+            {"tier": "small", "model": {"model_id": "only-model"}},
+        ]
+        assert pick_decomposition_model(agents) == "only-model"
+
+    def test_returns_none_without_any_model(self) -> None:
+        assert pick_decomposition_model([{"tier": "large"}]) is None
+        assert pick_decomposition_model([]) is None

@@ -8,6 +8,7 @@ from synthorg.memory.embedding.rankings import (
 )
 from synthorg.memory.embedding.selector import (
     infer_deployment_tier,
+    list_embedding_candidates,
     select_embedding_model,
 )
 
@@ -129,6 +130,30 @@ class TestSelectEmbeddingModel:
         assert result is not None
         assert result.model_id == "nomic-embed-text:latest"
         assert result.output_dims == 768
+
+
+@pytest.mark.unit
+class TestListEmbeddingCandidates:
+    def test_keeps_only_embedding_capable_models(self) -> None:
+        candidates = list_embedding_candidates(
+            (
+                "qwen3-embedding:8b",
+                "nomic-embed-text:latest",
+                "some-chat-model:latest",
+            )
+        )
+        assert "qwen3-embedding:8b" in candidates
+        assert "nomic-embed-text:latest" in candidates
+        assert "some-chat-model:latest" not in candidates
+
+    def test_preserves_catalogue_order_and_dedupes(self) -> None:
+        candidates = list_embedding_candidates(
+            ("nomic-embed-text:latest", "qwen3-embedding:8b", "nomic-embed-text:latest")
+        )
+        assert candidates == ("nomic-embed-text:latest", "qwen3-embedding:8b")
+
+    def test_empty_when_no_embedder_present(self) -> None:
+        assert list_embedding_candidates(("only-a-chat-model",)) == ()
 
 
 @pytest.mark.unit

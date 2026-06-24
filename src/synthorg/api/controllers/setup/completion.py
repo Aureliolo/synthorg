@@ -21,6 +21,9 @@ from synthorg.api.controllers.setup._embedder_setup import (
 from synthorg.api.controllers.setup._embedder_setup import (
     collect_model_ids as _collect_model_ids,
 )
+from synthorg.api.controllers.setup._embedder_setup import (
+    pick_decomposition_model as _pick_decomposition_model,
+)
 from synthorg.api.controllers.setup._runtime_wiring import (
     COMPLETE_LOCK as _COMPLETE_LOCK,
 )
@@ -188,34 +191,6 @@ async def _run_embedder_auto_select(
             error=safe_error_description(exc),
         )
         return "Embedder auto-selection raised an unexpected error."
-
-
-def _pick_decomposition_model(agents: list[dict[str, object]]) -> str | None:
-    """Choose a capable model id for the coordinator's decomposition strategy.
-
-    Prefers a top-tier (``large``) agent's model -- the strongest the catalogue
-    supports -- so the coordinator decomposes work with a capable model,
-    falling back to any agent that carries a model assignment.
-
-    Returns:
-        A model id, or ``None`` when no agent carries a model.
-    """
-
-    def _model_id(agent: dict[str, object]) -> str | None:
-        model = agent.get("model")
-        if isinstance(model, dict):
-            model_id = model.get("model_id")
-            if isinstance(model_id, str) and model_id.strip():
-                return model_id
-        return None
-
-    large = [a for a in agents if a.get("tier") == "large"]
-    for pool in (large, agents):
-        for agent in pool:
-            model_id = _model_id(agent)
-            if model_id is not None:
-                return model_id
-    return None
 
 
 async def _ensure_decomposition_model(

@@ -151,6 +151,37 @@ def select_embedding_model(
     return None
 
 
+def list_embedding_candidates(available_models: tuple[str, ...]) -> tuple[str, ...]:
+    """Return the catalogue models recognised as embedding-capable.
+
+    Used to populate the setup wizard's embedding-model picker with the subset
+    of the operator's catalogue that matches a known embedding family (LMEB /
+    MTEB / curated), so they can override the auto-selected default.
+
+    Returns:
+        The matching catalogue model ids, de-duplicated in catalogue order.
+    """
+    matched: list[str] = []
+    for original in available_models:
+        if original in matched:
+            continue
+        available_lower = original.lower()
+        available_base = _base_family(original)
+        for ranking in EMBEDDING_RANKINGS:
+            ranking_size = _size_token(ranking.model_id)
+            if ranking_size is not None and ranking_size not in available_lower:
+                continue
+            ranking_base = _base_family(ranking.model_id)
+            if (
+                ranking.model_id.lower() in available_lower
+                or ranking_base in available_lower
+                or ranking_base == available_base
+            ):
+                matched.append(original)
+                break
+    return tuple(matched)
+
+
 def infer_deployment_tier(
     provider_preset_name: str | None,
     *,

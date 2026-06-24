@@ -18,6 +18,12 @@ from synthorg.api.controllers.setup._company_read import (
 from synthorg.api.controllers.setup._embedder_setup import (
     auto_create_template_agents as _auto_create_template_agents,
 )
+from synthorg.api.controllers.setup._embedder_setup import (
+    collect_model_ids as _collect_model_ids,
+)
+from synthorg.api.controllers.setup._embedder_setup import (
+    pick_decomposition_model,
+)
 from synthorg.api.controllers.setup._posture_seeding import (
     seed_posture_settings as _seed_posture_settings,
 )
@@ -47,6 +53,7 @@ from synthorg.api.controllers.setup_models import (
     SetupAgentSummary,
     SetupCompanyRequest,
     SetupCompanyResponse,
+    SetupModelRecommendationsResponse,
 )
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo, require_read_access
@@ -54,6 +61,10 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError, NotFoundError
+from synthorg.memory.embedding.selector import (
+    list_embedding_candidates,
+    select_embedding_model,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.setup import (
     SETUP_AGENTS_AUTO_CREATED,
@@ -101,6 +112,46 @@ class SetupCompanyController(Controller):
             msg = "No company has been created yet"
             raise NotFoundError(msg)
         return ApiResponse(data=response)
+
+    @get(
+        "/model-recommendations",
+        guards=[require_read_access],
+    )
+    async def get_model_recommendations(
+        self,
+        state: State,
+    ) -> ApiResponse[SetupModelRecommendationsResponse]:
+        """Recommend + enumerate the wizard's coordinator + embedding models.
+
+        The wizard prefills the coordinator's decomposition model (the most
+        senior agent's model) and the memory embedding model (the best-ranked
+        embedder in the catalogue) from these, and lets the operator override
+        either from the candidate lists. Read-only: it persists nothing -- the
+        wizard writes any override through the settings API, and completion
+        auto-selects only when the operator left a value unset.
+
+        Args:
+            state: Application state.
+
+        Returns:
+            The recommended models and the candidate lists to choose from.
+        """
+        app_state: AppState = state.app_state
+        settings_svc = settings_service_of(app_state)
+        agents = await get_existing_agents(settings_svc)
+        model_ids = await _collect_model_ids(app_state)
+        selection = select_embedding_model(model_ids)
+        return ApiResponse(
+            data=SetupModelRecommendationsResponse(
+                decomposition_recommended=pick_decomposition_model(agents),
+                decomposition_candidates=model_ids,
+                embedding_recommended=selection.model_id if selection else None,
+                embedding_recommended_dims=(
+                    selection.output_dims if selection else None
+                ),
+                embedding_candidates=list_embedding_candidates(model_ids),
+            )
+        )
 
     @post(
         "/company",

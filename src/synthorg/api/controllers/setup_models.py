@@ -278,6 +278,31 @@ class SetupCompanyResponse(BaseModel):
         return len(self.agents)
 
 
+class SetupModelRecommendationsResponse(BaseModel):
+    """Wizard model-selection recommendations + candidate lists.
+
+    Lets the setup wizard prefill the coordinator's decomposition model and the
+    memory embedding model with sensible defaults (best-ranked / most-senior
+    catalogue model) while leaving the operator free to override either from
+    the full configured catalogue.
+
+    Attributes:
+        decomposition_recommended: Suggested decomposition model id, if any.
+        decomposition_candidates: All catalogue model ids selectable for it.
+        embedding_recommended: Suggested embedding model id, if any.
+        embedding_recommended_dims: Output dims for the suggested embedder.
+        embedding_candidates: Catalogue model ids that are embedding-capable.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    decomposition_recommended: NotBlankStr | None = None
+    decomposition_candidates: tuple[str, ...] = ()
+    embedding_recommended: NotBlankStr | None = None
+    embedding_recommended_dims: int | None = Field(default=None, ge=1)
+    embedding_candidates: tuple[str, ...] = ()
+
+
 class SetupAgentRequest(BaseModel):
     """Agent creation payload for first-run setup.
 

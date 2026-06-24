@@ -4682,6 +4682,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/setup/model-recommendations": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetModelRecommendations */
+        readonly get: operations["ApiV1SetupModelRecommendationsGetModelRecommendations"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/setup/name-locales": {
         readonly parameters: {
             readonly query?: never;
@@ -7364,6 +7381,19 @@ export type components = {
         /** ApiResponse[SetupCompleteResponse] */
         readonly ApiResponse_SetupCompleteResponse_: {
             readonly data: components["schemas"]["SetupCompleteResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[SetupModelRecommendationsResponse] */
+        readonly ApiResponse_SetupModelRecommendationsResponse_: {
+            readonly data: components["schemas"]["SetupModelRecommendationsResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /**
@@ -16138,6 +16168,16 @@ export type components = {
             readonly embedder_selected: boolean;
             /** @constant */
             readonly setup_complete: true;
+        };
+        /** SetupModelRecommendationsResponse */
+        readonly SetupModelRecommendationsResponse: {
+            /** @default [] */
+            readonly decomposition_candidates: readonly string[];
+            readonly decomposition_recommended: string | null;
+            /** @default [] */
+            readonly embedding_candidates: readonly string[];
+            readonly embedding_recommended: string | null;
+            readonly embedding_recommended_dims: number | null;
         };
         /** SetupNameLocalesRequest */
         readonly SetupNameLocalesRequest: {
@@ -28572,6 +28612,31 @@ export interface operations {
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1SetupModelRecommendationsGetModelRecommendations: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_SetupModelRecommendationsResponse_"];
+                };
+            };
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

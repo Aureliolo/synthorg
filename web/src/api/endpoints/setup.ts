@@ -8,6 +8,7 @@ import type {
   SetupAgentSummary,
   SetupCompanyRequest,
   SetupCompanyResponse,
+  SetupModelRecommendationsResponse,
   SetupNameLocalesRequest,
   SetupNameLocalesResponse,
   SetupStatusResponse,
@@ -40,6 +41,19 @@ export async function createCompany(data: SetupCompanyRequest): Promise<SetupCom
  */
 export async function getCompany(): Promise<SetupCompanyResponse> {
   const response = await apiClient.get<ApiResponse<SetupCompanyResponse>>('/setup/company')
+  return unwrap(response)
+}
+
+/**
+ * Fetch the wizard's recommended coordinator (decomposition) and memory
+ * (embedding) models plus the candidate lists to override them with. The
+ * wizard prefills the recommendations and writes any override through the
+ * settings API; completion only auto-selects values the operator left unset.
+ */
+export async function getModelRecommendations(): Promise<SetupModelRecommendationsResponse> {
+  const response = await apiClient.get<ApiResponse<SetupModelRecommendationsResponse>>(
+    '/setup/model-recommendations',
+  )
   return unwrap(response)
 }
 
