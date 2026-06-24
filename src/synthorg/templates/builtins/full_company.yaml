@@ -25,33 +25,30 @@ template:
   posture: "supervised_client_facing"
 
   variables:
-    - name: "company_name"
-      description: "Name of your company"
-      default: "Acme Corp"
-    - name: "budget"
-      description: "Monthly budget in the company's configured currency"
-      var_type: "float"
-      default: 200.0
     - name: "num_backend_devs"
       description: "Number of backend developers"
       var_type: "int"
       default: 3
+      hidden: true
     - name: "num_frontend_devs"
       description: "Number of frontend developers"
       var_type: "int"
       default: 2
+      hidden: true
     - name: "sprint_length"
       description: "Sprint duration in days"
       var_type: "int"
       default: 14
+      hidden: true
     - name: "wip_limit"
       description: "Work-in-progress limit per column"
       var_type: "int"
       default: 5
+      hidden: true
 
   company:
     type: "full_company"
-    budget_monthly: {{ budget | default(200.0) }}
+    budget_monthly: {{ budget | default(500.0) }}
     autonomy:
       level: "supervised"
 
