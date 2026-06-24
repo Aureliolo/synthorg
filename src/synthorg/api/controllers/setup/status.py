@@ -157,6 +157,7 @@ class SetupStatusController(Controller):
                         var_type=v.var_type,
                         default=v.default,
                         required=v.required,
+                        hidden=v.hidden,
                     )
                     for v in t.variables
                 ),

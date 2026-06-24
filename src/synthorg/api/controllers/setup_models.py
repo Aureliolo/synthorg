@@ -98,6 +98,7 @@ class TemplateVariableResponse(BaseModel):
     var_type: Literal["str", "int", "float", "bool"] = "str"
     default: str | int | float | bool | None = None
     required: bool = False
+    hidden: bool = False
 
 
 class TemplateInfoResponse(BaseModel):

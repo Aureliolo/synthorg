@@ -79,6 +79,15 @@ class TemplateVariable(BaseModel):
         default=None, description="Default value"
     )
     required: bool = Field(default=False, description="Whether required")
+    hidden: bool = Field(
+        default=False,
+        description=(
+            "When True the setup wizard does not render an input for this "
+            "variable; its default is applied. Reserved for advanced knobs the "
+            "operator can change later in the dashboard, so the wizard stays "
+            "focused on the few choices that matter up front."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_required_has_no_default(self) -> Self:

@@ -16866,6 +16866,8 @@ export type components = {
             readonly default: string | number | boolean | null;
             /** @default  */
             readonly description: string;
+            /** @default false */
+            readonly hidden: boolean;
             readonly name: string;
             /** @default false */
             readonly required: boolean;
