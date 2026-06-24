@@ -33,6 +33,16 @@ export async function createCompany(data: SetupCompanyRequest): Promise<SetupCom
   return unwrap(response)
 }
 
+/**
+ * Fetch the persisted company so a resumed wizard (or any client) can rehydrate
+ * the company + applied template from the backend rather than a client-side
+ * copy. 404s when no company has been created yet.
+ */
+export async function getCompany(): Promise<SetupCompanyResponse> {
+  const response = await apiClient.get<ApiResponse<SetupCompanyResponse>>('/setup/company')
+  return unwrap(response)
+}
+
 export async function createAgent(data: SetupAgentRequest): Promise<SetupAgentResponse> {
   const response = await apiClient.post<ApiResponse<SetupAgentResponse>>('/setup/agent', data)
   return unwrap(response)

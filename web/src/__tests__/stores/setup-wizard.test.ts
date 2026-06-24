@@ -491,6 +491,39 @@ describe('setup wizard store', () => {
       expect(state.canNavigateTo('complete')).toBe(true)
     })
 
+    it('rehydrates companyResponse + selectedTemplate from the backend (no client copy)', async () => {
+      // companyResponse is no longer persisted client-side; on resume the
+      // reconcile rebuilds it from GET /setup/company so Review renders the
+      // real company and the applied template is restored -- which is what
+      // prevents a blank re-apply from wiping the roster.
+      stubStatus({ has_providers: true, has_company: true, has_agents: true })
+      stubAgents([
+        agentRow({ name: 'CEO Agent', role: 'CEO', department: 'executive' }),
+      ])
+      server.use(
+        http.get('/api/v1/setup/company', () =>
+          HttpResponse.json(
+            apiSuccess({
+              company_name: 'Paradisia',
+              description: null,
+              template_applied: 'product_team',
+              department_count: 6,
+              agent_count: 1,
+              agents: [],
+            }),
+          ),
+        ),
+      )
+
+      await useSetupWizardStore.getState().reconcileCompletionFromBackend()
+
+      const state = useSetupWizardStore.getState()
+      expect(state.companyResponse?.company_name).toBe('Paradisia')
+      expect(state.companyName).toBe('Paradisia')
+      expect(state.selectedTemplate).toBe('product_team')
+      expect(state.blankSelected).toBe(false)
+    })
+
     it('self-corrects a stale providers flag when the backend no longer has providers', async () => {
       // A stale localStorage flag (data deleted server-side since last session)
       // must be derived back to incomplete -- the merge no longer re-blocks, so

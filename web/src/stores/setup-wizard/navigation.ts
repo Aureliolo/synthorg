@@ -1,4 +1,4 @@
-import { getSetupStatus } from '@/api/endpoints/setup'
+import { getCompany, getSetupStatus } from '@/api/endpoints/setup'
 import { resolveAgentModels } from '@/utils/setup-validation'
 import type { NavigationSlice, SliceCreator, WizardMode, WizardStep } from './types'
 
@@ -146,16 +146,25 @@ async function reconcileCompletionFromBackendImpl(
     // zero-agent Complete screen. ``fetchAgents`` / ``fetchProviders`` swallow
     // their own errors into ``*Error`` state, so ``allSettled`` is belt-and-
     // braces; a failed hydration falls back to the per-step lazy fetch.
-    await Promise.allSettled([
+    // Hydrate ALL backend-owned state in one pass (providers, agents, the
+    // company + its applied template, and the template catalogue), and flip
+    // ``statusReconciled`` only AFTER it lands so the URL-sync holds the
+    // operator on the requested step until the store reflects reality (never
+    // flashing an empty Review or a "no company" skip form). ``getCompany``
+    // 404s before a company exists, so it is caught to null; the slice
+    // ``fetch*`` actions swallow their own errors, so this never rejects.
+    const [, , , company] = await Promise.all([
       status.has_providers ? get().fetchProviders() : Promise.resolve(),
       status.has_agents ? get().fetchAgents() : Promise.resolve(),
+      status.has_company ? get().fetchTemplates() : Promise.resolve(),
+      status.has_company ? getCompany().catch(() => null) : Promise.resolve(null),
     ])
     set((s) => {
       const completed = { ...s.stepsCompleted }
       // Providers + agents carry unambiguous backend signals, so derive both
-      // ways: a stale localStorage flag (the data was deleted server-side
-      // since the last session) self-corrects to incomplete instead of
-      // letting the operator sail past an empty step.
+      // ways: a stale flag (the data was deleted server-side since the last
+      // session) self-corrects to incomplete instead of letting the operator
+      // sail past an empty step.
       completed.providers = status.has_providers
       completed.agents = status.has_agents
       // A created company implies its template + mode were chosen in a prior
@@ -172,6 +181,22 @@ async function reconcileCompletionFromBackendImpl(
       // re-block on re-picking a theme -- it stays reachable via the progress
       // bar and is changeable later in Settings.
       if (status.has_agents) completed.theme = true
+      if (company) {
+        // Backend is the source of truth: rehydrate the company + its applied
+        // template, overriding any client draft. This is what lets a resumed
+        // wizard render the real company (not the blank skip form) and what
+        // makes a re-apply run against the real template instead of wiping the
+        // roster with a template-less apply.
+        return {
+          stepsCompleted: completed,
+          statusReconciled: true,
+          companyResponse: company,
+          companyName: company.company_name,
+          companyDescription: company.description ?? '',
+          selectedTemplate: company.template_applied,
+          blankSelected: company.template_applied === null,
+        }
+      }
       return { stepsCompleted: completed, statusReconciled: true }
     })
   } catch {

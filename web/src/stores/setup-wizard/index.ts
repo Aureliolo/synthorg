@@ -27,7 +27,6 @@ type PersistedSetupState = Pick<
   | 'currency'
   | 'budgetCapEnabled'
   | 'budgetCap'
-  | 'companyResponse'
   | 'selectedTemplate'
   | 'blankSelected'
   | 'templateVariables'
@@ -50,10 +49,6 @@ const persistOptions: PersistOptions<SetupWizardState, PersistedSetupState> = {
     currency: state.currency,
     budgetCapEnabled: state.budgetCapEnabled,
     budgetCap: state.budgetCap,
-    // Persisted so the Complete step survives a forward/back navigation
-    // (or a page reload) without re-falling-back to the SkipWizardForm
-    // branch when the company has actually already been created.
-    companyResponse: state.companyResponse,
     selectedTemplate: state.selectedTemplate,
     blankSelected: state.blankSelected,
     templateVariables: state.templateVariables,

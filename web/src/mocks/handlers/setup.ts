@@ -5,6 +5,7 @@ import type {
   createCompany,
   getAgents,
   getAvailableLocales,
+  getCompany,
   getNameLocales,
   getSetupStatus,
   listPersonalityPresets,
@@ -94,6 +95,18 @@ export const setupHandlers = [
       { status: 201 },
     )
   }),
+  http.get('/api/v1/setup/company', () =>
+    HttpResponse.json(
+      successFor<typeof getCompany>({
+        company_name: 'Setup Co',
+        description: null,
+        template_applied: 'startup',
+        department_count: 3,
+        agent_count: 1,
+        agents: [buildAgentSummary()],
+      }),
+    ),
+  ),
   http.post('/api/v1/setup/agent', async ({ request }) => {
     const body = (await request.json()) as {
       name: string
