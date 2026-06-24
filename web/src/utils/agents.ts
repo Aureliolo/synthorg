@@ -95,14 +95,6 @@ const SENIORITY_RANK: Readonly<Record<SeniorityLevel, number>> = {
   junior: 0, mid: 1, senior: 2, lead: 3, principal: 4, director: 5, vp: 6, c_suite: 7,
 }
 
-/**
- * Return the numeric seniority rank for a level (or ``-1`` for null),
- * suitable for use as a sort key or head-picking tiebreak.
- */
-export function seniorityRank(level: SeniorityLevel | null): number {
-  return level === null ? -1 : SENIORITY_RANK[level]
-}
-
 const STATUS_RANK: Record<AgentStatus, number> = {
   active: 0, onboarding: 1, on_leave: 2, terminated: 3,
 }
