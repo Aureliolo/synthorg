@@ -48,7 +48,7 @@ ci:
   # local-only pre-push hook surface) so pre-commit.ci does not pick
   # them up; their CI counterpart is the ``Lint`` job in ``ci.yml``
   # which runs the same scripts on every PR.
-  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, lychee, vale, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, persistence-protocol-uniformity, dependency-inversion, provider-complete-chokepoint, no-new-logger-exception-str-exc, completion-config-temperature, otlp-span-redaction, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, long-running-loop-kill-switch, list-pagination, domain-error-hierarchy, dead-api-endpoints, dual-backend-test-parity, schema-drift, no-magic-numbers, convention-gate-inventory, mcp-admin-guardrail, runtime-stats-freshness, dto-types-ts-in-sync, no-stdlib-logging, module-size-budget, no-growth-in-god-modules, no-central-junk-drawer, no-circular-imports, lint-imports, architecture-drift, module-depth, protocol-documented, no-module-level-io, state-slice-immutability, strategy-protocol-injection, settings-namespace-complete, feature-manifest, no-implicit-state-attribute, feature-index-freshness, deptry, vulture, interrogate, sqlfluff, yamllint, web-knip, web-circular]
+  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, lychee, vale, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, persistence-protocol-uniformity, dependency-inversion, provider-complete-chokepoint, no-new-logger-exception-str-exc, completion-config-temperature, otlp-span-redaction, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, long-running-loop-kill-switch, list-pagination, domain-error-hierarchy, dead-api-endpoints, dual-backend-test-parity, schema-drift, no-magic-numbers, convention-gate-inventory, mcp-admin-guardrail, runtime-stats-freshness, dto-types-ts-in-sync, no-client-state-persistence, no-stdlib-logging, module-size-budget, no-growth-in-god-modules, no-central-junk-drawer, no-circular-imports, lint-imports, architecture-drift, module-depth, protocol-documented, no-module-level-io, state-slice-immutability, strategy-protocol-injection, settings-namespace-complete, feature-manifest, no-implicit-state-attribute, feature-index-freshness, deptry, vulture, interrogate, sqlfluff, yamllint, web-knip, web-circular]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -786,6 +786,18 @@ repos:
         # config. A backend DTO edit that does not regenerate the
         # mirrors fails the gate before the diff ships.
         files: ^(src/synthorg/api/.*\.py|src/synthorg/core/.*\.py|scripts/(generate_dto_types_ts|check_dto_types_ts_in_sync|export_openapi)\.py|src/synthorg/api/openapi\.py|web/src/api/types/(openapi|dtos|enum-values)\.gen\.ts|web/package\.json|web/package-lock\.json|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
+
+      - id: no-client-state-persistence
+        name: no-client-state-persistence gate (web dashboard persists no app state client-side)
+        entry: uv run python scripts/check_no_client_state_persistence.py
+        language: system
+        # Trigger on any web source edit + the gate itself: a new
+        # localStorage / sessionStorage / indexedDB access or zustand
+        # ``persist`` middleware outside the allowlist fails before the diff
+        # ships. The backend is the single source of truth (web/CLAUDE.md).
+        files: ^(web/src/.*\.tsx?|scripts/check_no_client_state_persistence\.py)$
         pass_filenames: false
         stages: [pre-commit, pre-push]
 

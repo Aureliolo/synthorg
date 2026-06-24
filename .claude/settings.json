@@ -123,6 +123,11 @@
             "type": "command",
             "command": "bash scripts/check_no_audit_scratch_scripts.sh",
             "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/check_no_client_state_persistence_hook.sh",
+            "timeout": 5000
           }
         ]
       }

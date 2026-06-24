@@ -57,10 +57,11 @@ export interface NavigationSlice {
   wizardMode: WizardMode
   /**
    * True once ``reconcileCompletionFromBackend`` has run this session.
-   * Step-completion is persisted in localStorage but the provider/agent
-   * DATA is not, so a reload would otherwise unmark already-finished steps
-   * and bounce the operator backwards. The URL-sync waits on this flag
-   * before redirecting away from a step the URL requested.
+   * The wizard persists nothing client-side: step-completion + all data are
+   * hydrated from the backend on mount, so before the reconcile lands the
+   * store holds only defaults. The URL-sync waits on this flag before
+   * redirecting away from a step the URL requested, so a reload never bounces
+   * the operator backwards off a step whose backing data is still loading.
    */
   statusReconciled: boolean
   setStep: (step: WizardStep) => void
