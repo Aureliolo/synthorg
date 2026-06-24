@@ -82,3 +82,14 @@ _r.register(
         group=_GROUP,
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ORG_CHART,
+        key="collapsed_departments",
+        type=SettingType.JSON,
+        default="[]",
+        description="Collapsed department ids in the org chart, as a JSON array.",
+        group=_GROUP,
+    )
+)

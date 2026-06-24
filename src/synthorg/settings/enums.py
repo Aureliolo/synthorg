@@ -40,6 +40,7 @@ class SettingNamespace(StrEnum):
     DEMO = "demo"
     APPEARANCE = "appearance"
     ORG_CHART = "org_chart"
+    DASHBOARD = "dashboard"
 
 
 class SettingType(StrEnum):
