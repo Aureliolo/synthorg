@@ -9,7 +9,8 @@ from synthorg.config.schema import ProviderModelConfig
 from synthorg.templates.model_matcher import match_all_agents
 from synthorg.templates.model_matcher_tiering import (
     DEFAULT_TIER_OVERRIDES,
-    _effective_tier,
+    _is_promoted,
+    _model_tiers,
     demand_tier,
     prune_dominated,
     rank_by_quality,
@@ -230,21 +231,48 @@ class TestUsableFloor:
 
 @pytest.mark.unit
 class TestTierOverride:
-    def test_default_override_promotes_glm_to_top_tier(self) -> None:
+    def test_default_override_promotes_glm_additively(self) -> None:
         model = _model("glm-5.2", cost_tier=3, family="glm", generation=5.2)
-        # Scraped usage tier is 3; the curated override promotes it to 4 so the
-        # matcher reaches for it on the hardest (tier-4) work.
-        assert _effective_tier(model) == 3
-        assert _effective_tier(model, DEFAULT_TIER_OVERRIDES) == 4
+        # Scraped usage tier is 3; the curated override promotes it to 4. The
+        # promotion is ADDITIVE -- glm-5.2 competes in both its cheap tier-3
+        # band and the hardest tier-4 work, and is flagged promoted.
+        assert _model_tiers(model) == (3,)
+        assert _model_tiers(model, DEFAULT_TIER_OVERRIDES) == (3, 4)
+        assert _is_promoted(model, DEFAULT_TIER_OVERRIDES) is True
 
-    def test_override_by_family(self) -> None:
+    def test_override_by_family_is_additive(self) -> None:
         model = _model("acme-1", cost_tier=1, family="acme", generation=1.0)
-        assert _effective_tier(model, {"acme": 4}) == 4
+        assert _model_tiers(model, {"acme": 4}) == (1, 4)
 
     def test_override_by_id_beats_family(self) -> None:
         model = _model("acme-1", cost_tier=1, family="acme", generation=1.0)
-        assert _effective_tier(model, {"acme": 2, "acme-1": 4}) == 4
+        assert _model_tiers(model, {"acme": 2, "acme-1": 4}) == (1, 4)
 
-    def test_demotion_lowers_tier(self) -> None:
+    def test_demotion_replaces_tier(self) -> None:
         model = _model("weak", cost_tier=4, family="weak", generation=1.0)
-        assert _effective_tier(model, {"weak": 1}) == 1
+        # A demotion is NOT additive: the known-weak model competes only in its
+        # lowered tier, never its inflated scraped tier.
+        assert _model_tiers(model, {"weak": 1}) == (1,)
+        assert _is_promoted(model, {"weak": 1}) is False
+
+    def test_promoted_model_competes_in_both_bands(self) -> None:
+        glm = _model("glm-5.2", cost_tier=3, family="glm", generation=5.2)
+        mid = _model("mid-1", cost_tier=3, family="mid", generation=3.0)
+        top = _model("top-1", cost_tier=4, family="top", generation=4.0)
+        overrides = {"glm-5.2": 4}
+        pool = [glm, mid, top]
+        # Promoted glm is distance-0 to BOTH tier 3 and tier 4, and its
+        # promotion bonus wins the family-spread tie against an equally-unused
+        # rival, so it is reachable for hard work AND cheap work.
+        assert select_for_demand(pool, 4, Counter(), overrides) is glm
+        assert select_for_demand(pool, 3, Counter(), overrides) is glm
+
+    def test_promotion_bonus_yields_to_less_used_family(self) -> None:
+        glm = _model("glm-5.2", cost_tier=3, family="glm", generation=5.2)
+        fresh = _model("fresh-1", cost_tier=4, family="fresh", generation=4.0)
+        overrides = {"glm-5.2": 4}
+        # Spread still dominates: the 0.5 bonus cannot beat a family a full pick
+        # less used, so the roster never collapses to all-glm.
+        assert (
+            select_for_demand([glm, fresh], 4, Counter({"glm": 1}), overrides) is fresh
+        )

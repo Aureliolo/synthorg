@@ -49,6 +49,14 @@ _NO_TIER_OVERRIDES: Final[Mapping[str, int]] = MappingProxyType({})
 # for the spread, so a 1B never beats a same-tier 26B just for variety.
 _SPREAD_MIN_QUALITY_FRACTION: Final[float] = 0.125
 
+# Family-spread discount applied to a curated-PROMOTED model (one whose
+# override sits above its scraped cost tier -- cheap quota, top capability,
+# e.g. glm-5.2). It shaves a fraction off the model's effective family-usage so
+# such a model is chosen a little MORE often without overriding family-spread:
+# at 0.5 a promoted family beats an equally-used rival family but still yields
+# to a strictly-less-used one, so the roster never collapses to all-one-model.
+_PROMOTION_SPREAD_BONUS: Final[float] = 0.5
+
 
 def demand_tier(requirement: ModelRequirement) -> int:
     """Map a role's declared capability demand to a target cost tier (1-4).
@@ -123,24 +131,49 @@ def _tier_override(
     return overrides.get(family) if family is not None else None
 
 
-def _effective_tier(
+def _model_tiers(
     model: ProviderModelConfig,
     overrides: Mapping[str, int] = _NO_TIER_OVERRIDES,
-) -> int:
-    """Resolve a model's cost tier: override, else scraped, else balanced.
+) -> tuple[int, ...]:
+    """Resolve every cost tier a model competes in.
+
+    A *promotion* (override strictly above the scraped cost tier) is ADDITIVE:
+    the model competes in both its cheap scraped tier and its promoted tier, so
+    a cheap-but-capable model (glm-5.2: tier-3 quota, tier-4 capability) is
+    reachable both as value and for the hardest work. A *demotion* (override at
+    or below the scraped tier) REPLACES, so a known-weak model never re-enters
+    its inflated scraped tier. A model with neither a scraped tier nor an
+    override is uncomparable and yields an empty tuple.
 
     Returns:
-        The effective tier (1-4) -- a curated override wins, otherwise the
-        model's ``cost_tier``, otherwise the balanced tier.
+        The tiers (1-4) the model competes in: ``()`` when uncomparable, one
+        tier for a plain / demoted / override-only model, two for a promotion.
     """
+    scraped = model.metadata.cost_tier
     override = _tier_override(model, overrides)
-    if override is not None:
-        return override
-    return (
-        model.metadata.cost_tier
-        if model.metadata.cost_tier is not None
-        else _TIER_BALANCED
-    )
+    if override is None:
+        return (scraped,) if scraped is not None else ()
+    if scraped is None or override <= scraped:
+        return (override,)
+    return (scraped, override)
+
+
+def _is_promoted(
+    model: ProviderModelConfig,
+    overrides: Mapping[str, int] = _NO_TIER_OVERRIDES,
+) -> bool:
+    """Whether a curated override promotes the model above its scraped tier.
+
+    Returns:
+        ``True`` only for a genuine promotion (cheap quota, higher capability);
+        ``False`` for a plain model, a demotion, or an override with no scraped
+        baseline to promote from.
+    """
+    scraped = model.metadata.cost_tier
+    if scraped is None:
+        return False
+    override = _tier_override(model, overrides)
+    return override is not None and override > scraped
 
 
 def prune_dominated(
@@ -151,27 +184,33 @@ def prune_dominated(
 
     Two models of the same family in the same cost tier cost the same to run,
     so only the stronger (newer/larger/more-capable) one is ever worth using.
-    The grouping tier honours *overrides* so a promoted model is compared in
-    its promoted tier. Models without a resolvable tier or family pass through
-    untouched (they cannot be safely compared).
+    Grouping honours *overrides* via :func:`_model_tiers`, so a PROMOTED model
+    competes (and can win) in both its scraped and its promoted tier, while a
+    demoted model is judged only in its lowered tier. Models without a
+    resolvable tier or family pass through untouched (they cannot be safely
+    compared).
 
     Returns:
-        The surviving models (best-per-(tier, family) plus the unclassifiable).
+        The surviving models (best-per-(tier, family) plus the unclassifiable),
+        each appearing once even when it wins several groups.
     """
     best_by_group: dict[tuple[int, str], ProviderModelConfig] = {}
     passthrough: list[ProviderModelConfig] = []
     for model in models:
         family = model.metadata.family
-        override = _tier_override(model, overrides)
-        tier = override if override is not None else model.metadata.cost_tier
-        if family is None or tier is None:
+        tiers = _model_tiers(model, overrides)
+        if family is None or not tiers:
             passthrough.append(model)
             continue
-        group = (tier, family)
-        incumbent = best_by_group.get(group)
-        if incumbent is None or _quality_key(model) > _quality_key(incumbent):
-            best_by_group[group] = model
-    return [*best_by_group.values(), *passthrough]
+        for tier in tiers:
+            group = (tier, family)
+            incumbent = best_by_group.get(group)
+            if incumbent is None or _quality_key(model) > _quality_key(incumbent):
+                best_by_group[group] = model
+    # A promoted model can win several (tier, family) groups; dedup by identity
+    # (first insertion wins, preserving order) so it appears exactly once.
+    survivors = list({id(m): m for m in best_by_group.values()}.values())
+    return [*survivors, *passthrough]
 
 
 def select_for_demand(
@@ -182,9 +221,12 @@ def select_for_demand(
 ) -> ProviderModelConfig | None:
     """Pick a model nearest the target cost tier, spreading across families.
 
-    Chooses from the models whose tier (after *overrides*) is closest to
-    *target_tier* (the best achievable when nothing sits exactly at it), then
-    prefers the least-used family so a roster fans out; ties resolve to the
+    Chooses from the models whose tier is closest to *target_tier* (the best
+    achievable when nothing sits exactly at it). A promoted model is near both
+    its scraped and its promoted tier (:func:`_model_tiers`), so it competes
+    for either. Among the nearest band, the least-used family fans the roster
+    out; a promoted model carries a small spread discount so it is picked a
+    little more often without overriding spread, and ties resolve to the
     stronger model.
 
     Args:
@@ -198,20 +240,23 @@ def select_for_demand(
     """
     if not eligible:
         return None
-    distance = {
-        id(m): abs(_effective_tier(m, overrides) - target_tier) for m in eligible
-    }
+
+    def _distance(model: ProviderModelConfig) -> int:
+        tiers = _model_tiers(model, overrides) or (_TIER_BALANCED,)
+        return min(abs(tier - target_tier) for tier in tiers)
+
+    distance = {id(m): _distance(m) for m in eligible}
     nearest = min(distance.values())
     band = rank_by_quality([m for m in eligible if distance[id(m)] == nearest])
     spread_pool = _within_quality_floor(band)
-    best_index = min(
-        range(len(spread_pool)),
-        key=lambda i: (
-            family_usage[spread_pool[i].metadata.family or spread_pool[i].id],
-            i,
-        ),
-    )
-    return spread_pool[best_index]
+
+    def _spread_key(i: int) -> tuple[float, int]:
+        model = spread_pool[i]
+        used = float(family_usage[model.metadata.family or model.id])
+        bonus = _PROMOTION_SPREAD_BONUS if _is_promoted(model, overrides) else 0.0
+        return (used - bonus, i)
+
+    return spread_pool[min(range(len(spread_pool)), key=_spread_key)]
 
 
 def _within_quality_floor(
