@@ -16,17 +16,14 @@ import type { CurrencyCode } from '@/utils/currencies'
 import { ErrorCode } from '@/api/types/errors'
 import { TemplateVariables } from './TemplateVariables'
 import type { SetupAgentSummary, SetupCompanyResponse } from '@/api/types/setup'
+import type { ModelTierProfile } from '@/stores/setup-wizard'
 
-type TemplateVariableValue = string | number | boolean
-
-/** Model-tier profile choices (single source for the select + default). */
+/** Model-tier profile choices (single source for the select). */
 const MODEL_TIER_PROFILE_OPTIONS = [
   { value: 'economy', label: 'Economy' },
   { value: 'balanced', label: 'Balanced' },
   { value: 'premium', label: 'Premium' },
 ] as const
-
-const DEFAULT_MODEL_TIER_PROFILE = 'balanced'
 
 interface CompanyDetailsFormProps {
   companyName: string
@@ -35,8 +32,10 @@ interface CompanyDetailsFormProps {
   setCompanyDescription: (value: string) => void
   currency: CurrencyCode
   setCurrency: (value: CurrencyCode) => void
-  templateVariables: Readonly<Record<string, TemplateVariableValue>>
-  setTemplateVariable: (key: string, value: TemplateVariableValue) => void
+  budget: number
+  setBudget: (value: number) => void
+  modelTierProfile: ModelTierProfile
+  setModelTierProfile: (value: ModelTierProfile) => void
   disabled?: boolean
 }
 
@@ -47,8 +46,10 @@ function CompanyDetailsForm({
   setCompanyDescription,
   currency,
   setCurrency,
-  templateVariables,
-  setTemplateVariable,
+  budget,
+  setBudget,
+  modelTierProfile,
+  setModelTierProfile,
   disabled,
 }: CompanyDetailsFormProps) {
   return (
@@ -85,6 +86,20 @@ function CompanyDetailsForm({
         error={graphemeLength(companyDescription) > 1000 ? 'Max 1000 characters' : null}
       />
 
+      <InputField
+        label="Monthly Budget"
+        type="number"
+        min={0}
+        value={String(budget)}
+        onChange={(e) => {
+          const parsed = Number(e.currentTarget.value)
+          if (Number.isFinite(parsed) && parsed >= 0) setBudget(parsed)
+        }}
+        placeholder="500"
+        disabled={disabled}
+        hint="Set your monthly budget in the display currency. You can also change it later in the dashboard."
+      />
+
       <SelectField
         label="Display Currency"
         options={CURRENCY_OPTIONS}
@@ -98,9 +113,13 @@ function CompanyDetailsForm({
       <SelectField
         label="Model Tier Profile"
         options={MODEL_TIER_PROFILE_OPTIONS}
-        value={String(templateVariables['model_tier_profile'] ?? DEFAULT_MODEL_TIER_PROFILE)}
+        value={modelTierProfile}
         disabled={disabled}
-        onChange={(v) => setTemplateVariable('model_tier_profile', v)}
+        onChange={(v) => {
+          if (v === 'economy' || v === 'balanced' || v === 'premium') {
+            setModelTierProfile(v)
+          }
+        }}
         hint="Influences which model tiers are assigned to agents."
       />
     </div>
@@ -269,6 +288,8 @@ function useCompanyStepController() {
   const companyName = useSetupWizardStore((s) => s.companyName)
   const companyDescription = useSetupWizardStore((s) => s.companyDescription)
   const currency = useSetupWizardStore((s) => s.currency)
+  const budget = useSetupWizardStore((s) => s.budget)
+  const modelTierProfile = useSetupWizardStore((s) => s.modelTierProfile)
   const companyResponse = useSetupWizardStore((s) => s.companyResponse)
   const companyLoading = useSetupWizardStore((s) => s.companyLoading)
   const companyError = useSetupWizardStore((s) => s.companyError)
@@ -279,6 +300,8 @@ function useCompanyStepController() {
   const setCompanyName = useSetupWizardStore((s) => s.setCompanyName)
   const setCompanyDescription = useSetupWizardStore((s) => s.setCompanyDescription)
   const setCurrency = useSetupWizardStore((s) => s.setCurrency)
+  const setBudget = useSetupWizardStore((s) => s.setBudget)
+  const setModelTierProfile = useSetupWizardStore((s) => s.setModelTierProfile)
   const setTemplateVariable = useSetupWizardStore((s) => s.setTemplateVariable)
   const submitCompany = useSetupWizardStore((s) => s.submitCompany)
   const goToProvidersStep = useGoToStep('providers')
@@ -351,7 +374,8 @@ function useCompanyStepController() {
 
   return {
     selectedTemplate, companyName, setCompanyName, companyDescription, setCompanyDescription,
-    currency, setCurrency, templateVariables, setTemplateVariable, selectedTemplateObj,
+    currency, setCurrency, budget, setBudget, modelTierProfile, setModelTierProfile,
+    templateVariables, setTemplateVariable, selectedTemplateObj,
     companyResponse, companyError, agents, companyLoading, applyDisabled, tierCoverageInsufficient,
     fieldsLocked, showApplyButton, editing, startEditing, handleApplyTemplate, goToProvidersStep,
   }
@@ -359,28 +383,11 @@ function useCompanyStepController() {
 
 export function CompanyStep() {
   const {
-    selectedTemplate,
-    companyName,
-    setCompanyName,
-    companyDescription,
-    setCompanyDescription,
-    currency,
-    setCurrency,
-    templateVariables,
-    setTemplateVariable,
-    selectedTemplateObj,
-    companyResponse,
-    companyError,
-    agents,
-    companyLoading,
-    applyDisabled,
-    tierCoverageInsufficient,
-    fieldsLocked,
-    showApplyButton,
-    editing,
-    startEditing,
-    handleApplyTemplate,
-    goToProvidersStep,
+    selectedTemplate, companyName, setCompanyName, companyDescription, setCompanyDescription,
+    currency, setCurrency, budget, setBudget, modelTierProfile, setModelTierProfile,
+    templateVariables, setTemplateVariable, selectedTemplateObj,
+    companyResponse, companyError, agents, companyLoading, applyDisabled, tierCoverageInsufficient,
+    fieldsLocked, showApplyButton, editing, startEditing, handleApplyTemplate, goToProvidersStep,
   } = useCompanyStepController()
 
   return (
@@ -407,8 +414,10 @@ export function CompanyStep() {
         setCompanyDescription={setCompanyDescription}
         currency={currency}
         setCurrency={setCurrency}
-        templateVariables={templateVariables}
-        setTemplateVariable={setTemplateVariable}
+        budget={budget}
+        setBudget={setBudget}
+        modelTierProfile={modelTierProfile}
+        setModelTierProfile={setModelTierProfile}
         disabled={fieldsLocked}
       />
 

@@ -109,10 +109,17 @@ export interface TemplateSlice {
   setTemplateVariable: (key: string, value: string | number | boolean) => void
 }
 
+/** Model-tier bias applied across agents at company creation. */
+export type ModelTierProfile = 'economy' | 'balanced' | 'premium'
+
 export interface CompanySlice {
   companyName: string
   companyDescription: string
   currency: CurrencyCode
+  /** Monthly company budget in the configured currency (backend-owned). */
+  budget: number
+  /** Model-tier bias sent at company creation and consumed by the matcher. */
+  modelTierProfile: ModelTierProfile
   budgetCapEnabled: boolean
   budgetCap: number | null
   companyResponse: SetupCompanyResponse | null
@@ -139,6 +146,8 @@ export interface CompanySlice {
   setCompanyName: (name: string) => void
   setCompanyDescription: (desc: string) => void
   setCurrency: (currency: CurrencyCode) => void
+  setBudget: (budget: number) => void
+  setModelTierProfile: (profile: ModelTierProfile) => void
   setBudgetCapEnabled: (enabled: boolean) => void
   setBudgetCap: (cap: number | null) => void
   submitCompany: () => Promise<void>

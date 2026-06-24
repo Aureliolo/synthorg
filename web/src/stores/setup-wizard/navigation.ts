@@ -1,4 +1,5 @@
 import { getCompany, getSetupStatus } from '@/api/endpoints/setup'
+import { isCurrencyCode } from '@/utils/currencies'
 import { resolveAgentModels } from '@/utils/setup-validation'
 import type { NavigationSlice, SliceCreator, WizardMode, WizardStep } from './types'
 
@@ -195,6 +196,12 @@ async function reconcileCompletionFromBackendImpl(
           companyDescription: company.description ?? '',
           selectedTemplate: company.template_applied,
           blankSelected: company.template_applied === null,
+          currency:
+            company.currency && isCurrencyCode(company.currency)
+              ? company.currency
+              : s.currency,
+          budget: company.budget ?? s.budget,
+          modelTierProfile: company.model_tier_profile,
         }
       }
       return { stepsCompleted: completed, statusReconciled: true }

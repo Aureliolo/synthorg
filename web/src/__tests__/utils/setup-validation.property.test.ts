@@ -31,6 +31,9 @@ const makeCompanyResponse = (): SetupCompanyResponse => ({
   description: null,
   template_applied: "startup",
   department_count: 1,
+  currency: "USD",
+  budget: 500,
+  model_tier_profile: "balanced",
   agent_count: 1,
   agents: [],
 });

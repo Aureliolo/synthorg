@@ -11,6 +11,7 @@ import { createThemeSlice } from './theme'
 import type { SetupWizardState, WizardStep } from './types'
 
 export type {
+  ModelTierProfile,
   SetupWizardState,
   ThemeSettings,
   WizardMode,
