@@ -390,13 +390,20 @@ async def persist_company_settings(
     company_name: str,
     description: str | None,
     departments_json: str,
+    template_applied: str | None = None,
 ) -> None:
-    """Write description and departments, then company name as the setup marker.
+    """Write description, departments, template, then company name as the marker.
 
     ``check_has_company`` treats ``company_name`` as the setup-complete
     marker, so write it last; a failure in an earlier ``set`` then
     leaves the instance reading as un-initialised rather than as
     half-initialised.
+
+    ``template_applied`` is persisted as a distinct setting (it is otherwise
+    only present in the POST response and the agents blob) so the resumed
+    wizard can rehydrate which template built the company -- without it, a
+    resume cannot reconstruct ``companyResponse`` and a re-apply would run
+    template-less, wiping the roster.
     """
     await settings_svc.set(
         "company",
@@ -407,6 +414,11 @@ async def persist_company_settings(
         "company",
         "departments",
         departments_json or "[]",
+    )
+    await settings_svc.set(
+        "company",
+        "template_applied",
+        template_applied or "",
     )
     await settings_svc.set(
         "company",

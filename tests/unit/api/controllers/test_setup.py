@@ -122,6 +122,60 @@ class TestSetupCompany:
         assert stored is not None
         assert stored[0] == ""
 
+    async def test_get_company_rehydrates_after_create(
+        self,
+        async_test_client: LoopAsyncClient,
+    ) -> None:
+        """GET /setup/company rebuilds the company from settings for resume."""
+        await async_test_client.post(
+            "/api/v1/setup/company",
+            json={"company_name": "Rehydrate Co"},
+        )
+        resp = await async_test_client.get("/api/v1/setup/company")
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["company_name"] == "Rehydrate Co"
+        assert data["template_applied"] is None
+        assert data["department_count"] == 0
+        assert data["agents"] == []
+
+    async def test_get_company_404_when_absent(
+        self,
+        async_test_client: LoopAsyncClient,
+    ) -> None:
+        """GET /setup/company 404s when no company has been created."""
+        resp = await async_test_client.get("/api/v1/setup/company")
+        assert resp.status_code == 404
+
+    async def test_reapply_without_template_over_populated_company_rejected(
+        self,
+        async_test_client: LoopAsyncClient,
+    ) -> None:
+        """A template-less re-apply must not wipe an existing roster.
+
+        This is the resume data-loss guard: a client whose template was not
+        hydrated re-applies as blank; the backend must reject rather than
+        silently regenerating an empty company over the existing agents.
+        """
+        app_state = async_test_client.app.state.app_state
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
+        now = datetime.now(UTC).isoformat()
+        repo._store[("company", "company_name")] = ("Paradisia", now)
+        roster = json.dumps([{"name": "A", "role": "CEO", "department": "executive"}])
+        repo._store[("company", "agents")] = (roster, now)
+        try:
+            resp = await async_test_client.post(
+                "/api/v1/setup/company",
+                json={"company_name": "Paradisia"},
+            )
+            assert resp.status_code == 409
+            assert "agent" in resp.json()["error"].lower()
+            # The roster must be left untouched by the rejected re-apply.
+            assert repo._store[("company", "agents")][0] == roster
+        finally:
+            repo._store.pop(("company", "company_name"), None)
+            repo._store.pop(("company", "agents"), None)
+
     @pytest.mark.parametrize(
         ("description_input", "expected_response", "expected_stored"),
         [

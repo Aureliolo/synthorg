@@ -8,10 +8,13 @@ matched to the configured provider(s).
 
 import asyncio
 
-from litestar import Controller, post
+from litestar import Controller, get, post
 from litestar.datastructures import State
 from litestar.status_codes import HTTP_201_CREATED
 
+from synthorg.api.controllers.setup._company_read import (
+    build_company_response as _build_company_response,
+)
 from synthorg.api.controllers.setup._embedder_setup import (
     auto_create_template_agents as _auto_create_template_agents,
 )
@@ -34,6 +37,7 @@ from synthorg.api.controllers.setup.company_helpers import (
     resolve_template as _resolve_template,
 )
 from synthorg.api.controllers.setup_agents import (
+    get_existing_agents,
     normalize_description,
 )
 from synthorg.api.controllers.setup_models import (
@@ -42,10 +46,11 @@ from synthorg.api.controllers.setup_models import (
     SetupCompanyResponse,
 )
 from synthorg.api.dto import ApiResponse
-from synthorg.api.guards import require_ceo
+from synthorg.api.guards import require_ceo, require_read_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.setup import (
     SETUP_AGENTS_AUTO_CREATED,
@@ -62,6 +67,37 @@ class SetupCompanyController(Controller):
 
     path = "/setup"
     tags = ("setup",)
+
+    @get(
+        "/company",
+        guards=[require_read_access],
+    )
+    async def get_company(
+        self,
+        state: State,
+    ) -> ApiResponse[SetupCompanyResponse]:
+        """Return the persisted company so any client can rehydrate on resume.
+
+        The wizard holds no client-side company copy; it hydrates from here.
+        Rebuilds the same ``SetupCompanyResponse`` shape ``POST /setup/company``
+        returns, from the ``company.*`` settings.
+
+        Args:
+            state: Application state.
+
+        Returns:
+            The persisted company configuration envelope.
+
+        Raises:
+            NotFoundError: When no company has been created yet.
+        """
+        app_state: AppState = state.app_state
+        settings_svc = settings_service_of(app_state)
+        response = await _build_company_response(settings_svc)
+        if response is None:
+            msg = "No company has been created yet"
+            raise NotFoundError(msg)
+        return ApiResponse(data=response)
 
     @post(
         "/company",
@@ -113,11 +149,29 @@ class SetupCompanyController(Controller):
         # _COMPLETE_LOCK -> _AGENT_LOCK.
         async with _COMPLETE_LOCK:
             await _check_setup_not_complete(settings_svc)
+            # Guard the destructive re-apply: a template-less apply (blank) over
+            # an existing populated company would wipe its roster. That is the
+            # resume data-loss path -- a client whose template was not hydrated
+            # re-applies as blank and silently destroys every agent. Reject
+            # upfront (before any persist) so neither the SPA nor a raw API
+            # caller can lose data; regenerating from a real template, or a
+            # blank create on a fresh company, are both still allowed.
+            if tmpl_res.template is None:
+                existing_agents = await get_existing_agents(settings_svc)
+                if existing_agents:
+                    msg = (
+                        f"Re-applying without a template would remove the "
+                        f"{len(existing_agents)} existing agent(s). Select a "
+                        f"template to regenerate the company, or clear it first "
+                        f"to intentionally start blank."
+                    )
+                    raise ConflictError(msg)
             await _persist_company_settings(
                 settings_svc,
                 data.company_name,
                 description,
                 tmpl_res.departments_json,
+                tmpl_res.template_applied,
             )
 
             agent_summaries: tuple[SetupAgentSummary, ...] = ()

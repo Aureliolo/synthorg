@@ -117,3 +117,18 @@ _r.register(
         group="Structure",
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMPANY,
+        key="template_applied",
+        type=SettingType.STRING,
+        default=None,
+        description=(
+            "Name of the company template the org was built from (empty for a "
+            "blank company). Persisted so a resumed setup can rehydrate which "
+            "template to regenerate from without a client-side copy."
+        ),
+        group="Structure",
+    )
+)
