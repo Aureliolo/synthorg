@@ -16,7 +16,8 @@ interface Department {
 }
 
 // Seniority rank per agent level; a department inherits the rank of its most
-// senior agent, so the one holding the c-suite sits at the top of the chart.
+// senior agent, used as the leadership tiebreak when no department is named
+// for leadership.
 const LEVEL_RANK: Record<string, number> = {
   c_suite: 8,
   vp: 7,
@@ -27,6 +28,18 @@ const LEVEL_RANK: Record<string, number> = {
   mid: 2,
   junior: 1,
 }
+
+// Department names that denote the leadership tier. Matched first (before the
+// level tiebreak) because a head-role exec is often materialised with a
+// generic ``mid`` level, which would otherwise let a department with a senior
+// IC outrank the executive box.
+const LEADERSHIP_DEPTS = new Set([
+  'executive',
+  'leadership',
+  'exec',
+  'c_suite',
+  'management',
+])
 
 function humanizeDept(dept: string): string {
   if (!dept) return 'Unassigned'
@@ -64,6 +77,10 @@ function splitLeadership(depts: Department[]): {
   rest: Department[]
 } {
   if (depts.length < 2) return { lead: null, rest: depts }
+  const named = depts.find((d) => LEADERSHIP_DEPTS.has(d.name.toLowerCase()))
+  if (named) {
+    return { lead: named, rest: depts.filter((d) => d !== named) }
+  }
   const sorted = [...depts].sort((a, b) => b.rank - a.rank)
   const [top, second] = sorted
   if (top && second && top.rank > second.rank) {
@@ -86,16 +103,34 @@ function AgentRound({ agent }: { agent: SetupAgentSummary }) {
   )
 }
 
-function DepartmentBox({ dept }: { dept: Department }) {
+function DepartmentBox({
+  dept,
+  highlight = false,
+}: {
+  dept: Department
+  highlight?: boolean
+}) {
   return (
-    <div className="flex min-w-[11rem] flex-col gap-3 rounded-lg border border-border bg-card p-card">
+    <div
+      className={cn(
+        'flex min-w-[12rem] flex-col gap-4 rounded-xl border bg-card p-card shadow-sm',
+        highlight ? 'border-primary/40 bg-primary/5' : 'border-border',
+      )}
+    >
       <div className="flex items-center gap-2">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground">
+        <span
+          className={cn(
+            'text-[11px] font-semibold uppercase tracking-wider',
+            highlight ? 'text-primary' : 'text-foreground',
+          )}
+        >
           {dept.label}
         </span>
-        <span className="text-[11px] text-text-muted">{dept.agents.length}</span>
+        <span className="rounded-full bg-muted px-1.5 text-[10px] font-medium text-text-muted">
+          {dept.agents.length}
+        </span>
       </div>
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap gap-4">
         {dept.agents.map((agent, index) => (
           <AgentRound
             // eslint-disable-next-line @eslint-react/no-array-index-key -- agents can share names; index is the stable tiebreaker
@@ -127,7 +162,7 @@ function ChildColumn({
 }) {
   return (
     <div className="flex flex-1 flex-col items-center">
-      <div className="relative h-5 w-full" aria-hidden>
+      <div className="relative h-7 w-full" aria-hidden>
         {!single && (
           <div
             className={cn(
@@ -136,9 +171,9 @@ function ChildColumn({
             )}
           />
         )}
-        <div className="absolute left-1/2 top-0 h-5 w-px -translate-x-1/2 bg-border" />
+        <div className="absolute left-1/2 top-0 h-7 w-px -translate-x-1/2 bg-border" />
       </div>
-      <div className="w-full px-1.5">
+      <div className="w-full px-2">
         <DepartmentBox dept={dept} />
       </div>
     </div>
@@ -167,10 +202,10 @@ export function MiniOrgChart({ agents, className }: MiniOrgChartProps) {
   }
 
   return (
-    <div className={cn('flex flex-col items-center', className)}>
-      <DepartmentBox dept={lead} />
-      <div className="h-5 w-px bg-border" aria-hidden />
-      <div className="flex w-full items-start overflow-x-auto">
+    <div className={cn('flex flex-col items-center py-4', className)}>
+      <DepartmentBox dept={lead} highlight />
+      <div className="h-7 w-px bg-border" aria-hidden />
+      <div className="flex w-full items-start justify-center overflow-x-auto pb-2">
         {rest.map((dept, index) => (
           <ChildColumn
             key={dept.name}

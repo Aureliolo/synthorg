@@ -826,6 +826,21 @@ class TestStrategicModelDefault:
         assert req["priority"] == "quality"
         assert req["requires_reasoning"] is True
 
+    def test_ceo_with_mid_level_still_strategic(self) -> None:
+        """A CEO mislabelled ``mid`` is still recognised by title."""
+        from synthorg.templates._agent_expansion import _expand_single_agent
+
+        agent: dict[str, object] = {
+            "role": "CEO",
+            "level": "mid",
+            "department": "executive",
+        }
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        req = result["model_requirement"]
+        assert isinstance(req, dict)
+        assert req["priority"] == "quality"
+        assert req["requires_reasoning"] is True
+
     def test_explicit_c_suite_level_without_role_match(self) -> None:
         """An explicit c_suite level marks a role strategic even off-title."""
         from synthorg.templates._agent_expansion import _expand_single_agent

@@ -75,18 +75,20 @@ _STRATEGIC_LEVEL: Final[str] = "c_suite"
 def _is_strategic(agent: dict[str, object]) -> bool:
     """Return whether an agent occupies a strategic (c-suite) role.
 
-    Uses the explicit ``level`` when present, else the role-title default, so
-    a department ``head_role`` exec (no explicit level) is still recognised.
+    Strategic by an explicit ``c_suite`` level OR by a role title that implies
+    the c-suite (CEO / CxO / Chief / Founder). Title takes precedence over the
+    level field because a ``head_role`` exec is frequently materialised with a
+    generic ``mid`` level -- keying on the level alone would miss it and the
+    CEO would silently inherit a mid-tier model.
 
     Returns:
-        True when the agent's effective level is the strategic tier.
+        True when the agent's level or role title marks it strategic.
     """
-    role = agent.get("role")
-    if not isinstance(role, str):
-        return False
     level = agent.get("level")
-    effective = level if isinstance(level, str) and level else _default_level(role)
-    return effective == _STRATEGIC_LEVEL
+    if isinstance(level, str) and level == _STRATEGIC_LEVEL:
+        return True
+    role = agent.get("role")
+    return isinstance(role, str) and _default_level(role) == _STRATEGIC_LEVEL
 
 
 def _expand_agents(
