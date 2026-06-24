@@ -2,12 +2,6 @@
 
 import type { SettingNamespace } from '@/api/types/settings'
 
-/** localStorage key for the basic/advanced toggle state. */
-export const SETTINGS_ADVANCED_KEY = 'settings_show_advanced'
-
-/** sessionStorage key for the advanced-mode first-toggle warning. */
-export const SETTINGS_ADVANCED_WARNED_KEY = 'settings_advanced_warned'
-
 /** Display order for setting namespaces shown in the Settings page.
  * Excluded:
  *   - 'providers': the dedicated Providers page surfaces every

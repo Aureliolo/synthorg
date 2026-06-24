@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import fc from 'fast-check'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
+import { useDashboardPrefs } from '@/stores/dashboard-prefs'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { ROUTES } from '@/router/routes'
 import { renderWithRouter } from '../../test-utils'
@@ -126,16 +127,16 @@ describe('Sidebar', () => {
     setup()
 
     expect(screen.getByText('SynthOrg')).toBeInTheDocument()
-    expect(localStorage.getItem('sidebar_collapsed')).toBeNull()
+    expect(useDashboardPrefs.getState().sidebarCollapsed).toBe(false)
 
     await user.click(screen.getByTitle('Collapse sidebar'))
 
     expect(screen.queryByText('SynthOrg')).not.toBeInTheDocument()
-    expect(localStorage.getItem('sidebar_collapsed')).toBe('true')
+    expect(useDashboardPrefs.getState().sidebarCollapsed).toBe(true)
   })
 
   it('expands from collapsed state', async () => {
-    localStorage.setItem('sidebar_collapsed', 'true')
+    useDashboardPrefs.setState({ sidebarCollapsed: true })
     const user = userEvent.setup()
     setup()
 
@@ -144,18 +145,18 @@ describe('Sidebar', () => {
     await user.click(screen.getByTitle('Expand sidebar'))
 
     expect(screen.getByText('SynthOrg')).toBeInTheDocument()
-    expect(localStorage.getItem('sidebar_collapsed')).toBe('false')
+    expect(useDashboardPrefs.getState().sidebarCollapsed).toBe(false)
   })
 
   it('hides Workspace label when collapsed', () => {
-    localStorage.setItem('sidebar_collapsed', 'true')
+    useDashboardPrefs.setState({ sidebarCollapsed: true })
     setup()
 
     expect(screen.queryByText('Workspace')).not.toBeInTheDocument()
   })
 
   it('renders brand mark when collapsed', () => {
-    localStorage.setItem('sidebar_collapsed', 'true')
+    useDashboardPrefs.setState({ sidebarCollapsed: true })
     setup()
 
     expect(screen.getByText('S')).toBeInTheDocument()
@@ -248,7 +249,7 @@ describe('Sidebar', () => {
       isTablet: false,
       isMobile: false,
     })
-    localStorage.setItem('sidebar_collapsed', 'false')
+    useDashboardPrefs.setState({ sidebarCollapsed: false })
     setup()
     // Collapsed shows brand mark "S" instead of "SynthOrg"
     expect(screen.getByText('S')).toBeInTheDocument()

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo } from 'react'
 import { ListHeader } from '@/components/ui/list-header'
 import { MetricCard } from '@/components/ui/metric-card'
 import { ErrorBanner } from '@/components/ui/error-banner'
@@ -7,7 +7,7 @@ import { SkeletonChart } from '@/components/ui/skeleton'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { PostSetupGuidanceCard } from '@/components/setup/PostSetupGuidanceCard'
 import { useDashboardData } from '@/hooks/useDashboardData'
-import { clearFirstRunFlag, readFirstRunFlag } from '@/utils/first-run'
+import { useDashboardPrefs } from '@/stores/dashboard-prefs'
 import { computeMetricCards } from '@/utils/dashboard'
 import { DashboardSkeleton } from './dashboard/DashboardSkeleton'
 import { OrgHealthSection } from './dashboard/OrgHealthSection'
@@ -44,7 +44,12 @@ function DashboardBudgetSection({
 }
 
 export default function DashboardPage() {
-  const [showGuidance, setShowGuidance] = useState(() => readFirstRunFlag())
+  // The post-setup guidance card's dismissal is backend-owned (pure API
+  // consumer). Gate on ``hydrated`` so it only appears once the backend
+  // confirms it has not been dismissed (no flash for users who dismissed it).
+  const guidanceDismissed = useDashboardPrefs((s) => s.postSetupGuidanceDismissed)
+  const prefsHydrated = useDashboardPrefs((s) => s.hydrated)
+  const dismissGuidance = useDashboardPrefs((s) => s.dismissPostSetupGuidance)
 
   const {
     overview,
@@ -67,10 +72,7 @@ export default function DashboardPage() {
     return <DashboardSkeleton />
   }
 
-  const dismissGuidance = (): void => {
-    setShowGuidance(false)
-    clearFirstRunFlag()
-  }
+  const showGuidance = prefsHydrated && !guidanceDismissed
 
   return (
     <div className="space-y-section-gap">

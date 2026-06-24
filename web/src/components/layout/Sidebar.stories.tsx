@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { MemoryRouter } from 'react-router'
 import { useAuthStore } from '@/stores/auth'
-import { Sidebar, STORAGE_KEY } from './Sidebar'
+import { useDashboardPrefs } from '@/stores/dashboard-prefs'
+import { Sidebar } from './Sidebar'
 
 const meta = {
   title: 'Layout/Sidebar',
@@ -40,7 +41,7 @@ type Story = StoryObj<typeof meta>
 export const Expanded: Story = {
   decorators: [
     (Story) => {
-      localStorage.setItem(STORAGE_KEY, 'false')
+      useDashboardPrefs.setState({ sidebarCollapsed: false })
       return <Story />
     },
   ],
@@ -49,7 +50,7 @@ export const Expanded: Story = {
 export const Collapsed: Story = {
   decorators: [
     (Story) => {
-      localStorage.setItem(STORAGE_KEY, 'true')
+      useDashboardPrefs.setState({ sidebarCollapsed: true })
       return <Story />
     },
   ],

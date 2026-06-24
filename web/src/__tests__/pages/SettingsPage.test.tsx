@@ -132,6 +132,7 @@ vi.mock('@/hooks/use-unsaved-changes-guard', () => ({
 }))
 
 import SettingsPage from '@/pages/SettingsPage'
+import { useDashboardPrefs } from '@/stores/dashboard-prefs'
 
 function renderSettings() {
   // SettingsPage uses useUnsavedChangesGuard (calls useBlocker internally),
@@ -211,7 +212,7 @@ describe('SettingsPage', () => {
   })
 
   it('shows advanced settings when advanced mode is enabled', () => {
-    localStorage.setItem('settings_show_advanced', 'true')
+    useDashboardPrefs.setState({ settingsAdvancedMode: true })
     renderSettings()
     expect(screen.getByText('Api Prefix')).toBeInTheDocument()
   })

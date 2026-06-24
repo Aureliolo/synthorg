@@ -6,11 +6,8 @@ import { useSettingsData } from '@/hooks/useSettingsData'
 import { useSettingsDirtyState } from '@/hooks/useSettingsDirtyState'
 import { useSettingsKeyboard } from '@/hooks/useSettingsKeyboard'
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard'
-import {
-  NAMESPACE_ORDER,
-  SETTINGS_ADVANCED_KEY,
-  SETTINGS_ADVANCED_WARNED_KEY,
-} from '@/pages/settings/settings-constants'
+import { useDashboardPrefs } from '@/stores/dashboard-prefs'
+import { NAMESPACE_ORDER } from '@/pages/settings/settings-constants'
 import { buildControllerDisabledMap, saveSettingsBatch } from './utils'
 import {
   buildCodeEntries,
@@ -85,9 +82,10 @@ function useAdvancedMode(
   entries: SettingEntry[],
   setDirtyValues: ReturnType<typeof useSettingsDirtyState>['setDirtyValues'],
 ): AdvancedMode {
-  const [advancedMode, setAdvancedMode] = useState(
-    () => localStorage.getItem(SETTINGS_ADVANCED_KEY) === 'true',
-  )
+  // Advanced-mode toggle + its one-time warning are backend-owned
+  // (dashboard.settings_advanced_mode / settings_advanced_warned); the
+  // dashboard is a pure API consumer with no client-side copy.
+  const advancedMode = useDashboardPrefs((s) => s.settingsAdvancedMode)
   const [showAdvancedWarning, setShowAdvancedWarning] = useState(false)
 
   const pruneAdvancedDrafts = useCallback(() => {
@@ -102,13 +100,12 @@ function useAdvancedMode(
   }, [entries, setDirtyValues])
 
   const setAdvanced = useCallback((value: boolean) => {
-    setAdvancedMode(value)
-    localStorage.setItem(SETTINGS_ADVANCED_KEY, String(value))
+    useDashboardPrefs.getState().setSettingsAdvancedMode(value)
   }, [])
 
   const handleAdvancedToggle = useCallback(
     (checked: boolean) => {
-      if (checked && sessionStorage.getItem(SETTINGS_ADVANCED_WARNED_KEY) !== 'true') {
+      if (checked && !useDashboardPrefs.getState().settingsAdvancedWarned) {
         setShowAdvancedWarning(true)
         return
       }
@@ -119,7 +116,7 @@ function useAdvancedMode(
   )
 
   const confirmAdvancedMode = useCallback(() => {
-    sessionStorage.setItem(SETTINGS_ADVANCED_WARNED_KEY, 'true')
+    useDashboardPrefs.getState().markSettingsAdvancedWarned()
     setAdvanced(true)
     setShowAdvancedWarning(false)
   }, [setAdvanced])

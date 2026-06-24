@@ -23,6 +23,7 @@ import type { CommandItem } from '@/hooks/useCommandPalette'
 import { useRegisterCommands } from '@/hooks/useCommandPalette'
 import { useGlobalNotifications } from '@/hooks/useGlobalNotifications'
 import { useNotificationsStore } from '@/stores/notifications'
+import { useDashboardPrefs } from '@/stores/dashboard-prefs'
 import {
   useThemeStore,
   COLOR_PALETTES,
@@ -240,6 +241,7 @@ export default function AppLayout() {
   useEffect(() => {
     void useThemeStore.getState().hydrate()
     void useNotificationsStore.getState().hydrate()
+    void useDashboardPrefs.getState().hydrate()
   }, [])
 
   const openSidebarOverlay = useCallback(() => setSidebarOverlayOpen(true), [])

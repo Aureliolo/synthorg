@@ -35,6 +35,7 @@ import { defaultHandlers } from '@/mocks/handlers'
 import { cookieJar, installCookieShim } from '@/cookie-shim'
 import { installStorageShim } from '@/storage-shim'
 import { resetOrgChartPrefs } from '@/stores/org-chart-prefs'
+import { resetDashboardPrefs } from '@/stores/dashboard-prefs'
 // Pure helper: clears the per-endpoint 429 breaker so a tripped breaker in
 // one test cannot leak into the next. The module imports only the logger
 // (no `@/api/client` side effects), so it is safe in this global setup.
@@ -307,6 +308,9 @@ afterEach(() => {
   // its in-memory singleton state so toolbar toggles a test sets do not bleed
   // into the next test in the same Vitest worker.
   resetOrgChartPrefs()
+  // Dashboard prefs store is backend-sourced; reset its in-memory singleton
+  // so a test's toggles do not bleed into the next test in the same worker.
+  resetDashboardPrefs()
   // MCP-catalog ``setSearchQuery`` schedules a 200ms debounce
   // ``setTimeout``; clear any pending handle so it cannot outlive
   // the test and trip the active-handle gate.

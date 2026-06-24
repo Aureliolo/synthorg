@@ -34,6 +34,8 @@ interface OrgChartPrefs {
   showBudgetBar: boolean
   showStatusDots: boolean
   showMinimap: boolean
+  /** Department ids currently collapsed in the org chart. */
+  collapsedDepartments: readonly string[]
 }
 
 interface OrgChartPrefsState extends OrgChartPrefs {
@@ -45,6 +47,8 @@ interface OrgChartPrefsState extends OrgChartPrefs {
   setShowBudgetBar: (show: boolean) => void
   setShowStatusDots: (show: boolean) => void
   setShowMinimap: (show: boolean) => void
+  /** Toggle a department's collapsed state and persist the new set. */
+  toggleCollapsedDepartment: (deptId: string) => void
   /**
    * Load org-chart view preferences from the backend (`org_chart` settings
    * namespace) and apply them. The dashboard is a pure API consumer: the
@@ -65,6 +69,7 @@ const DEFAULTS: OrgChartPrefs = {
   showStatusDots: false,
   // Off by default -- users explicitly opt in via the toolbar toggle.
   showMinimap: false,
+  collapsedDepartments: [],
 }
 
 // Map each preference to its backend `org_chart.*` settings key (snake_case).
@@ -75,10 +80,19 @@ const BACKEND_KEY = {
   showBudgetBar: 'show_budget_bar',
   showStatusDots: 'show_status_dots',
   showMinimap: 'show_minimap',
+  collapsedDepartments: 'collapsed_departments',
 } as const satisfies Record<keyof OrgChartPrefs, string>
 
-const FRONTEND_KEY: Record<string, keyof OrgChartPrefs> = {
-  particle_flow_mode: 'particleFlowMode',
+type BoolPrefKey =
+  | 'showAddAgentButton'
+  | 'showLeadBadge'
+  | 'showBudgetBar'
+  | 'showStatusDots'
+  | 'showMinimap'
+
+// Backend boolean keys -> frontend pref keys. ``particle_flow_mode`` (enum)
+// and ``collapsed_departments`` (JSON array) are handled separately in hydrate.
+const BOOL_FRONTEND_KEY: Record<string, BoolPrefKey> = {
   show_add_agent_button: 'showAddAgentButton',
   show_lead_badge: 'showLeadBadge',
   show_budget_bar: 'showBudgetBar',
@@ -88,6 +102,16 @@ const FRONTEND_KEY: Record<string, keyof OrgChartPrefs> = {
 
 function isParticleFlowMode(value: string): value is ParticleFlowMode {
   return (PARTICLE_FLOW_MODES as readonly string[]).includes(value)
+}
+
+function parseDeptList(raw: string): readonly string[] {
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((v): v is string => typeof v === 'string')
+  } catch {
+    return []
+  }
 }
 
 /** Persist a single org-chart preference to the backend; toast on failure. */
@@ -108,7 +132,7 @@ function persistBool(key: keyof OrgChartPrefs, value: boolean): void {
   void persistPref(key, value ? 'true' : 'false')
 }
 
-export const useOrgChartPrefs = create<OrgChartPrefsState>()((set) => ({
+export const useOrgChartPrefs = create<OrgChartPrefsState>()((set, get) => ({
   ...DEFAULTS,
   hydrated: false,
 
@@ -137,17 +161,28 @@ export const useOrgChartPrefs = create<OrgChartPrefsState>()((set) => ({
     persistBool('showMinimap', show)
   },
 
+  toggleCollapsedDepartment: (deptId) => {
+    const current = get().collapsedDepartments
+    const next = current.includes(deptId)
+      ? current.filter((id) => id !== deptId)
+      : [...current, deptId]
+    set({ collapsedDepartments: next })
+    void persistPref('collapsedDepartments', JSON.stringify(next))
+  },
+
   hydrate: async (): Promise<void> => {
     try {
       const entries = await getNamespaceSettings('org_chart')
       const patch: Partial<OrgChartPrefs> = {}
       for (const entry of entries) {
-        const key = FRONTEND_KEY[entry.definition.key]
-        if (key === undefined) continue
-        if (key === 'particleFlowMode') {
+        const backendKey = entry.definition.key
+        if (backendKey === 'particle_flow_mode') {
           if (isParticleFlowMode(entry.value)) patch.particleFlowMode = entry.value
+        } else if (backendKey === 'collapsed_departments') {
+          patch.collapsedDepartments = parseDeptList(entry.value)
         } else {
-          patch[key] = entry.value === 'true'
+          const boolKey = BOOL_FRONTEND_KEY[backendKey]
+          if (boolKey !== undefined) patch[boolKey] = entry.value === 'true'
         }
       }
       set({ ...patch, hydrated: true })

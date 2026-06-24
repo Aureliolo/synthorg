@@ -9,7 +9,8 @@ import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { useSettingsStore } from '@/stores/settings'
 import { useSettingsData } from '@/hooks/useSettingsData'
 import { useSettingsDirtyState } from '@/hooks/useSettingsDirtyState'
-import { NAMESPACE_DISPLAY_NAMES, NAMESPACE_ORDER, SETTINGS_ADVANCED_KEY } from '@/pages/settings/settings-constants'
+import { NAMESPACE_DISPLAY_NAMES, NAMESPACE_ORDER } from '@/pages/settings/settings-constants'
+import { useDashboardPrefs } from '@/stores/dashboard-prefs'
 import { ROUTES } from '@/router/routes'
 import { FloatingSaveBar } from './settings/FloatingSaveBar'
 import { NamespaceSection } from './settings/NamespaceSection'
@@ -111,7 +112,7 @@ export default function SettingsNamespacePage() {
   const storeSavingKeys = useSettingsStore((s) => s.savingKeys)
 
   const [searchQuery, setSearchQuery] = useState('')
-  const [advancedMode] = useState(() => localStorage.getItem(SETTINGS_ADVANCED_KEY) === 'true')
+  const advancedMode = useDashboardPrefs((s) => s.settingsAdvancedMode)
 
   const { dirtyValues, handleValueChange, handleDiscard, handleSave } = useSettingsDirtyState(
     entries,

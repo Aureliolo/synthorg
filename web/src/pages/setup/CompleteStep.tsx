@@ -8,7 +8,6 @@ import { SkipWizardForm } from './SkipWizardForm'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useSetupStore } from '@/stores/setup'
 import { useToastStore } from '@/stores/toast'
-import { markFirstRunPending } from '@/utils/first-run'
 import { MiniOrgChart } from './MiniOrgChart'
 import { SetupSummary } from './SetupSummary'
 import { CheckCircle } from 'lucide-react'
@@ -34,9 +33,9 @@ function useCompleteStepActions(
       variant: 'success',
       title: `Setup complete! Welcome to ${companyResponse?.company_name ?? 'your organization'}.`,
     })
-    // Surface the post-setup guidance card on the dashboard (read by
-    // ``PostSetupGuidanceCard`` via the shared first-run flag).
-    markFirstRunPending()
+    // The post-setup guidance card shows on the dashboard until dismissed; its
+    // dismissal is backend-owned (dashboard.post_setup_guidance_dismissed), so
+    // there is no client-side first-run flag to set here.
     setConfirmOpen(false)
     void navigate('/')
   }, [companyResponse, navigate])

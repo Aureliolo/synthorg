@@ -12,9 +12,7 @@ import { useWebSocketStore } from '@/stores/websocket'
 import { Drawer } from '@/components/ui/drawer'
 import { SidebarNav } from './SidebarNav'
 import { SidebarFooter } from './SidebarFooter'
-import { STORAGE_KEY, useCollapsedState } from './sidebar-storage'
-
-export { STORAGE_KEY }
+import { useCollapsedState } from './sidebar-storage'
 
 const log = createLogger('Sidebar')
 
