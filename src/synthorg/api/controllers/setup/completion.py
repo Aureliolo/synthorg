@@ -111,8 +111,17 @@ async def _validate_completion_prereqs(
     if not has_agents:
         logger.info(SETUP_NO_AGENTS, note="allowed_for_quick_setup")
 
+    # Accept a configured provider from either the live runtime registry or the
+    # persisted provider config. A backend restart before completion empties the
+    # in-memory registry while the persisted providers remain; post_setup_reinit
+    # rebuilds the registry from those persisted configs, so gating only on the
+    # runtime registry would wrongly block completion after such a restart.
     provider_registry = app_state.slice(ProvidersStateSlice).registry
-    if provider_registry is None or len(provider_registry) == 0:
+    has_runtime_provider = provider_registry is not None and len(provider_registry) > 0
+    if (
+        not has_runtime_provider
+        and not await provider_management_of(app_state).list_providers()
+    ):
         msg = "At least one provider must be configured before completing setup"
         logger.warning(SETUP_NO_PROVIDERS)
         raise ValidationError(msg)

@@ -388,7 +388,7 @@ class TestSetupComplete:
         self,
         async_test_client: LoopAsyncClient,
     ) -> None:
-        """Completion rejects when company and agents exist but no providers."""
+        """Completion rejects when neither runtime nor persisted providers exist."""
         app_state = async_test_client.app.state.app_state
         repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
@@ -396,15 +396,62 @@ class TestSetupComplete:
         agents = json.dumps([{"name": "agent-001", "role": "CEO"}])
         repo._store[("company", "agents")] = (agents, now)
         original_registry = app_state.slice(ProvidersStateSlice).registry
-        app_state.wire(ProvidersStateSlice, registry=ProviderRegistry({}))
+        original_mgmt = app_state.slice(ProvidersStateSlice).management
+        # Empty BOTH sources: the runtime registry AND the persisted provider
+        # config (the completion gate accepts a provider from either).
+        empty_mgmt = MagicMock()
+        empty_mgmt.list_providers = AsyncMock(return_value={})
+        app_state.wire(
+            ProvidersStateSlice, registry=ProviderRegistry({}), management=empty_mgmt
+        )
         try:
             resp = await async_test_client.post("/api/v1/setup/complete")
             assert resp.status_code == 422
             assert "provider" in resp.json()["error"].lower()
         finally:
-            app_state.wire(ProvidersStateSlice, registry=original_registry)
+            app_state.wire(
+                ProvidersStateSlice,
+                registry=original_registry,
+                management=original_mgmt,
+            )
             repo._store.pop(("company", "company_name"), None)
             repo._store.pop(("company", "agents"), None)
+
+    async def test_complete_accepts_persisted_providers_when_registry_empty(
+        self,
+        async_test_client: LoopAsyncClient,
+    ) -> None:
+        """A restart empties the runtime registry; persisted providers suffice.
+
+        post_setup_reinit rebuilds the registry from the persisted config, so
+        completion must not block on an empty in-memory registry when the
+        provider config is still persisted (the conftest mock supplies one).
+        """
+        app_state = async_test_client.app.state.app_state
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
+        now = datetime.now(UTC).isoformat()
+        repo._store[("company", "company_name")] = ("Test Corp", now)
+        # No persisted agents (Quick Setup), so the provider gate is the
+        # decision point. Empty the runtime registry but supply a persisted
+        # provider via management -- the gate must accept the persisted config.
+        mgmt = MagicMock()
+        mgmt.list_providers = AsyncMock(return_value={"test-provider": MagicMock()})
+        original_registry = app_state.slice(ProvidersStateSlice).registry
+        original_mgmt = app_state.slice(ProvidersStateSlice).management
+        app_state.wire(
+            ProvidersStateSlice, registry=ProviderRegistry({}), management=mgmt
+        )
+        try:
+            resp = await async_test_client.post("/api/v1/setup/complete")
+            assert resp.status_code == 201
+            assert resp.json()["data"]["setup_complete"] is True
+        finally:
+            app_state.wire(
+                ProvidersStateSlice,
+                registry=original_registry,
+                management=original_mgmt,
+            )
+            repo._store.pop(("company", "company_name"), None)
 
     async def test_complete_succeeds_with_all_prerequisites(
         self,
