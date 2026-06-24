@@ -430,6 +430,12 @@ def match_all_agents(
         requirement resolution fails. Callers handle an omitted agent (left
         unassigned at setup).
     """
+    from synthorg.templates.model_requirements import (  # noqa: PLC0415
+        ModelRequirement,
+        parse_model_requirement,
+        resolve_model_requirement,
+    )
+
     cfg = matcher_config if matcher_config is not None else DEFAULT_MATCHER_CONFIG
     selector = strategy if strategy is not None else _DEFAULT_STRATEGY
     pool, owner = _build_pool(providers)
@@ -438,32 +444,6 @@ def match_all_agents(
     # overrides apply so a promoted model is compared in its promoted tier.
     pruned = tuple(prune_dominated(pool, cfg.tier_overrides))
     ctx = _MatchContext(pruned, owner, Counter(), cfg, selector)
-
-    resolved = _resolve_demand_ordered(agents, tier_profile)
-    results = [
-        match
-        for idx, req in resolved
-        if (match := _match_agent(idx, req, ctx)) is not None
-    ]
-    results.sort(key=lambda match: match.agent_index)
-    return results
-
-
-def _resolve_demand_ordered(
-    agents: Sequence[Mapping[str, object]],
-    tier_profile: str,
-) -> list[tuple[int, ModelRequirement]]:
-    """Resolve each agent's requirement, bias by tier profile, sort by demand.
-
-    Returns:
-        ``(index, requirement)`` pairs, most-demanding role first, so the
-        strongest models go to the work that needs them.
-    """
-    from synthorg.templates.model_requirements import (  # noqa: PLC0415
-        ModelRequirement,
-        parse_model_requirement,
-        resolve_model_requirement,
-    )
 
     resolved: list[tuple[int, ModelRequirement]] = []
     for idx, agent in enumerate(agents):
@@ -484,8 +464,17 @@ def _resolve_demand_ordered(
         if shifted != req.priority:
             req = req.model_copy(update={"priority": shifted})
         resolved.append((idx, req))
+    # Assign the most-demanding roles first so the strongest models go to the
+    # work that needs them, never wasted on a low-demand role.
     resolved.sort(key=lambda pair: demand_tier(pair[1]), reverse=True)
-    return resolved
+
+    results = [
+        match
+        for idx, req in resolved
+        if (match := _match_agent(idx, req, ctx)) is not None
+    ]
+    results.sort(key=lambda match: match.agent_index)
+    return results
 
 
 # Reported match score for a demand-tier assignment: a deliberate tier pick,
