@@ -20,24 +20,6 @@ _BOOTSTRAP_NOTE = (
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.CHARTER,
-        key="interview_enabled",
-        type=SettingType.BOOLEAN,
-        default="false",
-        description=(
-            _BOOTSTRAP_NOTE
-            + "Enable the deep CEO interview to project charter interface"
-            " (/meta/charters)."
-        ),
-        group="Charter",
-        level=SettingLevel.ADVANCED,
-        read_only_post_init=True,
-        restart_required=True,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.CHARTER,
         key="interview_model",
         type=SettingType.STRING,
         default="example-large-001",

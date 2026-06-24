@@ -5,10 +5,10 @@ review / edit / approve / cancel lifecycle for the :class:`ProjectCharter`
 artifact. On approval the charter drives a real project run through the
 work pipeline spine (see :class:`CharterDispatcher`).
 
-All endpoints surface 503 when the charter subsystem is not wired
-(``meta.charter.interview_enabled`` off, no LLM provider, or persistence
-unavailable). Approve additionally needs the work pipeline + cost
-forecast store; it 503s when the dispatcher is absent.
+The interview is always available; endpoints surface 503 only when its
+prerequisites are genuinely absent (no LLM provider or persistence not
+connected -- i.e. before setup completes). Approve additionally needs the
+work pipeline + cost forecast store; it 503s when the dispatcher is absent.
 """
 
 from typing import Annotated
@@ -141,14 +141,13 @@ class CharterController(Controller):
                 CHARTER_SUBSTRATE_UNAVAILABLE,
                 dependency="charter_service",
                 hint=(
-                    "Set meta.charter.interview_enabled, register an LLM "
-                    "provider, and connect a persistence backend."
+                    "Register an LLM provider and connect a persistence "
+                    "backend (i.e. complete setup)."
                 ),
             )
             msg = (
-                "Charter interview is not configured. Enable "
-                "``meta.charter.interview_enabled``, register an LLM "
-                "provider, and connect persistence."
+                "Charter interview is unavailable: it needs an LLM provider "
+                "and a connected persistence backend. Complete setup first."
             )
             raise ServiceUnavailableError(msg)
         return service
@@ -175,9 +174,8 @@ class CharterController(Controller):
             ``ApiResponse[InterviewTurnResult]`` instance.
 
         Raises:
-            ServiceUnavailableError: 503 when the charter substrate is not
-                configured (interview disabled, no provider, or persistence
-                not connected).
+            ServiceUnavailableError: 503 when the charter substrate is
+                unavailable (no provider or persistence not connected).
         """
         service = self._service(state)
         actor = require_actor()

@@ -289,9 +289,9 @@ class CharterAlreadyDecidedError(CharterError):
 class CharterInterviewUnavailableError(CharterError):
     """Raised when the charter-interview path is not fully wired.
 
-    Surfaces when ``interview_enabled`` is off, no provider is
-    registered, or the persistence backend / charter store was not
-    connected. The operator can fix the configuration and retry.
+    Surfaces when no provider is registered or the persistence backend /
+    charter store was not connected (i.e. before setup completes). The
+    operator can complete setup and retry.
     """
 
     default_message: ClassVar[str] = "Charter interview interface is unavailable"
