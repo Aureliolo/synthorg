@@ -33,15 +33,41 @@ class TestRenderTemplateBasic:
         loaded = load_template("solo_founder")
         config = render_template(loaded)
         assert isinstance(config, RootConfig)
-        assert config.company_name == "My Company"
+        assert config.company_name == "Solo Builder"
         assert len(config.agents) == 2
 
     def test_render_builtin_startup(self) -> None:
         loaded = load_template("startup")
         config = render_template(loaded)
         assert isinstance(config, RootConfig)
-        assert config.company_name == "Startup Co"
+        assert config.company_name == "Tech Startup"
         assert len(config.agents) == 5
+
+    def test_personality_preset_name_retained_for_field_form(self) -> None:
+        # Builtins reference presets via the `personality_preset:` FIELD (not a
+        # bare `personality:` string). The rendered AgentConfig must keep the
+        # preset NAME, not just the resolved personality dict, so the setup
+        # wizard's personality dropdown shows the assignment instead of an
+        # empty "Select...".
+        loaded = load_template("product_team")
+        config = render_template(loaded)
+        presets = {agent.personality_preset for agent in config.agents}
+        assert "strategic_planner" in presets
+        for agent in config.agents:
+            if agent.personality_preset is not None:
+                assert agent.personality, agent.name
+
+    @pytest.mark.parametrize("template_name", sorted(BUILTIN_TEMPLATES))
+    def test_every_builtin_agent_has_a_personality(self, template_name: str) -> None:
+        # Every shipped template must assign a personality preset to EVERY
+        # agent. The setup wizard binds its personality dropdown to the preset
+        # name, so an agent without one renders an unconfigured "Select..." and
+        # ships an agent with no personality.
+        config = render_template(load_template(template_name))
+        unassigned = [a.role for a in config.agents if not a.personality_preset]
+        assert not unassigned, (
+            f"{template_name} agents without a personality: {unassigned}"
+        )
 
     def test_render_all_builtins_produce_valid_root_config(self) -> None:
         from synthorg.engine.workflow.config import WorkflowConfig

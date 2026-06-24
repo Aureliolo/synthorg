@@ -232,12 +232,19 @@ def _expand_single_agent(  # noqa: PLR0913
 def _agent_preset_name(agent: dict[str, object]) -> str | None:
     """Return the named personality preset, when the agent uses one.
 
-    A template agent references a preset by a bare ``personality`` string;
-    an inline ``personality`` dict has no preset name.
+    A template agent references a preset either by the explicit
+    ``personality_preset`` field or by a bare ``personality`` string; an
+    inline ``personality`` dict has no preset name. Both reference forms must
+    carry the preset NAME onto the rendered ``AgentConfig`` so the setup
+    wizard's personality dropdown shows the assigned preset (otherwise it
+    renders "Select..." even though the personality was resolved).
 
     Returns:
         The preset name, or ``None`` for inline / absent personality.
     """
+    explicit = agent.get("personality_preset")
+    if isinstance(explicit, str) and explicit.strip():
+        return explicit.strip()
     raw = agent.get("personality")
     return raw.strip() if isinstance(raw, str) and raw.strip() else None
 
