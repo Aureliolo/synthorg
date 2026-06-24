@@ -277,13 +277,13 @@ export function AgentsStep() {
 }
 
 /**
- * The visual org chart, open by default: it is the at-a-glance picture of the
- * org the operator just assembled (departments, headcounts, reporting), so it
- * leads the step and the dense table sits below as the editing surface.
+ * The visual org chart, collapsed by default: the dense table is the primary
+ * editing surface, so the chart is opt-in supporting context rather than a
+ * sparse band eating the top of the screen.
  */
 function OrgChartDisclosure({ agents }: { agents: readonly SetupAgentSummary[] }) {
   return (
-    <details open className="group space-y-3">
+    <details className="group space-y-3">
       <summary
         className={cn(
           'list-none [&::-webkit-details-marker]:hidden',
