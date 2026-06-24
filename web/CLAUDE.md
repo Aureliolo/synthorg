@@ -2,6 +2,17 @@
 
 React 19 + shadcn/ui + Base UI + Tailwind CSS 4 + Motion + Zustand. Base UI primitives use the native `render` prop; the local `<Slot>` helper in `components/ui/slot.tsx` exists only for `<Button asChild>`. CSP nonces flow via `<CSPProvider>` + `<MotionConfig nonce>` in `App.tsx`; details in `docs/security.md`.
 
+## Pure API Consumer (MANDATORY)
+
+The dashboard is **only an API consumer** and persists **no application state client-side**. The backend is the single source of truth; the SPA hydrates from a backend GET on mount and writes every change through the REST API immediately, exactly like any other client (CLI, scripts, third parties). Every feature MUST be fully usable over the API alone.
+
+- **No `localStorage` / `sessionStorage` / IndexedDB and no `zustand` `persist`** holding domain/app state. That includes setup-wizard state (company, currency, model-tier profile, selected template + variables, wizard mode, step progress), theme/appearance, and any user/org preference. Each must have a backend settings key + GET/PUT and be hydrated from it, never carried across reloads in the browser.
+- **Step/progress is derived, not stored.** Wizard completion is computed from backend state (the data exists or it does not), never from a persisted client flag that can drift.
+- **Stale client state is the bug class to avoid.** A persisted client copy that disagrees with the backend produces "flag says done but data is empty" contradictions and, on a write path, data loss (e.g. re-applying a wizard step with un-hydrated input). If you find client persistence of domain state, treat it as a defect: move it backend-side.
+- **The only sanctioned client storage** is non-domain transient transport/UX: the auth-token cookie shim and the active CSRF token (see the cookie shim contract). Never store data the backend owns.
+
+Enforced by `scripts/check_no_client_state_persistence.py` (PreToolUse + pre-push): flags `localStorage`/`sessionStorage`/`indexedDB`/`zustand persist(` in `web/src/` outside the auth/CSRF allowlist.
+
 ## Quick Commands
 
 ```bash
@@ -47,7 +58,7 @@ All store **mutation** actions (create / update / delete) follow the `stores/con
 
 **MSW handlers (MANDATORY)**: `web/src/mocks/handlers/` mirrors `web/src/api/endpoints/*.ts` 1:1 with a default happy-path handler for every exported endpoint. `test-setup.tsx` boots with `onUnhandledRequest: 'error'`; tests override per-case via `server.use(...)`, never `vi.mock('@/api/endpoints/*')`. Typed envelope helpers (`successFor`, `paginatedFor`, `voidSuccess`) keep handlers in lockstep with endpoint return types.
 
-**Test teardown (MANDATORY)**: `web/src/test-setup.tsx` registers a global `afterEach` that runs every cleanup hook (toast `dismissAll()`, notifications `cancelPendingPersist()`, theme `teardown()`, setup-wizard `cancelSetupWizardPersist()`, org-chart-prefs `cancelOrgChartPrefsPersist()`, MCP-catalog `cancelPendingMcpCatalogSearch()`, and circuit-breaker `resetCircuitBreaker()`); see `test-setup.tsx` for the authoritative list. **Any new store OR stateful singleton that schedules timers, attaches event listeners, or holds mutable state keyed by test inputs must expose an equivalent cleanup hook** and register it in the global `afterEach`. The websocket store is a deliberate exception (file-local `resetStore()` in its test file).
+**Test teardown (MANDATORY)**: `web/src/test-setup.tsx` registers a global `afterEach` that runs every cleanup hook (toast `dismissAll()`, MCP-catalog `cancelPendingMcpCatalogSearch()`, the backend-sourced store resets setup-wizard `reset()` / org-chart-prefs `resetOrgChartPrefs()` / dashboard-prefs `resetDashboardPrefs()`, theme `teardown()`, and circuit-breaker `resetCircuitBreaker()`); see `test-setup.tsx` for the authoritative list. Stores that moved to the backend (theme, notifications, setup-wizard, org-chart-prefs, dashboard-prefs) no longer persist to `localStorage`, so their teardown resets in-memory singleton state rather than cancelling a persistence debounce. **Any new store OR stateful singleton that schedules timers, attaches event listeners, or holds mutable state keyed by test inputs must expose an equivalent cleanup hook** and register it in the global `afterEach`. The websocket store is a deliberate exception (file-local `resetStore()` in its test file).
 
 **Active-handle gate (MANDATORY)**: every unit test runs under `web/test-infra/active-handle-tracker.ts`, which hooks Node's `async_hooks` and fails any test that leaks an event-loop-holding resource (`Timeout`, `TCPWRAP`, `PIPEWRAP`, `FSEVENTWRAP`, etc.) attributable to a `web/src/` frame. Zero tolerance, no ceiling, no buffer. The allowlist (`web/test-infra/active-handle-allowlist.ts`) is empty and additions are an audit step (see [docs/design/web-active-handle-detection.md](../docs/design/web-active-handle-detection.md)). A new store that schedules timers / attaches listeners MUST expose a teardown hook and register it in the global `afterEach`; otherwise the gate fails the first test that triggers the schedule.
 
