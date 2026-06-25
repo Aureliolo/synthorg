@@ -483,17 +483,12 @@ async def load_self_improvement_config(
         # A corrupt structural blob must not drop the on-by-default posture:
         # re-overlay the individual settings onto an empty dict so the flags
         # and per-feature models still apply (discarding only the bad blob).
+        # Force ``code_modification_enabled`` off first -- its GitHub
+        # credentials lived only in that discarded blob, so an enabled flag
+        # would fail the credential validator and sink the whole posture.
         try:
             recovered = await overlay_feature_settings(settings_service, {})
-        except ValueError, TypeError:
-            return SelfImprovementConfig()
-        # ``code_modification_enabled`` is an overlaid flag, but its GitHub
-        # credentials live only in the now-discarded blob, so an enabled flag
-        # would fail the credential validator and sink the whole posture back
-        # to the code defaults. Force it off (it cannot run without those
-        # credentials anyway) so the rest of the on-by-default posture survives.
-        recovered["code_modification_enabled"] = False
-        try:
+            recovered["code_modification_enabled"] = False
             return SelfImprovementConfig.model_validate(recovered)
         except ValueError, TypeError:
             return SelfImprovementConfig()
