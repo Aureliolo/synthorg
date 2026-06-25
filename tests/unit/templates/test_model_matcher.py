@@ -137,6 +137,21 @@ class TestHardFilters:
         assert model is not None
         assert model.id == "candidate"
 
+    def test_runtime_verified_true_overrides_stale_supports_tools(self) -> None:
+        # A runtime-proven tool caller is authoritative: even with a stale
+        # supports_tools=False false negative from a non-unknown source, the
+        # model stays assignable to a requires_tools agent.
+        proven = _make_model(
+            "proven",
+            tools=False,
+            tool_calls_verified=True,
+            source="litellm",
+        )
+        req = ModelRequirement(requires_tools=True)
+        model, _ = match_model(req, (proven,))
+        assert model is not None
+        assert model.id == "proven"
+
     def test_reasoning_requirement_honoured(self) -> None:
         thinker = _make_model("thinker", reasoning=True)
         plain = _make_model("plain", reasoning=False)

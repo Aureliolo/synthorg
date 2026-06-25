@@ -18,10 +18,10 @@ interface ProviderModelRowProps {
   onDelete?: ((modelId: string) => void) | undefined
   onConfigure?: ((model: ProviderModelResponse) => void) | undefined
   onReenableToolCalling?: ((modelId: string) => void) | undefined
-  // Provider-qualified pending-re-enable key (see ``reenableKey``); model ids
-  // are not unique across providers, so the pending state is compared against
+  // Provider-qualified pending-re-enable keys (see ``reenableKey``); model ids
+  // are not unique across providers, so the pending state is matched against
   // ``reenableKey(providerName, model.id)`` rather than the bare id.
-  reenablingModelId?: string | null | undefined
+  reenablingModelIds?: ReadonlySet<string> | undefined
   providerName?: string | undefined
 }
 
@@ -75,12 +75,15 @@ function ModelRowActions({
   onDelete,
   onConfigure,
   onReenableToolCalling,
-  reenablingModelId,
+  reenablingModelIds,
   providerName,
 }: ProviderModelRowProps) {
+  // Per-model concurrency: only this row's own in-flight re-enable disables it,
+  // so re-enabling a different model leaves this button clickable.
   const isReenabling =
     providerName !== undefined &&
-    reenablingModelId === reenableKey(providerName, model.id)
+    reenablingModelIds !== undefined &&
+    reenablingModelIds.has(reenableKey(providerName, model.id))
   return (
     <div className="flex items-center justify-end gap-1">
       {onReenableToolCalling !== undefined && model.tool_calls_verified === false && (
@@ -89,6 +92,7 @@ function ModelRowActions({
           size="icon"
           onClick={() => onReenableToolCalling(model.id)}
           disabled={isReenabling}
+          aria-busy={isReenabling || undefined}
           title="Re-enable tool calling"
           aria-label={`Re-enable tool calling for ${model.id}`}
           className="size-7 text-warning hover:bg-warning/10"
@@ -164,7 +168,7 @@ interface ProviderModelListProps {
   onDelete?: ((modelId: string) => void) | undefined
   onConfigure?: ((model: ProviderModelResponse) => void) | undefined
   onReenableToolCalling?: ((modelId: string) => void) | undefined
-  reenablingModelId?: string | null | undefined
+  reenablingModelIds?: ReadonlySet<string> | undefined
   providerName?: string | undefined
 }
 
@@ -201,7 +205,7 @@ function ModelTable({ models, hasActions, ...rest }: ModelTableProps) {
               onDelete={rest.onDelete}
               onConfigure={rest.onConfigure}
               onReenableToolCalling={rest.onReenableToolCalling}
-              reenablingModelId={rest.reenablingModelId}
+              reenablingModelIds={rest.reenablingModelIds}
               providerName={rest.providerName}
             />
           ))}
@@ -234,7 +238,7 @@ export function ProviderModelList({
   onDelete,
   onConfigure,
   onReenableToolCalling,
-  reenablingModelId,
+  reenablingModelIds,
   providerName,
 }: ProviderModelListProps) {
   const hasActions = listHasActions(
@@ -296,7 +300,7 @@ export function ProviderModelList({
           onDelete={onDelete}
           onConfigure={onConfigure}
           onReenableToolCalling={onReenableToolCalling}
-          reenablingModelId={reenablingModelId}
+          reenablingModelIds={reenablingModelIds}
           providerName={providerName}
         />
       )}

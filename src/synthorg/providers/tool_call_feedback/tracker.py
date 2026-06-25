@@ -113,13 +113,16 @@ class ToolCallFeedbackTracker:
         self._writer = writer
         self._settings = settings
         self._clock: Clock = clock if clock is not None else SystemClock()
-        # ``_lock`` guards the shared ``_cache`` / ``_key_locks`` dicts only and
-        # is held for brief read-modify-write sections, NEVER across the
-        # capability-writer call (which takes the management service's own
-        # lock). ``_key_locks`` serialises the WHOLE failure/success/clear
-        # sequence per ``(provider, model)`` so the accumulator row and the
+        # ``_key_locks`` serialises the WHOLE failure/success/clear sequence per
+        # ``(provider, model)`` so the accumulator row and the
         # ``tool_calls_verified`` flag transition cannot interleave and reorder
-        # across concurrent observations on the same model.
+        # across concurrent observations on the same model. Because that per-key
+        # lock already makes same-model access exclusive -- and different models
+        # only ever touch their own ``_cache`` entry -- the cache + repo I/O run
+        # WITHOUT the global lock, so a slow persistence round-trip for one model
+        # never serialises feedback for every other model. ``_lock`` therefore
+        # guards ONLY the brief, await-free get-or-create of the shared
+        # ``_key_locks`` map (see ``_key_lock``).
         self._lock = asyncio.Lock()
         self._key_locks: dict[ModelToolCallSignalKey, asyncio.Lock] = {}
         # Lazily-hydrated cache: ``None`` means "no row" (a healthy model),
@@ -175,17 +178,15 @@ class ToolCallFeedbackTracker:
             model: Model identifier within the provider.
         """
         key = (NotBlankStr(provider), NotBlankStr(model))
-        # Hold the per-model operation lock across the whole reset so a
-        # concurrent observation cannot reorder its row/flag writes against
-        # this manual clear. The writer call is still kept off ``_lock`` (the
-        # cache lock), so ``_lock`` is never held across the management
-        # service's own lock.
+        # The per-model operation lock makes this whole reset exclusive against
+        # any concurrent observation for the same model, so the row/flag writes
+        # cannot interleave -- and no global lock is held across the writer or
+        # the repo delete, so other models proceed unblocked.
         async with await self._key_lock(key):
             await self._writer.clear_tool_calls_verification(provider, model)
-            async with self._lock:
-                self._cache.pop(key, None)
-                await self._repo.delete(key)
-                self._cache[key] = None
+            self._cache.pop(key, None)
+            await self._repo.delete(key)
+            self._cache[key] = None
         logger.info(
             PROVIDER_TOOL_CALL_REENABLED,
             provider=provider,
@@ -212,27 +213,26 @@ class ToolCallFeedbackTracker:
     async def _on_failure(self, key: ModelToolCallSignalKey) -> None:
         """Decay, increment, persist, and downgrade past the threshold.
 
-        Settings reads and the capability-writer downgrade are kept OFF the
-        tracker lock: the lock guards only the cache read-modify-write so a
-        slow settings DB read never serialises every other observation, and
-        the tracker lock is never held across the management service's own
-        lock (which the writer acquires).
+        Runs under the caller's per-model lock (from ``record``), which alone
+        serialises same-model access; settings reads, the cache read-modify-
+        write, the repo save, and the capability-writer downgrade all run
+        without the global ``_lock`` so a slow round-trip for this model never
+        blocks observations for any other model.
         """
         provider, model = key
         threshold = await self._settings.get_int(_SETTINGS_NAMESPACE, _THRESHOLD_KEY)
         half_life = await self._settings.get_int(_SETTINGS_NAMESPACE, _HALF_LIFE_KEY)
         now = self._clock.now().timestamp()
-        async with self._lock:
-            prior = self._decayed(await self._load(key), now, half_life)
-            score = prior + 1.0
-            signal = ModelToolCallSignal(
-                provider_name=provider,
-                model_id=model,
-                failure_score=score,
-                decayed_at=now,
-            )
-            await self._repo.save(signal)
-            self._cache[key] = signal
+        prior = self._decayed(await self._load(key), now, half_life)
+        score = prior + 1.0
+        signal = ModelToolCallSignal(
+            provider_name=provider,
+            model_id=model,
+            failure_score=score,
+            decayed_at=now,
+        )
+        await self._repo.save(signal)
+        self._cache[key] = signal
         logger.info(
             PROVIDER_TOOL_CALL_FAILURE_OBSERVED,
             provider=provider,
@@ -258,17 +258,18 @@ class ToolCallFeedbackTracker:
         next success). A model with no accumulated failures is a pure
         in-memory no-op. The re-enable only writes for a genuinely
         downgraded (``False``) model, never an untested (``None``) one.
+
+        Runs under the caller's per-model lock, so the global ``_lock`` is not
+        taken around the load, the writer, or the repo delete.
         """
-        async with self._lock:
-            row = await self._load(key)
+        row = await self._load(key)
         if row is None:
             return
         provider, model = key
         reenabled = await self._writer.mark_tool_calls_verified(provider, model)
-        async with self._lock:
-            self._cache.pop(key, None)
-            await self._repo.delete(key)
-            self._cache[key] = None
+        self._cache.pop(key, None)
+        await self._repo.delete(key)
+        self._cache[key] = None
         logger.info(
             PROVIDER_TOOL_CALL_SUCCESS_OBSERVED,
             provider=provider,

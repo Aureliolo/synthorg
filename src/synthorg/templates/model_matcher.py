@@ -120,9 +120,14 @@ def passes_hard_filters(
             reason="tool_calls_runtime_unverified",
         )
         return False
+    # A runtime-proven tool caller is authoritative over stale discovery
+    # metadata: ``tool_calls_verified is True`` re-admits a model whose
+    # ``supports_tools`` flag is a false negative, so it is never permanently
+    # unassignable to ``requires_tools`` agents.
+    tools_supported = meta.tool_calls_verified is True or meta.supports_tools
     unknown = meta.metadata_source == "unknown"
     required_checks = (
-        (requirement.requires_tools, meta.supports_tools),
+        (requirement.requires_tools, tools_supported),
         (requirement.requires_vision, meta.supports_vision),
         (requirement.requires_reasoning, meta.supports_reasoning),
     )

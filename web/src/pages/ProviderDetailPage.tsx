@@ -176,7 +176,7 @@ function ProviderDetailBody({
   testingConnection,
 }: ProviderDetailBodyProps) {
   const discoveringModels = useProvidersStore((s) => s.discoveringModels)
-  const reenablingModelId = useProvidersStore((s) => s.reenablingModelId)
+  const reenablingModelIds = useProvidersStore((s) => s.reenablingModelIds)
   return (
     <>
       <ErrorBoundary level="section">
@@ -221,7 +221,7 @@ function ProviderDetailBody({
           onReenableToolCalling={(modelId) => {
             void useProvidersStore.getState().reenableToolCalling(decodedName, modelId)
           }}
-          reenablingModelId={reenablingModelId}
+          reenablingModelIds={reenablingModelIds}
           providerName={decodedName}
         />
       </ErrorBoundary>

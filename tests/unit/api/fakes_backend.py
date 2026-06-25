@@ -22,6 +22,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.hr.evaluation.config import EvaluationConfig
 from synthorg.hr.training.models import TrainingPlan, TrainingPlanStatus, TrainingResult
 from synthorg.meta.rules.custom import CustomRuleDefinition
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.circuit_breaker_protocol import (
     CircuitBreakerStateRecord,
@@ -281,9 +282,12 @@ class FakeModelToolCallSignalRepository:
     async def list_items(
         self,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[ModelToolCallSignal, ...]:
+        limit = validate_pagination_args(
+            limit, offset=offset, event="fake.model_tool_call_signal.list_items"
+        )
         ordered = sorted(self._store.items(), key=lambda kv: kv[0])
         return tuple(v for _, v in ordered[offset : offset + limit])
 

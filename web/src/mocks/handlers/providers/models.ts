@@ -41,8 +41,11 @@ export const modelsHandlers = [
   http.delete('/api/v1/providers/:name/models/:modelId', () =>
     HttpResponse.json(voidSuccess()),
   ),
+  // ``encodeModelIdPath`` keeps the ``/`` separators inside a model id, so the
+  // modelId segment can span multiple path segments; a single ``:modelId``
+  // named param would miss those, hence the wildcard.
   http.post(
-    '/api/v1/providers/:name/models/:modelId/reenable-tool-calling',
+    '/api/v1/providers/:name/models/*/reenable-tool-calling',
     ({ params }) =>
       HttpResponse.json(
         successFor<typeof reenableToolCalling>(

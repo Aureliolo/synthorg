@@ -177,7 +177,10 @@ _r.register(
             " crosses the failure threshold is downgraded"
             " (tool_calls_verified=False) so the matcher stops assigning it"
             " to tool-requiring agents. A genuine tool-call success clears"
-            " the signal. Off disables both tracking and downgrade."
+            " the signal. Turning it off only stops future tracking; any"
+            " accumulator rows and existing tool_calls_verified=False"
+            " downgrades from earlier observations persist, so already-"
+            "downgraded models stay excluded until re-enabled manually."
         ),
         group="Tool-Call Feedback",
         level=SettingLevel.ADVANCED,

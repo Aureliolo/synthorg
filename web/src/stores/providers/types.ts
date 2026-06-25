@@ -60,8 +60,12 @@ export interface ProvidersState {
   deletingModel: boolean
   /** True while a model-config save (``updateModelConfig``) is in flight. */
   updatingModelConfig: boolean
-  /** Model id whose tool-calling re-enable is in flight, or ``null``. */
-  reenablingModelId: string | null
+  /**
+   * Provider-qualified keys (see ``reenableKey``) whose tool-calling re-enable
+   * is in flight. A set rather than a single id so re-enables for different
+   * models run concurrently and each row reflects only its own pending state.
+   */
+  reenablingModelIds: ReadonlySet<string>
 
   // Audit log (cursor-paginated, scoped to one provider at a time)
   auditEvents: readonly ProviderAuditEvent[]

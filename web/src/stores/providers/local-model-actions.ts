@@ -147,12 +147,12 @@ async function reenableToolCallingImpl(
   name: string,
   modelId: string,
 ): Promise<boolean> {
-  // Serialise overlapping re-enables: a second click while one is in flight
-  // would otherwise overwrite reenablingModelId and let the earlier
-  // completion clear the later request's loading state.
-  if (get().reenablingModelId !== null) return false
   const pendingKey = reenableKey(name, modelId)
-  set({ reenablingModelId: pendingKey })
+  // Per-model concurrency: different models re-enable in parallel, but a second
+  // click on a model already in flight is a no-op (its row is disabled, so this
+  // only guards a double-invoke).
+  if (get().reenablingModelIds.has(pendingKey)) return false
+  set({ reenablingModelIds: new Set(get().reenablingModelIds).add(pendingKey) })
   try {
     await apiReenableToolCalling(name, modelId)
     // The server-side re-enable has already succeeded at this point, so a
@@ -180,11 +180,11 @@ async function reenableToolCallingImpl(
     })
     return false
   } finally {
-    // Only clear the loading state if this request still owns it, so a newer
-    // in-flight re-enable is not reset by an older completion.
-    if (get().reenablingModelId === pendingKey) {
-      set({ reenablingModelId: null })
-    }
+    // Drop only this request's key so a concurrent re-enable for another model
+    // keeps its own pending state.
+    const next = new Set(get().reenablingModelIds)
+    next.delete(pendingKey)
+    set({ reenablingModelIds: next })
   }
 }
 
