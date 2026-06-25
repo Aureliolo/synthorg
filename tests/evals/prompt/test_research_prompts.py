@@ -1,8 +1,9 @@
 """Prompt eval: research planner / synthesiser / triage temperature + drift.
 
-All three research surfaces complete through ``research/_llm.py``, which pins
-``_DETERMINISTIC_TEMPERATURE = 0.0``. Each carries a distinct system prompt;
-all three are fingerprinted against silent drift.
+All three research surfaces complete through
+``providers/structured_text.py``, which pins ``DETERMINISTIC_TEMPERATURE =
+0.0``. Each carries a distinct system prompt; all three are fingerprinted
+against silent drift.
 """
 
 import json
@@ -75,10 +76,11 @@ class TestResearchTemperatureContract:
     """The shared research completion path must stay deterministic."""
 
     def test_deterministic_temperature_is_zero(self) -> None:
-        from synthorg.research._llm import _DETERMINISTIC_TEMPERATURE
+        from synthorg.providers.structured_text import DETERMINISTIC_TEMPERATURE
 
-        assert _DETERMINISTIC_TEMPERATURE == 0.0, (
-            "research/_llm.py must keep _DETERMINISTIC_TEMPERATURE pinned at 0.0."
+        assert DETERMINISTIC_TEMPERATURE == 0.0, (
+            "providers/structured_text.py must keep DETERMINISTIC_TEMPERATURE"
+            " pinned at 0.0."
         )
 
 

@@ -493,6 +493,14 @@ export const INTERVENTION_KIND_VALUES = [
 ] as const
 export type InterventionKind = (typeof INTERVENTION_KIND_VALUES)[number]
 
+export const KNOWLEDGE_CLAIM_TYPE_VALUES = [
+    'fact',
+    'analysis',
+    'recommendation',
+    'comparison',
+] as const
+export type KnowledgeClaimType = (typeof KNOWLEDGE_CLAIM_TYPE_VALUES)[number]
+
 export const LLM_CALL_CATEGORY_VALUES = [
     'productive',
     'coordination',
@@ -844,6 +852,7 @@ export const SETTING_NAMESPACE_VALUES = [
     'telemetry',
     'external_api',
     'research',
+    'knowledge',
     'cockpit',
     'charter',
     'demo',

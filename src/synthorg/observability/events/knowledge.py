@@ -52,6 +52,20 @@ KNOWLEDGE_SEARCH_FAILED: Final[str] = "knowledge.search_failed"
 KNOWLEDGE_CITATION_UNRESOLVED: Final[str] = "knowledge.citation.unresolved"
 """Emitted at WARNING when a hit's chunk id has no provenance row."""
 
+# -- Synthesis (generative RAG) -----------------------------------------------
+
+KNOWLEDGE_SYNTHESISED: Final[str] = "knowledge.synthesised"
+"""Emitted at DEBUG after a grounded answer is synthesised over retrieved
+chunks, with the claim and consulted-chunk counts."""
+
+KNOWLEDGE_SYNTHESIS_FAILED: Final[str] = "knowledge.synthesis.failed"
+"""Emitted at WARNING when synthesis fails (no grounding, unparseable output,
+or a claim citing an unknown chunk) before raising."""
+
+KNOWLEDGE_SYNTHESIS_OUTPUT_INVALID: Final[str] = "knowledge.synthesis.output_invalid"
+"""Emitted at WARNING when the synthesiser LLM returns unparseable or
+schema-invalid structured output."""
+
 # -- Loaders ------------------------------------------------------------------
 
 KNOWLEDGE_SOURCE_LOADED: Final[str] = "knowledge.source.loaded"

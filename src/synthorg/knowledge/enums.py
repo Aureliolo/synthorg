@@ -40,3 +40,18 @@ class SourceStatus(StrEnum):
     INDEXED = "indexed"
     STALE = "stale"
     FAILED = "failed"
+
+
+class KnowledgeClaimType(StrEnum):
+    """Nature of a synthesised knowledge-answer claim.
+
+    Classifies each assertion in a grounded answer so the deliverable can
+    distinguish sourced facts from interpretive analysis, recommendations,
+    and cross-source comparisons. Knowledge-local (not shared with the
+    research subsystem) so the substrate carries no upward import.
+    """
+
+    FACT = "fact"
+    ANALYSIS = "analysis"
+    RECOMMENDATION = "recommendation"
+    COMPARISON = "comparison"

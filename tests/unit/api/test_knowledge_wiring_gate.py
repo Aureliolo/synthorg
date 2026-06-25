@@ -2,7 +2,7 @@
 
 import pytest
 
-from synthorg.api.lifecycle_helpers.feature_wiring import _wire_knowledge_engine
+from synthorg.api.lifecycle_helpers.knowledge_wiring import wire_knowledge_engine
 from synthorg.config.schema import RootConfig
 from synthorg.knowledge.config import KnowledgeConfig
 from synthorg.knowledge.state import KnowledgeStateSlice
@@ -25,6 +25,6 @@ async def test_disabled_knowledge_skips_wiring() -> None:
         },
     )
 
-    await _wire_knowledge_engine(app_state)
+    await wire_knowledge_engine(app_state, provider_registry=None)
 
     assert app_state.slice(KnowledgeStateSlice).service is None

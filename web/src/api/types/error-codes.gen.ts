@@ -173,6 +173,8 @@ export const ErrorCode = {
     CONVERSATIONAL_PROPOSE_UNAVAILABLE: 8041,
     GROUP_CHAT_UNAVAILABLE: 8042,
     CHARTER_INTERVIEW_UNAVAILABLE: 8043,
+    KNOWLEDGE_SYNTHESIS_ERROR: 8044,
+    KNOWLEDGE_SYNTHESIS_UNAVAILABLE: 8045,
 } as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 

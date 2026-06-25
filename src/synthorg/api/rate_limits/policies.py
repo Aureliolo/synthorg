@@ -160,6 +160,7 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "interrupts.resume": (60, 60),
     # knowledge
     "knowledge.search": (30, 60),
+    "knowledge.ask": (10, 60),
     # learning
     "learning.curve": (30, 60),
     # meetings

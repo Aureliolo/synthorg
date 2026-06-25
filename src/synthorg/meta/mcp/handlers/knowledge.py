@@ -20,6 +20,7 @@ from synthorg.knowledge.models import KnowledgeHit
 from synthorg.knowledge.service import KnowledgeService
 from synthorg.knowledge.state import KnowledgeStateSlice
 from synthorg.meta.mcp.domains._knowledge_args import (
+    KnowledgeAskArgs,
     KnowledgeDeleteArgs,
     KnowledgeGetArgs,
     KnowledgeIngestArgs,
@@ -51,6 +52,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _TOOL_SEARCH = "synthorg_knowledge_search"
+_TOOL_ASK = "synthorg_knowledge_ask"
 _TOOL_INGEST = "synthorg_knowledge_ingest"
 _TOOL_REINDEX = "synthorg_knowledge_reindex"
 _TOOL_LIST = "synthorg_knowledge_list"
@@ -107,6 +109,32 @@ async def _knowledge_search(
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_SEARCH, exc)
+        return err(exc)
+
+
+async def _knowledge_ask(
+    *,
+    app_state: AppState,
+    arguments: dict[str, object],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    """Return a grounded, citation-bound answer over the corpus."""
+    try:
+        svc = _require_service(app_state)
+        ask_args = typed_args(arguments, KnowledgeAskArgs)
+        answer = await svc.ask(
+            query=ask_args.query,
+            project_id=ask_args.project_id,
+            limit=ask_args.limit,
+        )
+        logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_ASK)
+        return ok(answer.model_dump(mode="json"))
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid(_TOOL_ASK, exc)
+        return err(exc)
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
+        log_handler_invoke_failed(_TOOL_ASK, exc)
         return err(exc)
 
 
@@ -273,6 +301,7 @@ async def _knowledge_delete(
 KNOWLEDGE_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
     {
         "synthorg_knowledge_search": _knowledge_search,
+        "synthorg_knowledge_ask": _knowledge_ask,
         "synthorg_knowledge_ingest": _knowledge_ingest,
         "synthorg_knowledge_reindex": _knowledge_reindex,
         "synthorg_knowledge_list": _knowledge_list,
