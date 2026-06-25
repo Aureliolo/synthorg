@@ -291,6 +291,26 @@ class KnowledgeAnswer(BaseModel):
     )
     created_at: AwareDatetime = Field(description="Answer creation timestamp")
 
+    @model_validator(mode="after")
+    def _validate_grounding(self) -> Self:
+        """Reject an answer that carries claims but consulted no chunks.
+
+        A cited claim cannot exist without at least one consulted chunk (one
+        chunk may back several claims, so the count is not bounded by the claim
+        count). An answer with claims and ``chunks_consulted == 0`` is
+        incoherent (an adversarial or mis-constructed row).
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When the answer has claims but consulted no chunks.
+        """
+        if self.claims and self.chunks_consulted < 1:
+            msg = "an answer with claims must have consulted at least one chunk"
+            raise ValueError(msg)
+        return self
+
 
 # ── Persisted source row ─────────────────────────────────────────────
 

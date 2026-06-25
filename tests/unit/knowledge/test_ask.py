@@ -1,8 +1,9 @@
-"""End-to-end round-trip for :meth:`KnowledgeService.ask` (generative RAG).
+"""In-process round-trip for :meth:`KnowledgeService.ask` (generative RAG).
 
-Exercises the ask surface in-process: a retrieval-only service 503s, while a
-service wired with a synthesiser ingests a corpus and answers with citations
-that resolve to retrieved chunks.
+Exercises the ask surface in-process (InMemoryBackend + fake repos + a
+ScriptedProvider, no network): a retrieval-only service 503s, while a service
+wired with a synthesiser ingests a corpus and answers with citations that
+resolve to retrieved chunks.
 """
 
 import json

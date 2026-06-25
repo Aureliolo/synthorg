@@ -87,7 +87,13 @@ src/synthorg/knowledge/
   indexer.py         KnowledgeIndexer
   freshness.py       content-hash dedup and invalidation
   retrieval.py       KnowledgeRetriever
-  service.py         KnowledgeService
+  service.py         KnowledgeService (ingest / reindex / search / ask)
+  synthesis/
+    protocol.py      Synthesizer protocol (runtime-checkable)
+    citation_binder.py  KnowledgeCitationBinder (fail-closed citation binding)
+    _args.py         KnowledgeSynthesisOutput (LLM structured-output boundary)
+    llm_synthesizer.py  KnowledgeSynthesizer (deterministic, one LLM call)
+    factory.py       build_knowledge_synthesizer + KnowledgeSynthesizerKind
   factory.py         build_knowledge_service -> KnowledgeRuntime
   tool_factory.py    KnowledgeToolFactory (per-task agent tools)
   state.py           KnowledgeStateSlice (AppState wiring)
@@ -105,6 +111,7 @@ All models are frozen Pydantic v2 with `extra="forbid"`.
 | `SourceType` | `PDF`, `WEB`, `REPO`, `TICKET`, `DESIGN_DOC` | Origin of an ingested source. |
 | `ContentKind` | `CODE`, `DOCUMENT`, `PDF_PAGE`, `TICKET_THREAD` | Drives chunker selection. |
 | `SourceStatus` | `PENDING`, `INDEXED`, `STALE`, `FAILED` | Ingestion lifecycle state. |
+| `KnowledgeClaimType` | `FACT`, `ANALYSIS`, `RECOMMENDATION`, `COMPARISON` | Nature of a synthesised answer claim (knowledge-local; not shared with research). |
 
 A new top-level `MemoryCategory.KNOWLEDGE` is added (alongside `PROJECT_DOC`)
 so knowledge entries are routed and filtered distinctly from agent memory.
@@ -151,6 +158,22 @@ to resolve a chunk back to its source region.
 `RawDocument` / `RawUnit` are the loader output (unit text plus raw locator
 fields) handed to the chunker. External dict ingestion at the loader boundary
 goes through `parse_typed()`.
+
+### KnowledgeAnswer, KnowledgeAnswerClaim (synthesis output)
+
+The generative-RAG `ask` surface produces these instead of raw hits:
+
+- `KnowledgeAnswerClaim`: `text`, `claim_type: KnowledgeClaimType`,
+  `citations: tuple[Citation, ...]` (`min_length=1`, every claim is
+  citation-backed), `confidence`.
+- `KnowledgeAnswer`: `query`, `answer` (prose), `claims` (`min_length=1`),
+  `chunks_consulted`, `synthesis_model`, `created_at`. A model validator
+  rejects an incoherent answer whose `chunks_consulted` is below the claim
+  count.
+
+The synthesiser's raw LLM output is validated at the boundary via
+`parse_typed()` into `KnowledgeSynthesisOutput` (whose `ref_ids` are then
+resolved to `Citation`s by the binder).
 
 ## Ingestion
 
@@ -210,6 +233,37 @@ retrieval boundary, on both the explicit tool result and the facade fan-out.
 This applies to **all** source types, not only HTML: a PDF, source file, or
 ticket comment can carry injected instructions just as a web page can.
 Wrapping happens at retrieval, never on storage.
+
+## Synthesis (the ask surface)
+
+Retrieval returns cited chunks; agents then reason over them with their own
+models. `KnowledgeService.ask(query, *, project_id, limit)` adds an optional
+human-facing generative-RAG path for callers that want a grounded answer
+without spinning up an agent run: it calls `search()` (recording usage exactly
+as the retrieval path does) and delegates to a `Synthesizer`.
+
+`KnowledgeSynthesizer` (the only shipped strategy, selected by the
+`KnowledgeSynthesizerKind` discriminator via `build_knowledge_synthesizer`)
+makes a single deterministic (temperature 0) LLM call over the top
+`synthesis_max_chunks` hits, each fenced with `wrap_untrusted(TAG_KNOWLEDGE,
+...)` and the query fenced with `TAG_TASK_DATA` (SEC-1). It reuses the shared
+`providers/structured_text.py` helpers (`complete_text` + `extract_json_object`)
+that the research synthesiser also uses, so the two cannot drift and neither
+imports the other. The model output is validated into `KnowledgeSynthesisOutput`
+and `KnowledgeCitationBinder` resolves each claim's `ref_ids` to the retrieved
+hits' `Citation`s, raising `KnowledgeSynthesisError` (fail-closed) if a claim
+cites no source or a chunk that was not retrieved. The synthesised answer prose is model
+output (not ingested corpus text), so the SEC-1 wrap applies to the input chunks
+(as in search) and, defensively, to the answer fields when returned over MCP.
+
+Synthesis is **on by default (opt-out)** but functionally gated on a configured
+model: it is wired at startup only when `knowledge.synthesis_enabled` is true
+AND a `knowledge.synthesis_model` is set AND a provider is registered. Absent
+any of these the substrate stays retrieval-only and the `ask` surface raises
+`KnowledgeSynthesisUnavailableError` (503). The build is best-effort: a bad
+setting value or unknown strategy degrades to retrieval-only rather than
+poisoning startup. The synthesis model is knowledge's own (distinct from the
+embedding model, which powers retrieval, and from decomposition).
 
 ## Freshness and invalidation
 
@@ -275,6 +329,7 @@ REST (read-only, dashboard):
 | `GET` | `/projects/{project_id}/knowledge` | Paginated `KnowledgeSource[]` |
 | `GET` | `/knowledge` | Paginated global `KnowledgeSource[]` |
 | `GET` | `/projects/{project_id}/knowledge/search?q=...` | `KnowledgeHit[]` ordered by relevance |
+| `GET` | `/projects/{project_id}/knowledge/ask?q=...` | `KnowledgeAnswer` (grounded, citation-bound; 503 when synthesis unconfigured) |
 
 Agent tools (in-process, per-task binding):
 
@@ -283,14 +338,22 @@ Agent tools (in-process, per-task binding):
 
 MCP handlers (operator-driven, `meta/mcp/domains/knowledge.py`):
 
-- `knowledge:search`, `knowledge:list`, `knowledge:get` (read capability)
+- `knowledge:search`, `knowledge:ask`, `knowledge:list`, `knowledge:get` (read capability)
 - `knowledge:ingest`, `knowledge:reindex`, `knowledge:delete` (admin capability, guardrail triple)
 
 ## Configuration
 
 `KnowledgeConfig` (frozen) defaults to `enabled=False` until setup wires it.
 It carries the `pdf_loader` and `code_chunker` discriminators (defaults
-`pdfplumber` / `tree_sitter`). Chunk budgets and
+`pdfplumber` / `tree_sitter`).
+
+The generative-RAG `ask` surface is governed by the `knowledge` settings
+namespace (Cat-1, runtime-readable over the settings API so the wizard and
+dashboard can toggle it): `synthesis_enabled` (bool, default true),
+`synthesis_model` (str, default blank; must be set for `ask` to wire),
+`synthesis_provider` (str, blank selects the first registered provider),
+`synthesis_synthesizer` (strategy discriminator, default `llm`), and
+`synthesis_max_chunks` (int, top hits fed to the synthesiser). Chunk budgets and
 namespace/tag constants live in `knowledge/constants.py` as module-level
 `Final` values because they are part of the on-disk plus RAG-index contract: a
 runtime change would silently invalidate previously indexed chunks (the same

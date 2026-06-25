@@ -50,6 +50,7 @@ from synthorg.observability.events.knowledge import (
     KNOWLEDGE_SOURCE_INGESTED,
     KNOWLEDGE_SOURCE_NOT_FOUND,
     KNOWLEDGE_SOURCE_UNCHANGED,
+    KNOWLEDGE_SYNTHESIS_FAILED,
     KNOWLEDGE_SYNTHESISED,
 )
 from synthorg.persistence.knowledge_protocol import (
@@ -265,13 +266,19 @@ class KnowledgeService:
                 ground an answer, or the synthesiser output is invalid.
         """
         if self._synthesizer is None:
+            logger.warning(
+                KNOWLEDGE_SYNTHESIS_FAILED,
+                reason="synthesizer_not_configured",
+                project_id=project_id,
+                error_type=KnowledgeSynthesisUnavailableError.__name__,
+            )
             msg = (
                 "knowledge synthesis is not configured; set knowledge."
                 "synthesis_model to enable the ask surface"
             )
             raise KnowledgeSynthesisUnavailableError(msg)
         hits = await self.search(query=query, project_id=project_id, limit=limit)
-        answer, _cost = await self._synthesizer.synthesize(
+        answer, cost = await self._synthesizer.synthesize(
             query=query, hits=hits, project_id=project_id
         )
         logger.debug(
@@ -279,6 +286,7 @@ class KnowledgeService:
             project_id=project_id,
             claim_count=len(answer.claims),
             chunks_consulted=answer.chunks_consulted,
+            cost=cost,
         )
         return answer
 

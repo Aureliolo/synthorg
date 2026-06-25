@@ -13,9 +13,13 @@ from datetime import UTC, datetime
 
 import pytest
 
+from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.enums import KnowledgeClaimType, SourceStatus, SourceType
-from synthorg.knowledge.errors import KnowledgeSynthesisUnavailableError
+from synthorg.knowledge.errors import (
+    KnowledgeSynthesisError,
+    KnowledgeSynthesisUnavailableError,
+)
 from synthorg.knowledge.models import (
     Citation,
     KnowledgeAnswer,
@@ -61,15 +65,21 @@ def _answer(query: str) -> KnowledgeAnswer:
 
 
 class _AnsweringKnowledgeService:
-    """Answers via ``ask`` (happy path) or raises when synthesis is unwired."""
+    """Answers via ``ask`` (happy path) or raises a synthesis error."""
 
-    def __init__(self, *, unavailable: bool = False) -> None:
+    def __init__(
+        self, *, unavailable: bool = False, synthesis_error: bool = False
+    ) -> None:
         self._unavailable = unavailable
+        self._synthesis_error = synthesis_error
 
     async def ask(self, *, query: NotBlankStr, **_: object) -> KnowledgeAnswer:
         if self._unavailable:
             msg = "knowledge synthesis is not configured"
             raise KnowledgeSynthesisUnavailableError(msg)
+        if self._synthesis_error:
+            msg = "synthesiser returned unparseable output"
+            raise KnowledgeSynthesisError(msg)
         return _answer(query)
 
 
@@ -169,6 +179,21 @@ class TestProjectKnowledgeController:
                 "/api/v1/projects/proj-1/knowledge/ask", params={"q": "a question"}
             )
         assert resp.status_code == 503
+
+    async def test_ask_returns_500_on_synthesis_error(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        with _with_knowledge_service(
+            async_test_client, _AnsweringKnowledgeService(synthesis_error=True)
+        ):
+            resp = await async_test_client.get(
+                "/api/v1/projects/proj-1/knowledge/ask", params={"q": "a question"}
+            )
+        assert resp.status_code == 500
+        assert (
+            resp.json()["error_detail"]["error_code"]
+            == ErrorCode.KNOWLEDGE_SYNTHESIS_ERROR
+        )
 
     async def test_list_sources_reaches_second_page(
         self, async_test_client: LoopAsyncClient

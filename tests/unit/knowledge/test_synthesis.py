@@ -105,7 +105,7 @@ async def test_synthesiser_builds_cited_answer() -> None:
         query=NotBlankStr("are widgets adopted?"), hits=hits
     )
 
-    assert cost == 0.05
+    assert cost == pytest.approx(0.05)
     assert answer.query == "are widgets adopted?"
     assert answer.chunks_consulted == 2
     assert answer.synthesis_model == "example-medium-001"
@@ -135,6 +135,40 @@ async def test_synthesiser_wraps_chunks_as_untrusted() -> None:
     assert user_prompt is not None
     assert f"<{TAG_KNOWLEDGE}>" in user_prompt
     assert "INJECTED instructions" in user_prompt
+
+
+async def test_synthesiser_truncates_to_max_chunks() -> None:
+    payload = json.dumps(
+        {
+            "answer": "An answer.",
+            "claims": [
+                {
+                    "text": "A claim.",
+                    "claim_type": "fact",
+                    "confidence": 0.8,
+                    "ref_ids": ["src-0"],
+                }
+            ],
+        }
+    )
+    provider = ScriptedProvider(response=scripted_response(payload))
+    synth = KnowledgeSynthesizer(
+        provider=provider,
+        model="example-medium-001",
+        binder=KnowledgeCitationBinder(),
+        max_chunks=2,
+        clock=FakeClock(start=_NOW),
+    )
+
+    answer, _cost = await synth.synthesize(
+        query=NotBlankStr("q"), hits=tuple(_hit(i) for i in range(4))
+    )
+
+    assert answer.chunks_consulted == 2
+    user_prompt = provider.received_messages[0][1].content
+    assert user_prompt is not None
+    assert "ref_id: src-1" in user_prompt
+    assert "ref_id: src-2" not in user_prompt
 
 
 async def test_synthesiser_rejects_no_hits() -> None:

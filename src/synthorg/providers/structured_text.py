@@ -96,6 +96,10 @@ async def complete_text(  # noqa: PLR0913 -- cost-recording context is keyword-o
     Returns:
         A ``(content, cost)`` pair. ``content`` is the empty string when the
         provider returns no text.
+
+    Raises:
+        RetryExhaustedError: If the provider exhausts its retries; callers
+            decide whether to translate, log, or propagate it.
     """
     messages = [
         ChatMessage(role=MessageRole.SYSTEM, content=system),

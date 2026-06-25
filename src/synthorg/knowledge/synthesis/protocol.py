@@ -2,7 +2,7 @@
 
 A synthesiser turns the retrieved, cited chunks into a
 :class:`~synthorg.knowledge.models.KnowledgeAnswer` whose every claim cites at
-least one chunk. Implementations return the answer plus any USD cost incurred.
+least one chunk. Implementations return the answer plus any cost incurred.
 """
 
 from typing import Protocol, runtime_checkable
@@ -22,7 +22,10 @@ class Synthesizer(Protocol):
         hits: tuple[KnowledgeHit, ...],
         project_id: NotBlankStr | None = None,
     ) -> tuple[KnowledgeAnswer, float]:
-        """Return a cited answer and the USD cost of producing it.
+        """Return a cited answer and the cost of producing it.
+
+        The cost is a non-negative monetary amount in the deployment's
+        configured currency, and is ``0.0`` when no model call was made.
 
         Args:
             query: The natural-language question to answer.

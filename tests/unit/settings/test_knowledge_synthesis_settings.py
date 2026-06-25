@@ -22,10 +22,10 @@ pytestmark = pytest.mark.unit
 @pytest.fixture
 def service() -> SettingsService:
     repo = AsyncMock(spec=SettingsRepository)
-    repo.get = AsyncMock(return_value=None)
-    repo.get_namespace = AsyncMock(return_value=())
-    repo.list_items = AsyncMock(return_value=())
-    repo.save = AsyncMock(return_value=True)
+    repo.get.return_value = None
+    repo.get_namespace.return_value = ()
+    repo.list_items.return_value = ()
+    repo.save.return_value = True
     return SettingsService(repository=repo, registry=get_registry())
 
 

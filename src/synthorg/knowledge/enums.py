@@ -52,6 +52,10 @@ class KnowledgeClaimType(StrEnum):
     """
 
     FACT = "fact"
+    """A sourced statement asserted directly by one or more chunks."""
     ANALYSIS = "analysis"
+    """An inference or interpretation drawn from a single source."""
     RECOMMENDATION = "recommendation"
+    """A suggested action or course derived from the sources."""
     COMPARISON = "comparison"
+    """A contrast drawn across two or more distinct sources."""

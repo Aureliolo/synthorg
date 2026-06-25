@@ -116,6 +116,8 @@ class KnowledgeSynthesizer:
             logger.warning(
                 KNOWLEDGE_SYNTHESIS_FAILED,
                 reason="insufficient_grounding",
+                project_id=project_id,
+                hit_count=len(hits),
                 error_type=KnowledgeSynthesisError.__name__,
             )
             raise KnowledgeSynthesisError(msg)
@@ -130,7 +132,30 @@ class KnowledgeSynthesizer:
             task_id=_SYNTHESIS_TASK_ID,
             project_id=project_id,
         )
-        output = self._parse(content)
+        answer = self._build_answer(
+            query=query,
+            output=self._parse(content),
+            hits_by_ref=hits_by_ref,
+            chunks_consulted=len(selected),
+        )
+        return answer, cost
+
+    def _build_answer(
+        self,
+        *,
+        query: NotBlankStr,
+        output: KnowledgeSynthesisOutput,
+        hits_by_ref: dict[str, KnowledgeHit],
+        chunks_consulted: int,
+    ) -> KnowledgeAnswer:
+        """Bind the parsed output's claims to citations and assemble the answer.
+
+        Returns:
+            The citation-bound ``KnowledgeAnswer``.
+
+        Raises:
+            KnowledgeSynthesisError: When a claim cites an unretrieved chunk.
+        """
         claims = tuple(
             KnowledgeAnswerClaim(
                 text=claim.text,
@@ -140,15 +165,14 @@ class KnowledgeSynthesizer:
             )
             for claim in output.claims
         )
-        answer = KnowledgeAnswer(
+        return KnowledgeAnswer(
             query=query,
             answer=output.answer,
             claims=claims,
-            chunks_consulted=len(selected),
+            chunks_consulted=chunks_consulted,
             synthesis_model=NotBlankStr(self._model),
             created_at=self._clock.now(),
         )
-        return answer, cost
 
     @staticmethod
     def _build_user_prompt(
@@ -196,5 +220,5 @@ class KnowledgeSynthesizer:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            msg = "Synthesiser returned unparseable output"
+            msg = "synthesiser returned unparseable output"
             raise KnowledgeSynthesisError(msg) from exc
