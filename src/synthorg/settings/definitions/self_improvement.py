@@ -19,21 +19,19 @@ _NS = SettingNamespace.SELF_IMPROVEMENT
 _GROUP = "Self-Improvement"
 
 
-def _flag(key: str, description: str, *, default: str = "false") -> None:
+def _flag(key: str, description: str) -> None:
     """Register an off-by-default, restart-required self-improvement flag.
 
     Args:
         key: The setting key within the self-improvement namespace.
         description: Human-readable description for the /settings UI.
-        default: The string default (``"false"`` unless the flag is only
-            meaningful once the master switch is on).
     """
     _r.register(
         SettingDefinition(
             namespace=_NS,
             key=key,
             type=SettingType.BOOLEAN,
-            default=default,
+            default="false",
             description=description,
             group=_GROUP,
             level=SettingLevel.ADVANCED,
@@ -53,10 +51,24 @@ _flag(
     "Enable the Chief-of-Staff persona inside the self-improvement loop"
     " (distinct from the conversational chat capabilities).",
 )
-_flag(
-    "config_tuning_enabled",
-    "Allow config-tuning proposals when the meta-loop is on.",
-    default="true",
+# config_tuning is the cheapest, lowest-risk proposal type, so it is the one
+# self-improvement capability pre-enabled once the master switch is on. It has
+# no effect while ``self_improvement.enabled`` is off (the meta-loop never
+# runs), so a "true" default here does not loosen the off-by-default posture.
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
+        key="config_tuning_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Allow config-tuning proposals once the meta-loop is on. Has no"
+            " effect while self_improvement.enabled is off."
+        ),
+        group=_GROUP,
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+    )
 )
 _flag(
     "architecture_proposals_enabled",

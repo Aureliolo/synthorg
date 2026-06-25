@@ -12,12 +12,12 @@ from synthorg.api.controllers.setup._embedder_setup import (
     pick_decomposition_model,
 )
 from synthorg.memory.embedding.rankings import LMEB_RANKINGS
+from synthorg.settings.service import SettingsService
 
 
 def _mock_settings_svc() -> AsyncMock:
-    svc = AsyncMock()
-    svc.save = AsyncMock()
-    return svc
+    """A SettingsService-spec'd mock (typos raise instead of passing silently)."""
+    return AsyncMock(spec=SettingsService)
 
 
 def _set_many_values(settings_svc: AsyncMock) -> dict[tuple[str, str], str]:

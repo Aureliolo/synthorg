@@ -480,4 +480,11 @@ async def load_self_improvement_config(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return SelfImprovementConfig()
+        # A corrupt structural blob must not drop the on-by-default posture:
+        # re-overlay the individual settings onto an empty dict so the flags
+        # and per-feature models still apply (discarding only the bad blob).
+        try:
+            recovered = await overlay_feature_settings(settings_service, {})
+            return SelfImprovementConfig.model_validate(recovered)
+        except ValueError, TypeError:
+            return SelfImprovementConfig()

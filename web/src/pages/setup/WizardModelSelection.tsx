@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { getModelRecommendations } from '@/api/endpoints/setup'
 import { getNamespaceSettings, updateSetting } from '@/api/endpoints/settings'
 import { ErrorBanner } from '@/components/ui/error-banner'
+import { SectionCard } from '@/components/ui/section-card'
 import { SelectField, type SelectOption } from '@/components/ui/select-field'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ToggleField } from '@/components/ui/toggle-field'
@@ -70,11 +71,16 @@ function valueOf(entries: readonly SettingEntry[], key: string): string | undefi
   return found && found.value ? found.value : undefined
 }
 
-function boolOf(entries: readonly SettingEntry[], key: string): boolean {
-  // The settings default ships "true" for these on-by-default flags, so a
-  // missing entry is treated as enabled.
+// Resolve a flag, falling back to ``fallback`` only when the entry is
+// absent. The fallback is explicit at each call site (never an implicit
+// "true") so this helper is safe to reuse for an off-by-default flag.
+function boolOf(
+  entries: readonly SettingEntry[],
+  key: string,
+  fallback: boolean,
+): boolean {
   const found = entries.find((entry) => entry.definition.key === key)
-  return found ? found.value === 'true' : true
+  return found ? found.value === 'true' : fallback
 }
 
 function candidatesFor(
@@ -119,8 +125,9 @@ function buildChoices(
       cos: pickModel(valueOf(ns.chief_of_staff, 'chat_model'), recs.cos_recommended),
     },
     toggles: {
-      research: boolOf(ns.research, 'enabled'),
-      knowledge: boolOf(ns.knowledge, 'enabled'),
+      // Both research + knowledge are on by default (settings ship "true").
+      research: boolOf(ns.research, 'enabled', true),
+      knowledge: boolOf(ns.knowledge, 'enabled', true),
     },
   }
 }
@@ -213,9 +220,15 @@ function useWizardModelSelection(): ModelSelectionState {
 
   const selectModel = useCallback(
     (spec: PickerSpec, value: string) => {
-      setModels((prev) => ({ ...prev, [spec.key]: value }))
+      // Optimistic write; restore the prior model id if the API call fails.
+      let previous = ''
+      setModels((prev) => {
+        previous = prev[spec.key]
+        return { ...prev, [spec.key]: value }
+      })
       void updateSetting(spec.namespace, spec.settingKey, { value }).catch(
         (caught: unknown) => {
+          setModels((prev) => ({ ...prev, [spec.key]: previous }))
           addToast({
             variant: 'error',
             title: `Could not save the ${spec.label.toLowerCase()}`,
@@ -229,10 +242,16 @@ function useWizardModelSelection(): ModelSelectionState {
 
   const toggleFeature = useCallback(
     (name: keyof ToggleChoices, namespace: SettingNamespace, value: boolean) => {
-      setToggles((prev) => ({ ...prev, [name]: value }))
+      // Optimistic write; restore the prior toggle state if the API call fails.
+      let previous = false
+      setToggles((prev) => {
+        previous = prev[name]
+        return { ...prev, [name]: value }
+      })
       void updateSetting(namespace, 'enabled', {
         value: value ? 'true' : 'false',
       }).catch((caught: unknown) => {
+        setToggles((prev) => ({ ...prev, [name]: previous }))
         addToast({
           variant: 'error',
           title: `Could not save the ${name} setting`,
@@ -280,44 +299,45 @@ export function WizardModelSelection() {
     (spec) => spec.key !== 'research' || toggles.research,
   )
   return (
-    <section className="space-y-section-gap rounded-lg border border-border bg-card p-card">
-      <div className="space-y-1">
-        <h3 className="text-sm font-semibold text-foreground">Models</h3>
+    <SectionCard title="Models">
+      <div className="space-y-section-gap">
         <p className="text-xs text-muted-foreground">
           Prefilled with our recommendations. Override any of them now or later
           in Settings.
         </p>
-      </div>
 
-      {visiblePickers.map((spec) => (
-        <SelectField
-          key={spec.key}
-          label={spec.label}
-          hint={spec.hint}
-          value={models[spec.key]}
-          onChange={(value) => {
-            selectModel(spec, value)
+        {/* Toggles first: the Research toggle gates the research picker below,
+            so it must sit above the control it shows or hides. */}
+        <ToggleField
+          label="Research"
+          description="Let agents run research briefs. Turn off to disable research."
+          checked={toggles.research}
+          onChange={(checked) => {
+            toggleFeature('research', 'research', checked)
           }}
-          options={toOptions(candidatesFor(recs, spec.key))}
         />
-      ))}
+        <ToggleField
+          label="Knowledge base"
+          description="Document ingestion + retrieval over the memory backend. Uses the embedding model above."
+          checked={toggles.knowledge}
+          onChange={(checked) => {
+            toggleFeature('knowledge', 'knowledge', checked)
+          }}
+        />
 
-      <ToggleField
-        label="Research"
-        description="Let agents run research briefs. Turn off to disable research."
-        checked={toggles.research}
-        onChange={(checked) => {
-          toggleFeature('research', 'research', checked)
-        }}
-      />
-      <ToggleField
-        label="Knowledge base"
-        description="Document ingestion + retrieval over the memory backend. Uses the embedding model above."
-        checked={toggles.knowledge}
-        onChange={(checked) => {
-          toggleFeature('knowledge', 'knowledge', checked)
-        }}
-      />
-    </section>
+        {visiblePickers.map((spec) => (
+          <SelectField
+            key={spec.key}
+            label={spec.label}
+            hint={spec.hint}
+            value={models[spec.key]}
+            onChange={(value) => {
+              selectModel(spec, value)
+            }}
+            options={toOptions(candidatesFor(recs, spec.key))}
+          />
+        ))}
+      </div>
+    </SectionCard>
   )
 }

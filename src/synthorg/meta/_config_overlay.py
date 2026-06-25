@@ -6,11 +6,13 @@ models are individual runtime settings (namespaces ``self_improvement``
 and ``chief_of_staff``), so the wizard and dashboard Settings can toggle
 them over the standard ``/settings`` API. They are the single source of
 truth: this overlay applies them onto the dict parsed from the
-``meta.self_improvement`` structural blob, always winning over any legacy
-flag value the blob may still carry. Only the deep structural tuning
-(schedule, rollout, regression, guards, toolsmith internals) is sourced
-from the blob.
+``meta.self_improvement`` structural blob, always winning over any flag
+value the blob carries. Only the deep structural tuning (schedule,
+rollout, regression, guards, toolsmith internals) is sourced from the
+blob.
 """
+
+from typing import cast
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import normalize_ascii_lowercase
@@ -36,8 +38,10 @@ _SI_BOOL_FIELDS: tuple[str, ...] = (
 )
 
 # chief_of_staff setting key -> ChiefOfStaffConfig field name. The chat
-# capability is surfaced as "explain_chat" in settings/UI but the config
-# field is the historical ``chat_enabled``.
+# capability uses the settings/UI key ``explain_chat_enabled`` (so it reads
+# distinctly from the self-improvement ``chief_of_staff_enabled`` switch),
+# but the config field it maps to is ``chat_enabled``. Every other flag
+# shares its name between the setting and the config field.
 _COS_BOOL_FIELDS: dict[str, str] = {
     "explain_chat_enabled": "chat_enabled",
     "propose_enabled": "propose_enabled",
@@ -50,12 +54,16 @@ _COS_BOOL_FIELDS: dict[str, str] = {
     "direct_mcp_enabled": "direct_mcp_enabled",
 }
 
-_COS_MODEL_FIELDS: dict[str, str] = {
-    "chat_model": "chat_model",
-    "propose_model": "propose_model",
-    "routing_model": "routing_model",
-    "narrative_model": "narrative_model",
-}
+# chief_of_staff per-feature model keys; each shares its name between the
+# setting and the ChiefOfStaffConfig field. (invite + direct-mcp have no
+# per-feature model: group invites reuse each agent's identity model, and
+# direct-MCP acting runs under the agent's own model.)
+_COS_MODEL_FIELDS: tuple[str, ...] = (
+    "chat_model",
+    "propose_model",
+    "routing_model",
+    "narrative_model",
+)
 
 
 def _as_bool(value: str) -> bool:
@@ -77,7 +85,7 @@ def _nested(overrides: dict[str, object], key: str) -> dict[str, object]:
     if not isinstance(nested, dict):
         nested = {}
         overrides[key] = nested
-    return nested
+    return cast("dict[str, object]", nested)
 
 
 async def overlay_feature_settings(
@@ -101,28 +109,11 @@ async def overlay_feature_settings(
     Returns:
         The overlaid ``overrides`` dict.
     """
-    try:
-        si = {
-            entry.definition.key: entry.value
-            for entry in await settings_service.get_namespace(
-                SettingNamespace.SELF_IMPROVEMENT
-            )
-        }
-        cos = {
-            entry.definition.key: entry.value
-            for entry in await settings_service.get_namespace(
-                SettingNamespace.CHIEF_OF_STAFF
-            )
-        }
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        logger.warning(
-            META_SELF_IMPROVEMENT_LOAD_FAILED,
-            reason="settings_namespace_read_error",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        return overrides
+    # Read each namespace independently: a failure on one still applies the
+    # other's overlay (best-partial), and the log names the failing
+    # namespace instead of a single opaque "settings read error".
+    si = await _read_namespace(settings_service, SettingNamespace.SELF_IMPROVEMENT)
+    cos = await _read_namespace(settings_service, SettingNamespace.CHIEF_OF_STAFF)
 
     for key in _SI_BOOL_FIELDS:
         if key in si:
@@ -142,8 +133,39 @@ async def overlay_feature_settings(
     for setting_key, field in _COS_BOOL_FIELDS.items():
         if setting_key in cos:
             cos_overrides[field] = _as_bool(cos[setting_key])
-    for setting_key, field in _COS_MODEL_FIELDS.items():
-        value = cos.get(setting_key, "").strip()
+    for field in _COS_MODEL_FIELDS:
+        value = cos.get(field, "").strip()
         if value:
             cos_overrides[field] = value
     return overrides
+
+
+async def _read_namespace(
+    settings_service: SettingsServiceProtocol,
+    namespace: SettingNamespace,
+) -> dict[str, str]:
+    """Read one settings namespace into a ``{key: value}`` map.
+
+    Returns an empty map (and logs which namespace failed) on a
+    non-critical read error, so the caller still applies the other
+    namespace's overlay rather than dropping both.
+
+    Returns:
+        ``{key: value}`` for every entry in *namespace*, or ``{}`` on a
+        non-critical read failure.
+    """
+    try:
+        return {
+            entry.definition.key: entry.value
+            for entry in await settings_service.get_namespace(namespace)
+        }
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            META_SELF_IMPROVEMENT_LOAD_FAILED,
+            reason="settings_namespace_read_error",
+            namespace=namespace.value,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return {}

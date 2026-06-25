@@ -82,7 +82,17 @@ async def _write_posture_flags(
     settings_svc: SettingsService,
     posture: PostureConfig,
 ) -> None:
-    """Write ``"true"`` for each capability the posture requests."""
-    for flag, namespace, key in _POSTURE_FLAG_SETTINGS:
-        if getattr(posture, flag):
-            await settings_svc.set(namespace, key, "true")
+    """Write ``"true"`` for each capability the posture requests.
+
+    All requested flags are written in a single ``set_many`` transaction so
+    a concurrent live gate never observes a half-applied posture (some flags
+    on, the rest still at their default).
+    """
+    items = [
+        (namespace, key, "true")
+        for flag, namespace, key in _POSTURE_FLAG_SETTINGS
+        if getattr(posture, flag)
+    ]
+    if not items:
+        return
+    await settings_svc.set_many(items, expected_updated_at_map={})

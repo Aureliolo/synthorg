@@ -27,6 +27,7 @@ from synthorg.memory.embedding.rankings import DeploymentTier
 from synthorg.memory.embedding.selector import EmbeddingSelection
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.setup import (
+    SETUP_FEATURE_MODEL_SELECT_FAILED,
     SETUP_FEATURE_MODEL_SELECTED,
     SETUP_MODEL_ID_COLLECTION_ERROR,
     SETUP_PROVIDER_TIER_COVERAGE_INSUFFICIENT,
@@ -236,13 +237,32 @@ async def ensure_per_feature_models(
         get_existing_agents,
     )
 
-    agents = await get_existing_agents(settings_svc)
-    available = await collect_model_ids(app_state)
-    fallback = available[0] if available else None
-    research_model = pick_decomposition_model(agents) or fallback
-    cos_model = pick_chat_model(agents) or fallback
-    await _set_model_if_blank(settings_svc, "research", "model", research_model)
-    await _set_model_if_blank(settings_svc, "chief_of_staff", "chat_model", cos_model)
+    try:
+        # The roster read and the provider-model resolution are independent,
+        # so fan them out concurrently (matching this module's TaskGroup use
+        # in auto_create_template_agents).
+        async with asyncio.TaskGroup() as tg:
+            agents_task = tg.create_task(get_existing_agents(settings_svc))
+            available_task = tg.create_task(collect_model_ids(app_state))
+        agents = agents_task.result()
+        available = available_task.result()
+        fallback = available[0] if available else None
+        research_model = pick_decomposition_model(agents) or fallback
+        cos_model = pick_chat_model(agents) or fallback
+        await _set_model_if_blank(settings_svc, "research", "model", research_model)
+        await _set_model_if_blank(
+            settings_svc, "chief_of_staff", "chat_model", cos_model
+        )
+    except* Exception as eg:
+        reraise_critical(eg)
+        exc = eg.exceptions[0]
+        logger.warning(
+            SETUP_FEATURE_MODEL_SELECT_FAILED,
+            note="per-feature model auto-fill failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        raise
 
 
 async def _set_model_if_blank(

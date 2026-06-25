@@ -18,8 +18,11 @@ from synthorg.meta.models import (
 )
 from synthorg.meta.signals.service import SignalsService
 from synthorg.meta.state import MetaStateSlice
+from synthorg.settings.enums import SettingSource
 from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
+
+pytestmark = pytest.mark.unit
 
 _BASE = "/api/v1/meta/chat"
 _HEADERS = make_auth_headers("ceo")
@@ -49,7 +52,6 @@ def _empty_snapshot() -> OrgSignalSnapshot:
     )
 
 
-@pytest.mark.unit
 class TestMetaChat:
     """Endpoint dispatches to ChiefOfStaffChat when wired, 503 otherwise."""
 
@@ -151,6 +153,9 @@ class TestMetaChat:
             chief_of_staff_chat=chat_mock,
             signals_service=signals_mock,
         )
+        # Capture the prior state so cleanup restores it exactly (the
+        # settings service is shared across tests on this worker).
+        prior = await settings.get("chief_of_staff", "explain_chat_enabled")
         try:
             await settings.set("chief_of_staff", "explain_chat_enabled", "false")
             resp = await async_test_client.post(
@@ -162,7 +167,12 @@ class TestMetaChat:
             # The gate fires before dispatch: the backend is never called.
             chat_mock.ask.assert_not_awaited()
         finally:
-            await settings.delete("chief_of_staff", "explain_chat_enabled")
+            if prior.source is SettingSource.DATABASE:
+                await settings.set(
+                    "chief_of_staff", "explain_chat_enabled", prior.value
+                )
+            else:
+                await settings.delete("chief_of_staff", "explain_chat_enabled")
             app_state.swap_slice(original_slice)
 
     async def test_returns_503_when_signals_service_missing(

@@ -351,32 +351,21 @@ async def _build_research_config(runtime_settings: SettingsService) -> ResearchC
     """
     from synthorg.research.config import ResearchConfig  # noqa: PLC0415
 
+    # One batched namespace read instead of eight sequential get() round-trips.
+    values = {
+        entry.definition.key: entry.value
+        for entry in await runtime_settings.get_namespace("research")
+    }
     return ResearchConfig(
         enabled=True,
-        query_planner=(
-            await runtime_settings.get("research", "query_planner")
-        ).value.strip(),  # type: ignore[arg-type]
-        credibility_triage=(
-            await runtime_settings.get("research", "credibility_triage")
-        ).value.strip(),  # type: ignore[arg-type]
-        deduplicator=(
-            await runtime_settings.get("research", "deduplicator")
-        ).value.strip(),  # type: ignore[arg-type]
-        synthesizer=(
-            await runtime_settings.get("research", "synthesizer")
-        ).value.strip(),  # type: ignore[arg-type]
-        triage_batch_size=int(
-            (await runtime_settings.get("research", "triage_batch_size")).value
-        ),
-        hybrid_prefilter_factor=float(
-            (await runtime_settings.get("research", "hybrid_prefilter_factor")).value
-        ),
-        dedup_similarity_threshold=float(
-            (await runtime_settings.get("research", "dedup_similarity_threshold")).value
-        ),
-        per_query_limit=int(
-            (await runtime_settings.get("research", "per_query_limit")).value
-        ),
+        query_planner=values["query_planner"].strip(),  # type: ignore[arg-type]
+        credibility_triage=values["credibility_triage"].strip(),  # type: ignore[arg-type]
+        deduplicator=values["deduplicator"].strip(),  # type: ignore[arg-type]
+        synthesizer=values["synthesizer"].strip(),  # type: ignore[arg-type]
+        triage_batch_size=int(values["triage_batch_size"]),
+        hybrid_prefilter_factor=float(values["hybrid_prefilter_factor"]),
+        dedup_similarity_threshold=float(values["dedup_similarity_threshold"]),
+        per_query_limit=int(values["per_query_limit"]),
     )
 
 
@@ -413,6 +402,11 @@ async def _build_and_wire_research(
         return
     provider_names = provider_registry.list_providers()
     if not provider_names:
+        logger.info(
+            API_APP_STARTUP,
+            service="research_engine",
+            note="no providers registered; wiring skipped",
+        )
         return
     provider_name = (await runtime_settings.get("research", "provider")).value.strip()
     provider = (

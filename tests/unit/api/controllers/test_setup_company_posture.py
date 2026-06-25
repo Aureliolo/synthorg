@@ -21,6 +21,8 @@ from synthorg.templates.schema import (
 )
 from tests._shared import mock_of
 
+pytestmark = pytest.mark.unit
+
 
 def _template(posture: PostureName | None) -> CompanyTemplate:
     """Build a minimal template carrying the given posture."""
@@ -32,26 +34,26 @@ def _template(posture: PostureName | None) -> CompanyTemplate:
 
 
 def _svc() -> SettingsService:
-    """A SettingsService double recording every ``set`` await."""
+    """A SettingsService double recording every ``set_many`` await."""
     svc: SettingsService = mock_of[SettingsService]()
     return svc
 
 
 def _set_calls(svc: object) -> dict[tuple[str, str], str]:
-    """Collapse recorded ``set`` awaits into a ``{(namespace, key): value}``."""
+    """Collapse the seeder's ``set_many`` batch into ``{(ns, key): value}``."""
     return {
-        (call.args[0], call.args[1]): call.args[2]
-        for call in svc.set.await_args_list  # type: ignore[attr-defined]
+        (namespace, key): value
+        for call in svc.set_many.await_args_list  # type: ignore[attr-defined]
+        for namespace, key, value in call.args[0]
     }
 
 
-@pytest.mark.unit
 class TestSeedPostureSettings:
     async def test_no_posture_writes_nothing(self) -> None:
         svc = _svc()
         result = await seed_posture_settings(svc, _template(None))
         assert result is None
-        svc.set.assert_not_called()  # type: ignore[attr-defined]
+        svc.set_many.assert_not_called()  # type: ignore[attr-defined]
 
     async def test_seeder_only_writes_true(self) -> None:
         """Every recorded write is ``"true"``; postures never downgrade."""

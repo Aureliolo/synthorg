@@ -117,6 +117,11 @@ domain-specific startup event (e.g. `API_APP_STARTUP`,
 | `providers.model_refresh_mode` | `SYNTHORG_PROVIDERS_MODEL_REFRESH_MODE` | Config discriminator for the periodic model-refresh subsystem (`off` / `manual_only` / `detect_only` / `reconcile_recommend`); `off` is the safe default. The scheduler re-reads it every tick (fail-safe to `off`), so mode changes apply without a restart. |
 | `providers.model_refresh_interval_seconds` | `SYNTHORG_PROVIDERS_MODEL_REFRESH_INTERVAL_SECONDS` | Cadence between automatic reconcile cycles (60s..604800s). Baked into the scheduler at wiring time; changing it needs a restart. |
 | `providers.model_refresh_auto_apply_within_family` | `SYNTHORG_PROVIDERS_MODEL_REFRESH_AUTO_APPLY_WITHIN_FAMILY` | Opt-in (default off) auto-apply of strictly in-family upgrades; re-read every cycle. |
+| `chief_of_staff.propose_enabled` | `SYNTHORG_CHIEF_OF_STAFF_PROPOSE_ENABLED` | On-by-default conversational capability; live-gated per request via `ensure_feature_enabled` (no restart). The sibling `explain_chat_enabled` / `group_chat_enabled` behave the same; `routing_enabled` is `restart_required`. |
+| `chief_of_staff.chat_model` | `SYNTHORG_CHIEF_OF_STAFF_CHAT_MODEL` | Per-feature model for conversational turns; auto-filled at setup-complete when left blank. |
+| `knowledge.enabled` | `SYNTHORG_KNOWLEDGE_ENABLED` | On-by-default knowledge substrate; `restart_required` (the engine wires at boot). |
+| `research.enabled` | `SYNTHORG_RESEARCH_ENABLED` | On-by-default research pipeline; `restart_required`. The model lives in `research.model` (auto-filled at setup-complete). |
+| `self_improvement.enabled` | `SYNTHORG_SELF_IMPROVEMENT_ENABLED` | Off-by-default self-modification master switch; `restart_required` (wires a boot-time loop). All sub-gates share the namespace. |
 
 ### Category 2 examples (env > default; DB bypassed)
 

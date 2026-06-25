@@ -97,6 +97,7 @@ function setWizardModeImpl(
             ...s.stepsCompleted,
             template: false,
             agents: false,
+            capabilities: false,
             theme: false,
           }
         : s.stepsCompleted,
@@ -105,6 +106,7 @@ function setWizardModeImpl(
             ...s.stepsNeedRevalidation,
             template: false,
             agents: false,
+            capabilities: false,
             theme: false,
           }
         : s.stepsNeedRevalidation,

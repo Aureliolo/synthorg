@@ -153,16 +153,19 @@ async def _resolve_coordinator_dependencies(
     str,
     RoutingScorerConfig | None,
     tuple[PlannerWorktreeStrategy, WorkspaceIsolationConfig],
+    bool,
 ]:
-    """Resolve decomposition model, routing-scorer config, and workspace concurrently.
+    """Resolve decomposition model, scorer, workspace, and middleware concurrently.
 
-    The three resolution steps are independent, so they run under a
+    The four resolution steps are independent, so they run under a
     ``TaskGroup`` to keep boot latency down (structured concurrency: any
-    failure cancels the siblings and propagates).
+    failure cancels the siblings and propagates). The middleware-enabled
+    flag is resolved here too so every remote read happens in one group
+    rather than a serial tail read at the build site.
 
     Returns:
         A ``(decomposition_model, routing_scorer_config, (workspace_strategy,
-        workspace_config))`` triple.
+        workspace_config), middleware_enabled)`` tuple.
     """
     try:
         async with asyncio.TaskGroup() as tg:
@@ -174,6 +177,12 @@ async def _resolve_coordinator_dependencies(
             )
             scorer_task = tg.create_task(_resolve_routing_scorer_config(app_state))
             workspace_task = tg.create_task(_build_workspace_strategy(app_state))
+            middleware_task = tg.create_task(
+                config_resolver_of(app_state).get_bool(
+                    _DECOMPOSITION_NS,
+                    _MIDDLEWARE_KEY,
+                )
+            )
     except Exception as exc:
         reraise_critical(exc)
         log_exception_redacted(
@@ -189,6 +198,7 @@ async def _resolve_coordinator_dependencies(
         model_task.result(),
         scorer_task.result(),
         workspace_task.result(),
+        middleware_task.result(),
     )
 
 
@@ -267,6 +277,7 @@ async def _build_runtime_coordinator(
         decomposition_model,
         routing_scorer_config,
         (workspace_strategy, workspace_config),
+        middleware_enabled,
     ) = await _resolve_coordinator_dependencies(app_state)
     if not decomposition_model.strip():
         msg = (
@@ -315,10 +326,7 @@ async def _build_runtime_coordinator(
         scorer=scorer,
         coordination_chain=_build_coordination_chain(
             app_state,
-            enabled=await config_resolver_of(app_state).get_bool(
-                _DECOMPOSITION_NS,
-                _MIDDLEWARE_KEY,
-            ),
+            enabled=middleware_enabled,
         ),
         shutdown_manager=app_state.shutdown_manager,
     )
@@ -372,14 +380,19 @@ async def _build_runtime_work_pipeline(  # noqa: PLR0913 -- keyword-only DI
             note="simulation runtime present but intake engine unset",
         )
         return None
-    routing_policy = await config_resolver_of(app_state).get_str(
-        _DECOMPOSITION_NS,
-        _ROUTING_POLICY_KEY,
-    )
-    leaf_threshold = await config_resolver_of(app_state).get_int(
-        _DECOMPOSITION_NS,
-        _LEAF_THRESHOLD_KEY,
-    )
+    # The routing policy and leaf threshold are independent settings reads;
+    # resolve them concurrently so the spine build issues one round-trip
+    # window rather than two serial ones.
+    resolver = config_resolver_of(app_state)
+    async with asyncio.TaskGroup() as tg:
+        routing_task = tg.create_task(
+            resolver.get_str(_DECOMPOSITION_NS, _ROUTING_POLICY_KEY)
+        )
+        leaf_task = tg.create_task(
+            resolver.get_int(_DECOMPOSITION_NS, _LEAF_THRESHOLD_KEY)
+        )
+    routing_policy = routing_task.result()
+    leaf_threshold = leaf_task.result()
     cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
     return build_work_pipeline(
         intake_engine=intake_engine,

@@ -177,9 +177,19 @@ function rowId(row: CapabilityRow): string {
   return `${row.namespace}/${row.key}`
 }
 
-function boolOf(entries: readonly SettingEntry[], key: string): boolean {
+// Resolve a flag from the namespace entries. The backend ships every
+// registered key (resolved to its default), so ``fallback`` only matters
+// for the degenerate empty-namespace case; it mirrors the row's posture
+// default (on for the two safe groups, off for the advanced ones) so this
+// surface never disagrees with the Models section's research/knowledge
+// toggles on a fresh install.
+function boolOf(
+  entries: readonly SettingEntry[],
+  key: string,
+  fallback: boolean,
+): boolean {
   const found = entries.find((entry) => entry.definition.key === key)
-  return found ? found.value === 'true' : false
+  return found ? found.value === 'true' : fallback
 }
 
 interface LoadHandlers {
@@ -202,7 +212,11 @@ async function loadCapabilities(
     const values: Record<string, boolean> = {}
     for (const group of GROUPS) {
       for (const row of group.rows) {
-        values[rowId(row)] = boolOf(byNs.get(row.namespace) ?? [], row.key)
+        values[rowId(row)] = boolOf(
+          byNs.get(row.namespace) ?? [],
+          row.key,
+          !group.advanced,
+        )
       }
     }
     handlers.setValues(values)
@@ -236,10 +250,17 @@ function useCapabilities(): CapabilitiesState {
 
   const toggle = useCallback(
     (row: CapabilityRow, value: boolean) => {
-      setValues((prev) => ({ ...prev, [rowId(row)]: value }))
+      // Optimistic write; restore the prior value if the API call fails so
+      // the switch never lies about the persisted state.
+      let previous = false
+      setValues((prev) => {
+        previous = prev[rowId(row)] ?? false
+        return { ...prev, [rowId(row)]: value }
+      })
       void updateSetting(row.namespace, row.key, {
         value: value ? 'true' : 'false',
       }).catch((caught: unknown) => {
+        setValues((prev) => ({ ...prev, [rowId(row)]: previous }))
         addToast({
           variant: 'error',
           title: `Could not save the ${row.label.toLowerCase()} setting`,
@@ -263,7 +284,7 @@ function CapabilityRowView({
   onToggle: (row: CapabilityRow, value: boolean) => void
 }) {
   return (
-    <div className="flex items-start justify-between gap-3">
+    <div className="flex items-start justify-between gap-grid-gap">
       <ToggleField
         label={row.label}
         description={row.caption}

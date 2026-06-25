@@ -87,10 +87,14 @@ _ENTRIES: tuple[tuple[str, str, SettingType, str, bool], ...] = (
 )
 
 
-_Entry = tuple[str, str, SettingType, str, bool]
+type _Entry = tuple[str, str, SettingType, str, bool]
+
+# Readable parametrize ids ("chief_of_staff/propose_enabled") so a failing
+# case names the namespace/key instead of "entry7".
+_ENTRY_IDS = [f"{ns}/{key}" for ns, key, *_ in _ENTRIES]
 
 
-@pytest.mark.parametrize("entry", _ENTRIES)
+@pytest.mark.parametrize("entry", _ENTRIES, ids=_ENTRY_IDS)
 def test_entry_registered_with_default(entry: _Entry) -> None:
     """The definition exists with the documented type, default, and flag."""
     namespace, key, stype, default, restart = entry
@@ -101,7 +105,7 @@ def test_entry_registered_with_default(entry: _Entry) -> None:
     assert defn.restart_required is restart
 
 
-@pytest.mark.parametrize("entry", _ENTRIES)
+@pytest.mark.parametrize("entry", _ENTRIES, ids=_ENTRY_IDS)
 async def test_default_resolves(service: SettingsService, entry: _Entry) -> None:
     """With no DB override the resolved value is the documented default."""
     namespace, key, _stype, default, _restart = entry
