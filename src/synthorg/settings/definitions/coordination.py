@@ -283,8 +283,9 @@ _r.register(
 )
 
 # ── Multi-agent middleware pipeline + strategy seams ────────────
-# The coordination middleware chain is off by default so wiring it in
-# preserves current behaviour exactly; an operator opts in per company.
+# The coordination middleware chain is on by default (richer multi-agent
+# coordination out of the box); it is built at coordinator construction,
+# so a change applies on the next coordinator rebuild (restart-required).
 # ``replan_strategy`` / ``orchestrator_strategy`` are no-op-by-default
 # discriminators selected at coordinator build (replan) / dispatch
 # (orchestrator).
@@ -294,16 +295,16 @@ _r.register(
         namespace=SettingNamespace.COORDINATION,
         key="enable_coordination_middleware",
         type=SettingType.BOOLEAN,
-        default="false",
+        default="true",
         description=(
             "Build and run the coordination middleware pipeline"
             " (task/progress ledgers, plan-review gate, replan hook)."
-            " Off by default so the wired pipeline changes no behaviour"
-            " until an operator opts in. Applied on the next coordinator"
-            " rebuild."
+            " On by default. Built at coordinator construction, so a change"
+            " applies on the next coordinator rebuild (restart-required)."
         ),
         group="General",
         level=SettingLevel.ADVANCED,
+        restart_required=True,
     )
 )
 

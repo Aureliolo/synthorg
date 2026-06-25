@@ -8,6 +8,7 @@ from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg._core.features import require_service
+from synthorg.api._feature_gate import ensure_feature_enabled
 from synthorg.api.controllers._custom_rules_helpers import rule_to_dict
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_org_mutation, require_read_access
@@ -413,6 +414,12 @@ class MetaController(Controller):
             ServiceUnavailableError: Raised on the corresponding failure path.
         """
         app_state = state.app_state
+        await ensure_feature_enabled(
+            app_state,
+            "chief_of_staff",
+            "explain_chat_enabled",
+            feature_label="Chief of Staff chat",
+        )
         chat_backend = app_state.slice(MetaStateSlice).chief_of_staff_chat
         if chat_backend is None:
             logger.warning(
@@ -488,6 +495,12 @@ class MetaController(Controller):
             ServiceUnavailableError: Raised on the corresponding failure path.
         """
         app_state = state.app_state
+        await ensure_feature_enabled(
+            app_state,
+            "chief_of_staff",
+            "propose_enabled",
+            feature_label="Chief of Staff propose",
+        )
         proposer = app_state.slice(MetaStateSlice).chief_of_staff_proposer
         if proposer is None:
             logger.warning(

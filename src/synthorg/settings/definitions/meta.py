@@ -65,9 +65,11 @@ _r.register(
         type=SettingType.JSON,
         default="{}",
         description=(
-            "Runtime overrides for the SelfImprovementConfig model."
-            "  Empty object means 'use code defaults'.  Keys are merged"
-            " onto the default via model_copy."
+            "Structural tuning for the self-improvement meta-loop (schedule,"
+            " rollout, regression, guards, toolsmith internals). The feature"
+            " flags and per-feature models live in the self_improvement and"
+            " chief_of_staff namespaces and always win over this blob. Empty"
+            " object means 'use code defaults'."
         ),
         group="Self-Improvement",
         level=SettingLevel.ADVANCED,

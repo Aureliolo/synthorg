@@ -37,26 +37,23 @@ def _replan_hook(chain: object) -> object:
 
 class TestBuildCoordinationChain:
     def test_disabled_returns_none(self) -> None:
-        section = CoordinationSectionConfig(enable_coordination_middleware=False)
-        assert _build_coordination_chain(_app_state(section)) is None
+        section = CoordinationSectionConfig()
+        assert _build_coordination_chain(_app_state(section), enabled=False) is None
 
     def test_enabled_builds_full_default_chain(self) -> None:
-        section = CoordinationSectionConfig(enable_coordination_middleware=True)
-        chain = _build_coordination_chain(_app_state(section))
+        section = CoordinationSectionConfig()
+        chain = _build_coordination_chain(_app_state(section), enabled=True)
         assert chain is not None
         assert chain.names == DEFAULT_COORDINATION_CHAIN
 
     def test_noop_replan_is_safe_default(self) -> None:
-        section = CoordinationSectionConfig(enable_coordination_middleware=True)
-        chain = _build_coordination_chain(_app_state(section))
+        section = CoordinationSectionConfig()
+        chain = _build_coordination_chain(_app_state(section), enabled=True)
         assert chain is not None
         assert isinstance(_replan_hook(chain), NoOpReplanHook)
 
     def test_magentic_replan_opt_in(self) -> None:
-        section = CoordinationSectionConfig(
-            enable_coordination_middleware=True,
-            replan_strategy="magentic",
-        )
-        chain = _build_coordination_chain(_app_state(section))
+        section = CoordinationSectionConfig(replan_strategy="magentic")
+        chain = _build_coordination_chain(_app_state(section), enabled=True)
         assert chain is not None
         assert isinstance(_replan_hook(chain), MagenticReplanHook)

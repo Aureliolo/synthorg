@@ -1,27 +1,33 @@
-"""Tests for ``load_self_improvement_config``.
+"""Tests for ``load_self_improvement_config`` and the feature overlay.
 
-Pins the merge semantics: an empty object, missing setting, or malformed
-JSON all fall back to code defaults; valid overrides merge onto the
-default.
+The Chief-of-Staff + self-improvement flags and per-feature models are
+individual runtime settings (the single source of truth); the loader
+overlays them onto the structural ``meta.self_improvement`` blob. An
+empty blob with a real settings service therefore yields the
+on-by-default posture, not pure code defaults, and a setting always wins
+over a legacy flag value still carried in the blob.
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from collections.abc import AsyncIterator
 
 import pytest
 
+from synthorg.meta._config_overlay import overlay_feature_settings
 from synthorg.meta.config import SelfImprovementConfig, load_self_improvement_config
-from synthorg.settings.models import SettingEntry
+from synthorg.settings.registry import get_registry
+from synthorg.settings.service import SettingsService
+from tests.unit.api.fakes import FakePersistenceBackend
 
 pytestmark = pytest.mark.unit
 
 
-def _fake_service(value: str) -> MagicMock:
-    """Build a settings-service fake with a single ``get`` entry."""
-    service = MagicMock()
-    entry = MagicMock(spec=SettingEntry)
-    entry.value = value
-    service.get = AsyncMock(return_value=entry)
-    return service
+@pytest.fixture
+async def settings_service() -> AsyncIterator[SettingsService]:
+    """A settings service backed by a connected in-memory backend."""
+    backend = FakePersistenceBackend()
+    await backend.connect()
+    yield SettingsService(repository=backend.settings, registry=get_registry())
+    await backend.disconnect()
 
 
 async def test_missing_service_returns_default() -> None:
@@ -30,47 +36,87 @@ async def test_missing_service_returns_default() -> None:
     assert config == SelfImprovementConfig()
 
 
-async def test_empty_object_returns_default() -> None:
-    """``{}`` (the shipped default value) yields pure code defaults."""
-    service = _fake_service("{}")
-    config = await load_self_improvement_config(service)
-    assert config == SelfImprovementConfig()
+async def test_empty_db_yields_on_by_default_posture(
+    settings_service: SettingsService,
+) -> None:
+    """An empty blob + real settings yields the on-by-default posture."""
+    config = await load_self_improvement_config(settings_service)
+    cos = config.chief_of_staff
+    # Conversational capabilities default on.
+    assert cos.chat_enabled is True
+    assert cos.propose_enabled is True
+    assert cos.routing_enabled is True
+    assert cos.group_chat_enabled is True
+    # Background-spend + acts-on-your-behalf capabilities default off.
+    assert cos.learning_enabled is False
+    assert cos.alerts_enabled is False
+    assert cos.narrative_enabled is False
+    assert cos.invite_enabled is False
+    assert cos.direct_mcp_enabled is False
+    # The self-modification master stays off.
+    assert config.enabled is False
+    assert config.code_modification_enabled is False
 
 
-async def test_malformed_json_falls_back_to_default() -> None:
-    """Corrupt JSON never crashes the controller."""
-    service = _fake_service("not-json{]}")
-    config = await load_self_improvement_config(service)
-    assert config == SelfImprovementConfig()
+async def test_setting_overrides_flag(settings_service: SettingsService) -> None:
+    """A DB setting flips the corresponding config flag."""
+    await settings_service.set("chief_of_staff", "group_chat_enabled", "false")
+    config = await load_self_improvement_config(settings_service)
+    assert config.chief_of_staff.group_chat_enabled is False
 
 
-async def test_non_dict_json_falls_back_to_default() -> None:
-    """A JSON array (or scalar) is not a valid override envelope."""
-    service = _fake_service("[1, 2, 3]")
-    config = await load_self_improvement_config(service)
-    assert config == SelfImprovementConfig()
+async def test_settings_win_over_legacy_blob_flag(
+    settings_service: SettingsService,
+) -> None:
+    """A legacy blob flag never overrides the on-by-default setting."""
+    await settings_service.set(
+        "meta",
+        "self_improvement",
+        '{"chief_of_staff": {"chat_enabled": false}}',
+    )
+    config = await load_self_improvement_config(settings_service)
+    assert config.chief_of_staff.chat_enabled is True
 
 
-async def test_unknown_keys_fall_back_to_default() -> None:
-    """Unknown top-level keys fail model validation; loader returns default."""
-    service = _fake_service('{"not_a_real_field": true}')
-    config = await load_self_improvement_config(service)
-    assert config == SelfImprovementConfig()
+async def test_blank_model_keeps_builtin_default(
+    settings_service: SettingsService,
+) -> None:
+    """A blank model setting keeps the config's built-in non-blank default."""
+    config = await load_self_improvement_config(settings_service)
+    assert (
+        config.chief_of_staff.chat_model
+        == SelfImprovementConfig().chief_of_staff.chat_model
+    )
 
 
-async def test_valid_override_lands() -> None:
-    """A recognized override flips the documented field."""
-    service = _fake_service('{"enabled": true, "chief_of_staff_enabled": true}')
-    config = await load_self_improvement_config(service)
-    assert config.enabled is True
-    assert config.chief_of_staff_enabled is True
-    # Non-overridden fields keep their defaults.
-    assert config.rules == SelfImprovementConfig().rules
+async def test_model_setting_lands(settings_service: SettingsService) -> None:
+    """A non-blank model setting overrides the built-in default."""
+    await settings_service.set("chief_of_staff", "chat_model", "example-large-001")
+    config = await load_self_improvement_config(settings_service)
+    assert config.chief_of_staff.chat_model == "example-large-001"
 
 
-async def test_settings_service_error_falls_back_to_default() -> None:
-    """A raised get() does not propagate; defaults are always safe."""
-    service = MagicMock()
-    service.get = AsyncMock(side_effect=RuntimeError("backend unavailable"))
-    config = await load_self_improvement_config(service)
-    assert config == SelfImprovementConfig()
+async def test_structural_blob_field_survives_overlay(
+    settings_service: SettingsService,
+) -> None:
+    """A structural sub-config in the blob lands; flags stay from settings."""
+    await settings_service.set(
+        "meta",
+        "self_improvement",
+        '{"rules": {"disabled_rules": ["x"]}}',
+    )
+    config = await load_self_improvement_config(settings_service)
+    assert config.rules.disabled_rules == ("x",)
+    assert config.chief_of_staff.chat_enabled is True
+
+
+async def test_overlay_couples_toolsmith_to_tool_creation(
+    settings_service: SettingsService,
+) -> None:
+    """``tool_creation_enabled`` keeps ``toolsmith.enabled`` coherent."""
+    await settings_service.set("self_improvement", "tool_creation_enabled", "true")
+    overrides = await overlay_feature_settings(settings_service, {})
+    assert overrides["tool_creation_enabled"] is True
+    toolsmith = overrides["toolsmith"]
+    assert isinstance(toolsmith, dict)
+    assert toolsmith["enabled"] is True

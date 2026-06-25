@@ -210,13 +210,14 @@ async def _wire_knowledge_engine(app_state: AppState) -> None:
         PersistenceStateSlice,
         persistence_of,
     )
+    from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
 
     if app_state.slice(PersistenceStateSlice).backend is None:
         return
     if app_state.slice(KnowledgeStateSlice).service is not None:
         return
     config = app_state.config.knowledge
-    if not config.enabled:
+    if not await config_resolver_of(app_state).get_bool("knowledge", "enabled"):
         logger.info(
             API_APP_STARTUP,
             service="knowledge_engine",

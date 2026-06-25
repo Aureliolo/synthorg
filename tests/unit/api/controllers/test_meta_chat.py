@@ -128,6 +128,43 @@ class TestMetaChat:
         finally:
             app_state.swap_slice(original_slice)
 
+    async def test_returns_503_when_explain_chat_disabled_at_runtime(
+        self,
+        async_test_client: LoopAsyncClient,
+    ) -> None:
+        """A wired chat backend still 503s when the live flag is toggled off.
+
+        The capability is built at boot (on by default) but live-gated, so
+        flipping ``chief_of_staff.explain_chat_enabled`` to false in settings
+        takes effect on the next request with no restart.
+        """
+        from synthorg.settings.state import settings_service_of
+
+        chat_mock = AsyncMock(spec=ChiefOfStaffChat)
+        signals_mock = AsyncMock(spec=SignalsService)
+        signals_mock.get_org_snapshot.return_value = _empty_snapshot()
+        app_state = async_test_client.app.state.app_state
+        settings = settings_service_of(app_state)
+        original_slice = app_state.slice(MetaStateSlice)
+        app_state.wire(
+            MetaStateSlice,
+            chief_of_staff_chat=chat_mock,
+            signals_service=signals_mock,
+        )
+        try:
+            await settings.set("chief_of_staff", "explain_chat_enabled", "false")
+            resp = await async_test_client.post(
+                _BASE,
+                headers=_HEADERS,
+                json={"question": "How are we doing?"},
+            )
+            assert resp.status_code == 503
+            # The gate fires before dispatch: the backend is never called.
+            chat_mock.ask.assert_not_awaited()
+        finally:
+            await settings.delete("chief_of_staff", "explain_chat_enabled")
+            app_state.swap_slice(original_slice)
+
     async def test_returns_503_when_signals_service_missing(
         self,
         async_test_client: LoopAsyncClient,

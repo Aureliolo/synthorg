@@ -58,6 +58,7 @@ _GIT_TIMEOUT_NS: str = "tools"
 _GIT_TIMEOUT_KEY: str = "git_command_timeout_seconds"
 _DECOMPOSITION_NS: str = "coordination"
 _DECOMPOSITION_KEY: str = "decomposition_model"
+_MIDDLEWARE_KEY: str = "enable_coordination_middleware"
 _ROUTING_POLICY_KEY: str = "routing_policy"
 _LEAF_THRESHOLD_KEY: str = "leaf_subtask_threshold"
 
@@ -193,25 +194,33 @@ async def _resolve_coordinator_dependencies(
 
 def _build_coordination_chain(
     app_state: AppState,
+    *,
+    enabled: bool,
 ) -> CoordinationMiddlewareChain | None:
     """Build the coordination middleware chain, or ``None`` when disabled.
 
-    Gated on ``coordination.enable_coordination_middleware`` (off by
-    default, so wiring the pipeline in preserves current behaviour
-    exactly). When enabled, registers the default middleware factories,
+    Gated on *enabled* (resolved by the caller from the
+    ``coordination.enable_coordination_middleware`` setting, on by
+    default). When enabled, registers the default middleware factories,
     builds the configured replan hook via the ``replan_strategy``
     discriminator (``noop`` is the safe default), and composes the
     default coordination chain. The shared :class:`BudgetEnforcer` on the
     budget slice (``None`` on a persistence-less boot) gates an affordable
     magentic replan.
 
+    Args:
+        app_state: The application state (carries the coordination config
+            and the budget slice).
+        enabled: Whether the middleware pipeline is enabled (resolved from
+            the setting, DB > env > default).
+
     Returns:
         The composed :class:`CoordinationMiddlewareChain`, or ``None``
         when the pipeline is disabled.
     """
-    coord_section = app_state.config.coordination
-    if not coord_section.enable_coordination_middleware:
+    if not enabled:
         return None
+    coord_section = app_state.config.coordination
     register_coordination_defaults()
     replan_hook = create_replan_hook(
         coord_section.replan_strategy,
@@ -304,7 +313,13 @@ async def _build_runtime_coordinator(
         routing_scorer_config=routing_scorer_config,
         coordination_metrics_collector=coordination_metrics_collector,
         scorer=scorer,
-        coordination_chain=_build_coordination_chain(app_state),
+        coordination_chain=_build_coordination_chain(
+            app_state,
+            enabled=await config_resolver_of(app_state).get_bool(
+                _DECOMPOSITION_NS,
+                _MIDDLEWARE_KEY,
+            ),
+        ),
         shutdown_manager=app_state.shutdown_manager,
     )
     logger.info(

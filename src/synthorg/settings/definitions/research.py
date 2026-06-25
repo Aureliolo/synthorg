@@ -23,11 +23,13 @@ _r.register(
         namespace=SettingNamespace.RESEARCH,
         key="enabled",
         type=SettingType.BOOLEAN,
-        default="false",
+        default="true",
         description=(
-            "Master switch for the research subsystem. When false the"
-            " research service and tool are not wired, so agents cannot"
-            " run research briefs."
+            "Master switch for the research subsystem. On by default: the"
+            " service + tool are wired at startup when a research model is"
+            " configured, so agents can run research briefs out of the box."
+            " Read at startup, so a change is restart-required. When off, the"
+            " research service and tool are not wired."
         ),
         group="General",
         restart_required=True,
