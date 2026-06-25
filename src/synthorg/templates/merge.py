@@ -238,9 +238,16 @@ def _apply_child_agent(
         # Merge, do not replace: a child override changes the fields it names
         # and inherits the rest from the parent. Replacing would silently drop
         # an unspecified field (e.g. an exec's ``level``, which then defaults
-        # to "mid" at expansion).
+        # to "mid" at expansion). One level of recursion covers nested blocks
+        # (e.g. ``model: {priority}`` keeps the parent's other ``model`` keys);
+        # a child scalar still wins outright over a parent dict.
         parent_agent = matched_entry.agent or {}
-        matched_entry.agent = {**parent_agent, **clean}
+        merged = {**parent_agent, **clean}
+        for field_key, child_val in clean.items():
+            parent_val = parent_agent.get(field_key)
+            if isinstance(parent_val, dict) and isinstance(child_val, dict):
+                merged[field_key] = {**parent_val, **child_val}
+        matched_entry.agent = merged
     else:
         appended.append(clean)
 

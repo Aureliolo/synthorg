@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Org-chart view-preference setting definitions.
 
 The web dashboard persists no view preferences client-side; these toggles for

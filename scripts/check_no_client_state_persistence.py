@@ -66,21 +66,27 @@ _COMMENT_OR_STRING_RE = re.compile(
 )
 
 
-def _strip_comments(text: str) -> str:
-    """Remove block + line comments so prose mentioning storage is ignored.
+def _strip_comments(text: str, *, blank_strings: bool = False) -> str:
+    """Blank comments (and optionally string literals), keeping line structure.
 
-    String literals are preserved so a ``//`` inside a URL string does not
-    truncate the line; only genuine comments are blanked.
+    A ``//`` inside a URL string would be mistaken for a line comment, so the
+    single-pass scanner matches whole string literals first and leaves them
+    intact by default. Set ``blank_strings`` to also blank string contents --
+    used for the storage-identifier pass so a benign mention like
+    ``"localStorage unavailable"`` is not read as real API usage.
 
     Returns:
-        The source with comments blanked (line structure preserved).
+        The source with comments (and optionally strings) blanked, with the
+        original newline structure preserved so line numbers stay accurate.
     """
 
     def _blank(match: re.Match[str]) -> str:
         comment = match.group(1) or match.group(2)
-        if comment is None:
-            return match.group(0)
-        return "\n" * comment.count("\n")
+        if comment is not None:
+            return "\n" * comment.count("\n")
+        if blank_strings:
+            return "\n" * match.group(0).count("\n")
+        return match.group(0)
 
     return _COMMENT_OR_STRING_RE.sub(_blank, text)
 
@@ -101,13 +107,19 @@ def _scan_file(path: Path) -> list[str]:
     Returns:
         A list of human-readable violation strings (empty when clean).
     """
-    code = _strip_comments(path.read_text(encoding="utf-8"))
+    raw = path.read_text(encoding="utf-8")
+    # Storage identifiers must be real code: blank string literals too so a
+    # benign ``"localStorage unavailable"`` mention is not flagged as usage.
+    code_no_strings = _strip_comments(raw, blank_strings=True)
+    # The zustand-persist import is recognised by its module-path string, so
+    # that pass keeps string literals intact.
+    code_with_strings = _strip_comments(raw)
     found: list[str] = []
-    for idx, line in enumerate(code.splitlines(), start=1):
+    for idx, line in enumerate(code_no_strings.splitlines(), start=1):
         match = _STORAGE_RE.search(line)
         if match is not None:
             found.append(f"{path.as_posix()}:{idx}: client storage `{match.group(1)}`")
-    if _ZUSTAND_PERSIST_RE.search(code):
+    if _ZUSTAND_PERSIST_RE.search(code_with_strings):
         found.append(f"{path.as_posix()}: zustand `persist` middleware")
     return found
 

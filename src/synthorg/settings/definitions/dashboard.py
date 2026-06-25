@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Dashboard UI-preference setting definitions.
 
 Miscellaneous dashboard UI preferences persisted backend-side. The dashboard is

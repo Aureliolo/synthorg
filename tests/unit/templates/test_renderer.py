@@ -889,6 +889,20 @@ class TestStrategicModelDefault:
         # Not forced to the strategic default (preset/balanced governs instead).
         assert not (req["priority"] == "quality" and req["requires_reasoning"] is True)
 
+    def test_vice_president_maps_to_vp_not_c_suite(self) -> None:
+        """A VP title resolves to ``vp`` and is not force-promoted to strategic."""
+        from synthorg.templates._agent_expansion import _expand_single_agent
+
+        agent: dict[str, object] = {
+            "role": "Vice President of Sales",
+            "department": "sales",
+        }
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        assert result["level"] == "vp"
+        req = result["model_requirement"]
+        assert isinstance(req, dict)
+        assert not (req["priority"] == "quality" and req["requires_reasoning"] is True)
+
     def test_explicit_model_block_on_exec_is_respected(self) -> None:
         """An exec with an explicit model block is not overridden."""
         from synthorg.templates._agent_expansion import _expand_single_agent

@@ -118,7 +118,7 @@ function detectReducedMotion(): boolean {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches
 }
 
-function getDefaultPreferences(): ThemePreferences {
+export function getDefaultPreferences(): ThemePreferences {
   return {
     colorPalette: 'warm-ops',
     density: 'balanced',
@@ -239,10 +239,13 @@ async function hydrateAppearance(set: (partial: Partial<ThemeState>) => void): P
     applyThemeClasses(prefs)
     set({ ...prefs, hydrated: true })
   } catch (err) {
-    // Degrade to the already-applied defaults; a logged-out shell (the
-    // settings GET is authed) or a transient failure must not break paint.
+    // Degrade to defaults; a logged-out shell (the settings GET is authed) or
+    // a transient failure must not break paint. Reapply the default classes
+    // here rather than relying on the construction-time apply still being on
+    // the DOM, so a failed (re)hydrate never leaves the UI unthemed.
     log.warn('Failed to hydrate appearance from backend, using defaults:', getErrorMessage(err))
-    set({ hydrated: true })
+    applyThemeClasses(getDefaultPreferences())
+    set({ ...getDefaultPreferences(), hydrated: true })
   }
 }
 

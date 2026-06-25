@@ -21,6 +21,7 @@ from synthorg.observability import (
 )
 from synthorg.observability.events.setup import (
     SETUP_AGENT_BOOTSTRAP_FAILED,
+    SETUP_FEATURE_REWIRE_FAILED,
     SETUP_PROVIDER_RELOAD_FAILED,
 )
 from synthorg.persistence.state import PersistenceStateSlice
@@ -109,6 +110,45 @@ async def post_setup_reinit(app_state: AppState) -> None:
     # 3. Rebuild + hot-swap BOTH runtime services so a provider added
     #    after an empty-company start wakes the whole runtime live.
     await _rebuild_runtime_services(app_state)
+
+    # 4. Rewire provider-gated features that a boot-empty start could not wire
+    #    (charter needs a provider for its interview LLM), so they come online
+    #    without a restart now that a provider exists.
+    await _rewire_post_setup_features(app_state)
+
+
+async def _rewire_post_setup_features(app_state: AppState) -> None:
+    """Rewire provider-gated features a boot-empty start could not wire.
+
+    The charter engine wires only behind a configured provider, so an app that
+    booted with no provider leaves its endpoints unavailable until a restart.
+    The wiring is idempotent (a no-op when charter is already wired), so
+    re-running it after the provider reload brings charter online live. This is
+    best-effort: a failure here must not undo the otherwise-complete setup.
+    """
+    from synthorg.api.lifecycle_helpers.charter_wiring import (  # noqa: PLC0415
+        _wire_charter_engine,
+    )
+    from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
+    from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
+
+    try:
+        settings_service = app_state.slice(SettingsStateSlice).settings_service
+        si_config = await load_self_improvement_config(settings_service)
+        await _wire_charter_engine(
+            app_state,
+            provider_registry=app_state.slice(ProvidersStateSlice).registry,
+            persistence=app_state.slice(PersistenceStateSlice).backend,
+            cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
+            si_config=si_config,
+        )
+    except Exception as exc:  # noqa: BLE001 -- best-effort: criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            SETUP_FEATURE_REWIRE_FAILED,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
 
 
 async def _rebuild_runtime_services(app_state: AppState) -> None:

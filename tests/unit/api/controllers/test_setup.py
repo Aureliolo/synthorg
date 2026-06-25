@@ -506,6 +506,7 @@ class TestSetupComplete:
                 management=original_mgmt,
             )
             repo._store.pop(("company", "company_name"), None)
+            repo._store.pop(("api", "setup_complete"), None)
 
     async def test_complete_succeeds_with_all_prerequisites(
         self,

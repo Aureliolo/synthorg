@@ -143,6 +143,9 @@ SETUP_PROVIDER_RELOAD_FAILED: Final[str] = "setup.providers.reload_failed"
 # Agent bootstrap failed after setup completion (non-fatal)
 SETUP_AGENT_BOOTSTRAP_FAILED: Final[str] = "setup.agents.bootstrap_failed"
 
+# Provider-gated feature rewire failed after setup completion (non-fatal)
+SETUP_FEATURE_REWIRE_FAILED: Final[str] = "setup.features.rewire_failed"
+
 # Unknown personality preset referenced during agent creation or update
 SETUP_PRESET_NOT_FOUND: Final[str] = "setup.agent.preset_not_found"
 

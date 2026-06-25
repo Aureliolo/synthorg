@@ -55,6 +55,7 @@ async def wire_meta_apply(app_state: AppState) -> None:
     Args:
         app_state: The application state to wire onto.
     """
+    from synthorg.engine.state import workflow_service_of  # noqa: PLC0415
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
     from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
 
@@ -68,19 +69,23 @@ async def wire_meta_apply(app_state: AppState) -> None:
         )
         return
     try:
-        await _wire(app_state)
+        # Preflight the ONE dependency a not-yet-set-up company lacks before any
+        # mutable wiring runs. Catching ServiceUnavailableError around the whole
+        # of _wire instead would mask a *different* missing service (e.g. the
+        # agent registry, read before the workflow service) as "expected
+        # pre-setup" after partial side effects -- so preflight it here and let
+        # any deeper ServiceUnavailableError fall to the WARNING branch.
+        workflow_service_of(app_state)
     except ServiceUnavailableError as exc:
-        # A company that has not finished setup has no Workflow Service yet,
-        # which _wire depends on. That is the expected pre-setup state, not a
-        # failure: log at INFO like the persistence-absent branch above and
-        # leave the appliers unwired rather than emitting an alarming WARNING
-        # on every boot-empty start.
         logger.info(
             API_APP_STARTUP,
             service="self_improvement",
-            note="dependency absent; meta-loop apply paths unwired",
+            note="workflow service absent (pre-setup); meta-loop apply paths unwired",
             error=safe_error_description(exc),
         )
+        return
+    try:
+        await _wire(app_state)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(

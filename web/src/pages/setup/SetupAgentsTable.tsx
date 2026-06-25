@@ -129,6 +129,7 @@ function SetupAgentRow({
       <div className={W.model}>
         <AgentModelPicker
           hideLabel
+          label={`Model for ${agent.name}`}
           currentProvider={agent.model_provider ?? ''}
           currentModelId={agent.model_id ?? ''}
           providers={providers}

@@ -97,6 +97,7 @@ class ModelMatcherConfig(BaseModel):
             headroom_ratio_cap=bridge.matcher_headroom_ratio_cap,
             tier_large_min_context=bridge.matcher_tier_large_min_context,
             tier_medium_min_context=bridge.matcher_tier_medium_min_context,
+            min_usable_parameters=bridge.matcher_min_usable_parameters,
         )
 
 

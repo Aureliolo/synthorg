@@ -1,20 +1,21 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { http, HttpResponse } from 'msw'
-import { useThemeStore, applyThemeClasses } from '@/stores/theme'
+import {
+  useThemeStore,
+  applyThemeClasses,
+  getDefaultPreferences,
+} from '@/stores/theme'
 import { server } from '@/test-setup'
 import { successFor } from '@/mocks/handlers/helpers'
 import { buildSettingEntry } from '@/mocks/handlers/settings'
 import type { getNamespaceSettings } from '@/api/endpoints/settings'
 
 function resetThemeState(): void {
-  // The store is a singleton; restore the default preferences directly so
-  // each test starts clean without driving the backend reset path.
+  // The store is a singleton; restore the production defaults from their single
+  // source of truth (``getDefaultPreferences``) so the fallback-path tests
+  // verify the real defaults and new preference fields can't drift out of sync.
   useThemeStore.setState({
-    colorPalette: 'warm-ops',
-    density: 'balanced',
-    typography: 'geist',
-    animation: 'status-driven',
-    sidebarMode: 'collapsible',
+    ...getDefaultPreferences(),
     popoverOpen: false,
     hydrated: false,
   })
@@ -123,6 +124,13 @@ describe('useThemeStore', () => {
 
       expect(useThemeStore.getState().colorPalette).toBe('warm-ops')
       expect(useThemeStore.getState().hydrated).toBe(true)
+      // ``beforeEach`` clears the class list, and ``applyThemeClasses`` omits a
+      // class for default-valued axes (warm-ops / balanced) but always sets the
+      // animation class -- so this proves hydrate reapplied the default classes
+      // rather than leaving the UI unthemed.
+      expect(
+        document.documentElement.classList.contains('animation-status-driven'),
+      ).toBe(true)
     })
 
     it('degrades to defaults and still marks hydrated on fetch failure', async () => {
@@ -136,6 +144,11 @@ describe('useThemeStore', () => {
 
       expect(useThemeStore.getState().colorPalette).toBe('warm-ops')
       expect(useThemeStore.getState().hydrated).toBe(true)
+      // Proves the catch path reapplied the default classes (the always-set
+      // animation class) rather than leaving the UI unthemed after a 401.
+      expect(
+        document.documentElement.classList.contains('animation-status-driven'),
+      ).toBe(true)
     })
   })
 

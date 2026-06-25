@@ -57,7 +57,7 @@ class CharterConfig(BaseModel):
 
     interview_strategy: Literal["llm"] = "llm"
     interview_model: NotBlankStr = Field(
-        default=NotBlankStr("example-small-001"),
+        default=NotBlankStr("example-large-001"),
         description="Model for charter-interview LLM calls",
     )
     interview_temperature: float = Field(

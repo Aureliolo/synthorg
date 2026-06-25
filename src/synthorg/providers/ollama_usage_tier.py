@@ -23,6 +23,7 @@ calibrated to ollama's own published anchors: ``gpt-oss:20b`` (~21B) = tier 1,
 import asyncio
 import re
 from typing import Final
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -167,7 +168,11 @@ async def resolve_usage_tiers(
         scrape nor a parameter count yields one).
     """
     approx = {mid: approximate_tier_from_params(pc) for mid, pc in model_params.items()}
-    if host is None:
+    # Only the ollama.com library exposes the per-model usage level; a local or
+    # self-hosted host has no library page, so scraping it would just do one
+    # best-effort GET per model before falling back. Gate on the host so those
+    # callers skip straight to the parameter-count approximation.
+    if host is None or urlsplit(host).netloc != urlsplit(OLLAMA_LIBRARY_HOST).netloc:
         return approx
 
     semaphore = asyncio.Semaphore(_SCRAPE_CONCURRENCY)

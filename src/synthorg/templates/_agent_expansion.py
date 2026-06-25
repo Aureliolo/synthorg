@@ -41,12 +41,15 @@ _DEFAULT_DEPARTMENT = DEFAULT_MERGE_DEPARTMENT
 # a template omits it -- so an exec never silently renders as "mid". This does
 # NOT drive model selection (the matcher tiers by capability demand, not rank).
 _ROLE_LEVEL_DEFAULTS: Final[tuple[tuple[re.Pattern[str], str], ...]] = (
+    # VP must precede the c-suite ``president`` rule: a bare ``president`` match
+    # would otherwise classify "Vice President" as c_suite (and force the
+    # strategic priority/reasoning defaults onto every VP title).
+    (re.compile(r"vice president|\bvp\b", re.IGNORECASE), "vp"),
     (
-        re.compile(r"\bceo\b|chief executive|founder|president", re.IGNORECASE),
+        re.compile(r"\bceo\b|chief executive|founder|\bpresident\b", re.IGNORECASE),
         "c_suite",
     ),
     (re.compile(r"^chief|\bc[a-z]o\b", re.IGNORECASE), "c_suite"),
-    (re.compile(r"vice president|\bvp\b", re.IGNORECASE), "vp"),
     (re.compile(r"director|head of", re.IGNORECASE), "director"),
     (re.compile(r"\blead\b|principal", re.IGNORECASE), "lead"),
 )

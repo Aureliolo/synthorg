@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Appearance namespace setting definitions.
 
 The web dashboard is a pure API consumer: it persists no theme/appearance

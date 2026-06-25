@@ -17,13 +17,19 @@ from typing import Final
 from synthorg.observability import safe_error_description
 
 _QUOTA_EXHAUSTION_SIGNATURES: Final[tuple[str, ...]] = (
-    "quota",
+    "insufficient quota",
+    "quota exceeded",
+    "quota exhausted",
     "usage limit",
     "weekly limit",
     "session limit",
     "plan limit",
     "upgrade your plan",
-    "exceeded your",
+    "exceeded your quota",
+    "exceeded your usage limit",
+    "exceeded your weekly limit",
+    "exceeded your session limit",
+    "exceeded your plan limit",
 )
 
 

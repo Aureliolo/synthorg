@@ -336,9 +336,23 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
             // pure API consumer; the backend is the single source of truth.
             // Mirrors the corresponding hook in .claude/settings.json.
             {
+              // Pass the candidate text so the hook can inspect the pending
+              // edit (Write ``content`` / Edit ``new_string``); with file_path
+              // alone the script reads no content and cannot block a newly
+              // introduced localStorage / persist usage before it lands.
+              const persistenceInput = { ...filePathInput } as Record<
+                string,
+                unknown
+              >;
+              if (typeof args.content === "string") {
+                persistenceInput.content = args.content;
+              }
+              if (typeof args.new_string === "string") {
+                persistenceInput.new_string = args.new_string;
+              }
               const outcome = runHookScript(
                 "scripts/check_no_client_state_persistence_hook.sh",
-                filePathInput,
+                persistenceInput,
                 5000,
               );
               const denyReason = denyReasonFromOutcome(outcome);
