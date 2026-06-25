@@ -1,8 +1,8 @@
 """Process-global sink for runtime tool-call outcome observations.
 
 The provider boundary (``BaseCompletionProvider.complete`` / ``stream``)
-and the engine react loop emit tool-call outcomes here. The sink is
-installed once at boot (``wire_tool_call_feedback``) with the
+emits tool-call outcomes here. The sink is installed once at boot
+(``wire_tool_call_feedback``) with the
 :class:`~synthorg.providers.tool_call_feedback.tracker.ToolCallFeedbackTracker`;
 when no sink is installed (feature off / no persistence) :func:`emit_tool_call_outcome`
 is a no-op. The provider boundary imports only this lightweight module,
@@ -12,11 +12,23 @@ The emit is ``await``-ed rather than fire-and-forget: the tracker keeps
 an in-memory cache so a steady-state success is a pure no-op, and it
 swallows its own errors, so awaiting it never blocks or breaks the hot
 path. Awaiting (over scheduling a detached task) keeps ordering
-deterministic and avoids loop-teardown task leaks under test.
+deterministic and avoids loop-teardown task leaks under test. As a
+second line of defence (the ``ToolCallSignalSink`` no-raise contract is
+structural, not enforceable on every conformer), :func:`emit_tool_call_outcome`
+also guards the ``record`` call so a misbehaving sink can never propagate
+into -- or suppress the original exception of -- the provider call.
 """
 
 from enum import Enum
 from typing import Protocol, runtime_checkable
+
+from synthorg.core.critical_errors import reraise_critical
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.provider import (
+    PROVIDER_TOOL_CALL_FEEDBACK_RECORD_FAILED,
+)
+
+logger = get_logger(__name__)
 
 
 class ToolCallOutcome(Enum):
@@ -99,4 +111,15 @@ async def emit_tool_call_outcome(
     sink = _sink
     if sink is None:
         return
-    await sink.record(provider=provider, model=model, outcome=outcome)
+    try:
+        await sink.record(provider=provider, model=model, outcome=outcome)
+    except Exception as exc:  # noqa: BLE001 -- the sink is awaited in the provider hot path; a raising sink must never break or mask the provider call
+        reraise_critical(exc)
+        logger.warning(
+            PROVIDER_TOOL_CALL_FEEDBACK_RECORD_FAILED,
+            provider=provider,
+            model=model,
+            outcome=outcome.value,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )

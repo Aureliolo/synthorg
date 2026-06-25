@@ -1,8 +1,9 @@
 """Runtime tool-call failure feedback for the provider boundary.
 
 Detects repeated tool-call failures per ``(provider, model)`` at the
-``BaseCompletionProvider`` boundary (and one engine soft-signal),
-accumulates a time-decayed failure score, and downgrades a model's
+``BaseCompletionProvider`` boundary (a non-retryable rejection of a
+tools-bearing request, or a malformed tool-use response with no tool
+calls), accumulates a time-decayed failure score, and downgrades a model's
 persisted ``ModelMetadata.tool_calls_verified`` to ``False`` once the
 score crosses the configured threshold so the matcher stops assigning it
 to tool-requiring agents. A genuine tool-call success clears the signal

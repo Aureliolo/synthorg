@@ -51,6 +51,16 @@ class _RecordingSink:
         self.calls.append((provider, model, outcome))
 
 
+@pytest.fixture(autouse=True)
+def _clean_sink() -> Iterator[None]:
+    # Guard the process-global sink against a leak from another module whose
+    # teardown failed (e.g. an xdist worker crash) so these tests never start
+    # with a foreign sink installed.
+    uninstall_tool_call_signal_sink()
+    yield
+    uninstall_tool_call_signal_sink()
+
+
 @pytest.fixture
 def sink() -> Iterator[_RecordingSink]:
     recording = _RecordingSink()

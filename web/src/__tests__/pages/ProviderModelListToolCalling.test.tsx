@@ -63,4 +63,20 @@ describe('ProviderModelList tool-calling unavailable', () => {
       screen.queryByRole('button', { name: /Re-enable tool calling/ }),
     ).not.toBeInTheDocument()
   })
+
+  it('keeps every row at the header column count when only some rows have actions', () => {
+    // The Actions column appears because one model is downgraded; a healthy
+    // row in the same (no delete / no config) table must still render the
+    // Actions cell (empty) so its column count matches the header.
+    render(
+      <ProviderModelList
+        models={[buildModel('downgraded', false), buildModel('healthy', null)]}
+        onReenableToolCalling={vi.fn()}
+      />,
+    )
+    const headerCols = screen.getAllByRole('columnheader').length
+    for (const row of screen.getAllByRole('row').slice(1)) {
+      expect(row.querySelectorAll('td')).toHaveLength(headerCols)
+    }
+  })
 })

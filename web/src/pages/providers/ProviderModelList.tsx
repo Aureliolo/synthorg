@@ -13,6 +13,7 @@ interface ProviderModelRowProps {
   model: ProviderModelResponse
   supportsDelete: boolean
   supportsConfig: boolean
+  hasActions: boolean
   onDelete?: ((modelId: string) => void) | undefined
   onConfigure?: ((model: ProviderModelResponse) => void) | undefined
   onReenableToolCalling?: ((modelId: string) => void) | undefined
@@ -138,9 +139,9 @@ function ProviderModelRow(props: ProviderModelRowProps) {
       <td className="py-2 pr-4 text-right font-mono text-text-secondary">
         {model.cost_per_1k_output.toFixed(4)}
       </td>
-      {rowHasActions(props) && (
+      {props.hasActions && (
         <td className="py-2 text-right">
-          <ModelRowActions {...props} />
+          {rowHasActions(props) ? <ModelRowActions {...props} /> : null}
         </td>
       )}
     </tr>
@@ -184,6 +185,7 @@ function ModelTable({ models, hasActions, ...rest }: ModelTableProps) {
             <ProviderModelRow
               key={model.id}
               model={model}
+              hasActions={hasActions}
               supportsDelete={rest.supportsDelete}
               supportsConfig={rest.supportsConfig}
               onDelete={rest.onDelete}

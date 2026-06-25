@@ -8,6 +8,8 @@ from pydantic import ValidationError
 from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.schema import ProviderModelConfig
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.mark.unit
 class TestModelMetadata:

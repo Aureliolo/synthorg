@@ -69,18 +69,24 @@ class ToolCallCapabilityWriter(Protocol):
     is idempotent and a no-op when the model's current flag already
     matches the target, so the tracker can call it freely without
     triggering a redundant provider-config rewrite + registry hot-reload.
+    Each returns ``True`` only when it actually changed the persisted flag.
     """
 
-    async def mark_tool_calls_unverified(self, provider: str, model: str) -> None:
-        """Set ``tool_calls_verified=False`` (downgrade)."""
+    async def mark_tool_calls_unverified(self, provider: str, model: str) -> bool:
+        """Set ``tool_calls_verified=False`` (downgrade); ``True`` if changed."""
         ...
 
-    async def mark_tool_calls_verified(self, provider: str, model: str) -> None:
-        """Set ``tool_calls_verified=True`` (auto-recovery, proven)."""
+    async def mark_tool_calls_verified(self, provider: str, model: str) -> bool:
+        """Re-enable a downgraded model (``False`` -> ``True``); ``True`` if changed.
+
+        A no-op (returns ``False``) for a never-downgraded model: a success
+        on an untested (``None``) model is not worth a provider-config
+        rewrite, since the optimistic matcher already selects it.
+        """
         ...
 
-    async def clear_tool_calls_verification(self, provider: str, model: str) -> None:
-        """Set ``tool_calls_verified=None`` (manual reset, optimism resumes)."""
+    async def clear_tool_calls_verification(self, provider: str, model: str) -> bool:
+        """Set ``tool_calls_verified=None`` (manual reset); ``True`` if changed."""
         ...
 
 
@@ -130,11 +136,10 @@ class ToolCallFeedbackTracker:
             if not await self._settings.get_bool(_SETTINGS_NAMESPACE, _ENABLED_KEY):
                 return
             key = (NotBlankStr(provider), NotBlankStr(model))
-            async with self._lock:
-                if outcome is ToolCallOutcome.FAILURE:
-                    await self._on_failure(key)
-                else:
-                    await self._on_success(key)
+            if outcome is ToolCallOutcome.FAILURE:
+                await self._on_failure(key)
+            else:
+                await self._on_success(key)
         except Exception as exc:  # noqa: BLE001 -- awaited in the provider hot path; criticals re-raised, all else swallowed + logged
             reraise_critical(exc)
             logger.warning(
@@ -158,33 +163,45 @@ class ToolCallFeedbackTracker:
             model: Model identifier within the provider.
         """
         key = (NotBlankStr(provider), NotBlankStr(model))
+        # Reset the flag first, then drop the accumulator under the lock.
+        # The writer call is kept off the tracker lock so the tracker lock
+        # is never held across the management service's own lock.
+        await self._writer.clear_tool_calls_verification(provider, model)
         async with self._lock:
-            await self._writer.clear_tool_calls_verification(provider, model)
+            self._cache.pop(key, None)
             await self._repo.delete(key)
             self._cache[key] = None
-            logger.info(
-                PROVIDER_TOOL_CALL_REENABLED,
-                provider=provider,
-                model=model,
-                trigger="manual",
-            )
+        logger.info(
+            PROVIDER_TOOL_CALL_REENABLED,
+            provider=provider,
+            model=model,
+            trigger="manual",
+        )
 
     async def _on_failure(self, key: ModelToolCallSignalKey) -> None:
-        """Decay, increment, persist, and downgrade past the threshold."""
+        """Decay, increment, persist, and downgrade past the threshold.
+
+        Settings reads and the capability-writer downgrade are kept OFF the
+        tracker lock: the lock guards only the cache read-modify-write so a
+        slow settings DB read never serialises every other observation, and
+        the tracker lock is never held across the management service's own
+        lock (which the writer acquires).
+        """
         provider, model = key
         threshold = await self._settings.get_int(_SETTINGS_NAMESPACE, _THRESHOLD_KEY)
         half_life = await self._settings.get_int(_SETTINGS_NAMESPACE, _HALF_LIFE_KEY)
         now = self._clock.now().timestamp()
-        prior = self._decayed(await self._load(key), now, half_life)
-        score = prior + 1.0
-        signal = ModelToolCallSignal(
-            provider_name=provider,
-            model_id=model,
-            failure_score=score,
-            decayed_at=now,
-        )
-        await self._repo.save(signal)
-        self._cache[key] = signal
+        async with self._lock:
+            prior = self._decayed(await self._load(key), now, half_life)
+            score = prior + 1.0
+            signal = ModelToolCallSignal(
+                provider_name=provider,
+                model_id=model,
+                failure_score=score,
+                decayed_at=now,
+            )
+            await self._repo.save(signal)
+            self._cache[key] = signal
         logger.info(
             PROVIDER_TOOL_CALL_FAILURE_OBSERVED,
             provider=provider,
@@ -203,24 +220,37 @@ class ToolCallFeedbackTracker:
             )
 
     async def _on_success(self, key: ModelToolCallSignalKey) -> None:
-        """Clear the accumulator and re-enable a downgraded model."""
-        row = await self._load(key)
+        """Clear the accumulator and re-enable a downgraded model.
+
+        Re-enables BEFORE deleting the accumulator row so a later repo
+        failure leaves the model usable and the row present (retried on the
+        next success). A model with no accumulated failures is a pure
+        in-memory no-op. The re-enable only writes for a genuinely
+        downgraded (``False``) model, never an untested (``None``) one.
+        """
+        async with self._lock:
+            row = await self._load(key)
         if row is None:
-            # Healthy model with no accumulated failures: pure no-op.
             return
         provider, model = key
-        # The writer no-ops unless the flag is currently False, so this is
-        # cheap for a model that accumulated sub-threshold failures without
-        # ever being downgraded.
-        await self._writer.mark_tool_calls_verified(provider, model)
-        await self._repo.delete(key)
-        self._cache[key] = None
+        reenabled = await self._writer.mark_tool_calls_verified(provider, model)
+        async with self._lock:
+            self._cache.pop(key, None)
+            await self._repo.delete(key)
+            self._cache[key] = None
         logger.info(
             PROVIDER_TOOL_CALL_SUCCESS_OBSERVED,
             provider=provider,
             model=model,
             note="cleared",
         )
+        if reenabled:
+            logger.info(
+                PROVIDER_TOOL_CALL_REENABLED,
+                provider=provider,
+                model=model,
+                trigger="auto_recovery",
+            )
 
     async def _load(self, key: ModelToolCallSignalKey) -> ModelToolCallSignal | None:
         """Return the cached row, hydrating once from the repository."""
@@ -238,11 +268,16 @@ class ToolCallFeedbackTracker:
     ) -> float:
         """Return ``row``'s failure score decayed forward to ``now``.
 
+        Formula: ``prior_score * 0.5 ** (elapsed / half_life)``, where
+        ``elapsed`` is floored at 0 to guard against clock regression.
+
         Returns:
             The exponentially-decayed score, or ``0.0`` when there is no
-            prior row.
+            prior row or a non-positive ``half_life`` (treated as instant
+            decay -- a defence-in-depth guard against a mis-set setting,
+            independent of the ``min_value=60`` definition bound).
         """
-        if row is None:
+        if row is None or half_life <= 0:
             return 0.0
         elapsed = max(0.0, now - row.decayed_at)
         return float(row.failure_score * _DECAY_BASE ** (elapsed / half_life))

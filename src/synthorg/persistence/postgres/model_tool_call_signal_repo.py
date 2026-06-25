@@ -1,8 +1,8 @@
 """Postgres implementation of the ModelToolCallSignalRepository protocol.
 
-The Postgres sibling of
-src/synthorg/persistence/sqlite/model_tool_call_signal_repo.py. Postgres
-stores ``failure_score`` and ``decayed_at`` as DOUBLE PRECISION.
+Stores ``failure_score`` and ``decayed_at`` as DOUBLE PRECISION (64-bit
+float), so the decay arithmetic stays consistent across process restarts
+without an ISO round-trip.
 """
 
 import psycopg

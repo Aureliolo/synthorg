@@ -58,11 +58,13 @@ function decodeModelValue(raw: string): ModelValue | null {
 /** Compact capability + context hint shown after a model's name. */
 function modelHint(model: ProviderModelConfig): string {
   const parts: string[] = [`${Math.round(model.max_context / TOKENS_PER_K)}k`]
-  if (model.metadata.supports_tools) parts.push('tools')
+  // Runtime feedback proved this model cannot call tools; show 'no tools'
+  // instead of the static 'tools' claim so an operator does not pick it for
+  // a tool-requiring agent (and never the contradictory 'tools · no tools').
+  const toolCallsBroken = model.metadata.tool_calls_verified === false
+  if (model.metadata.supports_tools && !toolCallsBroken) parts.push('tools')
   if (model.metadata.supports_vision) parts.push('vision')
-  // Runtime feedback proved this model cannot call tools; flag it so an
-  // operator does not pick it for a tool-requiring agent.
-  if (model.metadata.tool_calls_verified === false) parts.push('no tools')
+  if (toolCallsBroken) parts.push('no tools')
   if (model.stale != null) parts.push('stale')
   return parts.join(' · ')
 }

@@ -48,6 +48,8 @@ export const modelsHandlers = [
         successFor<typeof reenableToolCalling>(
           buildProvider({ name: decodeURIComponent(String(params['name'])) }),
         ),
+        // Litestar @post defaults to 201; mirror it so status assertions match.
+        { status: 201 },
       ),
   ),
   http.put('/api/v1/providers/:name/models/:modelId/config', async ({ params, request }) => {

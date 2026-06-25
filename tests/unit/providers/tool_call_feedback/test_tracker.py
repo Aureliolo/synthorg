@@ -2,6 +2,7 @@
 
 import pytest
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.model_tool_call_signal_protocol import (
     ModelToolCallSignal,
@@ -28,7 +29,7 @@ class _FakeSignalRepo:
     async def save(self, entity: ModelToolCallSignal) -> None:
         if self.raise_on_save:
             msg = "boom"
-            raise RuntimeError(msg)
+            raise QueryError(msg)
         self.rows[(entity.provider_name, entity.model_id)] = entity
 
     async def get(
@@ -46,7 +47,13 @@ class _FakeSignalRepo:
 
 
 class _FakeWriter:
-    """Records capability-flag transitions; honours idempotent no-op semantics."""
+    """Records capability-flag transitions; honours idempotent no-op semantics.
+
+    Mirrors the real ``ProviderToolCallCapabilityMixin``: each call records
+    the invocation, applies the tristate transition, and returns ``True``
+    only when the persisted flag actually changed -- including the
+    ``None`` -> ``True`` no-op (a success on a never-downgraded model).
+    """
 
     def __init__(self) -> None:
         # Current persisted flag per key: None (untested) / True / False.
@@ -55,17 +62,27 @@ class _FakeWriter:
         self.verified_calls: list[ModelToolCallSignalKey] = []
         self.cleared_calls: list[ModelToolCallSignalKey] = []
 
-    async def mark_tool_calls_unverified(self, provider: str, model: str) -> None:
-        self.unverified_calls.append((NotBlankStr(provider), NotBlankStr(model)))
-        self.flags[(NotBlankStr(provider), NotBlankStr(model))] = False
+    def _apply(self, key: ModelToolCallSignalKey, value: bool | None) -> bool:
+        current = self.flags.get(key)
+        if current == value or (value is True and current is None):
+            return False
+        self.flags[key] = value
+        return True
 
-    async def mark_tool_calls_verified(self, provider: str, model: str) -> None:
-        self.verified_calls.append((NotBlankStr(provider), NotBlankStr(model)))
-        self.flags[(NotBlankStr(provider), NotBlankStr(model))] = True
+    async def mark_tool_calls_unverified(self, provider: str, model: str) -> bool:
+        key = (NotBlankStr(provider), NotBlankStr(model))
+        self.unverified_calls.append(key)
+        return self._apply(key, False)
 
-    async def clear_tool_calls_verification(self, provider: str, model: str) -> None:
-        self.cleared_calls.append((NotBlankStr(provider), NotBlankStr(model)))
-        self.flags[(NotBlankStr(provider), NotBlankStr(model))] = None
+    async def mark_tool_calls_verified(self, provider: str, model: str) -> bool:
+        key = (NotBlankStr(provider), NotBlankStr(model))
+        self.verified_calls.append(key)
+        return self._apply(key, True)
+
+    async def clear_tool_calls_verification(self, provider: str, model: str) -> bool:
+        key = (NotBlankStr(provider), NotBlankStr(model))
+        self.cleared_calls.append(key)
+        return self._apply(key, None)
 
 
 class _FakeSettings:
@@ -162,6 +179,52 @@ class TestFailureAccumulation:
         await _failure(tracker)  # 1.0*0.5 + 1 = 1.5
         assert repo.rows[_KEY].failure_score == pytest.approx(1.5)
 
+    async def test_two_failures_at_boundary_below_threshold(self) -> None:
+        # threshold=3: two un-decayed failures land at exactly 2.0, just under
+        # the boundary, so the model is not downgraded.
+        tracker, repo, writer, _, _ = _tracker(settings=_FakeSettings(threshold=3))
+        await _failure(tracker)
+        await _failure(tracker)
+        assert repo.rows[_KEY].failure_score == pytest.approx(2.0)
+        assert writer.unverified_calls == []
+
+    async def test_cold_start_hydrates_prior_row_then_downgrades(self) -> None:
+        # A fresh tracker (empty cache) must hydrate the persisted accumulator
+        # from the repo: a model already at 2.9 crosses threshold=3 on the
+        # next failure (2.9 -> 3.9), proving the DB read is not skipped.
+        clock = FakeClock()
+        repo = _FakeSignalRepo()
+        repo.rows[_KEY] = ModelToolCallSignal(
+            provider_name=_PROVIDER,
+            model_id=_MODEL,
+            failure_score=2.9,
+            decayed_at=clock.now().timestamp(),
+        )
+        tracker, _, writer, _, _ = _tracker(
+            repo=repo, settings=_FakeSettings(threshold=3, half_life=3600), clock=clock
+        )
+        await _failure(tracker)
+        assert repo.rows[_KEY].failure_score == pytest.approx(3.9)
+        assert writer.unverified_calls == [_KEY]
+
+    async def test_non_positive_half_life_decays_to_zero(self) -> None:
+        # Defence-in-depth: a mis-set half_life of 0 must not ZeroDivisionError
+        # (swallowed silently); it floors the decayed prior to 0.0.
+        clock = FakeClock()
+        repo = _FakeSignalRepo()
+        repo.rows[_KEY] = ModelToolCallSignal(
+            provider_name=_PROVIDER,
+            model_id=_MODEL,
+            failure_score=10.0,
+            decayed_at=clock.now().timestamp(),
+        )
+        tracker, _, writer, _, _ = _tracker(
+            repo=repo, settings=_FakeSettings(threshold=3, half_life=0), clock=clock
+        )
+        await _failure(tracker)
+        assert repo.rows[_KEY].failure_score == pytest.approx(1.0)
+        assert writer.unverified_calls == []
+
 
 class TestSuccessRecovery:
     async def test_success_after_failures_clears_and_reenables(self) -> None:
@@ -184,9 +247,11 @@ class TestSuccessRecovery:
         await _failure(tracker)
         assert _KEY in repo.rows
         await _success(tracker)
-        # Row cleared; verified called (writer no-ops in prod when not False).
+        # Row cleared; the writer is called but no-ops (the model was never
+        # downgraded), so its flag stays None -- no spurious None -> True.
         assert _KEY not in repo.rows
         assert writer.verified_calls == [_KEY]
+        assert writer.flags.get(_KEY) is None
 
 
 class TestGuards:

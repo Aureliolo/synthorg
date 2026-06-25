@@ -388,6 +388,18 @@ class BaseCompletionProvider(ABC):
         chokepoint :meth:`complete` uses.  A stream that yields no usage
         chunk records nothing (matching the no-scope no-op contract).
 
+        Tool-call feedback asymmetry (known limitation): the streaming path
+        emits a tool-call SUCCESS on the first ``TOOL_CALL_DELTA`` chunk,
+        but -- unlike :meth:`complete` -- it cannot emit a FAILURE for a
+        malformed tool-use response (a ``TOOL_USE`` finish reason carrying
+        no tool calls). ``StreamChunk`` has no ``finish_reason`` field
+        (its events are content / tool-call / usage / error / done), so
+        that malfunction is not observable at the stream boundary without a
+        driver-wide model change. The provider-rejection FAILURE path (a
+        non-retryable ``InvalidRequestError`` at stream setup) IS captured
+        in :meth:`stream`'s ``except`` arm; only the malformed-success
+        sub-case is streaming-undetectable.
+
         Args:
             iterator: The driver's raw ``StreamChunk`` iterator.
             model: Model identifier for the call.

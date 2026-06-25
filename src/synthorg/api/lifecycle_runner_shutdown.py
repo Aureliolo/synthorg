@@ -456,6 +456,11 @@ async def _run_shutdown(  # noqa: PLR0913
         # to be disconnected.
         uninstall_tool_call_signal_sink()
         app_state.swap_slice(tool_call_feedback.model_copy(update={"tracker": None}))
+        logger.debug(
+            API_APP_SHUTDOWN,
+            service="tool_call_feedback",
+            note="sink uninstalled",
+        )
 
     hr_slice = app_state.slice(HrStateSlice)
     if hr_slice.promotion_cycle_scheduler is not None:

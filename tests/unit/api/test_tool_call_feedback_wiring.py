@@ -73,12 +73,30 @@ async def test_already_wired_is_idempotent() -> None:
     assert app_state.slice(ToolCallFeedbackStateSlice).tracker is existing
 
 
-async def test_skips_when_management_or_persistence_absent() -> None:
+async def test_skips_when_management_absent() -> None:
+    backend = mock_of[PersistenceBackend](
+        model_tool_call_signals=mock_of[ModelToolCallSignalRepository](),
+    )
     app_state = make_app_state(
         config_resolver=_resolver(),
         slices={
             ToolCallFeedbackStateSlice: {"tracker": None},
             ProvidersStateSlice: {"management": None},
+            PersistenceStateSlice: {"backend": backend},
+        },
+    )
+    await wire_tool_call_feedback(app_state)
+    assert app_state.slice(ToolCallFeedbackStateSlice).tracker is None
+    assert get_tool_call_signal_sink() is None
+
+
+async def test_skips_when_persistence_absent() -> None:
+    management = mock_of[ProviderManagementService]()
+    app_state = make_app_state(
+        config_resolver=_resolver(),
+        slices={
+            ToolCallFeedbackStateSlice: {"tracker": None},
+            ProvidersStateSlice: {"management": management},
             PersistenceStateSlice: {"backend": None},
         },
     )

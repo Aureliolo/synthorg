@@ -68,7 +68,7 @@ class _ToolCallServiceProtocol(Protocol):
         model: str,
         *,
         value: bool | None,
-    ) -> None:
+    ) -> bool:
         """Set a model's ``tool_calls_verified`` flag (provided by the mixin)."""
         ...
 
@@ -82,21 +82,29 @@ class ProviderToolCallCapabilityMixin:
         model: str,
         *,
         value: bool | None,
-    ) -> None:
+    ) -> bool:
         """Set one model's ``tool_calls_verified`` flag, persisting on change.
 
         Mirrors ``ProviderCapabilitiesMixin.flag_models_stale`` (lock,
         re-read configs, ``model_copy`` the metadata, splice the tuple,
         ``_validate_and_persist`` for the DB write + registry hot-reload +
-        rollback). Idempotent: returns without a write when the flag
-        already equals ``value``, so a steady stream of observations never
-        rewrites the provider-config blob.
+        rollback). Idempotent: a no-op when the flag already equals
+        ``value``, so a steady stream of observations never rewrites the
+        provider-config blob. A success setting ``value=True`` on an
+        untested (``None``) model is ALSO a no-op: optimism already selects
+        an untested model, so runtime proof is not worth a config rewrite +
+        hot-reload; only a genuine ``False`` -> ``True`` re-enable writes.
 
         Args:
             provider: Provider registry key.
             model: Model id within the provider.
             value: Target tristate (``False`` downgrade, ``True`` proven,
                 ``None`` untested).
+
+        Returns:
+            ``True`` when the persisted flag actually changed, ``False`` on
+            an idempotent no-op (so callers can distinguish a real
+            re-enable from a steady-state success).
 
         Raises:
             ProviderNotFoundError: If the provider does not exist.
@@ -119,8 +127,9 @@ class ProviderToolCallCapabilityMixin:
                 )
                 raise ProviderModelNotFoundError(msg)
             target = existing.models[idx]
-            if target.metadata.tool_calls_verified == value:
-                return
+            current = target.metadata.tool_calls_verified
+            if current == value or (value is True and current is None):
+                return False
             new_metadata = target.metadata.model_copy(
                 update={"tool_calls_verified": value}
             )
@@ -143,38 +152,49 @@ class ProviderToolCallCapabilityMixin:
             event_type="model_config_updated",
             payload={"model_id": model, "tool_calls_verified": value},
         )
+        return True
 
     async def mark_tool_calls_unverified(
         self: _ToolCallServiceProtocol, provider: str, model: str
-    ) -> None:
+    ) -> bool:
         """Downgrade a model: ``tool_calls_verified`` -> ``False``.
 
         Called by the runtime tool-call feedback tracker when a model
         crosses the failure threshold, so the matcher stops assigning it
         to tool-requiring agents. Idempotent: a no-op (no rewrite, no
         registry hot-reload) when already ``False``.
+
+        Returns:
+            ``True`` if the flag changed, ``False`` on an idempotent no-op.
         """
-        await self._apply_tool_calls_verified(provider, model, value=False)
+        return await self._apply_tool_calls_verified(provider, model, value=False)
 
     async def mark_tool_calls_verified(
         self: _ToolCallServiceProtocol, provider: str, model: str
-    ) -> None:
-        """Re-enable a model on proven success: ``tool_calls_verified`` -> ``True``.
+    ) -> bool:
+        """Re-enable a downgraded model: ``tool_calls_verified`` ``False`` -> ``True``.
 
-        Called by the tracker when a genuine tool call is observed. The
-        idempotent no-op means a clearing success on a model that was never
-        actually downgraded (flag already ``None``) does NOT trigger a
-        rewrite -- only a truly-downgraded ``False`` flips to ``True``.
+        Called by the tracker when a genuine tool call is observed. Only a
+        truly-downgraded (``False``) model flips to ``True``; a success on
+        an untested (``None``) model is a no-op (optimism already selects
+        it, so no rewrite is worth it), as is a model already ``True``.
+
+        Returns:
+            ``True`` only when a ``False`` model was actually re-enabled, so
+            the caller can log an auto-recovery distinctly.
         """
-        await self._apply_tool_calls_verified(provider, model, value=True)
+        return await self._apply_tool_calls_verified(provider, model, value=True)
 
     async def clear_tool_calls_verification(
         self: _ToolCallServiceProtocol, provider: str, model: str
-    ) -> None:
+    ) -> bool:
         """Reset to untested: ``tool_calls_verified`` -> ``None``.
 
         Called by the manual operator "re-enable tool calling" action so
         the matcher's optimistic path resumes (we have no runtime proof on
         a manual reset). Idempotent when already ``None``.
+
+        Returns:
+            ``True`` if the flag changed, ``False`` on an idempotent no-op.
         """
-        await self._apply_tool_calls_verified(provider, model, value=None)
+        return await self._apply_tool_calls_verified(provider, model, value=None)

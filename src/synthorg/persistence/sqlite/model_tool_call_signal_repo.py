@@ -168,11 +168,11 @@ INSERT OR REPLACE INTO model_tool_call_signals (
             except ValidationError as exc:
                 msg = (
                     f"Failed to deserialize tool-call signal row "
-                    f"({row['provider_name'] if row else 'unknown'})"
+                    f"({row['provider_name']})"
                 )
                 logger.warning(
                     PERSISTENCE_MODEL_TOOL_CALL_SIGNAL_LOAD_FAILED,
-                    provider_name=row["provider_name"] if row else "unknown",
+                    provider_name=row["provider_name"],
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                     note="deserialization failed",

@@ -51,6 +51,35 @@ class TestToolCallsVerifiedWrites:
         await service.clear_tool_calls_verification("test-provider", "m1")
         assert await _flag(service, "m1") is None
 
+    async def test_mark_verified_is_noop_on_untested_model(
+        self, service: ProviderManagementService
+    ) -> None:
+        # A success on a never-downgraded (None) model must NOT promote it to
+        # True: optimism already selects it, so the runtime proof is not worth
+        # a provider-config rewrite + registry hot-reload.
+        await _seed(service, "m1")
+        changed = await service.mark_tool_calls_verified("test-provider", "m1")
+        assert changed is False
+        assert await _flag(service, "m1") is None
+
+    async def test_writes_report_changed_via_return(
+        self, service: ProviderManagementService
+    ) -> None:
+        await _seed(service, "m1")
+        unverify = await service.mark_tool_calls_unverified("test-provider", "m1")
+        assert unverify is True
+        # Idempotent second call does not rewrite.
+        unverify_again = await service.mark_tool_calls_unverified("test-provider", "m1")
+        assert unverify_again is False
+        verify = await service.mark_tool_calls_verified("test-provider", "m1")
+        assert verify is True
+        cleared = await service.clear_tool_calls_verification("test-provider", "m1")
+        assert cleared is True
+        cleared_again = await service.clear_tool_calls_verification(
+            "test-provider", "m1"
+        )
+        assert cleared_again is False
+
     async def test_only_named_model_affected(
         self, service: ProviderManagementService
     ) -> None:

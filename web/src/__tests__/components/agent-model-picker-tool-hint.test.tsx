@@ -49,7 +49,11 @@ describe('AgentModelPicker tool-calling hint', () => {
         onChange={vi.fn()}
       />,
     )
-    expect(screen.getByRole('option', { name: /no tools/ })).toBeInTheDocument()
+    const option = screen.getByRole('option', { name: /no tools/ })
+    expect(option).toBeInTheDocument()
+    // A runtime-downgraded model must not also advertise the static 'tools'
+    // claim: the hint shows 'no tools', never the contradictory 'tools'.
+    expect(option.textContent).not.toMatch(/·\s*tools\b/)
   })
 
   it('omits the hint for a model that has not been downgraded', () => {

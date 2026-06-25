@@ -10,8 +10,10 @@ boot gate -- the tracker re-reads it live per observation, so an operator
 can toggle the feature on/off without a restart while the cheap sink
 stays installed.
 
-Best-effort and idempotent: returns early when already wired or when a
-dependency is absent (logging an ``API_APP_STARTUP`` warning), so a
+Best-effort and idempotent: returns early when already wired (silently),
+or when the settings resolver / management service / persistence backend
+is absent (logging an ``API_APP_STARTUP`` warning each time so a
+settings-wiring failure in production is never an invisible skip), so a
 transient minimal-app boot cannot poison startup. The sink is installed
 LAST, after the state slice is published, so a partial build leaves no
 dangling sink.
@@ -40,7 +42,11 @@ async def wire_tool_call_feedback(app_state: AppState) -> None:
         return
     resolver = app_state.slice(SettingsStateSlice).config_resolver
     if resolver is None:
-        # Settings not yet wired (minimal-app boot); feedback stays off.
+        logger.warning(
+            API_APP_STARTUP,
+            service="tool_call_feedback",
+            note="settings resolver absent; feedback disabled",
+        )
         return
     management = app_state.slice(ProvidersStateSlice).management
     backend = app_state.slice(PersistenceStateSlice).backend

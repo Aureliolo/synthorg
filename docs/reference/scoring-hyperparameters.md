@@ -46,6 +46,14 @@ any family/pattern reference to the newest matching configured model,
 then scores survivors. Four score components: base + capability fit +
 context headroom + priority alignment (capped at 1.0).
 
+For `requires_tools` requirements an authoritative runtime hard-fail runs
+before the optimistic capability checks: a model whose
+`ModelMetadata.tool_calls_verified` is `False` (proven at runtime, by the
+tool-call failure feedback loop, to be unable to call tools) is excluded
+regardless of its metadata source, overriding the optimistic
+`supports_tools` path that would otherwise select an unknown-capability
+model.
+
 | Setting | Default | Controls |
 |---|---:|---|
 | `engine.matcher_base_score` | 0.4 | Floor when a candidate clears the hard capability filters. |

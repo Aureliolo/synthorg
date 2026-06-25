@@ -25,6 +25,8 @@ from synthorg.settings.state import SettingsStateSlice
 from tests._shared import LoopAsyncClient, make_app_state, mock_of
 from tests.unit.api.conftest import make_auth_headers
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.mark.unit
 class TestProviderController:

@@ -25,9 +25,9 @@ class ModelToolCallSignal(BaseModel):
         provider_name: SynthOrg provider registry key.
         model_id: Model identifier within the provider.
         failure_score: Exponentially time-decayed count of non-retryable
-            tool-call failures. A genuine tool-call success zeroes it.
-            When it crosses the configured threshold the model is
-            downgraded.
+            tool-call failures. A genuine tool-call success deletes the row
+            (an absent row reads as a clean zero score). When it crosses
+            the configured threshold the model is downgraded.
         decayed_at: Epoch seconds (UTC wall clock) at which
             ``failure_score`` was last recomputed. Stored as a float (the
             same decay-arithmetic timing representation as
@@ -45,6 +45,7 @@ class ModelToolCallSignal(BaseModel):
         description="Time-decayed non-retryable tool-call failure count",
     )
     decayed_at: float = Field(
+        ge=0.0,
         description="Epoch seconds when failure_score was last recomputed",
     )
 

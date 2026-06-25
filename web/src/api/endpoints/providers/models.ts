@@ -251,7 +251,6 @@ export async function reenableToolCalling(
 ): Promise<ProviderConfig> {
   const response = await apiClient.post<ApiResponse<ProviderConfig>>(
     `/providers/${encodeURIComponent(name)}/models/${encodeModelIdPath(modelId)}/reenable-tool-calling`,
-    {},
   )
   return unwrap(response)
 }
