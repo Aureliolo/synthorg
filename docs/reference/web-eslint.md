@@ -32,7 +32,7 @@ The one case that still keeps a per-line `// eslint-disable-next-line @typescrip
 
 ## Deferred high-churn rules
 
-`@typescript-eslint/no-confusing-void-expression` and `no-non-null-assertion` are `off`, and `restrict-template-expressions` is relaxed to `{ allowNumber, allowBoolean, allowNullish }` (it still catches the genuine `${object}`/`${any}` to `"[object Object]"` bug). These are a documented scope deferral from the `strictTypeChecked` adoption (low bug-yield, high churn), each with an inline WHY in `eslint.config.js`. Do NOT re-tighten without the follow-up hardening pass.
+`@typescript-eslint/no-confusing-void-expression` and `no-non-null-assertion` are `off`, and `restrict-template-expressions` is relaxed to `{ allowNumber, allowBoolean, allowNullish }` (it still catches the genuine `${object}`/`${any}` to `"[object Object]"` bug). These stay `off` because fixing them is high-churn for low bug-yield; each carries an inline WHY in `eslint.config.js`. Re-tighten only when a rule's cost-to-signal ratio changes.
 
 ## Tiered caps + per-bucket ratchet
 

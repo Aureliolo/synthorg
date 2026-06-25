@@ -22,7 +22,7 @@ The API boots in two phases. **Construction** (the `create_app` body) wires sync
 - Mid-flight steering splits its wiring in two by dependency: the steering INBOX (read path) is built from `persistence.project_brain` and injected into the boot `AgentEngine` in the runtime-services step (persistence-only, memory-independent `list_current` projection), while the steering SERVICE (write path) wires in `_wire_steering_service` AFTER `_wire_project_brain` (memory-gated brain) via partial `app_state.wire(CockpitStateSlice, ...)` (NOT `swap_slice`, so the construction-phase `steering_notifier` and the later `steering_service` coexist on the slice). Wiring the service inside `_wire_cockpit_services` would race the brain and 503 forever.
 - The red-team report repo is published on `SecurityStateSlice.red_team_reports` during `_install_runtime_services` (decoupled from the review gate, via partial `app_state.wire`), and `_wire_deliverable_receipts` reads it so a receipt's `red_team` section degrades to empty rather than erroring when the subsystem is off.
 
-## Audit-fix wiring hooks
+## Late-startup gated wiring hooks
 
 - `wire_quota_poller`: gated `budget.quota_poller_enabled` + connected persistence + wired `quota_tracker`; appended AFTER `_wire_features`; idempotent; stopped in `lifecycle_runner_shutdown`.
 - `wire_risk_override_service`: gated on a `TieredTimeoutConfig` + persistence + scheduler; rebuilds the tiered policy's classifier wrapped in `SecOpsRiskClassifier` seeded from the durable override repo and swaps it via `ApprovalTimeoutScheduler.set_timeout_policy`; publishes `RiskOverrideService` on `SecurityStateSlice`; controllers + MCP 503 when unwired.

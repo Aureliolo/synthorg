@@ -70,7 +70,7 @@ PYTHONPATH=. uv run zensical build                  # docs
 - Type-only imports stay at module level (so typeguard resolves annotations at runtime); `if TYPE_CHECKING:` only for genuine cycle breakers.
 - Type hints on public functions; mypy strict. Google-style docstrings. Line length 88; functions under 50 lines.
 - Errors: `<Domain><Condition>Error` from `DomainError`; never inherit `Exception`/`RuntimeError` directly. Enforced by `check_domain_error_hierarchy.py`.
-- Pydantic v2: frozen + `extra="forbid"` + `allow_inf_nan=False` on every frozen model (gate `check_frozen_model_extra_forbid.py`; per-line `# lint-allow: frozen-extra-forbid` / `frozen-allow-inf-nan`); `@computed_field` for derived; `UUID` (`default_factory=uuid4`) for entity PK `.id`; `NotBlankStr` for names + string FK fields.
+- Pydantic v2: frozen + `extra="forbid"` + `allow_inf_nan=False` on every frozen model (gate `check_frozen_model_extra_forbid.py`; per-line `# lint-allow: frozen-extra-forbid -- <reason>` / `frozen-allow-inf-nan -- <reason>`); `@computed_field` for derived; `UUID` (`default_factory=uuid4`) for entity PK `.id`; `NotBlankStr` for names + string FK fields.
 - Args models at every system boundary; `parse_typed()` for every external dict ingestion. Enforced by `check_boundary_typed.py`.
 - Immutability: `model_copy(update=...)` or `copy.deepcopy()`; deepcopy at system boundaries.
 - Async: `asyncio.TaskGroup` for fan-out/fan-in; helpers catch `Exception` (re-raise `MemoryError`/`RecursionError`).
@@ -84,7 +84,7 @@ PYTHONPATH=. uv run zensical build                  # docs
 - `from synthorg.observability import get_logger`; variable always `logger`. Never `import logging` / `print()` in app code.
 - Event names from `observability.events.<domain>` constants; structured kwargs (`logger.info(EVENT, key=value)`).
 - Error paths log WARNING/ERROR with context before raising; state transitions log INFO via `*_STATUS_TRANSITIONED` AFTER the persistence write.
-- **Secret-log redaction (SEC-1)**: never `error=str(exc)` or interpolate `{exc}`; use `error_type=type(exc).__name__` + `error=safe_error_description(exc)`. Never `exc_info=True`, `logger.exception(...)`, or OTel `span.record_exception(exc)` (frame-locals serialise secrets). Enforced by `check_logger_exception_str_exc.py`.
+- **Secret-log redaction (SEC-1)**: never `error=str(exc)` or interpolate `{exc}`; use `error_type=type(exc).__name__` + `error=safe_error_description(exc)`. Never `exc_info=True` or `logger.exception(...)` (frame-locals serialise secrets), enforced by `check_logger_exception_str_exc.py`; never OTel `span.record_exception(exc)`, enforced by `check_otlp_span_redaction.py`.
 
 ## API startup, MCP, Resilience
 
