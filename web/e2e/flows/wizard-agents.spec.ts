@@ -1,6 +1,13 @@
-import { test, expect, type Page } from '@playwright/test'
-import { mockApiRoutes, freezeTime } from '../fixtures/mock-api'
+import { test, expect } from '@playwright/test'
+import {
+  mockApiRoutes,
+  mockSetupCompany,
+  mockSetupStatus,
+  freezeTime,
+} from '../fixtures/mock-api'
 import { installWebSocketHarness } from '../fixtures/websocket-harness'
+import type { SetupAgentSummary, SetupCompanyResponse } from '@/api/types/setup'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 /**
  * Critical-flow E2E: setup wizard agents step.
@@ -12,6 +19,11 @@ import { installWebSocketHarness } from '../fixtures/websocket-harness'
  * "save" fires the ``PUT /setup/agents/{index}/name`` the wizard store
  * owns. A regression in the agents fetch, the card render, or the update
  * wiring would strand the operator with an uneditable roster.
+ *
+ * The wizard persists nothing client-side, so the step is reached by
+ * mocking the backend signals it hydrates from: a company + providers
+ * exist server-side, so the (guided, default-mode) reconcile marks every
+ * pre-Agents step complete and a deep-link to ``/setup/agents`` holds.
  */
 
 /** Wrap a payload in the dashboard's ``ApiResponse`` success envelope. */
@@ -30,7 +42,7 @@ function page1(data: unknown[]) {
   }
 }
 
-const AGENT = {
+const AGENT: SetupAgentSummary = {
   name: 'Ada',
   role: 'Engineer',
   department: 'Engineering',
@@ -41,50 +53,29 @@ const AGENT = {
   tier: 'medium',
 }
 
-/**
- * Seed the persisted wizard store so a guided-mode wizard rehydrates on
- * the Agents step with every prior step complete. ``providers`` and
- * ``agents`` are NOT part of the store's own ``partialize`` set, but the
- * rehydration merge reads any key present in the persisted ``state`` -- so
- * seeding non-empty maps here defeats the ``unmark*IfEmptyRehydration``
- * guards that would otherwise re-block the Providers / Agents steps (and
- * bounce the URL back to the first incomplete step).
- */
-async function seedWizardOnAgentsStep(page: Page): Promise<void> {
-  await page.addInitScript((agent) => {
-    window.localStorage.setItem(
-      'synthorg-setup-wizard-v1',
-      JSON.stringify({
-        version: 3,
-        state: {
-          currentStep: 'agents',
-          wizardMode: 'guided',
-          stepsCompleted: {
-            account: false,
-            mode: true,
-            template: true,
-            providers: true,
-            company: true,
-            agents: true,
-            theme: false,
-            complete: false,
-          },
-          providers: {
-            'example-provider': { name: 'example-provider', enabled: true, models: [] },
-          },
-          agents: [agent],
-        },
-      }),
-    )
-  }, AGENT)
+/** The company the reconcile hydrates so the Agents step is reachable. */
+const COMPANY: SetupCompanyResponse = {
+  company_name: 'E2E Test Co',
+  description: null,
+  template_applied: null,
+  department_count: 1,
+  agent_count: 1,
+  agents: [AGENT],
+  currency: DEFAULT_CURRENCY,
+  budget: 500,
+  model_tier_profile: 'balanced',
 }
 
 test.describe('Setup wizard agents step', () => {
   test.beforeEach(async ({ page }) => {
     await freezeTime(page)
     await installWebSocketHarness(page)
-    await seedWizardOnAgentsStep(page)
     await mockApiRoutes(page)
+    // Providers + company exist server-side; the (default) guided reconcile
+    // marks mode / template / providers / company complete, so the Agents
+    // step is the resume target and a deep-link to it holds.
+    await mockSetupStatus(page, { has_providers: true, has_company: true })
+    await mockSetupCompany(page, COMPANY)
     // Unauthenticated: SetupCompleteGuard passes guests straight through
     // to the wizard without consulting setup status.
     await page.route('**/api/v1/auth/me', (route) =>

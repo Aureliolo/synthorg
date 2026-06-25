@@ -1,5 +1,5 @@
-import { test, expect, type Page } from '@playwright/test'
-import { mockApiRoutes, freezeTime } from '../fixtures/mock-api'
+import { test, expect } from '@playwright/test'
+import { mockApiRoutes, mockSetupStatus, freezeTime } from '../fixtures/mock-api'
 import { installWebSocketHarness } from '../fixtures/websocket-harness'
 
 /**
@@ -13,6 +13,11 @@ import { installWebSocketHarness } from '../fixtures/websocket-harness'
  * provider the company gets, so a regression in the modal-reveal, the
  * submit gate, or the create wiring would strand the wizard before agents
  * can be hired.
+ *
+ * The wizard persists nothing client-side, so the Providers step is reached
+ * by picking Quick mode: with no providers configured server-side
+ * (``has_providers: false``) the Providers step is the first incomplete
+ * step, and the mode picker advances straight to it.
  */
 
 /** Wrap a payload in the dashboard's ``ApiResponse`` success envelope. */
@@ -20,44 +25,14 @@ function ok(data: unknown) {
   return { success: true, data, error: null, error_detail: null }
 }
 
-/**
- * Seed the wizard's persisted store so a quick-mode wizard rehydrates on
- * the Providers step with only the mode prerequisite complete. This is the
- * exact shape the persist middleware writes (``{ state, version }``,
- * version 3); the unlisted ``providers`` step stays incomplete so the step
- * renders its picker rather than a "done" summary.
- */
-async function seedWizardOnProvidersStep(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    window.localStorage.setItem(
-      'synthorg-setup-wizard-v1',
-      JSON.stringify({
-        version: 3,
-        state: {
-          currentStep: 'providers',
-          wizardMode: 'quick',
-          stepsCompleted: {
-            account: false,
-            mode: true,
-            template: false,
-            company: false,
-            providers: false,
-            agents: false,
-            theme: false,
-            complete: false,
-          },
-        },
-      }),
-    )
-  })
-}
-
 test.describe('Setup wizard provider configuration', () => {
   test.beforeEach(async ({ page }) => {
     await freezeTime(page)
     await installWebSocketHarness(page)
-    await seedWizardOnProvidersStep(page)
     await mockApiRoutes(page)
+    // Nothing configured server-side, so Providers is the first incomplete
+    // step the mode picker advances to.
+    await mockSetupStatus(page)
     // Unauthenticated: SetupCompleteGuard passes guests straight through
     // to the wizard without consulting setup status.
     await page.route('**/api/v1/auth/me', (route) =>
@@ -112,7 +87,14 @@ test.describe('Setup wizard provider configuration', () => {
       })
     })
 
-    await page.goto('/setup/providers')
+    // Drive the mode picker: Quick mode advances to the first incomplete
+    // step, which (no providers server-side) is Providers.
+    await page.goto('/setup/mode')
+    await expect(
+      page.getByRole('heading', { name: /how would you like to set up/i }),
+    ).toBeVisible()
+    await page.getByRole('radio', { name: /quick setup/i }).click()
+    await expect(page).toHaveURL(/\/setup\/providers/)
     await expect(page.getByRole('heading', { name: /set up providers/i })).toBeVisible()
 
     // The manual-config entry opens the provider form modal. In custom

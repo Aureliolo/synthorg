@@ -20,6 +20,11 @@ const CONTAINER = process.env.SYNTHORG_DEV_BACKEND_CONTAINER ?? 'data-backend-1'
 const PG_HOSTPORT = process.env.SYNTHORG_DEV_PG_HOSTPORT ?? 'localhost:3002'
 const NATS_HOSTPORT = process.env.SYNTHORG_DEV_NATS_HOSTPORT ?? 'localhost:3003'
 const runApi = fileURLToPath(new URL('run_api.py', import.meta.url))
+// Accepted risk: this is a local, never-shipped developer tool. The optional
+// log path is a CLI argument the developer types to launch their own backend;
+// writing the dev log to that developer-chosen path is the script's intended
+// behaviour, not an untrusted-input sink. A static path-injection warning here
+// is a knowingly tolerated false positive for a dev-only helper.
 const logPath = process.argv[2] ?? join(tmpdir(), 'synthorg-backend.log')
 const out = createWriteStream(logPath, { flags: 'w' })
 

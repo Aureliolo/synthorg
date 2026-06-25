@@ -128,7 +128,7 @@ def _tier_override(
     if by_id is not None:
         return by_id
     family = model.metadata.family
-    return overrides.get(family) if family is not None else None
+    return overrides.get(family) if family else None
 
 
 def _model_tiers(
@@ -199,7 +199,7 @@ def prune_dominated(
     for model in models:
         family = model.metadata.family
         tiers = _model_tiers(model, overrides)
-        if family is None or not tiers:
+        if not family or not tiers:
             passthrough.append(model)
             continue
         for tier in tiers:

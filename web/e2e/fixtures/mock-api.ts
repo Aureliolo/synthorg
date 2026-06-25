@@ -1,5 +1,64 @@
 import type { Page } from '@playwright/test'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
+import type {
+  SetupCompanyResponse,
+  SetupStatusResponse,
+} from '@/api/types/setup'
+
+/** Wrap a payload in the dashboard's ``ApiResponse`` success envelope. */
+function setupOk(data: unknown) {
+  return { success: true, data, error: null, error_detail: null }
+}
+
+const SETUP_STATUS_DEFAULTS: SetupStatusResponse = {
+  needs_admin: false,
+  needs_setup: true,
+  has_providers: false,
+  has_name_locales: true,
+  has_company: false,
+  has_agents: false,
+  min_password_length: 12,
+}
+
+/**
+ * Stub ``GET /setup/status`` so the wizard's backend reconcile derives the
+ * step-completion map from real backend signals rather than the (removed)
+ * client persistence. The wizard is a pure API consumer: it has no
+ * localStorage seed, so the only way to land it mid-flow is to mock the
+ * backend state it hydrates from. ``has_providers`` / ``has_company`` /
+ * ``has_agents`` drive which steps reconcile to complete (see
+ * ``reconcileCompletionFromBackend``); a post-company step (agents, complete)
+ * becomes directly reachable, while a pre-company step is reached by driving
+ * the mode picker (which advances to the first incomplete step).
+ */
+export async function mockSetupStatus(
+  page: Page,
+  overrides: Partial<SetupStatusResponse> = {},
+): Promise<void> {
+  const status: SetupStatusResponse = { ...SETUP_STATUS_DEFAULTS, ...overrides }
+  await page.route('**/api/v1/setup/status', (route) =>
+    route.fulfill({ json: setupOk(status) }),
+  )
+}
+
+/**
+ * Stub ``GET /setup/company`` so the resume reconcile hydrates a real company
+ * (``has_company: true`` makes the wizard fetch it). Without it the reconcile
+ * gets a 404 and the Complete step renders its skip-wizard fallback instead of
+ * the review UI. POST falls through so a spec can still stub its own create.
+ */
+export async function mockSetupCompany(
+  page: Page,
+  company: SetupCompanyResponse,
+): Promise<void> {
+  await page.route('**/api/v1/setup/company', (route) => {
+    if (route.request().method() !== 'GET') {
+      route.fallback()
+      return
+    }
+    route.fulfill({ json: setupOk(company) })
+  })
+}
 
 /**
  * Mock all API endpoints with deterministic data for screenshot testing.

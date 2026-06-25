@@ -555,11 +555,7 @@ def _match_agent(
     Returns:
         The ``ModelMatch``, or ``None`` when nothing clears the hard filters.
     """
-    if (
-        req.model_id is not None
-        or req.family is not None
-        or req.model_pattern is not None
-    ):
+    if req.model_id or req.family or req.model_pattern:
         model, score = ctx.strategy.select(req, ctx.pool, ctx.config)
     else:
         eligible = [m for m in ctx.pool if passes_hard_filters(m, req)]

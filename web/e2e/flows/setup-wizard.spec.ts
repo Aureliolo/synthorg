@@ -1,21 +1,25 @@
-import { test, expect, type Page } from '@playwright/test'
-import { mockApiRoutes, freezeTime } from '../fixtures/mock-api'
+import { test, expect } from '@playwright/test'
+import {
+  mockApiRoutes,
+  mockSetupCompany,
+  mockSetupStatus,
+  freezeTime,
+} from '../fixtures/mock-api'
 import { installWebSocketHarness } from '../fixtures/websocket-harness'
 import { clickButton, fillForm } from '../helpers/interactions'
+import type { SetupCompanyResponse } from '@/api/types/setup'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 /**
  * Critical-flow E2E: setup wizard.
  *
- * The first describe block verifies the wizard root mounts and renders
- * its first-step heading and the URL-to-store deep-link sync. The second
- * drives a real submit: the company-creation step's ``POST /setup/company``
- * round-trip and its result preview. The wizard's persisted store
- * (localStorage, key ``synthorg-setup-wizard-v1``) is seeded so the
- * quick-mode flow lands on the company step with its prerequisites
- * (mode + providers) already complete. Because the store clears the
- * Providers completion flag when the non-persisted ``providers`` map
- * rehydrates empty, the seed also injects a live map (mirroring an
- * in-session provider creation) -- no internal API is poked.
+ * The wizard is a pure API consumer -- it persists NOTHING client-side, so
+ * there is no localStorage seed to deep-link into a mid-wizard step. State
+ * is hydrated from the backend on mount (``reconcileCompletionFromBackend``
+ * reads ``GET /setup/status``), so these specs drive the wizard the way a
+ * real operator does: mock the backend signals, then either deep-link a
+ * post-company step (the backend reports it reachable) or pick the wizard
+ * mode (which advances to the first incomplete step) for a pre-company one.
  */
 
 test.describe('Setup wizard critical flow', () => {
@@ -23,6 +27,7 @@ test.describe('Setup wizard critical flow', () => {
     await freezeTime(page)
     await installWebSocketHarness(page)
     await mockApiRoutes(page)
+    await mockSetupStatus(page)
     // Unauthenticated: SetupCompleteGuard passes guests straight through to
     // the wizard. Without this the catch-all ``/auth/me`` would read as an
     // authenticated, setup-complete session and redirect to the dashboard.
@@ -64,74 +69,40 @@ function ok(data: unknown) {
   return { success: true, data, error: null, error_detail: null }
 }
 
-/**
- * A non-empty ``providers`` map mirroring the in-memory state after a user
- * configures a provider. ``providers`` is NOT persisted by the store's
- * ``partialize``, but the persist ``merge`` spreads the rehydrated payload
- * over the slice defaults, so injecting it here populates the live map the
- * same way an in-session provider creation would. ``mergePersistedSetupState``
- * clears ``stepsCompleted.providers`` (and gates downstream steps) whenever the
- * rehydrated map is empty, so seeding ``stepsCompleted.providers: true`` alone
- * is no longer enough to pass ``canNavigateTo`` -- a live map must accompany
- * it. The fields are the ones ``SetupSummary`` reads to render the connected
- * provider (``models``, ``auth_type``, ``has_api_key``).
- */
-const SEEDED_PROVIDERS = {
-  'example-provider': {
-    name: 'example-provider',
-    auth_type: 'api_key',
-    has_api_key: true,
-    has_oauth_credentials: false,
-    has_custom_header: false,
-    has_subscription_token: false,
-    models: [],
-  },
-}
-
-/**
- * Seed the wizard's persisted store so a quick-mode wizard rehydrates on
- * the company step with mode + providers already complete. This is the
- * exact shape the persist middleware writes (``{ state, version }``,
- * version 3); ``buildStepsCompleted`` overlays only ``true`` entries, so
- * the unlisted steps stay incomplete. The non-empty ``providers`` map keeps
- * ``stepsCompleted.providers`` from being cleared on rehydration (see
- * {@link SEEDED_PROVIDERS}), which is what lets ``canNavigateTo('company')``
- * pass without driving the provider picker.
- */
-async function seedWizardOnCompanyStep(page: Page): Promise<void> {
-  await page.addInitScript((providers) => {
-    window.localStorage.setItem(
-      'synthorg-setup-wizard-v1',
-      JSON.stringify({
-        version: 3,
-        state: {
-          currentStep: 'company',
-          wizardMode: 'quick',
-          providers,
-          stepsCompleted: {
-            account: false,
-            mode: true,
-            template: false,
-            company: false,
-            providers: true,
-            agents: false,
-            theme: false,
-            complete: false,
-          },
-        },
-      }),
-    )
-  }, SEEDED_PROVIDERS)
+/** A fully-formed company the resume reconcile can hydrate from the backend. */
+const COMPANY: SetupCompanyResponse = {
+  company_name: 'E2E Test Co',
+  description: null,
+  template_applied: null,
+  department_count: 1,
+  agent_count: 1,
+  agents: [
+    {
+      name: 'Ada',
+      role: 'Engineer',
+      department: 'engineering',
+      level: 'senior',
+      model_provider: null,
+      model_id: null,
+      personality_preset: null,
+      tier: 'medium',
+    },
+  ],
+  currency: DEFAULT_CURRENCY,
+  budget: 500,
+  model_tier_profile: 'balanced',
 }
 
 test.describe('Setup wizard company submit', () => {
   test.beforeEach(async ({ page }) => {
     await freezeTime(page)
     await installWebSocketHarness(page)
-    await seedWizardOnCompanyStep(page)
     await mockApiRoutes(page)
-    // Unauthenticated: SetupCompleteGuard passes guests straight through
-    // to the wizard without consulting setup status.
+    // Providers already configured server-side: the reconcile marks the
+    // Providers step complete, so picking Quick mode skips straight to the
+    // (still-incomplete) Company step -- no company exists yet, so the form
+    // renders rather than a preview.
+    await mockSetupStatus(page, { has_providers: true })
     await page.route('**/api/v1/auth/me', (route) =>
       route.fulfill({ status: 401, json: { success: false, data: null, error: 'Not authenticated', error_detail: null } }),
     )
@@ -155,7 +126,20 @@ test.describe('Setup wizard company submit', () => {
       })
     })
 
-    await page.goto('/setup/company')
+    await page.goto('/setup/mode')
+    // The reconcile fetches the provider list (``has_providers: true``) and
+    // then marks the Providers step complete; waiting for that GET guarantees
+    // the completion has landed before we select a mode, so Quick advances to
+    // Company (not back to Providers).
+    await page.waitForResponse(
+      (res) =>
+        /\/api\/v1\/providers(\?|$)/.test(res.url()) && res.request().method() === 'GET',
+    )
+    await expect(
+      page.getByRole('heading', { name: /how would you like to set up/i }),
+    ).toBeVisible()
+    await page.getByRole('radio', { name: /quick setup/i }).click()
+
     await expect(page).toHaveURL(/\/setup\/company/)
     await expect(page.getByRole('heading', { name: /configure your company/i })).toBeVisible()
 
@@ -181,55 +165,35 @@ test.describe('Setup wizard company submit', () => {
   })
 })
 
-/**
- * Seed the wizard's persisted store on the FINAL ``complete`` step with
- * every prerequisite quick-mode step done and a non-null
- * ``companyResponse`` (without which ``CompleteStep`` renders the
- * skip-wizard fallback instead of the review + complete UI). The non-empty
- * ``providers`` map keeps ``stepsCompleted.providers`` from being cleared on
- * rehydration (see {@link SEEDED_PROVIDERS}); without it the merge would gate
- * the Complete step and snap the wizard back to Providers.
- */
-async function seedWizardOnCompleteStep(page: Page): Promise<void> {
-  await page.addInitScript((providers) => {
-    window.localStorage.setItem(
-      'synthorg-setup-wizard-v1',
-      JSON.stringify({
-        version: 3,
-        state: {
-          currentStep: 'complete',
-          wizardMode: 'quick',
-          providers,
-          stepsCompleted: {
-            account: false,
-            mode: true,
-            template: false,
-            company: true,
-            providers: true,
-            agents: false,
-            theme: false,
-            complete: false,
-          },
-          companyResponse: {
-            company_name: 'E2E Test Co',
-            description: null,
-            template_applied: null,
-            department_count: 1,
-            agent_count: 1,
-            agents: [{ name: 'Ada', department: 'engineering', tier: 'medium' }],
-          },
-        },
-      }),
-    )
-  }, SEEDED_PROVIDERS)
-}
-
 test.describe('Setup wizard complete step', () => {
   test.beforeEach(async ({ page }) => {
     await freezeTime(page)
     await installWebSocketHarness(page)
-    await seedWizardOnCompleteStep(page)
     await mockApiRoutes(page)
+    // Everything before the final step exists server-side, so the reconcile
+    // marks every prior step complete and the wizard resolves the Complete
+    // step as the resume target -- a direct deep-link holds there.
+    await mockSetupStatus(page, {
+      has_providers: true,
+      has_company: true,
+      has_agents: true,
+    })
+    // The reconcile hydrates the company (``has_company: true``); without it
+    // CompleteStep renders the skip-wizard fallback instead of the review UI.
+    await mockSetupCompany(page, COMPANY)
+    // CompleteStep renders the model-selection panel, which fetches its
+    // recommendations on mount.
+    await page.route('**/api/v1/setup/model-recommendations', (route) =>
+      route.fulfill({
+        json: ok({
+          decomposition_recommended: 'model-default',
+          decomposition_candidates: ['model-default'],
+          embedding_recommended: 'embed-default',
+          embedding_recommended_dims: 1024,
+          embedding_candidates: ['embed-default'],
+        }),
+      }),
+    )
     await page.route('**/api/v1/auth/me', (route) =>
       route.fulfill({ status: 401, json: { success: false, data: null, error: 'Not authenticated', error_detail: null } }),
     )

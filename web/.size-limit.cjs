@@ -46,14 +46,20 @@ module.exports = [
   {
     name: 'Total app JS (gzipped)',
     path: 'dist/assets/*.js',
-    limit: '1100 KB',
+    // Raised from 1100 KB for the setup-wizard rework: the new model /
+    // embedder pickers, mini org chart, tier-profile + currency company
+    // controls, and the pure-API-consumer store migration (appearance /
+    // dashboard / org-chart hydrate from the backend) ship real UI.
+    limit: '1150 KB',
     gzip: true,
   },
   // Initial entry chunk -- everything that blocks first paint.
   {
     name: 'Initial entry (gzipped)',
     path: 'dist/assets/index-*.js',
-    limit: '10 KB',
+    // Raised from 10 KB: the backend-hydrated appearance / dashboard /
+    // org-chart stores load on app mount, adding to the always-shipped entry.
+    limit: '11 KB',
     gzip: true,
   },
   // Heaviest vendor chunks -- each typed individually so a regression

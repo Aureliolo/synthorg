@@ -51,20 +51,38 @@ _STORAGE_RE = re.compile(r"\b(localStorage|sessionStorage|indexedDB)\b")
 _ZUSTAND_PERSIST_RE = re.compile(
     r"import\s*\{[^}]*\bpersist\b[^}]*\}\s*from\s*['\"]zustand/middleware['\"]"
 )
-_BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
-_LINE_COMMENT_RE = re.compile(r"//.*$", re.MULTILINE)
+# Single pass over string literals OR comments. The string alternative is
+# tried first, so a ``//`` inside a quoted literal (e.g. ``'https://...'``) is
+# consumed as a string and kept verbatim rather than mistaken for a line
+# comment -- a bare ``//.*$`` would truncate the literal and hide any real
+# ``localStorage`` token that followed it on the same line.
+_COMMENT_OR_STRING_RE = re.compile(
+    r"\"(?:\\.|[^\"\\])*\""
+    r"|'(?:\\.|[^'\\])*'"
+    r"|`(?:\\.|[^`\\])*`"
+    r"|(//[^\n]*)"
+    r"|(/\*.*?\*/)",
+    re.DOTALL,
+)
 
 
 def _strip_comments(text: str) -> str:
     """Remove block + line comments so prose mentioning storage is ignored.
 
+    String literals are preserved so a ``//`` inside a URL string does not
+    truncate the line; only genuine comments are blanked.
+
     Returns:
         The source with comments blanked (line structure preserved).
     """
-    without_blocks = _BLOCK_COMMENT_RE.sub(
-        lambda m: "\n" * m.group(0).count("\n"), text
-    )
-    return _LINE_COMMENT_RE.sub("", without_blocks)
+
+    def _blank(match: re.Match[str]) -> str:
+        comment = match.group(1) or match.group(2)
+        if comment is None:
+            return match.group(0)
+        return "\n" * comment.count("\n")
+
+    return _COMMENT_OR_STRING_RE.sub(_blank, text)
 
 
 def _is_test(path: Path) -> bool:

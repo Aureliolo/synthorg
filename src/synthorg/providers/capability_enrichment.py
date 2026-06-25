@@ -19,6 +19,7 @@ than re-deriving it:
 
 import asyncio
 from typing import NamedTuple
+from urllib.parse import urlsplit
 
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.core.critical_errors import reraise_critical
@@ -38,6 +39,22 @@ logger = get_logger(__name__)
 
 _OLLAMA_VERSION_PATH = "/api/version"
 _OLLAMA_SHOW_PATH = "/api/show"
+_OLLAMA_CLOUD_HOST = "ollama.com"
+
+
+def _is_ollama_cloud_host(base_url: str) -> bool:
+    """Whether ``base_url``'s host is ollama.com (the cloud library host).
+
+    Parses the host rather than substring-matching ``"ollama.com"`` so a
+    look-alike authority (``ollama.com.evil.test``) or a path segment
+    (``evil.test/ollama.com``) cannot be mistaken for the cloud host.
+
+    Returns:
+        True when the URL authority is ``ollama.com`` or a subdomain of it.
+    """
+    candidate = base_url if "://" in base_url else f"//{base_url}"
+    host = (urlsplit(candidate).hostname or "").lower()
+    return host == _OLLAMA_CLOUD_HOST or host.endswith(f".{_OLLAMA_CLOUD_HOST}")
 
 
 class FetchContext(NamedTuple):
@@ -237,7 +254,8 @@ async def _apply_usage_tiers(
     Returns:
         The models with ``cost_tier`` set where resolvable.
     """
-    host = OLLAMA_LIBRARY_HOST if (is_native and "ollama.com" in native_base) else None
+    is_cloud = is_native and _is_ollama_cloud_host(native_base)
+    host = OLLAMA_LIBRARY_HOST if is_cloud else None
     tiers = await resolve_usage_tiers(
         {model.id: model.metadata.parameter_count for model in models},
         host=host,
