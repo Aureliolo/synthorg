@@ -23,7 +23,7 @@ from synthorg.providers.management.service import ProviderManagementService
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.state import settings_service_of
-from tests._shared import JsonDict, LoopAsyncClient
+from tests._shared import JsonDict, LoopAsyncClient, mock_of
 from tests.unit.api.conftest import make_auth_headers
 from tests.unit.api.fakes import FakePersistenceBackend
 
@@ -459,8 +459,9 @@ class TestSetupComplete:
         original_mgmt = app_state.slice(ProvidersStateSlice).management
         # Empty BOTH sources: the runtime registry AND the persisted provider
         # config (the completion gate accepts a provider from either).
-        empty_mgmt = MagicMock(spec=ProviderManagementService)
-        empty_mgmt.list_providers = AsyncMock(return_value={})
+        empty_mgmt = mock_of[ProviderManagementService](
+            list_providers=AsyncMock(return_value={})
+        )
         app_state.wire(
             ProvidersStateSlice, registry=ProviderRegistry({}), management=empty_mgmt
         )
@@ -494,8 +495,9 @@ class TestSetupComplete:
         # No persisted agents (Quick Setup), so the provider gate is the
         # decision point. Empty the runtime registry but supply a persisted
         # provider via management -- the gate must accept the persisted config.
-        mgmt = MagicMock(spec=ProviderManagementService)
-        mgmt.list_providers = AsyncMock(return_value={"test-provider": MagicMock()})
+        mgmt = mock_of[ProviderManagementService](
+            list_providers=AsyncMock(return_value={"test-provider": MagicMock()})
+        )
         original_registry = app_state.slice(ProvidersStateSlice).registry
         original_mgmt = app_state.slice(ProvidersStateSlice).management
         app_state.wire(
