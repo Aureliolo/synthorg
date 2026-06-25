@@ -3733,6 +3733,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/providers/{name}/models/{model_id}/reenable-tool-calling": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** ReenableToolCalling */
+        readonly post: operations["ApiV1ProvidersNameModelsModelIdReenableToolCallingReenableToolCalling"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/providers/{name}/models/pull": {
         readonly parameters: {
             readonly query?: never;
@@ -12511,6 +12528,8 @@ export type components = {
             readonly supports_tools: boolean;
             /** @default false */
             readonly supports_vision: boolean;
+            /** @description Runtime tool-calling truth: None=unobserved, True=proven, False=runtime-proven-incapable (authoritative matcher hard-fail) */
+            readonly tool_calls_verified: boolean | null;
         };
         /** ModelStaleness */
         readonly ModelStaleness: {
@@ -14924,6 +14943,8 @@ export type components = {
              * @default false
              */
             readonly supports_vision: boolean;
+            /** @description Runtime tool-calling truth: None=unobserved, True=proven, False=runtime-proven-incapable (tool-calling unavailable badge) */
+            readonly tool_calls_verified: boolean | null;
         };
         /** ProviderResponse */
         readonly ProviderResponse: {
@@ -26709,6 +26730,39 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ApiResponse_ProviderModelResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersNameModelsModelIdReenableToolCallingReenableToolCalling: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly model_id: string;
+                /** @description Resource name */
+                readonly name: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_ProviderResponse_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

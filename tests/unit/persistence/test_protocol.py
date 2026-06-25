@@ -54,6 +54,11 @@ from synthorg.persistence.knowledge_usage_protocol import (
     KnowledgeUsageRecordRepository,
 )
 from synthorg.persistence.message_protocol import MessageRepository
+from synthorg.persistence.model_tool_call_signal_protocol import (
+    ModelToolCallSignal,
+    ModelToolCallSignalKey,
+    ModelToolCallSignalRepository,
+)
 from synthorg.persistence.parked_context_protocol import ParkedContextRepository
 from synthorg.persistence.preset_protocol import (
     PersonalityPresetRepository,
@@ -820,7 +825,42 @@ class _FakeSsrfViolationRepository:
         del status, limit, offset
         return ()
 
+    async def update_status(
+        self,
+        violation_id: NotBlankStr,
+        *,
+        status: object,
+        resolved_by: NotBlankStr,
+        resolved_at: object,
+    ) -> bool:
+        del violation_id, status, resolved_by, resolved_at
+        return False
+
     async def delete(self, entity_id: NotBlankStr) -> bool:
+        del entity_id
+        return False
+
+
+class _FakeModelToolCallSignalRepository:
+    async def save(self, entity: ModelToolCallSignal, /) -> None:
+        del entity
+
+    async def get(
+        self, entity_id: ModelToolCallSignalKey, /
+    ) -> ModelToolCallSignal | None:
+        del entity_id
+        return None
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[ModelToolCallSignal, ...]:
+        del limit, offset
+        return ()
+
+    async def delete(self, entity_id: ModelToolCallSignalKey, /) -> bool:
         del entity_id
         return False
 
@@ -1425,6 +1465,12 @@ class _FakeBackend:
         return object()
 
     @property
+    def model_tool_call_signals(self) -> _FakeModelToolCallSignalRepository:
+        # Real fake repo (not ``object()``) so backend-level contract access
+        # actually exposes a ``ModelToolCallSignalRepository``-shaped object.
+        return _FakeModelToolCallSignalRepository()
+
+    @property
     def ceremony_scheduler_state(self) -> object:
         return object()
 
@@ -1704,6 +1750,14 @@ class TestProtocolCompliance:
         # ``_FakeBackend.ssrf_violations`` drifts back to ``object()``.
         backend = _FakeBackend()
         assert isinstance(backend.ssrf_violations, SsrfViolationRepository)
+
+    def test_fake_model_tool_call_signals_repo_is_signal_repository(self) -> None:
+        # Route through the backend property so a regression that drifts
+        # ``model_tool_call_signals`` back to ``object()`` surfaces here.
+        backend = _FakeBackend()
+        assert isinstance(
+            backend.model_tool_call_signals, ModelToolCallSignalRepository
+        )
 
     def test_fake_knowledge_sources_repo_is_knowledge_source_repository(
         self,

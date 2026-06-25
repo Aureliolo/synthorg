@@ -227,6 +227,7 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "providers.model_refresh_trigger": (2, 300),
     "providers.probe_local": (20, 60),
     "providers.pull_model": (5, 300),
+    "providers.reenable_tool_calling": (5, 60),
     "providers.rotate_credentials": (5, 60),
     "providers.sync_models": (5, 60),
     "providers.test": (20, 60),

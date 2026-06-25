@@ -64,6 +64,7 @@ const makeModel = (
     family: null,
     generation: null,
     release_date: null,
+    tool_calls_verified: null,
     metadata_source: "unknown",
   },
   stale: null,

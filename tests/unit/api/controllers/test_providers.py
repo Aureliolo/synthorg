@@ -25,6 +25,8 @@ from synthorg.settings.state import SettingsStateSlice
 from tests._shared import LoopAsyncClient, make_app_state, mock_of
 from tests.unit.api.conftest import make_auth_headers
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.mark.unit
 class TestProviderController:
@@ -900,3 +902,72 @@ class TestProviderControllerErrorSanitization:
                         data=data,
                     )
             assert str(info.value) == self._safe(boom), f"mutation={mutation_name!r}"
+
+
+@pytest.mark.unit
+class TestReenableToolCalling:
+    """POST /providers/{name}/models/{model_id}/reenable-tool-calling."""
+
+    @staticmethod
+    def _state_with_tracker(tracker: object | None) -> State:
+        from synthorg.config.schema import ProviderConfig
+        from synthorg.providers.tool_call_feedback.state import (
+            ToolCallFeedbackStateSlice,
+        )
+
+        provider = ProviderConfig(
+            connection_name="conn-test",
+            driver="test-driver",
+            models=(ProviderModelConfig(id="m1"),),
+        )
+        state = State()
+        state.app_state = make_app_state(
+            config_resolver=mock_of[ConfigResolver](
+                get_provider_configs=AsyncMock(
+                    return_value={"test-provider": provider},
+                ),
+            ),
+            slices={ToolCallFeedbackStateSlice: {"tracker": tracker}},
+        )
+        return state
+
+    async def test_clears_and_returns_provider(self) -> None:
+        from synthorg.providers.tool_call_feedback.tracker import (
+            ToolCallFeedbackTracker,
+        )
+
+        tracker = mock_of[ToolCallFeedbackTracker](clear=AsyncMock())
+        state = self._state_with_tracker(tracker)
+        ctrl = _provider_controller()
+        result = await ctrl.reenable_tool_calling.fn(
+            ctrl, state=state, name="test-provider", model_id="m1"
+        )
+        tracker.clear.assert_awaited_once_with(provider="test-provider", model="m1")
+        assert any(m.id == "m1" for m in result.data.models)
+
+    async def test_unwired_tracker_raises_503(self) -> None:
+        from synthorg.core.domain_errors import ServiceUnavailableError
+
+        state = self._state_with_tracker(None)
+        ctrl = _provider_controller()
+        with pytest.raises(ServiceUnavailableError):
+            await ctrl.reenable_tool_calling.fn(
+                ctrl, state=state, name="test-provider", model_id="m1"
+            )
+
+    async def test_unknown_model_raises_404(self) -> None:
+        from synthorg.core.domain_errors import NotFoundError
+        from synthorg.providers.errors import ProviderModelNotFoundError
+        from synthorg.providers.tool_call_feedback.tracker import (
+            ToolCallFeedbackTracker,
+        )
+
+        tracker = mock_of[ToolCallFeedbackTracker](
+            clear=AsyncMock(side_effect=ProviderModelNotFoundError("absent")),
+        )
+        state = self._state_with_tracker(tracker)
+        ctrl = _provider_controller()
+        with pytest.raises(NotFoundError):
+            await ctrl.reenable_tool_calling.fn(
+                ctrl, state=state, name="test-provider", model_id="absent"
+            )

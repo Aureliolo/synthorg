@@ -245,6 +245,16 @@ export async function updateModelConfig(
   return unwrap(response)
 }
 
+export async function reenableToolCalling(
+  name: string,
+  modelId: string,
+): Promise<ProviderConfig> {
+  const response = await apiClient.post<ApiResponse<ProviderConfig>>(
+    `/providers/${encodeURIComponent(name)}/models/${encodeModelIdPath(modelId)}/reenable-tool-calling`,
+  )
+  return unwrap(response)
+}
+
 export async function addProviderModel(
   name: string,
   data: AddModelRequest,

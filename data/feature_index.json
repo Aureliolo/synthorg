@@ -1226,6 +1226,23 @@
     {
       "controllers": [],
       "depends_on": [],
+      "directory": "src/synthorg/providers/tool_call_feedback",
+      "ghost_wired_symbols": [],
+      "mcp_tool_names": [],
+      "name": "tool_call_feedback",
+      "protocol_exports": [
+        "ToolCallCapabilityWriter",
+        "ToolCallFeedbackSettings",
+        "ToolCallSignalSink"
+      ],
+      "settings_namespace": null,
+      "state_slice_fields": [
+        "tracker"
+      ]
+    },
+    {
+      "controllers": [],
+      "depends_on": [],
       "directory": "src/synthorg/tools",
       "ghost_wired_symbols": [
         "BrowserTool",
@@ -1308,6 +1325,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-25T09:53:55.797050Z",
+  "generated_at": "2026-06-25T12:53:53.377705Z",
   "schema_version": 1
 }

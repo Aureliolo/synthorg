@@ -25,6 +25,31 @@ from typing import Final
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.templates.model_requirements import ModelRequirement
 
+
+def above_usable_floor(
+    models: Sequence[ProviderModelConfig],
+    min_parameters: int,
+) -> list[ProviderModelConfig]:
+    """Drop models with a known parameter count below the usable floor.
+
+    A model too small to run an agent loop (a 1B on QA, say) is never
+    auto-assigned. Size-unknown models pass (cloud models often omit the
+    count). Falls back to the full set when the floor would empty it, so a
+    small-only catalogue still yields a match rather than leaving the agent
+    unassigned.
+
+    Returns:
+        The models at or above the floor, or all of *models* when none clear it.
+    """
+    kept = [
+        m
+        for m in models
+        if m.metadata.parameter_count is None
+        or m.metadata.parameter_count >= min_parameters
+    ]
+    return kept or list(models)
+
+
 _TIER_QUALITY_REASONING: Final[int] = 4
 _TIER_HIGH: Final[int] = 3
 _TIER_BALANCED: Final[int] = 2

@@ -18,6 +18,7 @@ function model(
     estimated_latency_ms: null,
     local_params: null,
     supports_tools: false,
+    tool_calls_verified: null,
     supports_vision: false,
     supports_streaming: true,
     family: null,
@@ -83,6 +84,22 @@ export const WithSelectedModel: Story = {
         supports_vision: true,
       }),
       model('example-small-001', { family: 'example-small', max_context: 32000 }),
+    ]),
+  },
+}
+
+export const WithToolCallingDowngraded: Story = {
+  args: {
+    providers: providersWith([
+      model('example-large-001', {
+        alias: 'large',
+        family: 'example-large',
+        supports_tools: true,
+        // Runtime feedback proved it cannot call tools: the hint shows
+        // 'no tools' instead of the contradictory 'tools'.
+        tool_calls_verified: false,
+      }),
+      model('example-large-002', { family: 'example-large', supports_tools: true }),
     ]),
   },
 }

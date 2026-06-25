@@ -27,6 +27,7 @@ def _make_model(  # noqa: PLR0913 -- keyword-only test factory
     cost_input: float = 0.01,
     latency_ms: int | None = None,
     tools: bool = False,
+    tool_calls_verified: bool | None = None,
     vision: bool = False,
     reasoning: bool = False,
     family: str | None = None,
@@ -43,6 +44,7 @@ def _make_model(  # noqa: PLR0913 -- keyword-only test factory
         estimated_latency_ms=latency_ms,
         metadata=ModelMetadata(
             supports_tools=tools,
+            tool_calls_verified=tool_calls_verified,
             supports_vision=vision,
             supports_reasoning=reasoning,
             family=family,
@@ -84,6 +86,71 @@ class TestHardFilters:
         model, score = match_model(req, (_make_model("plain", tools=False),))
         assert model is None
         assert score == 0.0
+
+    def test_runtime_unverified_tools_hard_fail_overrides_optimism(self) -> None:
+        # tool_calls_verified=False is authoritative: even an unknown-source
+        # model (normally optimistically allowed) is excluded for a
+        # requires_tools agent once runtime proved it cannot call tools.
+        downgraded = _make_model(
+            "downgraded",
+            tools=True,
+            tool_calls_verified=False,
+            source="unknown",
+        )
+        req = ModelRequirement(requires_tools=True)
+        model, score = match_model(req, (downgraded,))
+        assert model is None
+        assert score == 0.0
+
+    def test_runtime_verified_true_passes_tools_filter(self) -> None:
+        proven = _make_model(
+            "proven", tools=True, tool_calls_verified=True, source="litellm"
+        )
+        req = ModelRequirement(requires_tools=True)
+        model, _ = match_model(req, (proven,))
+        assert model is not None
+        assert model.id == "proven"
+
+    def test_runtime_unverified_tools_does_not_affect_non_tools_agent(self) -> None:
+        # A model downgraded for tool calling can still serve tool-free roles.
+        downgraded = _make_model(
+            "downgraded", tools=True, tool_calls_verified=False, source="unknown"
+        )
+        req = ModelRequirement(requires_tools=False)
+        model, _ = match_model(req, (downgraded,))
+        assert model is not None
+        assert model.id == "downgraded"
+
+    def test_runtime_unverified_none_keeps_optimistic_tools_path(self) -> None:
+        # tool_calls_verified=None means "never observed": the load-bearing
+        # optimistic path. Even an unknown-source model is still accepted for a
+        # requires_tools agent until runtime proves it cannot call tools (only
+        # an explicit False downgrades it).
+        candidate = _make_model(
+            "candidate",
+            tools=True,
+            tool_calls_verified=None,
+            source="unknown",
+        )
+        req = ModelRequirement(requires_tools=True)
+        model, _ = match_model(req, (candidate,))
+        assert model is not None
+        assert model.id == "candidate"
+
+    def test_runtime_verified_true_overrides_stale_supports_tools(self) -> None:
+        # A runtime-proven tool caller is authoritative: even with a stale
+        # supports_tools=False false negative from a non-unknown source, the
+        # model stays assignable to a requires_tools agent.
+        proven = _make_model(
+            "proven",
+            tools=False,
+            tool_calls_verified=True,
+            source="litellm",
+        )
+        req = ModelRequirement(requires_tools=True)
+        model, _ = match_model(req, (proven,))
+        assert model is not None
+        assert model.id == "proven"
 
     def test_reasoning_requirement_honoured(self) -> None:
         thinker = _make_model("thinker", reasoning=True)

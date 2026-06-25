@@ -1,9 +1,11 @@
 import {
   pullModel as apiPullModel,
   deleteModel as apiDeleteModel,
+  reenableToolCalling as apiReenableToolCalling,
   updateModelConfig as apiUpdateModelConfig,
 } from '@/api/endpoints/providers'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
+import { reenableKey } from '@/utils/providers'
 import { createLogger } from '@/lib/logger'
 import type { LocalModelParams } from '@/api/types/providers'
 import { useToastStore } from '@/stores/toast'
@@ -139,6 +141,53 @@ async function updateModelConfigImpl(
   }
 }
 
+async function reenableToolCallingImpl(
+  set: ProvidersSet,
+  get: ProvidersGet,
+  name: string,
+  modelId: string,
+): Promise<boolean> {
+  const pendingKey = reenableKey(name, modelId)
+  // Per-model concurrency: different models re-enable in parallel, but a second
+  // click on a model already in flight is a no-op (its row is disabled, so this
+  // only guards a double-invoke).
+  if (get().reenablingModelIds.has(pendingKey)) return false
+  set({ reenablingModelIds: new Set(get().reenablingModelIds).add(pendingKey) })
+  try {
+    await apiReenableToolCalling(name, modelId)
+    // The server-side re-enable has already succeeded at this point, so a
+    // follow-up refresh failure is non-fatal: log it but still resolve true
+    // and show the success toast rather than reporting a failed re-enable.
+    try {
+      await refreshActiveDetail(get, name)
+    } catch (err) {
+      log.error(
+        'Failed to refresh provider detail after re-enabling tool calling',
+        getErrorMessage(err),
+      )
+    }
+    useToastStore.getState().add({
+      variant: 'success',
+      title: `Tool calling re-enabled for "${modelId}"`,
+    })
+    return true
+  } catch (err) {
+    log.error('Failed to re-enable tool calling:', getErrorMessage(err))
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, 'Failed to re-enable tool calling'),
+      description: getErrorMessage(err),
+    })
+    return false
+  } finally {
+    // Drop only this request's key so a concurrent re-enable for another model
+    // keeps its own pending state.
+    const next = new Set(get().reenablingModelIds)
+    next.delete(pendingKey)
+    set({ reenablingModelIds: next })
+  }
+}
+
 export function createLocalModelActions(
   set: ProvidersSet,
   get: ProvidersGet,
@@ -158,5 +207,7 @@ export function createLocalModelActions(
       modelId: string,
       params: LocalModelParams,
     ) => updateModelConfigImpl(set, get, name, modelId, params),
+    reenableToolCalling: (name: string, modelId: string) =>
+      reenableToolCallingImpl(set, get, name, modelId),
   }
 }

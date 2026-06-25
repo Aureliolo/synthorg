@@ -40,6 +40,8 @@ pre-selected
 pydantic
 re-declared
 re-declaring
+re-enable
+re-enabled
 re-usable
 re-use
 re-used
@@ -667,6 +669,8 @@ recurse
 redeclaration
 redeclare
 redelegates
+reenable
+reenabled
 referenceable
 regexes
 reimplemented

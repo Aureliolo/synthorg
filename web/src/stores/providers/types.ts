@@ -60,6 +60,12 @@ export interface ProvidersState {
   deletingModel: boolean
   /** True while a model-config save (``updateModelConfig``) is in flight. */
   updatingModelConfig: boolean
+  /**
+   * Provider-qualified keys (see ``reenableKey``) whose tool-calling re-enable
+   * is in flight. A set rather than a single id so re-enables for different
+   * models run concurrently and each row reflects only its own pending state.
+   */
+  reenablingModelIds: ReadonlySet<string>
 
   // Audit log (cursor-paginated, scoped to one provider at a time)
   auditEvents: readonly ProviderAuditEvent[]
@@ -106,6 +112,7 @@ export interface ProvidersState {
   cancelPull: () => void
   deleteModel: (name: string, modelId: string) => Promise<boolean>
   updateModelConfig: (name: string, modelId: string, params: LocalModelParams) => Promise<boolean>
+  reenableToolCalling: (name: string, modelId: string) => Promise<boolean>
 
   // Audit log read actions
   fetchAudit: (providerName: string, opts?: { limit?: number }) => Promise<void>

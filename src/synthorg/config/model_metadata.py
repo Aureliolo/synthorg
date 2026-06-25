@@ -31,7 +31,18 @@ class ModelMetadata(BaseModel):
     matcher can select on real capability data offline.
 
     Attributes:
-        supports_tools: Model supports function/tool calling.
+        supports_tools: Model supports function/tool calling. The
+            discovery-time claim (litellm / preset / probe / unknown); the
+            matcher reads it optimistically for ``unknown`` sources.
+        tool_calls_verified: Runtime-observed tool-calling truth, layered on
+            top of ``supports_tools``. ``None`` = never observed (matcher uses
+            the optimistic ``supports_tools`` path), ``True`` = a real tool
+            call has been seen at runtime, ``False`` = repeated runtime
+            tool-call failures proved the model cannot call tools (the matcher
+            treats this as an authoritative hard-fail for ``requires_tools``
+            agents, overriding optimism). Set by the runtime feedback loop
+            (``providers.tool_call_feedback``); cleared back to ``None`` by a
+            manual operator re-enable.
         supports_vision: Model accepts image inputs.
         supports_reasoning: Model exposes extended reasoning.
         max_output_tokens: Maximum output tokens, when known.
@@ -51,6 +62,13 @@ class ModelMetadata(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     supports_tools: bool = Field(default=False)
+    tool_calls_verified: bool | None = Field(
+        default=None,
+        description=(
+            "Runtime tool-calling truth: None=unobserved, True=proven, "
+            "False=runtime-proven-incapable (authoritative matcher hard-fail)"
+        ),
+    )
     supports_vision: bool = Field(default=False)
     supports_reasoning: bool = Field(default=False)
     max_output_tokens: int | None = Field(

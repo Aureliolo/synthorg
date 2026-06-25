@@ -24,6 +24,7 @@ const SEED_PROVIDERS = [
           family: 'example-large',
           generation: 1,
           release_date: null,
+          tool_calls_verified: null,
           metadata_source: 'unknown',
         },
         stale: null,
