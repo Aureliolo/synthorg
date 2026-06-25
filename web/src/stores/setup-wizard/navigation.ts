@@ -17,7 +17,7 @@ const HTTP_NOT_FOUND = 404
 // than a Next button. Appending any step after ``complete`` would break both.
 const GUIDED_STEP_ORDER: readonly WizardStep[] = [
   'mode', 'template', 'providers', 'company',
-  'agents', 'theme', 'complete',
+  'agents', 'capabilities', 'theme', 'complete',
 ]
 
 const QUICK_STEP_ORDER: readonly WizardStep[] = [
@@ -26,7 +26,7 @@ const QUICK_STEP_ORDER: readonly WizardStep[] = [
 
 const GUIDED_STEP_ORDER_WITH_ACCOUNT: readonly WizardStep[] = [
   'account', 'mode', 'template', 'providers', 'company',
-  'agents', 'theme', 'complete',
+  'agents', 'capabilities', 'theme', 'complete',
 ]
 
 const QUICK_STEP_ORDER_WITH_ACCOUNT: readonly WizardStep[] = [
@@ -48,6 +48,7 @@ export function initialStepsCompleted(): Record<WizardStep, boolean> {
     company: false,
     providers: false,
     agents: false,
+    capabilities: false,
     theme: false,
     complete: false,
   }
@@ -61,6 +62,7 @@ export function initialStepsNeedRevalidation(): Record<WizardStep, boolean> {
     company: false,
     providers: false,
     agents: false,
+    capabilities: false,
     theme: false,
     complete: false,
   }
@@ -185,11 +187,15 @@ async function reconcileCompletionFromBackendImpl(
         completed.template = true
         completed.mode = true
       }
-      // ``theme`` is a cosmetic, defaulted, client-only choice with no backend
-      // signal; once the substantive setup (agents) exists, a resume must not
-      // re-block on re-picking a theme -- it stays reachable via the progress
-      // bar and is changeable later in Settings.
-      if (status.has_agents) completed.theme = true
+      // ``theme`` and ``capabilities`` are defaulted choices with no backend
+      // signal to falsify them: capabilities are seeded to the on-by-default
+      // posture and theme is cosmetic. Once the substantive setup (agents)
+      // exists, a resume must not re-block on them -- both stay reachable via
+      // the progress bar and are changeable later in Settings.
+      if (status.has_agents) {
+        completed.theme = true
+        completed.capabilities = true
+      }
       if (company) {
         // Backend is the source of truth: rehydrate the company + its applied
         // template, overriding any client draft. This is what lets a resumed

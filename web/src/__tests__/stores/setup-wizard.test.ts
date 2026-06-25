@@ -189,6 +189,7 @@ describe('setup wizard store', () => {
         'providers',
         'company',
         'agents',
+        'capabilities',
         'theme',
         'complete',
       ])
