@@ -58,10 +58,11 @@ def _service_with_ask() -> KnowledgeService:
     async def _ask(
         *,
         query: NotBlankStr,
-        project_id: NotBlankStr | None = None,
+        project_id: NotBlankStr,
         limit: int | None = None,
     ) -> KnowledgeAnswer:
-        del query, project_id, limit
+        del query, limit
+        assert project_id == NotBlankStr("proj-1")
         return _answer()
 
     service: KnowledgeService = mock_of[KnowledgeService](ask=_ask)
@@ -72,7 +73,9 @@ async def test_ask_returns_wrapped_answer() -> None:
     app_state = make_app_state(
         slices={KnowledgeStateSlice: {"service": _service_with_ask()}}
     )
-    result = await _knowledge_ask(app_state=app_state, arguments={"query": "q"})
+    result = await _knowledge_ask(
+        app_state=app_state, arguments={"query": "q", "project_id": "proj-1"}
+    )
     body = json.loads(result)
     assert body["status"] == "ok"
     # Synthesised prose + claim text are fenced as untrusted corpus-derived output.
