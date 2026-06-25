@@ -154,11 +154,11 @@ _r.register(
         namespace=SettingNamespace.COCKPIT,
         key="steering_proposer_enabled",
         type=SettingType.BOOLEAN,
-        default="false",
+        default="true",
         description=(
             "Enable the LLM supersession proposer for redirect directives"
-            " issued in PROPOSE mode. When off, PROPOSE echoes the"
-            " operator's seed set unchanged (no LLM refinement)."
+            " issued in PROPOSE mode. On by default; when off, PROPOSE echoes"
+            " the operator's seed set unchanged (no LLM refinement)."
         ),
         group="Intervention",
         level=SettingLevel.ADVANCED,

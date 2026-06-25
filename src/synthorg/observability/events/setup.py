@@ -21,6 +21,10 @@ SETUP_COMPLETED: Final[str] = "setup.flow.completed"
 SETUP_DECOMPOSITION_MODEL_SELECTED: Final[str] = (
     "setup.coordination.decomposition_model_selected"
 )
+SETUP_FEATURE_MODEL_SELECTED: Final[str] = "setup.feature.model_selected"
+
+# Per-feature model auto-fill failed during setup completion
+SETUP_FEATURE_MODEL_SELECT_FAILED: Final[str] = "setup.feature.model_select_failed"
 
 # Setup reset (via CLI or settings delete)
 SETUP_RESET: Final[str] = "setup.flow.reset"

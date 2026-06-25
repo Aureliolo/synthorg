@@ -58,6 +58,7 @@ _GIT_TIMEOUT_NS: str = "tools"
 _GIT_TIMEOUT_KEY: str = "git_command_timeout_seconds"
 _DECOMPOSITION_NS: str = "coordination"
 _DECOMPOSITION_KEY: str = "decomposition_model"
+_MIDDLEWARE_KEY: str = "enable_coordination_middleware"
 _ROUTING_POLICY_KEY: str = "routing_policy"
 _LEAF_THRESHOLD_KEY: str = "leaf_subtask_threshold"
 
@@ -152,16 +153,19 @@ async def _resolve_coordinator_dependencies(
     str,
     RoutingScorerConfig | None,
     tuple[PlannerWorktreeStrategy, WorkspaceIsolationConfig],
+    bool,
 ]:
-    """Resolve decomposition model, routing-scorer config, and workspace concurrently.
+    """Resolve decomposition model, scorer, workspace, and middleware concurrently.
 
-    The three resolution steps are independent, so they run under a
+    The four resolution steps are independent, so they run under a
     ``TaskGroup`` to keep boot latency down (structured concurrency: any
-    failure cancels the siblings and propagates).
+    failure cancels the siblings and propagates). The middleware-enabled
+    flag is resolved here too so every remote read happens in one group
+    rather than a serial tail read at the build site.
 
     Returns:
         A ``(decomposition_model, routing_scorer_config, (workspace_strategy,
-        workspace_config))`` triple.
+        workspace_config), middleware_enabled)`` tuple.
     """
     try:
         async with asyncio.TaskGroup() as tg:
@@ -173,6 +177,12 @@ async def _resolve_coordinator_dependencies(
             )
             scorer_task = tg.create_task(_resolve_routing_scorer_config(app_state))
             workspace_task = tg.create_task(_build_workspace_strategy(app_state))
+            middleware_task = tg.create_task(
+                config_resolver_of(app_state).get_bool(
+                    _DECOMPOSITION_NS,
+                    _MIDDLEWARE_KEY,
+                )
+            )
     except Exception as exc:
         reraise_critical(exc)
         log_exception_redacted(
@@ -188,30 +198,39 @@ async def _resolve_coordinator_dependencies(
         model_task.result(),
         scorer_task.result(),
         workspace_task.result(),
+        middleware_task.result(),
     )
 
 
 def _build_coordination_chain(
     app_state: AppState,
+    *,
+    enabled: bool,
 ) -> CoordinationMiddlewareChain | None:
     """Build the coordination middleware chain, or ``None`` when disabled.
 
-    Gated on ``coordination.enable_coordination_middleware`` (off by
-    default, so wiring the pipeline in preserves current behaviour
-    exactly). When enabled, registers the default middleware factories,
+    Gated on *enabled* (resolved by the caller from the
+    ``coordination.enable_coordination_middleware`` setting, on by
+    default). When enabled, registers the default middleware factories,
     builds the configured replan hook via the ``replan_strategy``
     discriminator (``noop`` is the safe default), and composes the
     default coordination chain. The shared :class:`BudgetEnforcer` on the
     budget slice (``None`` on a persistence-less boot) gates an affordable
     magentic replan.
 
+    Args:
+        app_state: The application state (carries the coordination config
+            and the budget slice).
+        enabled: Whether the middleware pipeline is enabled (resolved from
+            the setting, DB > env > default).
+
     Returns:
         The composed :class:`CoordinationMiddlewareChain`, or ``None``
         when the pipeline is disabled.
     """
-    coord_section = app_state.config.coordination
-    if not coord_section.enable_coordination_middleware:
+    if not enabled:
         return None
+    coord_section = app_state.config.coordination
     register_coordination_defaults()
     replan_hook = create_replan_hook(
         coord_section.replan_strategy,
@@ -258,6 +277,7 @@ async def _build_runtime_coordinator(
         decomposition_model,
         routing_scorer_config,
         (workspace_strategy, workspace_config),
+        middleware_enabled,
     ) = await _resolve_coordinator_dependencies(app_state)
     if not decomposition_model.strip():
         msg = (
@@ -304,7 +324,10 @@ async def _build_runtime_coordinator(
         routing_scorer_config=routing_scorer_config,
         coordination_metrics_collector=coordination_metrics_collector,
         scorer=scorer,
-        coordination_chain=_build_coordination_chain(app_state),
+        coordination_chain=_build_coordination_chain(
+            app_state,
+            enabled=middleware_enabled,
+        ),
         shutdown_manager=app_state.shutdown_manager,
     )
     logger.info(
@@ -357,14 +380,19 @@ async def _build_runtime_work_pipeline(  # noqa: PLR0913 -- keyword-only DI
             note="simulation runtime present but intake engine unset",
         )
         return None
-    routing_policy = await config_resolver_of(app_state).get_str(
-        _DECOMPOSITION_NS,
-        _ROUTING_POLICY_KEY,
-    )
-    leaf_threshold = await config_resolver_of(app_state).get_int(
-        _DECOMPOSITION_NS,
-        _LEAF_THRESHOLD_KEY,
-    )
+    # The routing policy and leaf threshold are independent settings reads;
+    # resolve them concurrently so the spine build issues one round-trip
+    # window rather than two serial ones.
+    resolver = config_resolver_of(app_state)
+    async with asyncio.TaskGroup() as tg:
+        routing_task = tg.create_task(
+            resolver.get_str(_DECOMPOSITION_NS, _ROUTING_POLICY_KEY)
+        )
+        leaf_task = tg.create_task(
+            resolver.get_int(_DECOMPOSITION_NS, _LEAF_THRESHOLD_KEY)
+        )
+    routing_policy = routing_task.result()
+    leaf_threshold = leaf_task.result()
     cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
     return build_work_pipeline(
         intake_engine=intake_engine,

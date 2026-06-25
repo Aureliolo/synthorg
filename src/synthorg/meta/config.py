@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.meta._config_overlay import overlay_feature_settings
 from synthorg.meta.charter.config import CharterConfig
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.models import EvolutionMode, RolloutStrategyType
@@ -439,6 +440,7 @@ async def load_self_improvement_config(
     """
     if settings_service is None:
         return SelfImprovementConfig()
+    overrides: dict[str, object] = {}
     try:
         entry = await settings_service.get("meta", "self_improvement")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
@@ -449,24 +451,28 @@ async def load_self_improvement_config(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return SelfImprovementConfig()
-    raw = entry.value or "{}"
-    try:
+    else:
         import json as _json  # noqa: PLC0415 -- lazy stdlib import
 
-        overrides = _json.loads(raw)
-    except (ValueError, TypeError) as exc:
-        logger.warning(
-            META_SELF_IMPROVEMENT_LOAD_FAILED,
-            reason="json_decode_error",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        return SelfImprovementConfig()
-    if not isinstance(overrides, dict) or not overrides:
-        return SelfImprovementConfig()
+        try:
+            parsed = _json.loads(entry.value or "{}")
+        except (ValueError, TypeError) as exc:
+            logger.warning(
+                META_SELF_IMPROVEMENT_LOAD_FAILED,
+                reason="json_decode_error",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            parsed = {}
+        if isinstance(parsed, dict):
+            overrides = parsed
+    # The flags and per-feature models are individual settings; overlay
+    # them onto the structural blob so they remain the single source of
+    # truth even when the blob is empty (the on-by-default posture lives
+    # in the setting defaults, not the model code defaults).
+    overrides = await overlay_feature_settings(settings_service, overrides)
     try:
-        return SelfImprovementConfig(**overrides)
+        return SelfImprovementConfig.model_validate(overrides)
     except (ValueError, TypeError) as exc:
         logger.warning(
             META_SELF_IMPROVEMENT_LOAD_FAILED,
@@ -474,4 +480,15 @@ async def load_self_improvement_config(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return SelfImprovementConfig()
+        # A corrupt structural blob must not drop the on-by-default posture:
+        # re-overlay the individual settings onto an empty dict so the flags
+        # and per-feature models still apply (discarding only the bad blob).
+        # Force ``code_modification_enabled`` off first -- its GitHub
+        # credentials lived only in that discarded blob, so an enabled flag
+        # would fail the credential validator and sink the whole posture.
+        try:
+            recovered = await overlay_feature_settings(settings_service, {})
+            recovered["code_modification_enabled"] = False
+            return SelfImprovementConfig.model_validate(recovered)
+        except ValueError, TypeError:
+            return SelfImprovementConfig()

@@ -36,6 +36,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.models import WorkItem, WorkPipelineResult
 from synthorg.engine.pipeline.narrator_port import RunNarrator
 from synthorg.engine.pipeline.protocol import WorkPipeline
+from synthorg.engine.pipeline.refinement_port import WorkRefinementRouter
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.budget import (
     BUDGET_FORECAST_APPROVAL_REQUIRED,
@@ -143,6 +144,10 @@ class ForecastGate:
     def attach_narrator(self, narrator: RunNarrator) -> None:
         """Forward the narrator to the wrapped pipeline (decorator passthrough)."""
         self._work_pipeline.attach_narrator(narrator)
+
+    def attach_refinement_router(self, router: WorkRefinementRouter) -> None:
+        """Forward the refinement router to the wrapped pipeline (passthrough)."""
+        self._work_pipeline.attach_refinement_router(router)
 
     async def _gated_dispatch(self, work_item: WorkItem) -> WorkPipelineResult:
         """Run the forecast-gated dispatch branches.

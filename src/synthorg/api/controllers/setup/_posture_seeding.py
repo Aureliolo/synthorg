@@ -1,17 +1,19 @@
 # module-kind: code
 """Seed a template posture's settings-resident feature flags at setup.
 
-A company template declares a named posture that resolves to a flag bundle.
-The config-resident knobs (``security.red_team`` / ``budget`` numerics) are
-threaded into the rendered ``RootConfig`` by the template renderer; this
-module writes the *settings-resident* flags that the best-effort boot wiring
-reads: the conversational chat modes on ``meta.self_improvement``, the steering
-proposer on ``cockpit.steering_proposer_enabled``, and the budget auto-downgrade
-on ``budget.auto_downgrade_enabled``.
+A company template declares a named posture that resolves to a flag
+bundle. The config-resident knobs (``security.red_team`` / ``budget``
+numerics / ``knowledge_substrate`` grounding) are threaded into the
+rendered ``RootConfig`` by the template renderer; this module writes the
+settings-resident flags that the boot wiring and the live capability
+gates read.
 
-The toolsmith is intentionally not posture driven: enabling it needs an
-explicit, deployment-specific capability allowlist, so it stays an operator
-opt-in.
+Postures are additive: a bundle only ever turns a flag on, so seeding is
+upgrade-only. It writes ``"true"`` for each capability the posture
+requests and never downgrades the on-by-default global posture (a flag
+the posture leaves off stays at its registered default). The toolsmith is
+intentionally not posture driven: enabling it needs an explicit,
+deployment-specific capability allowlist, so it stays an operator opt-in.
 """
 
 import asyncio
@@ -27,14 +29,20 @@ from synthorg.templates.schema import CompanyTemplate
 
 logger = get_logger(__name__)
 
-
-def _bool_setting(value: bool) -> str:  # noqa: FBT001
-    """Render a boolean as the settings-service string form.
-
-    Returns:
-        ``"true"`` or ``"false"``.
-    """
-    return "true" if value else "false"
+# Posture flag -> (settings namespace, key): the real knob the posture's
+# boolean turns on. Conversational + steering capabilities are on by
+# default, so a write here is a redundant-but-faithful record of the
+# template's intent; the agent-invite / direct-MCP knobs default off, so
+# the write is the meaningful opt-in. Postures never write "false".
+_POSTURE_FLAG_SETTINGS: tuple[tuple[str, str, str], ...] = (
+    ("steering", "cockpit", "steering_proposer_enabled"),
+    ("auto_downgrade", "budget", "auto_downgrade_enabled"),
+    ("chat_propose", "chief_of_staff", "propose_enabled"),
+    ("chat_routing", "chief_of_staff", "routing_enabled"),
+    ("group_chat", "chief_of_staff", "group_chat_enabled"),
+    ("agent_invite", "chief_of_staff", "invite_enabled"),
+    ("direct_mcp", "chief_of_staff", "direct_mcp_enabled"),
+)
 
 
 async def seed_posture_settings(
@@ -43,9 +51,9 @@ async def seed_posture_settings(
 ) -> str | None:
     """Seed the template posture's settings-resident feature flags.
 
-    Resolves the template's effective posture (inheritance + pack union) and
-    writes the settings the boot wiring reads. No-op when the template
-    declares no posture.
+    Resolves the template's effective posture (inheritance + pack union)
+    and writes the settings the boot wiring and live gates read. No-op
+    when the template declares no posture.
 
     Args:
         settings_svc: The settings service to write into.
@@ -74,39 +82,17 @@ async def _write_posture_flags(
     settings_svc: SettingsService,
     posture: PostureConfig,
 ) -> None:
-    """Write the posture's settings-resident feature flags.
+    """Write ``"true"`` for each capability the posture requests.
 
-    Re-validates the self-improvement blob so the persisted JSON is coherent
-    (``model_copy`` bypasses validators; the boot loader re-validates).
+    All requested flags are written in a single ``set_many`` transaction so
+    a concurrent live gate never observes a half-applied posture (some flags
+    on, the rest still at their default).
     """
-    from synthorg.meta.config import (  # noqa: PLC0415
-        SelfImprovementConfig,
-        load_self_improvement_config,
-    )
-
-    base = await load_self_improvement_config(settings_svc)
-    updated = base.model_copy(
-        update={
-            "chief_of_staff": base.chief_of_staff.model_copy(
-                update={
-                    "propose_enabled": posture.chat_propose,
-                    "routing_enabled": posture.chat_routing,
-                    "group_chat_enabled": posture.group_chat,
-                    "invite_enabled": posture.agent_invite,
-                    "direct_mcp_enabled": posture.direct_mcp,
-                },
-            ),
-        },
-    )
-    coherent = SelfImprovementConfig.model_validate(updated.model_dump())
-    await settings_svc.set("meta", "self_improvement", coherent.model_dump_json())
-    await settings_svc.set(
-        "cockpit",
-        "steering_proposer_enabled",
-        _bool_setting(posture.steering),
-    )
-    await settings_svc.set(
-        "budget",
-        "auto_downgrade_enabled",
-        _bool_setting(posture.auto_downgrade),
-    )
+    items = [
+        (namespace, key, "true")
+        for flag, namespace, key in _POSTURE_FLAG_SETTINGS
+        if getattr(posture, flag)
+    ]
+    if not items:
+        return
+    await settings_svc.set_many(items, expected_updated_at_map={})

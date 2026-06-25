@@ -9,6 +9,7 @@ from typing import Protocol, runtime_checkable
 
 from synthorg.engine.pipeline.models import WorkItem, WorkPipelineResult
 from synthorg.engine.pipeline.narrator_port import RunNarrator
+from synthorg.engine.pipeline.refinement_port import WorkRefinementRouter
 
 
 @runtime_checkable
@@ -40,5 +41,16 @@ class WorkPipeline(Protocol):
         Late-bind seam: the narrator depends on services that wire only
         after persistence connects, so the startup hook attaches it to
         the already-built pipeline rather than passing it at construction.
+        """
+        ...
+
+    def attach_refinement_router(self, router: WorkRefinementRouter) -> None:
+        """Attach the refinement router for under-specified team work.
+
+        Late-bind seam: the router wraps the Chief-of-Staff proposer,
+        which wires only after persistence and a provider are available,
+        so the startup hook attaches it to the already-built pipeline.
+        Absent, team-bound work with no definition of done is blocked by
+        the coordinator's clarification gate instead of being refined.
         """
         ...

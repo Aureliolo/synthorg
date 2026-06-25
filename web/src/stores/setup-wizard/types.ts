@@ -23,6 +23,7 @@ export type WizardStep =
   | 'company'
   | 'providers'
   | 'agents'
+  | 'capabilities'
   | 'theme'
   | 'complete'
 

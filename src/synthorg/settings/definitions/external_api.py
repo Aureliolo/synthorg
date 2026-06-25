@@ -19,11 +19,13 @@ _r.register(
         default="false",
         description=(
             "Master switch for the governed external-access tool. Off by"
-            " default (safe egress posture): the tool is not registered, so"
-            " agents cannot make external API calls until an operator opts"
-            " in. When false the tool is not registered."
+            " default (safe egress posture): agents reaching arbitrary hosts"
+            " is an SSRF / exfiltration surface, so an operator opts in"
+            " knowingly. Read at startup, so enabling it is restart-required;"
+            " the tool is not registered until then."
         ),
         group="General",
+        restart_required=True,
     )
 )
 

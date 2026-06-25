@@ -51,6 +51,7 @@ class ExecutionPath(StrEnum):
 
     SOLO = "solo"
     TEAM = "team"
+    REFINEMENT = "refinement"
 
 
 class WorkItem(BaseModel):
@@ -178,6 +179,38 @@ class WorkPhaseResult(BaseModel):
         return self
 
 
+class RefinementHandoff(BaseModel):
+    """A handoff to human-in-the-loop refinement for under-specified work.
+
+    Produced when team-bound work reaches the spine with no definition of
+    done: instead of mobilising a team against undefined work, the spine
+    opens a refinement conversation (the Chief of Staff clarifies, then
+    parks concrete proposals for approval) and reports this handoff so the
+    caller can point the human at the conversation. Nothing executes until
+    the refined, criteria-bearing work is approved.
+
+    Attributes:
+        conversation_id: The refinement conversation to continue.
+        needs_clarification: ``True`` when refinement asked a clarifying
+            question (the human continues the conversation); ``False``
+            when it parked one or more concrete proposals for approval.
+        detail: Human-readable summary -- the clarifying question, or a
+            description of what was parked.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    conversation_id: NotBlankStr = Field(
+        description="The refinement conversation to continue",
+    )
+    needs_clarification: bool = Field(
+        description="Whether refinement asked a clarifying question",
+    )
+    detail: NotBlankStr = Field(
+        description="Human-readable summary of the refinement outcome",
+    )
+
+
 class WorkPipelineResult(BaseModel):
     """Terminal result of a single work pipeline run.
 
@@ -192,6 +225,9 @@ class WorkPipelineResult(BaseModel):
         task_id: The task that was executed.
         final_task_status: Authoritative post-run task status.
         phases: Per-phase results in execution order (non-empty).
+        refinement_handoff: Set iff ``execution_path`` is
+            ``REFINEMENT`` -- the human-in-the-loop handoff that ran
+            instead of team execution.
         is_success: Whether every recorded phase succeeded.
         total_duration_seconds: Total wall-clock duration.
     """
@@ -209,10 +245,34 @@ class WorkPipelineResult(BaseModel):
         min_length=1,
         description="Per-phase results in execution order",
     )
+    refinement_handoff: RefinementHandoff | None = Field(
+        default=None,
+        description="The refinement handoff (set iff path is REFINEMENT)",
+    )
     total_duration_seconds: float = Field(
         ge=0.0,
         description="Total wall-clock duration in seconds",
     )
+
+    @model_validator(mode="after")
+    def _validate_refinement_path_consistency(self) -> Self:
+        """Ensure ``refinement_handoff`` and ``execution_path`` agree.
+
+        Returns:
+            ``self`` unchanged when the handoff matches the path.
+
+        Raises:
+            ValueError: When a ``REFINEMENT`` path lacks a handoff, or a
+                non-refinement path carries one.
+        """
+        is_refinement = self.execution_path is ExecutionPath.REFINEMENT
+        if is_refinement and self.refinement_handoff is None:
+            msg = "REFINEMENT execution_path requires a refinement_handoff"
+            raise ValueError(msg)
+        if not is_refinement and self.refinement_handoff is not None:
+            msg = "refinement_handoff is only valid on the REFINEMENT path"
+            raise ValueError(msg)
+        return self
 
     @computed_field(
         description="Whether every recorded phase succeeded",

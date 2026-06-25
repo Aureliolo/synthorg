@@ -1,6 +1,7 @@
 """Tests for risk budget configuration models."""
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.risk_config import RiskBudgetAlertConfig, RiskBudgetConfig
@@ -30,7 +31,7 @@ class TestRiskBudgetAlertConfig:
 
     def test_frozen(self) -> None:
         cfg = RiskBudgetAlertConfig()
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             cfg.warn_at = 50  # type: ignore[misc]
 
     def test_bounds_lower(self) -> None:
@@ -48,7 +49,8 @@ class TestRiskBudgetConfig:
 
     def test_defaults(self) -> None:
         cfg = RiskBudgetConfig()
-        assert cfg.enabled is False
+        # On by default (the budget.risk_enabled setting ships "true").
+        assert cfg.enabled is True
         assert cfg.per_task_risk_limit == 5.0
         assert cfg.per_agent_daily_risk_limit == 20.0
         assert cfg.total_daily_risk_limit == 100.0
@@ -60,7 +62,7 @@ class TestRiskBudgetConfig:
 
     def test_frozen(self) -> None:
         cfg = RiskBudgetConfig()
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             cfg.enabled = True  # type: ignore[misc]
 
     def test_negative_limits_rejected(self) -> None:
@@ -126,7 +128,7 @@ class TestBudgetConfigRiskIntegration:
     def test_default_risk_budget(self) -> None:
         cfg = BudgetConfig()
         assert isinstance(cfg.risk_budget, RiskBudgetConfig)
-        assert cfg.risk_budget.enabled is False
+        assert cfg.risk_budget.enabled is True
 
     def test_custom_risk_budget(self) -> None:
         risk_cfg = RiskBudgetConfig(enabled=True, per_task_risk_limit=10.0)

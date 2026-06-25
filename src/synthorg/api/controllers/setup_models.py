@@ -291,6 +291,11 @@ class SetupModelRecommendationsResponse(BaseModel):
         embedding_recommended: Suggested embedding model id, if any.
         embedding_recommended_dims: Output dims for the suggested embedder.
         embedding_candidates: Catalogue model ids that are embedding-capable.
+        research_recommended: Suggested research model id (a capable
+            model), if any. Research uses its own model, not the
+            decomposition model.
+        cos_recommended: Suggested Chief-of-Staff chat model id (a
+            cheaper model for frequent conversational turns), if any.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -300,6 +305,8 @@ class SetupModelRecommendationsResponse(BaseModel):
     embedding_recommended: NotBlankStr | None = None
     embedding_recommended_dims: int | None = Field(default=None, ge=1)
     embedding_candidates: tuple[str, ...] = ()
+    research_recommended: NotBlankStr | None = None
+    cos_recommended: NotBlankStr | None = None
 
     @model_validator(mode="after")
     def _validate_embedding_pairing(self) -> Self:

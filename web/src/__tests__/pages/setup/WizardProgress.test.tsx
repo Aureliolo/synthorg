@@ -12,6 +12,7 @@ const defaultStepsCompleted: Record<WizardStep, boolean> = {
   company: false,
   providers: false,
   agents: false,
+  capabilities: false,
   theme: false,
   complete: false,
 }
@@ -23,6 +24,7 @@ const defaultStepsNeedRevalidation: Record<WizardStep, boolean> = {
   company: false,
   providers: false,
   agents: false,
+  capabilities: false,
   theme: false,
   complete: false,
 }

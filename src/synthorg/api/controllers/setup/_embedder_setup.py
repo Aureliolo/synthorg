@@ -27,6 +27,8 @@ from synthorg.memory.embedding.rankings import DeploymentTier
 from synthorg.memory.embedding.selector import EmbeddingSelection
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.setup import (
+    SETUP_FEATURE_MODEL_SELECT_FAILED,
+    SETUP_FEATURE_MODEL_SELECTED,
     SETUP_MODEL_ID_COLLECTION_ERROR,
     SETUP_PROVIDER_TIER_COVERAGE_INSUFFICIENT,
     SETUP_STATUS_SETTINGS_UNAVAILABLE,
@@ -162,6 +164,41 @@ async def auto_create_template_agents(
     return agents_to_summaries(agents)
 
 
+def _agent_model_id(agent: dict[str, object]) -> str | None:
+    """Return an agent's assigned model id, or ``None`` when unset.
+
+    Returns:
+        The non-blank ``model.model_id`` string, or ``None``.
+    """
+    model = agent.get("model")
+    if isinstance(model, dict):
+        model_id = model.get("model_id")
+        if isinstance(model_id, str) and model_id.strip():
+            return model_id
+    return None
+
+
+def pick_chat_model(agents: list[dict[str, object]]) -> str | None:
+    """Choose a cheaper model id for conversational Chief-of-Staff turns.
+
+    Chat / clarify-and-propose turns are short and frequent, so prefer a
+    ``small`` (then ``medium``) tier agent's model before falling back to
+    any agent that carries an assignment. Shared by the completion
+    auto-select and the wizard's model-recommendations endpoint.
+
+    Returns:
+        A model id, or ``None`` when no agent carries a model.
+    """
+    small = [a for a in agents if a.get("tier") == "small"]
+    medium = [a for a in agents if a.get("tier") == "medium"]
+    for pool in (small, medium, agents):
+        for agent in pool:
+            model_id = _agent_model_id(agent)
+            if model_id is not None:
+                return model_id
+    return None
+
+
 def pick_decomposition_model(agents: list[dict[str, object]]) -> str | None:
     """Choose a capable model id for the coordinator's decomposition strategy.
 
@@ -173,22 +210,83 @@ def pick_decomposition_model(agents: list[dict[str, object]]) -> str | None:
     Returns:
         A model id, or ``None`` when no agent carries a model.
     """
-
-    def _model_id(agent: dict[str, object]) -> str | None:
-        model = agent.get("model")
-        if isinstance(model, dict):
-            model_id = model.get("model_id")
-            if isinstance(model_id, str) and model_id.strip():
-                return model_id
-        return None
-
     large = [a for a in agents if a.get("tier") == "large"]
     for pool in (large, agents):
         for agent in pool:
-            model_id = _model_id(agent)
+            model_id = _agent_model_id(agent)
             if model_id is not None:
                 return model_id
     return None
+
+
+async def ensure_per_feature_models(
+    app_state: AppState,
+    settings_svc: SettingsServiceProtocol,
+) -> None:
+    """Auto-fill the research + Chief-of-Staff models when left unset.
+
+    On-by-default research needs a model id to wire, and the
+    Chief-of-Staff chat capabilities read their own model. The wizard's
+    pickers prefill a recommendation, but the operator can advance without
+    choosing one, so this fills sensible defaults from the matched roster
+    (a capable model for research, a cheaper one for chat) before the
+    runtime rebuild on ``/setup/complete``. Only blank settings are
+    written, so an operator's explicit choice is preserved.
+    """
+    from synthorg.api.controllers.setup_agents import (  # noqa: PLC0415
+        get_existing_agents,
+    )
+
+    try:
+        # The roster read and the provider-model resolution are independent,
+        # so fan them out concurrently (matching this module's TaskGroup use
+        # in auto_create_template_agents).
+        async with asyncio.TaskGroup() as tg:
+            agents_task = tg.create_task(get_existing_agents(settings_svc))
+            available_task = tg.create_task(collect_model_ids(app_state))
+        agents = agents_task.result()
+        available = available_task.result()
+        fallback = available[0] if available else None
+        research_model = pick_decomposition_model(agents) or fallback
+        cos_model = pick_chat_model(agents) or fallback
+        await _set_model_if_blank(settings_svc, "research", "model", research_model)
+        await _set_model_if_blank(
+            settings_svc, "chief_of_staff", "chat_model", cos_model
+        )
+    except* Exception as eg:
+        # reraise_critical unwraps an ExceptionGroup recursively, so hand it
+        # the whole group: a MemoryError/RecursionError leaf at any nesting
+        # depth re-raises eg with full context before we log and swallow.
+        reraise_critical(eg)
+        exc = eg.exceptions[0]
+        logger.warning(
+            SETUP_FEATURE_MODEL_SELECT_FAILED,
+            note="per-feature model auto-fill failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        raise
+
+
+async def _set_model_if_blank(
+    settings_svc: SettingsServiceProtocol,
+    namespace: str,
+    key: str,
+    model_id: str | None,
+) -> None:
+    """Persist *model_id* under ``namespace/key`` only when currently blank."""
+    if model_id is None:
+        return
+    entry = await settings_svc.get(namespace, key)
+    if isinstance(entry.value, str) and entry.value.strip():
+        return
+    await settings_svc.set(namespace, key, model_id)
+    logger.info(
+        SETUP_FEATURE_MODEL_SELECTED,
+        namespace=namespace,
+        key=key,
+        model_id=model_id,
+    )
 
 
 async def collect_model_ids(app_state: AppState) -> tuple[str, ...]:

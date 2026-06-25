@@ -230,6 +230,9 @@ class _FakeWorkPipeline:
     def attach_narrator(self, narrator: object) -> None:
         raise NotImplementedError
 
+    def attach_refinement_router(self, router: object) -> None:
+        raise NotImplementedError
+
 
 class SimpleResult:
     def __init__(self, *, task_id: NotBlankStr, is_success: bool) -> None:
@@ -447,6 +450,9 @@ class TestApprove:
                 raise RuntimeError(msg)
 
             def attach_narrator(self, narrator: object) -> None:
+                raise NotImplementedError
+
+            def attach_refinement_router(self, router: object) -> None:
                 raise NotImplementedError
 
         charter_repo = _FakeCharterRepo(_charter())

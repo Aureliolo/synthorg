@@ -1,62 +1,149 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { getModelRecommendations } from '@/api/endpoints/setup'
 import { getNamespaceSettings, updateSetting } from '@/api/endpoints/settings'
 import { ErrorBanner } from '@/components/ui/error-banner'
+import { SectionCard } from '@/components/ui/section-card'
 import { SelectField, type SelectOption } from '@/components/ui/select-field'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ToggleField } from '@/components/ui/toggle-field'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
-import type { SettingEntry } from '@/api/types/settings'
+import type { SettingEntry, SettingNamespace } from '@/api/types/settings'
 import type { SetupModelRecommendationsResponse } from '@/api/types/setup'
 
-const DECOMPOSITION_KEY = 'decomposition_model'
-const EMBEDDING_KEY = 'embedder_model'
+// Per-feature model pickers. Each writes straight through the settings API,
+// so a choice survives independently of the wizard and stays editable in
+// dashboard Settings. Research + Chief-of-Staff pick from the full catalogue
+// (the decomposition candidate list); embedding has its own capable subset.
+type ModelKey = 'decomposition' | 'embedding' | 'research' | 'cos'
 
-function toOptions(ids: readonly string[]): readonly SelectOption[] {
-  return ids.map((id) => ({ value: id, label: id }))
+interface PickerSpec {
+  key: ModelKey
+  namespace: SettingNamespace
+  settingKey: string
+  label: string
+  hint: string
+}
+
+const PICKERS: readonly PickerSpec[] = [
+  {
+    key: 'decomposition',
+    namespace: 'coordination',
+    settingKey: 'decomposition_model',
+    label: 'Coordination model',
+    hint: 'Used by the coordinator to break briefs into tasks.',
+  },
+  {
+    key: 'embedding',
+    namespace: 'memory',
+    settingKey: 'embedder_model',
+    label: 'Embedding model',
+    hint: 'Powers memory + knowledge.',
+  },
+  {
+    key: 'research',
+    namespace: 'research',
+    settingKey: 'model',
+    label: 'Research model',
+    hint: 'The model the research pipeline reasons with.',
+  },
+  {
+    key: 'cos',
+    namespace: 'chief_of_staff',
+    settingKey: 'chat_model',
+    label: 'Chief of Staff model',
+    hint: 'Powers the conversational Chief-of-Staff turns.',
+  },
+]
+
+type ModelChoices = Record<ModelKey, string>
+interface ToggleChoices {
+  research: boolean
+  knowledge: boolean
+}
+
+function toOptions(ids: readonly string[] | undefined): readonly SelectOption[] {
+  // A partial/garbled recommendations payload can leave a candidate list
+  // absent at runtime even though the type marks it required; degrade to an
+  // empty picker rather than crashing the whole Agents step.
+  return (ids ?? []).map((id) => ({ value: id, label: id }))
 }
 
 function valueOf(entries: readonly SettingEntry[], key: string): string | undefined {
   const found = entries.find((entry) => entry.definition.key === key)
-  return found && found.value ? found.value : undefined
+  // A whitespace-only stored value is not a real choice; treat it as unset so
+  // the recommendation still wins and the select never renders a blank option.
+  const value = found?.value.trim()
+  return value ? value : undefined
 }
 
-interface ModelChoices {
-  decomposition: string
-  embedding: string
+// Resolve a flag, falling back to ``fallback`` only when the entry is
+// absent. The fallback is explicit at each call site (never an implicit
+// "true") so this helper is safe to reuse for an off-by-default flag.
+function boolOf(
+  entries: readonly SettingEntry[],
+  key: string,
+  fallback: boolean,
+): boolean {
+  const found = entries.find((entry) => entry.definition.key === key)
+  return found ? found.value === 'true' : fallback
 }
 
-interface ModelSelectionState {
-  recs: SetupModelRecommendationsResponse | null
-  choices: ModelChoices
-  loading: boolean
-  error: string | null
-  selectDecomposition: (value: string) => void
-  selectEmbedding: (value: string) => void
+function candidatesFor(
+  recs: SetupModelRecommendationsResponse,
+  key: ModelKey,
+): readonly string[] {
+  return key === 'embedding' ? recs.embedding_candidates : recs.decomposition_candidates
+}
+
+interface NamespaceEntries {
+  coordination: readonly SettingEntry[]
+  memory: readonly SettingEntry[]
+  research: readonly SettingEntry[]
+  chief_of_staff: readonly SettingEntry[]
+  knowledge: readonly SettingEntry[]
+}
+
+// Prefer a persisted operator choice, then the backend recommendation,
+// then empty. Extracted so ``buildChoices`` stays under the complexity cap.
+function pickModel(
+  persisted: string | undefined,
+  recommended: string | null | undefined,
+): string {
+  return persisted ?? recommended ?? ''
+}
+
+function buildChoices(
+  recs: SetupModelRecommendationsResponse,
+  ns: NamespaceEntries,
+): { models: ModelChoices; toggles: ToggleChoices } {
+  return {
+    models: {
+      decomposition: pickModel(
+        valueOf(ns.coordination, 'decomposition_model'),
+        recs.decomposition_recommended,
+      ),
+      embedding: pickModel(
+        valueOf(ns.memory, 'embedder_model'),
+        recs.embedding_recommended,
+      ),
+      research: pickModel(valueOf(ns.research, 'model'), recs.research_recommended),
+      cos: pickModel(valueOf(ns.chief_of_staff, 'chat_model'), recs.cos_recommended),
+    },
+    toggles: {
+      // Both research + knowledge are on by default (settings ship "true").
+      research: boolOf(ns.research, 'enabled', true),
+      knowledge: boolOf(ns.knowledge, 'enabled', true),
+    },
+  }
 }
 
 interface LoadHandlers {
   setRecs: (value: SetupModelRecommendationsResponse) => void
-  setChoices: (value: ModelChoices) => void
+  setModels: (value: ModelChoices) => void
+  setToggles: (value: ToggleChoices) => void
   setError: (value: string) => void
   setLoading: (value: boolean) => void
-}
-
-// Prefill from the persisted value when the operator has already chosen one;
-// otherwise fall back to the backend recommendation, then to empty.
-function buildChoices(
-  recommendations: SetupModelRecommendationsResponse,
-  coordination: readonly SettingEntry[],
-  memory: readonly SettingEntry[],
-): ModelChoices {
-  return {
-    decomposition:
-      valueOf(coordination, DECOMPOSITION_KEY) ??
-      recommendations.decomposition_recommended ??
-      '',
-    embedding:
-      valueOf(memory, EMBEDDING_KEY) ?? recommendations.embedding_recommended ?? '',
-  }
 }
 
 async function loadModelSelection(
@@ -64,14 +151,26 @@ async function loadModelSelection(
   handlers: LoadHandlers,
 ): Promise<void> {
   try {
-    const [recommendations, coordination, memory] = await Promise.all([
-      getModelRecommendations(),
-      getNamespaceSettings('coordination'),
-      getNamespaceSettings('memory'),
-    ])
+    const [recs, coordination, memory, research, chief_of_staff, knowledge] =
+      await Promise.all([
+        getModelRecommendations(),
+        getNamespaceSettings('coordination'),
+        getNamespaceSettings('memory'),
+        getNamespaceSettings('research'),
+        getNamespaceSettings('chief_of_staff'),
+        getNamespaceSettings('knowledge'),
+      ])
     if (isCancelled()) return
-    handlers.setRecs(recommendations)
-    handlers.setChoices(buildChoices(recommendations, coordination, memory))
+    handlers.setRecs(recs)
+    const { models, toggles } = buildChoices(recs, {
+      coordination,
+      memory,
+      research,
+      chief_of_staff,
+      knowledge,
+    })
+    handlers.setModels(models)
+    handlers.setToggles(toggles)
   } catch (caught) {
     if (!isCancelled()) handlers.setError(getErrorMessage(caught))
   } finally {
@@ -79,72 +178,139 @@ async function loadModelSelection(
   }
 }
 
+const EMPTY_MODELS: ModelChoices = {
+  decomposition: '',
+  embedding: '',
+  research: '',
+  cos: '',
+}
+
+interface ModelSelectionState {
+  recs: SetupModelRecommendationsResponse | null
+  models: ModelChoices
+  toggles: ToggleChoices
+  loading: boolean
+  error: string | null
+  selectModel: (spec: PickerSpec, value: string) => void
+  toggleFeature: (
+    name: keyof ToggleChoices,
+    namespace: SettingNamespace,
+    value: boolean,
+  ) => void
+}
+
+// Per-key request counters: only the latest in-flight write for a given key is
+// allowed to roll back on failure, so a slow earlier request that fails after a
+// faster later one succeeded cannot clobber the newer value.
+function useRequestIdRefs() {
+  const modelRequestIdsRef = useRef<Record<ModelKey, number>>({
+    decomposition: 0,
+    embedding: 0,
+    research: 0,
+    cos: 0,
+  })
+  const toggleRequestIdsRef = useRef<Record<keyof ToggleChoices, number>>({
+    research: 0,
+    knowledge: 0,
+  })
+  return { modelRequestIdsRef, toggleRequestIdsRef }
+}
+
 function useWizardModelSelection(): ModelSelectionState {
   const [recs, setRecs] = useState<SetupModelRecommendationsResponse | null>(null)
-  const [choices, setChoices] = useState<ModelChoices>({ decomposition: '', embedding: '' })
+  const [models, setModels] = useState<ModelChoices>(EMPTY_MODELS)
+  const [toggles, setToggles] = useState<ToggleChoices>({
+    research: true,
+    knowledge: true,
+  })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const addToast = useToastStore((s) => s.add)
+  const { modelRequestIdsRef, toggleRequestIdsRef } = useRequestIdRefs()
 
   useEffect(() => {
     let cancelled = false
-    void loadModelSelection(
-      () => cancelled,
-      { setRecs, setChoices, setError, setLoading },
-    )
+    void loadModelSelection(() => cancelled, {
+      setRecs,
+      setModels,
+      setToggles,
+      setError,
+      setLoading,
+    })
     return () => {
       cancelled = true
     }
   }, [])
 
-  const selectDecomposition = useCallback(
-    (value: string) => {
-      setChoices((prev) => ({ ...prev, decomposition: value }))
-      void updateSetting('coordination', DECOMPOSITION_KEY, { value }).catch(
+  const selectModel = useCallback(
+    (spec: PickerSpec, value: string) => {
+      // Optimistic write; restore the prior model id if the API call fails.
+      let previous = ''
+      const requestId = modelRequestIdsRef.current[spec.key] + 1
+      modelRequestIdsRef.current[spec.key] = requestId
+      setModels((prev) => {
+        previous = prev[spec.key]
+        return { ...prev, [spec.key]: value }
+      })
+      void updateSetting(spec.namespace, spec.settingKey, { value }).catch(
         (caught: unknown) => {
+          // A newer write for this key has superseded this one: leave the value
+          // and any error to that newer write, so neither a stale rollback nor a
+          // stale "could not save" toast can clobber the current state.
+          if (modelRequestIdsRef.current[spec.key] !== requestId) return
+          setModels((prev) => ({ ...prev, [spec.key]: previous }))
           addToast({
             variant: 'error',
-            title: 'Could not save the coordination model',
+            title: `Could not save the ${spec.label.toLowerCase()}`,
             description: getErrorMessage(caught),
           })
         },
       )
     },
-    [addToast],
+    [addToast, modelRequestIdsRef],
   )
 
-  const selectEmbedding = useCallback(
-    (value: string) => {
-      setChoices((prev) => ({ ...prev, embedding: value }))
-      // Persist only the model id; setup completion resolves the matching
-      // embedder_dims for the chosen model, and ingest captures the real
-      // dimensions if they differ.
-      void updateSetting('memory', EMBEDDING_KEY, { value }).catch((caught: unknown) => {
+  const toggleFeature = useCallback(
+    (name: keyof ToggleChoices, namespace: SettingNamespace, value: boolean) => {
+      // Optimistic write; restore the prior toggle state if the API call fails.
+      let previous = false
+      const requestId = toggleRequestIdsRef.current[name] + 1
+      toggleRequestIdsRef.current[name] = requestId
+      setToggles((prev) => {
+        previous = prev[name]
+        return { ...prev, [name]: value }
+      })
+      void updateSetting(namespace, 'enabled', {
+        value: value ? 'true' : 'false',
+      }).catch((caught: unknown) => {
+        // Superseded by a newer toggle write: suppress both the rollback and the
+        // stale error toast so the newer write owns the outcome.
+        if (toggleRequestIdsRef.current[name] !== requestId) return
+        setToggles((prev) => ({ ...prev, [name]: previous }))
         addToast({
           variant: 'error',
-          title: 'Could not save the embedding model',
+          title: `Could not save the ${name} setting`,
           description: getErrorMessage(caught),
         })
       })
     },
-    [addToast],
+    [addToast, toggleRequestIdsRef],
   )
 
-  return { recs, choices, loading, error, selectDecomposition, selectEmbedding }
+  return { recs, models, toggles, loading, error, selectModel, toggleFeature }
 }
 
 /**
- * Coordinator + memory model pickers for the final wizard step.
+ * Per-feature model pickers for the wizard Agents step.
  *
- * Exposes the coordinator's decomposition model and the memory embedding model.
- * Both are prefilled with a sensible recommendation (a top-cost-tier agent's
- * model and the best-ranked embedder in the catalogue) and overridable from the
- * full candidate lists. Each change writes straight through the settings API,
- * so the choice survives independently of the wizard and is editable later in
- * Settings.
+ * Surfaces the coordinator's decomposition model, the embedding model (which
+ * powers memory + knowledge), the research model (with an enable toggle), and
+ * the Chief-of-Staff model, plus a knowledge enable toggle. Each is prefilled
+ * with a sensible recommendation and overridable from the catalogue; every
+ * change writes straight through the settings API.
  */
 export function WizardModelSelection() {
-  const { recs, choices, loading, error, selectDecomposition, selectEmbedding } =
+  const { recs, models, toggles, loading, error, selectModel, toggleFeature } =
     useWizardModelSelection()
 
   if (loading) {
@@ -164,35 +330,49 @@ export function WizardModelSelection() {
     return null
   }
 
-  const embeddingDims = recs.embedding_recommended_dims
+  const visiblePickers = PICKERS.filter(
+    (spec) => spec.key !== 'research' || toggles.research,
+  )
   return (
-    <section className="space-y-section-gap rounded-lg border border-border bg-card p-card">
-      <div className="space-y-1">
-        <h3 className="text-sm font-semibold text-foreground">Coordination &amp; memory models</h3>
+    <SectionCard title="Models">
+      <div className="space-y-section-gap">
         <p className="text-xs text-muted-foreground">
-          Prefilled with our recommendations. Override either now or later in Settings.
+          Prefilled with our recommendations. Override any of them now or later
+          in Settings.
         </p>
+
+        {/* Toggles first: the Research toggle gates the research picker below,
+            so it must sit above the control it shows or hides. */}
+        <ToggleField
+          label="Research"
+          description="Let agents run research briefs. Turn off to disable research."
+          checked={toggles.research}
+          onChange={(checked) => {
+            toggleFeature('research', 'research', checked)
+          }}
+        />
+        <ToggleField
+          label="Knowledge base"
+          description="Document ingestion + retrieval over the memory backend. Uses the embedding model above."
+          checked={toggles.knowledge}
+          onChange={(checked) => {
+            toggleFeature('knowledge', 'knowledge', checked)
+          }}
+        />
+
+        {visiblePickers.map((spec) => (
+          <SelectField
+            key={spec.key}
+            label={spec.label}
+            hint={spec.hint}
+            value={models[spec.key]}
+            onChange={(value) => {
+              selectModel(spec, value)
+            }}
+            options={toOptions(candidatesFor(recs, spec.key))}
+          />
+        ))}
       </div>
-
-      <SelectField
-        label="Coordination model"
-        hint="Used by the coordinator to break briefs into tasks."
-        value={choices.decomposition}
-        onChange={selectDecomposition}
-        options={toOptions(recs.decomposition_candidates)}
-      />
-
-      <SelectField
-        label="Embedding model"
-        hint={
-          embeddingDims
-            ? `Powers agent memory search. Recommended at ${embeddingDims} dimensions.`
-            : 'Powers agent memory search.'
-        }
-        value={choices.embedding}
-        onChange={selectEmbedding}
-        options={toOptions(recs.embedding_candidates)}
-      />
-    </section>
+    </SectionCard>
   )
 }

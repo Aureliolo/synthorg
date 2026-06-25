@@ -1,14 +1,20 @@
 """Knowledge namespace setting definitions.
 
-Governs the knowledge substrate's optional generative-RAG (synthesis) step:
-its enable flag, the provider + model the ``ask`` surface uses, the synthesis
-strategy discriminator, and the per-answer chunk budget. The substrate's
-retrieval surface is unaffected by these and stays available regardless.
+The knowledge substrate (document ingestion + retrieval over the memory
+backend) is on by default. Its retrieval surface has no model of its
+own: it rides the embedding model that powers memory (see
+``memory.embedder_model``). The optional synthesis step below adds a
+separate completion model (see ``knowledge.synthesis_model``).
 
-Synthesis is on by default (opt-out), matching the on-by-default posture:
-it is a user-initiated capability, not autonomous spend, egress, or
-self-modification. It is functionally gated on a configured model, so the
-``ask`` surface 503s with a clear message until one is set.
+Also governs the substrate's optional generative-RAG (synthesis) step:
+its enable flag, the provider + model the ``ask`` surface uses, the
+synthesis strategy discriminator, and the per-answer chunk budget. The
+substrate's retrieval surface is unaffected by these and stays available
+regardless. Synthesis is on by default (opt-out), matching the
+on-by-default posture: it is a user-initiated capability, not autonomous
+spend, egress, or self-modification. It is functionally gated on a
+configured model, so the ``ask`` surface 503s with a clear message until
+one is set.
 """
 
 from synthorg.knowledge.constants import (
@@ -20,6 +26,25 @@ from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import get_registry
 
 _r = get_registry()
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.KNOWLEDGE,
+        key="enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Master switch for the knowledge substrate (document ingestion"
+            " and retrieval). On by default; turning it off is advanced."
+            " Knowledge uses the embedding model that powers memory. Read at"
+            " startup (the substrate wires into the boot engine), so a change"
+            " is restart-required."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+    )
+)
 
 _r.register(
     SettingDefinition(

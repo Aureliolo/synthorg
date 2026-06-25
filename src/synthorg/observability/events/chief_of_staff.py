@@ -54,6 +54,10 @@ COS_PROPOSE_FAILED: Final[str] = "chief_of_staff.propose.failed"
 COS_PROPOSE_CONVERSATION_REJECTED: Final[str] = (
     "chief_of_staff.propose.conversation_rejected"
 )
+COS_REFINEMENT_OPENED: Final[str] = "chief_of_staff.refinement.opened"
+"""Opened a clarify-and-propose conversation to refine team-bound work
+that reached the spine with no definition of done."""
+
 COS_ACTOR_AGENT_NOT_FOUND: Final[str] = "chief_of_staff.actor.agent_not_found"
 COS_CONVERSATION_STATUS_TRANSITIONED: Final[str] = (
     "chief_of_staff.conversation.status_transitioned"

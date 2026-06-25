@@ -9,6 +9,7 @@ import { resolveAgentModels } from '@/utils/setup-validation'
 import { useClearStepRevalidationOnMount, useGoToStep, useStepCompletionSync } from './_hooks'
 import { MiniOrgChart } from './MiniOrgChart'
 import { SetupAgentsTable } from './SetupAgentsTable'
+import { WizardModelSelection } from './WizardModelSelection'
 import { ChevronDown, Users } from 'lucide-react'
 import type { SetupAgentSummary } from '@/api/types/setup'
 
@@ -253,7 +254,7 @@ export function AgentsStep() {
   return (
     <div className="space-y-section-gap">
       <div className="space-y-2">
-        <h2 className="text-lg font-semibold text-foreground">Customize Your Agents</h2>
+        <h2 className="text-lg font-semibold text-foreground">Customise Your Agents</h2>
         <p className="text-sm text-muted-foreground">
           Adjust agent names, personalities, and model assignments.
         </p>
@@ -275,6 +276,8 @@ export function AgentsStep() {
           onPersonalityChange={c.handlePersonalityChange}
         />
       </SectionCard>
+
+      <WizardModelSelection />
     </div>
   )
 }
@@ -286,7 +289,7 @@ export function AgentsStep() {
  */
 function OrgChartDisclosure({ agents }: { agents: readonly SetupAgentSummary[] }) {
   return (
-    <details className="group space-y-3">
+    <details className="group space-y-section-gap">
       <summary
         className={cn(
           'list-none [&::-webkit-details-marker]:hidden',

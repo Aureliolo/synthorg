@@ -120,10 +120,12 @@ async def post_setup_reinit(app_state: AppState) -> None:
 async def _rewire_post_setup_features(app_state: AppState) -> None:
     """Rewire provider-gated features a boot-empty start could not wire.
 
-    The charter engine wires only behind a configured provider, so an app that
-    booted with no provider leaves its endpoints unavailable until a restart.
-    The wiring is idempotent (a no-op when charter is already wired), so
-    re-running it after the provider reload brings charter online live.
+    The charter engine, research subsystem, and knowledge substrate wire
+    only behind a configured provider (and, for research, a now-filled
+    model), so an app that booted with no provider leaves their endpoints
+    unavailable until a restart. The wiring is idempotent (a no-op when
+    already wired), so re-running it after the provider reload + model
+    auto-fill brings them online live.
 
     Raises on failure, like the other reinit steps, so ``post_setup_reinit``
     keeps ``setup_complete=false`` rather than reporting a half-configured
@@ -139,19 +141,32 @@ async def _rewire_post_setup_features(app_state: AppState) -> None:
     from synthorg.api.lifecycle_helpers.charter_wiring import (  # noqa: PLC0415
         _wire_charter_engine,
     )
+    from synthorg.api.lifecycle_helpers.feature_wiring import (  # noqa: PLC0415
+        _wire_research_engine,
+    )
+    from synthorg.api.lifecycle_helpers.knowledge_wiring import (  # noqa: PLC0415
+        wire_knowledge_engine,
+    )
     from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
     from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
 
     try:
         settings_service = app_state.slice(SettingsStateSlice).settings_service
         si_config = await load_self_improvement_config(settings_service)
+        registry = app_state.slice(ProvidersStateSlice).registry
         await _wire_charter_engine(
             app_state,
-            provider_registry=app_state.slice(ProvidersStateSlice).registry,
+            provider_registry=registry,
             persistence=app_state.slice(PersistenceStateSlice).backend,
             cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
             si_config=si_config,
         )
+        # Research + knowledge are on by default and need a provider /
+        # memory substrate that a boot-empty start lacked; their wiring is
+        # idempotent, so re-running it brings them online live now that
+        # setup has filled their models and a provider exists.
+        await _wire_research_engine(app_state, provider_registry=registry)
+        await wire_knowledge_engine(app_state, provider_registry=registry)
     except Exception as exc:
         reraise_critical(exc)
         logger.warning(

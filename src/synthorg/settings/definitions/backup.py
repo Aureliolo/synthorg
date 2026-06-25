@@ -73,11 +73,11 @@ _r.register(
         namespace=SettingNamespace.BACKUP,
         key="on_shutdown",
         type=SettingType.BOOLEAN,
-        default="false",
+        default="true",
         description=(
-            "Create a backup on graceful shutdown. Disabled by default so"
-            " enabling backups does not silently add shutdown-triggered"
-            " writes; scheduled backups cover the routine guarantee."
+            "Create a backup on graceful shutdown. On by default so a clean"
+            " stop always captures the latest state; scheduled backups cover"
+            " the routine guarantee between runs."
         ),
         group="Triggers",
     )
@@ -88,12 +88,11 @@ _r.register(
         namespace=SettingNamespace.BACKUP,
         key="on_startup",
         type=SettingType.BOOLEAN,
-        default="false",
+        default="true",
         description=(
-            "Create a backup on startup. Disabled by default (CFG-1"
-            " audit) -- scheduled backups cover the same guarantee"
-            " without surprise writes at boot. Enable for"
-            " belt-and-braces coverage in single-instance deployments."
+            "Create a backup on startup. On by default for belt-and-braces"
+            " coverage: a fresh snapshot before the run begins, alongside the"
+            " scheduled backups that cover the routine guarantee."
         ),
         group="Triggers",
     )

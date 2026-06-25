@@ -11,6 +11,7 @@ from synthorg.client.models import (
     ClientRequest,
     TaskRequirement,
 )
+from synthorg.core.task import AcceptanceCriterion
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.intake.models import IntakeResult
 from synthorg.engine.intake.protocol import TaskCreator
@@ -277,4 +278,8 @@ class AgentIntake:
             project=self._project,
             created_by=self._requested_by,
             estimated_complexity=requirement.estimated_complexity,
+            acceptance_criteria=tuple(
+                AcceptanceCriterion(description=c)
+                for c in requirement.acceptance_criteria
+            ),
         )

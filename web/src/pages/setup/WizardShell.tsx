@@ -17,6 +17,7 @@ import { TemplateStep } from './TemplateStep'
 import { CompanyStep } from './CompanyStep'
 import { ProvidersStep } from './ProvidersStep'
 import { AgentsStep } from './AgentsStep'
+import { CapabilitiesStep } from './CapabilitiesStep'
 import { ThemeStep } from './ThemeStep'
 import { CompleteStep } from './CompleteStep'
 
@@ -27,6 +28,7 @@ const STEP_COMPONENTS: Record<WizardStep, React.ComponentType> = {
   company: CompanyStep,
   providers: ProvidersStep,
   agents: AgentsStep,
+  capabilities: CapabilitiesStep,
   theme: ThemeStep,
   complete: CompleteStep,
 }
@@ -42,6 +44,7 @@ const STEP_TITLES: Record<WizardStep, string> = {
   company: 'Company details',
   providers: 'Set up providers',
   agents: 'Configure agents',
+  capabilities: 'Choose capabilities',
   theme: 'Choose a theme',
   complete: 'Review & complete',
 }

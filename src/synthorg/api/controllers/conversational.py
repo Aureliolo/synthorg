@@ -12,6 +12,7 @@ from litestar import Controller, post
 from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.api._feature_gate import ensure_feature_enabled
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_org_mutation, require_read_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
@@ -113,6 +114,12 @@ class ConversationalController(Controller):
             ServiceUnavailableError: Raised on the corresponding failure path.
         """
         app_state = state.app_state
+        await ensure_feature_enabled(
+            app_state,
+            "chief_of_staff",
+            "group_chat_enabled",
+            feature_label="Group chat",
+        )
         service = app_state.slice(MetaStateSlice).group_chat_service
         if service is None:
             logger.warning(

@@ -6,16 +6,18 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.api.controllers.setup._embedder_setup import (
+    _set_model_if_blank,
     auto_select_embedder,
+    pick_chat_model,
     pick_decomposition_model,
 )
 from synthorg.memory.embedding.rankings import LMEB_RANKINGS
+from synthorg.settings.service import SettingsService
 
 
 def _mock_settings_svc() -> AsyncMock:
-    svc = AsyncMock()
-    svc.save = AsyncMock()
-    return svc
+    """A SettingsService-spec'd mock (typos raise instead of passing silently)."""
+    return AsyncMock(spec=SettingsService)
 
 
 def _set_many_values(settings_svc: AsyncMock) -> dict[tuple[str, str], str]:
@@ -116,3 +118,50 @@ class TestPickDecompositionModel:
     def test_returns_none_without_any_model(self) -> None:
         assert pick_decomposition_model([{"tier": "large"}]) is None
         assert pick_decomposition_model([]) is None
+
+
+@pytest.mark.unit
+class TestPickChatModel:
+    def test_prefers_small_then_medium_tier(self) -> None:
+        agents: list[dict[str, object]] = [
+            {"tier": "large", "model": {"model_id": "large-model"}},
+            {"tier": "medium", "model": {"model_id": "medium-model"}},
+            {"tier": "small", "model": {"model_id": "small-model"}},
+        ]
+        assert pick_chat_model(agents) == "small-model"
+
+    def test_falls_back_to_medium_then_any(self) -> None:
+        medium_only: list[dict[str, object]] = [
+            {"tier": "large", "model": {"model_id": "large-model"}},
+            {"tier": "medium", "model": {"model_id": "medium-model"}},
+        ]
+        assert pick_chat_model(medium_only) == "medium-model"
+        any_only: list[dict[str, object]] = [
+            {"tier": "large", "model": {"model_id": "large-model"}},
+        ]
+        assert pick_chat_model(any_only) == "large-model"
+
+    def test_returns_none_without_any_model(self) -> None:
+        assert pick_chat_model([{"tier": "small"}]) is None
+        assert pick_chat_model([]) is None
+
+
+@pytest.mark.unit
+class TestSetModelIfBlank:
+    async def test_sets_when_blank(self) -> None:
+        svc = _mock_settings_svc()
+        svc.get.return_value = SimpleNamespace(value="")
+        await _set_model_if_blank(svc, "research", "model", "example-large-001")
+        svc.set.assert_awaited_once_with("research", "model", "example-large-001")
+
+    async def test_skips_when_already_set(self) -> None:
+        svc = _mock_settings_svc()
+        svc.get.return_value = SimpleNamespace(value="operator-choice")
+        await _set_model_if_blank(svc, "research", "model", "example-large-001")
+        svc.set.assert_not_awaited()
+
+    async def test_skips_when_no_model_id(self) -> None:
+        svc = _mock_settings_svc()
+        await _set_model_if_blank(svc, "research", "model", None)
+        svc.get.assert_not_awaited()
+        svc.set.assert_not_awaited()

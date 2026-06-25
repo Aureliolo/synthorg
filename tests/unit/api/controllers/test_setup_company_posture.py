@@ -1,7 +1,12 @@
-"""Tests for the posture settings seeder in company setup."""
+"""Tests for the posture settings seeder in company setup.
 
-import json
-from types import SimpleNamespace
+Postures are additive: the seeder writes ``"true"`` for each capability a
+posture requests and never downgrades the on-by-default global posture.
+Each capability is now an individual setting (the CoS conversational
+flags, plus ``cockpit.steering_proposer_enabled`` and
+``budget.auto_downgrade_enabled``), so the seeder writes them directly
+rather than mutating the ``meta.self_improvement`` blob.
+"""
 
 import pytest
 
@@ -16,6 +21,8 @@ from synthorg.templates.schema import (
 )
 from tests._shared import mock_of
 
+pytestmark = pytest.mark.unit
+
 
 def _template(posture: PostureName | None) -> CompanyTemplate:
     """Build a minimal template carrying the given posture."""
@@ -27,34 +34,37 @@ def _template(posture: PostureName | None) -> CompanyTemplate:
 
 
 def _svc() -> SettingsService:
-    """A SettingsService double whose ``get`` returns an empty config entry.
-
-    ``load_self_improvement_config`` reads ``entry.value`` (``None`` -> ``{}``),
-    so the seeder runs through the happy path rather than the json-decode
-    error-swallow fallback.
-    """
+    """A SettingsService double recording every ``set_many`` await."""
     svc: SettingsService = mock_of[SettingsService]()
-    svc.get.return_value = SimpleNamespace(value=None)  # type: ignore[attr-defined]
     return svc
 
 
 def _set_calls(svc: object) -> dict[tuple[str, str], str]:
-    """Collapse recorded ``set`` awaits into a ``{(namespace, key): value}``."""
+    """Collapse the seeder's ``set_many`` batch into ``{(ns, key): value}``."""
     return {
-        (call.args[0], call.args[1]): call.args[2]
-        for call in svc.set.await_args_list  # type: ignore[attr-defined]
+        (namespace, key): value
+        for call in svc.set_many.await_args_list  # type: ignore[attr-defined]
+        for namespace, key, value in call.args[0]
     }
 
 
-@pytest.mark.unit
 class TestSeedPostureSettings:
     async def test_no_posture_writes_nothing(self) -> None:
         svc = _svc()
         result = await seed_posture_settings(svc, _template(None))
         assert result is None
-        svc.set.assert_not_called()  # type: ignore[attr-defined]
+        svc.set_many.assert_not_called()  # type: ignore[attr-defined]
 
-    async def test_security_hardened_seeds_flags(self) -> None:
+    async def test_seeder_only_writes_true(self) -> None:
+        """Every recorded write is ``"true"``; postures never downgrade."""
+        svc = _svc()
+        await seed_posture_settings(
+            svc,
+            _template(PostureName.SUPERVISED_CLIENT_FACING),
+        )
+        assert all(value == "true" for value in _set_calls(svc).values())
+
+    async def test_security_hardened_seeds_only_steering(self) -> None:
         svc = _svc()
         result = await seed_posture_settings(
             svc,
@@ -62,38 +72,25 @@ class TestSeedPostureSettings:
         )
         assert result == "security_hardened"
         calls = _set_calls(svc)
-        # Steering on; auto-downgrade off for this posture.
+        # Steering is the only settings-resident flag this posture turns on;
+        # knowledge_substrate + red_team are config-resident (rendered config).
         assert calls[("cockpit", "steering_proposer_enabled")] == "true"
-        assert calls[("budget", "auto_downgrade_enabled")] == "false"
-        meta = json.loads(calls[("meta", "self_improvement")])
-        # Toolsmith stays an operator opt-in; postures never flip it.
-        assert meta["tool_creation_enabled"] is False
-        # Security posture enables steering but no conversational chat modes.
-        cos = meta["chief_of_staff"]
-        assert cos["propose_enabled"] is False
-        assert cos["group_chat_enabled"] is False
-        assert cos["invite_enabled"] is False
+        assert ("chief_of_staff", "propose_enabled") not in calls
+        assert ("chief_of_staff", "group_chat_enabled") not in calls
+        assert ("chief_of_staff", "invite_enabled") not in calls
 
-    async def test_research_autonomous_enables_chat_and_steering(self) -> None:
-        svc = _svc()
-        await seed_posture_settings(svc, _template(PostureName.RESEARCH_AUTONOMOUS))
-        calls = _set_calls(svc)
-        assert calls[("cockpit", "steering_proposer_enabled")] == "true"
-        meta = json.loads(calls[("meta", "self_improvement")])
-        assert meta["tool_creation_enabled"] is False
-        assert meta["chief_of_staff"]["propose_enabled"] is True
-
-    async def test_supervised_client_facing_enables_chat(self) -> None:
+    async def test_supervised_client_facing_enables_invite(self) -> None:
         svc = _svc()
         await seed_posture_settings(
             svc,
             _template(PostureName.SUPERVISED_CLIENT_FACING),
         )
-        meta = json.loads(_set_calls(svc)[("meta", "self_improvement")])
-        cos = meta["chief_of_staff"]
-        assert cos["propose_enabled"] is True
-        assert cos["group_chat_enabled"] is True
-        assert cos["invite_enabled"] is True
+        calls = _set_calls(svc)
+        assert calls[("chief_of_staff", "propose_enabled")] == "true"
+        assert calls[("chief_of_staff", "routing_enabled")] == "true"
+        assert calls[("chief_of_staff", "group_chat_enabled")] == "true"
+        assert calls[("chief_of_staff", "invite_enabled")] == "true"
+        assert calls[("cockpit", "steering_proposer_enabled")] == "true"
 
     async def test_cost_disciplined_enables_only_auto_downgrade(self) -> None:
         svc = _svc()
@@ -104,25 +101,31 @@ class TestSeedPostureSettings:
         assert result == "cost_disciplined"
         calls = _set_calls(svc)
         assert calls[("budget", "auto_downgrade_enabled")] == "true"
-        assert calls[("cockpit", "steering_proposer_enabled")] == "false"
-        cos = json.loads(calls[("meta", "self_improvement")])["chief_of_staff"]
-        assert cos["propose_enabled"] is False
+        assert ("cockpit", "steering_proposer_enabled") not in calls
+
+    async def test_research_autonomous_enables_propose_and_routing(self) -> None:
+        svc = _svc()
+        await seed_posture_settings(svc, _template(PostureName.RESEARCH_AUTONOMOUS))
+        calls = _set_calls(svc)
+        assert calls[("chief_of_staff", "propose_enabled")] == "true"
+        assert calls[("chief_of_staff", "routing_enabled")] == "true"
+        assert calls[("cockpit", "steering_proposer_enabled")] == "true"
+        # No acts-on-your-behalf opt-in for this posture.
+        assert ("chief_of_staff", "invite_enabled") not in calls
+        assert ("chief_of_staff", "direct_mcp_enabled") not in calls
 
     async def test_autonomous_enables_steering_not_chat(self) -> None:
         svc = _svc()
         await seed_posture_settings(svc, _template(PostureName.AUTONOMOUS))
         calls = _set_calls(svc)
         assert calls[("cockpit", "steering_proposer_enabled")] == "true"
-        assert calls[("budget", "auto_downgrade_enabled")] == "false"
-        cos = json.loads(calls[("meta", "self_improvement")])["chief_of_staff"]
-        assert cos["propose_enabled"] is False
-        assert cos["group_chat_enabled"] is False
+        assert ("chief_of_staff", "propose_enabled") not in calls
+        assert ("chief_of_staff", "group_chat_enabled") not in calls
 
     async def test_knowledge_heavy_enables_propose_and_steering(self) -> None:
         svc = _svc()
         await seed_posture_settings(svc, _template(PostureName.KNOWLEDGE_HEAVY))
         calls = _set_calls(svc)
         assert calls[("cockpit", "steering_proposer_enabled")] == "true"
-        cos = json.loads(calls[("meta", "self_improvement")])["chief_of_staff"]
-        assert cos["propose_enabled"] is True
-        assert cos["group_chat_enabled"] is False
+        assert calls[("chief_of_staff", "propose_enabled")] == "true"
+        assert ("chief_of_staff", "group_chat_enabled") not in calls

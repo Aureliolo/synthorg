@@ -14,6 +14,7 @@ const STEP_LABELS: Record<WizardStep, string> = {
   company: 'Company',
   providers: 'Providers',
   agents: 'Agents',
+  capabilities: 'Capabilities',
   theme: 'Theme',
   complete: 'Review',
 }

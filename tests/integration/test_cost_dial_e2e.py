@@ -141,6 +141,7 @@ class _StubWorkPipeline:
     def __init__(self) -> None:
         self.calls: list[WorkItem] = []
         self.narrator: RunNarrator | None = None
+        self.refinement_router: object | None = None
 
     async def run(self, work_item: WorkItem) -> WorkPipelineResult:
         self.calls.append(work_item)
@@ -158,6 +159,9 @@ class _StubWorkPipeline:
 
     def attach_narrator(self, narrator: RunNarrator) -> None:
         self.narrator = narrator
+
+    def attach_refinement_router(self, router: object) -> None:
+        self.refinement_router = router
 
 
 class _EngineHost(AgentEngineErrorsMixin):

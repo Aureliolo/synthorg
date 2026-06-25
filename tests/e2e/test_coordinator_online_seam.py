@@ -33,6 +33,7 @@ from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.role import Authority, Skill
+from synthorg.core.task import AcceptanceCriterion
 from synthorg.core.task_enums import Priority, TaskType
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.models import CoordinationContext
@@ -61,6 +62,15 @@ from tests._shared import FakeClock, make_app_state
 from tests.unit.api.fakes import FakePersistenceBackend
 
 pytestmark = pytest.mark.e2e
+
+# A well-specified definition of done so the coordinator's clarification
+# gate (on by default with the coordination middleware) passes and the
+# task decomposes; this seam test exercises the coordinator machinery,
+# not the under-specified-work refinement path.
+_SEAM_CRITERIA = (
+    AcceptanceCriterion(description="Research findings are documented and cited"),
+    AcceptanceCriterion(description="Analysis synthesises the research into a report"),
+)
 
 _DECOMPOSITION_TOOL = "submit_decomposition_plan"
 _RESEARCH_SKILL = "research"
@@ -221,7 +231,7 @@ async def test_coordinator_runs_decomposable_task_end_to_end(
     )
 
     context = CoordinationContext(
-        task=created,
+        task=created.model_copy(update={"acceptance_criteria": _SEAM_CRITERIA}),
         available_agents=(alice, bob),
         decomposition_context=DecompositionContext(max_subtasks=4),
         # Workspace isolation is wired at boot but disabled per-run so
@@ -353,7 +363,7 @@ async def test_coordinator_records_coordination_metrics_end_to_end(
     )
 
     context = CoordinationContext(
-        task=created,
+        task=created.model_copy(update={"acceptance_criteria": _SEAM_CRITERIA}),
         available_agents=(alice, bob),
         decomposition_context=DecompositionContext(max_subtasks=4),
         config=CoordinationConfig(

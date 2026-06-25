@@ -189,6 +189,7 @@ describe('setup wizard store', () => {
         'providers',
         'company',
         'agents',
+        'capabilities',
         'theme',
         'complete',
       ])
@@ -303,8 +304,18 @@ describe('setup wizard store', () => {
       // lands, so the URL-sync never bounces / flashes an empty Complete.
       stubStatus({ has_providers: true, has_company: true, has_agents: true })
       stubAgents([
-        agentRow({ name: 'CEO Agent', role: 'CEO', department: 'executive', model_id: 'glm-5.2' }),
-        agentRow({ name: 'CTO Agent', role: 'CTO', department: 'executive', model_id: 'deepseek-v4-pro' }),
+        agentRow({
+          name: 'CEO Agent',
+          role: 'CEO',
+          department: 'executive',
+          model_id: 'test-large-001',
+        }),
+        agentRow({
+          name: 'CTO Agent',
+          role: 'CTO',
+          department: 'executive',
+          model_id: 'test-medium-001',
+        }),
       ])
 
       await useSetupWizardStore.getState().reconcileCompletionFromBackend()
