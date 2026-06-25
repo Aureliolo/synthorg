@@ -22,6 +22,9 @@ from synthorg.api.controllers.setup._embedder_setup import (
     collect_model_ids as _collect_model_ids,
 )
 from synthorg.api.controllers.setup._embedder_setup import (
+    ensure_per_feature_models as _ensure_per_feature_models,
+)
+from synthorg.api.controllers.setup._embedder_setup import (
     pick_decomposition_model as _pick_decomposition_model,
 )
 from synthorg.api.controllers.setup._runtime_wiring import (
@@ -359,6 +362,10 @@ async def _finalize_completion(
     # decomposition model; the wizard's picker is optional, so fill a sensible
     # default from the matched roster before the rebuild.
     await _ensure_decomposition_model(app_state, settings_svc)
+    # On-by-default research + Chief-of-Staff chat read their own models;
+    # fill sensible defaults from the roster before the rebuild so the
+    # post-setup feature rewire can bring research online live.
+    await _ensure_per_feature_models(app_state, settings_svc)
     # Reload providers + bootstrap agents BEFORE persisting the completion flag.
     # ``_post_setup_reinit`` propagates failures so a broken provider config or
     # bootstrap error leaves the flag at ``false``; the operator fixes the

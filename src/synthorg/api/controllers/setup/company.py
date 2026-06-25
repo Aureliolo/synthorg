@@ -22,6 +22,7 @@ from synthorg.api.controllers.setup._embedder_setup import (
     collect_model_ids as _collect_model_ids,
 )
 from synthorg.api.controllers.setup._embedder_setup import (
+    pick_chat_model,
     pick_decomposition_model,
 )
 from synthorg.api.controllers.setup._posture_seeding import (
@@ -145,15 +146,22 @@ class SetupCompanyController(Controller):
         agents = await get_existing_agents(settings_svc)
         model_ids = await _collect_model_ids(app_state)
         selection = select_embedding_model(model_ids)
+        capable = pick_decomposition_model(agents)
         return ApiResponse(
             data=SetupModelRecommendationsResponse(
-                decomposition_recommended=pick_decomposition_model(agents),
+                decomposition_recommended=capable,
                 decomposition_candidates=model_ids,
                 embedding_recommended=selection.model_id if selection else None,
                 embedding_recommended_dims=(
                     selection.output_dims if selection else None
                 ),
                 embedding_candidates=list_embedding_candidates(model_ids),
+                # Research reuses the capable-model heuristic (its own
+                # setting, not the decomposition model); CoS chat prefers a
+                # cheaper model for its frequent conversational turns. Both
+                # pick from the full catalogue (decomposition_candidates).
+                research_recommended=capable,
+                cos_recommended=pick_chat_model(agents),
             )
         )
 

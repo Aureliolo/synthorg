@@ -16167,6 +16167,7 @@ export type components = {
         };
         /** SetupModelRecommendationsResponse */
         readonly SetupModelRecommendationsResponse: {
+            readonly cos_recommended: string | null;
             /** @default [] */
             readonly decomposition_candidates: readonly string[];
             readonly decomposition_recommended: string | null;
@@ -16174,6 +16175,7 @@ export type components = {
             readonly embedding_candidates: readonly string[];
             readonly embedding_recommended: string | null;
             readonly embedding_recommended_dims: number | null;
+            readonly research_recommended: string | null;
         };
         /** SetupNameLocalesRequest */
         readonly SetupNameLocalesRequest: {
