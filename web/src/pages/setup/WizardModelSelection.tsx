@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { getModelRecommendations } from '@/api/endpoints/setup'
 import { getNamespaceSettings, updateSetting } from '@/api/endpoints/settings'
 import { ErrorBanner } from '@/components/ui/error-banner'
@@ -71,7 +71,10 @@ function toOptions(ids: readonly string[] | undefined): readonly SelectOption[] 
 
 function valueOf(entries: readonly SettingEntry[], key: string): string | undefined {
   const found = entries.find((entry) => entry.definition.key === key)
-  return found && found.value ? found.value : undefined
+  // A whitespace-only stored value is not a real choice; treat it as unset so
+  // the recommendation still wins and the select never renders a blank option.
+  const value = found?.value.trim()
+  return value ? value : undefined
 }
 
 // Resolve a flag, falling back to ``fallback`` only when the entry is
@@ -196,6 +199,23 @@ interface ModelSelectionState {
   ) => void
 }
 
+// Per-key request counters: only the latest in-flight write for a given key is
+// allowed to roll back on failure, so a slow earlier request that fails after a
+// faster later one succeeded cannot clobber the newer value.
+function useRequestIdRefs() {
+  const modelRequestIdsRef = useRef<Record<ModelKey, number>>({
+    decomposition: 0,
+    embedding: 0,
+    research: 0,
+    cos: 0,
+  })
+  const toggleRequestIdsRef = useRef<Record<keyof ToggleChoices, number>>({
+    research: 0,
+    knowledge: 0,
+  })
+  return { modelRequestIdsRef, toggleRequestIdsRef }
+}
+
 function useWizardModelSelection(): ModelSelectionState {
   const [recs, setRecs] = useState<SetupModelRecommendationsResponse | null>(null)
   const [models, setModels] = useState<ModelChoices>(EMPTY_MODELS)
@@ -206,6 +226,7 @@ function useWizardModelSelection(): ModelSelectionState {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const addToast = useToastStore((s) => s.add)
+  const { modelRequestIdsRef, toggleRequestIdsRef } = useRequestIdRefs()
 
   useEffect(() => {
     let cancelled = false
@@ -225,13 +246,17 @@ function useWizardModelSelection(): ModelSelectionState {
     (spec: PickerSpec, value: string) => {
       // Optimistic write; restore the prior model id if the API call fails.
       let previous = ''
+      const requestId = modelRequestIdsRef.current[spec.key] + 1
+      modelRequestIdsRef.current[spec.key] = requestId
       setModels((prev) => {
         previous = prev[spec.key]
         return { ...prev, [spec.key]: value }
       })
       void updateSetting(spec.namespace, spec.settingKey, { value }).catch(
         (caught: unknown) => {
-          setModels((prev) => ({ ...prev, [spec.key]: previous }))
+          if (modelRequestIdsRef.current[spec.key] === requestId) {
+            setModels((prev) => ({ ...prev, [spec.key]: previous }))
+          }
           addToast({
             variant: 'error',
             title: `Could not save the ${spec.label.toLowerCase()}`,
@@ -240,13 +265,15 @@ function useWizardModelSelection(): ModelSelectionState {
         },
       )
     },
-    [addToast],
+    [addToast, modelRequestIdsRef],
   )
 
   const toggleFeature = useCallback(
     (name: keyof ToggleChoices, namespace: SettingNamespace, value: boolean) => {
       // Optimistic write; restore the prior toggle state if the API call fails.
       let previous = false
+      const requestId = toggleRequestIdsRef.current[name] + 1
+      toggleRequestIdsRef.current[name] = requestId
       setToggles((prev) => {
         previous = prev[name]
         return { ...prev, [name]: value }
@@ -254,7 +281,9 @@ function useWizardModelSelection(): ModelSelectionState {
       void updateSetting(namespace, 'enabled', {
         value: value ? 'true' : 'false',
       }).catch((caught: unknown) => {
-        setToggles((prev) => ({ ...prev, [name]: previous }))
+        if (toggleRequestIdsRef.current[name] === requestId) {
+          setToggles((prev) => ({ ...prev, [name]: previous }))
+        }
         addToast({
           variant: 'error',
           title: `Could not save the ${name} setting`,
@@ -262,7 +291,7 @@ function useWizardModelSelection(): ModelSelectionState {
         })
       })
     },
-    [addToast],
+    [addToast, toggleRequestIdsRef],
   )
 
   return { recs, models, toggles, loading, error, selectModel, toggleFeature }
