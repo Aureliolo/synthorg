@@ -1,0 +1,66 @@
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
+import { ProviderModelList } from '@/pages/providers/ProviderModelList'
+import type { ProviderModelResponse } from '@/api/types/providers'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
+
+function buildModel(
+  id: string,
+  toolCallsVerified: boolean | null,
+): ProviderModelResponse {
+  return {
+    id,
+    alias: null,
+    cost_per_1k_input: 0,
+    cost_per_1k_output: 0,
+    currency: DEFAULT_CURRENCY,
+    max_context: 200000,
+    estimated_latency_ms: null,
+    local_params: null,
+    supports_tools: true,
+    tool_calls_verified: toolCallsVerified,
+    supports_vision: false,
+    supports_streaming: true,
+    family: null,
+    stale: null,
+  }
+}
+
+describe('ProviderModelList tool-calling unavailable', () => {
+  it('shows the badge for a runtime-downgraded model', () => {
+    render(<ProviderModelList models={[buildModel('downgraded', false)]} />)
+    expect(screen.getByText('No tool calling')).toBeInTheDocument()
+  })
+
+  it('omits the badge for a healthy model', () => {
+    render(<ProviderModelList models={[buildModel('healthy', null)]} />)
+    expect(screen.queryByText('No tool calling')).not.toBeInTheDocument()
+  })
+
+  it('invokes onReenableToolCalling when the re-enable action is clicked', async () => {
+    const onReenable = vi.fn()
+    render(
+      <ProviderModelList
+        models={[buildModel('downgraded', false)]}
+        onReenableToolCalling={onReenable}
+      />,
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: /Re-enable tool calling for downgraded/ }),
+    )
+    expect(onReenable).toHaveBeenCalledWith('downgraded')
+  })
+
+  it('shows no re-enable action for a healthy model', () => {
+    render(
+      <ProviderModelList
+        models={[buildModel('healthy', null)]}
+        onReenableToolCalling={vi.fn()}
+      />,
+    )
+    expect(
+      screen.queryByRole('button', { name: /Re-enable tool calling/ }),
+    ).not.toBeInTheDocument()
+  })
+})

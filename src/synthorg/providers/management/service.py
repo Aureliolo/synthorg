@@ -90,6 +90,9 @@ from synthorg.providers.management._discovery_auth import (
 )
 from synthorg.providers.management._persistence import apply_provider_change
 from synthorg.providers.management._preset_creation import create_provider_from_preset
+from synthorg.providers.management._tool_call_capability_mixin import (
+    ProviderToolCallCapabilityMixin,
+)
 from synthorg.providers.management.allowlist import DiscoveryAllowlistManager
 from synthorg.providers.management.audit_service import ProviderAuditService
 from synthorg.providers.management.dtos import (
@@ -235,7 +238,9 @@ def _safe_task_id_segment(value: str) -> str:
     return cleaned or "_"
 
 
-class ProviderManagementService(ProviderCapabilitiesMixin):
+class ProviderManagementService(
+    ProviderCapabilitiesMixin, ProviderToolCallCapabilityMixin
+):
     """Runtime CRUD service for LLM providers.
 
     All mutating operations are serialized under an asyncio lock

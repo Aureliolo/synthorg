@@ -124,6 +124,10 @@ def to_provider_model_response(
         supports_tools=(
             capabilities.supports_tools if capabilities is not None else False
         ),
+        # The runtime tool-call verdict is persisted config-layer state (set
+        # by the feedback loop), NOT a live capability probe, so it is read
+        # from the stored metadata rather than ``capabilities``.
+        tool_calls_verified=config.metadata.tool_calls_verified,
         supports_vision=(
             capabilities.supports_vision if capabilities is not None else False
         ),

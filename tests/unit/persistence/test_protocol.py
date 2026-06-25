@@ -1425,6 +1425,10 @@ class _FakeBackend:
         return object()
 
     @property
+    def model_tool_call_signals(self) -> object:
+        return object()
+
+    @property
     def ceremony_scheduler_state(self) -> object:
         return object()
 

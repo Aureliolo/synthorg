@@ -48,6 +48,19 @@ PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED: Final[str] = (
 PROVIDER_TOOL_CALL_MISSING_FUNCTION: Final[str] = "provider.tool_call.missing_function"
 PROVIDER_FINISH_REASON_UNKNOWN: Final[str] = "provider.finish_reason.unknown"
 
+# ── Runtime tool-call failure feedback ───────────────────────
+PROVIDER_TOOL_CALL_FAILURE_OBSERVED: Final[str] = (
+    "provider.tool_call_feedback.failure_observed"
+)
+PROVIDER_TOOL_CALL_SUCCESS_OBSERVED: Final[str] = (
+    "provider.tool_call_feedback.success_observed"
+)
+PROVIDER_TOOL_CALL_DOWNGRADED: Final[str] = "provider.tool_call_feedback.downgraded"
+PROVIDER_TOOL_CALL_REENABLED: Final[str] = "provider.tool_call_feedback.reenabled"
+PROVIDER_TOOL_CALL_FEEDBACK_RECORD_FAILED: Final[str] = (
+    "provider.tool_call_feedback.record_failed"
+)
+
 # ── Provider resilience ──────────────────────────────────────────
 
 PROVIDER_RETRY_ATTEMPT: Final[str] = "provider.retry.attempt"

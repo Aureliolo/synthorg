@@ -438,6 +438,25 @@ async def _run_shutdown(  # noqa: PLR0913
                 update={"service": None, "scheduler": None},
             ),
         )
+
+    from synthorg.providers.tool_call_feedback.sink import (  # noqa: PLC0415
+        uninstall_tool_call_signal_sink,
+    )
+    from synthorg.providers.tool_call_feedback.state import (  # noqa: PLC0415
+        ToolCallFeedbackStateSlice,
+    )
+
+    tool_call_feedback = app_state.slice(ToolCallFeedbackStateSlice)
+    if tool_call_feedback.tracker is not None:
+        # The tracker is a passive sink (no background loop), so teardown is
+        # just uninstalling the global sink and clearing the slice so
+        # wire_tool_call_feedback re-wires on the next lifespan entry (its
+        # idempotency guard checks ``tracker``). Uninstalling also stops the
+        # provider boundary routing into a tracker whose DB handle is about
+        # to be disconnected.
+        uninstall_tool_call_signal_sink()
+        app_state.swap_slice(tool_call_feedback.model_copy(update={"tracker": None}))
+
     hr_slice = app_state.slice(HrStateSlice)
     if hr_slice.promotion_cycle_scheduler is not None:
         await _try_stop(

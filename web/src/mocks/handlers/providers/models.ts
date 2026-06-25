@@ -1,6 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import type {
   addProviderModel,
+  reenableToolCalling,
   syncProviderModels,
   updateModelConfig,
 } from '@/api/endpoints/providers'
@@ -40,6 +41,15 @@ export const modelsHandlers = [
   http.delete('/api/v1/providers/:name/models/:modelId', () =>
     HttpResponse.json(voidSuccess()),
   ),
+  http.post(
+    '/api/v1/providers/:name/models/:modelId/reenable-tool-calling',
+    ({ params }) =>
+      HttpResponse.json(
+        successFor<typeof reenableToolCalling>(
+          buildProvider({ name: decodeURIComponent(String(params['name'])) }),
+        ),
+      ),
+  ),
   http.put('/api/v1/providers/:name/models/:modelId/config', async ({ params, request }) => {
     // Echo the mutated model so tests that reconcile by id (or that
     // expect ``local_params`` to round-trip) see their own write
@@ -58,6 +68,7 @@ export const modelsHandlers = [
         estimated_latency_ms: null,
         local_params: body.local_params,
         supports_tools: false,
+        tool_calls_verified: null,
         supports_vision: false,
         supports_streaming: false,
         family: null,
@@ -76,6 +87,7 @@ export const modelsHandlers = [
       ...body.model,
       currency: DEFAULT_CURRENCY,
       supports_tools: false,
+      tool_calls_verified: null,
       supports_vision: false,
       supports_streaming: false,
       family: null,

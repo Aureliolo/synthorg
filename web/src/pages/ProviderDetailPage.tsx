@@ -176,6 +176,7 @@ function ProviderDetailBody({
   testingConnection,
 }: ProviderDetailBodyProps) {
   const discoveringModels = useProvidersStore((s) => s.discoveringModels)
+  const reenablingModelId = useProvidersStore((s) => s.reenablingModelId)
   return (
     <>
       <ErrorBoundary level="section">
@@ -217,6 +218,10 @@ function ProviderDetailBody({
           supportsConfig={provider.supports_model_config}
           onDelete={(modelId) => d.setDeleteModelId(modelId)}
           onConfigure={(model) => d.setConfigModel(model)}
+          onReenableToolCalling={(modelId) => {
+            void useProvidersStore.getState().reenableToolCalling(decodedName, modelId)
+          }}
+          reenablingModelId={reenablingModelId}
         />
       </ErrorBoundary>
     </>

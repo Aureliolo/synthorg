@@ -60,6 +60,9 @@ function modelHint(model: ProviderModelConfig): string {
   const parts: string[] = [`${Math.round(model.max_context / TOKENS_PER_K)}k`]
   if (model.metadata.supports_tools) parts.push('tools')
   if (model.metadata.supports_vision) parts.push('vision')
+  // Runtime feedback proved this model cannot call tools; flag it so an
+  // operator does not pick it for a tool-requiring agent.
+  if (model.metadata.tool_calls_verified === false) parts.push('no tools')
   if (model.stale != null) parts.push('stale')
   return parts.join(' · ')
 }

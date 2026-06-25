@@ -114,6 +114,9 @@ from synthorg.persistence.sqlite.meeting_cooldown_repo import (
 from synthorg.persistence.sqlite.message_repo import (
     SQLiteMessageRepository,
 )
+from synthorg.persistence.sqlite.model_tool_call_signal_repo import (
+    SQLiteModelToolCallSignalRepository,
+)
 from synthorg.persistence.sqlite.oauth_state_repo import SQLiteOAuthStateRepository
 from synthorg.persistence.sqlite.ontology_drift_repo import (
     SQLiteOntologyDriftReportRepository,
@@ -283,6 +286,7 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
         self._risk_overrides = None
         self._ssrf_violations = None
         self._circuit_breaker_state = None
+        self._model_tool_call_signals = None
         self._ceremony_scheduler_state = None
         self._meeting_cooldown = None
         self._tracked_containers = None
@@ -505,6 +509,10 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._circuit_breaker_state = SQLiteCircuitBreakerStateRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._model_tool_call_signals = SQLiteModelToolCallSignalRepository(
             self._db,
             write_context=self.write_context,
         )

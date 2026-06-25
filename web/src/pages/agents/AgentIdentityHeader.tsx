@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Pencil } from 'lucide-react'
 import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { StatPill } from '@/components/ui/stat-pill'
+import { ToolCallingUnavailableBadge } from '@/components/ui/tool-calling-unavailable-badge'
+import { useProvidersStore } from '@/stores/providers'
 import { toRuntimeStatus } from '@/utils/agents'
 import { formatLabel, formatDateTime, formatRelativeTime } from '@/utils/format'
 import { cn } from '@/lib/utils'
@@ -27,6 +29,20 @@ export function AgentIdentityHeader({ agent, className }: AgentIdentityHeaderPro
   const modelProvider = modelField(agent, 'provider')
   const modelId = modelField(agent, 'model_id')
   const hasModel = modelProvider !== '' && modelId !== ''
+
+  // Hydrate the provider catalogue from the backend so the agent's assigned
+  // model can be cross-referenced for its runtime tool-calling verdict.
+  const providers = useProvidersStore((s) => s.providers)
+  const fetchProviders = useProvidersStore((s) => s.fetchProviders)
+  useEffect(() => {
+    if (providers.length === 0) void fetchProviders()
+  }, [providers.length, fetchProviders])
+
+  const toolCallsVerified = useMemo(() => {
+    if (!hasModel) return undefined
+    const provider = providers.find((p) => p.name === modelProvider)
+    return provider?.models.find((m) => m.id === modelId)?.metadata.tool_calls_verified
+  }, [providers, modelProvider, modelId, hasModel])
 
   return (
     <div className={cn('flex items-start gap-4', className)}>
@@ -52,6 +68,7 @@ export function AgentIdentityHeader({ agent, className }: AgentIdentityHeaderPro
           )}
           <span className="inline-flex items-center gap-1.5">
             {hasModel && <StatPill label="MODEL" value={modelId} />}
+            <ToolCallingUnavailableBadge toolCallsVerified={toolCallsVerified} />
             <Button
               variant="ghost"
               size="sm"

@@ -168,6 +168,64 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.PROVIDERS,
+        key="tool_call_feedback_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "When true, repeated runtime tool-call failures per (provider,"
+            " model) are tracked at the provider boundary and a model that"
+            " crosses the failure threshold is downgraded"
+            " (tool_calls_verified=False) so the matcher stops assigning it"
+            " to tool-requiring agents. A genuine tool-call success clears"
+            " the signal. Off disables both tracking and downgrade."
+        ),
+        group="Tool-Call Feedback",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="tool_call_failure_threshold",
+        type=SettingType.INTEGER,
+        default="3",
+        description=(
+            "Time-decayed failure score at which a (provider, model) is"
+            " downgraded as unable to call tools. Each non-retryable"
+            " tool-call failure adds 1 to the score; the score decays"
+            " exponentially so an old blip fades. Higher tolerates more"
+            " transient failures before downgrading."
+        ),
+        group="Tool-Call Feedback",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=20,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="tool_call_failure_decay_half_life_seconds",
+        type=SettingType.INTEGER,
+        default="3600",
+        description=(
+            "Half-life in seconds for the tool-call failure score: a single"
+            " failure's weight halves every half-life, so a short provider"
+            " outage cannot accumulate into a permanent downgrade. Longer"
+            " remembers failures for longer."
+        ),
+        group="Tool-Call Feedback",
+        level=SettingLevel.ADVANCED,
+        min_value=60,
+        max_value=86400,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
         key="cassette_path",
         type=SettingType.STRING,
         default=None,

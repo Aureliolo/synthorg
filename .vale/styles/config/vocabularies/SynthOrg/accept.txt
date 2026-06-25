@@ -667,6 +667,8 @@ recurse
 redeclaration
 redeclare
 redelegates
+reenable
+reenabled
 referenceable
 regexes
 reimplemented

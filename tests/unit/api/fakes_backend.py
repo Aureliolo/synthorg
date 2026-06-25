@@ -33,6 +33,9 @@ from synthorg.persistence.integration_stubs import (
     InMemoryOAuthStateRepository,
     InMemoryWebhookReceiptRepository,
 )
+from synthorg.persistence.model_tool_call_signal_protocol import (
+    ModelToolCallSignal,
+)
 from synthorg.persistence.protocol import PersistenceBackend, PersistenceBackendKind
 from synthorg.persistence.provider_audit_protocol import ProviderAuditFilterSpec
 from synthorg.persistence.training_protocol import TrainingPlanFilterSpec
@@ -249,6 +252,34 @@ class FakeCircuitBreakerStateRepository:
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[CircuitBreakerStateRecord, ...]:
+        ordered = sorted(self._store.items(), key=lambda kv: kv[0])
+        return tuple(v for _, v in ordered[offset : offset + limit])
+
+    async def delete(self, entity_id: tuple[str, str]) -> bool:
+        if entity_id in self._store:
+            del self._store[entity_id]
+            return True
+        return False
+
+
+class FakeModelToolCallSignalRepository:
+    """In-memory model tool-call signal repository for tests."""
+
+    def __init__(self) -> None:
+        self._store: dict[tuple[str, str], ModelToolCallSignal] = {}
+
+    async def save(self, entity: ModelToolCallSignal) -> None:
+        self._store[(entity.provider_name, entity.model_id)] = entity
+
+    async def get(self, entity_id: tuple[str, str]) -> ModelToolCallSignal | None:
+        return self._store.get(entity_id)
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[ModelToolCallSignal, ...]:
         ordered = sorted(self._store.items(), key=lambda kv: kv[0])
         return tuple(v for _, v in ordered[offset : offset + limit])
 
@@ -745,6 +776,7 @@ class FakePersistenceBackend(PersistenceBackend):
         self._risk_overrides = FakeRiskOverrideRepository()
         self._ssrf_violations = FakeSsrfViolationRepository()
         self._circuit_breaker_state = FakeCircuitBreakerStateRepository()
+        self._model_tool_call_signals = FakeModelToolCallSignalRepository()
         self._tasks = FakeTaskRepository()
         self._cost_records = FakeCostRecordRepository()
         self._messages = FakeMessageRepository()
@@ -1105,6 +1137,11 @@ class FakePersistenceBackend(PersistenceBackend):
     @property
     def circuit_breaker_state(self) -> FakeCircuitBreakerStateRepository:
         return self._circuit_breaker_state
+
+    @override
+    @property
+    def model_tool_call_signals(self) -> FakeModelToolCallSignalRepository:
+        return self._model_tool_call_signals
 
     @override
     @property

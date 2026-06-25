@@ -1,6 +1,7 @@
 import {
   pullModel as apiPullModel,
   deleteModel as apiDeleteModel,
+  reenableToolCalling as apiReenableToolCalling,
   updateModelConfig as apiUpdateModelConfig,
 } from '@/api/endpoints/providers'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
@@ -139,6 +140,34 @@ async function updateModelConfigImpl(
   }
 }
 
+async function reenableToolCallingImpl(
+  set: ProvidersSet,
+  get: ProvidersGet,
+  name: string,
+  modelId: string,
+): Promise<boolean> {
+  set({ reenablingModelId: modelId })
+  try {
+    await apiReenableToolCalling(name, modelId)
+    useToastStore.getState().add({
+      variant: 'success',
+      title: `Tool calling re-enabled for "${modelId}"`,
+    })
+    await refreshActiveDetail(get, name)
+    return true
+  } catch (err) {
+    log.error('Failed to re-enable tool calling:', getErrorMessage(err))
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, 'Failed to re-enable tool calling'),
+      description: getErrorMessage(err),
+    })
+    return false
+  } finally {
+    set({ reenablingModelId: null })
+  }
+}
+
 export function createLocalModelActions(
   set: ProvidersSet,
   get: ProvidersGet,
@@ -158,5 +187,7 @@ export function createLocalModelActions(
       modelId: string,
       params: LocalModelParams,
     ) => updateModelConfigImpl(set, get, name, modelId, params),
+    reenableToolCalling: (name: string, modelId: string) =>
+      reenableToolCallingImpl(set, get, name, modelId),
   }
 }

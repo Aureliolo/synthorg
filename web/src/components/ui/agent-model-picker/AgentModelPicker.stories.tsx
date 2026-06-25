@@ -18,6 +18,7 @@ function model(
     estimated_latency_ms: null,
     local_params: null,
     supports_tools: false,
+    tool_calls_verified: null,
     supports_vision: false,
     supports_streaming: true,
     family: null,

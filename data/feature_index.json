@@ -752,7 +752,6 @@
       ],
       "mcp_tool_names": [
         "synthorg_knowledge_search",
-        "synthorg_knowledge_ask",
         "synthorg_knowledge_ingest",
         "synthorg_knowledge_reindex",
         "synthorg_knowledge_list",
@@ -761,7 +760,7 @@
       ],
       "name": "knowledge",
       "protocol_exports": [],
-      "settings_namespace": "knowledge",
+      "settings_namespace": null,
       "state_slice_fields": [
         "service",
         "tool_factory"
@@ -1226,6 +1225,23 @@
     {
       "controllers": [],
       "depends_on": [],
+      "directory": "src/synthorg/providers/tool_call_feedback",
+      "ghost_wired_symbols": [],
+      "mcp_tool_names": [],
+      "name": "tool_call_feedback",
+      "protocol_exports": [
+        "ToolCallCapabilityWriter",
+        "ToolCallFeedbackSettings",
+        "ToolCallSignalSink"
+      ],
+      "settings_namespace": null,
+      "state_slice_fields": [
+        "tracker"
+      ]
+    },
+    {
+      "controllers": [],
+      "depends_on": [],
       "directory": "src/synthorg/tools",
       "ghost_wired_symbols": [
         "BrowserTool",
@@ -1308,6 +1324,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-25T09:53:55.797050Z",
+  "generated_at": "2026-06-25T08:50:49.513875Z",
   "schema_version": 1
 }

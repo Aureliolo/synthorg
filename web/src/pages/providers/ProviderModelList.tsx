@@ -3,9 +3,10 @@ import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import { ModelStalenessBadge } from '@/components/ui/model-staleness-badge'
+import { ToolCallingUnavailableBadge } from '@/components/ui/tool-calling-unavailable-badge'
 import { SearchInput } from '@/components/ui/search-input'
 import { cn } from '@/lib/utils'
-import { Boxes, Settings2, Trash2 } from 'lucide-react'
+import { Boxes, RotateCcw, Settings2, Trash2 } from 'lucide-react'
 import type { ProviderModelResponse } from '@/api/types/providers'
 
 interface ProviderModelRowProps {
@@ -14,6 +15,8 @@ interface ProviderModelRowProps {
   supportsConfig: boolean
   onDelete?: ((modelId: string) => void) | undefined
   onConfigure?: ((model: ProviderModelResponse) => void) | undefined
+  onReenableToolCalling?: ((modelId: string) => void) | undefined
+  reenablingModelId?: string | null | undefined
 }
 
 function CapabilityBadges({ model }: { model: ProviderModelResponse }) {
@@ -52,14 +55,74 @@ function CapabilityBadges({ model }: { model: ProviderModelResponse }) {
   )
 }
 
-function ProviderModelRow({ model, supportsDelete, supportsConfig, onDelete, onConfigure }: ProviderModelRowProps) {
-  const hasActions = supportsDelete || supportsConfig
+/** Whether a model row exposes any action control. */
+function rowHasActions(props: ProviderModelRowProps): boolean {
+  const canReenable =
+    props.onReenableToolCalling !== undefined && props.model.tool_calls_verified === false
+  return props.supportsDelete || props.supportsConfig || canReenable
+}
+
+function ModelRowActions({
+  model,
+  supportsDelete,
+  supportsConfig,
+  onDelete,
+  onConfigure,
+  onReenableToolCalling,
+  reenablingModelId,
+}: ProviderModelRowProps) {
+  return (
+    <div className="flex items-center justify-end gap-1">
+      {onReenableToolCalling !== undefined && model.tool_calls_verified === false && (
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => onReenableToolCalling(model.id)}
+          disabled={reenablingModelId === model.id}
+          title="Re-enable tool calling"
+          aria-label={`Re-enable tool calling for ${model.id}`}
+          className="size-7 text-warning hover:bg-warning/10"
+        >
+          <RotateCcw className="size-3.5" />
+        </Button>
+      )}
+      {supportsConfig && (
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => onConfigure?.(model)}
+          title="Configure"
+          aria-label={`Configure ${model.id}`}
+          className="size-7"
+        >
+          <Settings2 className="size-3.5" />
+        </Button>
+      )}
+      {supportsDelete && (
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => onDelete?.(model.id)}
+          title="Delete"
+          aria-label={`Delete ${model.id}`}
+          className="size-7 text-text-muted hover:bg-danger/10 hover:text-danger"
+        >
+          <Trash2 className="size-3.5" />
+        </Button>
+      )}
+    </div>
+  )
+}
+
+function ProviderModelRow(props: ProviderModelRowProps) {
+  const { model } = props
   return (
     <tr>
       <td className="py-2 pr-4 font-mono text-foreground">
         <span className="inline-flex items-center gap-1.5">
           {model.id}
           <ModelStalenessBadge stale={model.stale} />
+          <ToolCallingUnavailableBadge toolCallsVerified={model.tool_calls_verified} />
         </span>
       </td>
       <td className="py-2 pr-4 text-text-secondary">{model.alias ?? '--'}</td>
@@ -75,34 +138,9 @@ function ProviderModelRow({ model, supportsDelete, supportsConfig, onDelete, onC
       <td className="py-2 pr-4 text-right font-mono text-text-secondary">
         {model.cost_per_1k_output.toFixed(4)}
       </td>
-      {hasActions && (
+      {rowHasActions(props) && (
         <td className="py-2 text-right">
-          <div className="flex items-center justify-end gap-1">
-            {supportsConfig && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => onConfigure?.(model)}
-                title="Configure"
-                aria-label={`Configure ${model.id}`}
-                className="size-7"
-              >
-                <Settings2 className="size-3.5" />
-              </Button>
-            )}
-            {supportsDelete && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => onDelete?.(model.id)}
-                title="Delete"
-                aria-label={`Delete ${model.id}`}
-                className="size-7 text-text-muted hover:bg-danger/10 hover:text-danger"
-              >
-                <Trash2 className="size-3.5" />
-              </Button>
-            )}
-          </div>
+          <ModelRowActions {...props} />
         </td>
       )}
     </tr>
@@ -115,10 +153,66 @@ interface ProviderModelListProps {
   supportsConfig?: boolean
   onDelete?: ((modelId: string) => void) | undefined
   onConfigure?: ((model: ProviderModelResponse) => void) | undefined
+  onReenableToolCalling?: ((modelId: string) => void) | undefined
+  reenablingModelId?: string | null | undefined
+}
+
+interface ModelTableProps extends ProviderModelListProps {
+  models: readonly ProviderModelResponse[]
+  hasActions: boolean
+  supportsDelete: boolean
+  supportsConfig: boolean
+}
+
+function ModelTable({ models, hasActions, ...rest }: ModelTableProps) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[44rem] text-sm">
+        <thead>
+          <tr className="border-b border-border text-left text-xs text-text-muted">
+            <th className="pb-2 pr-4 font-medium">Model ID</th>
+            <th className="pb-2 pr-4 font-medium">Alias</th>
+            <th className="pb-2 pr-4 font-medium">Capabilities</th>
+            <th className="pb-2 pr-4 font-medium text-right">Context</th>
+            <th className="pb-2 pr-4 font-medium text-right">Input/1k</th>
+            <th className="pb-2 pr-4 font-medium text-right">Output/1k</th>
+            {hasActions && <th className="pb-2 font-medium text-right">Actions</th>}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {models.map((model) => (
+            <ProviderModelRow
+              key={model.id}
+              model={model}
+              supportsDelete={rest.supportsDelete}
+              supportsConfig={rest.supportsConfig}
+              onDelete={rest.onDelete}
+              onConfigure={rest.onConfigure}
+              onReenableToolCalling={rest.onReenableToolCalling}
+              reenablingModelId={rest.reenablingModelId}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
 }
 
 // Show the search box only once the list is long enough to warrant filtering.
 const MODEL_SEARCH_THRESHOLD = 8
+
+/** Whether the table needs an Actions column for any row. */
+function listHasActions(
+  models: readonly ProviderModelResponse[],
+  supportsDelete: boolean,
+  supportsConfig: boolean,
+  onReenableToolCalling: ((modelId: string) => void) | undefined,
+): boolean {
+  const canReenableAny =
+    onReenableToolCalling !== undefined &&
+    models.some((m) => m.tool_calls_verified === false)
+  return supportsDelete || supportsConfig || canReenableAny
+}
 
 export function ProviderModelList({
   models,
@@ -126,8 +220,15 @@ export function ProviderModelList({
   supportsConfig = false,
   onDelete,
   onConfigure,
+  onReenableToolCalling,
+  reenablingModelId,
 }: ProviderModelListProps) {
-  const hasActions = supportsDelete || supportsConfig
+  const hasActions = listHasActions(
+    models,
+    supportsDelete,
+    supportsConfig,
+    onReenableToolCalling,
+  )
   const [query, setQuery] = useState('')
 
   // Show the search box only once the list is long enough to warrant filtering.
@@ -173,33 +274,16 @@ export function ProviderModelList({
           description="No model id or alias matches your filter. Clear the field to see them all."
         />
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[44rem] text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-text-muted">
-                <th className="pb-2 pr-4 font-medium">Model ID</th>
-                <th className="pb-2 pr-4 font-medium">Alias</th>
-                <th className="pb-2 pr-4 font-medium">Capabilities</th>
-                <th className="pb-2 pr-4 font-medium text-right">Context</th>
-                <th className="pb-2 pr-4 font-medium text-right">Input/1k</th>
-                <th className="pb-2 pr-4 font-medium text-right">Output/1k</th>
-                {hasActions && <th className="pb-2 font-medium text-right">Actions</th>}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {filtered.map((model) => (
-                <ProviderModelRow
-                  key={model.id}
-                  model={model}
-                  supportsDelete={supportsDelete}
-                  supportsConfig={supportsConfig}
-                  onDelete={onDelete}
-                  onConfigure={onConfigure}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ModelTable
+          models={filtered}
+          hasActions={hasActions}
+          supportsDelete={supportsDelete}
+          supportsConfig={supportsConfig}
+          onDelete={onDelete}
+          onConfigure={onConfigure}
+          onReenableToolCalling={onReenableToolCalling}
+          reenablingModelId={reenablingModelId}
+        />
       )}
     </SectionCard>
   )

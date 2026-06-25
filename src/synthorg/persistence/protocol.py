@@ -106,6 +106,9 @@ from synthorg.persistence.memory_protocol import (
     OrgFactRepository,
 )
 from synthorg.persistence.message_protocol import MessageRepository
+from synthorg.persistence.model_tool_call_signal_protocol import (
+    ModelToolCallSignalRepository,
+)
 from synthorg.persistence.ontology_protocol import (
     OntologyDriftReportRepository,
     OntologyEntityRepository,
@@ -248,6 +251,8 @@ class PersistenceBackend(Protocol):
         ssrf_violations: Repository for SsrfViolation persistence.
         circuit_breaker_state: Repository for circuit breaker state
             persistence.
+        model_tool_call_signals: Repository for runtime tool-call failure
+            signal persistence (decay accumulator).
         connections: Repository for external service connection
             persistence.
         connection_secrets: Repository for encrypted connection secret
@@ -607,6 +612,11 @@ class PersistenceBackend(Protocol):
     @property
     def circuit_breaker_state(self) -> CircuitBreakerStateRepository:
         """Repository for circuit breaker state persistence."""
+        ...
+
+    @property
+    def model_tool_call_signals(self) -> ModelToolCallSignalRepository:
+        """Repository for runtime tool-call failure signal persistence."""
         ...
 
     @property

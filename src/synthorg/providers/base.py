@@ -42,6 +42,10 @@ from ._call_instrumentation import (
     record_cost_if_in_scope,
 )
 from ._resilience import aclose_quietly, rate_limited_call, resilient_execute
+from ._tool_call_signals import (
+    emit_tool_call_failure_signal,
+    emit_tool_call_response_signal,
+)
 from ._validation import validate_messages, validate_model
 from .capabilities import ModelCapabilities
 from .enums import StreamEventType
@@ -56,6 +60,7 @@ from .models import (
 from .resilience.errors import RetryExhaustedError
 from .resilience.rate_limiter import RateLimiter
 from .resilience.retry import RetryHandler
+from .tool_call_feedback.sink import ToolCallOutcome, emit_tool_call_outcome
 
 logger = get_logger(__name__)
 _tracer = get_tracer(__name__)
@@ -224,6 +229,7 @@ class BaseCompletionProvider(ABC):
                     call_type="complete",
                     latency_ms=latency_ms,
                 )
+                await emit_tool_call_failure_signal(exc, provider_label, model, tools)
                 raise
             latency_ms = (self._clock.monotonic() - t_start) * _MILLISECONDS_PER_SECOND
             record_call_success(
@@ -243,6 +249,8 @@ class BaseCompletionProvider(ABC):
             result, latency_ms=latency_ms, retry_info=retry_info
         )
         logger.debug(PROVIDER_CALL_SUCCESS, model=model)
+        if tools:
+            await emit_tool_call_response_signal(result, provider_label, model)
         await record_cost_if_in_scope(result, model=model, provider=provider_label)
         return result
 
@@ -342,6 +350,7 @@ class BaseCompletionProvider(ABC):
                     call_type="stream",
                     latency_ms=latency_ms,
                 )
+                await emit_tool_call_failure_signal(exc, provider_label, model, tools)
                 raise
             latency_ms = (self._clock.monotonic() - t_start) * _MILLISECONDS_PER_SECOND
             record_call_success(
@@ -356,7 +365,10 @@ class BaseCompletionProvider(ABC):
         # never yields one (the cost path then silently records nothing).
         logger.debug(PROVIDER_STREAM_USAGE_EXPECTED, model=model)
         return self._cost_recording_stream(
-            iterator, model=model, provider_label=provider_label
+            iterator,
+            model=model,
+            provider_label=provider_label,
+            tools_requested=bool(tools),
         )
 
     async def _cost_recording_stream(
@@ -365,6 +377,7 @@ class BaseCompletionProvider(ABC):
         *,
         model: str,
         provider_label: str,
+        tools_requested: bool = False,
     ) -> AsyncGenerator[StreamChunk]:
         """Pass through ``iterator`` and fire cost recording on drain.
 
@@ -379,11 +392,15 @@ class BaseCompletionProvider(ABC):
             iterator: The driver's raw ``StreamChunk`` iterator.
             model: Model identifier for the call.
             provider_label: Resolved provider name for the cost record.
+            tools_requested: Whether the call passed ``tools``. When true,
+                the first ``TOOL_CALL_DELTA`` chunk emits a tool-call
+                SUCCESS signal (proof the model can call tools).
 
         Yields:
             Each ``StreamChunk`` from ``iterator`` unchanged.
         """
         usage = None
+        tool_call_seen = False
         # Close the inner iterator in ``finally`` so an early consumer
         # ``aclose()`` (break / cancel) propagates into the inner
         # rate-limit-holding generator and releases its slot, rather
@@ -398,6 +415,19 @@ class BaseCompletionProvider(ABC):
                     and chunk.usage is not None
                 ):
                     usage = chunk.usage
+                if (
+                    tools_requested
+                    and not tool_call_seen
+                    and chunk.event_type is StreamEventType.TOOL_CALL_DELTA
+                ):
+                    # First streamed tool call: proof the model can call
+                    # tools. Emit once so a long stream does not re-signal.
+                    tool_call_seen = True
+                    await emit_tool_call_outcome(
+                        provider=provider_label,
+                        model=model,
+                        outcome=ToolCallOutcome.SUCCESS,
+                    )
                 yield chunk
         finally:
             await aclose_quietly(iterator, model=model)
