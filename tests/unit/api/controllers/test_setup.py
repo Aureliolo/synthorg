@@ -19,6 +19,7 @@ from synthorg.config.model_metadata import ModelMetadata
 from synthorg.hr.state import agent_registry_of
 from synthorg.persistence.state import persistence_of
 from synthorg.providers.base import BaseCompletionProvider
+from synthorg.providers.management.service import ProviderManagementService
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.state import settings_service_of
@@ -127,17 +128,22 @@ class TestSetupCompany:
         async_test_client: LoopAsyncClient,
     ) -> None:
         """GET /setup/company rebuilds the company from settings for resume."""
-        await async_test_client.post(
-            "/api/v1/setup/company",
-            json={"company_name": "Rehydrate Co"},
-        )
-        resp = await async_test_client.get("/api/v1/setup/company")
-        assert resp.status_code == 200
-        data = resp.json()["data"]
-        assert data["company_name"] == "Rehydrate Co"
-        assert data["template_applied"] is None
-        assert data["department_count"] == 0
-        assert data["agents"] == []
+        app_state = async_test_client.app.state.app_state
+        repo = cast(FakePersistenceBackend, persistence_of(app_state))._settings_repo
+        try:
+            await async_test_client.post(
+                "/api/v1/setup/company",
+                json={"company_name": "Rehydrate Co"},
+            )
+            resp = await async_test_client.get("/api/v1/setup/company")
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert data["company_name"] == "Rehydrate Co"
+            assert data["template_applied"] is None
+            assert data["department_count"] == 0
+            assert data["agents"] == []
+        finally:
+            repo._store.pop(("company", "company_name"), None)
 
     async def test_get_company_404_when_absent(
         self,
@@ -453,7 +459,7 @@ class TestSetupComplete:
         original_mgmt = app_state.slice(ProvidersStateSlice).management
         # Empty BOTH sources: the runtime registry AND the persisted provider
         # config (the completion gate accepts a provider from either).
-        empty_mgmt = MagicMock()
+        empty_mgmt = MagicMock(spec=ProviderManagementService)
         empty_mgmt.list_providers = AsyncMock(return_value={})
         app_state.wire(
             ProvidersStateSlice, registry=ProviderRegistry({}), management=empty_mgmt
@@ -488,7 +494,7 @@ class TestSetupComplete:
         # No persisted agents (Quick Setup), so the provider gate is the
         # decision point. Empty the runtime registry but supply a persisted
         # provider via management -- the gate must accept the persisted config.
-        mgmt = MagicMock()
+        mgmt = MagicMock(spec=ProviderManagementService)
         mgmt.list_providers = AsyncMock(return_value={"test-provider": MagicMock()})
         original_registry = app_state.slice(ProvidersStateSlice).registry
         original_mgmt = app_state.slice(ProvidersStateSlice).management

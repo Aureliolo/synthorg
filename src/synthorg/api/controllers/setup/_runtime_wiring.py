@@ -123,8 +123,18 @@ async def _rewire_post_setup_features(app_state: AppState) -> None:
     The charter engine wires only behind a configured provider, so an app that
     booted with no provider leaves its endpoints unavailable until a restart.
     The wiring is idempotent (a no-op when charter is already wired), so
-    re-running it after the provider reload brings charter online live. This is
-    best-effort: a failure here must not undo the otherwise-complete setup.
+    re-running it after the provider reload brings charter online live.
+
+    Raises on failure, like the other reinit steps, so ``post_setup_reinit``
+    keeps ``setup_complete=false`` rather than reporting a half-configured
+    runtime as complete. Expected degradation (provider or memory substrate
+    absent) does NOT raise here: ``_wire_charter_engine`` swallows it internally
+    and logs ``CHARTER_SUBSTRATE_UNAVAILABLE``, so setup still completes with
+    charter endpoints 503-ing, exactly as at boot. Only a genuinely broken
+    rewire (e.g. a settings read that fails) propagates and aborts completion.
+
+    Raises:
+        Exception: Re-raised after logging so completion is not persisted.
     """
     from synthorg.api.lifecycle_helpers.charter_wiring import (  # noqa: PLC0415
         _wire_charter_engine,
@@ -142,13 +152,14 @@ async def _rewire_post_setup_features(app_state: AppState) -> None:
             cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
             si_config=si_config,
         )
-    except Exception as exc:  # noqa: BLE001 -- best-effort: criticals re-raised
+    except Exception as exc:
         reraise_critical(exc)
         logger.warning(
             SETUP_FEATURE_REWIRE_FAILED,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+        raise
 
 
 async def _rebuild_runtime_services(app_state: AppState) -> None:
