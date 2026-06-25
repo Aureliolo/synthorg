@@ -9,7 +9,6 @@ import { resolveAgentModels } from '@/utils/setup-validation'
 import { useClearStepRevalidationOnMount, useGoToStep, useStepCompletionSync } from './_hooks'
 import { MiniOrgChart } from './MiniOrgChart'
 import { SetupAgentsTable } from './SetupAgentsTable'
-import { WizardModelSelection } from './WizardModelSelection'
 import { ChevronDown, Users } from 'lucide-react'
 import type { SetupAgentSummary } from '@/api/types/setup'
 
@@ -276,8 +275,6 @@ export function AgentsStep() {
           onPersonalityChange={c.handlePersonalityChange}
         />
       </SectionCard>
-
-      <WizardModelSelection />
     </div>
   )
 }

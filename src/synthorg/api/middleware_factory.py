@@ -20,6 +20,7 @@ from litestar.types import Middleware
 from synthorg.api.auth.context import AuthContextMiddleware
 from synthorg.api.auth.csrf import create_csrf_middleware_class
 from synthorg.api.auth.middleware import create_auth_middleware_class
+from synthorg.api.auth.secret import resolve_dev_auth_bypass
 from synthorg.api.config import ApiConfig
 from synthorg.api.etag import ETagMiddleware
 from synthorg.api.middleware import RequestLoggingMiddleware
@@ -204,6 +205,7 @@ def _build_auth_exclude_paths(
     ws_path: str,
     *,
     a2a_enabled: bool = False,
+    dev_auth_bypass: bool = False,
 ) -> tuple[str, ...]:
     """Compute auth middleware exclude paths with fail-safe defaults.
 
@@ -276,6 +278,11 @@ def _build_auth_exclude_paths(
     ]
     if a2a_enabled:
         mandatory_paths.extend((f"^{prefix}/a2a", r"^/\.well-known"))
+    # DEV ONLY: the password-free dev-login endpoint must bypass auth (it IS a
+    # login path), but only when the flag is on. Off by default, so production
+    # never exposes an auth-excluded admin-session endpoint.
+    if dev_auth_bypass:
+        mandatory_paths.append(f"^{prefix}/auth/dev-login$")
     for path in mandatory_paths:
         if path not in exclude_paths:
             exclude_paths = (*exclude_paths, path)
@@ -347,14 +354,18 @@ def _build_auth_and_csrf(
     Returns:
         Tuple of the declared element types.
     """
+    # DEV ONLY: resolve once so the exclude-path list and the auth config the
+    # handler reads agree (both call the same env resolver).
+    dev_auth_bypass = resolve_dev_auth_bypass()
     exclude_paths = _build_auth_exclude_paths(
         api_config.auth,
         prefix,
         ws_path,
         a2a_enabled=a2a_enabled,
+        dev_auth_bypass=dev_auth_bypass,
     )
     auth = api_config.auth.model_copy(
-        update={"exclude_paths": exclude_paths},
+        update={"exclude_paths": exclude_paths, "dev_auth_bypass": dev_auth_bypass},
     )
     auth_middleware = create_auth_middleware_class(auth)
 

@@ -61,6 +61,7 @@ def to_provider_response(
         litellm_provider=config.litellm_provider,
         auth_type=config.auth_type,
         base_url=config.base_url,
+        keep_alive=config.keep_alive,
         models=config.models,
         has_api_key=(
             config.auth_type is AuthType.API_KEY and config.connection_name is not None
@@ -135,6 +136,14 @@ def to_provider_model_response(
         ),
         supports_streaming=(
             capabilities.supports_streaming if capabilities is not None else True
+        ),
+        supports_embeddings=(
+            capabilities.supports_embeddings if capabilities is not None else False
+        ),
+        supports_reasoning=(
+            capabilities.supports_reasoning
+            if capabilities is not None
+            else config.metadata.supports_reasoning
         ),
         family=config.metadata.family,
         stale=config.stale,

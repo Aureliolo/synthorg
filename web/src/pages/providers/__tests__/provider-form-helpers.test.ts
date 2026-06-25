@@ -48,6 +48,7 @@ function values(overrides: Partial<ProviderFormValues> = {}): ProviderFormValues
     oauthClientSecret: '',
     oauthScope: '',
     baseUrl: '',
+    keepAlive: '',
     litellmProvider: '',
     tosAccepted: false,
     ...overrides,

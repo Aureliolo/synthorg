@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { Link } from 'react-router'
 import { ProviderCard } from './ProviderCard'
+import { Checkbox } from '@/components/ui/checkbox'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ROUTES } from '@/router/routes'
@@ -25,18 +26,16 @@ const ProviderGridItem = memo(function ProviderGridItem({
     <StaggerItem>
       <div className="relative">
         {onToggleSelect && (
-          <label
-            className="absolute left-2 top-2 z-10 flex h-6 w-6 cursor-pointer items-center justify-center rounded border border-border bg-card shadow-sm"
+          <div
+            className="absolute left-2 top-2 z-10"
             onClick={(e) => e.stopPropagation()}
           >
-            <input
-              type="checkbox"
+            <Checkbox
               checked={selected ?? false}
-              onChange={() => onToggleSelect(provider.name)}
+              onCheckedChange={() => onToggleSelect(provider.name)}
               aria-label={`Select provider ${provider.name}`}
-              className="h-4 w-4 cursor-pointer accent-accent"
             />
-          </label>
+          </div>
         )}
         <Link
           to={ROUTES.PROVIDER_DETAIL.replace(

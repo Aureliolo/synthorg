@@ -60,6 +60,7 @@ class CreateProviderRequest(BaseModel):
     subscription_token: SecretStr | None = None
     tos_accepted: bool = False
     base_url: NotBlankStr | None = None
+    keep_alive: NotBlankStr | None = None
     oauth_token_url: NotBlankStr | None = None
     oauth_client_id: NotBlankStr | None = None
     oauth_client_secret: SecretStr | None = None
@@ -163,6 +164,7 @@ class UpdateProviderRequest(BaseModel):
     clear_subscription_token: bool = False
     tos_accepted: bool | None = None
     base_url: NotBlankStr | None = None
+    keep_alive: NotBlankStr | None = None
     oauth_token_url: NotBlankStr | None = None
     oauth_client_id: NotBlankStr | None = None
     oauth_client_secret: SecretStr | None = None

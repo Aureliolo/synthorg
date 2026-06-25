@@ -48,7 +48,7 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-export const NothingDetectedReturnsNull: Story = {
+export const NothingDetectedIdle: Story = {
   args: {
     localPresets: [ollama, lmStudio],
     probeResults: {},
@@ -61,7 +61,7 @@ export const NothingDetectedReturnsNull: Story = {
   parameters: {
     docs: {
       description: {
-        story: 'When nothing is detected and the probe is idle, the entire panel is suppressed. This story will render nothing -- that is the desired behaviour.',
+        story: 'Nothing detected and not probing: the panel keeps the header and Scan button with an empty-state hint, so the operator can always trigger a manual scan.',
       },
     },
   },

@@ -10,6 +10,12 @@ interface ImportMetaEnv {
    * recovery flow.
    */
   readonly VITE_APP_BUILD_ID: string | undefined
+  /**
+   * Dev-only auth bypass (see `@/utils/dev`). When `'true'` in a Vite dev
+   * build, the app auto-logs-in as the existing admin via the gated,
+   * password-free `/auth/dev-login` endpoint. Never set in a production build.
+   */
+  readonly VITE_DEV_AUTH_BYPASS: string | undefined
 }
 
 interface ImportMeta {

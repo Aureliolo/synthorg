@@ -30,6 +30,7 @@ def _make_model(  # noqa: PLR0913 -- keyword-only test factory
     tool_calls_verified: bool | None = None,
     vision: bool = False,
     reasoning: bool = False,
+    embeddings: bool = False,
     family: str | None = None,
     generation: float | None = None,
     parameter_count: int | None = None,
@@ -47,6 +48,7 @@ def _make_model(  # noqa: PLR0913 -- keyword-only test factory
             tool_calls_verified=tool_calls_verified,
             supports_vision=vision,
             supports_reasoning=reasoning,
+            supports_embeddings=embeddings,
             family=family,
             generation=generation,
             parameter_count=parameter_count,
@@ -86,6 +88,21 @@ class TestHardFilters:
         model, score = match_model(req, (_make_model("plain", tools=False),))
         assert model is None
         assert score == 0.0
+
+    def test_embedding_model_never_assigned_to_chat_agent(self) -> None:
+        # An embedding model produces vectors, not chat completions, so it is
+        # excluded even for a requirement with no capability flags set.
+        embedder = _make_model("embed", embeddings=True)
+        model, score = match_model(ModelRequirement(), (embedder,))
+        assert model is None
+        assert score == 0.0
+
+    def test_embedding_excluded_when_chat_model_available(self) -> None:
+        embedder = _make_model("embed", embeddings=True)
+        chat = _make_model("chat")
+        model, _ = match_model(ModelRequirement(), (embedder, chat))
+        assert model is not None
+        assert model.id == "chat"
 
     def test_runtime_unverified_tools_hard_fail_overrides_optimism(self) -> None:
         # tool_calls_verified=False is authoritative: even an unknown-source

@@ -5,6 +5,7 @@ import {
   DEFAULT_GROUP_PADDING,
   DEFAULT_NODE_HEIGHT,
   DEFAULT_NODE_WIDTH,
+  DESIRED_INTER_DEPT_GAP_X,
   EMPTY_GROUP_HEIGHT,
   EMPTY_GROUP_MIN_WIDTH,
   computeFooterHeight,
@@ -16,6 +17,7 @@ import {
   centerOwnersOverRoot,
   collectRootGroupIds,
   computePopulatedGroups,
+  enforceHorizontalGaps,
   enforceVerticalGaps,
   placeEmptyGroups,
   runDagreOnLeaves,
@@ -83,6 +85,11 @@ export function applyDagreLayout(
   const positionedLeafMap = runDagreOnLeaves(leafNodes, edges, { direction, nodeSep, rankSep })
   const rootGroupIds = collectRootGroupIds(groupNodes)
 
+  // Centre each lead over its in-box reports on the raw dagre coords,
+  // BEFORE box bounds are derived, so each dept card wraps the tight
+  // (centred) layout instead of dagre's spread-out one.
+  centerLeadsOverReports(groupNodes, positionedLeafMap)
+
   const { populatedResults, emptyGroups } = computePopulatedGroups(
     groupNodes,
     positionedLeafMap,
@@ -90,7 +97,6 @@ export function applyDagreLayout(
     footerHeight,
   )
   toGroupRelative(populatedResults, positionedLeafMap)
-  centerLeadsOverReports(populatedResults, positionedLeafMap)
 
   const rootPopulated: GroupResult | undefined = populatedResults.find((r) =>
     rootGroupIds.has(r.node.id),
@@ -111,6 +117,9 @@ export function applyDagreLayout(
     rootGroupIds.has(r.node.id),
   )
 
+  // De-overlap sibling dept boxes horizontally before centring the row
+  // under root (dagre separates only the leaf agents, not the boxes).
+  enforceHorizontalGaps(allGroupResults, rootGroupIds, DESIRED_INTER_DEPT_GAP_X)
   centerNonRootUnderRoot(allGroupResults, rootGroupIds, rootResult)
   enforceVerticalGaps(allGroupResults, positionedLeafMap, rootGroupIds)
   centerOwnersOverRoot(positionedLeafMap, rootResult)

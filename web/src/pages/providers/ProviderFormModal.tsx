@@ -137,6 +137,32 @@ function ProviderCredentialFields({ ctrl }: { ctrl: ProviderFormController }) {
   )
 }
 
+/** Advanced endpoint fields (LiteLLM routing + Ollama keep-alive). */
+function ProviderAdvancedFields({
+  fields,
+}: {
+  fields: ProviderFormController['fields']
+}) {
+  return (
+    <>
+      <InputField
+        label="LiteLLM Provider"
+        value={fields.litellmProvider}
+        onChange={(e) => fields.setLitellmProvider(e.target.value)}
+        placeholder="e.g. my-cloud, my-local..."
+        hint="LiteLLM routing identifier for model name prefixing"
+      />
+      <InputField
+        label="Keep-alive (Ollama)"
+        value={fields.keepAlive}
+        onChange={(e) => fields.setKeepAlive(e.target.value)}
+        placeholder="e.g. 5m, 0, -1"
+        hint="How long Ollama keeps a model loaded after a request: 5m, 0 unloads immediately, -1 keeps it forever. Empty leaves the server default."
+      />
+    </>
+  )
+}
+
 function ProviderEndpointFields({ ctrl }: { ctrl: ProviderFormController }) {
   const { fields, mode, preset, isCustom, baseUrlHint, fieldErrors } = ctrl
   return (
@@ -164,15 +190,7 @@ function ProviderEndpointFields({ ctrl }: { ctrl: ProviderFormController }) {
         />
       )}
 
-      {(isCustom || mode === 'edit') && (
-        <InputField
-          label="LiteLLM Provider"
-          value={fields.litellmProvider}
-          onChange={(e) => fields.setLitellmProvider(e.target.value)}
-          placeholder="e.g. my-cloud, my-local..."
-          hint="LiteLLM routing identifier for model name prefixing"
-        />
-      )}
+      {(isCustom || mode === 'edit') && <ProviderAdvancedFields fields={fields} />}
     </>
   )
 }

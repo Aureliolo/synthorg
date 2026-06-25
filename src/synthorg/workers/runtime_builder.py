@@ -400,3 +400,44 @@ async def build_runtime_services(
         red_team_runtime=red_team_runtime,
         vision_gate=vision_gate,
     )
+
+
+async def reload_runtime_services(app_state: AppState) -> None:
+    """Rebuild runtime services and hot-swap them into ``AppState``.
+
+    Brings the agent runtime (worker execution service, multi-agent
+    coordinator, work pipeline, and pipeline entry adapters) back online
+    with the CURRENT config and tool set WITHOUT a process restart. Used
+    after provider setup and after an MCP catalog install/uninstall so a
+    newly bridged (or removed) external-MCP tool goes live for the next
+    task without restarting the process.
+
+    The swap is atomic per service: an in-flight task holding the prior
+    engine finishes on it; the next task picks up the rebuilt one.
+
+    Raises:
+        Exception: Propagated from ``build_runtime_services`` so the
+            caller decides whether a failure is fatal (setup reinit) or
+            best-effort (MCP reload).
+    """
+    from synthorg.engine.pipeline.entry.boot import (  # noqa: PLC0415
+        wire_real_intake_entry,
+        wire_real_objective_entry,
+        wire_real_task_board_entry,
+    )
+    from synthorg.engine.workspace.state import (  # noqa: PLC0415
+        agent_workspace_root_of,
+    )
+
+    services = await build_runtime_services(
+        app_state,
+        workspace_root=agent_workspace_root_of(app_state),
+    )
+    app_state.swap_worker_execution_service(services.worker_execution_service)
+    if services.coordinator is not None:
+        app_state.swap_coordinator(services.coordinator)
+    if services.work_pipeline is not None:
+        app_state.swap_work_pipeline(services.work_pipeline)
+    await wire_real_intake_entry(app_state, hot_swap=True)
+    await wire_real_objective_entry(app_state, hot_swap=True)
+    await wire_real_task_board_entry(app_state, hot_swap=True)

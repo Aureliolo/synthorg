@@ -2,18 +2,17 @@
 
 import math
 from collections import defaultdict
-from typing import Annotated, Final, Self
+from typing import Annotated, Final
 
 from litestar import Controller, get
 from litestar.datastructures import State
 from litestar.params import QueryParameter
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from synthorg._core.features import require_service
 from synthorg.api.dto import (
     ApiResponse,
-    ErrorDetail,
-    PaginationMeta,
+    PaginatedResponse,
 )
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import (
@@ -151,28 +150,19 @@ class PeriodSummary(BaseModel):
         return self.total_cost / self.record_count
 
 
-class CostRecordListResponse(BaseModel):
+class CostRecordListResponse(PaginatedResponse[CostRecord]):
     """Paginated cost records with summary aggregations.
 
-    ``error`` and ``error_detail`` must both be set or both be ``None``.
+    Extends the paginated envelope (``data`` is the page of cost records,
+    plus the inherited ``error``/``error_detail``/``pagination``/``success``)
+    with cost-specific aggregations computed over all matching records.
 
     Attributes:
-        data: Page of cost records.
-        error: Error message (``None`` on success).
-        error_detail: Structured error metadata (``None`` on success).
-        pagination: Pagination metadata.
         daily_summary: Per-day cost aggregations (all matching records).
         period_summary: Overall stats across all matching records.
-        success: Whether the request succeeded (computed from ``error``).
         currency: ISO 4217 currency code.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    data: tuple[CostRecord, ...] = ()
-    error: str | None = None
-    error_detail: ErrorDetail | None = None
-    pagination: PaginationMeta
     daily_summary: tuple[DailySummary, ...] = ()
     period_summary: PeriodSummary
     currency: str = Field(
@@ -182,34 +172,6 @@ class CostRecordListResponse(BaseModel):
         pattern=r"^[A-Z]{3}$",
         description="ISO 4217 currency code",
     )
-
-    @model_validator(mode="after")
-    def _validate_error_detail_consistency(self) -> Self:
-        """Ensure ``error`` and ``error_detail`` are set together.
-
-        Returns:
-            ``Self`` instance.
-
-        Raises:
-            ValueError: Raised on the corresponding failure path.
-        """
-        if self.error_detail is not None and self.error is None:
-            msg = "error_detail requires error to be set"
-            raise ValueError(msg)
-        if self.error is not None and self.error_detail is None:
-            msg = "error must be accompanied by error_detail"
-            raise ValueError(msg)
-        return self
-
-    @computed_field
-    @property
-    def success(self) -> bool:
-        """Whether the request succeeded (derived from ``error``).
-
-        Returns:
-            ``True`` or ``False`` reflecting the condition.
-        """
-        return self.error is None
 
 
 def _build_summaries(

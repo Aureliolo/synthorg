@@ -9,6 +9,7 @@ const baseProvider: ProviderWithName = {
   litellm_provider: "anthropic",
   auth_type: "api_key",
   base_url: null,
+  keep_alive: null,
   models: [
     {
       id: "claude-sonnet-4-20250514",
@@ -22,6 +23,7 @@ const baseProvider: ProviderWithName = {
         supports_tools: false,
         supports_vision: false,
         supports_reasoning: false,
+        supports_embeddings: false,
         max_output_tokens: null,
         parameter_count: null,
         cost_tier: null,
@@ -45,6 +47,7 @@ const baseProvider: ProviderWithName = {
         supports_tools: false,
         supports_vision: false,
         supports_reasoning: false,
+        supports_embeddings: false,
         max_output_tokens: null,
         parameter_count: null,
         cost_tier: null,
@@ -132,6 +135,7 @@ export const LocalProvider: Story = {
       litellm_provider: "ollama",
       auth_type: "none",
       base_url: "http://localhost:11434",
+      keep_alive: null,
       models: [],
       has_api_key: false,
       supports_model_pull: true,

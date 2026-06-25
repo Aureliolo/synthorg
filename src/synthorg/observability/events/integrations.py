@@ -122,6 +122,8 @@ MCP_SERVER_INSTALLED: Final[str] = "integrations.mcp_catalog.installed"
 MCP_SERVER_UNINSTALLED: Final[str] = "integrations.mcp_catalog.uninstalled"
 MCP_SERVER_UNINSTALL_NOOP: Final[str] = "integrations.mcp_catalog.uninstall_noop"
 MCP_SERVER_INSTALL_FAILED: Final[str] = "integrations.mcp_catalog.install_failed"
+MCP_BRIDGE_RELOADED: Final[str] = "integrations.mcp_catalog.bridge_reloaded"
+MCP_BRIDGE_RELOAD_FAILED: Final[str] = "integrations.mcp_catalog.bridge_reload_failed"
 MCP_SERVER_INSTALL_VALIDATION_FAILED: Final[str] = (
     "integrations.mcp_catalog.install_validation_failed"
 )

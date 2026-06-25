@@ -142,6 +142,18 @@ class AuthConfig(BaseModel):
             "an exact match (rather than a prefix match) is required."
         ),
     )
+    dev_auth_bypass: bool = Field(
+        default=False,
+        description=(
+            "DEV ONLY. When True, the gated POST /auth/dev-login endpoint is "
+            "live: it mints a real session for the existing admin with no "
+            "password so local dev work skips the login screen. Resolved at "
+            "startup from SYNTHORG_DEV_AUTH_BYPASS; defaults False and MUST "
+            "never be enabled in production -- it lets anyone who can reach "
+            "the API obtain an admin session. Auth enforcement is otherwise "
+            "unchanged: only this one endpoint is gated on the flag."
+        ),
+    )
 
     # Cookie settings
     cookie_name: NotBlankStr = Field(

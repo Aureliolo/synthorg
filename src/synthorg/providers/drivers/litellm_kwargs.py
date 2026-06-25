@@ -42,6 +42,8 @@ class _AcompletionKwargs(_AcompletionRequiredKwargs, total=False):
     stop: list[str]
     top_p: float
     timeout: float
+    # Ollama-only: keeps a model loaded for the given duration after a call.
+    keep_alive: str
 
 
 def _apply_completion_config(

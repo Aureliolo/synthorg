@@ -9,6 +9,7 @@ const apiKeyProvider: ProviderConfig = {
   litellm_provider: 'cloud-test',
   auth_type: 'api_key',
   base_url: null,
+  keep_alive: null,
   models: [],
   has_api_key: true,
   has_oauth_credentials: false,

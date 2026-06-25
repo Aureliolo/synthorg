@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { Link } from 'react-router'
 import { Users } from 'lucide-react'
 import { AgentCard } from '@/components/ui/agent-card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { toRuntimeStatus } from '@/utils/agents'
@@ -28,6 +29,12 @@ function agentKey(agent: AgentConfig): string {
   return agent.id
 }
 
+/** Best-effort model identifier from the agent's raw model config dict. */
+function agentModelId(agent: AgentConfig): string | undefined {
+  const id = agent.model['model_id']
+  return typeof id === 'string' && id ? id : undefined
+}
+
 interface AgentGridItemProps {
   agent: AgentConfig
   selected?: boolean | undefined
@@ -40,18 +47,16 @@ function AgentGridItemComponent({ agent, selected, onToggleSelect }: AgentGridIt
     <StaggerItem>
       <div className="relative">
         {onToggleSelect && (
-          <label
-            className="absolute left-2 top-2 z-10 flex h-6 w-6 cursor-pointer items-center justify-center rounded border border-border bg-card shadow-sm"
+          <div
+            className="absolute right-2 top-2 z-10"
             onClick={(e) => e.stopPropagation()}
           >
-            <input
-              type="checkbox"
+            <Checkbox
               checked={selected ?? false}
-              onChange={() => onToggleSelect(id)}
+              onCheckedChange={() => onToggleSelect(id)}
               aria-label={`Select agent ${agent.name}`}
-              className="h-4 w-4 cursor-pointer accent-accent"
             />
-          </label>
+          </div>
         )}
         <Link
           to={ROUTES.AGENT_DETAIL.replace(':agentId', encodeURIComponent(id))}
@@ -62,6 +67,8 @@ function AgentGridItemComponent({ agent, selected, onToggleSelect }: AgentGridIt
             role={agent.role}
             department={agent.department}
             status={toRuntimeStatus(agent.status ?? 'active')}
+            model={agentModelId(agent)}
+            tier={agent.tier}
             timestamp={agent.hiring_date ? formatRelativeTime(agent.hiring_date) : undefined}
             timestampIso={agent.hiring_date ?? undefined}
           />

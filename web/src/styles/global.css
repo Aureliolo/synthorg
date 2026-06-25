@@ -31,6 +31,7 @@
   --color-success: var(--so-success);
   --color-warning: var(--so-warning);
   --color-danger: var(--so-danger);
+  --color-violet: var(--so-violet);
   --color-text-secondary: var(--so-text-secondary);
   --color-surface: var(--so-bg-surface);
   --color-card-hover: var(--so-bg-card-hover);
@@ -55,10 +56,13 @@
   --spacing-section-gap: var(--so-density-section-gap);
   --spacing-grid-gap: var(--so-density-grid-gap);
 
-  /* ---- Dialog widths (bridges --so-dialog-* into Tailwind max-w-*) ---- */
-  --max-w-dialog: var(--so-dialog-width);
-  --max-w-dialog-compact: var(--so-dialog-width-compact);
-  --max-w-dialog-roomy: var(--so-dialog-width-roomy);
+  /* ---- Dialog widths (bridges --so-dialog-* into Tailwind max-w-*) ----
+   * Tailwind v4 derives named max-w-* utilities from the --container-*
+   * namespace, so these must live there for `max-w-dialog`,
+   * `max-w-dialog-compact`, and `max-w-dialog-roomy` to generate. */
+  --container-dialog: var(--so-dialog-width);
+  --container-dialog-compact: var(--so-dialog-width-compact);
+  --container-dialog-roomy: var(--so-dialog-width-roomy);
 
   /* ---- shadcn bridge (Base UI / shadcn components use these token names) ---- */
   --color-sidebar-ring: var(--sidebar-ring);

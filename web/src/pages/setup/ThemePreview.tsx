@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react'
-import { motion, AnimatePresence, type Transition } from 'motion/react'
+import {
+  motion,
+  AnimatePresence,
+  type TargetAndTransition,
+  type Transition,
+} from 'motion/react'
 import { cn } from '@/lib/utils'
 import { tweenDefault, tweenFast } from '@/lib/motion'
 import { MetricCard } from '@/components/ui/metric-card'
@@ -8,19 +13,36 @@ import { DeptHealthBar } from '@/components/ui/dept-health-bar'
 import { Button } from '@/components/ui/button'
 import { SectionCard } from '@/components/ui/section-card'
 import { StatPill } from '@/components/ui/stat-pill'
-import type { ThemeSettings } from '@/stores/setup-wizard'
+import type {
+  AnimationPreset,
+  ColorPalette,
+  Density,
+  SidebarMode,
+  Typography,
+} from '@/stores/theme'
 import { BarChart3, Home, Users, ListChecks, Settings, ChevronRight } from 'lucide-react'
+
+// The preview renders the same axes the dashboard-wide theme store owns, so it
+// mirrors exactly what the live app will look like once a choice is written
+// through to ``appearance.*``.
+export interface ThemePreviewSettings {
+  palette: ColorPalette
+  density: Density
+  animation: AnimationPreset
+  sidebar: SidebarMode
+  typography: Typography
+}
 
 // Mirror the theme store: ``balanced`` is the default and carries no override
 // class; ``medium`` is a distinct, denser tier (``density-medium``).
-const DENSITY_CLASS: Record<ThemeSettings['density'], string> = {
+const DENSITY_CLASS: Record<Density, string> = {
   dense: 'density-dense',
   balanced: '',
   medium: 'density-medium',
   sparse: 'density-sparse',
 }
 
-const PALETTE_CLASS: Record<ThemeSettings['palette'], string> = {
+const PALETTE_CLASS: Record<ColorPalette, string> = {
   'warm-ops': '',
   'ice-station': 'theme-ice-station',
   stealth: 'theme-stealth',
@@ -28,19 +50,42 @@ const PALETTE_CLASS: Record<ThemeSettings['palette'], string> = {
   neon: 'theme-neon',
 }
 
-// Animation transitions for the preview. The bouncier spring (lower damping
-// than springGentle) is preview-specific: deliberately more expressive than
-// the dashboard spring so users can see the difference.
-const ANIMATION_TRANSITIONS: Record<ThemeSettings['animation'], Transition> = {
+// Entry transition per preset. The springs are deliberately more expressive
+// than the dashboard defaults so the difference is legible in the small demo.
+const DEMO_TRANSITION: Record<AnimationPreset, Transition> = {
   minimal: tweenFast,
   'status-driven': tweenDefault,
-  spring: { type: 'spring', stiffness: 200, damping: 15 },
-  instant: { type: 'tween', duration: 0 },
+  spring: { type: 'spring', stiffness: 220, damping: 12 },
+  instant: { duration: 0 },
+  aggressive: { type: 'spring', stiffness: 420, damping: 9 },
 }
 
-// Duration for the "agent active" dot pulse. Long enough to read as
-// breathing, short enough to cycle multiple times per visible interaction.
-const PULSE_DURATION_S = 0.6
+// Entry MOTION per preset, chosen so each reads as visibly distinct rather than
+// differing only by a few milliseconds of tween: minimal is a pure fade (no
+// travel), status-driven slides, spring overshoots from far, instant snaps,
+// aggressive snaps hard with a twist.
+const DEMO_VARIANTS: Record<
+  AnimationPreset,
+  { initial: TargetAndTransition; animate: TargetAndTransition; exit: TargetAndTransition }
+> = {
+  minimal: { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } },
+  'status-driven': {
+    initial: { opacity: 0, x: 16 },
+    animate: { opacity: 1, x: 0 },
+    exit: { opacity: 0, x: -16 },
+  },
+  spring: {
+    initial: { opacity: 0, y: 28, scale: 0.85 },
+    animate: { opacity: 1, y: 0, scale: 1 },
+    exit: { opacity: 0, y: -28, scale: 0.85 },
+  },
+  instant: { initial: { opacity: 1 }, animate: { opacity: 1 }, exit: { opacity: 1 } },
+  aggressive: {
+    initial: { opacity: 0, scale: 0.6, rotate: -8 },
+    animate: { opacity: 1, scale: 1, rotate: 0 },
+    exit: { opacity: 0, scale: 0.6, rotate: 8 },
+  },
+}
 
 // Fixed illustration widths for the mock sidebar (preview-only chrome, not
 // the real sidebar-width tokens).
@@ -77,7 +122,7 @@ function SidebarNavItem({ icon: Icon, label, isActive, isCompact }: SidebarNavIt
   )
 }
 
-function SidebarPreview({ mode }: { mode: ThemeSettings['sidebar'] }) {
+function SidebarPreview({ mode }: { mode: SidebarMode }) {
   if (mode === 'hidden') return null
 
   const isCompact = mode === 'compact'
@@ -108,20 +153,20 @@ function SidebarPreview({ mode }: { mode: ThemeSettings['sidebar'] }) {
   )
 }
 
-function AnimationDemo({ animation }: { animation: ThemeSettings['animation'] }) {
+function AnimationDemo({ animation }: { animation: AnimationPreset }) {
   const [cycling, setCycling] = useState(true)
-  const transition = ANIMATION_TRANSITIONS[animation]
+  const variant = DEMO_VARIANTS[animation]
+  const transition = DEMO_TRANSITION[animation]
   const showCard = animation === 'instant' || cycling
 
   useEffect(() => {
     if (animation === 'instant') return
-    // Start with the card visible; interval toggles visibility
+    // Start with the card visible; interval toggles visibility. Skip the toggle
+    // while the tab is hidden so a backgrounded preview does not burn CPU.
     let active = true
-    // Skip the toggle while the tab is hidden so a backgrounded preview
-    // doesn't burn CPU re-rendering an off-screen animation.
     const interval = setInterval(() => {
       if (active && !document.hidden) setCycling((v) => !v)
-    }, 1500)
+    }, 1600)
     return () => {
       active = false
       clearInterval(interval)
@@ -130,26 +175,26 @@ function AnimationDemo({ animation }: { animation: ThemeSettings['animation'] })
 
   return (
     <div className="flex items-center gap-3">
+      {/* status-driven means "only changed elements animate", so a static
+          neighbour makes that literal: this idle chip never moves while the
+          card beside it does. */}
+      {animation === 'status-driven' && (
+        <div className="flex items-center gap-2 rounded-md border border-border bg-bg-surface px-3 py-1.5 opacity-60">
+          <span className="size-2 rounded-full bg-text-muted" />
+          <span className="text-xs text-text-muted">Idle</span>
+        </div>
+      )}
       <AnimatePresence mode="wait">
         {showCard && (
           <motion.div
             key="demo-card"
-            initial={{ opacity: 0, y: 8, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -8, scale: 0.95 }}
+            initial={variant.initial}
+            animate={variant.animate}
+            exit={variant.exit}
             transition={transition}
             className="flex items-center gap-2 rounded-md border border-border bg-bg-surface px-3 py-1.5"
           >
-            <motion.div
-              animate={{ scale: [1, 1.3, 1] }}
-              transition={{
-                ...transition,
-                repeat: Infinity,
-                repeatDelay: 1,
-                duration: animation === 'instant' ? 0 : PULSE_DURATION_S,
-              }}
-              className="size-2 rounded-full bg-success"
-            />
+            <span className="size-2 rounded-full bg-success" />
             <span className="text-xs text-foreground">Agent active</span>
           </motion.div>
         )}
@@ -162,7 +207,7 @@ function AnimationDemo({ animation }: { animation: ThemeSettings['animation'] })
 }
 
 export interface ThemePreviewProps {
-  settings: ThemeSettings
+  settings: ThemePreviewSettings
 }
 
 export function ThemePreview({ settings }: ThemePreviewProps) {

@@ -9,6 +9,23 @@ from synthorg.observability.events.api import API_APP_STARTUP
 logger = get_logger(__name__)
 
 _ENV_VAR = "SYNTHORG_JWT_SECRET"
+_DEV_BYPASS_ENV_VAR = "SYNTHORG_DEV_AUTH_BYPASS"
+_TRUTHY: frozenset[str] = frozenset({"1", "true", "yes", "on"})
+
+
+def resolve_dev_auth_bypass() -> bool:
+    """Resolve the dev auth-bypass flag from the environment.
+
+    DEV ONLY. When enabled, the gated ``POST /auth/dev-login`` endpoint mints a
+    real admin session with no password (see :class:`AuthConfig`). Defaults
+    ``False``; MUST never be enabled in production. This module is the bootstrap
+    env-read allowlist; the caller logs the security warning once when enabled.
+
+    Returns:
+        ``True`` when ``SYNTHORG_DEV_AUTH_BYPASS`` is set to a truthy value.
+    """
+    raw = os.environ.get(_DEV_BYPASS_ENV_VAR)
+    return raw is not None and raw.strip().lower() in _TRUTHY
 
 
 def resolve_jwt_secret() -> str:

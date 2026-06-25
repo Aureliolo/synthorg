@@ -177,6 +177,7 @@ function ProviderDetailBody({
 }: ProviderDetailBodyProps) {
   const discoveringModels = useProvidersStore((s) => s.discoveringModels)
   const reenablingModelIds = useProvidersStore((s) => s.reenablingModelIds)
+  const [testModel, setTestModel] = useState('')
   return (
     <>
       <ErrorBoundary level="section">
@@ -185,10 +186,15 @@ function ProviderDetailBody({
           health={health}
           onEdit={() => d.setEditOpen(true)}
           onDelete={() => d.setDeleteOpen(true)}
-          onTestConnection={() => {
-            void useProvidersStore.getState().testConnection(decodedName)
+          onTestConnection={(model) => {
+            void useProvidersStore
+              .getState()
+              .testConnection(decodedName, model ? { model } : undefined)
           }}
           testingConnection={testingConnection}
+          testModelIds={models.map((m) => m.id)}
+          testModel={testModel}
+          onTestModelChange={setTestModel}
           onRefresh={() => {
             void useProvidersStore.getState().discoverModels(
               decodedName,

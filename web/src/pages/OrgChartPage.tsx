@@ -82,7 +82,6 @@ function OrgChartInner() {
         flowWrapperRef={ctrl.png.flowWrapperRef}
         renderedNodes={ctrl.renderedNodes}
         renderedEdges={ctrl.renderedEdges}
-        onMoveEnd={ctrl.handleMoveEnd}
         selection={ctrl.selection}
         onEdgeMouseEnter={ctrl.edge.onEdgeMouseEnter}
         onEdgeMouseLeave={ctrl.edge.onEdgeMouseLeave}

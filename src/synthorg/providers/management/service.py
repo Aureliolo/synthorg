@@ -18,6 +18,7 @@ core.
 """
 
 import asyncio
+import re
 from collections.abc import AsyncIterator, Mapping
 
 from pydantic import JsonValue
@@ -211,6 +212,41 @@ def _diff_provider_update(
         "fields_changed": [*changes],
         "diff": changes,
     }
+
+
+_PARAM_SIZE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*b\b", re.IGNORECASE)
+
+
+def _estimated_param_billions(model_id: str) -> float:
+    """Best-effort parameter count (in billions) parsed from a model id.
+
+    Local model ids encode their size (``llama3.2:1b``, ``gemma4:26b-a4b``).
+    The largest size token wins (total params, not MoE-active), so a sparse
+    ``26b-a4b`` sorts by its 26B footprint. Ids with no recognisable size
+    yield ``inf`` so sized models are always preferred for the probe.
+
+    Returns:
+        The estimated size in billions of parameters, or ``inf`` if unknown.
+    """
+    sizes = [float(match) for match in _PARAM_SIZE_RE.findall(model_id)]
+    return max(sizes) if sizes else float("inf")
+
+
+def _cheapest_probe_model_id(models: tuple[ProviderModelConfig, ...]) -> str:
+    """Pick the cheapest model to probe for a connectivity test.
+
+    A probe sends a chat completion, so a heavyweight default (the first
+    configured model could be a 26B) makes the test cold-load gigabytes for
+    a one-token reply. Choose the smallest non-embedding model instead;
+    embedding-only models are skipped because they reject chat completion.
+    Falls back to the first model when nothing better can be identified.
+
+    Returns:
+        The id of the model to probe.
+    """
+    chat_models = [m for m in models if "embed" not in m.id.lower()]
+    candidates = chat_models or list(models)
+    return min(candidates, key=lambda m: _estimated_param_billions(m.id)).id
 
 
 def _safe_task_id_segment(value: str) -> str:
@@ -561,7 +597,7 @@ class ProviderManagementService(
                 error="Provider has no models configured",
             )
 
-        model_id = request.model or config.models[0].id
+        model_id = request.model or _cheapest_probe_model_id(config.models)
         return await self._do_test_connection(name, config, model_id)
 
     async def _do_test_connection(

@@ -20,6 +20,7 @@ const SEED_PROVIDERS = [
           supports_tools: true,
           supports_vision: true,
           supports_reasoning: false,
+          supports_embeddings: false,
           max_output_tokens: null,
           family: 'example-large',
           generation: 1,

@@ -29,14 +29,6 @@ export type WizardStep =
 
 export type WizardMode = 'guided' | 'quick'
 
-export type ThemeSettings = {
-  palette: 'warm-ops' | 'ice-station' | 'stealth' | 'signal' | 'neon'
-  density: 'dense' | 'balanced' | 'medium' | 'sparse'
-  animation: 'minimal' | 'status-driven' | 'spring' | 'instant'
-  sidebar: 'rail' | 'collapsible' | 'hidden' | 'persistent' | 'compact'
-  typography: 'default'
-}
-
 export interface NavigationSlice {
   currentStep: WizardStep
   stepOrder: readonly WizardStep[]
@@ -278,11 +270,6 @@ export interface ProvidersSlice {
   reprobeLocalProviders: () => Promise<void>
 }
 
-export interface ThemeSlice {
-  themeSettings: ThemeSettings
-  setThemeSetting: <K extends keyof ThemeSettings>(key: K, value: ThemeSettings[K]) => void
-}
-
 export interface CompletionSlice {
   completing: boolean
   completionError: string | null
@@ -305,7 +292,6 @@ export type SetupWizardState =
   & CompanySlice
   & AgentsSlice
   & ProvidersSlice
-  & ThemeSlice
   & CompletionSlice
 
 export type SliceCreator<T> = StateCreator<SetupWizardState, [], [], T>

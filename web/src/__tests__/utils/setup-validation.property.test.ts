@@ -46,6 +46,7 @@ const makeProvider = (
   litellm_provider: null,
   auth_type: "api_key",
   base_url: null,
+  keep_alive: null,
   models: modelIds.map((id) => ({
     id,
     alias: null,
@@ -58,6 +59,7 @@ const makeProvider = (
       supports_tools: false,
       supports_vision: false,
       supports_reasoning: false,
+      supports_embeddings: false,
       max_output_tokens: null,
       parameter_count: null,
       cost_tier: null,

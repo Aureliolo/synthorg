@@ -12,12 +12,16 @@ rollout, regression, guards, toolsmith internals) is sourced from the
 blob.
 """
 
+import json
 from typing import cast
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.meta import META_SELF_IMPROVEMENT_LOAD_FAILED
+from synthorg.observability.events.meta import (
+    META_SELF_IMPROVEMENT_LOAD_FAILED,
+    META_TOOLSMITH_ALLOWLIST_REQUIRED,
+)
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.service_protocol import SettingsServiceProtocol
 
@@ -75,6 +79,26 @@ def _as_bool(value: str) -> bool:
     return normalize_ascii_lowercase(value) in _TRUE_TOKENS
 
 
+def _parse_capability_list(raw: str) -> list[str]:
+    """Parse the JSON-encoded toolsmith capability allowlist setting.
+
+    Returns:
+        The list of non-blank ``domain:action`` capability tags, or ``[]``
+        when the setting is unset or malformed (treated as deny-all rather
+        than crashing the overlay).
+    """
+    text = raw.strip()
+    if not text:
+        return []
+    try:
+        parsed = json.loads(text)
+    except ValueError, TypeError:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [str(item).strip() for item in parsed if str(item).strip()]
+
+
 def _nested(overrides: dict[str, object], key: str) -> dict[str, object]:
     """Return the nested sub-config dict for *key*, creating it if absent.
 
@@ -119,9 +143,29 @@ async def overlay_feature_settings(
         if key in si:
             overrides[key] = _as_bool(si[key])
     # tool_creation_enabled must agree with toolsmith.enabled (the
-    # SelfImprovementConfig cross-field validator enforces this).
+    # SelfImprovementConfig cross-field validator), and the toolsmith
+    # rejects an empty allowlist (deny-all). Overlay the allowlist and, when
+    # tool creation is requested without one, hold it off rather than letting
+    # the invalid sub-config sink the whole self-improvement posture.
     if "tool_creation_enabled" in overrides:
-        _nested(overrides, "toolsmith")["enabled"] = overrides["tool_creation_enabled"]
+        allowlist = _parse_capability_list(
+            si.get("tool_creation_allowed_capabilities", ""),
+        )
+        requested = bool(overrides["tool_creation_enabled"])
+        enabled = requested and bool(allowlist)
+        if requested and not allowlist:
+            logger.warning(
+                META_TOOLSMITH_ALLOWLIST_REQUIRED,
+                note=(
+                    "tool creation requested but no allowed_capabilities are "
+                    "configured; holding tool creation off"
+                ),
+            )
+        overrides["tool_creation_enabled"] = enabled
+        toolsmith = _nested(overrides, "toolsmith")
+        toolsmith["enabled"] = enabled
+        if allowlist:
+            toolsmith["allowed_capabilities"] = allowlist
     analysis = si.get("analysis_model", "").strip()
     if analysis:
         overrides["analysis_model"] = analysis

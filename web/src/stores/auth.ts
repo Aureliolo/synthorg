@@ -49,12 +49,6 @@ interface AuthState {
   checkSession: () => Promise<void>
 }
 
-// ── Dev-only fake user ─────────────────────────────────────
-
-const DEV_USER: UserInfoResponse | null = IS_DEV_AUTH_BYPASS
-  ? { id: 'dev-user', username: 'developer', role: 'ceo', must_change_password: false, org_roles: ['owner'], scoped_departments: [] }
-  : null
-
 // ── One-shot redirect guard ─────────────────────────────────
 //
 // On reload with no session cookie, multiple inflight requests can
@@ -111,11 +105,7 @@ async function fetchUserImpl(
   set: (partial: Partial<AuthState>) => void,
   get: () => AuthState,
 ): Promise<void> {
-  if (
-    get().authStatus === 'authenticated'
-    && get().user
-    && !IS_DEV_AUTH_BYPASS
-  ) return
+  if (get().authStatus === 'authenticated' && get().user) return
   try {
     const user = await authApi.getMe()
     set({ user, authStatus: 'authenticated' })
@@ -175,13 +165,35 @@ function _classifyCheckError(
   return 'unknown'
 }
 
+// Dev bypass: hit the password-free /auth/dev-login endpoint, which mints a
+// REAL session for the existing admin (a genuine JWT cookie the backend
+// accepts -- no auth weakening, no fabricated user). The endpoint only exists
+// when the backend has SYNTHORG_DEV_AUTH_BYPASS set, so a normal build returns
+// 404 and this degrades to the login screen. Returns true when a real
+// authenticated session was established; on failure (endpoint off, or no admin
+// account) returns false so the caller shows the login screen -- admin
+// creation is never skipped.
+async function _tryDevAutoLogin(
+  set: (partial: Partial<AuthState>) => void,
+  get: () => AuthState,
+): Promise<boolean> {
+  try {
+    await performAuthFlow(set, get, () => authApi.devLogin())
+    return get().authStatus === 'authenticated'
+  } catch (err) {
+    log.warn(
+      'Dev auto-login failed; showing the normal login screen.',
+      getErrorMessage(err),
+    )
+    set({ authStatus: 'unauthenticated', user: null })
+    return false
+  }
+}
+
 async function checkSessionImpl(
   set: (partial: Partial<AuthState>) => void,
+  get: () => AuthState,
 ): Promise<void> {
-  if (IS_DEV_AUTH_BYPASS) {
-    set({ authStatus: 'authenticated', user: DEV_USER })
-    return
-  }
   for (let attempt = 0; attempt <= SESSION_CHECK_NETWORK_RETRIES; attempt++) {
     try {
       const user = await authApi.getMe()
@@ -192,6 +204,12 @@ async function checkSessionImpl(
       if (outcome === 'retry') {
         await _retryDelay(SESSION_CHECK_RETRY_MS)
         continue
+      }
+      // No valid session yet. Under the dev bypass, try a password-free
+      // auto-login as the existing admin before surfacing the login screen.
+      if (outcome === 'unauthenticated' && IS_DEV_AUTH_BYPASS) {
+        if (await _tryDevAutoLogin(set, get)) return
+        return
       }
       if (outcome === 'unknown') log.error('Session check failed:', getErrorMessage(err))
       set({ authStatus: outcome, user: null })
@@ -243,8 +261,12 @@ async function revokeSessionImpl(
 }
 
 export const useAuthStore = create<AuthState>()((set, get) => ({
-  authStatus: IS_DEV_AUTH_BYPASS ? 'authenticated' : 'unknown',
-  user: DEV_USER,
+  // Always start 'unknown': the bypass establishes a real session via
+  // ``checkSession`` (auto-login), so there is no longer a fake authenticated
+  // seed state. With no creds / no admin, ``checkSession`` resolves to
+  // 'unauthenticated' and the normal login screen is shown.
+  authStatus: 'unknown',
+  user: null,
   loading: false,
 
   sessions: [],
@@ -290,7 +312,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     }
   },
   handleUnauthorized: () => handleUnauthorizedImpl(set),
-  checkSession: () => checkSessionImpl(set),
+  checkSession: () => checkSessionImpl(set, get),
 }))
 
 // ── 401 handler registration ────────────────────────────────

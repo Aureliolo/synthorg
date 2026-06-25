@@ -36,15 +36,28 @@ export interface DetectedLocalListProps {
   onReprobe: () => void | Promise<void>
 }
 
-function DetectedHeader({ probing, onReprobe }: { probing: boolean; onReprobe: () => void }) {
+function DetectedHeader({
+  probing,
+  empty,
+  onReprobe,
+}: {
+  probing: boolean
+  empty: boolean
+  onReprobe: () => void
+}) {
+  const title = probing
+    ? 'Detecting local providers...'
+    : empty
+      ? 'Local providers'
+      : 'Detected on this machine'
   return (
     <div className="flex items-center justify-between">
       <div className="space-y-1">
-        <h3 className="text-sm font-semibold text-foreground">
-          {probing ? 'Detecting local providers...' : 'Detected on this machine'}
-        </h3>
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
         <p className="text-xs text-text-muted">
-          Auto-detected LLM servers running on this host.
+          {empty && !probing
+            ? 'Scan to detect Ollama, LM Studio, or vLLM running on this host.'
+            : 'Auto-detected LLM servers running on this host.'}
         </p>
       </div>
       <Button
@@ -52,7 +65,7 @@ function DetectedHeader({ probing, onReprobe }: { probing: boolean; onReprobe: (
         size="icon-xs"
         onClick={onReprobe}
         disabled={probing}
-        aria-label="Re-scan local providers"
+        aria-label="Scan local providers"
       >
         {probing ? (
           <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
@@ -132,6 +145,53 @@ function _resolveRowAdding(
  *   Top-level batch failures are surfaced separately by the wizard /
  *   Settings page above this component.
  */
+function DetectedRows({
+  detected,
+  failed,
+  probeResults,
+  probeErrors,
+  providers,
+  adding,
+  onAddLocal,
+  onAddCloud,
+}: {
+  detected: readonly LocalPreset[]
+  failed: readonly LocalPreset[]
+  probeResults: Readonly<Partial<Record<string, ProbePresetResponse>>>
+  probeErrors: Readonly<Partial<Record<string, string>>> | undefined
+  providers: Readonly<Record<string, ProviderConfig>>
+  adding: ReturnType<typeof useAddInFlight>['adding']
+  onAddLocal: (name: string, url: string) => void
+  onAddCloud: ((cloudPresetName: string) => void) | undefined
+}) {
+  return (
+    <>
+      {detected.map((preset) => {
+        const cloudCounterpart = LOCAL_TO_CLOUD_COUNTERPART[preset.name]
+        return (
+          <DetectedLocalRow
+            key={preset.name}
+            preset={preset}
+            result={probeResults[preset.name]}
+            alreadyAddedLocal={preset.name in providers}
+            alreadyAddedCloud={Boolean(cloudCounterpart && cloudCounterpart in providers)}
+            adding={_resolveRowAdding(adding, preset.name, cloudCounterpart)}
+            onAddLocal={onAddLocal}
+            onAddCloud={onAddCloud}
+          />
+        )
+      })}
+      {failed.map((preset) => (
+        <DetectedFailedRow
+          key={`error-${preset.name}`}
+          preset={preset}
+          errorMessage={probeErrors?.[preset.name] ?? 'unknown error'}
+        />
+      ))}
+    </>
+  )
+}
+
 export function DetectedLocalList({
   localPresets,
   probeResults,
@@ -145,13 +205,6 @@ export function DetectedLocalList({
   const { adding, startAdd, finishAdd } = useAddInFlight()
   const detected = _detectedPresets(localPresets, probeResults)
   const failed = _failedPresets(localPresets, probeErrors)
-
-  if (!probing && detected.length === 0 && failed.length === 0) {
-    // Nothing detected, nothing failed, not currently probing. The
-    // surrounding step provides a "Re-scan" affordance via Configure
-    // manually -> the wizard / Settings page own that surface.
-    return null
-  }
 
   const handleAddLocal = async (name: string, url: string): Promise<void> => {
     if (!startAdd(name, 'local')) return
@@ -188,43 +241,36 @@ export function DetectedLocalList({
     queueMicrotask(() => { finishAdd(cloudPresetName) })
   }
 
+  const isEmpty = !probing && detected.length === 0 && failed.length === 0
   const showSkeleton = probing && detected.length === 0 && failed.length === 0
 
   return (
     <div className="space-y-3 rounded-lg border border-border bg-card p-card">
-      <DetectedHeader probing={probing} onReprobe={() => void onReprobe()} />
-      {showSkeleton ? (
+      <DetectedHeader
+        probing={probing}
+        empty={isEmpty}
+        onReprobe={() => void onReprobe()}
+      />
+      {isEmpty ? (
+        <p className="text-xs text-text-muted">
+          None detected yet. Run a scan to find local LLM servers on this host.
+        </p>
+      ) : showSkeleton ? (
         <div className="space-y-2">
           <Skeleton className="h-6 rounded-md" />
           <Skeleton className="h-6 rounded-md" />
         </div>
       ) : (
-        <>
-          {detected.map((preset) => {
-            const cloudCounterpart = LOCAL_TO_CLOUD_COUNTERPART[preset.name]
-            return (
-              <DetectedLocalRow
-                key={preset.name}
-                preset={preset}
-                result={probeResults[preset.name]}
-                alreadyAddedLocal={preset.name in providers}
-                alreadyAddedCloud={Boolean(
-                  cloudCounterpart && cloudCounterpart in providers,
-                )}
-                adding={_resolveRowAdding(adding, preset.name, cloudCounterpart)}
-                onAddLocal={(name, url) => { void handleAddLocal(name, url) }}
-                onAddCloud={onAddCloud ? handleAddCloud : undefined}
-              />
-            )
-          })}
-          {failed.map((preset) => (
-            <DetectedFailedRow
-              key={`error-${preset.name}`}
-              preset={preset}
-              errorMessage={probeErrors?.[preset.name] ?? 'unknown error'}
-            />
-          ))}
-        </>
+        <DetectedRows
+          detected={detected}
+          failed={failed}
+          probeResults={probeResults}
+          probeErrors={probeErrors}
+          providers={providers}
+          adding={adding}
+          onAddLocal={(name, url) => { void handleAddLocal(name, url) }}
+          onAddCloud={onAddCloud ? handleAddCloud : undefined}
+        />
       )}
     </div>
   )

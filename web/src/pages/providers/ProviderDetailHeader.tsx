@@ -6,13 +6,20 @@ import { ROUTES } from '@/router/routes'
 import type { ProviderHealthSummary } from '@/api/types/providers'
 import type { ProviderWithName } from '@/utils/providers'
 
+const EMPTY_TEST_MODEL_IDS: readonly string[] = []
+
 interface ProviderDetailHeaderProps {
   provider: ProviderWithName
   health: ProviderHealthSummary | null
   onEdit: () => void
   onDelete: () => void
-  onTestConnection: () => void
+  /** Run the connection test, optionally against a specific model id. */
+  onTestConnection: (model?: string) => void
   testingConnection: boolean
+  /** Model ids selectable for the connection test (empty hides the picker). */
+  testModelIds?: readonly string[]
+  testModel?: string
+  onTestModelChange?: (model: string) => void
   onRefresh?: () => void
   refreshing?: boolean
   onPullModel?: () => void
@@ -59,8 +66,11 @@ function ProviderTitleMeta({
 interface ProviderHeaderActionsProps {
   onEdit: () => void
   onDelete: () => void
-  onTestConnection: () => void
+  onTestConnection: (model?: string) => void
   testingConnection: boolean
+  testModelIds: readonly string[]
+  testModel: string
+  onTestModelChange: (model: string) => void
   onRefresh?: (() => void) | undefined
   refreshing: boolean
   onPullModel?: (() => void) | undefined
@@ -72,6 +82,9 @@ function ProviderHeaderActions({
   onDelete,
   onTestConnection,
   testingConnection,
+  testModelIds,
+  testModel,
+  onTestModelChange,
   onRefresh,
   refreshing,
   onPullModel,
@@ -91,7 +104,28 @@ function ProviderHeaderActions({
           Pull Model
         </Button>
       )}
-      <Button variant="outline" size="sm" onClick={onTestConnection} disabled={testingConnection}>
+      {testModelIds.length > 0 && (
+        <select
+          value={testModel}
+          onChange={(e) => onTestModelChange(e.target.value)}
+          aria-label="Model to test"
+          title="Model used for the connection test"
+          className="h-8 max-w-[12rem] rounded-md border border-border bg-card px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <option value="">Auto (smallest)</option>
+          {testModelIds.map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+        </select>
+      )}
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => onTestConnection(testModel || undefined)}
+        disabled={testingConnection}
+      >
         <Wifi className="size-3.5 mr-1.5" />
         {testingConnection ? 'Testing...' : 'Test'}
       </Button>
@@ -114,6 +148,9 @@ export function ProviderDetailHeader({
   onDelete,
   onTestConnection,
   testingConnection,
+  testModelIds = EMPTY_TEST_MODEL_IDS,
+  testModel = '',
+  onTestModelChange,
   onRefresh,
   refreshing = false,
   onPullModel,
@@ -136,6 +173,9 @@ export function ProviderDetailHeader({
           onDelete={onDelete}
           onTestConnection={onTestConnection}
           testingConnection={testingConnection}
+          testModelIds={testModelIds}
+          testModel={testModel}
+          onTestModelChange={onTestModelChange ?? (() => undefined)}
           onRefresh={onRefresh}
           refreshing={refreshing}
           onPullModel={onPullModel}

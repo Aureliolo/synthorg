@@ -34,11 +34,41 @@ from synthorg.integrations.mcp_catalog.installations import (
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
+    MCP_BRIDGE_RELOAD_FAILED,
+    MCP_BRIDGE_RELOADED,
     MCP_SERVER_INSTALL_FAILED,
     MCP_SERVER_UNINSTALL_NOOP,
 )
 
 logger = get_logger(__name__)
+
+
+async def _reload_bridge_best_effort(app_state: AppState, *, action: str) -> None:
+    """Hot-reload the agent runtime so an MCP catalog change goes live now.
+
+    The install/uninstall row is already persisted, so a reload failure must
+    NOT fail the request: the change still applies on the next natural runtime
+    rebuild. We rebuild + hot-swap proactively (no manual reload / restart) and
+    log the outcome.
+    """
+    from synthorg.core.critical_errors import reraise_critical  # noqa: PLC0415
+    from synthorg.workers.runtime_builder import (  # noqa: PLC0415
+        reload_runtime_services,
+    )
+
+    try:
+        await reload_runtime_services(app_state)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            MCP_BRIDGE_RELOAD_FAILED,
+            action=action,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return
+    logger.info(MCP_BRIDGE_RELOADED, action=action)
+
 
 # Page size for draining the installed-MCP-entries repo before
 # cursor-paginating the response. Larger pages mean fewer round-trips
@@ -341,8 +371,9 @@ class MCPCatalogController(Controller):
 
         Validates the entry exists, that the bound connection (if
         required) matches the entry's ``required_connection_type``,
-        and persists the row so the MCP bridge picks it up on next
-        reload. Re-installing an existing entry is idempotent.
+        persists the row, and hot-reloads the agent runtime so the
+        server's tools go live immediately (best-effort; no restart).
+        Re-installing an existing entry is idempotent.
 
         Returns:
             ``ApiResponse[InstallEntryResponse]`` instance.
@@ -391,6 +422,11 @@ class MCPCatalogController(Controller):
         # NB: we intentionally don't re-log ``MCP_SERVER_INSTALLED``
         # here - the repository's ``save()`` is the canonical audit
         # point and logs the same event with a ``backend`` tag.
+
+        # Hot-reload the runtime so the freshly installed server's tools go
+        # live without a manual reload / restart (best-effort).
+        await _reload_bridge_best_effort(app_state, action="install")
+
         return ApiResponse(
             data=InstallEntryResponse(
                 status="installed",
@@ -441,4 +477,8 @@ class MCPCatalogController(Controller):
                 MCP_SERVER_UNINSTALL_NOOP,
                 catalog_entry_id=entry_id,
             )
+        else:
+            # Hot-reload the runtime so the removed server's tools stop being
+            # offered without a manual reload / restart (best-effort).
+            await _reload_bridge_best_effort(app_state, action="uninstall")
         return ApiResponse(data=None)

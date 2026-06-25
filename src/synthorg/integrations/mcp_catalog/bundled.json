@@ -21,16 +21,6 @@
       "tags": ["communication", "team"]
     },
     {
-      "id": "filesystem-mcp",
-      "name": "Filesystem",
-      "description": "Read, write, and manage files on the local filesystem",
-      "npm_package": "@modelcontextprotocol/server-filesystem",
-      "required_connection_type": null,
-      "transport": "stdio",
-      "capabilities": ["file_read", "file_write", "directory_listing"],
-      "tags": ["filesystem", "local"]
-    },
-    {
       "id": "postgres-mcp",
       "name": "PostgreSQL",
       "description": "Query and manage PostgreSQL databases",
@@ -59,26 +49,6 @@
       "transport": "stdio",
       "capabilities": ["web_search", "local_search"],
       "tags": ["search", "web"]
-    },
-    {
-      "id": "puppeteer-mcp",
-      "name": "Puppeteer",
-      "description": "Browser automation for web scraping and testing",
-      "npm_package": "@modelcontextprotocol/server-puppeteer",
-      "required_connection_type": null,
-      "transport": "stdio",
-      "capabilities": ["browser_automation", "screenshot", "navigation"],
-      "tags": ["browser", "automation", "testing"]
-    },
-    {
-      "id": "memory-mcp",
-      "name": "Memory",
-      "description": "Persistent memory and knowledge graph for agents",
-      "npm_package": "@modelcontextprotocol/server-memory",
-      "required_connection_type": null,
-      "transport": "stdio",
-      "capabilities": ["memory_store", "memory_retrieve", "knowledge_graph"],
-      "tags": ["memory", "knowledge"]
     }
   ]
 }

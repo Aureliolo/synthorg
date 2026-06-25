@@ -113,10 +113,39 @@ async def test_structural_blob_field_survives_overlay(
 async def test_overlay_couples_toolsmith_to_tool_creation(
     settings_service: SettingsService,
 ) -> None:
-    """``tool_creation_enabled`` keeps ``toolsmith.enabled`` coherent."""
+    """Tool creation with an allowlist enables a coherent toolsmith config."""
     await settings_service.set("self_improvement", "tool_creation_enabled", "true")
+    await settings_service.set(
+        "self_improvement",
+        "tool_creation_allowed_capabilities",
+        '["docs:summarize"]',
+    )
     overrides = await overlay_feature_settings(settings_service, {})
     assert overrides["tool_creation_enabled"] is True
     toolsmith = overrides["toolsmith"]
     assert isinstance(toolsmith, dict)
     assert toolsmith["enabled"] is True
+    assert toolsmith["allowed_capabilities"] == ["docs:summarize"]
+
+
+async def test_tool_creation_without_allowlist_is_held_off(
+    settings_service: SettingsService,
+) -> None:
+    """Enabling tool creation without an allowlist holds it off, not crashes.
+
+    An empty allowlist is deny-all (the toolsmith validator rejects it), so a
+    bad toolsmith sub-config must not sink the whole self-improvement posture:
+    tool creation is downgraded to off while the master enable survives.
+    """
+    await settings_service.set("self_improvement", "enabled", "true")
+    await settings_service.set("self_improvement", "tool_creation_enabled", "true")
+    overrides = await overlay_feature_settings(settings_service, {})
+    assert overrides["enabled"] is True
+    assert overrides["tool_creation_enabled"] is False
+    toolsmith = overrides["toolsmith"]
+    assert isinstance(toolsmith, dict)
+    assert toolsmith["enabled"] is False
+    # The full config must validate (no exception) with the held-off toolsmith.
+    config = await load_self_improvement_config(settings_service)
+    assert config.enabled is True
+    assert config.tool_creation_enabled is False

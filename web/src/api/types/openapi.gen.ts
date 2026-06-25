@@ -876,6 +876,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/auth/dev-login": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** DEV ONLY: password-free login as the existing admin */
+        readonly post: operations["ApiV1AuthDevLoginDevLogin"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/auth/login": {
         readonly parameters: {
             readonly query?: never;
@@ -6710,6 +6727,19 @@ export type components = {
              */
             readonly success: boolean;
         };
+        /** ApiResponse[Forecast] */
+        readonly ApiResponse_Forecast_: {
+            readonly data: components["schemas"]["Forecast"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
         /** ApiResponse[ForecastResponse] */
         readonly ApiResponse_ForecastResponse_: {
             readonly data: components["schemas"]["ForecastResponse"] | null;
@@ -6986,6 +7016,19 @@ export type components = {
         /** ApiResponse[OverviewMetrics] */
         readonly ApiResponse_OverviewMetrics_: {
             readonly data: components["schemas"]["OverviewMetrics"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[ParetoFrontier] */
+        readonly ApiResponse_ParetoFrontier_: {
+            readonly data: components["schemas"]["ParetoFrontier"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /**
@@ -9737,6 +9780,11 @@ export type components = {
             readonly daily_summary: readonly components["schemas"]["DailySummary"][];
             /** @default [] */
             readonly data: readonly components["schemas"]["CostRecord"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             readonly pagination: components["schemas"]["PaginationMeta"];
@@ -10017,6 +10065,7 @@ export type components = {
             readonly custom_header_value?: string | null;
             /** @default litellm */
             readonly driver: string;
+            readonly keep_alive?: string | null;
             readonly litellm_provider?: string | null;
             /** @default [] */
             readonly models: readonly components["schemas"]["ProviderModelConfig"][];
@@ -12523,6 +12572,8 @@ export type components = {
              */
             readonly release_date: string | null;
             /** @default false */
+            readonly supports_embeddings: boolean;
+            /** @default false */
             readonly supports_reasoning: boolean;
             /** @default false */
             readonly supports_tools: boolean;
@@ -14929,6 +14980,16 @@ export type components = {
             /** @description Staleness marker when the id left the live catalogue */
             readonly stale: components["schemas"]["ModelStaleness"] | null;
             /**
+             * @description Is an embedding model (vector output, not chat)
+             * @default false
+             */
+            readonly supports_embeddings: boolean;
+            /**
+             * @description Exposes extended reasoning (thinking/o1-style models)
+             * @default false
+             */
+            readonly supports_reasoning: boolean;
+            /**
              * @description Supports streaming responses
              * @default true
              */
@@ -14957,6 +15018,7 @@ export type components = {
             readonly has_oauth_credentials: boolean;
             /** @default false */
             readonly has_subscription_token: boolean;
+            readonly keep_alive: string | null;
             readonly litellm_provider: string | null;
             readonly models: readonly components["schemas"]["ProviderModelConfig"][];
             readonly name: string | null;
@@ -17543,6 +17605,7 @@ export type components = {
             readonly custom_header_name?: string | null;
             readonly custom_header_value?: string | null;
             readonly driver?: string | null;
+            readonly keep_alive?: string | null;
             readonly litellm_provider?: string | null;
             readonly models?: readonly components["schemas"]["ProviderModelConfig"][] | null;
             readonly oauth_client_id?: string | null;
@@ -20592,6 +20655,29 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
+    readonly ApiV1AuthDevLoginDevLogin: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_CookieSessionResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 500: components["responses"]["InternalError"];
+        };
+    };
     readonly ApiV1AuthLoginLogin: {
         readonly parameters: {
             readonly query?: never;
@@ -21064,7 +21150,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["Forecast"];
+                    readonly "application/json": components["schemas"]["ApiResponse_Forecast_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -21094,7 +21180,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["Forecast"];
+                    readonly "application/json": components["schemas"]["ApiResponse_Forecast_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -21128,7 +21214,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["Forecast"];
+                    readonly "application/json": components["schemas"]["ApiResponse_Forecast_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -21163,7 +21249,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["Forecast"];
+                    readonly "application/json": components["schemas"]["ApiResponse_Forecast_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -21198,7 +21284,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["Forecast"];
+                    readonly "application/json": components["schemas"]["ApiResponse_Forecast_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -21226,7 +21312,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ParetoFrontier"];
+                    readonly "application/json": components["schemas"]["ApiResponse_ParetoFrontier_"];
                 };
             };
             readonly 401: components["responses"]["Unauthorized"];

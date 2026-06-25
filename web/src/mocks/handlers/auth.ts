@@ -1,6 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import type {
   changePassword,
+  devLogin,
   getMe,
   getWsTicket,
   listSessions,
@@ -55,6 +56,10 @@ export const authHandlers = [
   http.post('/api/v1/auth/login', () => {
     document.cookie = 'csrf_token=mock-csrf-token; path=/api'
     return HttpResponse.json(successFor<typeof login>(mockAuthResponse))
+  }),
+  http.post('/api/v1/auth/dev-login', () => {
+    document.cookie = 'csrf_token=mock-csrf-token; path=/api'
+    return HttpResponse.json(successFor<typeof devLogin>(mockAuthResponse))
   }),
   http.post('/api/v1/auth/logout', () => HttpResponse.json(voidSuccess())),
   http.post('/api/v1/auth/change-password', () =>

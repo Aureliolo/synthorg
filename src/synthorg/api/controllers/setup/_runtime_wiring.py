@@ -12,7 +12,6 @@ import asyncio
 from synthorg.api.state import AppState
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.engine.workspace.state import agent_workspace_root_of
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import (
     get_logger,
@@ -203,15 +202,15 @@ async def _rebuild_runtime_services(app_state: AppState) -> None:
 
     try:
         from synthorg.workers.runtime_builder import (  # noqa: PLC0415
-            build_runtime_services,
+            reload_runtime_services,
         )
 
         # Retry cost-dial wiring BEFORE building runtime services: the
         # AgentEngine snapshots the cost forecast repo at build time, so
         # wiring afterwards would leave the rebuilt engine without the
         # forecast repo (no halt-context stamping) until yet another
-        # rebuild. The entry-adapter rebuild below then threads the live
-        # forecast_gate through.
+        # rebuild. ``reload_runtime_services`` then threads the live
+        # forecast_gate through the rebuilt entry adapters.
         forecaster = app_state.slice(BudgetStateSlice).cost_forecaster
         if (
             app_state.slice(PersistenceStateSlice).backend is not None
@@ -222,26 +221,7 @@ async def _rebuild_runtime_services(app_state: AppState) -> None:
             )
 
             _try_wire_cost_dial(app_state)
-        services = await build_runtime_services(
-            app_state,
-            workspace_root=agent_workspace_root_of(app_state),
-        )
-        app_state.swap_worker_execution_service(
-            services.worker_execution_service,
-        )
-        if services.coordinator is not None:
-            app_state.swap_coordinator(services.coordinator)
-        if services.work_pipeline is not None:
-            app_state.swap_work_pipeline(services.work_pipeline)
-        from synthorg.engine.pipeline.entry.boot import (  # noqa: PLC0415
-            wire_real_intake_entry,
-            wire_real_objective_entry,
-            wire_real_task_board_entry,
-        )
-
-        await wire_real_intake_entry(app_state, hot_swap=True)
-        await wire_real_objective_entry(app_state, hot_swap=True)
-        await wire_real_task_board_entry(app_state, hot_swap=True)
+        await reload_runtime_services(app_state)
     except MemoryError, RecursionError:
         raise
     except RuntimeServicesBuildError:

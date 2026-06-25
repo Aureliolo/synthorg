@@ -11,7 +11,7 @@ too. Split out of ``api.lifecycle`` to keep each file under the size budget.
 import asyncio
 
 from synthorg.api.api_core_state import ApiCoreStateSlice, auth_service_of
-from synthorg.api.auth.secret import resolve_jwt_secret
+from synthorg.api.auth.secret import resolve_dev_auth_bypass, resolve_jwt_secret
 from synthorg.api.auth.service import AuthService
 from synthorg.api.auth.system_user import ensure_system_user
 from synthorg.api.bus_bridge import MessageBusBridge
@@ -70,9 +70,19 @@ async def _init_persistence(
     else:
         try:
             secret = resolve_jwt_secret()
+            dev_auth_bypass = resolve_dev_auth_bypass()
+            if dev_auth_bypass:
+                logger.warning(
+                    API_APP_STARTUP,
+                    note=(
+                        "SECURITY: dev auth bypass ENABLED -- POST /auth/dev-login"
+                        " mints an admin session with NO password. NEVER enable"
+                        " SYNTHORG_DEV_AUTH_BYPASS in production."
+                    ),
+                )
             auth_config = app_state.config.api.auth.with_secret(
                 secret,
-            )
+            ).model_copy(update={"dev_auth_bypass": dev_auth_bypass})
             app_state.wire(ApiCoreStateSlice, auth_service=AuthService(auth_config))
         except Exception as exc:
             logger.warning(

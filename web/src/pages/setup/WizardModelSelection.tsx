@@ -5,7 +5,6 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { SectionCard } from '@/components/ui/section-card'
 import { SelectField, type SelectOption } from '@/components/ui/select-field'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ToggleField } from '@/components/ui/toggle-field'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
 import type { SettingEntry, SettingNamespace } from '@/api/types/settings'
@@ -57,15 +56,11 @@ const PICKERS: readonly PickerSpec[] = [
 ]
 
 type ModelChoices = Record<ModelKey, string>
-interface ToggleChoices {
-  research: boolean
-  knowledge: boolean
-}
 
 function toOptions(ids: readonly string[] | undefined): readonly SelectOption[] {
   // A partial/garbled recommendations payload can leave a candidate list
   // absent at runtime even though the type marks it required; degrade to an
-  // empty picker rather than crashing the whole Agents step.
+  // empty picker rather than crashing the whole step.
   return (ids ?? []).map((id) => ({ value: id, label: id }))
 }
 
@@ -75,18 +70,6 @@ function valueOf(entries: readonly SettingEntry[], key: string): string | undefi
   // the recommendation still wins and the select never renders a blank option.
   const value = found?.value.trim()
   return value ? value : undefined
-}
-
-// Resolve a flag, falling back to ``fallback`` only when the entry is
-// absent. The fallback is explicit at each call site (never an implicit
-// "true") so this helper is safe to reuse for an off-by-default flag.
-function boolOf(
-  entries: readonly SettingEntry[],
-  key: string,
-  fallback: boolean,
-): boolean {
-  const found = entries.find((entry) => entry.definition.key === key)
-  return found ? found.value === 'true' : fallback
 }
 
 function candidatesFor(
@@ -101,7 +84,6 @@ interface NamespaceEntries {
   memory: readonly SettingEntry[]
   research: readonly SettingEntry[]
   chief_of_staff: readonly SettingEntry[]
-  knowledge: readonly SettingEntry[]
 }
 
 // Prefer a persisted operator choice, then the backend recommendation,
@@ -116,32 +98,24 @@ function pickModel(
 function buildChoices(
   recs: SetupModelRecommendationsResponse,
   ns: NamespaceEntries,
-): { models: ModelChoices; toggles: ToggleChoices } {
+): ModelChoices {
   return {
-    models: {
-      decomposition: pickModel(
-        valueOf(ns.coordination, 'decomposition_model'),
-        recs.decomposition_recommended,
-      ),
-      embedding: pickModel(
-        valueOf(ns.memory, 'embedder_model'),
-        recs.embedding_recommended,
-      ),
-      research: pickModel(valueOf(ns.research, 'model'), recs.research_recommended),
-      cos: pickModel(valueOf(ns.chief_of_staff, 'chat_model'), recs.cos_recommended),
-    },
-    toggles: {
-      // Both research + knowledge are on by default (settings ship "true").
-      research: boolOf(ns.research, 'enabled', true),
-      knowledge: boolOf(ns.knowledge, 'enabled', true),
-    },
+    decomposition: pickModel(
+      valueOf(ns.coordination, 'decomposition_model'),
+      recs.decomposition_recommended,
+    ),
+    embedding: pickModel(
+      valueOf(ns.memory, 'embedder_model'),
+      recs.embedding_recommended,
+    ),
+    research: pickModel(valueOf(ns.research, 'model'), recs.research_recommended),
+    cos: pickModel(valueOf(ns.chief_of_staff, 'chat_model'), recs.cos_recommended),
   }
 }
 
 interface LoadHandlers {
   setRecs: (value: SetupModelRecommendationsResponse) => void
   setModels: (value: ModelChoices) => void
-  setToggles: (value: ToggleChoices) => void
   setError: (value: string) => void
   setLoading: (value: boolean) => void
 }
@@ -151,26 +125,19 @@ async function loadModelSelection(
   handlers: LoadHandlers,
 ): Promise<void> {
   try {
-    const [recs, coordination, memory, research, chief_of_staff, knowledge] =
+    const [recs, coordination, memory, research, chief_of_staff] =
       await Promise.all([
         getModelRecommendations(),
         getNamespaceSettings('coordination'),
         getNamespaceSettings('memory'),
         getNamespaceSettings('research'),
         getNamespaceSettings('chief_of_staff'),
-        getNamespaceSettings('knowledge'),
       ])
     if (isCancelled()) return
     handlers.setRecs(recs)
-    const { models, toggles } = buildChoices(recs, {
-      coordination,
-      memory,
-      research,
-      chief_of_staff,
-      knowledge,
-    })
-    handlers.setModels(models)
-    handlers.setToggles(toggles)
+    handlers.setModels(
+      buildChoices(recs, { coordination, memory, research, chief_of_staff }),
+    )
   } catch (caught) {
     if (!isCancelled()) handlers.setError(getErrorMessage(caught))
   } finally {
@@ -188,52 +155,36 @@ const EMPTY_MODELS: ModelChoices = {
 interface ModelSelectionState {
   recs: SetupModelRecommendationsResponse | null
   models: ModelChoices
-  toggles: ToggleChoices
   loading: boolean
   error: string | null
   selectModel: (spec: PickerSpec, value: string) => void
-  toggleFeature: (
-    name: keyof ToggleChoices,
-    namespace: SettingNamespace,
-    value: boolean,
-  ) => void
 }
 
 // Per-key request counters: only the latest in-flight write for a given key is
 // allowed to roll back on failure, so a slow earlier request that fails after a
 // faster later one succeeded cannot clobber the newer value.
 function useRequestIdRefs() {
-  const modelRequestIdsRef = useRef<Record<ModelKey, number>>({
+  return useRef<Record<ModelKey, number>>({
     decomposition: 0,
     embedding: 0,
     research: 0,
     cos: 0,
   })
-  const toggleRequestIdsRef = useRef<Record<keyof ToggleChoices, number>>({
-    research: 0,
-    knowledge: 0,
-  })
-  return { modelRequestIdsRef, toggleRequestIdsRef }
 }
 
 function useWizardModelSelection(): ModelSelectionState {
   const [recs, setRecs] = useState<SetupModelRecommendationsResponse | null>(null)
   const [models, setModels] = useState<ModelChoices>(EMPTY_MODELS)
-  const [toggles, setToggles] = useState<ToggleChoices>({
-    research: true,
-    knowledge: true,
-  })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const addToast = useToastStore((s) => s.add)
-  const { modelRequestIdsRef, toggleRequestIdsRef } = useRequestIdRefs()
+  const modelRequestIdsRef = useRequestIdRefs()
 
   useEffect(() => {
     let cancelled = false
     void loadModelSelection(() => cancelled, {
       setRecs,
       setModels,
-      setToggles,
       setError,
       setLoading,
     })
@@ -270,48 +221,26 @@ function useWizardModelSelection(): ModelSelectionState {
     [addToast, modelRequestIdsRef],
   )
 
-  const toggleFeature = useCallback(
-    (name: keyof ToggleChoices, namespace: SettingNamespace, value: boolean) => {
-      // Optimistic write; restore the prior toggle state if the API call fails.
-      let previous = false
-      const requestId = toggleRequestIdsRef.current[name] + 1
-      toggleRequestIdsRef.current[name] = requestId
-      setToggles((prev) => {
-        previous = prev[name]
-        return { ...prev, [name]: value }
-      })
-      void updateSetting(namespace, 'enabled', {
-        value: value ? 'true' : 'false',
-      }).catch((caught: unknown) => {
-        // Superseded by a newer toggle write: suppress both the rollback and the
-        // stale error toast so the newer write owns the outcome.
-        if (toggleRequestIdsRef.current[name] !== requestId) return
-        setToggles((prev) => ({ ...prev, [name]: previous }))
-        addToast({
-          variant: 'error',
-          title: `Could not save the ${name} setting`,
-          description: getErrorMessage(caught),
-        })
-      })
-    },
-    [addToast, toggleRequestIdsRef],
-  )
+  return { recs, models, loading, error, selectModel }
+}
 
-  return { recs, models, toggles, loading, error, selectModel, toggleFeature }
+export interface WizardModelSelectionProps {
+  /** Hide the Research model picker when research is disabled. The toggle that
+   *  drives this lives in the Capabilities step's Knowledge & research group. */
+  researchEnabled: boolean
 }
 
 /**
- * Per-feature model pickers for the wizard Agents step.
+ * Per-feature model-default pickers for the wizard Capabilities step.
  *
  * Surfaces the coordinator's decomposition model, the embedding model (which
- * powers memory + knowledge), the research model (with an enable toggle), and
- * the Chief-of-Staff model, plus a knowledge enable toggle. Each is prefilled
- * with a sensible recommendation and overridable from the catalogue; every
- * change writes straight through the settings API.
+ * powers memory + knowledge), the research model, and the Chief-of-Staff
+ * model. Each is prefilled with a sensible recommendation and overridable from
+ * the catalogue; every change writes straight through the settings API. The
+ * research picker is shown only while research is enabled.
  */
-export function WizardModelSelection() {
-  const { recs, models, toggles, loading, error, selectModel, toggleFeature } =
-    useWizardModelSelection()
+export function WizardModelSelection({ researchEnabled }: WizardModelSelectionProps) {
+  const { recs, models, loading, error, selectModel } = useWizardModelSelection()
 
   if (loading) {
     return <Skeleton className="h-40 w-full" />
@@ -331,7 +260,7 @@ export function WizardModelSelection() {
   }
 
   const visiblePickers = PICKERS.filter(
-    (spec) => spec.key !== 'research' || toggles.research,
+    (spec) => spec.key !== 'research' || researchEnabled,
   )
   return (
     <SectionCard title="Models">
@@ -340,25 +269,6 @@ export function WizardModelSelection() {
           Prefilled with our recommendations. Override any of them now or later
           in Settings.
         </p>
-
-        {/* Toggles first: the Research toggle gates the research picker below,
-            so it must sit above the control it shows or hides. */}
-        <ToggleField
-          label="Research"
-          description="Let agents run research briefs. Turn off to disable research."
-          checked={toggles.research}
-          onChange={(checked) => {
-            toggleFeature('research', 'research', checked)
-          }}
-        />
-        <ToggleField
-          label="Knowledge base"
-          description="Document ingestion + retrieval over the memory backend. Uses the embedding model above."
-          checked={toggles.knowledge}
-          onChange={(checked) => {
-            toggleFeature('knowledge', 'knowledge', checked)
-          }}
-        />
 
         {visiblePickers.map((spec) => (
           <SelectField

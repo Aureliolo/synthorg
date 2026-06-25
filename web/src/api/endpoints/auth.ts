@@ -20,6 +20,16 @@ export async function login(data: LoginRequest): Promise<AuthResponse> {
   return unwrap(response)
 }
 
+/**
+ * DEV ONLY: password-free login as the existing admin. The backend endpoint
+ * only exists when SYNTHORG_DEV_AUTH_BYPASS is set (404 otherwise), so this is
+ * safe to call unconditionally from the dev bypass path.
+ */
+export async function devLogin(): Promise<AuthResponse> {
+  const response = await apiClient.post<ApiResponse<AuthResponse>>('/auth/dev-login')
+  return unwrap(response)
+}
+
 export async function logout(): Promise<void> {
   const response = await apiClient.post<ApiResponse<null>>('/auth/logout')
   unwrapVoid(response)

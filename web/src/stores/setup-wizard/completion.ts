@@ -1,53 +1,13 @@
 import { completeSetup } from '@/api/endpoints/setup'
 import { createLogger } from '@/lib/logger'
-import { useThemeStore } from '@/stores/theme'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { DEFAULT_BUDGET } from './company'
 import { getStepOrder, initialStepsCompleted, initialStepsNeedRevalidation } from './navigation'
-import { DEFAULT_THEME } from './theme'
-import type { CompletionSlice, SliceCreator, ThemeSettings } from './types'
-
-/**
- * Mirror the wizard's collected theme into the persistent theme store.
- *
- * The wizard collects ``ThemeSettings`` (a narrower shape with no
- * typography axis); the dashboard-wide ``useThemeStore`` exposes
- * per-axis setters that apply the matching CSS classes to ``<html>``
- * and persist each axis to the backend ``appearance`` settings (the
- * theme is backend-owned, never stored client-side). We forward each
- * axis through the existing setters so users see the theme they
- * picked during setup the moment the wizard hands off to the dashboard.
- */
-function persistWizardTheme(settings: ThemeSettings): void {
-  const theme = useThemeStore.getState()
-  theme.setColorPalette(settings.palette)
-  theme.setDensity(settings.density)
-  theme.setAnimation(settings.animation)
-  theme.setSidebarMode(settings.sidebar)
-}
+import type { CompletionSlice, SliceCreator } from './types'
 
 const log = createLogger('setup-wizard:completion')
-
-/**
- * Apply the wizard theme, swallowing any failure into a returned warning.
- *
- * Returns ``null`` on success, or a human-readable warning string when the
- * theme store throws. The caller surfaces this as a ``completionWarning`` (not
- * a ``completionError``) because the backend completion already succeeded.
- */
-function applyWizardThemeSafely(settings: ThemeSettings): string | null {
-  try {
-    persistWizardTheme(settings)
-    return null
-  } catch (err) {
-    log.error('setup_wizard.theme_persist_failed', {
-      error: sanitizeForLog(getErrorMessage(err)),
-    })
-    return 'Your theme choices could not be applied. Set them in Settings > Appearance.'
-  }
-}
 
 /** Fresh state for all slices -- used by `reset()` to clear the wizard. */
 function getInitialState() {
@@ -110,15 +70,13 @@ function getInitialState() {
     providersMutationError: null,
     providersWarning: null,
 
-    themeSettings: { ...DEFAULT_THEME },
-
     completing: false,
     completionError: null,
     completionWarning: null,
   }
 }
 
-export const createCompletionSlice: SliceCreator<CompletionSlice> = (set, get) => ({
+export const createCompletionSlice: SliceCreator<CompletionSlice> = (set) => ({
   completing: false,
   completionError: null,
   completionWarning: null,
@@ -138,18 +96,12 @@ export const createCompletionSlice: SliceCreator<CompletionSlice> = (set, get) =
           ? (response.embedder_failure_reason
             ?? 'Embedder auto-selection did not pick a model. Configure one in Settings.')
           : null
-      // Forward the wizard's collected theme into the persistent theme store so
-      // the dashboard renders the chosen palette / density / animation / sidebar
-      // mode immediately after hand-off (the setters also persist each axis to
-      // the backend appearance settings). This is a best-effort side-effect:
-      // the backend has already persisted ``setup_complete=true``, so a theme
-      // store failure must NOT be reported as a completion failure (that would
-      // surface a Retry that re-POSTs /setup/complete and 409s). Degrade to a
-      // warning instead.
-      const themeWarning = applyWizardThemeSafely(get().themeSettings)
+      // Theme is persisted live by the Theme step (write-through to the
+      // ``appearance.*`` settings as the operator picks), so completion has no
+      // theme work to do; only the embedder warning can surface here.
       set({
         completing: false,
-        completionWarning: embedderWarning ?? themeWarning,
+        completionWarning: embedderWarning,
       })
       log.debug('setup_wizard.completed', {
         duration_ms: Date.now() - startedAt,

@@ -10,6 +10,10 @@ export interface AgentCardProps {
   role: string
   department: string
   status: AgentRuntimeStatus
+  /** Resolved model identifier (e.g. "example-large-001"). */
+  model?: string | undefined
+  /** Resolved capability tier. */
+  tier?: 'large' | 'medium' | 'small' | null | undefined
   currentTask?: string | undefined
   /** Human-readable (usually relative) timestamp text shown in the footer. */
   timestamp?: string | undefined
@@ -30,6 +34,8 @@ export function AgentCard({
   role,
   department,
   status,
+  model,
+  tier,
   currentTask,
   timestamp,
   timestampIso,
@@ -68,7 +74,18 @@ export function AgentCard({
         <div className="flex items-center gap-1 text-xs">
           <span className="text-muted-foreground">Dept:</span>
           <span className="text-text-secondary">{department}</span>
+          {tier && (
+            <span className="ml-auto rounded-md border border-border bg-surface px-1.5 py-0.5 text-micro uppercase tracking-wide text-text-secondary">
+              {tier}
+            </span>
+          )}
         </div>
+        {model && (
+          <div className="flex items-center gap-1 text-xs">
+            <span className="text-muted-foreground">Model:</span>
+            <span className="truncate font-mono text-text-secondary">{model}</span>
+          </div>
+        )}
         {currentTask && (
           <div className="flex items-center gap-1 text-xs">
             <span className="text-muted-foreground">Task:</span>

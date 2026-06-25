@@ -5,21 +5,19 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { SectionCard } from '@/components/ui/section-card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ToggleField } from '@/components/ui/toggle-field'
-import { RestartBadge } from '@/pages/settings/RestartBadge'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
 import { useClearStepRevalidationOnMount, useStepCompletionSync } from './_hooks'
+import { WizardModelSelection } from './WizardModelSelection'
 import type { SettingEntry, SettingNamespace } from '@/api/types/settings'
 
 // One capability toggle: a single boolean setting plus the copy that
-// explains the trade-off. ``restart`` rows persist immediately but apply
-// on the next restart (the service is built at boot).
+// explains the trade-off.
 interface CapabilityRow {
   namespace: SettingNamespace
   key: string
   label: string
   caption: string
-  restart?: boolean
 }
 
 interface CapabilityGroup {
@@ -54,7 +52,6 @@ const GROUPS: readonly CapabilityGroup[] = [
         key: 'routing_enabled',
         label: 'Concern routing',
         caption: 'Route each turn to the most-senior relevant role agent.',
-        restart: true,
       },
       {
         namespace: 'chief_of_staff',
@@ -68,26 +65,21 @@ const GROUPS: readonly CapabilityGroup[] = [
     title: 'Knowledge & research',
     caption: 'Ground work in documents and let agents research.',
     advanced: false,
-    // `research.enabled` / `knowledge.enabled` are intentionally surfaced here
-    // (as grouped capability toggles) AND in WizardModelSelection on the Agents
-    // step (where the research toggle gates its model picker). Both write the
-    // same backend setting and hydrate from it on mount; the backend is the
-    // single source of truth, so the overlap is a deliberate dual entry point,
-    // not divergent state.
+    // The Research toggle here also gates the Research model picker in the
+    // Models section above (same screen): turning research off hides that
+    // picker. ``knowledge.enabled`` drives the embedding-backed knowledge base.
     rows: [
       {
         namespace: 'research',
         key: 'enabled',
         label: 'Research',
         caption: 'Let agents run research briefs.',
-        restart: true,
       },
       {
         namespace: 'knowledge',
         key: 'enabled',
         label: 'Knowledge base',
         caption: 'Document ingestion + retrieval over the memory backend.',
-        restart: true,
       },
     ],
   },
@@ -100,22 +92,19 @@ const GROUPS: readonly CapabilityGroup[] = [
         namespace: 'self_improvement',
         key: 'enabled',
         label: 'Self-improvement',
-        caption: 'The system proposes changes to itself; a bad proposal can break a running org.',
-        restart: true,
+        caption: 'Proposes changes to itself for your review; never applies anything without your approval. Off because the proposal loop spends budget and adds items to triage.',
       },
       {
         namespace: 'self_improvement',
         key: 'tool_creation_enabled',
         label: 'Toolsmith',
         caption: 'Builds new tools on its own (requires a capability allowlist).',
-        restart: true,
       },
       {
         namespace: 'engine',
         key: 'evolution_enabled',
         label: 'Agent evolution',
         caption: 'Mutates agent identities every turn.',
-        restart: true,
       },
       {
         namespace: 'providers',
@@ -128,7 +117,6 @@ const GROUPS: readonly CapabilityGroup[] = [
         key: 'learning_enabled',
         label: 'Learning',
         caption: 'Tunes proposal confidence from past approvals in the background.',
-        restart: true,
       },
     ],
   },
@@ -142,7 +130,6 @@ const GROUPS: readonly CapabilityGroup[] = [
         key: 'enabled',
         label: 'External API access',
         caption: 'Lets agents call arbitrary external APIs (an SSRF / exfiltration surface).',
-        restart: true,
       },
     ],
   },
@@ -156,14 +143,12 @@ const GROUPS: readonly CapabilityGroup[] = [
         key: 'direct_mcp_enabled',
         label: 'Direct MCP acting',
         caption: 'A chat instruction drives a real action under the agent trust level.',
-        restart: true,
       },
       {
         namespace: 'chief_of_staff',
         key: 'invite_enabled',
         label: 'Agent invite',
         caption: 'Agents pull other agents into a chat on their own (gated by your consent).',
-        restart: true,
       },
     ],
   },
@@ -290,17 +275,14 @@ function CapabilityRowView({
   onToggle: (row: CapabilityRow, value: boolean) => void
 }) {
   return (
-    <div className="flex items-start justify-between gap-grid-gap">
-      <ToggleField
-        label={row.label}
-        description={row.caption}
-        checked={checked}
-        onChange={(value) => {
-          onToggle(row, value)
-        }}
-      />
-      {row.restart === true && <RestartBadge className="mt-1 shrink-0" />}
-    </div>
+    <ToggleField
+      label={row.label}
+      description={row.caption}
+      checked={checked}
+      onChange={(value) => {
+        onToggle(row, value)
+      }}
+    />
   )
 }
 
@@ -365,7 +347,8 @@ function CapabilityGroupView({
  * network egress, acts-on-your-behalf) are collapsed and off. Clicking
  * Next yields the sane defaults; every toggle is also in dashboard
  * Settings afterwards. Each change writes straight through the settings
- * API; rows marked with a restart badge apply on the next restart.
+ * API. The Models section at the top carries the per-feature model
+ * defaults (the Research picker is shown only while research is enabled).
  */
 export function CapabilitiesStep() {
   const { values, loading, error, toggle } = useCapabilities()
@@ -384,6 +367,8 @@ export function CapabilitiesStep() {
           Settings later, so you can change your mind any time.
         </p>
       </div>
+
+      <WizardModelSelection researchEnabled={values['research/enabled'] ?? true} />
 
       {error !== null ? (
         <ErrorBanner

@@ -92,4 +92,37 @@ describe('CapabilitiesStep', () => {
       }),
     )
   })
+
+  it('renders the Models section with the per-feature model pickers', async () => {
+    server.use(chiefOfStaffOn())
+    renderWithRouter(<CapabilitiesStep />)
+    await waitFor(() =>
+      expect(screen.getByLabelText('Coordination model')).toBeInTheDocument(),
+    )
+    expect(screen.getByLabelText('Embedding model')).toBeInTheDocument()
+    expect(screen.getByLabelText('Chief of Staff model')).toBeInTheDocument()
+  })
+
+  it('does not show restart badges in the wizard', async () => {
+    server.use(chiefOfStaffOn())
+    renderWithRouter(<CapabilitiesStep />)
+    await waitFor(() =>
+      expect(screen.getByRole('switch', { name: 'Research' })).toBeInTheDocument(),
+    )
+    expect(screen.queryByText('Restart')).not.toBeInTheDocument()
+  })
+
+  it('gates the Research model picker on the Research toggle', async () => {
+    server.use(chiefOfStaffOn())
+    renderWithRouter(<CapabilitiesStep />)
+    // Research is on by default, so its model picker is shown.
+    await waitFor(() =>
+      expect(screen.getByLabelText('Research model')).toBeInTheDocument(),
+    )
+    // Turning research off hides the picker on the same screen.
+    fireEvent.click(screen.getByRole('switch', { name: 'Research' }))
+    await waitFor(() =>
+      expect(screen.queryByLabelText('Research model')).not.toBeInTheDocument(),
+    )
+  })
 })

@@ -1,24 +1,30 @@
-import { useSetupWizardStore } from '@/stores/setup-wizard'
-import type { ThemeSettings } from '@/stores/setup-wizard'
+import { useEffect } from 'react'
 import { cn } from '@/lib/utils'
+import { useThemeStore } from '@/stores/theme'
+import type {
+  AnimationPreset,
+  ColorPalette,
+  Density,
+  SidebarMode,
+} from '@/stores/theme'
 import { ThemePreview } from './ThemePreview'
 import { useStepCompletionSync } from './_hooks'
 
-interface OptionGroupProps<K extends keyof ThemeSettings> {
+interface OptionGroupProps<V extends string> {
   label: string
-  settingKey: K
-  options: readonly { value: ThemeSettings[K]; label: string; description: string }[]
-  current: ThemeSettings[K]
-  onChange: (key: K, value: ThemeSettings[K]) => void
+  name: string
+  options: readonly { value: V; label: string; description: string }[]
+  current: V
+  onSelect: (value: V) => void
 }
 
-function OptionGroup<K extends keyof ThemeSettings>({
+function OptionGroup<V extends string>({
   label,
-  settingKey,
+  name,
   options,
   current,
-  onChange,
-}: OptionGroupProps<K>) {
+  onSelect,
+}: OptionGroupProps<V>) {
   return (
     <fieldset className="space-y-2">
       <legend className="text-sm font-semibold text-foreground">{label}</legend>
@@ -38,10 +44,10 @@ function OptionGroup<K extends keyof ThemeSettings>({
           >
             <input
               type="radio"
-              name={settingKey}
+              name={name}
               value={opt.value}
               checked={current === opt.value}
-              onChange={() => onChange(settingKey, opt.value)}
+              onChange={() => onSelect(opt.value)}
               className="mt-0.5 accent-accent"
             />
             <div>
@@ -55,47 +61,65 @@ function OptionGroup<K extends keyof ThemeSettings>({
   )
 }
 
-const PALETTE_OPTIONS = [
-  { value: 'warm-ops' as const, label: 'Warm Ops', description: 'Warm soft blue accent. The default.' },
-  { value: 'ice-station' as const, label: 'Ice Station', description: 'Cool emerald green tones.' },
-  { value: 'stealth' as const, label: 'Stealth', description: 'Muted purple, low contrast.' },
-  { value: 'signal' as const, label: 'Signal', description: 'Warm orange, high energy.' },
-  { value: 'neon' as const, label: 'Neon', description: 'Vibrant cyan, deep blacks.' },
+const PALETTE_OPTIONS: readonly { value: ColorPalette; label: string; description: string }[] = [
+  { value: 'warm-ops', label: 'Warm Ops', description: 'Warm soft blue accent. The default.' },
+  { value: 'ice-station', label: 'Ice Station', description: 'Cool emerald green tones.' },
+  { value: 'stealth', label: 'Stealth', description: 'Muted purple, low contrast.' },
+  { value: 'signal', label: 'Signal', description: 'Warm orange, high energy.' },
+  { value: 'neon', label: 'Neon', description: 'Vibrant cyan, deep blacks.' },
 ]
 
-const DENSITY_OPTIONS = [
-  { value: 'dense' as const, label: 'Dense', description: '12px padding, tight gaps. For power users.' },
-  { value: 'balanced' as const, label: 'Balanced', description: '16px padding. Recommended for most users.' },
-  { value: 'sparse' as const, label: 'Sparse', description: '20px padding, relaxed layout.' },
+const DENSITY_OPTIONS: readonly { value: Density; label: string; description: string }[] = [
+  { value: 'dense', label: 'Dense', description: '12px padding, tight gaps. For power users.' },
+  { value: 'balanced', label: 'Balanced', description: '16px padding. Recommended for most users.' },
+  { value: 'sparse', label: 'Sparse', description: '20px padding, relaxed layout.' },
 ]
 
-const ANIMATION_OPTIONS = [
-  { value: 'minimal' as const, label: 'Minimal', description: 'Quick fades only, subtle transitions.' },
-  { value: 'status-driven' as const, label: 'Status-driven', description: 'Only changed elements animate. Smart and efficient.' },
-  { value: 'spring' as const, label: 'Spring', description: 'Playful spring physics, bouncy feedback.' },
-  { value: 'instant' as const, label: 'Instant', description: 'No animations at all. Maximum performance.' },
+const ANIMATION_OPTIONS: readonly { value: AnimationPreset; label: string; description: string }[] = [
+  { value: 'minimal', label: 'Minimal', description: 'Quick fades only, no movement.' },
+  { value: 'status-driven', label: 'Status-driven', description: 'Only changed elements animate; the rest stay put.' },
+  { value: 'spring', label: 'Spring', description: 'Playful spring physics, bouncy feedback.' },
+  { value: 'instant', label: 'Instant', description: 'No animations at all. Maximum performance.' },
 ]
 
-const SIDEBAR_OPTIONS = [
-  { value: 'rail' as const, label: 'Rail', description: 'Always visible with icons and labels (220px).' },
-  { value: 'collapsible' as const, label: 'Collapsible', description: 'Expands and collapses, remembers your preference.' },
-  { value: 'hidden' as const, label: 'Hidden', description: 'Hamburger toggle only, full-width content.' },
-  { value: 'compact' as const, label: 'Compact', description: 'Icons prominent, text secondary (56px).' },
+const SIDEBAR_OPTIONS: readonly { value: SidebarMode; label: string; description: string }[] = [
+  { value: 'rail', label: 'Rail', description: 'Always visible with icons and labels (220px).' },
+  { value: 'collapsible', label: 'Collapsible', description: 'Expands and collapses, remembers your preference.' },
+  { value: 'hidden', label: 'Hidden', description: 'Hamburger toggle only, full-width content.' },
+  { value: 'compact', label: 'Compact', description: 'Icons prominent, text secondary (56px).' },
 ]
 
 export function ThemeStep() {
-  const themeSettings = useSetupWizardStore((s) => s.themeSettings)
-  const setThemeSetting = useSetupWizardStore((s) => s.setThemeSetting)
+  const colorPalette = useThemeStore((s) => s.colorPalette)
+  const density = useThemeStore((s) => s.density)
+  const animation = useThemeStore((s) => s.animation)
+  const sidebarMode = useThemeStore((s) => s.sidebarMode)
+  const typography = useThemeStore((s) => s.typography)
+  const setColorPalette = useThemeStore((s) => s.setColorPalette)
+  const setDensity = useThemeStore((s) => s.setDensity)
+  const setAnimation = useThemeStore((s) => s.setAnimation)
+  const setSidebarMode = useThemeStore((s) => s.setSidebarMode)
+  const hydrated = useThemeStore((s) => s.hydrated)
+  const hydrate = useThemeStore((s) => s.hydrate)
 
   // Theme step is always valid (every option has a sensible default).
   useStepCompletionSync('theme', true)
+
+  // The wizard renders outside the authed shell that normally hydrates the
+  // theme store, so hydrate here: a mid-wizard reload then shows the operator's
+  // already-persisted choices instead of snapping back to defaults. Each axis
+  // change writes straight through to ``appearance.*`` via the store setters,
+  // exactly like every other wizard step.
+  useEffect(() => {
+    if (!hydrated) void hydrate()
+  }, [hydrated, hydrate])
 
   return (
     <div className="space-y-section-gap">
       <div className="space-y-2">
         <h2 className="text-lg font-semibold text-foreground">Personalize Your Experience</h2>
         <p className="text-sm text-muted-foreground">
-          Choose how your dashboard looks and feels.
+          Choose how your dashboard looks and feels. Changes apply and save right away.
         </p>
       </div>
 
@@ -104,39 +128,49 @@ export function ThemeStep() {
         <div className="space-y-section-gap">
           <OptionGroup
             label="Color Palette"
-            settingKey="palette"
+            name="palette"
             options={PALETTE_OPTIONS}
-            current={themeSettings.palette}
-            onChange={setThemeSetting}
+            current={colorPalette}
+            onSelect={setColorPalette}
           />
           <OptionGroup
             label="Density"
-            settingKey="density"
+            name="density"
             options={DENSITY_OPTIONS}
-            current={themeSettings.density}
-            onChange={setThemeSetting}
+            current={density}
+            onSelect={setDensity}
           />
           <OptionGroup
             label="Animation"
-            settingKey="animation"
+            name="animation"
             options={ANIMATION_OPTIONS}
-            current={themeSettings.animation}
-            onChange={setThemeSetting}
+            current={animation}
+            onSelect={setAnimation}
           />
           <OptionGroup
             label="Sidebar"
-            settingKey="sidebar"
+            name="sidebar"
             options={SIDEBAR_OPTIONS}
-            current={themeSettings.sidebar}
-            onChange={setThemeSetting}
+            current={sidebarMode}
+            onSelect={setSidebarMode}
           />
         </div>
 
-        {/* Live preview (right). Sticky only on desktop; on a stacked
-            mobile layout it sits inline below the options. */}
-        <div className="lg:sticky lg:top-8">
+        {/* Live preview (right). Sticky on desktop so it follows while the
+            options scroll; ``self-start`` keeps the column content-height so
+            ``sticky`` has room to pin (a stretched grid item cannot stick). On
+            a stacked mobile layout it sits inline below the options. */}
+        <div className="lg:sticky lg:top-8 lg:self-start">
           <h3 className="mb-3 text-sm font-semibold text-foreground">Live Preview</h3>
-          <ThemePreview settings={themeSettings} />
+          <ThemePreview
+            settings={{
+              palette: colorPalette,
+              density,
+              animation,
+              sidebar: sidebarMode,
+              typography,
+            }}
+          />
         </div>
       </div>
     </div>

@@ -23,6 +23,7 @@ from synthorg.integrations.health.checks.generic_http import (
     GenericHttpHealthCheck,
 )
 from synthorg.integrations.health.checks.github import GitHubHealthCheck
+from synthorg.integrations.health.checks.llm_provider import LlmProviderHealthCheck
 from synthorg.integrations.health.checks.slack import SlackHealthCheck
 from synthorg.integrations.health.checks.smtp import SmtpHealthCheck
 from synthorg.integrations.health.protocol import ConnectionHealthCheck
@@ -48,6 +49,7 @@ _CHECK_REGISTRY: Final[MappingProxyType[ConnectionType, ConnectionHealthCheck]] 
                 ConnectionType.SMTP: SmtpHealthCheck(),
                 ConnectionType.DATABASE: DatabaseHealthCheck(),
                 ConnectionType.GENERIC_HTTP: GenericHttpHealthCheck(),
+                ConnectionType.LLM_PROVIDER: LlmProviderHealthCheck(),
             }
         )
     )

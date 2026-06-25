@@ -32,7 +32,9 @@ browser :3000  ->  Vite dev server (web/, HMR)  --/api proxy-->  :3001
 - `scripts/dev/backend_dev.mjs` - launches uvicorn on `127.0.0.1:3001`, reads
   the stopped backend container's env via `docker inspect` (secrets never hit
   the transcript), repoints `@postgres:5432` -> `:3002` and `nats:4222` ->
-  `:3003`, mirrors all output to a log file.
+  `:3003`, sets `SYNTHORG_DEV_AUTH_BYPASS=true` (enables the password-free
+  `/auth/dev-login` so the Vite frontend auto-logs-in as the existing admin),
+  mirrors all output to a log file.
 - `scripts/dev/run_api.py` - the uvicorn entrypoint pinned to a Windows
   `SelectorEventLoop` (psycopg's async pool cannot drive the default Proactor
   loop).
@@ -85,6 +87,13 @@ Default invocation (no args) does the full bring-up:
 
 - **Logs are the contract.** Always surface BOTH `C:/tmp/synthorg-backend.log`
   and `C:/tmp/synthorg-dev-server.log` so the user sees every error.
+- **Auth bypass (no login screen):** `backend_dev.mjs` sets
+  `SYNTHORG_DEV_AUTH_BYPASS=true`, which makes the backend expose the gated,
+  password-free `POST /auth/dev-login`; the Vite frontend (`web/.env`'s
+  `VITE_DEV_AUTH_BYPASS=true`) calls it on load and gets a REAL admin session
+  (backend auth stays fully enforced -- only this one endpoint is gated). An
+  admin account must already exist; if none does (fresh DB), the normal login /
+  account-setup screen shows. The flag is DEV-ONLY and never set in production.
 - **Auth across backend restarts:** the local backend reuses the container's
   stable `SYNTHORG_JWT_SECRET` and the shared Postgres, so a valid token's
   signature still verifies after a restart. Two hardening fixes keep you logged

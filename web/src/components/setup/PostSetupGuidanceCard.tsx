@@ -17,8 +17,8 @@ const NEXT_STEPS = [
   {
     icon: Wallet,
     label: 'Configure budget',
-    to: ROUTES.BUDGET,
-    description: 'Set monthly limits and alerts before traffic ramps up.',
+    to: ROUTES.ORG_EDIT,
+    description: 'Set your monthly budget limit in the org config before traffic ramps up.',
   },
   {
     icon: Settings,

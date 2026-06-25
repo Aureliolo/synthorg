@@ -1,6 +1,5 @@
 import { http, HttpResponse } from 'msw'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
-import { useThemeStore } from '@/stores/theme'
 import { apiError, apiSuccess, buildLocalPreset, buildCloudPreset } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import { CURRENCY_OPTIONS, DEFAULT_CURRENCY } from '@/utils/currencies'
@@ -723,21 +722,6 @@ describe('setup wizard store', () => {
     })
   })
 
-  describe('theme settings', () => {
-    it('updates theme setting', () => {
-      useSetupWizardStore.getState().setThemeSetting('density', 'dense')
-      expect(useSetupWizardStore.getState().themeSettings.density).toBe('dense')
-    })
-
-    it('preserves other theme settings when updating one', () => {
-      useSetupWizardStore.getState().setThemeSetting('density', 'dense')
-      useSetupWizardStore.getState().setThemeSetting('animation', 'spring')
-      const state = useSetupWizardStore.getState()
-      expect(state.themeSettings.density).toBe('dense')
-      expect(state.themeSettings.animation).toBe('spring')
-    })
-  })
-
   describe('reset', () => {
     it('resets all state to initial values', () => {
       useSetupWizardStore.setState({
@@ -1198,36 +1182,6 @@ describe('setup wizard store', () => {
       expect(state.completing).toBe(false)
       expect(state.completionError).toBeNull()
       expect(state.completionWarning).toContain('no ranked model available')
-    })
-
-    it('degrades a theme-persist failure to a warning, not an error, after a clean completion', async () => {
-      // The backend has already persisted setup_complete=true; a client-side
-      // theme store throw must NOT surface as a completionError (which would
-      // offer a Retry that re-POSTs /setup/complete and 409s).
-      server.use(
-        http.post('/api/v1/setup/complete', () =>
-          HttpResponse.json(
-            apiSuccess({
-              setup_complete: true,
-              embedder_selected: true,
-              embedder_failure_reason: null,
-            }),
-          ),
-        ),
-      )
-      const spy = vi
-        .spyOn(useThemeStore.getState(), 'setColorPalette')
-        .mockImplementation(() => {
-          throw new Error('theme store crashed')
-        })
-      try {
-        await useSetupWizardStore.getState().completeSetup()
-        const state = useSetupWizardStore.getState()
-        expect(state.completionError).toBeNull()
-        expect(state.completionWarning).toContain('theme')
-      } finally {
-        spy.mockRestore()
-      }
     })
 
     it('sets completionError on a 409 (already complete) failure', async () => {

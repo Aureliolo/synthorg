@@ -22,7 +22,6 @@ type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
   args: {
-    agentCount: 5,
     activeCount: 4,
     cost7d: 45.8,
   },
@@ -30,7 +29,6 @@ export const Default: Story = {
 
 export const NoCost: Story = {
   args: {
-    agentCount: 3,
     activeCount: 1,
     cost7d: null,
   },
@@ -38,7 +36,6 @@ export const NoCost: Story = {
 
 export const ZeroActive: Story = {
   args: {
-    agentCount: 2,
     activeCount: 0,
     cost7d: 0,
   },

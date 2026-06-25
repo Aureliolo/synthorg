@@ -71,6 +71,7 @@ function buildManualModel(v: ParsedModelValues): ProviderModelConfig {
       supports_tools: false,
       supports_vision: false,
       supports_reasoning: false,
+      supports_embeddings: false,
       max_output_tokens: null,
       parameter_count: null,
       cost_tier: null,

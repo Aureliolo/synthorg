@@ -89,6 +89,26 @@ _flag(
     " the meta-loop is on.",
 )
 
+# An empty allowlist is deny-all, so the toolsmith cannot be enabled without
+# at least one capability tag. tool_creation_enabled is held off until this
+# is set, rather than failing the whole self-improvement config.
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
+        key="tool_creation_allowed_capabilities",
+        type=SettingType.JSON,
+        default="[]",
+        description=(
+            "Capability tags (``domain:action``) the self-extending toolkit"
+            " may author tools for. Required to enable tool creation; an empty"
+            " list is deny-all and keeps tool creation off."
+        ),
+        group=_GROUP,
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+    )
+)
+
 _r.register(
     SettingDefinition(
         namespace=_NS,

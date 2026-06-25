@@ -16,8 +16,10 @@ dependency injection, and RFC 9457 error translation are exercised
 on the real HTTP path.
 """
 
+import json
 from collections.abc import AsyncIterator, Mapping, Sequence
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import override
 from unittest.mock import AsyncMock, MagicMock
 
@@ -693,9 +695,9 @@ class TestMCPCatalogController:
             limit=50,
             cursor=None,
         )
-        # Bundled catalog has at least 8 entries; cursor pagination
-        # returns the first page plus pagination metadata.
-        assert len(response.data) >= 8
+        # Bundled catalog ships the connection-gated integrations; cursor
+        # pagination returns the first page plus pagination metadata.
+        assert len(response.data) >= 5
 
     async def test_browse_rejects_tampered_cursor(self) -> None:
         from synthorg.api.controllers.mcp_catalog import MCPCatalogController
@@ -724,7 +726,7 @@ class TestMCPCatalogController:
                 cursor="not-a-real-cursor",
             )
 
-    async def test_install_connectionless_entry(self) -> None:
+    async def test_install_connectionless_entry(self, tmp_path: Path) -> None:
         from synthorg.api.controllers.mcp_catalog import (
             InstallEntryRequest,
             MCPCatalogController,
@@ -734,11 +736,34 @@ class TestMCPCatalogController:
         )
         from synthorg.integrations.mcp_catalog.service import CatalogService
 
+        # The bundled catalog ships only connection-gated servers, so exercise
+        # the connectionless install path (connection_name=None) against a
+        # synthetic catalog -- custom/connectionless entries stay covered.
+        catalog_path = tmp_path / "catalog.json"
+        catalog_path.write_text(
+            json.dumps(
+                {
+                    "servers": [
+                        {
+                            "id": "test-local-mcp",
+                            "name": "Test Local",
+                            "description": "Connectionless test server",
+                            "npm_package": "@example/server-test-local",
+                            "required_connection_type": None,
+                            "transport": "stdio",
+                            "capabilities": ["alpha", "beta", "gamma"],
+                            "tags": ["test", "local"],
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
         repo = InMemoryMcpInstallationRepository()
         state = State(
             {
                 "app_state": make_app_state(
-                    mcp_catalog_service=CatalogService(),
+                    mcp_catalog_service=CatalogService(catalog_path=catalog_path),
                     mcp_installations_repo=repo,
                 ),
             }
@@ -747,24 +772,85 @@ class TestMCPCatalogController:
         response = await ctrl.install_entry.fn(
             ctrl,
             state=state,
-            data=InstallEntryRequest(catalog_entry_id="filesystem-mcp"),
+            data=InstallEntryRequest(catalog_entry_id="test-local-mcp"),
         )
         assert response.data.status == "installed"
-        assert response.data.server_name == "Filesystem"
-        assert response.data.catalog_entry_id == "filesystem-mcp"
-        # tool_count matches filesystem-mcp capabilities:
-        # file_read, file_write, directory_listing.
+        assert response.data.server_name == "Test Local"
+        assert response.data.catalog_entry_id == "test-local-mcp"
+        # tool_count matches the entry's capabilities: alpha, beta, gamma.
         assert response.data.tool_count == 3
-        stored = await repo.get(NotBlankStr("filesystem-mcp"))
+        stored = await repo.get(NotBlankStr("test-local-mcp"))
         assert stored is not None
         # Repeat install must be idempotent -- same row, same response.
         second = await ctrl.install_entry.fn(
             ctrl,
             state=state,
-            data=InstallEntryRequest(catalog_entry_id="filesystem-mcp"),
+            data=InstallEntryRequest(catalog_entry_id="test-local-mcp"),
         )
         assert second.data == response.data
         assert len(await repo.list_items()) == 1
+
+    async def test_install_triggers_bridge_reload(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import synthorg.api.controllers.mcp_catalog as controller_mod
+        from synthorg.api.controllers.mcp_catalog import (
+            InstallEntryRequest,
+            MCPCatalogController,
+        )
+        from synthorg.integrations.mcp_catalog.in_memory_installations import (
+            InMemoryMcpInstallationRepository,
+        )
+        from synthorg.integrations.mcp_catalog.service import CatalogService
+
+        catalog_path = tmp_path / "catalog.json"
+        catalog_path.write_text(
+            json.dumps(
+                {
+                    "servers": [
+                        {
+                            "id": "test-local-mcp",
+                            "name": "Test Local",
+                            "description": "Connectionless test server",
+                            "npm_package": "@example/server-test-local",
+                            "required_connection_type": None,
+                            "transport": "stdio",
+                            "capabilities": ["alpha"],
+                            "tags": ["test"],
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        # The install must hot-reload the runtime so the new server's tools go
+        # live; patch the reload to a tracker so we assert it fired without
+        # building the (heavy) real runtime.
+        calls: list[str] = []
+
+        async def _fake_reload(_app_state: object, *, action: str) -> None:
+            calls.append(action)
+
+        monkeypatch.setattr(controller_mod, "_reload_bridge_best_effort", _fake_reload)
+
+        repo = InMemoryMcpInstallationRepository()
+        state = State(
+            {
+                "app_state": make_app_state(
+                    mcp_catalog_service=CatalogService(catalog_path=catalog_path),
+                    mcp_installations_repo=repo,
+                ),
+            }
+        )
+        ctrl = MCPCatalogController(owner=MCPCatalogController)  # type: ignore[arg-type]
+        await ctrl.install_entry.fn(
+            ctrl,
+            state=state,
+            data=InstallEntryRequest(catalog_entry_id="test-local-mcp"),
+        )
+        assert calls == ["install"]
 
     async def test_install_missing_entry_raises_404(self) -> None:
         from synthorg.api.controllers.mcp_catalog import (

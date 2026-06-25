@@ -9,6 +9,7 @@ import {
   EMPTY_GROUP_HEIGHT,
   EMPTY_GROUP_MIN_WIDTH,
   OWNER_TO_ROOT_MINLEN,
+  POPULATED_GROUP_MIN_WIDTH,
   getNodeDim,
 } from './layout-shared'
 
@@ -111,7 +112,7 @@ export function computePopulatedGroups(
     }
 
     const contentWidth = maxX - minX
-    const desiredWidth = Math.max(contentWidth + padding * 2, EMPTY_GROUP_MIN_WIDTH)
+    const desiredWidth = Math.max(contentWidth + padding * 2, POPULATED_GROUP_MIN_WIDTH)
     const extraWidth = desiredWidth - (contentWidth + padding * 2)
     const leftPad = padding + extraWidth / 2
 
@@ -158,19 +159,25 @@ export function toGroupRelative(
 }
 
 /**
- * Step 2.5: centre each dept lead over its reports.  Dagre lays out
- * lead + reports as siblings in a row; re-anchoring the lead to the
- * horizontal midpoint of its reports forms a clean T-junction and
- * fixes the head -> report connector routing.
+ * Step 1.5: centre each dept lead over its IN-GROUP reports.  Dagre lays
+ * a lead out centred over ALL its children -- including cross-department
+ * reports (e.g. a CEO sits above its CTO *and* every department lead),
+ * which dragged the lead far from the one report that shares its box and
+ * left a wide, mostly-empty dept card.  Re-anchoring the lead to the
+ * horizontal midpoint of only its same-box reports forms a clean
+ * T-junction and lets the box wrap them tightly.
+ *
+ * Runs on absolute coords BEFORE the box bounds are computed, so the box
+ * reflects the centred (tight) layout rather than dagre's spread-out one.
  */
 export function centerLeadsOverReports(
-  populatedResults: GroupResult[],
+  groupNodes: Node[],
   positionedLeafMap: Map<string, Node>,
 ): void {
-  for (const groupResult of populatedResults) {
-    const groupChildren = groupResult.children
-      .map((c) => positionedLeafMap.get(c.id))
-      .filter((c): c is Node => c !== undefined)
+  for (const group of groupNodes) {
+    const groupChildren = [...positionedLeafMap.values()].filter(
+      (n) => n.parentId === group.id,
+    )
     const lead = groupChildren.find(
       (c) => (c.data as { isDeptLead?: boolean }).isDeptLead === true,
     )
@@ -189,6 +196,35 @@ export function centerLeadsOverReports(
       ...lead,
       position: { x: (xMin + xMax) / 2 - leadW / 2, y: lead.position.y },
     })
+  }
+}
+
+/**
+ * Step 3.5: de-overlap sibling dept boxes horizontally.  Dagre only
+ * separates the leaf agents (by nodeSep); it has no concept of the dept
+ * BOX that wraps them, so a wide multi-agent dept overlaps its narrower
+ * neighbours.  Sweeping left-to-right and shifting any box that intrudes
+ * on its predecessor guarantees a constant visible gap.  Children ride
+ * along automatically -- they are stored in group-relative coords.
+ */
+export function enforceHorizontalGaps(
+  allGroupResults: GroupResult[],
+  rootGroupIds: Set<string>,
+  gap: number,
+): void {
+  const nonRoot = allGroupResults.filter((r) => !rootGroupIds.has(r.node.id))
+  if (nonRoot.length < 2) return
+  const sorted = [...nonRoot].sort((a, b) => a.node.position.x - b.node.position.x)
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1]!
+    const curr = sorted[i]!
+    const minLeft = prev.node.position.x + prev.groupWidth + gap
+    if (curr.node.position.x < minLeft) {
+      curr.node = {
+        ...curr.node,
+        position: { x: minLeft, y: curr.node.position.y },
+      }
+    }
   }
 }
 
