@@ -1,6 +1,6 @@
 # Web Dashboard
 
-React 19 + shadcn/ui + Base UI + Tailwind CSS 4 + Motion + Zustand. Base UI primitives use the native `render` prop; the local `<Slot>` (`components/ui/slot.tsx`) exists only for `<Button asChild>`. CSP nonces flow via `<CSPProvider>` + `<MotionConfig nonce>` in `App.tsx` (see `docs/security.md`).
+React 19 + shadcn/ui + Base UI + Tailwind CSS 4 + Motion + Zustand. Base UI primitives use the native `render` prop; the local `<Slot>` (`components/ui/slot.tsx`) exists only for `<Button asChild>`. CSP nonces flow via `<CSPProvider>` + `<MotionConfig nonce>` in `App.tsx` (see `../docs/security.md`).
 
 ## Pure API Consumer (MANDATORY)
 
