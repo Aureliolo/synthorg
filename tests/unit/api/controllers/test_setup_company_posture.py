@@ -33,7 +33,8 @@ def _template(posture: PostureName | None) -> CompanyTemplate:
 
 def _svc() -> SettingsService:
     """A SettingsService double recording every ``set`` await."""
-    return mock_of[SettingsService]()
+    svc: SettingsService = mock_of[SettingsService]()
+    return svc
 
 
 def _set_calls(svc: object) -> dict[tuple[str, str], str]:
