@@ -62,8 +62,11 @@ interface ToggleChoices {
   knowledge: boolean
 }
 
-function toOptions(ids: readonly string[]): readonly SelectOption[] {
-  return ids.map((id) => ({ value: id, label: id }))
+function toOptions(ids: readonly string[] | undefined): readonly SelectOption[] {
+  // A partial/garbled recommendations payload can leave a candidate list
+  // absent at runtime even though the type marks it required; degrade to an
+  // empty picker rather than crashing the whole Agents step.
+  return (ids ?? []).map((id) => ({ value: id, label: id }))
 }
 
 function valueOf(entries: readonly SettingEntry[], key: string): string | undefined {

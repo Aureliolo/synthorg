@@ -6,7 +6,11 @@ import {
   freezeTime,
 } from '../fixtures/mock-api'
 import { installWebSocketHarness } from '../fixtures/websocket-harness'
-import type { SetupAgentSummary, SetupCompanyResponse } from '@/api/types/setup'
+import type {
+  SetupAgentSummary,
+  SetupCompanyResponse,
+  SetupModelRecommendationsResponse,
+} from '@/api/types/setup'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 /**
@@ -53,6 +57,22 @@ const AGENT: SetupAgentSummary = {
   tier: 'medium',
 }
 
+/**
+ * The Agents step embeds the Models section (WizardModelSelection), which
+ * loads model recommendations on mount. An empty-candidates response is
+ * enough: the section renders its (empty) pickers without crashing, and
+ * the rename flow under test does not touch them.
+ */
+const MODEL_RECS: SetupModelRecommendationsResponse = {
+  cos_recommended: null,
+  decomposition_candidates: [],
+  decomposition_recommended: null,
+  embedding_candidates: [],
+  embedding_recommended: null,
+  embedding_recommended_dims: null,
+  research_recommended: null,
+}
+
 /** The company the reconcile hydrates so the Agents step is reachable. */
 const COMPANY: SetupCompanyResponse = {
   company_name: 'E2E Test Co',
@@ -91,6 +111,15 @@ test.describe('Setup wizard agents step', () => {
     )
     await page.route(/\/api\/v1\/setup\/personality-presets(\?.*)?$/, (route) =>
       route.fulfill({ json: page1([]) }),
+    )
+    // The embedded Models section loads recommendations + the namespace
+    // settings it prefills from. Without these the section gets a malformed
+    // response and crashes the whole step into the error boundary.
+    await page.route(/\/api\/v1\/setup\/model-recommendations(\?.*)?$/, (route) =>
+      route.fulfill({ json: ok(MODEL_RECS) }),
+    )
+    await page.route(/\/api\/v1\/settings\/[a-z_]+(\?.*)?$/, (route) =>
+      route.fulfill({ json: ok([]) }),
     )
   })
 
