@@ -38,6 +38,7 @@ ALLOWLIST: Final[dict[str, str]] = {
     ),
     "reference/web-base-ui-decisions.md": "internal web-dashboard dev note",
     "reference/web-design-system.md": "internal web-dashboard dev note",
+    "reference/web-eslint.md": "internal web-dashboard dev note",
     "reference/web-package-structure.md": "internal web-dashboard dev note",
     "reference/web-post-training.md": "internal web-dashboard dev note",
     "reference/web-zustand-stores.md": "internal web-dashboard dev note",
