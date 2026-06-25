@@ -144,6 +144,8 @@ export const setupHandlers = [
         embedding_recommended: 'embed-default',
         embedding_recommended_dims: 1024,
         embedding_candidates: ['embed-default'],
+        research_recommended: 'model-default',
+        cos_recommended: 'model-default',
       }),
     ),
   ),

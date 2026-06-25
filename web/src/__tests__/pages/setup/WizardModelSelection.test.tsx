@@ -6,6 +6,7 @@ import { renderWithRouter } from '@/__tests__/test-utils'
 import { apiSuccess } from '@/mocks/handlers'
 import { buildSettingEntry } from '@/mocks/handlers/settings'
 import { server } from '@/test-setup'
+import type { SettingNamespace } from '@/api/types/settings'
 
 const RECS = {
   decomposition_recommended: 'large-model-001',
@@ -13,6 +14,8 @@ const RECS = {
   embedding_recommended: 'embed-large-001',
   embedding_recommended_dims: 4096,
   embedding_candidates: ['embed-large-001', 'embed-small-001'],
+  research_recommended: 'large-model-001',
+  cos_recommended: 'small-model-001',
 }
 
 function recommendationsHandler() {
@@ -21,8 +24,31 @@ function recommendationsHandler() {
   )
 }
 
+function capturePut(): {
+  calls: { namespace: string; key: string; value: string }[]
+} {
+  const calls: { namespace: string; key: string; value: string }[] = []
+  server.use(
+    http.put('/api/v1/settings/:namespace/:key', async ({ params, request }) => {
+      const body = (await request.json()) as { value: string }
+      const namespace = String(params['namespace'])
+      const key = String(params['key'])
+      calls.push({ namespace, key, value: body.value })
+      return HttpResponse.json(
+        apiSuccess(
+          buildSettingEntry({
+            value: body.value,
+            definition: { namespace: namespace as SettingNamespace, key },
+          }),
+        ),
+      )
+    }),
+  )
+  return { calls }
+}
+
 describe('WizardModelSelection', () => {
-  it('prefills the recommended models and the dims hint', async () => {
+  it('prefills every per-feature model from the recommendations', async () => {
     server.use(recommendationsHandler())
     renderWithRouter(<WizardModelSelection />)
     await waitFor(() =>
@@ -31,10 +57,33 @@ describe('WizardModelSelection', () => {
     expect(
       screen.getByLabelText<HTMLSelectElement>('Coordination model').value,
     ).toBe('large-model-001')
+    expect(screen.getByLabelText<HTMLSelectElement>('Embedding model').value).toBe(
+      'embed-large-001',
+    )
+    expect(screen.getByLabelText<HTMLSelectElement>('Research model').value).toBe(
+      'large-model-001',
+    )
     expect(
-      screen.getByLabelText<HTMLSelectElement>('Embedding model').value,
-    ).toBe('embed-large-001')
-    expect(screen.getByText(/4096 dimensions/)).toBeInTheDocument()
+      screen.getByLabelText<HTMLSelectElement>('Chief of Staff model').value,
+    ).toBe('small-model-001')
+    // Embedding is labelled as powering memory + knowledge.
+    expect(screen.getByText(/Powers memory \+ knowledge/)).toBeInTheDocument()
+  })
+
+  it('defaults the research + knowledge toggles to on', async () => {
+    server.use(recommendationsHandler())
+    renderWithRouter(<WizardModelSelection />)
+    await waitFor(() =>
+      expect(screen.getByRole('switch', { name: 'Research' })).toBeInTheDocument(),
+    )
+    expect(screen.getByRole('switch', { name: 'Research' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+    expect(screen.getByRole('switch', { name: 'Knowledge base' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
   })
 
   it('prefers a persisted value over the recommendation', async () => {
@@ -59,43 +108,40 @@ describe('WizardModelSelection', () => {
     )
   })
 
-  it('persists an override through the settings API', async () => {
-    let lastPut: { namespace: string; key: string; value: string } | null = null
-    server.use(
-      recommendationsHandler(),
-      http.put('/api/v1/settings/:namespace/:key', async ({ params, request }) => {
-        const body = (await request.json()) as { value: string }
-        lastPut = {
-          namespace: String(params['namespace']),
-          key: String(params['key']),
-          value: body.value,
-        }
-        return HttpResponse.json(
-          apiSuccess(
-            buildSettingEntry({
-              value: body.value,
-              definition: {
-                namespace: 'coordination',
-                key: String(params['key']),
-              },
-            }),
-          ),
-        )
-      }),
-    )
+  it('persists a model override through the settings API', async () => {
+    server.use(recommendationsHandler())
+    const { calls } = capturePut()
     renderWithRouter(<WizardModelSelection />)
     await waitFor(() =>
-      expect(screen.getByLabelText('Coordination model')).toBeInTheDocument(),
+      expect(screen.getByLabelText('Research model')).toBeInTheDocument(),
     )
-    fireEvent.change(screen.getByLabelText('Coordination model'), {
+    fireEvent.change(screen.getByLabelText('Research model'), {
       target: { value: 'small-model-001' },
     })
     await waitFor(() =>
-      expect(lastPut).toEqual({
-        namespace: 'coordination',
-        key: 'decomposition_model',
+      expect(calls).toContainEqual({
+        namespace: 'research',
+        key: 'model',
         value: 'small-model-001',
       }),
     )
+  })
+
+  it('disabling research persists the flag and hides the research model', async () => {
+    server.use(recommendationsHandler())
+    const { calls } = capturePut()
+    renderWithRouter(<WizardModelSelection />)
+    await waitFor(() =>
+      expect(screen.getByLabelText('Research model')).toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByRole('switch', { name: 'Research' }))
+    await waitFor(() =>
+      expect(calls).toContainEqual({
+        namespace: 'research',
+        key: 'enabled',
+        value: 'false',
+      }),
+    )
+    expect(screen.queryByLabelText('Research model')).not.toBeInTheDocument()
   })
 })
