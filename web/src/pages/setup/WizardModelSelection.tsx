@@ -254,9 +254,11 @@ function useWizardModelSelection(): ModelSelectionState {
       })
       void updateSetting(spec.namespace, spec.settingKey, { value }).catch(
         (caught: unknown) => {
-          if (modelRequestIdsRef.current[spec.key] === requestId) {
-            setModels((prev) => ({ ...prev, [spec.key]: previous }))
-          }
+          // A newer write for this key has superseded this one: leave the value
+          // and any error to that newer write, so neither a stale rollback nor a
+          // stale "could not save" toast can clobber the current state.
+          if (modelRequestIdsRef.current[spec.key] !== requestId) return
+          setModels((prev) => ({ ...prev, [spec.key]: previous }))
           addToast({
             variant: 'error',
             title: `Could not save the ${spec.label.toLowerCase()}`,
@@ -281,9 +283,10 @@ function useWizardModelSelection(): ModelSelectionState {
       void updateSetting(namespace, 'enabled', {
         value: value ? 'true' : 'false',
       }).catch((caught: unknown) => {
-        if (toggleRequestIdsRef.current[name] === requestId) {
-          setToggles((prev) => ({ ...prev, [name]: previous }))
-        }
+        // Superseded by a newer toggle write: suppress both the rollback and the
+        // stale error toast so the newer write owns the outcome.
+        if (toggleRequestIdsRef.current[name] !== requestId) return
+        setToggles((prev) => ({ ...prev, [name]: previous }))
         addToast({
           variant: 'error',
           title: `Could not save the ${name} setting`,

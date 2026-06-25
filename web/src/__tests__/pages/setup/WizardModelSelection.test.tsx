@@ -110,7 +110,8 @@ describe('WizardModelSelection', () => {
     )
   })
 
-  it('keeps the newest model choice when an older write fails late', async () => {
+  it('suppresses the rollback and the error toast for a superseded failed save', async () => {
+    let newerSaveDone = false
     server.use(
       http.get('/api/v1/setup/model-recommendations', () =>
         HttpResponse.json(
@@ -127,12 +128,13 @@ describe('WizardModelSelection', () => {
       ),
       http.put('/api/v1/settings/coordination/decomposition_model', async ({ request }) => {
         const body = (await request.json()) as { value: string }
-        // The older write (to small) fails, and does so *after* the newer write
-        // (to medium) has already succeeded -- the exact rollback-race ordering.
+        // The older write (to small) fails immediately, so its catch runs well
+        // before the newer write (to medium, delayed below) resolves.
         if (body.value === 'small-model-001') {
-          await delay(50)
           return new HttpResponse(null, { status: 500 })
         }
+        await delay(30)
+        newerSaveDone = true
         return HttpResponse.json(
           apiSuccess(
             buildSettingEntry({
@@ -145,16 +147,14 @@ describe('WizardModelSelection', () => {
     )
     renderWithRouter(<WizardModelSelection />)
     const select = await screen.findByLabelText<HTMLSelectElement>('Coordination model')
-    fireEvent.change(select, { target: { value: 'small-model-001' } })
-    fireEvent.change(select, { target: { value: 'medium-model-001' } })
-    await waitFor(() => expect(select.value).toBe('medium-model-001'))
-    // Wait for the older write's delayed failure to surface (its error toast is
-    // added to the store), which both drains the timer and proves the rollback
-    // path ran: the guard must keep the newer value, not the pre-edit one.
-    await waitFor(() =>
-      expect(useToastStore.getState().toasts.length).toBeGreaterThan(0),
-    )
+    fireEvent.change(select, { target: { value: 'small-model-001' } }) // older write, fails now
+    fireEvent.change(select, { target: { value: 'medium-model-001' } }) // newer write, succeeds later
+    // By the time the newer (delayed) write resolves, the older failure has long
+    // since run its catch -- which must have suppressed BOTH the rollback and the
+    // toast because a newer write superseded it.
+    await waitFor(() => expect(newerSaveDone).toBe(true))
     expect(select.value).toBe('medium-model-001')
+    expect(useToastStore.getState().toasts).toHaveLength(0)
   })
 
   it('prefers a persisted value over the recommendation', async () => {
