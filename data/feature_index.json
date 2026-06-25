@@ -752,6 +752,7 @@
       ],
       "mcp_tool_names": [
         "synthorg_knowledge_search",
+        "synthorg_knowledge_ask",
         "synthorg_knowledge_ingest",
         "synthorg_knowledge_reindex",
         "synthorg_knowledge_list",
@@ -760,7 +761,7 @@
       ],
       "name": "knowledge",
       "protocol_exports": [],
-      "settings_namespace": null,
+      "settings_namespace": "knowledge",
       "state_slice_fields": [
         "service",
         "tool_factory"
@@ -1307,6 +1308,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-23T12:14:02.916784Z",
+  "generated_at": "2026-06-25T09:53:55.797050Z",
   "schema_version": 1
 }

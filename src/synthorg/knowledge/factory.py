@@ -13,6 +13,7 @@ from synthorg.knowledge.loaders.ticket import TicketFetcher
 from synthorg.knowledge.loaders.web import HtmlFetcher
 from synthorg.knowledge.retrieval import KnowledgeRetriever
 from synthorg.knowledge.service import KnowledgeService
+from synthorg.knowledge.synthesis.protocol import Synthesizer
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.persistence.protocol import PersistenceBackend
 
@@ -22,6 +23,7 @@ def build_knowledge_service(  # noqa: PLR0913 -- cohesive boot-time wiring
     memory_backend: MemoryBackend,
     persistence: PersistenceBackend,
     config: KnowledgeConfig,
+    synthesizer: Synthesizer | None = None,
     html_fetcher: HtmlFetcher | None = None,
     ticket_fetcher: TicketFetcher | None = None,
     clock: Clock | None = None,
@@ -33,6 +35,9 @@ def build_knowledge_service(  # noqa: PLR0913 -- cohesive boot-time wiring
             embeddings under the KNOWLEDGE namespace.
         persistence: Provides the knowledge-source and provenance repos.
         config: Knowledge-substrate configuration.
+        synthesizer: Optional generative-RAG synthesiser (the ``ask``
+            surface). Absent (the default) means the service is
+            retrieval-only and ``ask`` 503s until a synthesis model is set.
         html_fetcher: Governed HTTP fetcher for web sources (optional;
             absence rejects ``WEB`` ingest at the factory).
         ticket_fetcher: Governed ticket fetcher (optional; absence
@@ -60,6 +65,7 @@ def build_knowledge_service(  # noqa: PLR0913 -- cohesive boot-time wiring
         indexer=indexer,
         retriever=retriever,
         config=config,
+        synthesizer=synthesizer,
         html_fetcher=html_fetcher,
         ticket_fetcher=ticket_fetcher,
         usage_records=persistence.knowledge_usage_records,

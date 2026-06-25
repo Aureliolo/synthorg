@@ -25,6 +25,7 @@ from synthorg.api.lifecycle_helpers.deliverable_receipt_wiring import (
 from synthorg.api.lifecycle_helpers.finetune_wiring import (
     _wire_fine_tune_orchestrator,
 )
+from synthorg.api.lifecycle_helpers.knowledge_wiring import wire_knowledge_engine
 from synthorg.api.lifecycle_helpers.meta_apply_wiring import wire_meta_apply
 from synthorg.api.lifecycle_helpers.meta_wiring import (
     _wire_ab_test_repo,
@@ -198,56 +199,6 @@ async def _replay_project_brain_index(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-
-
-async def _wire_knowledge_engine(app_state: AppState) -> None:
-    """Wire the knowledge + provenance substrate once persistence + memory exist."""
-    from synthorg.knowledge.state import KnowledgeStateSlice  # noqa: PLC0415
-    from synthorg.memory.state import (  # noqa: PLC0415
-        MemoryStateSlice,
-        memory_backend_of,
-    )
-    from synthorg.persistence.state import (  # noqa: PLC0415
-        PersistenceStateSlice,
-        persistence_of,
-    )
-    from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
-
-    if app_state.slice(PersistenceStateSlice).backend is None:
-        return
-    if app_state.slice(KnowledgeStateSlice).service is not None:
-        return
-    config = app_state.config.knowledge
-    if not await config_resolver_of(app_state).get_bool("knowledge", "enabled"):
-        logger.info(
-            API_APP_STARTUP,
-            service="knowledge_engine",
-            note="knowledge substrate disabled (knowledge.enabled=false); skipped",
-        )
-        return
-    if app_state.slice(MemoryStateSlice).backend is None:
-        logger.info(
-            API_APP_STARTUP,
-            service="knowledge_engine",
-            note="memory backend not wired; knowledge engine wiring skipped",
-        )
-        return
-    from synthorg.knowledge.factory import build_knowledge_service  # noqa: PLC0415
-    from synthorg.knowledge.tool_factory import (  # noqa: PLC0415
-        build_knowledge_tool_factory,
-    )
-
-    service = build_knowledge_service(
-        memory_backend=memory_backend_of(app_state),
-        persistence=persistence_of(app_state),
-        config=config,
-        clock=app_state.clock,
-    )
-    tool_factory = build_knowledge_tool_factory(service=service)
-    app_state.swap_slice(
-        KnowledgeStateSlice(service=service, tool_factory=tool_factory)
-    )
-    logger.info(API_APP_STARTUP, service="knowledge_engine", note="wired")
 
 
 async def _wire_custom_rules_service(app_state: AppState) -> None:
@@ -587,7 +538,7 @@ async def wire_features_on_startup(
     await _wire_project_brain(app_state)
     await _wire_steering_service(app_state, provider_registry=provider_registry)
     await wire_org_memory_backend(app_state)
-    await _wire_knowledge_engine(app_state)
+    await wire_knowledge_engine(app_state, provider_registry=provider_registry)
     await _wire_custom_rules_service(app_state)
     await _wire_budget_versions_service(app_state)
     await _wire_deliverable_receipts(app_state)

@@ -26,14 +26,16 @@ from synthorg.knowledge.enums import SourceStatus, SourceType
 from synthorg.knowledge.errors import (
     KnowledgeError,
     KnowledgeSourceNotFoundError,
+    KnowledgeSynthesisUnavailableError,
     KnowledgeValidationError,
 )
 from synthorg.knowledge.indexer import KnowledgeIndexer
 from synthorg.knowledge.loaders import build_source_loader
 from synthorg.knowledge.loaders.ticket import TicketFetcher
 from synthorg.knowledge.loaders.web import HtmlFetcher
-from synthorg.knowledge.models import KnowledgeHit, KnowledgeSource
+from synthorg.knowledge.models import KnowledgeAnswer, KnowledgeHit, KnowledgeSource
 from synthorg.knowledge.retrieval import KnowledgeRetriever
+from synthorg.knowledge.synthesis.protocol import Synthesizer
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.deliverable_receipts import (
     KNOWLEDGE_USAGE_RECORD_FAILED,
@@ -48,6 +50,8 @@ from synthorg.observability.events.knowledge import (
     KNOWLEDGE_SOURCE_INGESTED,
     KNOWLEDGE_SOURCE_NOT_FOUND,
     KNOWLEDGE_SOURCE_UNCHANGED,
+    KNOWLEDGE_SYNTHESIS_FAILED,
+    KNOWLEDGE_SYNTHESISED,
 )
 from synthorg.persistence.knowledge_protocol import (
     KnowledgeSourceFilter,
@@ -90,6 +94,7 @@ class KnowledgeService:
         indexer: KnowledgeIndexer,
         retriever: KnowledgeRetriever,
         config: KnowledgeConfig,
+        synthesizer: Synthesizer | None = None,
         html_fetcher: HtmlFetcher | None = None,
         ticket_fetcher: TicketFetcher | None = None,
         usage_records: KnowledgeUsageRecordRepository | None = None,
@@ -99,6 +104,7 @@ class KnowledgeService:
         self._indexer = indexer
         self._retriever = retriever
         self._config = config
+        self._synthesizer = synthesizer
         self._html_fetcher = html_fetcher
         self._ticket_fetcher = ticket_fetcher
         self._usage_records = usage_records
@@ -234,6 +240,61 @@ class KnowledgeService:
             task_id=identity.task_id,
             count=len(records),
         )
+
+    async def ask(
+        self,
+        *,
+        query: NotBlankStr,
+        project_id: NotBlankStr | None = None,
+        limit: int = KNOWLEDGE_SEARCH_DEFAULT_LIMIT,
+    ) -> KnowledgeAnswer:
+        """Answer *query* over the corpus with a grounded, cited answer.
+
+        Retrieves cited chunks (recording usage exactly as :meth:`search`
+        does) and synthesises an answer whose every claim resolves to a
+        retrieved chunk. Synthesis is an opt-out capability: when no model is
+        configured the synthesiser is unwired and this raises rather than
+        returning ungrounded prose.
+
+        Returns:
+            A citation-bound :class:`KnowledgeAnswer`.
+
+        Raises:
+            KnowledgeSynthesisUnavailableError: When synthesis is not wired
+                (no model configured) in this deployment.
+            KnowledgeSynthesisError: When too few chunks were retrieved to
+                ground an answer, or the synthesiser output is invalid.
+        """
+        if self._synthesizer is None:
+            logger.warning(
+                KNOWLEDGE_SYNTHESIS_FAILED,
+                reason="synthesizer_not_configured",
+                project_id=project_id,
+                error_type=KnowledgeSynthesisUnavailableError.__name__,
+            )
+            msg = (
+                "knowledge synthesis is not configured; set knowledge."
+                "synthesis_model to enable the ask surface"
+            )
+            raise KnowledgeSynthesisUnavailableError(msg)
+        # Cap retrieval to the synthesiser's chunk budget: it consults only
+        # the top ``max_chunks`` hits, so recording usage for a larger
+        # retrieved set would bill the run for chunks the model never saw.
+        effective_limit = min(limit, self._synthesizer.max_chunks)
+        hits = await self.search(
+            query=query, project_id=project_id, limit=effective_limit
+        )
+        answer, cost = await self._synthesizer.synthesize(
+            query=query, hits=hits, project_id=project_id
+        )
+        logger.debug(
+            KNOWLEDGE_SYNTHESISED,
+            project_id=project_id,
+            claim_count=len(answer.claims),
+            chunks_consulted=answer.chunks_consulted,
+            cost=cost,
+        )
+        return answer
 
     async def list_sources(
         self,

@@ -3,8 +3,8 @@
 Delegates to :class:`KnowledgeService` via ``app_state.knowledge_service``.
 Search / list / get are read-only; ingest / reindex / delete are admin
 (call ``require_admin_guardrails`` as the first body statement). Search
-chunk text is wrapped via ``wrap_untrusted`` because corpus content may
-carry injected instructions.
+chunk text and synthesised answer + claim texts are wrapped via
+``wrap_untrusted`` because corpus content may carry injected instructions.
 """
 
 from collections.abc import Mapping
@@ -14,12 +14,17 @@ from typing import TYPE_CHECKING
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
-from synthorg.engine.prompt_safety import TAG_MEMORY_ENTRY, wrap_untrusted
+from synthorg.engine.prompt_safety import (
+    TAG_KNOWLEDGE,
+    TAG_MEMORY_ENTRY,
+    wrap_untrusted,
+)
 from synthorg.knowledge.errors import KnowledgeSourceNotFoundError
-from synthorg.knowledge.models import KnowledgeHit
+from synthorg.knowledge.models import KnowledgeAnswer, KnowledgeHit
 from synthorg.knowledge.service import KnowledgeService
 from synthorg.knowledge.state import KnowledgeStateSlice
 from synthorg.meta.mcp.domains._knowledge_args import (
+    KnowledgeAskArgs,
     KnowledgeDeleteArgs,
     KnowledgeGetArgs,
     KnowledgeIngestArgs,
@@ -51,6 +56,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _TOOL_SEARCH = "synthorg_knowledge_search"
+_TOOL_ASK = "synthorg_knowledge_ask"
 _TOOL_INGEST = "synthorg_knowledge_ingest"
 _TOOL_REINDEX = "synthorg_knowledge_reindex"
 _TOOL_LIST = "synthorg_knowledge_list"
@@ -84,6 +90,25 @@ def _hit_dict(hit: KnowledgeHit) -> dict[str, object]:
     }
 
 
+def _answer_dict(answer: KnowledgeAnswer) -> dict[str, object]:
+    """Serialise an answer, fencing the synthesised prose + claim texts.
+
+    The answer and claim texts are model output synthesised from untrusted
+    corpus chunks, so they are wrapped via ``wrap_untrusted`` (mirroring
+    :func:`_hit_dict`) before crossing the MCP boundary.
+
+    Returns:
+        Mapping with the declared key/value types.
+    """
+    dumped = answer.model_dump(mode="json")
+    dumped["answer"] = wrap_untrusted(TAG_KNOWLEDGE, answer.answer)
+    dumped["claims"] = [
+        {**claim_dump, "text": wrap_untrusted(TAG_KNOWLEDGE, claim.text)}
+        for claim_dump, claim in zip(dumped["claims"], answer.claims, strict=True)
+    ]
+    return dumped
+
+
 async def _knowledge_search(
     *,
     app_state: AppState,
@@ -107,6 +132,32 @@ async def _knowledge_search(
     except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
         reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_SEARCH, exc)
+        return err(exc)
+
+
+async def _knowledge_ask(
+    *,
+    app_state: AppState,
+    arguments: dict[str, object],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    """Return a grounded, citation-bound answer over the corpus."""
+    try:
+        svc = _require_service(app_state)
+        ask_args = typed_args(arguments, KnowledgeAskArgs)
+        answer = await svc.ask(
+            query=ask_args.query,
+            project_id=ask_args.project_id,
+            limit=ask_args.limit,
+        )
+        logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_ASK)
+        return ok(_answer_dict(answer))
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid(_TOOL_ASK, exc)
+        return err(exc)
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
+        log_handler_invoke_failed(_TOOL_ASK, exc)
         return err(exc)
 
 
@@ -273,6 +324,7 @@ async def _knowledge_delete(
 KNOWLEDGE_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
     {
         "synthorg_knowledge_search": _knowledge_search,
+        "synthorg_knowledge_ask": _knowledge_ask,
         "synthorg_knowledge_ingest": _knowledge_ingest,
         "synthorg_knowledge_reindex": _knowledge_reindex,
         "synthorg_knowledge_list": _knowledge_list,

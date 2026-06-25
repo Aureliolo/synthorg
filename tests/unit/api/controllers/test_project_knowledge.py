@@ -13,14 +13,82 @@ from datetime import UTC, datetime
 
 import pytest
 
+from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.types import NotBlankStr
-from synthorg.knowledge.enums import SourceStatus, SourceType
-from synthorg.knowledge.models import KnowledgeSource
+from synthorg.knowledge.enums import KnowledgeClaimType, SourceStatus, SourceType
+from synthorg.knowledge.errors import (
+    KnowledgeSynthesisError,
+    KnowledgeSynthesisUnavailableError,
+)
+from synthorg.knowledge.models import (
+    Citation,
+    KnowledgeAnswer,
+    KnowledgeAnswerClaim,
+    KnowledgeSource,
+    WebLocator,
+)
 from synthorg.knowledge.service import KnowledgeService
 from synthorg.knowledge.state import KnowledgeStateSlice
 from tests._shared import LoopAsyncClient, mock_of
 
 _NOW = datetime(2026, 5, 20, tzinfo=UTC)
+
+
+def _answer(query: str) -> KnowledgeAnswer:
+    return KnowledgeAnswer(
+        query=NotBlankStr(query),
+        answer="A grounded answer.",
+        claims=(
+            KnowledgeAnswerClaim(
+                text="A cited claim.",
+                claim_type=KnowledgeClaimType.FACT,
+                citations=(
+                    Citation(
+                        source_id=NotBlankStr("source-1"),
+                        chunk_id=NotBlankStr("chunk-0"),
+                        source_type=SourceType.WEB,
+                        title="Guide",
+                        uri=NotBlankStr("https://src"),
+                        locator=WebLocator(
+                            url=NotBlankStr("https://src"), char_start=0, char_end=5
+                        ),
+                        content_hash="c" * 64,
+                    ),
+                ),
+                confidence=0.9,
+            ),
+        ),
+        chunks_consulted=1,
+        synthesis_model=NotBlankStr("example-medium-001"),
+        created_at=_NOW,
+    )
+
+
+class _AnsweringKnowledgeService:
+    """Answers via ``ask`` (happy path) or raises a synthesis error."""
+
+    def __init__(
+        self, *, unavailable: bool = False, synthesis_error: bool = False
+    ) -> None:
+        self._unavailable = unavailable
+        self._synthesis_error = synthesis_error
+
+    async def ask(
+        self,
+        *,
+        query: NotBlankStr,
+        project_id: NotBlankStr,
+        limit: int | None = None,
+    ) -> KnowledgeAnswer:
+        del limit
+        assert project_id == NotBlankStr("proj-1")
+        if self._unavailable:
+            msg = "knowledge synthesis is not configured"
+            raise KnowledgeSynthesisUnavailableError(msg)
+        if self._synthesis_error:
+            msg = "synthesiser returned unparseable output"
+            raise KnowledgeSynthesisError(msg)
+        return _answer(query)
 
 
 def _source(source_id: str, *, project_id: str | None) -> KnowledgeSource:
@@ -66,7 +134,7 @@ def _as_knowledge_service(fake: object) -> KnowledgeService | None:
         return None
     overrides = {
         method: bound
-        for method in ("list_sources", "list_global_sources", "query")
+        for method in ("list_sources", "list_global_sources", "query", "ask")
         if (bound := getattr(fake, method, None)) is not None
     }
     service: KnowledgeService = mock_of[KnowledgeService](**overrides)
@@ -96,6 +164,44 @@ class TestProjectKnowledgeController:
         with _with_knowledge_service(async_test_client, None):
             resp = await async_test_client.get("/api/v1/projects/proj-1/knowledge")
         assert resp.status_code == 503
+
+    async def test_ask_returns_cited_answer(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        with _with_knowledge_service(async_test_client, _AnsweringKnowledgeService()):
+            resp = await async_test_client.get(
+                "/api/v1/projects/proj-1/knowledge/ask", params={"q": "a question"}
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["data"]["query"] == "a question"
+        assert body["data"]["claims"][0]["citations"][0]["chunk_id"] == "chunk-0"
+
+    async def test_ask_returns_503_when_synthesis_unavailable(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        with _with_knowledge_service(
+            async_test_client, _AnsweringKnowledgeService(unavailable=True)
+        ):
+            resp = await async_test_client.get(
+                "/api/v1/projects/proj-1/knowledge/ask", params={"q": "a question"}
+            )
+        assert resp.status_code == 503
+
+    async def test_ask_returns_500_on_synthesis_error(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        with _with_knowledge_service(
+            async_test_client, _AnsweringKnowledgeService(synthesis_error=True)
+        ):
+            resp = await async_test_client.get(
+                "/api/v1/projects/proj-1/knowledge/ask", params={"q": "a question"}
+            )
+        assert resp.status_code == 500
+        assert (
+            resp.json()["error_detail"]["error_code"]
+            == ErrorCode.KNOWLEDGE_SYNTHESIS_ERROR
+        )
 
     async def test_list_sources_reaches_second_page(
         self, async_test_client: LoopAsyncClient

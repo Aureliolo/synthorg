@@ -27,8 +27,8 @@ from synthorg.observability.events.research import (
     RESEARCH_SYNTHESIS_FAILED,
 )
 from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.structured_text import complete_text, extract_json_object
 from synthorg.research._args import SynthesisOutput
-from synthorg.research._llm import complete_text, extract_json_object
 from synthorg.research.errors import ResearchSynthesisError
 from synthorg.research.models import (
     ResearchBrief,

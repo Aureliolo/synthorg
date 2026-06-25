@@ -15,6 +15,7 @@ from synthorg.knowledge.constants import (
     KNOWLEDGE_SEARCH_MAX_LIMIT,
 )
 from synthorg.meta.mcp.domains._knowledge_args import (
+    KnowledgeAskArgs,
     KnowledgeDeleteArgs,
     KnowledgeGetArgs,
     KnowledgeIngestArgs,
@@ -56,6 +57,29 @@ KNOWLEDGE_TOOLS: tuple[MCPToolDef, ...] = (
         },
         required=("query",),
         args_model=KnowledgeSearchArgs,
+    ),
+    read_tool(
+        "knowledge",
+        "ask",
+        "Answer a question over the ingested knowledge corpus: retrieve cited "
+        "chunks then synthesise a grounded answer whose every claim resolves "
+        "to a retrieved chunk. Returns 503 when no synthesis model is "
+        "configured (use knowledge:search for raw cited chunks instead).",
+        {
+            "project_id": {
+                "type": ["string", "null"],
+                "description": "Scope to a project; null searches global only",
+                "minLength": 1,
+            },
+            "query": {"type": "string", "minLength": 1},
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": KNOWLEDGE_SEARCH_MAX_LIMIT,
+            },
+        },
+        required=("query",),
+        args_model=KnowledgeAskArgs,
     ),
     admin_tool(
         "knowledge",

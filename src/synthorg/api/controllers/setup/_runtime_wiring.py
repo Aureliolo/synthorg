@@ -142,8 +142,10 @@ async def _rewire_post_setup_features(app_state: AppState) -> None:
         _wire_charter_engine,
     )
     from synthorg.api.lifecycle_helpers.feature_wiring import (  # noqa: PLC0415
-        _wire_knowledge_engine,
         _wire_research_engine,
+    )
+    from synthorg.api.lifecycle_helpers.knowledge_wiring import (  # noqa: PLC0415
+        wire_knowledge_engine,
     )
     from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
     from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
@@ -164,7 +166,7 @@ async def _rewire_post_setup_features(app_state: AppState) -> None:
         # idempotent, so re-running it brings them online live now that
         # setup has filled their models and a provider exists.
         await _wire_research_engine(app_state, provider_registry=registry)
-        await _wire_knowledge_engine(app_state)
+        await wire_knowledge_engine(app_state, provider_registry=registry)
     except Exception as exc:
         reraise_critical(exc)
         logger.warning(

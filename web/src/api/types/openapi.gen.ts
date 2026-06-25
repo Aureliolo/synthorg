@@ -3474,6 +3474,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/projects/{project_id}/knowledge/ask": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Ask */
+        readonly get: operations["ApiV1ProjectsProjectIdKnowledgeAskAsk"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/projects/{project_id}/knowledge/search": {
         readonly parameters: {
             readonly query?: never;
@@ -6744,6 +6761,19 @@ export type components = {
         /** ApiResponse[InterviewTurnResult] */
         readonly ApiResponse_InterviewTurnResult_: {
             readonly data: components["schemas"]["InterviewTurnResult"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[KnowledgeAnswer] */
+        readonly ApiResponse_KnowledgeAnswer_: {
+            readonly data: components["schemas"]["KnowledgeAnswer"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /**
@@ -10734,7 +10764,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4025 | 4026 | 4027 | 4028 | 4029 | 4030 | 5000 | 5001 | 5002 | 5003 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4025 | 4026 | 4027 | 4028 | 4029 | 4030 | 5000 | 5001 | 5002 | 5003 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;
@@ -11709,10 +11739,7 @@ export type components = {
             /** @description Task to kill */
             readonly task_id: string;
         };
-        /**
-         * Citation
-         * @description Resolvable provenance handle
-         */
+        /** Citation */
         readonly knowledge_models_Citation: {
             /** @description Resolved chunk identifier */
             readonly chunk_id: string;
@@ -11728,6 +11755,45 @@ export type components = {
             /** @description Source URI */
             readonly uri: string;
         };
+        /** KnowledgeAnswer */
+        readonly KnowledgeAnswer: {
+            /** @description The synthesised prose answer */
+            readonly answer: string;
+            /** @description Number of retrieved chunks presented to the synthesiser */
+            readonly chunks_consulted: number;
+            /** @description Cited claims comprising the answer body */
+            readonly claims: readonly components["schemas"]["KnowledgeAnswerClaim"][];
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly created_at: string;
+            /** @description The question that was asked */
+            readonly query: string;
+            /** @description Model identifier that produced the answer */
+            readonly synthesis_model: string;
+        };
+        /** KnowledgeAnswerClaim */
+        readonly KnowledgeAnswerClaim: {
+            /** @description Retrieved chunks backing this claim (at least one) */
+            readonly citations: readonly components["schemas"]["knowledge_models_Citation"][];
+            readonly claim_type: components["schemas"]["KnowledgeClaimType"];
+            /** @description Synthesiser confidence in the claim */
+            readonly confidence: number;
+            /** @description The assertion */
+            readonly text: string;
+        };
+        /**
+         * KnowledgeClaimType
+         * @description Nature of a synthesised knowledge-answer claim.
+         *
+         *     Classifies each assertion in a grounded answer so the deliverable can
+         *     distinguish sourced facts from interpretive analysis, recommendations,
+         *     and cross-source comparisons. Knowledge-local (not shared with the
+         *     research subsystem) so the substrate carries no upward import.
+         * @enum {string}
+         */
+        readonly KnowledgeClaimType: "fact" | "analysis" | "recommendation" | "comparison";
         /** KnowledgeHit */
         readonly KnowledgeHit: {
             /** @description Matching chunk content */
@@ -26019,6 +26085,41 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ApiResponse_KnowledgeSource_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProjectsProjectIdKnowledgeAskAsk: {
+        readonly parameters: {
+            readonly query: {
+                /** @description Maximum cited hits to return */
+                readonly limit?: number;
+                /** @description Search text */
+                readonly q: string;
+            };
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly project_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_KnowledgeAnswer_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
