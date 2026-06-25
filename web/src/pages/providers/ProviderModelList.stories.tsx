@@ -15,6 +15,7 @@ const models: ProviderModelResponse[] = [
     estimated_latency_ms: 1500,
     local_params: null,
     supports_tools: true,
+    tool_calls_verified: null,
     supports_vision: true,
     supports_streaming: true,
     family: null,
@@ -30,6 +31,7 @@ const models: ProviderModelResponse[] = [
     estimated_latency_ms: 500,
     local_params: null,
     supports_tools: true,
+    tool_calls_verified: null,
     supports_vision: false,
     supports_streaming: true,
     family: null,
@@ -45,6 +47,7 @@ const models: ProviderModelResponse[] = [
     estimated_latency_ms: 200,
     local_params: null,
     supports_tools: false,
+    tool_calls_verified: null,
     supports_vision: false,
     supports_streaming: true,
     family: null,
@@ -82,6 +85,7 @@ export const NoCapabilities: Story = {
       estimated_latency_ms: null,
       local_params: null,
       supports_tools: false,
+      tool_calls_verified: null,
       supports_vision: false,
       supports_streaming: false,
       family: null,
@@ -107,5 +111,12 @@ export const WithAllActions: Story = {
     supportsConfig: true,
     onDelete: fn(),
     onConfigure: fn(),
+  },
+}
+
+export const ToolCallingUnavailable: Story = {
+  args: {
+    models: [{ ...models[0]!, tool_calls_verified: false }, models[1]!],
+    onReenableToolCalling: fn(),
   },
 }

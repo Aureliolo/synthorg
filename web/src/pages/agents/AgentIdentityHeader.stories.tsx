@@ -1,6 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react'
+import { useEffect } from 'react'
+import type { ReactNode } from 'react'
 import { AgentIdentityHeader } from './AgentIdentityHeader'
+import { useProvidersStore } from '@/stores/providers'
 import type { AgentConfig } from '@/api/types/agents'
+import type { ProviderWithName } from '@/utils/providers'
 
 function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
   return {
@@ -45,3 +49,38 @@ export const OnLeave: Story = { args: { agent: makeAgent({ status: 'on_leave' })
 export const Terminated: Story = { args: { agent: makeAgent({ status: 'terminated' }) } }
 export const NoAutonomy: Story = { args: { agent: makeAgent({ autonomy_level: null }) } }
 export const CSuite: Story = { args: { agent: makeAgent({ level: 'c_suite', role: 'Chief Technology Officer', autonomy_level: 'full' }) } }
+
+// Snapshot the providers catalogue, seed the downgraded test model, and
+// restore the prior state on unmount so this story does not leak
+// ``test-provider`` into later stories that share the singleton store.
+function SeedDowngradedProvider({ children }: { children: ReactNode }) {
+  useEffect(() => {
+    const previous = useProvidersStore.getState().providers
+    useProvidersStore.setState({
+      providers: [
+        {
+          name: 'test-provider',
+          models: [{ id: 'test-large-001', metadata: { tool_calls_verified: false } }],
+        },
+      ] as unknown as ProviderWithName[],
+    })
+    return () => {
+      useProvidersStore.setState({ providers: previous })
+    }
+  }, [])
+  return <>{children}</>
+}
+
+// The agent's assigned model (test-provider/test-large-001) is cross-referenced
+// against the providers catalogue; seeding it with tool_calls_verified=false
+// surfaces the "tool calling unavailable" badge next to the MODEL pill.
+export const ToolCallingUnavailable: Story = {
+  args: { agent: makeAgent() },
+  decorators: [
+    (Story) => (
+      <SeedDowngradedProvider>
+        <Story />
+      </SeedDowngradedProvider>
+    ),
+  ],
+}

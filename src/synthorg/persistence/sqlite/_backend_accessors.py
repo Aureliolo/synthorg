@@ -90,6 +90,9 @@ from synthorg.persistence.meeting_cooldown_protocol import (
 )
 from synthorg.persistence.memory_protocol import OrgFactRepository
 from synthorg.persistence.message_protocol import MessageRepository
+from synthorg.persistence.model_tool_call_signal_protocol import (
+    ModelToolCallSignalRepository,
+)
 from synthorg.persistence.ontology_protocol import (
     OntologyDriftReportRepository,
     OntologyEntityRepository,
@@ -207,6 +210,7 @@ class _BackendRepositoryAccessors:
     _risk_overrides: RiskOverrideRepository | None
     _ssrf_violations: SsrfViolationRepository | None
     _circuit_breaker_state: CircuitBreakerStateRepository | None
+    _model_tool_call_signals: ModelToolCallSignalRepository | None
     _ceremony_scheduler_state: CeremonySchedulerStateRepository | None
     _meeting_cooldown: MeetingCooldownRepository | None
     _tracked_containers: TrackedContainerRepository | None
@@ -768,6 +772,18 @@ class _BackendRepositoryAccessors:
         return self._require_connected(
             self._circuit_breaker_state,
             "circuit_breaker_state",
+        )
+
+    @property
+    def model_tool_call_signals(self) -> ModelToolCallSignalRepository:
+        """Repository for runtime tool-call failure signal persistence.
+
+        Returns:
+            Result of type ``ModelToolCallSignalRepository``.
+        """
+        return self._require_connected(
+            self._model_tool_call_signals,
+            "model_tool_call_signals",
         )
 
     @property

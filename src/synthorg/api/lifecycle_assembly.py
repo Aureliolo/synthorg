@@ -226,6 +226,15 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
 
     startup = [*startup, _wire_model_refresh]
 
+    async def _wire_tool_call_feedback() -> None:
+        from synthorg.api.lifecycle_helpers.tool_call_feedback_wiring import (  # noqa: PLC0415
+            wire_tool_call_feedback,
+        )
+
+        await wire_tool_call_feedback(app_state)
+
+    startup = [*startup, _wire_tool_call_feedback]
+
     async def _wire_promotion() -> None:
         from synthorg.api.lifecycle_helpers.promotion_wiring import (  # noqa: PLC0415
             wire_promotion,

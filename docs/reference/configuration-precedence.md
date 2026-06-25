@@ -117,6 +117,9 @@ domain-specific startup event (e.g. `API_APP_STARTUP`,
 | `providers.model_refresh_mode` | `SYNTHORG_PROVIDERS_MODEL_REFRESH_MODE` | Config discriminator for the periodic model-refresh subsystem (`off` / `manual_only` / `detect_only` / `reconcile_recommend`); `off` is the safe default. The scheduler re-reads it every tick (fail-safe to `off`), so mode changes apply without a restart. |
 | `providers.model_refresh_interval_seconds` | `SYNTHORG_PROVIDERS_MODEL_REFRESH_INTERVAL_SECONDS` | Cadence between automatic reconcile cycles (60s..604800s). Baked into the scheduler at wiring time; changing it needs a restart. |
 | `providers.model_refresh_auto_apply_within_family` | `SYNTHORG_PROVIDERS_MODEL_REFRESH_AUTO_APPLY_WITHIN_FAMILY` | Opt-in (default off) auto-apply of strictly in-family upgrades; re-read every cycle. |
+| `providers.tool_call_feedback_enabled` | `SYNTHORG_PROVIDERS_TOOL_CALL_FEEDBACK_ENABLED` | Master switch for the runtime tool-call failure feedback loop (default `true`). Re-read live per observation by the `ToolCallFeedbackTracker`, so toggling it on/off applies without a restart while the sink stays installed. |
+| `providers.tool_call_failure_threshold` | `SYNTHORG_PROVIDERS_TOOL_CALL_FAILURE_THRESHOLD` | Decayed-score threshold (1..20, default 3) at which a model is downgraded (`tool_calls_verified=False`). Re-read on each failure. |
+| `providers.tool_call_failure_decay_half_life_seconds` | `SYNTHORG_PROVIDERS_TOOL_CALL_FAILURE_DECAY_HALF_LIFE_SECONDS` | Half-life (60s..86400s, default 3600s) over which a failure's weight halves, so a transient blip decays away rather than permanently downgrading a capable model. Re-read on each failure. |
 
 ### Category 2 examples (env > default; DB bypassed)
 

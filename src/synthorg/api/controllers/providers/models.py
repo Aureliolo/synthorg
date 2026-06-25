@@ -31,7 +31,7 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     paginate_cursor,
 )
-from synthorg.api.path_params import PathName
+from synthorg.api.path_params import PathId, PathName
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState
@@ -50,12 +50,16 @@ from synthorg.observability.events.api import (
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.errors import (
     ProviderAlreadyExistsError,
+    ProviderModelNotFoundError,
     ProviderNotFoundError,
     ProviderValidationError,
     RateLimitError,
 )
 from synthorg.providers.resilience.errors import RetryExhaustedError
 from synthorg.providers.state import ProvidersStateSlice, provider_management_of
+from synthorg.providers.tool_call_feedback.state import (
+    tool_call_feedback_tracker_of,
+)
 from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
@@ -267,3 +271,54 @@ class ProviderModelsController(Controller):
             )
             raise ValidationError(safe_error_description(exc)) from exc
         return ApiResponse(data=result)
+
+    @post(
+        "/{name:str}/models/{model_id:str}/reenable-tool-calling",
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit_from_policy(
+                "providers.reenable_tool_calling", key="user"
+            ),
+        ],
+    )
+    async def reenable_tool_calling(
+        self,
+        state: State,
+        name: PathName,
+        model_id: PathId,
+    ) -> ApiResponse[ProviderResponse]:
+        """Clear a model's runtime tool-call downgrade and reset to untested.
+
+        The manual operator escape hatch for a model the runtime feedback
+        loop downgraded (``tool_calls_verified=False``): drops the decay
+        accumulator and resets the flag to ``None`` so the matcher's
+        optimistic path resumes. Naturally idempotent -- re-enabling an
+        already-enabled model is a no-op.
+
+        Args:
+            state: Application state.
+            name: Provider name.
+            model_id: Model id within the provider.
+
+        Returns:
+            Updated provider response (secrets stripped).
+
+        Raises:
+            NotFoundError: If the provider or model does not exist.
+        """
+        app_state: AppState = state.app_state
+        tracker = tool_call_feedback_tracker_of(app_state)
+        try:
+            await tracker.clear(provider=name, model=model_id)
+        except (ProviderNotFoundError, ProviderModelNotFoundError) as exc:
+            raise NotFoundError(safe_error_description(exc)) from exc
+        providers = await config_resolver_of(app_state).get_provider_configs()
+        updated = require_resource_or_404(
+            providers.get(name),
+            resource_type="Provider",
+            identifier=name,
+            log_event=API_RESOURCE_NOT_FOUND,
+            operation="read",
+            extra_log_kwargs={"name": name},
+        )
+        return ApiResponse(data=to_provider_response(updated, name=None))

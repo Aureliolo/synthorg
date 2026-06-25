@@ -1151,6 +1151,19 @@ CREATE TABLE circuit_breaker_state (
     PRIMARY KEY (pair_key_a, pair_key_b)
 );
 
+-- ── Runtime tool-call failure signals ─────────────────────────
+-- Time-decayed per-(provider, model) tool-call failure accumulator for
+-- the runtime feedback loop. decayed_at is epoch seconds (the same
+-- decay-arithmetic float representation as circuit_breaker_state.opened_at).
+
+CREATE TABLE model_tool_call_signals (
+    provider_name TEXT NOT NULL CHECK (LENGTH(provider_name) > 0),
+    model_id TEXT NOT NULL CHECK (LENGTH(model_id) > 0),
+    failure_score DOUBLE PRECISION NOT NULL DEFAULT 0 CHECK (failure_score >= 0),
+    decayed_at DOUBLE PRECISION NOT NULL CHECK (decayed_at >= 0),
+    PRIMARY KEY (provider_name, model_id)
+);
+
 -- ── Ontology: Entity definitions ──────────────────────────────
 
 CREATE TABLE entity_definitions (

@@ -31,6 +31,7 @@ export {
   addProviderModel,
   deleteModel,
   pullModel,
+  reenableToolCalling,
   syncProviderModels,
   updateModelConfig,
 } from './providers/models'

@@ -8,12 +8,15 @@ from pydantic import ValidationError
 from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.schema import ProviderModelConfig
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.mark.unit
 class TestModelMetadata:
     def test_defaults(self) -> None:
         meta = ModelMetadata()
         assert meta.supports_tools is False
+        assert meta.tool_calls_verified is None
         assert meta.supports_vision is False
         assert meta.supports_reasoning is False
         assert meta.max_output_tokens is None
@@ -41,6 +44,16 @@ class TestModelMetadata:
         assert meta.generation == 4.5
         assert meta.release_date == date(2025, 5, 14)
         assert meta.metadata_source == "litellm"
+
+    def test_tool_calls_verified_tristate(self) -> None:
+        assert ModelMetadata().tool_calls_verified is None
+        assert ModelMetadata(tool_calls_verified=True).tool_calls_verified is True
+        assert ModelMetadata(tool_calls_verified=False).tool_calls_verified is False
+
+    def test_tool_calls_verified_round_trips_through_json(self) -> None:
+        meta = ModelMetadata(supports_tools=True, tool_calls_verified=False)
+        restored = ModelMetadata.model_validate(meta.model_dump(mode="json"))
+        assert restored.tool_calls_verified is False
 
     def test_frozen(self) -> None:
         meta = ModelMetadata()

@@ -35,6 +35,7 @@ from synthorg.templates.model_matcher_config import (
 )
 from synthorg.templates.model_matcher_priority import priority_ranker, shift_priority
 from synthorg.templates.model_matcher_tiering import (
+    above_usable_floor,
     demand_tier,
     prune_dominated,
     select_for_demand,
@@ -99,6 +100,12 @@ def passes_hard_filters(
     support tools/reasoning, and excluding every un-probed cloud model would
     leave agents unassigned.
 
+    Runtime tool-call feedback overrides optimism: a model whose
+    ``tool_calls_verified`` is ``False`` has *proven* at runtime that it cannot
+    call tools, so it is excluded for ``requires_tools`` agents regardless of
+    metadata source (the runtime signal is authoritative over the
+    discovery-time claim).
+
     Returns:
         True when the model meets the context floor and every required
         capability it is known to possess (or has unknown metadata for).
@@ -106,9 +113,21 @@ def passes_hard_filters(
     if model.max_context < requirement.min_context:
         return False
     meta = model.metadata
+    if requirement.requires_tools and meta.tool_calls_verified is False:
+        logger.debug(
+            TEMPLATE_MODEL_MATCH_SKIPPED,
+            model=model.id,
+            reason="tool_calls_runtime_unverified",
+        )
+        return False
+    # A runtime-proven tool caller is authoritative over stale discovery
+    # metadata: ``tool_calls_verified is True`` re-admits a model whose
+    # ``supports_tools`` flag is a false negative, so it is never permanently
+    # unassignable to ``requires_tools`` agents.
+    tools_supported = meta.tool_calls_verified is True or meta.supports_tools
     unknown = meta.metadata_source == "unknown"
     required_checks = (
-        (requirement.requires_tools, meta.supports_tools),
+        (requirement.requires_tools, tools_supported),
         (requirement.requires_vision, meta.supports_vision),
         (requirement.requires_reasoning, meta.supports_reasoning),
     )
@@ -515,30 +534,6 @@ def _build_pool(
     return tuple(pool), owner
 
 
-def _above_usable_floor(
-    models: Sequence[ProviderModelConfig],
-    min_parameters: int,
-) -> list[ProviderModelConfig]:
-    """Drop models with a known parameter count below the usable floor.
-
-    A model too small to run an agent loop (a 1B on QA, say) is never
-    auto-assigned. Size-unknown models pass (cloud models often omit the
-    count). Falls back to the full set when the floor would empty it, so a
-    small-only catalogue still yields a match rather than leaving the agent
-    unassigned.
-
-    Returns:
-        The models at or above the floor, or all of *models* when none clear it.
-    """
-    kept = [
-        m
-        for m in models
-        if m.metadata.parameter_count is None
-        or m.metadata.parameter_count >= min_parameters
-    ]
-    return kept or list(models)
-
-
 def _match_agent(
     idx: int,
     req: ModelRequirement,
@@ -559,7 +554,7 @@ def _match_agent(
         model, score = ctx.strategy.select(req, ctx.pool, ctx.config)
     else:
         eligible = [m for m in ctx.pool if passes_hard_filters(m, req)]
-        eligible = _above_usable_floor(eligible, ctx.config.min_usable_parameters)
+        eligible = above_usable_floor(eligible, ctx.config.min_usable_parameters)
         model = select_for_demand(
             eligible, demand_tier(req), ctx.family_usage, ctx.config.tier_overrides
         )

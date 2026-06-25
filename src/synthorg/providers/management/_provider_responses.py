@@ -42,6 +42,10 @@ class ProviderModelResponse(BaseModel):
         estimated_latency_ms: Estimated median latency in milliseconds.
         local_params: Per-model launch parameters for local providers.
         supports_tools: Whether the model supports tool/function calling.
+        tool_calls_verified: Runtime tool-calling truth (None=unobserved,
+            True=proven, False=runtime-proven-incapable). When ``False`` the
+            UI shows a "tool-calling unavailable" badge and the matcher stops
+            assigning the model to tool-requiring agents.
         supports_vision: Whether the model accepts image inputs.
         supports_streaming: Whether the model supports streaming responses.
     """
@@ -90,6 +94,13 @@ class ProviderModelResponse(BaseModel):
     supports_tools: bool = Field(
         default=False,
         description="Supports tool/function calling",
+    )
+    tool_calls_verified: bool | None = Field(
+        default=None,
+        description=(
+            "Runtime tool-calling truth: None=unobserved, True=proven, "
+            "False=runtime-proven-incapable (tool-calling unavailable badge)"
+        ),
     )
     supports_vision: bool = Field(
         default=False,
