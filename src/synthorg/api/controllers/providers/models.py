@@ -311,12 +311,6 @@ class ProviderModelsController(Controller):
         try:
             await tracker.clear(provider=name, model=model_id)
         except (ProviderNotFoundError, ProviderModelNotFoundError) as exc:
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="model",
-                name=model_id,
-                provider=name,
-            )
             raise NotFoundError(safe_error_description(exc)) from exc
         providers = await config_resolver_of(app_state).get_provider_configs()
         updated = require_resource_or_404(

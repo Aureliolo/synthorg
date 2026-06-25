@@ -222,6 +222,7 @@ function ProviderDetailBody({
             void useProvidersStore.getState().reenableToolCalling(decodedName, modelId)
           }}
           reenablingModelId={reenablingModelId}
+          providerName={decodedName}
         />
       </ErrorBoundary>
     </>

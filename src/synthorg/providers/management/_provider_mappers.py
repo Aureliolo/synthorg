@@ -122,7 +122,9 @@ def to_provider_model_response(
         estimated_latency_ms=config.estimated_latency_ms,
         local_params=config.local_params,
         supports_tools=(
-            capabilities.supports_tools if capabilities is not None else False
+            capabilities.supports_tools
+            if capabilities is not None
+            else config.metadata.supports_tools
         ),
         # The runtime tool-call verdict is persisted config-layer state (set
         # by the feedback loop), NOT a live capability probe, so it is read

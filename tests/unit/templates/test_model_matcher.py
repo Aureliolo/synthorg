@@ -121,6 +121,22 @@ class TestHardFilters:
         assert model is not None
         assert model.id == "downgraded"
 
+    def test_runtime_unverified_none_keeps_optimistic_tools_path(self) -> None:
+        # tool_calls_verified=None means "never observed": the load-bearing
+        # optimistic path. Even an unknown-source model is still accepted for a
+        # requires_tools agent until runtime proves it cannot call tools (only
+        # an explicit False downgrades it).
+        candidate = _make_model(
+            "candidate",
+            tools=True,
+            tool_calls_verified=None,
+            source="unknown",
+        )
+        req = ModelRequirement(requires_tools=True)
+        model, _ = match_model(req, (candidate,))
+        assert model is not None
+        assert model.id == "candidate"
+
     def test_reasoning_requirement_honoured(self) -> None:
         thinker = _make_model("thinker", reasoning=True)
         plain = _make_model("plain", reasoning=False)

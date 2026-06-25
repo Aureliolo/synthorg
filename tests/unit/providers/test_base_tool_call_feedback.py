@@ -222,3 +222,28 @@ class TestStreamFeedback:
         assert sink.calls == [
             ("example-provider", "example-large-001", ToolCallOutcome.SUCCESS)
         ]
+
+    async def test_stream_plain_text_emits_nothing(self, sink: _RecordingSink) -> None:
+        # A streamed content-only response (no TOOL_CALL_DELTA) must record
+        # nothing even with tools requested. "Emit nothing" is the safety
+        # guarantee: a model that simply answered in prose this turn must not
+        # be reported as a FAILURE and wrongly downgraded.
+        chunks = (
+            StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="just text"),
+            StreamChunk(event_type=StreamEventType.USAGE, usage=_USAGE),
+        )
+        provider = _ConfiguredProvider(stream_chunks=chunks)
+        iterator = await provider.stream(_user_msg(), "example-large-001", tools=_TOOLS)
+        async for _ in iterator:
+            pass
+        assert sink.calls == []
+
+    async def test_stream_retryable_error_emits_nothing(
+        self, sink: _RecordingSink
+    ) -> None:
+        # A transient setup failure is not evidence the model cannot call
+        # tools, so the stream path must stay silent (mirrors complete()).
+        provider = _ConfiguredProvider(exc=ProviderTimeoutError("slow"))
+        with pytest.raises(ProviderTimeoutError):
+            await provider.stream(_user_msg(), "example-large-001", tools=_TOOLS)
+        assert sink.calls == []

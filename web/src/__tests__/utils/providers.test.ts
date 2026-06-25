@@ -7,6 +7,7 @@ import {
   formatErrorRate,
   formatTokenCount,
   formatCost,
+  reenableKey,
 } from "@/utils/providers";
 import type {
   ProviderConfig,
@@ -354,5 +355,22 @@ describe("formatCost", () => {
   it("formats larger amounts", () => {
     const result = formatCost(99.99);
     expect(result).toContain("99.99");
+  });
+});
+
+describe("reenableKey", () => {
+  it("is stable for the same (provider, model) pair", () => {
+    expect(reenableKey("openai", "gpt-x")).toBe(reenableKey("openai", "gpt-x"));
+  });
+
+  it("distinguishes the same model id across providers", () => {
+    expect(reenableKey("provider-a", "shared-model")).not.toBe(
+      reenableKey("provider-b", "shared-model"),
+    );
+  });
+
+  it("stays injective when the model id contains the delimiter", () => {
+    // ``a`` + ``b:c`` must not collide with ``a:b`` + ``c``.
+    expect(reenableKey("a", "b:c")).not.toBe(reenableKey("a:b", "c"));
   });
 });

@@ -8,6 +8,7 @@ import { SearchInput } from '@/components/ui/search-input'
 import { cn } from '@/lib/utils'
 import { Boxes, RotateCcw, Settings2, Trash2 } from 'lucide-react'
 import type { ProviderModelResponse } from '@/api/types/providers'
+import { reenableKey } from '@/utils/providers'
 
 interface ProviderModelRowProps {
   model: ProviderModelResponse
@@ -17,7 +18,11 @@ interface ProviderModelRowProps {
   onDelete?: ((modelId: string) => void) | undefined
   onConfigure?: ((model: ProviderModelResponse) => void) | undefined
   onReenableToolCalling?: ((modelId: string) => void) | undefined
+  // Provider-qualified pending-re-enable key (see ``reenableKey``); model ids
+  // are not unique across providers, so the pending state is compared against
+  // ``reenableKey(providerName, model.id)`` rather than the bare id.
   reenablingModelId?: string | null | undefined
+  providerName?: string | undefined
 }
 
 function CapabilityBadges({ model }: { model: ProviderModelResponse }) {
@@ -71,7 +76,11 @@ function ModelRowActions({
   onConfigure,
   onReenableToolCalling,
   reenablingModelId,
+  providerName,
 }: ProviderModelRowProps) {
+  const isReenabling =
+    providerName !== undefined &&
+    reenablingModelId === reenableKey(providerName, model.id)
   return (
     <div className="flex items-center justify-end gap-1">
       {onReenableToolCalling !== undefined && model.tool_calls_verified === false && (
@@ -79,7 +88,7 @@ function ModelRowActions({
           variant="ghost"
           size="icon"
           onClick={() => onReenableToolCalling(model.id)}
-          disabled={reenablingModelId === model.id}
+          disabled={isReenabling}
           title="Re-enable tool calling"
           aria-label={`Re-enable tool calling for ${model.id}`}
           className="size-7 text-warning hover:bg-warning/10"
@@ -156,6 +165,7 @@ interface ProviderModelListProps {
   onConfigure?: ((model: ProviderModelResponse) => void) | undefined
   onReenableToolCalling?: ((modelId: string) => void) | undefined
   reenablingModelId?: string | null | undefined
+  providerName?: string | undefined
 }
 
 interface ModelTableProps extends ProviderModelListProps {
@@ -192,6 +202,7 @@ function ModelTable({ models, hasActions, ...rest }: ModelTableProps) {
               onConfigure={rest.onConfigure}
               onReenableToolCalling={rest.onReenableToolCalling}
               reenablingModelId={rest.reenablingModelId}
+              providerName={rest.providerName}
             />
           ))}
         </tbody>
@@ -224,6 +235,7 @@ export function ProviderModelList({
   onConfigure,
   onReenableToolCalling,
   reenablingModelId,
+  providerName,
 }: ProviderModelListProps) {
   const hasActions = listHasActions(
     models,
@@ -285,6 +297,7 @@ export function ProviderModelList({
           onConfigure={onConfigure}
           onReenableToolCalling={onReenableToolCalling}
           reenablingModelId={reenablingModelId}
+          providerName={providerName}
         />
       )}
     </SectionCard>

@@ -113,7 +113,15 @@ class ToolCallFeedbackTracker:
         self._writer = writer
         self._settings = settings
         self._clock: Clock = clock if clock is not None else SystemClock()
+        # ``_lock`` guards the shared ``_cache`` / ``_key_locks`` dicts only and
+        # is held for brief read-modify-write sections, NEVER across the
+        # capability-writer call (which takes the management service's own
+        # lock). ``_key_locks`` serialises the WHOLE failure/success/clear
+        # sequence per ``(provider, model)`` so the accumulator row and the
+        # ``tool_calls_verified`` flag transition cannot interleave and reorder
+        # across concurrent observations on the same model.
         self._lock = asyncio.Lock()
+        self._key_locks: dict[ModelToolCallSignalKey, asyncio.Lock] = {}
         # Lazily-hydrated cache: ``None`` means "no row" (a healthy model),
         # so a steady-state success never re-reads the database.
         self._cache: dict[ModelToolCallSignalKey, ModelToolCallSignal | None] = {}
@@ -136,10 +144,14 @@ class ToolCallFeedbackTracker:
             if not await self._settings.get_bool(_SETTINGS_NAMESPACE, _ENABLED_KEY):
                 return
             key = (NotBlankStr(provider), NotBlankStr(model))
-            if outcome is ToolCallOutcome.FAILURE:
-                await self._on_failure(key)
-            else:
-                await self._on_success(key)
+            # Serialise the whole outcome handoff (row + flag) per model so a
+            # threshold-crossing failure and a concurrent success cannot
+            # interleave their writer calls and strand the model downgraded.
+            async with await self._key_lock(key):
+                if outcome is ToolCallOutcome.FAILURE:
+                    await self._on_failure(key)
+                else:
+                    await self._on_success(key)
         except Exception as exc:  # noqa: BLE001 -- awaited in the provider hot path; criticals re-raised, all else swallowed + logged
             reraise_critical(exc)
             logger.warning(
@@ -163,20 +175,39 @@ class ToolCallFeedbackTracker:
             model: Model identifier within the provider.
         """
         key = (NotBlankStr(provider), NotBlankStr(model))
-        # Reset the flag first, then drop the accumulator under the lock.
-        # The writer call is kept off the tracker lock so the tracker lock
-        # is never held across the management service's own lock.
-        await self._writer.clear_tool_calls_verification(provider, model)
-        async with self._lock:
-            self._cache.pop(key, None)
-            await self._repo.delete(key)
-            self._cache[key] = None
+        # Hold the per-model operation lock across the whole reset so a
+        # concurrent observation cannot reorder its row/flag writes against
+        # this manual clear. The writer call is still kept off ``_lock`` (the
+        # cache lock), so ``_lock`` is never held across the management
+        # service's own lock.
+        async with await self._key_lock(key):
+            await self._writer.clear_tool_calls_verification(provider, model)
+            async with self._lock:
+                self._cache.pop(key, None)
+                await self._repo.delete(key)
+                self._cache[key] = None
         logger.info(
             PROVIDER_TOOL_CALL_REENABLED,
             provider=provider,
             model=model,
             trigger="manual",
         )
+
+    async def _key_lock(self, key: ModelToolCallSignalKey) -> asyncio.Lock:
+        """Return the per-``(provider, model)`` operation lock.
+
+        Created once per key under ``_lock`` (which guards the shared
+        ``_key_locks`` map). Acquired only AFTER ``_lock`` is released, and the
+        per-key lock is the outer lock whenever ``_lock`` is later re-taken for
+        a cache write, so the acquisition order is always
+        ``_key_lock`` -> ``_lock`` and the two never deadlock.
+        """
+        async with self._lock:
+            lock = self._key_locks.get(key)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._key_locks[key] = lock
+            return lock
 
     async def _on_failure(self, key: ModelToolCallSignalKey) -> None:
         """Decay, increment, persist, and downgrade past the threshold.

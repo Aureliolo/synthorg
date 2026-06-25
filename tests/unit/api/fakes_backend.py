@@ -268,6 +268,10 @@ class FakeModelToolCallSignalRepository:
     def __init__(self) -> None:
         self._store: dict[tuple[str, str], ModelToolCallSignal] = {}
 
+    def clear(self) -> None:
+        """Wipe stored rows so backend reset can reuse the instance per test."""
+        self._store.clear()
+
     async def save(self, entity: ModelToolCallSignal) -> None:
         self._store[(entity.provider_name, entity.model_id)] = entity
 

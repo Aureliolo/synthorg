@@ -447,14 +447,15 @@ async def _run_shutdown(  # noqa: PLR0913
     )
 
     tool_call_feedback = app_state.slice(ToolCallFeedbackStateSlice)
+    # The sink is process-global and can be installed without the slice ever
+    # holding a tracker, so uninstall it unconditionally (the call is a safe
+    # no-op when absent). This stops the provider boundary routing into a
+    # tracker whose DB handle is about to be disconnected, even on the path
+    # where the slice tracker was never published.
+    uninstall_tool_call_signal_sink()
     if tool_call_feedback.tracker is not None:
-        # The tracker is a passive sink (no background loop), so teardown is
-        # just uninstalling the global sink and clearing the slice so
-        # wire_tool_call_feedback re-wires on the next lifespan entry (its
-        # idempotency guard checks ``tracker``). Uninstalling also stops the
-        # provider boundary routing into a tracker whose DB handle is about
-        # to be disconnected.
-        uninstall_tool_call_signal_sink()
+        # Clear the slice so wire_tool_call_feedback re-wires on the next
+        # lifespan entry (its idempotency guard checks ``tracker``).
         app_state.swap_slice(tool_call_feedback.model_copy(update={"tracker": None}))
         logger.debug(
             API_APP_SHUTDOWN,

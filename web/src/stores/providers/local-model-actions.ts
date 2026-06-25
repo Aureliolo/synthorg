@@ -5,6 +5,7 @@ import {
   updateModelConfig as apiUpdateModelConfig,
 } from '@/api/endpoints/providers'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
+import { reenableKey } from '@/utils/providers'
 import { createLogger } from '@/lib/logger'
 import type { LocalModelParams } from '@/api/types/providers'
 import { useToastStore } from '@/stores/toast'
@@ -146,14 +147,29 @@ async function reenableToolCallingImpl(
   name: string,
   modelId: string,
 ): Promise<boolean> {
-  set({ reenablingModelId: modelId })
+  // Serialise overlapping re-enables: a second click while one is in flight
+  // would otherwise overwrite reenablingModelId and let the earlier
+  // completion clear the later request's loading state.
+  if (get().reenablingModelId !== null) return false
+  const pendingKey = reenableKey(name, modelId)
+  set({ reenablingModelId: pendingKey })
   try {
     await apiReenableToolCalling(name, modelId)
+    // The server-side re-enable has already succeeded at this point, so a
+    // follow-up refresh failure is non-fatal: log it but still resolve true
+    // and show the success toast rather than reporting a failed re-enable.
+    try {
+      await refreshActiveDetail(get, name)
+    } catch (err) {
+      log.error(
+        'Failed to refresh provider detail after re-enabling tool calling',
+        getErrorMessage(err),
+      )
+    }
     useToastStore.getState().add({
       variant: 'success',
       title: `Tool calling re-enabled for "${modelId}"`,
     })
-    await refreshActiveDetail(get, name)
     return true
   } catch (err) {
     log.error('Failed to re-enable tool calling:', getErrorMessage(err))
@@ -164,7 +180,11 @@ async function reenableToolCallingImpl(
     })
     return false
   } finally {
-    set({ reenablingModelId: null })
+    // Only clear the loading state if this request still owns it, so a newer
+    // in-flight re-enable is not reset by an older completion.
+    if (get().reenablingModelId === pendingKey) {
+      set({ reenablingModelId: null })
+    }
   }
 }
 
